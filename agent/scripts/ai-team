@@ -1,0 +1,116 @@
+#!/bin/bash
+# ai-team - Helper CLI for agents to interact with the orchestrator API
+# Usage: ai-team <command> [args...]
+#
+# Commands:
+#   create-task <title> <prompt> [priority]       - Create a new task for myself
+#   create-schedule <name> <prompt> <interval>     - Create a recurring schedule
+#   send-message <agent_id> <message>              - Send message to another agent
+#   list-team                                      - List all agents in the team
+#   list-tasks [status]                            - List my tasks
+#   list-schedules                                 - List my schedules
+#   pause-schedule <schedule_id>                   - Pause a schedule
+#   resume-schedule <schedule_id>                  - Resume a schedule
+#   delete-schedule <schedule_id>                  - Delete a schedule
+
+set -e
+
+API="${ORCHESTRATOR_URL:-http://orchestrator:8000}/api/v1"
+AGENT_ID="${AGENT_ID:-unknown}"
+AGENT_NAME="${AGENT_NAME:-unknown}"
+MODEL="${DEFAULT_MODEL:-claude-sonnet-4-5-20250929}"
+
+json_escape() {
+  python3 -c "import json,sys; print(json.dumps(sys.stdin.read().strip()))"
+}
+
+case "${1:-help}" in
+  create-task)
+    TITLE="${2:?Usage: ai-team create-task <title> <prompt> [priority]}"
+    PROMPT="${3:?Usage: ai-team create-task <title> <prompt> [priority]}"
+    PRIORITY="${4:-5}"
+    ESCAPED_TITLE=$(echo "$TITLE" | json_escape)
+    ESCAPED_PROMPT=$(echo "$PROMPT" | json_escape)
+    curl -s -X POST "$API/tasks/" \
+      -H "Content-Type: application/json" \
+      -d "{\"title\": $ESCAPED_TITLE, \"prompt\": $ESCAPED_PROMPT, \"priority\": $PRIORITY, \"agent_id\": \"$AGENT_ID\", \"model\": \"$MODEL\"}"
+    ;;
+
+  create-schedule)
+    NAME="${2:?Usage: ai-team create-schedule <name> <prompt> <interval_seconds>}"
+    PROMPT="${3:?Usage: ai-team create-schedule <name> <prompt> <interval_seconds>}"
+    INTERVAL="${4:?Usage: ai-team create-schedule <name> <prompt> <interval_seconds>}"
+    ESCAPED_NAME=$(echo "$NAME" | json_escape)
+    ESCAPED_PROMPT=$(echo "$PROMPT" | json_escape)
+    curl -s -X POST "$API/schedules/" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": $ESCAPED_NAME, \"prompt\": $ESCAPED_PROMPT, \"interval_seconds\": $INTERVAL, \"agent_id\": \"$AGENT_ID\", \"model\": \"$MODEL\"}"
+    ;;
+
+  send-message)
+    TO_ID="${2:?Usage: ai-team send-message <agent_id> <message>}"
+    MESSAGE="${3:?Usage: ai-team send-message <agent_id> <message>}"
+    ESCAPED_MSG=$(echo "$MESSAGE" | json_escape)
+    curl -s -X POST "$API/agents/$TO_ID/message" \
+      -H "Content-Type: application/json" \
+      -d "{\"from_agent_id\": \"$AGENT_ID\", \"from_name\": \"$AGENT_NAME\", \"text\": $ESCAPED_MSG}"
+    ;;
+
+  list-team)
+    curl -s "$API/agents/team/directory" | python3 -m json.tool
+    ;;
+
+  list-tasks)
+    STATUS="${2:-}"
+    if [ -n "$STATUS" ]; then
+      curl -s "$API/tasks/?agent_id=$AGENT_ID&status=$STATUS" | python3 -m json.tool
+    else
+      curl -s "$API/tasks/?agent_id=$AGENT_ID" | python3 -m json.tool
+    fi
+    ;;
+
+  list-schedules)
+    curl -s "$API/schedules/" | python3 -m json.tool
+    ;;
+
+  pause-schedule)
+    SID="${2:?Usage: ai-team pause-schedule <schedule_id>}"
+    curl -s -X POST "$API/schedules/$SID/pause"
+    ;;
+
+  resume-schedule)
+    SID="${2:?Usage: ai-team resume-schedule <schedule_id>}"
+    curl -s -X POST "$API/schedules/$SID/resume"
+    ;;
+
+  delete-schedule)
+    SID="${2:?Usage: ai-team delete-schedule <schedule_id>}"
+    curl -s -X DELETE "$API/schedules/$SID"
+    ;;
+
+  help|--help|-h)
+    echo "ai-team - Agent CLI for orchestrator interaction"
+    echo ""
+    echo "Commands:"
+    echo "  create-task <title> <prompt> [priority]       Create a task for myself"
+    echo "  create-schedule <name> <prompt> <interval>    Create a recurring schedule (interval in seconds)"
+    echo "  send-message <agent_id> <message>             Send message to another agent"
+    echo "  list-team                                     List all team members"
+    echo "  list-tasks [status]                           List my tasks (optional: pending/running/completed/failed)"
+    echo "  list-schedules                                List all schedules"
+    echo "  pause-schedule <id>                           Pause a schedule"
+    echo "  resume-schedule <id>                          Resume a schedule"
+    echo "  delete-schedule <id>                          Delete a schedule"
+    echo ""
+    echo "Environment:"
+    echo "  ORCHESTRATOR_URL=$API"
+    echo "  AGENT_ID=$AGENT_ID"
+    echo "  AGENT_NAME=$AGENT_NAME"
+    ;;
+
+  *)
+    echo "Unknown command: $1"
+    echo "Run 'ai-team help' for usage"
+    exit 1
+    ;;
+esac

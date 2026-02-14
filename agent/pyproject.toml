@@ -1,0 +1,17 @@
+[project]
+name = "ai-employee-agent"
+version = "0.1.0"
+description = "AI Employee Agent - Autonomous Claude Code runner in Docker"
+requires-python = ">=3.12"
+dependencies = [
+    "redis[hiredis]>=5.2",
+    "aiohttp>=3.11",
+    "pydantic-settings>=2.7",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

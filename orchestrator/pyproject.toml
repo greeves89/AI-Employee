@@ -1,0 +1,26 @@
+[project]
+name = "ai-employee-orchestrator"
+version = "0.1.0"
+description = "AI Employee Orchestrator - Manages Claude Code agents in Docker containers"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "redis[hiredis]>=5.2",
+    "docker>=7.1",
+    "python-telegram-bot>=21.9",
+    "pydantic-settings>=2.7",
+    "cryptography>=44.0",
+    "httpx>=0.28",
+    "python-multipart>=0.0.9",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

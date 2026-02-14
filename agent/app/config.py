@@ -1,0 +1,19 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    agent_id: str = "agent-001"
+    agent_name: str = ""
+    redis_url: str = "redis://redis:6379"
+    health_port: int = 8080
+    default_model: str = "claude-sonnet-4-5-20250929"
+    max_turns: int = 100
+    anthropic_api_key: str = ""
+    claude_code_oauth_token: str = ""
+    workspace_dir: str = "/workspace"
+    orchestrator_url: str = "http://orchestrator:8000"
+
+    model_config = {"env_prefix": "", "case_sensitive": False}
+
+
+settings = Settings()
