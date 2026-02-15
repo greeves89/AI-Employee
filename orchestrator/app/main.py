@@ -14,6 +14,21 @@ from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
 
+async def _refresh_oauth_tokens(redis: RedisService) -> None:
+    """Background task that refreshes OAuth tokens before they expire."""
+    while True:
+        try:
+            from app.db.session import async_session_factory
+            from app.services.oauth_service import OAuthService
+
+            async with async_session_factory() as db:
+                service = OAuthService(db, redis)
+                await service.refresh_expiring_tokens()
+        except Exception:
+            pass
+        await asyncio.sleep(300)  # Check every 5 minutes
+
+
 async def _listen_task_completions(redis: RedisService) -> None:
     """Background task that listens for task completion events from agents."""
     pubsub = await redis.subscribe("task:completions")
@@ -63,6 +78,9 @@ async def lifespan(app: FastAPI):
     # Start background task listener
     completion_task = asyncio.create_task(_listen_task_completions(app.state.redis))
 
+    # Start OAuth token refresh background task
+    oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
+
     # Start scheduler service for recurring tasks
     from app.services.scheduler_service import SchedulerService
 
@@ -82,6 +100,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     completion_task.cancel()
+    oauth_refresh_task.cancel()
     scheduler_task.cancel()
     if telegram_task:
         telegram_task.cancel()

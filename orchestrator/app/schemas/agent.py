@@ -9,6 +9,7 @@ class AgentCreate(BaseModel):
     name: str
     model: str | None = None
     role: str | None = None
+    integrations: list[str] | None = None
 
 
 class AgentResponse(BaseModel):
@@ -19,6 +20,8 @@ class AgentResponse(BaseModel):
     model: str
     role: str | None = None
     onboarding_complete: bool = False
+    integrations: list[str] = []
+    update_available: bool = False
     created_at: datetime
     updated_at: datetime
 

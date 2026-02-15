@@ -49,7 +49,7 @@ async def create_agent(
     data: AgentCreate, manager: AgentManager = Depends(_get_agent_manager)
 ):
     try:
-        agent = await manager.create_agent(name=data.name, model=data.model, role=data.role)
+        agent = await manager.create_agent(name=data.name, model=data.model, role=data.role, integrations=data.integrations)
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
     except Exception as e:
@@ -88,6 +88,21 @@ async def start_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.post("/{agent_id}/update")
+async def update_agent(
+    agent_id: str, manager: AgentManager = Depends(_get_agent_manager)
+):
+    """Update agent to latest container image, preserving all data."""
+    try:
+        agent = await manager.update_agent(agent_id)
+        metrics = await manager.get_agent_with_metrics(agent.id)
+        return AgentResponse(**metrics)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/{agent_id}")
 async def remove_agent(
     agent_id: str,
@@ -117,7 +132,7 @@ async def get_agent_knowledge(
     manager: AgentManager = Depends(_get_agent_manager),
     docker: DockerService = Depends(get_docker_service),
 ):
-    """Read the agent's CLAUDE.md knowledge base."""
+    """Read the agent's knowledge.md knowledge base."""
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -125,7 +140,7 @@ async def get_agent_knowledge(
 
         try:
             _, content = docker.exec_in_container(
-                agent.container_id, "cat /workspace/CLAUDE.md"
+                agent.container_id, "cat /workspace/knowledge.md"
             )
         except Exception:
             content = ""
@@ -146,14 +161,14 @@ async def update_agent_knowledge(
     manager: AgentManager = Depends(_get_agent_manager),
     docker: DockerService = Depends(get_docker_service),
 ):
-    """Update the agent's CLAUDE.md knowledge base."""
+    """Update the agent's knowledge.md knowledge base."""
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
             raise HTTPException(status_code=400, detail="Agent has no container")
 
         docker.write_file_in_container(
-            agent.container_id, "/workspace/CLAUDE.md", body.content
+            agent.container_id, "/workspace/knowledge.md", body.content
         )
         return {"status": "updated", "agent_id": agent_id}
     except ValueError:
@@ -362,6 +377,42 @@ async def delete_chat_session(
     )
     await db.commit()
     return {"deleted": result.rowcount}
+
+
+@router.get("/{agent_id}/integrations")
+async def get_agent_integrations(
+    agent_id: str,
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Get the list of enabled integrations for an agent."""
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        return {"agent_id": agent_id, "integrations": config.get("integrations", [])}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.patch("/{agent_id}/integrations")
+async def update_agent_integrations(
+    agent_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Update the enabled integrations for an agent."""
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        config["integrations"] = body.get("integrations", [])
+        agent.config = config
+        # Force SQLAlchemy to detect the change on mutable JSON
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {"agent_id": agent_id, "integrations": config["integrations"]}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
 
 @router.get("/team/directory")

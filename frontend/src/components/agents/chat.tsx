@@ -177,7 +177,14 @@ export function AgentChat({ agentId }: { agentId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const reconnectAttempts = useRef(0);
+  const intentionalClose = useRef(false);
   const currentWsSessionId = useRef<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   // Load sessions from DB on mount
   useEffect(() => {
@@ -302,6 +309,11 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
     ws.onclose = (event) => {
       setIsConnected(false);
+      // Don't reconnect if we intentionally closed (e.g., cleanup)
+      if (intentionalClose.current) {
+        intentionalClose.current = false;
+        return;
+      }
       if (event.code === 4004 || event.code === 4010) {
         setConnectionFailed(true);
         setMessages((prev) => [
@@ -354,9 +366,12 @@ export function AgentChat({ agentId }: { agentId: string }) {
           const sid = String(chatEvent.data.session_id || "");
           if (sid) {
             currentWsSessionId.current = sid;
-            if (!activeSessionId) {
+            // Only adopt new session if we don't have one yet
+            // (this happens on first-ever message or after /reset)
+            if (!activeSessionIdRef.current) {
               setActiveSessionId(sid);
             }
+            // Only add to session tabs if truly new (not already in list)
             setSessions((prev) => {
               if (prev.some((s) => s.id === sid)) return prev;
               return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: "", isNew: true }, ...prev];
@@ -369,7 +384,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
         // Ignore non-JSON messages
       }
     };
-  }, [agentId, activeSessionId]);
+  }, [agentId]);
 
   /* ─── Event Handler (step-based) ──────────────────────────────────── */
 
@@ -379,7 +394,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
     setMessages((prev) => {
       const msgs = [...prev];
       let assistantIdx = msgs.findIndex(
-        (m) => m.id === `response-${message_id}` && m.role === "assistant"
+        (m) => (m.id === `response-${message_id}` || m.id === message_id) && m.role === "assistant"
       );
 
       // Create assistant message if it doesn't exist yet
@@ -492,6 +507,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
   useEffect(() => {
     connect();
     return () => {
+      intentionalClose.current = true;
       wsRef.current?.close();
       clearTimeout(reconnectTimeout.current);
     };
@@ -564,9 +580,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
   const switchSession = (sessionId: string) => {
     if (sessionId === activeSessionId) return;
     setActiveSessionId(sessionId);
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ text: "", session_id: sessionId }));
-    }
+    // No need to notify backend - session_id is sent with every message
   };
 
   const deleteSession = useCallback(async (sessionId: string) => {

@@ -1,0 +1,112 @@
+"""API endpoints for OAuth integrations."""
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_db
+from app.dependencies import get_redis_service
+from app.schemas.integration import (
+    AgentIntegrationsResponse,
+    AgentIntegrationsUpdate,
+    AuthUrlResponse,
+    IntegrationListResponse,
+    IntegrationStatus,
+)
+from app.services.oauth_service import OAuthService
+from app.services.redis_service import RedisService
+
+router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+def _get_oauth_service(
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+) -> OAuthService:
+    return OAuthService(db, redis)
+
+
+@router.get("/", response_model=IntegrationListResponse)
+async def list_integrations(service: OAuthService = Depends(_get_oauth_service)):
+    """List all OAuth providers with their connection status."""
+    integrations = await service.list_integrations()
+    return IntegrationListResponse(
+        integrations=[IntegrationStatus(**i) for i in integrations]
+    )
+
+
+@router.get("/{provider}/auth", response_model=AuthUrlResponse)
+async def get_auth_url(
+    provider: str,
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Generate OAuth authorization URL for a provider."""
+    try:
+        auth_url = await service.generate_auth_url(provider)
+        return AuthUrlResponse(auth_url=auth_url, provider=provider)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{provider}/callback")
+async def oauth_callback(
+    provider: str,
+    code: str = Query(...),
+    state: str = Query(...),
+    error: str | None = Query(None),
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """OAuth callback endpoint - exchanges code for tokens and redirects to frontend."""
+    if error:
+        # Redirect to frontend with error
+        return RedirectResponse(
+            url=f"/integrations?error={error}&provider={provider}"
+        )
+
+    try:
+        await service.exchange_code(provider, code, state)
+        # Redirect to frontend with success
+        return RedirectResponse(url=f"/integrations?connected={provider}")
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/integrations?error={str(e)}&provider={provider}"
+        )
+
+
+@router.delete("/{provider}")
+async def disconnect_integration(
+    provider: str,
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Disconnect an OAuth integration."""
+    try:
+        await service.disconnect(provider)
+        return {"status": "disconnected", "provider": provider}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{provider}/refresh")
+async def refresh_token(
+    provider: str,
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Manually refresh an OAuth token."""
+    try:
+        token = await service.get_valid_token(provider)
+        return {"status": "refreshed", "provider": provider}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{provider}/token")
+async def get_token(
+    provider: str,
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Get a fresh decrypted token (for agent internal use)."""
+    try:
+        token = await service.get_valid_token(provider)
+        return {"token": token, "provider": provider}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

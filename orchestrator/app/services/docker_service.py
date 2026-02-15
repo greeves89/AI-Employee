@@ -99,6 +99,22 @@ class DockerService:
             "memory_percent": round((mem_usage / mem_limit) * 100, 2) if mem_limit > 0 else 0,
         }
 
+    def get_image_id(self, image_name: str) -> str | None:
+        """Get the current image ID for a given image name."""
+        try:
+            image = self.client.images.get(image_name)
+            return image.id
+        except Exception:
+            return None
+
+    def get_container_image_id(self, container_id: str) -> str | None:
+        """Get the image ID that a container was built from."""
+        try:
+            container = self.client.containers.get(container_id)
+            return container.image.id
+        except Exception:
+            return None
+
     def get_container_status(self, container_id: str) -> str:
         try:
             container = self.client.containers.get(container_id)
