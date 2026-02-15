@@ -93,11 +93,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
         content: str = "", tool_calls: list | None = None, meta: dict | None = None,
     ):
         """Persist a chat message to the database."""
+        session_id = _session["id"]
+        if not session_id:
+            return  # Don't save without a valid session
         try:
             async with async_session_factory() as db:
                 db.add(ChatMessage(
                     agent_id=msg_agent_id,
-                    session_id=_session["id"],
+                    session_id=session_id,
                     message_id=message_id,
                     role=role,
                     content=content,
@@ -108,8 +111,48 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
         except Exception:
             pass  # Don't break chat if DB write fails
 
+    _ws_connected = True
+
+    def _process_event(raw_data: str):
+        """Process a PubSub event for persistence tracking. Returns True if a 'done' event was handled."""
+        nonlocal _streaming_responses, _seen_tool_ids
+        try:
+            event = json.loads(raw_data)
+            mid = event.get("message_id", "")
+            etype = event.get("type", "")
+            edata = event.get("data", {})
+
+            if etype == "text":
+                if mid not in _streaming_responses:
+                    _streaming_responses[mid] = {"content": "", "tool_calls": []}
+                _streaming_responses[mid]["content"] += str(edata.get("text", ""))
+            elif etype == "tool_call":
+                tool_use_id = str(edata.get("tool_use_id", ""))
+                if tool_use_id not in _seen_tool_ids:
+                    _seen_tool_ids.add(tool_use_id)
+                    if mid not in _streaming_responses:
+                        _streaming_responses[mid] = {"content": "", "tool_calls": []}
+                    _streaming_responses[mid]["tool_calls"].append({
+                        "tool": str(edata.get("tool", "")),
+                        "input": json.dumps(edata.get("input", {}))[:200],
+                    })
+            elif etype == "error":
+                return ("error", mid, str(edata.get("message", "Unknown error")), None)
+            elif etype == "done":
+                resp = _streaming_responses.pop(mid, {})
+                meta = {
+                    "cost_usd": edata.get("cost_usd"),
+                    "duration_ms": edata.get("duration_ms"),
+                    "num_turns": edata.get("num_turns"),
+                }
+                return ("done", mid, resp, meta)
+        except (json.JSONDecodeError, Exception):
+            pass
+        return None
+
     async def forward_responses():
         """Forward Redis PubSub chat responses to the WebSocket client."""
+        nonlocal _ws_connected
         try:
             while True:
                 message = await pubsub.get_message(
@@ -119,53 +162,77 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
                     data = message["data"]
                     if isinstance(data, bytes):
                         data = data.decode("utf-8")
-                    await websocket.send_text(data)
 
-                    # Track responses for persistence
-                    try:
-                        event = json.loads(data)
-                        mid = event.get("message_id", "")
-                        etype = event.get("type", "")
-                        edata = event.get("data", {})
+                    # Forward to WebSocket if still connected
+                    if _ws_connected:
+                        try:
+                            await websocket.send_text(data)
+                        except Exception:
+                            _ws_connected = False
 
-                        if etype == "text":
-                            if mid not in _streaming_responses:
-                                _streaming_responses[mid] = {"content": "", "tool_calls": []}
-                            _streaming_responses[mid]["content"] += str(edata.get("text", ""))
-                        elif etype == "tool_call":
-                            tool_use_id = str(edata.get("tool_use_id", ""))
-                            if tool_use_id not in _seen_tool_ids:
-                                _seen_tool_ids.add(tool_use_id)
-                                if mid not in _streaming_responses:
-                                    _streaming_responses[mid] = {"content": "", "tool_calls": []}
-                                _streaming_responses[mid]["tool_calls"].append({
-                                    "tool": str(edata.get("tool", "")),
-                                    "input": json.dumps(edata.get("input", {}))[:200],
-                                })
-                        elif etype == "error":
+                    # Track for persistence
+                    result = _process_event(data)
+                    if result:
+                        if result[0] == "error":
+                            await _save_chat_message(agent_id, result[1], "error", content=result[2])
+                        elif result[0] == "done":
+                            resp = result[2]
                             await _save_chat_message(
-                                agent_id, mid, "error",
-                                content=str(edata.get("message", "Unknown error")),
-                            )
-                        elif etype == "done":
-                            resp = _streaming_responses.pop(mid, {})
-                            meta = {
-                                "cost_usd": edata.get("cost_usd"),
-                                "duration_ms": edata.get("duration_ms"),
-                                "num_turns": edata.get("num_turns"),
-                            }
-                            await _save_chat_message(
-                                agent_id, mid, "assistant",
+                                agent_id, result[1], "assistant",
                                 content=resp.get("content", ""),
                                 tool_calls=resp.get("tool_calls") or None,
-                                meta=meta,
+                                meta=result[3],
                             )
-                    except (json.JSONDecodeError, Exception):
-                        pass
 
                 await asyncio.sleep(0.01)
+        except asyncio.CancelledError:
+            pass
         except Exception:
             pass
+
+    async def _drain_remaining():
+        """After WS disconnect, keep listening briefly to persist pending responses."""
+        if not _streaming_responses or not _session["id"]:
+            return  # Don't persist without a valid session
+        deadline = asyncio.get_event_loop().time() + 120  # Wait up to 2 min
+        try:
+            while _streaming_responses and asyncio.get_event_loop().time() < deadline:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=1.0
+                )
+                if message and message["type"] == "message":
+                    data = message["data"]
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8")
+                    result = _process_event(data)
+                    if result:
+                        if result[0] == "error":
+                            await _save_chat_message(agent_id, result[1], "error", content=result[2])
+                        elif result[0] == "done":
+                            resp = result[2]
+                            content = resp.get("content", "")
+                            tool_calls = resp.get("tool_calls") or None
+                            if content or tool_calls:  # Only save non-empty
+                                await _save_chat_message(
+                                    agent_id, result[1], "assistant",
+                                    content=content,
+                                    tool_calls=tool_calls,
+                                    meta=result[3],
+                                )
+                await asyncio.sleep(0.05)
+        except Exception:
+            pass
+        # Save any remaining partial responses that never got a "done" event
+        for mid, resp in _streaming_responses.items():
+            content = resp.get("content", "").strip()
+            tool_calls = resp.get("tool_calls") or None
+            if content or tool_calls:  # Only save non-empty partials
+                await _save_chat_message(
+                    agent_id, mid, "assistant",
+                    content=content,
+                    tool_calls=tool_calls,
+                    meta={"partial": True},
+                )
 
     # Start forwarding responses in background
     forward_task = asyncio.create_task(forward_responses())
@@ -228,11 +295,17 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
             await _redis.client.lpush(f"agent:{agent_id}:chat", chat_payload)
 
     except WebSocketDisconnect:
-        pass
+        _ws_connected = False
     except Exception:
-        pass
+        _ws_connected = False
     finally:
         forward_task.cancel()
+        try:
+            await forward_task
+        except asyncio.CancelledError:
+            pass
+        # Drain remaining events so agent responses are always persisted
+        await _drain_remaining()
         await pubsub.unsubscribe(channel)
         await pubsub.aclose()
 

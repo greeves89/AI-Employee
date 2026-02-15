@@ -193,9 +193,14 @@ export function AgentChat({ agentId }: { agentId: string }) {
       try {
         const { sessions: dbSessions } = await api.getChatSessions(agentId);
         if (dbSessions.length > 0) {
-          const tabs: SessionTab[] = dbSessions.map((s, i) => ({
+          // Filter out sessions with no real content (e.g. phantom "default" entries)
+          const validSessions = dbSessions.filter(
+            (s) => s.message_count > 1 || s.preview
+          );
+          const sessionsToUse = validSessions.length > 0 ? validSessions : dbSessions;
+          const tabs: SessionTab[] = sessionsToUse.map((s, i) => ({
             id: s.id,
-            label: `Chat ${dbSessions.length - i}`,
+            label: `Chat ${sessionsToUse.length - i}`,
             preview: s.preview || "",
           }));
           setSessions(tabs);
@@ -248,7 +253,15 @@ export function AgentChat({ agentId }: { agentId: string }) {
               meta: m.meta ?? undefined,
             };
           });
-          setMessages(restored);
+          // Deduplicate by id+role (message_id is shared between user & assistant)
+          const seen = new Set<string>();
+          const deduped = restored.filter((m) => {
+            const key = `${m.id}-${m.role}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setMessages(deduped);
           let cost = 0;
           let turns = 0;
           for (const m of restored) {
@@ -727,8 +740,8 @@ export function AgentChat({ agentId }: { agentId: string }) {
             </button>
           </div>
         )}
-        {messages.map((msg) => (
-          <MessageRow key={msg.id} message={msg} />
+        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => (
+          <MessageRow key={`${msg.id}-${msg.role}`} message={msg} />
         ))}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-center gap-2 text-zinc-500 text-sm pl-1">

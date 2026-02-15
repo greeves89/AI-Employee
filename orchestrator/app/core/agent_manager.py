@@ -47,11 +47,16 @@ DEFAULT_CLAUDE_MD = """# Agent System Instructions
 I have powerful MCP (Model Context Protocol) tools available. These appear as native
 tools in my tool list - I use them like any other tool (no bash commands needed).
 
+**CRITICAL: I MUST use MCP tools for memory, NOT the Write tool or MEMORY.md!**
+The built-in auto-memory (MEMORY.md) is NOT visible in the Web UI.
+Only `memory_save` stores data that the user can see in the Memory tab.
+
 ### Memory Tools (mcp-memory)
 I have persistent long-term memory that survives across ALL conversations and tasks.
-**I MUST use this to remember important things!**
+**I MUST use `memory_save` to remember important things!**
+**I MUST NEVER use Write/Edit to write to MEMORY.md for memory storage!**
 
-- **memory_save** - Save important information to memory
+- **memory_save** - Save important information to memory (ALWAYS USE THIS!)
   - Categories: preference, contact, project, procedure, decision, fact, learning
   - When to save: user preferences, corrections/learnings, contacts, project context,
     recurring procedures, important decisions, facts (company info, URLs, etc.)
@@ -420,13 +425,18 @@ class AgentManager:
         agent = await self._get_agent(agent_id)
 
         # Sync DB state with actual Docker container status (lightweight check)
-        if agent.container_id and agent.state not in (AgentState.STOPPED, AgentState.ERROR):
+        if agent.container_id:
             container_status = self.docker.get_container_status(agent.container_id)
-            if container_status == "unknown":
+            if container_status == "running" and agent.state in (AgentState.ERROR, AgentState.STOPPED):
+                # Container recovered or was restarted - update state
+                agent.state = AgentState.IDLE
+                await self.db.commit()
+                logger.info(f"Agent {agent_id} container is running again, marked as IDLE")
+            elif container_status == "unknown" and agent.state not in (AgentState.STOPPED, AgentState.ERROR):
                 agent.state = AgentState.ERROR
                 await self.db.commit()
                 logger.warning(f"Agent {agent_id} container is gone, marked as ERROR")
-            elif container_status == "exited":
+            elif container_status == "exited" and agent.state not in (AgentState.STOPPED,):
                 agent.state = AgentState.STOPPED
                 await self.db.commit()
                 logger.info(f"Agent {agent_id} container exited, marked as STOPPED")

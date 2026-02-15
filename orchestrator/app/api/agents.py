@@ -313,6 +313,15 @@ async def get_chat_sessions(
         row = r.scalar_one_or_none()
         previews[s.session_id] = (row or "")[:80]
 
+    # Filter out phantom sessions (no user messages, only empty assistant entries)
+    valid_sessions = [
+        s for s in sessions
+        if previews.get(s.session_id) or s.message_count > 1
+    ]
+    # Fall back to all sessions if filtering removed everything
+    if not valid_sessions:
+        valid_sessions = list(sessions)
+
     return {
         "sessions": [
             {
@@ -322,7 +331,7 @@ async def get_chat_sessions(
                 "message_count": s.message_count,
                 "preview": previews.get(s.session_id, ""),
             }
-            for s in sessions
+            for s in valid_sessions
         ],
     }
 
@@ -349,7 +358,9 @@ async def get_chat_history(
     return {
         "messages": [
             {
-                "id": msg.message_id,
+                # Use DB auto-increment id to guarantee uniqueness
+                # (message_id is a correlation ID shared between user & assistant)
+                "id": str(msg.id),
                 "role": msg.role,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),

@@ -36,6 +36,8 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const intentionalClose = useRef(false);
 
   // Fetch unread count on mount and periodically
   const fetchCount = useCallback(async () => {
@@ -58,6 +60,8 @@ export function NotificationBell() {
 
   // WebSocket for live notifications
   useEffect(() => {
+    intentionalClose.current = false;
+
     const connect = () => {
       const ws = new WebSocket(`${WS_URL}/api/v1/ws/notifications`);
       wsRef.current = ws;
@@ -75,9 +79,12 @@ export function NotificationBell() {
       };
 
       ws.onclose = () => {
+        if (intentionalClose.current) return;
         // Reconnect after 5 seconds
-        setTimeout(connect, 5000);
+        reconnectTimeout.current = setTimeout(connect, 5000);
       };
+
+      ws.onerror = () => ws.close();
     };
 
     connect();
@@ -88,6 +95,8 @@ export function NotificationBell() {
 
     return () => {
       clearInterval(interval);
+      clearTimeout(reconnectTimeout.current);
+      intentionalClose.current = true;
       wsRef.current?.close();
     };
   }, [fetchCount]);
