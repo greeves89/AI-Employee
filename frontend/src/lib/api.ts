@@ -1,4 +1,4 @@
-import type { Agent, Task, Schedule, FileEntry, Settings } from "./types";
+import type { Agent, AgentMemory, Notification, Task, Schedule, FileEntry, Settings, Integration, WebhookEvent } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const BASE = `${API_URL}/api/v1`;
@@ -37,6 +37,10 @@ export async function stopAgent(id: string): Promise<void> {
 
 export async function startAgent(id: string): Promise<void> {
   await fetchJSON(`${BASE}/agents/${id}/start`, { method: "POST" });
+}
+
+export async function updateAgent(id: string): Promise<Agent> {
+  return fetchJSON(`${BASE}/agents/${id}/update`, { method: "POST" });
 }
 
 export async function removeAgent(id: string, removeData = false): Promise<void> {
@@ -209,6 +213,30 @@ export async function deleteChatSession(
   });
 }
 
+// Integrations (OAuth)
+export async function getIntegrations(): Promise<{ integrations: Integration[] }> {
+  return fetchJSON(`${BASE}/integrations/`);
+}
+
+export async function getAuthUrl(provider: string): Promise<{ auth_url: string; provider: string }> {
+  return fetchJSON(`${BASE}/integrations/${provider}/auth`);
+}
+
+export async function disconnectIntegration(provider: string): Promise<void> {
+  await fetchJSON(`${BASE}/integrations/${provider}`, { method: "DELETE" });
+}
+
+export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[] }> {
+  return fetchJSON(`${BASE}/agents/${agentId}/integrations`);
+}
+
+export async function updateAgentIntegrations(agentId: string, integrations: string[]): Promise<void> {
+  await fetchJSON(`${BASE}/agents/${agentId}/integrations`, {
+    method: "PATCH",
+    body: JSON.stringify({ integrations }),
+  });
+}
+
 // Settings
 export async function getSettings(): Promise<Settings> {
   return fetchJSON(`${BASE}/settings/`);
@@ -219,4 +247,58 @@ export async function updateSettings(data: Record<string, unknown>): Promise<voi
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+// Agent Memory
+export async function getAgentMemories(
+  agentId: string,
+  category?: string,
+): Promise<{ memories: AgentMemory[]; total: number; categories: Record<string, number> }> {
+  const params = new URLSearchParams();
+  if (category) params.set("category", category);
+  return fetchJSON(`${BASE}/memory/agents/${agentId}?${params}`);
+}
+
+export async function updateMemory(
+  memoryId: number,
+  data: { content?: string; importance?: number; category?: string },
+): Promise<AgentMemory> {
+  return fetchJSON(`${BASE}/memory/${memoryId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteMemory(memoryId: number): Promise<void> {
+  await fetchJSON(`${BASE}/memory/${memoryId}`, { method: "DELETE" });
+}
+
+// Notifications
+export async function getNotifications(
+  unreadOnly = false,
+): Promise<{ notifications: Notification[] }> {
+  return fetchJSON(`${BASE}/notifications/?unread_only=${unreadOnly}`);
+}
+
+export async function getUnreadCount(): Promise<{ unread: number }> {
+  return fetchJSON(`${BASE}/notifications/count`);
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await fetchJSON(`${BASE}/notifications/${id}/read`, { method: "POST" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await fetchJSON(`${BASE}/notifications/read-all`, { method: "POST" });
+}
+
+export async function deleteNotification(id: number): Promise<void> {
+  await fetchJSON(`${BASE}/notifications/${id}`, { method: "DELETE" });
+}
+
+// Webhooks
+export async function getWebhookEvents(
+  agentId: string,
+): Promise<{ events: WebhookEvent[] }> {
+  return fetchJSON(`${BASE}/webhooks/agents/${agentId}/events`);
 }

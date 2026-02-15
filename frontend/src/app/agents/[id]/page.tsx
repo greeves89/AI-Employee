@@ -9,11 +9,13 @@ import {
   CheckCircle2, XCircle, Clock, Loader2, RotateCcw,
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
-  Download, Upload, ChevronRight, ArrowLeft,
+  Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
+import { IntegrationSelector } from "@/components/agents/integration-selector";
+import { MemoryTab } from "@/components/agents/memory-tab";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -44,6 +46,8 @@ const tabs = [
   { key: "files", label: "Files", icon: FolderOpen },
   { key: "history", label: "Task History", icon: History },
   { key: "knowledge", label: "Knowledge", icon: Brain },
+  { key: "memory", label: "Memory", icon: MemoryStick },
+  { key: "integrations", label: "Integrations", icon: Plug },
 ] as const;
 
 type TabKey = (typeof tabs)[number]["key"];
@@ -151,6 +155,11 @@ export default function AgentDetailPage() {
           />
         </div>
 
+        {/* Update available banner */}
+        {agent.update_available && (
+          <UpdateBanner agentId={agentId} onUpdated={(a) => setAgent(a)} />
+        )}
+
         {/* Current task banner */}
         {agent.current_task && (
           <motion.div
@@ -195,9 +204,58 @@ export default function AgentDetailPage() {
           {activeTab === "files" && <FileBrowser agentId={agentId} />}
           {activeTab === "history" && <TaskHistory tasks={tasks} />}
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
+          {activeTab === "memory" && <MemoryTab agentId={agentId} />}
+          {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
         </div>
       </motion.div>
     </div>
+  );
+}
+
+function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (agent: Agent) => void }) {
+  const [updating, setUpdating] = useState(false);
+
+  const handleUpdate = async () => {
+    if (!confirm("Update this agent to the latest version? The container will be recreated but all data (knowledge, files, sessions) will be preserved.")) return;
+    setUpdating(true);
+    try {
+      const updated = await api.updateAgent(agentId);
+      onUpdated(updated as Agent);
+    } catch {
+      // ignore
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-xl bg-amber-500/5 border border-amber-500/20 px-5 py-3 flex items-center justify-between"
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+          <ArrowUpCircle className="h-4 w-4 text-amber-400" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-amber-400">Update available</p>
+          <p className="text-xs text-muted-foreground">A new agent image version is available. Your data will be preserved.</p>
+        </div>
+      </div>
+      <button
+        onClick={handleUpdate}
+        disabled={updating}
+        className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium bg-amber-500 text-black hover:bg-amber-400 transition-all disabled:opacity-50"
+      >
+        {updating ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <ArrowUpCircle className="h-3.5 w-3.5" />
+        )}
+        {updating ? "Updating..." : "Update Now"}
+      </button>
+    </motion.div>
   );
 }
 
@@ -416,8 +474,8 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-violet-400" />
-            <span className="text-sm font-medium">CLAUDE.md</span>
-            <span className="text-[10px] text-muted-foreground/60">Persistent Knowledge</span>
+            <span className="text-sm font-medium">knowledge.md</span>
+            <span className="text-[10px] text-muted-foreground/60">Agent Knowledge Base</span>
           </div>
           <div className="flex items-center gap-2">
             <button

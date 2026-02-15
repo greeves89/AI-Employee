@@ -12,6 +12,12 @@
 - [x] Chat Markdown Rendering + Auto-Scroll
 - [x] Dual Auth (API Key + OAuth Token) in Settings
 - [x] README.md mit Setup-Anleitung
+- [x] Agent Version-based Update Detection + One-Click Update
+- [x] Chat Triple-Message Bug Fix (WebSocket Reconnection Cascade)
+- [x] Phase 6A: Long-term Memory System (DB + API + Agent CLI + Frontend Tab)
+- [x] Phase 6B: Notification System (DB + API + WebSocket Push + Telegram + Frontend Bell)
+- [x] Phase 6C: Webhook Endpoint (External event triggers for agents)
+- [x] Phase 6D: Approval Workflow (Chat-based via notifications + agent CLI)
 
 ## In Progress
 - [ ] Phase 5A: Agent Onboarding Interview + Auto-CLAUDE.md
@@ -21,6 +27,9 @@
 ## Pending
 - [ ] Phase 5D: Agent-to-Agent Messaging
 - [ ] Phase 5E: Self-Improvement Loop v2
+- [ ] Phase 7A: MCP Service for Gmail/Calendar (OAuth token passthrough)
+- [ ] Phase 7B: MCP Service for Google Drive/OneDrive
+- [ ] Phase 7C: Proactive Smart Schedules (conditions + agent-initiated tasks)
 - [ ] Frontend rebuild + E2E Test
 - [ ] Token Refresh Logic (Access Token laeuft nach 8h ab)
 - [ ] Security: Workspace Isolation, gefaehrliche Bash-Commands blocken

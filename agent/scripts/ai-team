@@ -12,6 +12,12 @@
 #   pause-schedule <schedule_id>                   - Pause a schedule
 #   resume-schedule <schedule_id>                  - Resume a schedule
 #   delete-schedule <schedule_id>                  - Delete a schedule
+#   memory-save <category> <key> <content> [importance] - Save to long-term memory
+#   memory-search [query] [category]               - Search memories
+#   memory-list [category]                         - List all memories
+#   memory-delete <memory_id>                      - Delete a memory
+#   notify <title> [message] [priority] [type]     - Send notification to user
+#   approve <question> <option1> <option2> [...]   - Request user approval
 
 set -e
 
@@ -88,19 +94,106 @@ case "${1:-help}" in
     curl -s -X DELETE "$API/schedules/$SID"
     ;;
 
+  # --- Long-term Memory Commands ---
+
+  memory-save)
+    CATEGORY="${2:?Usage: ai-team memory-save <category> <key> <content> [importance]}"
+    KEY="${3:?Usage: ai-team memory-save <category> <key> <content> [importance]}"
+    CONTENT="${4:?Usage: ai-team memory-save <category> <key> <content> [importance]}"
+    IMPORTANCE="${5:-3}"
+    ESCAPED_KEY=$(echo "$KEY" | json_escape)
+    ESCAPED_CONTENT=$(echo "$CONTENT" | json_escape)
+    curl -s -X POST "$API/memory/save" \
+      -H "Content-Type: application/json" \
+      -d "{\"agent_id\": \"$AGENT_ID\", \"category\": \"$CATEGORY\", \"key\": $ESCAPED_KEY, \"content\": $ESCAPED_CONTENT, \"importance\": $IMPORTANCE}"
+    ;;
+
+  memory-search)
+    QUERY="${2:-}"
+    CATEGORY="${3:-}"
+    URL="$API/memory/search?agent_id=$AGENT_ID"
+    [ -n "$QUERY" ] && URL="$URL&q=$QUERY"
+    [ -n "$CATEGORY" ] && URL="$URL&category=$CATEGORY"
+    curl -s "$URL" | python3 -m json.tool
+    ;;
+
+  memory-list)
+    CATEGORY="${2:-}"
+    URL="$API/memory/agents/$AGENT_ID"
+    [ -n "$CATEGORY" ] && URL="$URL?category=$CATEGORY"
+    curl -s "$URL" | python3 -m json.tool
+    ;;
+
+  memory-delete)
+    MID="${2:?Usage: ai-team memory-delete <memory_id>}"
+    curl -s -X DELETE "$API/memory/$MID"
+    ;;
+
+  # --- Notification Commands ---
+
+  notify)
+    TITLE="${2:?Usage: ai-team notify <title> [message] [priority] [type]}"
+    MESSAGE="${3:-}"
+    PRIORITY="${4:-normal}"
+    TYPE="${5:-info}"
+    ESCAPED_TITLE=$(echo "$TITLE" | json_escape)
+    ESCAPED_MSG=$(echo "$MESSAGE" | json_escape)
+    curl -s -X POST "$API/notifications/" \
+      -H "Content-Type: application/json" \
+      -d "{\"agent_id\": \"$AGENT_ID\", \"type\": \"$TYPE\", \"title\": $ESCAPED_TITLE, \"message\": $ESCAPED_MSG, \"priority\": \"$PRIORITY\"}"
+    ;;
+
+  # --- Approval Request ---
+
+  approve)
+    QUESTION="${2:?Usage: ai-team approve <question> <option1> <option2> [option3] [option4]}"
+    shift 2
+    # Build options array from remaining args
+    OPTIONS="["
+    FIRST=true
+    for opt in "$@"; do
+      if [ "$FIRST" = true ]; then
+        FIRST=false
+      else
+        OPTIONS="$OPTIONS,"
+      fi
+      ESCAPED_OPT=$(echo "$opt" | json_escape)
+      OPTIONS="$OPTIONS$ESCAPED_OPT"
+    done
+    OPTIONS="$OPTIONS]"
+    ESCAPED_Q=$(echo "$QUESTION" | json_escape)
+    curl -s -X POST "$API/notifications/" \
+      -H "Content-Type: application/json" \
+      -d "{\"agent_id\": \"$AGENT_ID\", \"type\": \"approval\", \"title\": $ESCAPED_Q, \"message\": \"\", \"priority\": \"high\", \"meta\": {\"options\": $OPTIONS}}"
+    ;;
+
   help|--help|-h)
     echo "ai-team - Agent CLI for orchestrator interaction"
     echo ""
-    echo "Commands:"
+    echo "Team Commands:"
     echo "  create-task <title> <prompt> [priority]       Create a task for myself"
     echo "  create-schedule <name> <prompt> <interval>    Create a recurring schedule (interval in seconds)"
     echo "  send-message <agent_id> <message>             Send message to another agent"
     echo "  list-team                                     List all team members"
-    echo "  list-tasks [status]                           List my tasks (optional: pending/running/completed/failed)"
+    echo "  list-tasks [status]                           List my tasks"
     echo "  list-schedules                                List all schedules"
     echo "  pause-schedule <id>                           Pause a schedule"
     echo "  resume-schedule <id>                          Resume a schedule"
     echo "  delete-schedule <id>                          Delete a schedule"
+    echo ""
+    echo "Memory Commands (Long-term Knowledge):"
+    echo "  memory-save <category> <key> <content> [importance]"
+    echo "    Categories: preference, contact, project, procedure, decision, fact, learning"
+    echo "    Importance: 1-5 (default: 3)"
+    echo "  memory-search [query] [category]              Search memories"
+    echo "  memory-list [category]                        List all memories"
+    echo "  memory-delete <memory_id>                     Delete a memory"
+    echo ""
+    echo "Notification Commands:"
+    echo "  notify <title> [message] [priority] [type]    Send notification to user"
+    echo "    Priority: low, normal, high, urgent"
+    echo "    Type: info, warning, error, success"
+    echo "  approve <question> <opt1> <opt2> [opt3...]    Request user approval"
     echo ""
     echo "Environment:"
     echo "  ORCHESTRATOR_URL=$API"

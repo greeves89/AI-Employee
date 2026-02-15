@@ -22,12 +22,26 @@ export interface Agent {
   model: string;
   role: string | null;
   onboarding_complete: boolean;
+  integrations: string[];
+  update_available: boolean;
   created_at: string;
   updated_at: string;
   current_task: string | null;
   cpu_percent: number | null;
   memory_usage_mb: number | null;
   queue_depth: number | null;
+}
+
+export interface Integration {
+  provider: string;
+  display_name: string;
+  icon: string;
+  description: string;
+  connected: boolean;
+  account_label: string | null;
+  expires_at: string | null;
+  scopes: string;
+  available: boolean;
 }
 
 export interface Task {
@@ -91,4 +105,38 @@ export interface Settings {
   default_model: string;
   max_turns: number;
   max_agents: number;
+}
+
+export interface AgentMemory {
+  id: number;
+  agent_id: string;
+  category: string;
+  key: string;
+  content: string;
+  importance: number;
+  access_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Notification {
+  id: number;
+  agent_id: string;
+  type: "info" | "warning" | "error" | "success" | "approval";
+  title: string;
+  message: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  read: boolean;
+  action_url: string | null;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface WebhookEvent {
+  id: number;
+  source: string;
+  event_type: string;
+  status: string;
+  task_id: string | null;
+  created_at: string;
 }

@@ -84,8 +84,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
     _streaming_responses: dict[str, dict] = {}
     # Track seen tool_use_ids to prevent duplicate persistence
     _seen_tool_ids: set[str] = set()
-    # Session tracking - use mutable dict to allow inner function mutation
-    _session = {"id": uuid.uuid4().hex[:12]}
+    # Session tracking - defer session creation until first message
+    # so the client can provide an existing session_id
+    _session: dict[str, str | None] = {"id": None}
 
     async def _save_chat_message(
         msg_agent_id: str, message_id: str, role: str,
@@ -195,6 +196,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
                     "data": {"session_id": _session["id"]},
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }))
+                continue
+
+            # If no session_id yet (first message without client-provided session),
+            # generate one and notify client
+            is_new_session = False
+            if not _session["id"]:
+                _session["id"] = uuid.uuid4().hex[:12]
+                is_new_session = True
 
             # Generate message ID and push to agent's chat queue
             message_id = uuid.uuid4().hex[:12]
@@ -207,8 +216,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
             # Save user message to DB
             await _save_chat_message(agent_id, message_id, "user", content=text)
 
-            # Send session info to client on first message
-            if text != "/reset":
+            # Only send session event when a NEW session was created
+            # (not on every message - that caused duplicate chat tabs)
+            if is_new_session:
                 await websocket.send_text(json.dumps({
                     "type": "session",
                     "data": {"session_id": _session["id"]},
@@ -224,6 +234,36 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
     finally:
         forward_task.cancel()
         await pubsub.unsubscribe(channel)
+        await pubsub.aclose()
+
+
+@router.websocket("/notifications")
+async def ws_notifications(websocket: WebSocket):
+    """WebSocket for live notification push to the frontend."""
+    if not _redis or not _redis.client:
+        await websocket.close(code=1011, reason="Redis not initialized")
+        return
+
+    await websocket.accept()
+    pubsub = await _redis.subscribe("notifications:live")
+
+    try:
+        while True:
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=0.5
+            )
+            if message and message["type"] == "message":
+                data = message["data"]
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8")
+                await websocket.send_text(data)
+            await asyncio.sleep(0.05)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        await pubsub.unsubscribe("notifications:live")
         await pubsub.aclose()
 
 
