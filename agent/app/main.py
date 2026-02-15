@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 import signal
 
 from app.config import settings
@@ -7,9 +9,51 @@ from app.task_consumer import TaskConsumer
 from app.chat_consumer import ChatConsumer
 
 
+def write_mcp_config() -> None:
+    """Write .mcp.json to the workspace so Claude Code auto-discovers MCP servers."""
+    mcp_config = {
+        "mcpServers": {
+            "memory": {
+                "command": "node",
+                "args": ["/opt/mcp/memory-server.mjs"],
+                "env": {
+                    "ORCHESTRATOR_URL": settings.orchestrator_url,
+                    "AGENT_ID": settings.agent_id,
+                },
+            },
+            "notifications": {
+                "command": "node",
+                "args": ["/opt/mcp/notification-server.mjs"],
+                "env": {
+                    "ORCHESTRATOR_URL": settings.orchestrator_url,
+                    "AGENT_ID": settings.agent_id,
+                },
+            },
+            "orchestrator": {
+                "command": "node",
+                "args": ["/opt/mcp/orchestrator-server.mjs"],
+                "env": {
+                    "ORCHESTRATOR_URL": settings.orchestrator_url,
+                    "AGENT_ID": settings.agent_id,
+                    "AGENT_NAME": settings.agent_name or settings.agent_id,
+                    "DEFAULT_MODEL": settings.default_model,
+                },
+            },
+        }
+    }
+
+    config_path = os.path.join(settings.workspace_dir, ".mcp.json")
+    with open(config_path, "w") as f:
+        json.dump(mcp_config, f, indent=2)
+
+
 async def main() -> None:
     agent_id = settings.agent_id
     print(f"[Agent {agent_id}] Starting up...")
+
+    # Write MCP config for Claude Code CLI
+    write_mcp_config()
+    print(f"[Agent {agent_id}] MCP config written to {settings.workspace_dir}/.mcp.json")
 
     # Start health server
     health_runner = await start_health_server(agent_id, settings.health_port)

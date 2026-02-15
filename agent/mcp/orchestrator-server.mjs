@@ -1,0 +1,345 @@
+#!/usr/bin/env node
+/**
+ * MCP Orchestrator Server - Task management, team communication, and scheduling.
+ *
+ * Provides agents with the ability to create tasks, communicate with teammates,
+ * and manage recurring schedules. Can be used with any MCP client.
+ *
+ * Environment:
+ *   ORCHESTRATOR_URL - Base URL of the orchestrator (default: http://orchestrator:8000)
+ *   AGENT_ID         - ID of the agent using this server
+ *   AGENT_NAME       - Display name of the agent
+ *   DEFAULT_MODEL    - Default model for new tasks (default: claude-sonnet-4-5-20250929)
+ */
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+
+const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
+const AGENT_ID = process.env.AGENT_ID || "unknown";
+const AGENT_NAME = process.env.AGENT_NAME || "unknown";
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-5-20250929";
+
+async function apiCall(path, options = {}) {
+  const url = `${API}${path}`;
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+const server = new Server(
+  { name: "mcp-orchestrator", version: "1.0.0" },
+  { capabilities: { tools: {} } }
+);
+
+// --- List available tools ---
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [
+    {
+      name: "create_task",
+      description:
+        "Create a new task for yourself or another agent. The task will be queued and " +
+        "executed when resources are available. Use this to delegate work, split complex " +
+        "tasks into subtasks, or schedule follow-up work.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "Short task title (e.g. 'Write unit tests for auth module').",
+          },
+          prompt: {
+            type: "string",
+            description: "Detailed instructions for the task. Be specific about what needs to be done.",
+          },
+          priority: {
+            type: "number",
+            minimum: 1,
+            maximum: 10,
+            description:
+              "Task priority (1=highest, 10=lowest). Default: 5. " +
+              "Use 1-2 for urgent tasks, 5 for normal, 8-10 for background tasks.",
+          },
+          agent_id: {
+            type: "string",
+            description:
+              "ID of the agent to assign this task to. Leave empty to assign to yourself. " +
+              "Use list_team to find other agents.",
+          },
+        },
+        required: ["title", "prompt"],
+      },
+    },
+    {
+      name: "list_tasks",
+      description:
+        "List tasks assigned to you, optionally filtered by status. " +
+        "Use this to check your work queue and track progress.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["pending", "running", "completed", "failed"],
+            description: "Filter by task status. Omit to show all tasks.",
+          },
+        },
+      },
+    },
+    {
+      name: "list_team",
+      description:
+        "List all agents in the team with their roles, capabilities, and current status. " +
+        "Use this to find the right agent to delegate tasks to or to send messages.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "send_message",
+      description:
+        "Send a text message to another agent. The message will appear in their conversation " +
+        "context the next time they run a task. Use this for coordination, sharing results, " +
+        "or requesting help.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agent_id: {
+            type: "string",
+            description: "ID of the agent to send the message to. Use list_team to find IDs.",
+          },
+          message: {
+            type: "string",
+            description: "The message text to send.",
+          },
+        },
+        required: ["agent_id", "message"],
+      },
+    },
+    {
+      name: "create_schedule",
+      description:
+        "Create a recurring schedule that automatically runs a task at regular intervals. " +
+        "Use this for monitoring, periodic reports, data syncing, or any recurring work.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name of the schedule (e.g. 'Daily status report', 'Hourly health check').",
+          },
+          prompt: {
+            type: "string",
+            description: "The task instructions to run each time the schedule triggers.",
+          },
+          interval_seconds: {
+            type: "number",
+            minimum: 60,
+            description:
+              "Interval between runs in seconds. Examples: 3600=hourly, 86400=daily, 604800=weekly. " +
+              "Minimum: 60 seconds.",
+          },
+        },
+        required: ["name", "prompt", "interval_seconds"],
+      },
+    },
+    {
+      name: "list_schedules",
+      description: "List all recurring schedules with their status, interval, and next run time.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "manage_schedule",
+      description: "Pause, resume, or delete a recurring schedule.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          schedule_id: {
+            type: "number",
+            description: "ID of the schedule to manage.",
+          },
+          action: {
+            type: "string",
+            enum: ["pause", "resume", "delete"],
+            description: "Action to take on the schedule.",
+          },
+        },
+        required: ["schedule_id", "action"],
+      },
+    },
+  ],
+}));
+
+// --- Handle tool calls ---
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  switch (name) {
+    case "create_task": {
+      const result = await apiCall("/tasks/", {
+        method: "POST",
+        body: JSON.stringify({
+          title: args.title,
+          prompt: args.prompt,
+          priority: args.priority || 5,
+          agent_id: args.agent_id || AGENT_ID,
+          model: DEFAULT_MODEL,
+        }),
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Task created (id: ${result.id}, status: ${result.status}, assigned to: ${result.agent_id || AGENT_ID}).`,
+          },
+        ],
+      };
+    }
+
+    case "list_tasks": {
+      const params = new URLSearchParams({ agent_id: AGENT_ID });
+      if (args.status) params.set("status", args.status);
+
+      const result = await apiCall(`/tasks/?${params}`);
+      if (!result.tasks || result.tasks.length === 0) {
+        return {
+          content: [{ type: "text", text: "No tasks found." }],
+        };
+      }
+      const lines = result.tasks.map(
+        (t) =>
+          `[${t.status}] #${t.id}: ${t.title} (priority: ${t.priority})`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${result.tasks.length} tasks:\n\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+
+    case "list_team": {
+      const result = await apiCall("/agents/team/directory");
+      if (!result.agents || result.agents.length === 0) {
+        return {
+          content: [{ type: "text", text: "No team members found." }],
+        };
+      }
+      const lines = result.agents.map(
+        (a) =>
+          `${a.name} (id: ${a.id}, role: ${a.role || "general"}, status: ${a.status})`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Team (${result.agents.length} agents):\n\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+
+    case "send_message": {
+      await apiCall(`/agents/${args.agent_id}/message`, {
+        method: "POST",
+        body: JSON.stringify({
+          from_agent_id: AGENT_ID,
+          from_name: AGENT_NAME,
+          text: args.message,
+        }),
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Message sent to agent ${args.agent_id}.`,
+          },
+        ],
+      };
+    }
+
+    case "create_schedule": {
+      const result = await apiCall("/schedules/", {
+        method: "POST",
+        body: JSON.stringify({
+          name: args.name,
+          prompt: args.prompt,
+          interval_seconds: args.interval_seconds,
+          agent_id: AGENT_ID,
+          model: DEFAULT_MODEL,
+        }),
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Schedule created: "${result.name}" (id: ${result.id}, interval: ${result.interval_seconds}s).`,
+          },
+        ],
+      };
+    }
+
+    case "list_schedules": {
+      const result = await apiCall("/schedules/");
+      if (!result.schedules || result.schedules.length === 0) {
+        return {
+          content: [{ type: "text", text: "No schedules found." }],
+        };
+      }
+      const lines = result.schedules.map(
+        (s) =>
+          `[${s.active ? "active" : "paused"}] #${s.id}: ${s.name} (every ${s.interval_seconds}s)`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${result.schedules.length} schedules:\n\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+
+    case "manage_schedule": {
+      const { schedule_id, action } = args;
+      if (action === "delete") {
+        await apiCall(`/schedules/${schedule_id}`, { method: "DELETE" });
+        return {
+          content: [{ type: "text", text: `Schedule ${schedule_id} deleted.` }],
+        };
+      }
+      await apiCall(`/schedules/${schedule_id}/${action}`, { method: "POST" });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Schedule ${schedule_id} ${action === "pause" ? "paused" : "resumed"}.`,
+          },
+        ],
+      };
+    }
+
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+});
+
+// --- Start ---
+const transport = new StdioServerTransport();
+await server.connect(transport);

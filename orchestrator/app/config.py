@@ -1,5 +1,8 @@
 from pydantic_settings import BaseSettings
 
+# Bump this when the agent image changes and agents need updating
+AGENT_VERSION = "1.2.0"
+
 
 class Settings(BaseSettings):
     # Database
@@ -28,6 +31,17 @@ class Settings(BaseSettings):
 
     # Security
     encryption_key: str = ""
+
+    # OAuth Integrations
+    oauth_google_client_id: str = ""
+    oauth_google_client_secret: str = ""
+    oauth_microsoft_client_id: str = ""
+    oauth_microsoft_client_secret: str = ""
+    oauth_apple_client_id: str = ""
+    oauth_apple_team_id: str = ""
+    oauth_apple_key_id: str = ""
+    oauth_apple_private_key: str = ""
+    oauth_redirect_base_url: str = "http://localhost:8000"
 
     model_config = {"env_prefix": "", "case_sensitive": False}
 

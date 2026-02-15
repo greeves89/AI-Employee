@@ -1,0 +1,14 @@
+{
+  "name": "ai-employee-mcp-servers",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP servers for AI Employee agents - reusable with any MCP client",
+  "scripts": {
+    "memory": "node memory-server.mjs",
+    "notifications": "node notification-server.mjs",
+    "orchestrator": "node orchestrator-server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}

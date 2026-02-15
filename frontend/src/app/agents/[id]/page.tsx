@@ -16,6 +16,7 @@ import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { MemoryTab } from "@/components/agents/memory-tab";
+import { McpInfo } from "@/components/agents/mcp-info";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -154,6 +155,9 @@ export default function AgentDetailPage() {
             iconBg="bg-violet-500/10"
           />
         </div>
+
+        {/* MCP Tools info */}
+        <McpInfo />
 
         {/* Update available banner */}
         {agent.update_available && (

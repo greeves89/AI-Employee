@@ -1,5 +1,8 @@
 FROM python:3.12-slim AS base
 
+# Version label - change this to trigger update detection for running agents
+LABEL ai-employee.version="1.2.0"
+
 # Install system dependencies + Node.js (required for Claude Code CLI)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -27,6 +30,10 @@ COPY app/ ./app/
 # Install ai-team CLI helper (allows agents to call orchestrator API)
 COPY scripts/ai-team /usr/local/bin/ai-team
 RUN chmod +x /usr/local/bin/ai-team
+
+# Install MCP servers (Model Context Protocol - provides native tools to Claude CLI)
+COPY mcp/ /opt/mcp/
+RUN cd /opt/mcp && npm install --production
 
 # Create workspace directory owned by agent user
 RUN mkdir -p /workspace && chown agent:agent /workspace

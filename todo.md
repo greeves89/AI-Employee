@@ -19,6 +19,12 @@
 - [x] Phase 6C: Webhook Endpoint (External event triggers for agents)
 - [x] Phase 6D: Approval Workflow (Chat-based via notifications + agent CLI)
 
+- [x] Phase 7A: MCP Server - Memory (native tools for memory_save/search/list/delete)
+- [x] Phase 7B: MCP Server - Notifications (notify_user, request_approval)
+- [x] Phase 7C: MCP Server - Orchestrator (tasks, team, messages, schedules)
+- [x] Phase 7D: MCP Infrastructure (package.json, Dockerfile, .mcp.json auto-config)
+- [x] Phase 7E: CLAUDE.md template updated for MCP tools + Web UI explanation
+
 ## In Progress
 - [ ] Phase 5A: Agent Onboarding Interview + Auto-CLAUDE.md
 - [ ] Phase 5B: Shared Filesystem + Agent Directory
@@ -27,9 +33,9 @@
 ## Pending
 - [ ] Phase 5D: Agent-to-Agent Messaging
 - [ ] Phase 5E: Self-Improvement Loop v2
-- [ ] Phase 7A: MCP Service for Gmail/Calendar (OAuth token passthrough)
-- [ ] Phase 7B: MCP Service for Google Drive/OneDrive
-- [ ] Phase 7C: Proactive Smart Schedules (conditions + agent-initiated tasks)
+- [ ] Phase 8A: MCP Service for Gmail/Calendar (OAuth token passthrough)
+- [ ] Phase 8B: MCP Service for Google Drive/OneDrive
+- [ ] Phase 8C: Proactive Smart Schedules (conditions + agent-initiated tasks)
 - [ ] Frontend rebuild + E2E Test
 - [ ] Token Refresh Logic (Access Token laeuft nach 8h ab)
 - [ ] Security: Workspace Isolation, gefaehrliche Bash-Commands blocken

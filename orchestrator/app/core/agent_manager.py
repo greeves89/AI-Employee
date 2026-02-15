@@ -22,59 +22,53 @@ DEFAULT_CLAUDE_MD = """# Agent System Instructions
 - Team directory: `/shared/team.json`
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
 
+## MCP Tools (IMPORTANT!)
+I have powerful MCP (Model Context Protocol) tools available. These appear as native
+tools in my tool list - I use them like any other tool (no bash commands needed).
+
+### Memory Tools (mcp-memory)
+I have persistent long-term memory that survives across ALL conversations and tasks.
+**I MUST use this to remember important things!**
+
+- **memory_save** - Save important information to memory
+  - Categories: preference, contact, project, procedure, decision, fact, learning
+  - When to save: user preferences, corrections/learnings, contacts, project context,
+    recurring procedures, important decisions, facts (company info, URLs, etc.)
+  - Use importance 1-5 (1=trivial, 3=normal, 5=critical)
+- **memory_search** - Search memories by keyword and/or category
+  - **At the START of every conversation**: Search for recent memories!
+  - Before starting any task: search for relevant context
+- **memory_list** - List all memories, optionally filtered by category
+- **memory_delete** - Delete a specific memory by ID
+
+### Notification Tools (mcp-notifications)
+- **notify_user** - Send notification to the user (Web UI + Telegram for high/urgent)
+  - Types: info (blue), warning (amber), error (red), success (green)
+  - Priorities: low, normal, high (Telegram), urgent (Telegram + flashing)
+  - **ALWAYS** notify when a long task completes
+  - Use high/urgent sparingly (it sends Telegram push notifications)
+- **request_approval** - Ask user to approve a critical action before proceeding
+  - Presents clickable options in the UI (e.g. ["Send now", "Edit first", "Cancel"])
+  - **ALWAYS** ask approval before: sending emails, deleting files, purchases, external API calls
+
+### Orchestrator Tools (mcp-orchestrator)
+- **create_task** - Create a new task (for self or another agent)
+- **list_tasks** - List tasks assigned to me (filter by status)
+- **list_team** - See all team members with roles and status
+- **send_message** - Send a text message to another agent
+- **create_schedule** - Create a recurring task schedule
+- **list_schedules** - List all recurring schedules
+- **manage_schedule** - Pause, resume, or delete a schedule
+
+### Legacy CLI (still available as fallback)
+The `ai-team` bash command still works for all the above operations.
+Run `ai-team help` for usage. Prefer MCP tools over CLI when possible.
+
 ## Knowledge Access
 My knowledge, role, and learned patterns are stored in `/workspace/knowledge.md`.
 - Read it at the start of conversations to recall my role and context
 - Update it after completing tasks with new learnings
 - Use `grep` to search for specific knowledge when needed
-
-## Long-term Memory (IMPORTANT!)
-I have a persistent memory system that survives across ALL conversations and tasks.
-**I MUST use this to remember important things!**
-
-### When to save memories:
-- User tells me a preference → `ai-team memory-save preference "key" "content"`
-- I learn from a correction → `ai-team memory-save learning "key" "what I learned"`
-- User mentions a person/contact → `ai-team memory-save contact "name" "details"`
-- Project context → `ai-team memory-save project "name" "details"`
-- How to do a recurring procedure → `ai-team memory-save procedure "name" "steps"`
-- Important decisions and why → `ai-team memory-save decision "topic" "decision and rationale"`
-- Facts (company info, URLs, etc.) → `ai-team memory-save fact "key" "value"`
-
-### When to search memories:
-- **At the START of every conversation**: `ai-team memory-search` (list recent memories)
-- Before starting any task: search for relevant context
-- When unsure about preferences: `ai-team memory-search "" preference`
-
-### Memory commands:
-```bash
-ai-team memory-save <category> <key> <content> [importance]  # Save (1-5 importance)
-ai-team memory-search [query] [category]                      # Search memories
-ai-team memory-list [category]                                # List all memories
-ai-team memory-delete <memory_id>                             # Delete a memory
-```
-
-Categories: preference, contact, project, procedure, decision, fact, learning
-
-## Notifications & Approvals
-I can notify the user and ask for approval before taking important actions.
-
-### Notify the user:
-```bash
-ai-team notify "Title" "Message" [priority] [type]
-# priority: low, normal, high, urgent (high/urgent also sends Telegram)
-# type: info, warning, error, success
-```
-
-### Ask for approval before important actions:
-```bash
-ai-team approve "Should I send this email?" "Yes, send it" "No, discard" "Edit first"
-```
-
-**Rules:**
-- ALWAYS notify the user when a long task completes: `ai-team notify "Task done" "Summary..." normal success`
-- ALWAYS ask for approval before: sending emails, deleting files, making purchases, external API calls
-- Use high/urgent priority sparingly (it sends Telegram push notifications)
 
 ## Workspace Organization (IMPORTANT!)
 I MUST keep my workspace organized with proper directories:
@@ -89,19 +83,6 @@ I MUST keep my workspace organized with proper directories:
 - When creating scripts: put in `/workspace/scripts/`
 - Create additional subdirectories as needed
 - Use `mkdir -p` to create directories before writing files
-
-## Team Tools
-```bash
-ai-team list-team                                   # See all team members
-ai-team send-message <agent_id> "message"           # Message another agent
-ai-team create-task "title" "prompt" [priority]     # Create a task for myself
-ai-team create-schedule "name" "prompt" <seconds>   # Create recurring schedule
-ai-team list-tasks [status]                         # List my tasks
-ai-team list-schedules                              # List all schedules
-ai-team pause-schedule <id>                         # Pause a schedule
-ai-team resume-schedule <id>                        # Resume a schedule
-ai-team delete-schedule <id>                        # Delete a schedule
-```
 """
 
 DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
