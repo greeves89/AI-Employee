@@ -64,6 +64,18 @@ class SchedulerService:
         now: datetime,
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
+        # Skip proactive schedules if the agent is already busy
+        if schedule.name.startswith("[Proactive]") and schedule.agent_id:
+            queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
+            status = await self.redis.get_agent_status(schedule.agent_id)
+            if queue_depth > 0 or status.get("current_task"):
+                # Agent is busy - postpone proactive check
+                schedule.next_run_at = now + timedelta(seconds=schedule.interval_seconds)
+                logger.debug(
+                    f"Proactive schedule {schedule.id} skipped - agent {schedule.agent_id} is busy"
+                )
+                return
+
         task = await router.create_and_route_task(
             title=f"[Scheduled] {schedule.name}",
             prompt=schedule.prompt,

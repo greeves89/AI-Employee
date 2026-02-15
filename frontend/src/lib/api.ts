@@ -1,4 +1,4 @@
-import type { Agent, AgentMemory, Notification, Task, Schedule, FileEntry, Settings, Integration, WebhookEvent } from "./types";
+import type { Agent, AgentMemory, Notification, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, WebhookEvent } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const BASE = `${API_URL}/api/v1`;
@@ -294,6 +294,25 @@ export async function markAllNotificationsRead(): Promise<void> {
 
 export async function deleteNotification(id: number): Promise<void> {
   await fetchJSON(`${BASE}/notifications/${id}`, { method: "DELETE" });
+}
+
+// Proactive Mode
+export async function getProactiveConfig(agentId: string): Promise<ProactiveResponse> {
+  return fetchJSON(`${BASE}/agents/${agentId}/proactive`);
+}
+
+export async function updateProactiveConfig(
+  agentId: string,
+  config: { enabled: boolean; interval_seconds: number; prompt?: string },
+): Promise<void> {
+  await fetchJSON(`${BASE}/agents/${agentId}/proactive`, {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
+export async function deleteProactiveConfig(agentId: string): Promise<void> {
+  await fetchJSON(`${BASE}/agents/${agentId}/proactive`, { method: "DELETE" });
 }
 
 // Webhooks

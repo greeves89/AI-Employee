@@ -132,6 +132,26 @@ export interface Notification {
   created_at: string;
 }
 
+export interface ProactiveConfig {
+  enabled: boolean;
+  schedule_id: string | null;
+  interval_seconds: number;
+}
+
+export interface ProactiveResponse {
+  agent_id: string;
+  proactive: ProactiveConfig;
+  schedule: {
+    enabled: boolean;
+    interval_seconds: number;
+    next_run_at: string | null;
+    last_run_at: string | null;
+    total_runs: number;
+    success_count: number;
+    fail_count: number;
+  } | null;
+}
+
 export interface WebhookEvent {
   id: number;
   source: string;

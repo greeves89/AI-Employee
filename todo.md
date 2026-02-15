@@ -24,6 +24,7 @@
 - [x] Phase 7C: MCP Server - Orchestrator (tasks, team, messages, schedules)
 - [x] Phase 7D: MCP Infrastructure (package.json, Dockerfile, .mcp.json auto-config)
 - [x] Phase 7E: CLAUDE.md template updated for MCP tools + Web UI explanation
+- [x] Phase 8C: Proactive Agent Loop (auto-schedule, queue-check, toggle UI)
 
 ## In Progress
 - [ ] Phase 5A: Agent Onboarding Interview + Auto-CLAUDE.md
@@ -35,7 +36,6 @@
 - [ ] Phase 5E: Self-Improvement Loop v2
 - [ ] Phase 8A: MCP Service for Gmail/Calendar (OAuth token passthrough)
 - [ ] Phase 8B: MCP Service for Google Drive/OneDrive
-- [ ] Phase 8C: Proactive Smart Schedules (conditions + agent-initiated tasks)
 - [ ] Frontend rebuild + E2E Test
 - [ ] Token Refresh Logic (Access Token laeuft nach 8h ab)
 - [ ] Security: Workspace Isolation, gefaehrliche Bash-Commands blocken

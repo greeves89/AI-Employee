@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -411,6 +412,148 @@ async def update_agent_integrations(
         flag_modified(agent, "config")
         await db.commit()
         return {"agent_id": agent_id, "integrations": config["integrations"]}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+# --- Proactive Mode ---
+
+class ProactiveUpdate(BaseModel):
+    enabled: bool = True
+    interval_seconds: int = 3600
+    prompt: str | None = None
+
+
+@router.get("/{agent_id}/proactive")
+async def get_proactive_config(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Get proactive mode config and schedule stats for an agent."""
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        proactive = config.get("proactive", {})
+        schedule_id = proactive.get("schedule_id")
+
+        schedule_stats = None
+        if schedule_id:
+            from app.models.schedule import Schedule
+            result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
+            schedule = result.scalar_one_or_none()
+            if schedule:
+                schedule_stats = {
+                    "enabled": schedule.enabled,
+                    "interval_seconds": schedule.interval_seconds,
+                    "next_run_at": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+                    "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
+                    "total_runs": schedule.total_runs,
+                    "success_count": schedule.success_count,
+                    "fail_count": schedule.fail_count,
+                }
+
+        return {
+            "agent_id": agent_id,
+            "proactive": proactive,
+            "schedule": schedule_stats,
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.post("/{agent_id}/proactive")
+async def update_proactive_config(
+    agent_id: str,
+    body: ProactiveUpdate,
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Enable, disable, or update proactive mode for an agent."""
+    from datetime import timedelta, timezone as tz
+    from app.models.schedule import Schedule
+    from app.core.agent_manager import PROACTIVE_PROMPT
+    from sqlalchemy.orm.attributes import flag_modified
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        proactive = config.get("proactive", {})
+        schedule_id = proactive.get("schedule_id")
+        now = datetime.now(tz.utc)
+
+        if schedule_id:
+            # Update existing schedule
+            result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
+            schedule = result.scalar_one_or_none()
+            if schedule:
+                schedule.enabled = body.enabled
+                schedule.interval_seconds = body.interval_seconds
+                if body.prompt:
+                    schedule.prompt = body.prompt
+                if body.enabled:
+                    schedule.next_run_at = now + timedelta(seconds=body.interval_seconds)
+            else:
+                schedule_id = None  # Schedule was deleted, recreate
+
+        if not schedule_id:
+            # Create new schedule
+            schedule_id = uuid.uuid4().hex[:8]
+            schedule = Schedule(
+                id=schedule_id,
+                name=f"[Proactive] {agent.name}",
+                prompt=body.prompt or PROACTIVE_PROMPT,
+                interval_seconds=body.interval_seconds,
+                priority=0,
+                agent_id=agent_id,
+                enabled=body.enabled,
+                next_run_at=now + timedelta(seconds=body.interval_seconds),
+            )
+            db.add(schedule)
+
+        proactive = {
+            "enabled": body.enabled,
+            "schedule_id": schedule_id,
+            "interval_seconds": body.interval_seconds,
+        }
+        config["proactive"] = proactive
+        agent.config = config
+        flag_modified(agent, "config")
+        await db.commit()
+
+        return {"agent_id": agent_id, "proactive": proactive, "status": "updated"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.delete("/{agent_id}/proactive")
+async def delete_proactive_config(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Disable and remove proactive mode for an agent."""
+    from app.models.schedule import Schedule
+    from sqlalchemy.orm.attributes import flag_modified
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        proactive = config.get("proactive", {})
+        schedule_id = proactive.get("schedule_id")
+
+        if schedule_id:
+            result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
+            schedule = result.scalar_one_or_none()
+            if schedule:
+                await db.delete(schedule)
+
+        config.pop("proactive", None)
+        agent.config = config
+        flag_modified(agent, "config")
+        await db.commit()
+
+        return {"agent_id": agent_id, "status": "proactive_removed"}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

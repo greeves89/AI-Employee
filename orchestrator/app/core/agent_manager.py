@@ -1,18 +1,39 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from docker.errors import APIError, NotFound
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import AGENT_VERSION, settings
 from app.models.agent import Agent, AgentState
+from app.models.schedule import Schedule
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
+
+PROACTIVE_PROMPT = """You are running in PROACTIVE mode. No one asked you to do anything — you are
+checking on your own initiative whether there is work to be done.
+
+Steps:
+1. Read your knowledge base (/workspace/knowledge.md) to recall your role and responsibilities
+2. Use memory_search to check for any pending items, recent context, and follow-ups
+3. Check your task list with list_tasks to see what has been completed recently
+4. Based on your role and context, decide:
+   - Is there a pending responsibility I should handle (reports, checks, cleanups)?
+   - Did I learn something last time that I should act on?
+   - Are there follow-up items in my memories I haven't addressed?
+   - Is my workspace organized? Any cleanup needed?
+5. If you find genuine work: Execute it, then notify the user about what you did.
+6. If there is nothing to do: Simply respond "No proactive actions needed." and stop.
+
+IMPORTANT: Do NOT create busywork. Only act if there is genuine value.
+IMPORTANT: If you haven't completed onboarding yet, skip the proactive check.
+"""
 
 DEFAULT_CLAUDE_MD = """# Agent System Instructions
 
@@ -69,6 +90,15 @@ My knowledge, role, and learned patterns are stored in `/workspace/knowledge.md`
 - Read it at the start of conversations to recall my role and context
 - Update it after completing tasks with new learnings
 - Use `grep` to search for specific knowledge when needed
+
+## Proactive Mode
+I periodically wake up (via schedule) to check if there is work to do on my own.
+When running in proactive mode:
+- Review my role and pending responsibilities from knowledge.md
+- Check memories for follow-up items and unfinished business
+- Execute genuine work only (no busywork!)
+- Notify the user about what I did proactively via notify_user
+- If nothing to do, just respond briefly and stop
 
 ## Workspace Organization (IMPORTANT!)
 I MUST keep my workspace organized with proper directories:
@@ -204,6 +234,36 @@ class AgentManager:
         await self.db.commit()
         await self.db.refresh(agent)
 
+        # Create proactive schedule (auto-enabled, 1h default)
+        try:
+            now = datetime.now(timezone.utc)
+            schedule_id = uuid.uuid4().hex[:8]
+            proactive_schedule = Schedule(
+                id=schedule_id,
+                name=f"[Proactive] {name}",
+                prompt=PROACTIVE_PROMPT,
+                interval_seconds=3600,
+                priority=0,
+                agent_id=agent_id,
+                enabled=True,
+                next_run_at=now + timedelta(minutes=10),
+            )
+            self.db.add(proactive_schedule)
+
+            config = dict(agent.config)
+            config["proactive"] = {
+                "enabled": True,
+                "schedule_id": schedule_id,
+                "interval_seconds": 3600,
+            }
+            agent.config = config
+            flag_modified(agent, "config")
+            await self.db.commit()
+            await self.db.refresh(agent)
+            logger.info(f"Created proactive schedule {schedule_id} for agent {agent_id}")
+        except Exception as e:
+            logger.warning(f"Could not create proactive schedule: {e}")
+
         return agent
 
     def _update_team_registry(self, container_id: str, agent_id: str, name: str, role: str) -> None:
@@ -329,7 +389,6 @@ class AgentManager:
         agent.state = AgentState.RUNNING
         config["agent_version"] = AGENT_VERSION
         agent.config = config
-        from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await self.db.commit()
         await self.db.refresh(agent)
@@ -346,11 +405,14 @@ class AgentManager:
                 logger.warning(f"Container {agent.container_id} already gone for agent {agent_id}: {e}")
         if remove_data and agent.volume_name:
             self.docker.remove_volume(agent.volume_name)
-            # Also remove session volume
             config = agent.config or {}
             session_vol = config.get("session_volume")
             if session_vol:
                 self.docker.remove_volume(session_vol)
+        # Delete all schedules tied to this agent (FK constraint)
+        await self.db.execute(
+            sql_delete(Schedule).where(Schedule.agent_id == agent_id)
+        )
         await self.db.delete(agent)
         await self.db.commit()
 
