@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: ai-employee-postgres
     environment:
       POSTGRES_DB: ai_employee
       POSTGRES_USER: ai_employee
@@ -22,6 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: ai-employee-redis
     # No host port binding - only accessible via internal network
     volumes:
       - redis_data:/data
@@ -44,8 +46,9 @@ services:
       context: ./orchestrator
       dockerfile: Dockerfile
       target: base
+    container_name: ai-employee-orchestrator
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://ai_employee:${DB_PASSWORD:-devpassword}@postgres:5432/ai_employee
       REDIS_URL: redis://redis:6379
@@ -90,8 +93,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+    container_name: ai-employee-frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - orchestrator
     deploy:
@@ -100,6 +104,7 @@ services:
           memory: 256M
     networks:
       - internal
+      - agent-network
 
 volumes:
   postgres_data:
