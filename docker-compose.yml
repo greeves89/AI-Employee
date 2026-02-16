@@ -48,7 +48,7 @@ services:
       target: base
     container_name: ai-employee-orchestrator
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${ORCHESTRATOR_PORT:-8000}:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://ai_employee:${DB_PASSWORD:-devpassword}@postgres:5432/ai_employee
       REDIS_URL: redis://redis:6379
@@ -95,7 +95,7 @@ services:
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
     container_name: ai-employee-frontend
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - orchestrator
     deploy:
