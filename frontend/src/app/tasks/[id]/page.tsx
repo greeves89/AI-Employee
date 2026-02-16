@@ -13,6 +13,7 @@ import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
 import type { Task, LogEvent } from "@/lib/types";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
@@ -53,7 +54,9 @@ export default function TaskDetailPage() {
 
   // Connect WebSocket for live logs
   const connectWs = useCallback((agentId: string) => {
-    const ws = new WebSocket(`${WS_URL}/api/v1/ws/agents/${agentId}/logs`);
+    const token = useAuthStore.getState().wsToken;
+    const tokenParam = token ? `?token=${token}` : "";
+    const ws = new WebSocket(`${WS_URL}/api/v1/ws/agents/${agentId}/logs${tokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => setIsConnected(true);

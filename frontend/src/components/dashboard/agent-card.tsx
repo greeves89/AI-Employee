@@ -57,8 +57,8 @@ export function AgentCard({ agent }: AgentCardProps) {
   const isActive = agent.state === "running" || agent.state === "working";
 
   return (
-    <Link href={`/agents/${agent.id}`} className="group block">
-      <div className="relative overflow-hidden rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 transition-all duration-200 hover:border-foreground/[0.1] hover:bg-card/90 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5">
+    <Link href={`/agents/${agent.id}`} className="group block h-full">
+      <div className="relative overflow-hidden rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 transition-all duration-200 hover:border-foreground/[0.1] hover:bg-card/90 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 flex flex-col h-full">
         {/* Top accent line */}
         {isActive && (
           <div className={cn(
@@ -67,35 +67,35 @@ export function AgentCard({ agent }: AgentCardProps) {
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
             <div className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors",
               isActive ? "bg-primary/10" : "bg-foreground/[0.06]"
             )}>
               <Cpu className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground")} />
             </div>
-            <div>
-              <h4 className="font-semibold text-sm tracking-tight">{agent.name}</h4>
+            <div className="min-w-0">
+              <h4 className="font-semibold text-sm tracking-tight truncate" title={agent.name}>{agent.name}</h4>
               <div className="flex items-center gap-1.5">
                 {agent.role ? (
-                  <span className="text-[11px] text-primary/70 font-medium">{agent.role}</span>
+                  <span className="text-[11px] text-primary/70 font-medium truncate">{agent.role}</span>
                 ) : (
                   <span className="text-[11px] font-mono text-muted-foreground/70">
                     {agent.model.split("-").slice(0, 2).join("-")}
                   </span>
                 )}
                 {agent.onboarding_complete ? (
-                  <span title="Onboarded"><UserCheck className="h-3 w-3 text-emerald-400" /></span>
+                  <span title="Onboarded" className="shrink-0"><UserCheck className="h-3 w-3 text-emerald-400" /></span>
                 ) : (
-                  <span title="Needs onboarding"><UserCog className="h-3 w-3 text-amber-400 animate-pulse" /></span>
+                  <span title="Needs onboarding" className="shrink-0"><UserCog className="h-3 w-3 text-amber-400 animate-pulse" /></span>
                 )}
               </div>
             </div>
           </div>
 
           {/* Status badges */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {agent.update_available && (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border-amber-500/20">
                 <ArrowUpCircle className="h-3 w-3" />
@@ -127,7 +127,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         )}
 
         {/* Metrics */}
-        <div className="space-y-3">
+        <div className="space-y-3 flex-1">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px]">
               <span className="flex items-center gap-1.5 text-muted-foreground">

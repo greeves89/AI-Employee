@@ -19,12 +19,18 @@ import {
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_ID = process.env.AGENT_ID || "unknown";
+const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${AGENT_TOKEN}`,
+      "X-Agent-ID": AGENT_ID,
+      ...(options.headers || {}),
+    },
   });
   if (!res.ok) {
     const text = await res.text();

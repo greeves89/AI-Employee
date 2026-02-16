@@ -10,6 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -167,6 +168,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [totalCost, setTotalCost] = useState(0);
   const [totalTurns, setTotalTurns] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
@@ -217,7 +219,11 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
   // Load messages when active session changes
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!activeSessionId) {
+      setHistoryLoaded(true);
+      return;
+    }
+    setHistoryLoaded(false);
     const loadHistory = async () => {
       try {
         const { messages: history } = await api.getChatHistory(agentId, 100, activeSessionId);
@@ -279,6 +285,8 @@ export function AgentChat({ agentId }: { agentId: string }) {
         }
       } catch {
         setMessages([]);
+      } finally {
+        setHistoryLoaded(true);
       }
     };
     loadHistory();
@@ -299,25 +307,19 @@ export function AgentChat({ agentId }: { agentId: string }) {
       return;
     }
 
-    const ws = new WebSocket(`${WS_URL}/api/v1/ws/agents/${agentId}/chat`);
+    const token = useAuthStore.getState().wsToken;
+    const tokenParam = token ? `?token=${token}` : "";
+    const ws = new WebSocket(`${WS_URL}/api/v1/ws/agents/${agentId}/chat${tokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setIsConnected(true);
       setConnectionFailed(false);
       reconnectAttempts.current = 0;
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== "reconnecting" && m.id !== "connection-failed");
-        if (filtered.length === 0) {
-          return [{
-            id: "connected",
-            role: "system" as const,
-            content: "Connected to agent. Start chatting!",
-            timestamp: new Date().toISOString(),
-          }];
-        }
-        return filtered;
-      });
+      // Only clean up reconnect/error messages - don't override history
+      setMessages((prev) =>
+        prev.filter((m) => m.id !== "reconnecting" && m.id !== "connection-failed")
+      );
     };
 
     ws.onclose = (event) => {
@@ -425,17 +427,23 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
       if (type === "text") {
         const steps = [...(msgs[assistantIdx].steps || [])];
-        const lastStep = steps[steps.length - 1];
+        // Text after tool calls means all previous tools completed
+        const updatedSteps = steps.map((s) =>
+          s.type === "tool_call" && s.status === "running"
+            ? { ...s, status: "done" as const }
+            : s
+        );
+        const lastStep = updatedSteps[updatedSteps.length - 1];
         if (lastStep && lastStep.type === "text") {
           // Append to existing text step
-          steps[steps.length - 1] = { ...lastStep, content: lastStep.content + String(data.text || "") };
+          updatedSteps[updatedSteps.length - 1] = { ...lastStep, content: lastStep.content + String(data.text || "") };
         } else {
           // New text step (after tool calls or at start)
-          steps.push({ type: "text", content: String(data.text || "") });
+          updatedSteps.push({ type: "text", content: String(data.text || "") });
         }
         msgs[assistantIdx] = {
           ...msgs[assistantIdx],
-          steps,
+          steps: updatedSteps,
           content: msgs[assistantIdx].content + String(data.text || ""),
         };
       } else if (type === "tool_call") {
@@ -444,18 +452,26 @@ export function AgentChat({ agentId }: { agentId: string }) {
         // Skip if we already have this tool_call (dedup)
         const alreadyExists = steps.some((s) => s.type === "tool_call" && s.id === toolId);
         if (!alreadyExists) {
+          // A new tool call means all previous running tools have completed
+          const updatedSteps = steps.map((s) =>
+            s.type === "tool_call" && s.status === "running"
+              ? { ...s, status: "done" as const }
+              : s
+          );
           const inputObj = (typeof data.input === "object" && data.input !== null)
             ? data.input as Record<string, unknown>
             : {};
-          steps.push({
+          updatedSteps.push({
             type: "tool_call",
             id: toolId,
             tool: String(data.tool || ""),
             input: inputObj,
             status: "running",
           });
+          msgs[assistantIdx] = { ...msgs[assistantIdx], steps: updatedSteps };
+        } else {
+          msgs[assistantIdx] = { ...msgs[assistantIdx], steps };
         }
-        msgs[assistantIdx] = { ...msgs[assistantIdx], steps };
       } else if (type === "tool_result") {
         const steps = [...(msgs[assistantIdx].steps || [])];
         const toolUseId = String(data.tool_use_id || "");
@@ -724,10 +740,16 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
       {/* Messages area - dark terminal-like background */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-[#0d1117]">
-        {messages.length === 0 && !connectionFailed && (
+        {messages.length === 0 && !connectionFailed && historyLoaded && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
             <Bot className="h-8 w-8 mb-2" />
             <p className="text-sm">Send a message to start chatting</p>
+          </div>
+        )}
+        {messages.length === 0 && !connectionFailed && !historyLoaded && (
+          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+            <Loader2 className="h-6 w-6 animate-spin mb-2" />
+            <p className="text-xs">Loading chat history...</p>
           </div>
         )}
         {messages.length === 0 && connectionFailed && (

@@ -11,6 +11,7 @@ import {
   deleteNotification,
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
+import { useAuthStore } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_URL = API_URL.replace(/^http/, "ws");
@@ -30,7 +31,7 @@ const priorityIndicator: Record<string, string> = {
   low: "opacity-80",
 };
 
-export function NotificationBell() {
+export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sidebar" }) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -58,12 +59,15 @@ export function NotificationBell() {
     }
   }, []);
 
+  const wsToken = useAuthStore((s) => s.wsToken);
+
   // WebSocket for live notifications
   useEffect(() => {
     intentionalClose.current = false;
 
     const connect = () => {
-      const ws = new WebSocket(`${WS_URL}/api/v1/ws/notifications`);
+      const tokenParam = wsToken ? `?token=${wsToken}` : "";
+      const ws = new WebSocket(`${WS_URL}/api/v1/ws/notifications${tokenParam}`);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
@@ -99,7 +103,7 @@ export function NotificationBell() {
       intentionalClose.current = true;
       wsRef.current?.close();
     };
-  }, [fetchCount]);
+  }, [fetchCount, wsToken]);
 
   // Close panel on outside click
   useEffect(() => {
@@ -164,21 +168,48 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={panelRef}>
-      <button
-        onClick={handleOpen}
-        className={cn(
-          "relative flex items-center justify-center w-9 h-9 rounded-xl transition-all",
-          "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-          isOpen && "bg-accent text-foreground"
-        )}
-      >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
+      {variant === "sidebar" ? (
+        <button
+          onClick={handleOpen}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-150",
+            isOpen
+              ? "bg-accent text-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+          )}
+        >
+          <div className="relative">
+            <Bell className="h-4 w-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-red-500 px-0.5 text-[8px] font-bold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </div>
+          Notifications
+          {unreadCount > 0 && (
+            <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-400">
+              {unreadCount}
+            </span>
+          )}
+        </button>
+      ) : (
+        <button
+          onClick={handleOpen}
+          className={cn(
+            "relative flex items-center justify-center w-9 h-9 rounded-xl transition-all",
+            "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+            isOpen && "bg-accent text-foreground"
+          )}
+        >
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {isOpen && (
         <div className="absolute left-full ml-2 bottom-0 w-[360px] max-h-[480px] rounded-xl border border-border bg-card shadow-2xl z-50 overflow-hidden flex flex-col">
@@ -238,7 +269,7 @@ export function NotificationBell() {
                       </p>
                     )}
                     {/* Approval buttons */}
-                    {notif.type === "approval" && notif.meta?.options && (
+                    {notif.type === "approval" && Array.isArray(notif.meta?.options) && (
                       <div className="flex gap-1.5 mt-2">
                         {(notif.meta.options as string[]).map((opt, i) => (
                           <button

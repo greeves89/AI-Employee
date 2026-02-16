@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { Sidebar } from "@/components/layout/sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AuthGuard } from "@/components/auth/auth-guard";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -33,10 +33,7 @@ export default function RootLayout({
         )}
       >
         <ThemeProvider>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="ml-[260px] flex-1 min-h-screen">{children}</main>
-          </div>
+          <AuthGuard>{children}</AuthGuard>
         </ThemeProvider>
       </body>
     </html>

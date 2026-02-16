@@ -166,6 +166,7 @@ class AgentRunner:
                         task_id,
                         "tool_call",
                         {
+                            "tool_use_id": block.get("id", ""),
                             "tool": block.get("name", "unknown"),
                             "input": block.get("input", {}),
                         },

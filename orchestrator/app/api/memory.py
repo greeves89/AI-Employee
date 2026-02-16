@@ -6,6 +6,7 @@ from sqlalchemy import select, or_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.dependencies import require_auth, verify_agent_token
 from app.models.memory import AgentMemory
 
 router = APIRouter(prefix="/memory", tags=["memory"])
@@ -40,8 +41,15 @@ class MemoryResponse(BaseModel):
 # --- Agent-facing endpoints (called from inside containers) ---
 
 @router.post("/save", response_model=MemoryResponse)
-async def save_memory(body: MemorySave, db: AsyncSession = Depends(get_db)):
-    """Save or update a memory entry. If agent_id+key exists, update it."""
+async def save_memory(
+    body: MemorySave,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Save or update a memory entry. If agent_id+key exists, update it. Requires agent auth."""
+    # Enforce agent can only write to its own memories
+    if body.agent_id != auth["agent_id"]:
+        raise HTTPException(status_code=403, detail="Cannot write to another agent's memory")
     existing = await db.execute(
         select(AgentMemory)
         .where(AgentMemory.agent_id == body.agent_id)
@@ -114,6 +122,7 @@ async def list_agent_memories(
     agent_id: str,
     category: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """List all memories for an agent (for the frontend Memory tab)."""
@@ -140,6 +149,7 @@ async def list_agent_memories(
 async def update_memory(
     memory_id: int,
     body: MemoryUpdate,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a memory entry (from UI)."""
@@ -161,7 +171,7 @@ async def update_memory(
 
 
 @router.delete("/{memory_id}")
-async def delete_memory(memory_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_memory(memory_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Delete a memory entry."""
     result = await db.execute(select(AgentMemory).where(AgentMemory.id == memory_id))
     memory = result.scalar_one_or_none()

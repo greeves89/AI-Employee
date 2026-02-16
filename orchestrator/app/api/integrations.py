@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_redis_service
+from app.dependencies import get_redis_service, require_auth
 from app.schemas.integration import (
     AgentIntegrationsResponse,
     AgentIntegrationsUpdate,
@@ -27,7 +27,7 @@ def _get_oauth_service(
 
 
 @router.get("/", response_model=IntegrationListResponse)
-async def list_integrations(service: OAuthService = Depends(_get_oauth_service)):
+async def list_integrations(user=Depends(require_auth), service: OAuthService = Depends(_get_oauth_service)):
     """List all OAuth providers with their connection status."""
     integrations = await service.list_integrations()
     return IntegrationListResponse(
@@ -38,6 +38,7 @@ async def list_integrations(service: OAuthService = Depends(_get_oauth_service))
 @router.get("/{provider}/auth", response_model=AuthUrlResponse)
 async def get_auth_url(
     provider: str,
+    user=Depends(require_auth),
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Generate OAuth authorization URL for a provider."""
@@ -76,6 +77,7 @@ async def oauth_callback(
 @router.delete("/{provider}")
 async def disconnect_integration(
     provider: str,
+    user=Depends(require_auth),
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Disconnect an OAuth integration."""
@@ -89,6 +91,7 @@ async def disconnect_integration(
 @router.post("/{provider}/refresh")
 async def refresh_token(
     provider: str,
+    user=Depends(require_auth),
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Manually refresh an OAuth token."""
@@ -102,6 +105,7 @@ async def refresh_token(
 @router.get("/{provider}/token")
 async def get_token(
     provider: str,
+    user=Depends(require_auth),
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Get a fresh decrypted token (for agent internal use)."""

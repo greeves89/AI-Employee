@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agent_manager import AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
-from app.dependencies import get_docker_service, get_redis_service
+from app.dependencies import get_docker_service, get_redis_service, require_auth, require_manager
+from app.models.agent import Agent
+from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
 from app.schemas.agent import AgentCreate, AgentListResponse, AgentResponse, KnowledgeResponse, KnowledgeUpdate
 from app.services.docker_service import DockerService
@@ -34,10 +36,40 @@ def _get_file_manager(
     return FileManager(docker)
 
 
+async def _check_owner(agent_id: str, user, db: AsyncSession) -> None:
+    """Verify user has access to the agent. Raises 403 if not."""
+    from app.dependencies import require_agent_access
+    await require_agent_access(agent_id, user, db)
+
+
+@router.get("/permissions")
+async def get_permission_packages(user=Depends(require_auth)):
+    """List available permission packages for agent creation."""
+    from app.core.agent_manager import PERMISSION_PACKAGES, DEFAULT_PERMISSIONS
+    packages = [
+        {
+            "id": pkg_id,
+            "label": pkg["label"],
+            "description": pkg["description"],
+            "icon": pkg["icon"],
+            "default": pkg_id in DEFAULT_PERMISSIONS,
+        }
+        for pkg_id, pkg in PERMISSION_PACKAGES.items()
+    ]
+    return {"packages": packages, "defaults": DEFAULT_PERMISSIONS}
+
+
 @router.get("/", response_model=AgentListResponse)
-async def list_agents(manager: AgentManager = Depends(_get_agent_manager)):
+async def list_agents(
+    user=Depends(require_auth),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    from app.models.user import UserRole
+
     agents = await manager.list_agents()
-    # Skip heavy Docker stats for list endpoint (fetch on detail page)
+    # Non-admins only see their own agents (+ unowned legacy agents)
+    if user.role != UserRole.ADMIN:
+        agents = [a for a in agents if a.user_id is None or a.user_id == user.id]
     metrics_list = await asyncio.gather(
         *(manager.get_agent_with_metrics(agent.id, include_stats=False) for agent in agents)
     )
@@ -47,10 +79,18 @@ async def list_agents(manager: AgentManager = Depends(_get_agent_manager)):
 
 @router.post("/", response_model=AgentResponse, status_code=201)
 async def create_agent(
-    data: AgentCreate, manager: AgentManager = Depends(_get_agent_manager)
+    data: AgentCreate,
+    user=Depends(require_manager),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     try:
-        agent = await manager.create_agent(name=data.name, model=data.model, role=data.role, integrations=data.integrations)
+        # Don't set user_id for anonymous (setup mode) users
+        uid = user.id if user.id != "__anonymous__" else None
+        agent = await manager.create_agent(
+            name=data.name, model=data.model, role=data.role,
+            integrations=data.integrations, permissions=data.permissions,
+            user_id=uid, budget_usd=data.budget_usd,
+        )
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
     except Exception as e:
@@ -59,8 +99,12 @@ async def create_agent(
 
 @router.get("/{agent_id}")
 async def get_agent(
-    agent_id: str, manager: AgentManager = Depends(_get_agent_manager)
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
+    await _check_owner(agent_id, user, db)
     try:
         return await manager.get_agent_with_metrics(agent_id)
     except ValueError:
@@ -69,8 +113,12 @@ async def get_agent(
 
 @router.post("/{agent_id}/stop")
 async def stop_agent(
-    agent_id: str, manager: AgentManager = Depends(_get_agent_manager)
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager.stop_agent(agent_id)
         return {"status": "stopped", "agent_id": agent.id}
@@ -80,8 +128,12 @@ async def stop_agent(
 
 @router.post("/{agent_id}/start")
 async def start_agent(
-    agent_id: str, manager: AgentManager = Depends(_get_agent_manager)
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager.start_agent(agent_id)
         return {"status": "started", "agent_id": agent.id}
@@ -89,11 +141,32 @@ async def start_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.post("/{agent_id}/restart")
+async def restart_agent(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Restart agent with fresh config (picks up new MCP servers, integrations, etc)."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager.restart_agent(agent_id)
+        metrics = await manager.get_agent_with_metrics(agent.id)
+        return AgentResponse(**metrics)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.post("/{agent_id}/update")
 async def update_agent(
-    agent_id: str, manager: AgentManager = Depends(_get_agent_manager)
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Update agent to latest container image, preserving all data."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager.update_agent(agent_id)
         metrics = await manager.get_agent_with_metrics(agent.id)
@@ -108,8 +181,11 @@ async def update_agent(
 async def remove_agent(
     agent_id: str,
     remove_data: bool = False,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
+    await _check_owner(agent_id, user, db)
     try:
         await manager.remove_agent(agent_id, remove_data=remove_data)
         return {"status": "removed", "agent_id": agent_id}
@@ -119,8 +195,12 @@ async def remove_agent(
 
 @router.get("/{agent_id}/stats")
 async def agent_stats(
-    agent_id: str, manager: AgentManager = Depends(_get_agent_manager)
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
+    await _check_owner(agent_id, user, db)
     try:
         return await manager.get_agent_with_metrics(agent_id)
     except ValueError:
@@ -130,10 +210,13 @@ async def agent_stats(
 @router.get("/{agent_id}/knowledge", response_model=KnowledgeResponse)
 async def get_agent_knowledge(
     agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     docker: DockerService = Depends(get_docker_service),
 ):
     """Read the agent's knowledge.md knowledge base."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -159,10 +242,13 @@ async def get_agent_knowledge(
 async def update_agent_knowledge(
     agent_id: str,
     body: KnowledgeUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     docker: DockerService = Depends(get_docker_service),
 ):
     """Update the agent's knowledge.md knowledge base."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -181,10 +267,13 @@ async def upload_files(
     agent_id: str,
     path: str = "/workspace",
     files: list[UploadFile] = File(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     file_mgr: FileManager = Depends(_get_file_manager),
 ):
     """Upload files to an agent's workspace."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -205,9 +294,12 @@ async def upload_files(
 async def browse_files(
     agent_id: str,
     path: str = "/workspace",
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     file_mgr: FileManager = Depends(_get_file_manager),
 ):
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -221,11 +313,14 @@ async def browse_files(
 async def download_file(
     agent_id: str,
     path: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     file_mgr: FileManager = Depends(_get_file_manager),
 ):
     from fastapi.responses import Response
 
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -251,14 +346,32 @@ class AgentMessage(BaseModel):
 async def send_message_to_agent(
     agent_id: str,
     body: AgentMessage,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     redis: RedisService = Depends(get_redis_service),
 ):
     """Send a message to an agent's chat queue (for inter-agent or external messaging)."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
             raise HTTPException(status_code=400, detail="Agent has no container")
+
+        # --- AgentGuard: Check inter-agent messages for injection ---
+        from_id = body.from_agent_id or "external"
+        verdict = check_inter_agent_message(body.text, from_agent=from_id, to_agent=agent_id)
+        if not verdict.allowed:
+            await notify_security_block(
+                redis.client,
+                source=f"inter-agent/{from_id}",
+                reason=verdict.reason,
+                agent_id=agent_id,
+            )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Blocked by AgentGuard: {verdict.reason}",
+            )
 
         # Build message with sender context
         sender = body.from_name or body.from_agent_id or "System"
@@ -280,9 +393,11 @@ async def send_message_to_agent(
 @router.get("/{agent_id}/chat/sessions")
 async def get_chat_sessions(
     agent_id: str,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """List all chat sessions for an agent."""
+    await _check_owner(agent_id, user, db)
     from sqlalchemy import func, distinct
     query = (
         select(
@@ -342,9 +457,11 @@ async def get_chat_history(
     session_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     before_id: int | None = Query(None),
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Get chat history for an agent, optionally filtered by session."""
+    await _check_owner(agent_id, user, db)
     query = select(ChatMessage).where(ChatMessage.agent_id == agent_id)
     if session_id is not None:
         query = query.where(ChatMessage.session_id == session_id)
@@ -358,8 +475,6 @@ async def get_chat_history(
     return {
         "messages": [
             {
-                # Use DB auto-increment id to guarantee uniqueness
-                # (message_id is a correlation ID shared between user & assistant)
                 "id": str(msg.id),
                 "role": msg.role,
                 "content": msg.content,
@@ -378,9 +493,11 @@ async def get_chat_history(
 async def delete_chat_session(
     agent_id: str,
     session_id: str,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all messages in a chat session."""
+    await _check_owner(agent_id, user, db)
     from sqlalchemy import delete as sql_delete
     result = await db.execute(
         sql_delete(ChatMessage)
@@ -391,12 +508,61 @@ async def delete_chat_session(
     return {"deleted": result.rowcount}
 
 
+class PermissionsUpdate(BaseModel):
+    permissions: list[str]
+
+
+@router.patch("/{agent_id}/permissions")
+async def update_agent_permissions(
+    agent_id: str,
+    body: PermissionsUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Update the sudo permission packages for a running agent."""
+    await _check_owner(agent_id, user, db)
+    from app.core.agent_manager import PERMISSION_PACKAGES, generate_sudoers
+    from sqlalchemy.orm.attributes import flag_modified
+
+    # Validate package names
+    for perm in body.permissions:
+        if perm not in PERMISSION_PACKAGES:
+            raise HTTPException(status_code=400, detail=f"Unknown permission package: {perm}")
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        config["permissions"] = body.permissions
+        agent.config = config
+        flag_modified(agent, "config")
+        await db.commit()
+
+        # Apply to running container
+        if agent.container_id:
+            try:
+                manager._apply_permissions(agent.container_id, body.permissions)
+            except Exception as e:
+                return {
+                    "agent_id": agent_id,
+                    "permissions": body.permissions,
+                    "warning": f"Saved but could not apply to container: {e}. Restart agent to apply.",
+                }
+
+        return {"agent_id": agent_id, "permissions": body.permissions}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.get("/{agent_id}/integrations")
 async def get_agent_integrations(
     agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Get the list of enabled integrations for an agent."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
@@ -409,16 +575,17 @@ async def get_agent_integrations(
 async def update_agent_integrations(
     agent_id: str,
     body: dict,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Update the enabled integrations for an agent."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
         config["integrations"] = body.get("integrations", [])
         agent.config = config
-        # Force SQLAlchemy to detect the change on mutable JSON
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
@@ -438,10 +605,12 @@ class ProactiveUpdate(BaseModel):
 @router.get("/{agent_id}/proactive")
 async def get_proactive_config(
     agent_id: str,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Get proactive mode config and schedule stats for an agent."""
+    await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
@@ -477,10 +646,12 @@ async def get_proactive_config(
 async def update_proactive_config(
     agent_id: str,
     body: ProactiveUpdate,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Enable, disable, or update proactive mode for an agent."""
+    await _check_owner(agent_id, user, db)
     from datetime import timedelta, timezone as tz
     from app.models.schedule import Schedule
     from app.core.agent_manager import PROACTIVE_PROMPT
@@ -494,7 +665,6 @@ async def update_proactive_config(
         now = datetime.now(tz.utc)
 
         if schedule_id:
-            # Update existing schedule
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
             if schedule:
@@ -505,10 +675,9 @@ async def update_proactive_config(
                 if body.enabled:
                     schedule.next_run_at = now + timedelta(seconds=body.interval_seconds)
             else:
-                schedule_id = None  # Schedule was deleted, recreate
+                schedule_id = None
 
         if not schedule_id:
-            # Create new schedule
             schedule_id = uuid.uuid4().hex[:8]
             schedule = Schedule(
                 id=schedule_id,
@@ -540,10 +709,12 @@ async def update_proactive_config(
 @router.delete("/{agent_id}/proactive")
 async def delete_proactive_config(
     agent_id: str,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Disable and remove proactive mode for an agent."""
+    await _check_owner(agent_id, user, db)
     from app.models.schedule import Schedule
     from sqlalchemy.orm.attributes import flag_modified
 
@@ -571,6 +742,7 @@ async def delete_proactive_config(
 
 @router.get("/team/directory")
 async def get_team_directory(
+    user=Depends(require_auth),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Get the team directory - all agents with their roles and status."""

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, CheckCircle2, XCircle, Clock, Loader2, RotateCcw, Timer, Hash, Cpu } from "lucide-react";
+import { Plus, CheckCircle2, XCircle, Clock, Loader2, RotateCcw, Timer, Hash, Cpu, Trash2, Ban } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
 import { Header } from "@/components/layout/header";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -16,23 +16,30 @@ const statusConfig: Record<string, { icon: typeof CheckCircle2; badge: string; c
   running: { icon: Loader2, badge: "bg-blue-500/10 text-blue-400 border-blue-500/20", color: "text-blue-400" },
   completed: { icon: CheckCircle2, badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", color: "text-emerald-400" },
   failed: { icon: XCircle, badge: "bg-red-500/10 text-red-400 border-red-500/20", color: "text-red-400" },
-  cancelled: { icon: XCircle, badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20", color: "text-zinc-400" },
+  cancelled: { icon: Ban, badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20", color: "text-zinc-400" },
 };
 
 const filterTabs = [
+  { key: "active", label: "Active" },
   { key: "all", label: "All" },
-  { key: "running", label: "Running" },
-  { key: "queued", label: "Queued" },
   { key: "completed", label: "Completed" },
   { key: "failed", label: "Failed" },
 ];
 
-export default function TasksPage() {
-  const { tasks, loading } = useTasks();
-  const [filter, setFilter] = useState<string>("all");
+const ACTIVE_STATUSES = ["pending", "queued", "running"];
 
-  const filteredTasks =
-    filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
+export default function TasksPage() {
+  const { tasks, loading, refresh } = useTasks();
+  const [filter, setFilter] = useState<string>("active");
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+
+  const filteredTasks = (() => {
+    if (filter === "all") return tasks;
+    if (filter === "active") return tasks.filter((t) => ACTIVE_STATUSES.includes(t.status));
+    return tasks.filter((t) => t.status === filter);
+  })();
+
+  const activeCount = tasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
 
   const retryTask = async (task: { title: string; prompt: string; agent_id: string | null; model: string | null }) => {
     try {
@@ -42,6 +49,36 @@ export default function TasksPage() {
         agent_id: task.agent_id || undefined,
         model: task.model || undefined,
       });
+      refresh();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, taskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleting((prev) => new Set(prev).add(taskId));
+    try {
+      await api.deleteTask(taskId);
+      refresh();
+    } catch {
+      // ignore
+    } finally {
+      setDeleting((prev) => {
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+    }
+  };
+
+  const handleCancel = async (e: React.MouseEvent, taskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await api.cancelTask(taskId);
+      refresh();
     } catch {
       // ignore
     }
@@ -71,25 +108,30 @@ export default function TasksPage() {
       >
         {/* Filter tabs */}
         <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit">
-          {filterTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={cn(
-                "rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
-                filter === tab.key
-                  ? "bg-foreground/[0.08] text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
-              )}
-            >
-              {tab.label}
-              {tab.key !== "all" && (
+          {filterTabs.map((tab) => {
+            const count = tab.key === "active"
+              ? activeCount
+              : tab.key === "all"
+              ? tasks.length
+              : tasks.filter((t) => t.status === tab.key).length;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setFilter(tab.key)}
+                className={cn(
+                  "rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
+                  filter === tab.key
+                    ? "bg-foreground/[0.08] text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                )}
+              >
+                {tab.label}
                 <span className="ml-1.5 tabular-nums text-muted-foreground/60">
-                  {tasks.filter((t) => t.status === tab.key).length}
+                  {count}
                 </span>
-              )}
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
 
         {loading && tasks.length === 0 ? (
@@ -103,13 +145,19 @@ export default function TasksPage() {
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center text-muted-foreground">
-            No tasks {filter !== "all" ? `with status "${filter}"` : "yet"}.
+            {filter === "active"
+              ? "No active tasks. All tasks are completed or idle."
+              : filter === "all"
+              ? "No tasks yet."
+              : `No ${filter} tasks.`}
           </div>
         ) : (
           <div className="space-y-2">
             {filteredTasks.map((task, i) => {
               const cfg = statusConfig[task.status] ?? statusConfig.pending;
               const Icon = cfg.icon;
+              const canDelete = task.status !== "running";
+              const canCancel = task.status === "queued" || task.status === "pending";
               return (
                 <Link key={task.id} href={`/tasks/${task.id}`}>
                 <motion.div
@@ -140,8 +188,8 @@ export default function TasksPage() {
                       </p>
                     </div>
 
-                    {/* Actions + Meta */}
-                    <div className="shrink-0 flex items-center gap-3">
+                    {/* Actions */}
+                    <div className="shrink-0 flex items-center gap-2">
                       {task.status === "failed" && (
                         <button
                           onClick={(e) => { e.preventDefault(); retryTask(task); }}
@@ -149,6 +197,26 @@ export default function TasksPage() {
                         >
                           <RotateCcw className="h-3 w-3" />
                           Retry
+                        </button>
+                      )}
+                      {canCancel && (
+                        <button
+                          onClick={(e) => handleCancel(e, task.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Cancel task"
+                        >
+                          <Ban className="h-3 w-3" />
+                          Cancel
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={(e) => handleDelete(e, task.id)}
+                          disabled={deleting.has(task.id)}
+                          className="inline-flex items-center rounded-lg p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                          title="Delete task"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>

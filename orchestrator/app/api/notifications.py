@@ -8,7 +8,7 @@ from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_redis_service
+from app.dependencies import get_redis_service, require_auth, verify_agent_token
 from app.models.notification import Notification
 from app.services.redis_service import RedisService
 
@@ -32,8 +32,9 @@ async def create_notification(
     body: NotificationCreate,
     db: AsyncSession = Depends(get_db),
     redis: RedisService = Depends(get_redis_service),
+    _auth: dict = Depends(verify_agent_token),
 ):
-    """Create a notification (called by agents via internal API)."""
+    """Create a notification (called by agents via internal API, requires auth)."""
     notif = Notification(
         agent_id=body.agent_id,
         type=body.type,
@@ -67,6 +68,7 @@ async def create_notification(
 async def list_notifications(
     unread_only: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """List notifications for the UI notification center."""
@@ -80,7 +82,7 @@ async def list_notifications(
 
 
 @router.get("/count")
-async def unread_count(db: AsyncSession = Depends(get_db)):
+async def unread_count(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Get unread notification count (for badge)."""
     result = await db.execute(
         select(func.count(Notification.id)).where(Notification.read == False)  # noqa: E712
@@ -90,7 +92,7 @@ async def unread_count(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{notification_id}/read")
-async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db)):
+async def mark_read(notification_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Mark a notification as read."""
     result = await db.execute(
         select(Notification).where(Notification.id == notification_id)
@@ -104,7 +106,7 @@ async def mark_read(notification_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/read-all")
-async def mark_all_read(db: AsyncSession = Depends(get_db)):
+async def mark_all_read(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Mark all notifications as read."""
     await db.execute(
         update(Notification)
@@ -116,7 +118,7 @@ async def mark_all_read(db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/{notification_id}")
-async def delete_notification(notification_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_notification(notification_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Delete a notification."""
     result = await db.execute(
         select(Notification).where(Notification.id == notification_id)

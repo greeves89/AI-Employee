@@ -1,6 +1,7 @@
 import json
+import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.load_balancer import LoadBalancer
 from app.models.task import Task, TaskStatus
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 
 class TaskRouter:
@@ -27,6 +30,10 @@ class TaskRouter:
         model: str | None = None,
     ) -> Task:
         task_id = uuid.uuid4().hex[:12]
+
+        # Budget check: if task targets a specific agent, verify budget
+        if agent_id:
+            await self._check_agent_budget(agent_id)
 
         # Auto-assign if no agent specified
         if not agent_id:
@@ -71,8 +78,88 @@ class TaskRouter:
         )
         await self.redis.push_task(agent_id, task_payload)
 
+        # Publish activity event
+        await self._publish_activity(agent_id, f"Task queued: {title} (priority: {priority})")
+
         await self.db.refresh(task)
         return task
+
+    async def _publish_activity(self, agent_id: str, message: str) -> None:
+        """Publish an activity event to the agent's log channel + history."""
+        try:
+            event = json.dumps({
+                "agent_id": agent_id,
+                "task_id": "",
+                "type": "system",
+                "data": {"message": message},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            if self.redis.client:
+                await self.redis.client.publish(f"agent:{agent_id}:logs", event)
+                history_key = f"agent:{agent_id}:activity"
+                await self.redis.client.rpush(history_key, event)
+                await self.redis.client.ltrim(history_key, -200, -1)
+        except Exception as e:
+            logger.warning(f"Could not publish activity for agent {agent_id}: {e}")
+
+    async def handle_task_start(self, data: dict) -> None:
+        """Update task status to RUNNING when agent picks it up."""
+        task_id = data["task_id"]
+        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task or task.status not in (TaskStatus.QUEUED, TaskStatus.PENDING):
+            return
+        task.status = TaskStatus.RUNNING
+        task.started_at = datetime.now(timezone.utc)
+        await self.db.commit()
+        logger.info(f"Task {task_id} is now running on agent {data.get('agent_id')}")
+
+    async def delete_task(self, task_id: str) -> bool:
+        """Delete a task. Only non-running tasks can be deleted."""
+        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            return False
+        if task.status == TaskStatus.RUNNING:
+            raise ValueError("Cannot delete a running task. Cancel it first.")
+        # If task is queued, remove from Redis queue
+        if task.status == TaskStatus.QUEUED and task.agent_id:
+            await self._remove_from_queue(task.agent_id, task_id)
+        await self.db.delete(task)
+        await self.db.commit()
+        return True
+
+    async def cancel_task(self, task_id: str) -> Task | None:
+        """Cancel a queued/pending task."""
+        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            return None
+        if task.status not in (TaskStatus.QUEUED, TaskStatus.PENDING):
+            raise ValueError(f"Cannot cancel a task with status '{task.status.value}'")
+        if task.agent_id:
+            await self._remove_from_queue(task.agent_id, task_id)
+        task.status = TaskStatus.CANCELLED
+        task.completed_at = datetime.now(timezone.utc)
+        await self.db.commit()
+        await self.db.refresh(task)
+        return task
+
+    async def _remove_from_queue(self, agent_id: str, task_id: str) -> None:
+        """Remove a specific task from an agent's Redis queue."""
+        try:
+            queue_name = f"agent:{agent_id}:tasks"
+            if self.redis.client:
+                queue_items = await self.redis.client.lrange(queue_name, 0, -1)
+                for item in queue_items:
+                    try:
+                        payload = json.loads(item)
+                        if payload.get("id") == task_id:
+                            await self.redis.client.lrem(queue_name, 1, item)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+        except Exception as e:
+            logger.warning(f"Could not remove task {task_id} from Redis queue: {e}")
 
     async def handle_task_completion(self, data: dict) -> None:
         task_id = data["task_id"]
@@ -94,6 +181,8 @@ class TaskRouter:
         # Update agent metrics for self-improvement tracking
         if agent_id:
             await self._update_agent_metrics(agent_id, data)
+            # Check budget thresholds after cost update
+            await self._check_budget_thresholds(agent_id)
 
         # Update schedule stats if this task belongs to a schedule
         schedule_id = (task.metadata_ or {}).get("schedule_id")
@@ -170,3 +259,132 @@ class TaskRouter:
     async def get_task(self, task_id: str) -> Task | None:
         result = await self.db.execute(select(Task).where(Task.id == task_id))
         return result.scalar_one_or_none()
+
+    async def recover_stale_tasks(self, stale_minutes: int = 10) -> int:
+        """Recover tasks stuck as QUEUED/RUNNING after orchestrator restart.
+
+        Tasks can get stuck when the orchestrator misses Redis PubSub completion
+        events (e.g., during a restart). This method:
+        - Re-queues tasks that are still QUEUED but missing from Redis
+        - Marks old RUNNING tasks as failed (agent likely crashed)
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+        recovered = 0
+
+        # Find tasks stuck as QUEUED for too long
+        result = await self.db.execute(
+            select(Task).where(
+                Task.status == TaskStatus.QUEUED,
+                Task.created_at < cutoff,
+            )
+        )
+        stale_queued = list(result.scalars().all())
+
+        for task in stale_queued:
+            # Check if the task is still in the agent's Redis queue
+            if task.agent_id:
+                queue_depth = await self.redis.get_queue_depth(task.agent_id)
+                if queue_depth > 0:
+                    continue  # Task might still be waiting in queue
+
+                # Check if the agent is still alive
+                agent_status = await self.redis.get_agent_status(task.agent_id)
+                if agent_status.get("state") == "working" and agent_status.get("current_task") == task.id:
+                    continue  # Agent is currently working on this task
+
+            # Task is stuck - mark as failed with explanation
+            task.status = TaskStatus.FAILED
+            task.error = "Task lost during orchestrator restart (completion event missed)"
+            task.completed_at = datetime.now(timezone.utc)
+            recovered += 1
+            logger.info(f"Recovered stale QUEUED task {task.id} (agent: {task.agent_id})")
+
+        # Find tasks stuck as RUNNING for too long
+        result = await self.db.execute(
+            select(Task).where(
+                Task.status == TaskStatus.RUNNING,
+                Task.started_at < cutoff,
+            )
+        )
+        stale_running = list(result.scalars().all())
+
+        for task in stale_running:
+            # Check if the agent is still working on it
+            if task.agent_id:
+                agent_status = await self.redis.get_agent_status(task.agent_id)
+                if agent_status.get("state") == "working" and agent_status.get("current_task") == task.id:
+                    continue  # Agent is still working
+
+            task.status = TaskStatus.FAILED
+            task.error = "Task lost - agent stopped responding"
+            task.completed_at = datetime.now(timezone.utc)
+            recovered += 1
+            logger.info(f"Recovered stale RUNNING task {task.id} (agent: {task.agent_id})")
+
+        if recovered:
+            await self.db.commit()
+            logger.info(f"Recovered {recovered} stale tasks total")
+
+        return recovered
+
+    async def _check_agent_budget(self, agent_id: str) -> None:
+        """Raise ValueError if the agent has exceeded its budget."""
+        from app.models.agent import Agent
+
+        result = await self.db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if not agent or agent.budget_usd is None:
+            return  # No budget limit
+
+        total_cost = (agent.config or {}).get("total_cost_usd", 0)
+        if total_cost >= agent.budget_usd:
+            raise ValueError(
+                f"Agent '{agent.name}' budget exceeded (${total_cost:.2f}/${agent.budget_usd:.2f})"
+            )
+
+    async def _check_budget_thresholds(self, agent_id: str) -> None:
+        """After task completion, check if budget thresholds are reached."""
+        from app.models.agent import Agent
+
+        result = await self.db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if not agent or agent.budget_usd is None:
+            return
+
+        total_cost = (agent.config or {}).get("total_cost_usd", 0)
+        pct = total_cost / agent.budget_usd if agent.budget_usd > 0 else 0
+
+        if pct >= 1.0:
+            # Budget exceeded - send notification
+            await self._send_budget_notification(
+                agent, total_cost, "exceeded",
+                f"Agent '{agent.name}' has exceeded its budget "
+                f"(${total_cost:.2f}/${agent.budget_usd:.2f}). "
+                f"New tasks will be blocked until the budget is increased.",
+            )
+        elif pct >= 0.8:
+            # Approaching budget
+            await self._send_budget_notification(
+                agent, total_cost, "warning",
+                f"Agent '{agent.name}' is approaching its budget limit "
+                f"(${total_cost:.2f}/${agent.budget_usd:.2f}, {pct:.0%} used).",
+            )
+
+    async def _send_budget_notification(
+        self, agent, total_cost: float, level: str, message: str
+    ) -> None:
+        """Create a notification for budget alerts."""
+        try:
+            from app.models.notification import Notification
+
+            notif = Notification(
+                agent_id=agent.id,
+                type="warning" if level == "warning" else "error",
+                title=f"Budget {'Warning' if level == 'warning' else 'Exceeded'}: {agent.name}",
+                message=message,
+                priority="high",
+                action_url=f"/agents/{agent.id}",
+            )
+            self.db.add(notif)
+        except Exception as e:
+            logger.warning(f"Could not create budget notification: {e}")

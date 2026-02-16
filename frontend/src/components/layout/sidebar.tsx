@@ -12,12 +12,14 @@ import {
   FolderOpen,
   Plug,
   Settings,
+  Shield,
   Bot,
-  Activity,
   Sun,
   Moon,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
+import { UserMenu } from "./user-menu";
+import { useAuthStore } from "@/lib/auth";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -32,6 +34,8 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-[260px] border-r border-border bg-card/50 backdrop-blur-xl flex flex-col">
@@ -84,15 +88,36 @@ export function Sidebar() {
             </Link>
           );
         })}
+
       </nav>
 
       {/* Bottom */}
       <div className="border-t border-border p-3 space-y-1">
+        {/* Admin link */}
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className={cn(
+              "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-150",
+              pathname.startsWith("/admin")
+                ? "bg-accent text-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+            )}
+          >
+            <Shield
+              className={cn(
+                "h-4 w-4 transition-colors",
+                pathname.startsWith("/admin") ? "text-amber-500" : "text-muted-foreground group-hover:text-amber-500"
+              )}
+            />
+            Admin
+            {pathname.startsWith("/admin") && (
+              <div className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
+            )}
+          </Link>
+        )}
         {/* Notification Bell */}
-        <div className="flex items-center gap-3 rounded-xl px-3 py-1">
-          <NotificationBell />
-          <span className="text-[13px] font-medium text-muted-foreground">Notifications</span>
-        </div>
+        <NotificationBell variant="sidebar" />
         <button
           onClick={toggleTheme}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
@@ -106,15 +131,7 @@ export function Sidebar() {
             {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </span>
         </button>
-        <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
-            <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-medium text-muted-foreground">Platform</p>
-            <p className="text-[10px] text-muted-foreground/60 truncate">Docker + Redis</p>
-          </div>
-        </div>
+        <UserMenu />
       </div>
     </aside>
   );

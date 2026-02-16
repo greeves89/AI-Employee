@@ -24,9 +24,27 @@ class StreamManager:
             if not self.active_connections[channel]:
                 del self.active_connections[channel]
 
+    async def _send_history(self, websocket: WebSocket, agent_id: str) -> None:
+        """Send recent activity history to a newly connected client."""
+        if not self.redis.client:
+            return
+        history_key = f"agent:{agent_id}:activity"
+        events = await self.redis.client.lrange(history_key, -50, -1)  # Last 50
+        if not events:
+            return
+        # Signal frontend to clear existing messages before receiving history
+        await websocket.send_text(json.dumps({"type": "history_start"}))
+        for event in events:
+            if isinstance(event, bytes):
+                event = event.decode("utf-8")
+            await websocket.send_text(event)
+
     async def stream_agent_logs(self, websocket: WebSocket, agent_id: str) -> None:
         channel = f"agent:{agent_id}:logs"
         await self.connect(websocket, channel)
+
+        # Send recent history before subscribing to live events
+        await self._send_history(websocket, agent_id)
 
         pubsub = await self.redis.subscribe(channel)
 

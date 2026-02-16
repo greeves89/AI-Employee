@@ -3,11 +3,13 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.core.stream_manager import StreamManager
 from app.db.session import async_session_factory
+from app.dependencies import get_current_user_ws
 from app.models.chat_message import ChatMessage
+from app.security.agent_guard import chat_rate_limiter, check_chat_message, notify_security_block
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -27,10 +29,32 @@ def init_stream_manager(redis: RedisService, docker: DockerService | None = None
     return stream_manager
 
 
+async def _authenticate_ws(websocket: WebSocket, token: str | None) -> bool:
+    """Authenticate a WebSocket connection via JWT token query param.
+
+    Returns True if authenticated, False if connection was rejected.
+    In setup mode (no users), always returns True.
+    """
+    try:
+        async with async_session_factory() as db:
+            user = await get_current_user_ws(token, db)
+            if not user:
+                await websocket.close(code=4001, reason="Invalid or expired token")
+                return False
+    except Exception:
+        await websocket.close(code=4001, reason="Authentication failed")
+        return False
+
+    return True
+
+
 @router.websocket("/agents/{agent_id}/logs")
-async def ws_agent_logs(websocket: WebSocket, agent_id: str):
+async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None = Query(None)):
     if not stream_manager:
         await websocket.close(code=1011, reason="Stream manager not initialized")
+        return
+
+    if not await _authenticate_ws(websocket, token):
         return
 
     try:
@@ -40,7 +64,7 @@ async def ws_agent_logs(websocket: WebSocket, agent_id: str):
 
 
 @router.websocket("/agents/{agent_id}/chat")
-async def ws_agent_chat(websocket: WebSocket, agent_id: str):
+async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None)):
     """Bidirectional WebSocket for chatting with an agent.
 
     Client sends: {"text": "Hello"} or {"text": "/reset"}
@@ -51,9 +75,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
         await websocket.close(code=1011, reason="Redis not initialized")
         return
 
+    # Authenticate via JWT token
+    if not await _authenticate_ws(websocket, token):
+        return
+
     # Check if agent container is alive before accepting
     if _docker:
-        from app.db.session import async_session_factory
         from app.models.agent import Agent
         from sqlalchemy import select
 
@@ -250,6 +277,29 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
             if not text:
                 continue
 
+            # --- AgentGuard: Rate limiting ---
+            if not chat_rate_limiter.check(agent_id):
+                await websocket.send_text(json.dumps({
+                    "type": "security_block",
+                    "data": {"reason": "Rate limit exceeded. Please wait before sending more messages."},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }))
+                continue
+
+            # --- AgentGuard: Security check on incoming messages ---
+            verdict = check_chat_message(text, source="user")
+            if not verdict.allowed:
+                await websocket.send_text(json.dumps({
+                    "type": "security_block",
+                    "data": {"reason": verdict.reason},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }))
+                if _redis and _redis.client:
+                    await notify_security_block(
+                        _redis.client, source="chat", reason=verdict.reason, agent_id=agent_id
+                    )
+                continue
+
             # Handle session switching from client
             if "session_id" in msg and msg["session_id"]:
                 _session["id"] = msg["session_id"]
@@ -294,6 +344,20 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
 
             await _redis.client.lpush(f"agent:{agent_id}:chat", chat_payload)
 
+            # Publish chat activity event to activity log
+            preview = text[:60] + ("..." if len(text) > 60 else "")
+            activity_event = json.dumps({
+                "agent_id": agent_id,
+                "task_id": "",
+                "type": "system",
+                "data": {"message": f"Chat message received: \"{preview}\""},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            await _redis.client.publish(f"agent:{agent_id}:logs", activity_event)
+            history_key = f"agent:{agent_id}:activity"
+            await _redis.client.rpush(history_key, activity_event)
+            await _redis.client.ltrim(history_key, -200, -1)
+
     except WebSocketDisconnect:
         _ws_connected = False
     except Exception:
@@ -311,10 +375,13 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str):
 
 
 @router.websocket("/notifications")
-async def ws_notifications(websocket: WebSocket):
-    """WebSocket for live notification push to the frontend."""
+async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)):
+    """WebSocket for live notification push to the frontend. Requires ?token=<jwt>."""
     if not _redis or not _redis.client:
         await websocket.close(code=1011, reason="Redis not initialized")
+        return
+
+    if not await _authenticate_ws(websocket, token):
         return
 
     await websocket.accept()
@@ -341,9 +408,12 @@ async def ws_notifications(websocket: WebSocket):
 
 
 @router.websocket("/logs")
-async def ws_all_logs(websocket: WebSocket):
+async def ws_all_logs(websocket: WebSocket, token: str | None = Query(None)):
     if not stream_manager:
         await websocket.close(code=1011, reason="Stream manager not initialized")
+        return
+
+    if not await _authenticate_ws(websocket, token):
         return
 
     try:

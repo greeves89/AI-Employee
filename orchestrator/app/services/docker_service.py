@@ -19,6 +19,7 @@ class DockerService:
         cpu_quota: int = 100000,
         session_volume_name: str | None = None,
         shared_volume_name: str | None = None,
+        needs_sudo: bool = False,
     ) -> docker.models.containers.Container:
         # Ensure volumes exist
         for vol in [volume_name, session_volume_name, shared_volume_name]:
@@ -34,6 +35,11 @@ class DockerService:
         if shared_volume_name:
             volumes[shared_volume_name] = {"bind": "/shared", "mode": "rw"}
 
+        # Security: no-new-privileges blocks sudo. Only enable it when
+        # no sudo permissions are configured. The container sandbox is
+        # the primary isolation layer regardless.
+        security_opts = [] if needs_sudo else ["no-new-privileges:true"]
+
         container = self.client.containers.run(
             image=image,
             name=name,
@@ -45,6 +51,11 @@ class DockerService:
             cpu_quota=cpu_quota,
             restart_policy={"Name": "unless-stopped"},
             labels={"ai-employee.type": "agent"},
+            # Security hardening
+            security_opt=security_opts,
+            cap_drop=["ALL"],
+            cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"],
+            pids_limit=512,
         )
         return container
 
@@ -136,9 +147,12 @@ class DockerService:
             for c in containers
         ]
 
-    def exec_in_container(self, container_id: str, cmd: str) -> tuple[int, str]:
+    def exec_in_container(self, container_id: str, cmd: str, user: str | None = None) -> tuple[int, str]:
         container = self.client.containers.get(container_id)
-        exit_code, output = container.exec_run(cmd, demux=True)
+        kwargs = {"demux": True}
+        if user:
+            kwargs["user"] = user
+        exit_code, output = container.exec_run(cmd, **kwargs)
         stdout = output[0].decode("utf-8", errors="replace") if output[0] else ""
         return exit_code, stdout
 

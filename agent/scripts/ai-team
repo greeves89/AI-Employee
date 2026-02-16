@@ -24,7 +24,11 @@ set -e
 API="${ORCHESTRATOR_URL:-http://orchestrator:8000}/api/v1"
 AGENT_ID="${AGENT_ID:-unknown}"
 AGENT_NAME="${AGENT_NAME:-unknown}"
+AGENT_TOKEN="${AGENT_TOKEN:-}"
 MODEL="${DEFAULT_MODEL:-claude-sonnet-4-5-20250929}"
+
+# Auth headers for all API calls
+AUTH_HEADERS=(-H "Authorization: Bearer $AGENT_TOKEN" -H "X-Agent-ID: $AGENT_ID")
 
 json_escape() {
   python3 -c "import json,sys; print(json.dumps(sys.stdin.read().strip()))"
@@ -38,7 +42,7 @@ case "${1:-help}" in
     ESCAPED_TITLE=$(echo "$TITLE" | json_escape)
     ESCAPED_PROMPT=$(echo "$PROMPT" | json_escape)
     curl -s -X POST "$API/tasks/" \
-      -H "Content-Type: application/json" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"title\": $ESCAPED_TITLE, \"prompt\": $ESCAPED_PROMPT, \"priority\": $PRIORITY, \"agent_id\": \"$AGENT_ID\", \"model\": \"$MODEL\"}"
     ;;
 
@@ -49,7 +53,7 @@ case "${1:-help}" in
     ESCAPED_NAME=$(echo "$NAME" | json_escape)
     ESCAPED_PROMPT=$(echo "$PROMPT" | json_escape)
     curl -s -X POST "$API/schedules/" \
-      -H "Content-Type: application/json" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"name\": $ESCAPED_NAME, \"prompt\": $ESCAPED_PROMPT, \"interval_seconds\": $INTERVAL, \"agent_id\": \"$AGENT_ID\", \"model\": \"$MODEL\"}"
     ;;
 
@@ -58,40 +62,40 @@ case "${1:-help}" in
     MESSAGE="${3:?Usage: ai-team send-message <agent_id> <message>}"
     ESCAPED_MSG=$(echo "$MESSAGE" | json_escape)
     curl -s -X POST "$API/agents/$TO_ID/message" \
-      -H "Content-Type: application/json" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"from_agent_id\": \"$AGENT_ID\", \"from_name\": \"$AGENT_NAME\", \"text\": $ESCAPED_MSG}"
     ;;
 
   list-team)
-    curl -s "$API/agents/team/directory" | python3 -m json.tool
+    curl -s "${AUTH_HEADERS[@]}" "$API/agents/team/directory" | python3 -m json.tool
     ;;
 
   list-tasks)
     STATUS="${2:-}"
     if [ -n "$STATUS" ]; then
-      curl -s "$API/tasks/?agent_id=$AGENT_ID&status=$STATUS" | python3 -m json.tool
+      curl -s "${AUTH_HEADERS[@]}" "$API/tasks/?agent_id=$AGENT_ID&status=$STATUS" | python3 -m json.tool
     else
-      curl -s "$API/tasks/?agent_id=$AGENT_ID" | python3 -m json.tool
+      curl -s "${AUTH_HEADERS[@]}" "$API/tasks/?agent_id=$AGENT_ID" | python3 -m json.tool
     fi
     ;;
 
   list-schedules)
-    curl -s "$API/schedules/" | python3 -m json.tool
+    curl -s "${AUTH_HEADERS[@]}" "$API/schedules/" | python3 -m json.tool
     ;;
 
   pause-schedule)
     SID="${2:?Usage: ai-team pause-schedule <schedule_id>}"
-    curl -s -X POST "$API/schedules/$SID/pause"
+    curl -s -X POST "${AUTH_HEADERS[@]}" "$API/schedules/$SID/pause"
     ;;
 
   resume-schedule)
     SID="${2:?Usage: ai-team resume-schedule <schedule_id>}"
-    curl -s -X POST "$API/schedules/$SID/resume"
+    curl -s -X POST "${AUTH_HEADERS[@]}" "$API/schedules/$SID/resume"
     ;;
 
   delete-schedule)
     SID="${2:?Usage: ai-team delete-schedule <schedule_id>}"
-    curl -s -X DELETE "$API/schedules/$SID"
+    curl -s -X DELETE "${AUTH_HEADERS[@]}" "$API/schedules/$SID"
     ;;
 
   # --- Long-term Memory Commands ---
@@ -104,7 +108,7 @@ case "${1:-help}" in
     ESCAPED_KEY=$(echo "$KEY" | json_escape)
     ESCAPED_CONTENT=$(echo "$CONTENT" | json_escape)
     curl -s -X POST "$API/memory/save" \
-      -H "Content-Type: application/json" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"agent_id\": \"$AGENT_ID\", \"category\": \"$CATEGORY\", \"key\": $ESCAPED_KEY, \"content\": $ESCAPED_CONTENT, \"importance\": $IMPORTANCE}"
     ;;
 
@@ -114,19 +118,19 @@ case "${1:-help}" in
     URL="$API/memory/search?agent_id=$AGENT_ID"
     [ -n "$QUERY" ] && URL="$URL&q=$QUERY"
     [ -n "$CATEGORY" ] && URL="$URL&category=$CATEGORY"
-    curl -s "$URL" | python3 -m json.tool
+    curl -s "${AUTH_HEADERS[@]}" "$URL" | python3 -m json.tool
     ;;
 
   memory-list)
     CATEGORY="${2:-}"
     URL="$API/memory/agents/$AGENT_ID"
     [ -n "$CATEGORY" ] && URL="$URL?category=$CATEGORY"
-    curl -s "$URL" | python3 -m json.tool
+    curl -s "${AUTH_HEADERS[@]}" "$URL" | python3 -m json.tool
     ;;
 
   memory-delete)
     MID="${2:?Usage: ai-team memory-delete <memory_id>}"
-    curl -s -X DELETE "$API/memory/$MID"
+    curl -s -X DELETE "${AUTH_HEADERS[@]}" "$API/memory/$MID"
     ;;
 
   # --- Notification Commands ---
@@ -139,7 +143,7 @@ case "${1:-help}" in
     ESCAPED_TITLE=$(echo "$TITLE" | json_escape)
     ESCAPED_MSG=$(echo "$MESSAGE" | json_escape)
     curl -s -X POST "$API/notifications/" \
-      -H "Content-Type: application/json" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"agent_id\": \"$AGENT_ID\", \"type\": \"$TYPE\", \"title\": $ESCAPED_TITLE, \"message\": $ESCAPED_MSG, \"priority\": \"$PRIORITY\"}"
     ;;
 
@@ -163,7 +167,7 @@ case "${1:-help}" in
     OPTIONS="$OPTIONS]"
     ESCAPED_Q=$(echo "$QUESTION" | json_escape)
     curl -s -X POST "$API/notifications/" \
-      -H "Content-Type: application/json" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"agent_id\": \"$AGENT_ID\", \"type\": \"approval\", \"title\": $ESCAPED_Q, \"message\": \"\", \"priority\": \"high\", \"meta\": {\"options\": $OPTIONS}}"
     ;;
 

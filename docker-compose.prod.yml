@@ -1,0 +1,67 @@
+# Production override: HTTPS via Traefik reverse proxy
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Required env vars (in .env):
+#   DOMAIN=your-domain.com
+#   ACME_EMAIL=admin@your-domain.com
+#   API_SECRET_KEY=<strong-random-key>  (NOT the default!)
+#   DB_PASSWORD=<strong-password>
+#   ENCRYPTION_KEY=<fernet-key>
+#
+# IMPORTANT: Also edit docker-compose.yml to bind ports to localhost only:
+#   orchestrator ports: "127.0.0.1:8000:8000"
+#   frontend ports:     "127.0.0.1:3000:3000"
+# This prevents direct access bypassing Traefik.
+# Alternatively, block ports 8000/3000 with your firewall (ufw/iptables).
+
+services:
+  traefik:
+    image: traefik:v3.2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - letsencrypt_data:/letsencrypt
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  orchestrator:
+    labels:
+      traefik.enable: "true"
+      # API + Health routes
+      traefik.http.routers.api.rule: "Host(`${DOMAIN}`) && (PathPrefix(`/api/`) || Path(`/health`))"
+      traefik.http.routers.api.entrypoints: "websecure"
+      traefik.http.routers.api.tls.certresolver: "letsencrypt"
+      traefik.http.routers.api.service: "api"
+      traefik.http.services.api.loadbalancer.server.port: "8000"
+    environment:
+      CORS_ALLOW_ORIGIN: "https://${DOMAIN}"
+      OAUTH_REDIRECT_BASE_URL: "https://${DOMAIN}"
+
+  frontend:
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.frontend.rule: "Host(`${DOMAIN}`)"
+      traefik.http.routers.frontend.entrypoints: "websecure"
+      traefik.http.routers.frontend.tls.certresolver: "letsencrypt"
+      traefik.http.routers.frontend.service: "frontend"
+      traefik.http.routers.frontend.priority: "1"
+      traefik.http.services.frontend.loadbalancer.server.port: "3000"
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: "https://${DOMAIN}"
+        NEXT_PUBLIC_WS_URL: "wss://${DOMAIN}"
+
+volumes:
+  letsencrypt_data:

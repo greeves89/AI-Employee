@@ -1,0 +1,42 @@
+# Traefik Static Configuration
+# https://doc.traefik.io/traefik/
+
+api:
+  dashboard: false  # Enable with caution in production
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "${ACME_EMAIL}"
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: ai-employee_internal
+
+log:
+  level: WARN
+
+accessLog:
+  filters:
+    statusCodes:
+      - "400-599"

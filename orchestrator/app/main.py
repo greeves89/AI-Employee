@@ -1,9 +1,12 @@
 import asyncio
 import json
+import logging
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.router import api_router
 from app.api.ws import init_stream_manager
@@ -12,6 +15,108 @@ from app.db.session import engine
 from app.models.base import Base
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
+
+
+# --- Security Headers Middleware ---
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # CSP - allow self + inline styles (Tailwind) + wss for websockets
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' ws: wss:; "
+            "font-src 'self' data:; "
+            "frame-ancestors 'none'"
+        )
+        return response
+
+
+# --- API Rate Limiting Middleware ---
+
+
+class APIRateLimitMiddleware(BaseHTTPMiddleware):
+    """Per-user / per-IP rate limiting for API endpoints."""
+
+    def __init__(self, app, max_requests: int = 120, window_seconds: int = 60):
+        super().__init__(app)
+        self.max_requests = max_requests
+        self.window = window_seconds
+        self._requests: dict[str, list[float]] = {}
+
+    async def dispatch(self, request: Request, call_next):
+        import time
+
+        # Skip rate limiting for health checks and WebSocket upgrades
+        path = request.url.path
+        if path == "/health" or request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
+        # Identify caller: user_id from JWT cookie, fallback to IP
+        key = request.client.host if request.client else "unknown"
+        access_token = request.cookies.get("access_token")
+        if access_token:
+            try:
+                from app.core.auth import decode_token
+                payload = decode_token(access_token)
+                key = f"user:{payload.get('sub', key)}"
+            except Exception:
+                pass  # Use IP if token is invalid
+
+        now = time.time()
+        # Clean old entries
+        if key not in self._requests:
+            self._requests[key] = []
+        self._requests[key] = [t for t in self._requests[key] if now - t < self.window]
+
+        if len(self._requests[key]) >= self.max_requests:
+            logger.warning(f"Rate limit exceeded for {key}")
+            return Response(
+                content='{"detail":"Rate limit exceeded. Try again later."}',
+                status_code=429,
+                media_type="application/json",
+                headers={"Retry-After": str(self.window)},
+            )
+
+        self._requests[key].append(now)
+        return await call_next(request)
+
+
+# --- Config Validation ---
+
+
+def _validate_config() -> None:
+    """Validate critical security settings at startup."""
+    warnings = []
+
+    if not settings.encryption_key:
+        warnings.append("ENCRYPTION_KEY is not set - OAuth token encryption will fail!")
+
+    if settings.api_secret_key == "change-me-in-production":
+        warnings.append(
+            "API_SECRET_KEY is still the default value! "
+            "Set a strong random key for JWT signing and agent auth."
+        )
+
+    if not settings.anthropic_api_key and not settings.claude_code_oauth_token:
+        warnings.append("Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set.")
+
+    for w in warnings:
+        logger.warning(f"CONFIG WARNING: {w}")
+
+
+# --- Background Tasks ---
 
 
 async def _refresh_oauth_tokens(redis: RedisService) -> None:
@@ -29,15 +134,23 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
         await asyncio.sleep(300)  # Check every 5 minutes
 
 
-async def _listen_task_completions(redis: RedisService) -> None:
-    """Background task that listens for task completion events from agents."""
+async def _listen_task_events(redis: RedisService) -> None:
+    """Background task that listens for task start + completion events from agents."""
     pubsub = await redis.subscribe("task:completions")
+    # Also subscribe to task:started channel
+    if redis.client:
+        await pubsub.subscribe("task:started")
+
     while True:
         try:
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=1.0
             )
             if message and message["type"] == "message":
+                channel = message.get("channel", b"")
+                if isinstance(channel, bytes):
+                    channel = channel.decode("utf-8")
+
                 data = message["data"]
                 if isinstance(data, str):
                     data = json.loads(data)
@@ -52,13 +165,22 @@ async def _listen_task_completions(redis: RedisService) -> None:
                 async with async_session_factory() as db:
                     lb = LoadBalancer(redis)
                     router = TaskRouter(db, redis, lb)
-                    await router.handle_task_completion(data)
+                    if channel == "task:started":
+                        await router.handle_task_start(data)
+                    else:
+                        await router.handle_task_completion(data)
         except Exception:
             await asyncio.sleep(1)
 
 
+# --- Lifespan ---
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate config on startup
+    _validate_config()
+
     # Create tables (ignore if enums/tables already exist)
     try:
         async with engine.begin() as conn:
@@ -66,6 +188,37 @@ async def lifespan(app: FastAPI):
     except Exception:
         # Tables/enums already exist from a previous run - that's fine
         pass
+
+    # Seed builtin agent templates
+    try:
+        from app.core.agent_templates import BUILTIN_TEMPLATES
+        from app.db.session import async_session_factory
+        from app.models.agent_template import AgentTemplate
+
+        async with async_session_factory() as db:
+            for tmpl_data in BUILTIN_TEMPLATES:
+                from sqlalchemy import select as sel
+                existing = await db.scalar(
+                    sel(AgentTemplate).where(AgentTemplate.name == tmpl_data["name"])
+                )
+                if not existing:
+                    tmpl = AgentTemplate(is_builtin=True, **tmpl_data)
+                    db.add(tmpl)
+            await db.commit()
+        logger.info(f"Seeded {len(BUILTIN_TEMPLATES)} builtin agent templates")
+    except Exception as e:
+        logger.warning(f"Failed to seed templates: {e}")
+
+    # Load persisted settings from DB
+    try:
+        from app.db.session import async_session_factory as _sf
+        from app.services.settings_service import SettingsService
+
+        async with _sf() as db:
+            svc = SettingsService(db)
+            await svc.load_into_config()
+    except Exception as e:
+        logger.warning(f"Could not load persisted settings: {e}")
 
     # Initialize services
     app.state.redis = RedisService(settings.redis_url)
@@ -75,8 +228,23 @@ async def lifespan(app: FastAPI):
     # Initialize stream manager for WebSocket
     init_stream_manager(app.state.redis, app.state.docker)
 
-    # Start background task listener
-    completion_task = asyncio.create_task(_listen_task_completions(app.state.redis))
+    # Recover stale tasks from previous shutdown
+    try:
+        from app.core.load_balancer import LoadBalancer
+        from app.core.task_router import TaskRouter
+        from app.db.session import async_session_factory
+
+        async with async_session_factory() as db:
+            lb = LoadBalancer(app.state.redis)
+            router = TaskRouter(db, app.state.redis, lb)
+            recovered = await router.recover_stale_tasks(stale_minutes=10)
+            if recovered:
+                logger.info(f"Recovered {recovered} stale tasks from previous shutdown")
+    except Exception as e:
+        logger.warning(f"Stale task recovery failed: {e}")
+
+    # Start background task listener (completions + starts)
+    completion_task = asyncio.create_task(_listen_task_events(app.state.redis))
 
     # Start OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
@@ -109,6 +277,9 @@ async def lifespan(app: FastAPI):
     await app.state.redis.disconnect()
 
 
+# --- App ---
+
+
 app = FastAPI(
     title="AI Employee Orchestrator",
     description="Manages autonomous Claude Code agents in Docker containers",
@@ -116,12 +287,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Security headers
+app.add_middleware(SecurityHeadersMiddleware)
+
+# API rate limiting (120 requests/minute per user or IP)
+app.add_middleware(APIRateLimitMiddleware, max_requests=120, window_seconds=60)
+
+# CORS
+_allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+if os.environ.get("CORS_ALLOW_ORIGIN"):
+    _allowed_origins.append(os.environ["CORS_ALLOW_ORIGIN"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(api_router, prefix="/api/v1")

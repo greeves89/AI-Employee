@@ -21,8 +21,13 @@ class LogPublisher:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
-        await self.redis.publish(f"agent:{self.agent_id}:logs", message)
+        channel = f"agent:{self.agent_id}:logs"
+        await self.redis.publish(channel, message)
         await self.redis.publish("agents:logs:all", message)
+        # Store in activity history (keep last 200 events)
+        history_key = f"agent:{self.agent_id}:activity"
+        await self.redis.rpush(history_key, message)
+        await self.redis.ltrim(history_key, -200, -1)
 
     async def publish_chat(self, message_id: str, event_type: str, data: dict | str) -> None:
         """Publish chat events to a dedicated chat channel."""

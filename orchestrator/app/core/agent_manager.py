@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -9,12 +10,76 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import AGENT_VERSION, settings
+from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
+from app.models.mcp_server import McpServer
 from app.models.schedule import Schedule
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────
+# Permission Packages - configurable sudo rules per agent
+# ──────────────────────────────────────────────
+PERMISSION_PACKAGES = {
+    "package-install": {
+        "label": "Paketinstallation",
+        "description": "System-Pakete installieren und verwalten (apt-get, dpkg)",
+        "icon": "package",
+        "sudoers_commands": [
+            "/usr/bin/apt-get update",
+            "/usr/bin/apt-get install *",
+            "/usr/bin/apt-get remove *",
+            "/usr/bin/dpkg -i *",
+        ],
+    },
+    "system-config": {
+        "label": "Systemkonfiguration",
+        "description": "Dateiberechtigungen und Verzeichnisse verwalten (chmod, chown, mkdir, ln)",
+        "icon": "settings",
+        "sudoers_commands": [
+            "/usr/bin/chmod *",
+            "/usr/bin/chown *",
+            "/usr/bin/mkdir *",
+            "/usr/bin/ln *",
+        ],
+    },
+    "full-access": {
+        "label": "Voller Root-Zugriff",
+        "description": "Uneingeschraenkter sudo-Zugriff - fuer Entwicklung und Testing",
+        "icon": "shield-off",
+        "sudoers_commands": ["ALL"],
+    },
+}
+
+# Default permissions for new agents
+DEFAULT_PERMISSIONS = ["package-install"]
+
+
+def generate_sudoers(permissions: list[str]) -> str:
+    """Generate sudoers file content from permission package names."""
+    if not permissions:
+        return ""
+
+    # Full access overrides everything
+    if "full-access" in permissions:
+        return "agent ALL=(ALL) NOPASSWD: ALL\n"
+
+    # Collect all allowed commands
+    commands: list[str] = []
+    for perm_name in permissions:
+        pkg = PERMISSION_PACKAGES.get(perm_name)
+        if pkg:
+            commands.extend(pkg["sudoers_commands"])
+
+    if not commands:
+        return ""
+
+    # Build sudoers line: agent ALL=(ALL) NOPASSWD: cmd1, cmd2, ...
+    cmd_list = ", ".join(commands)
+    return f"agent ALL=(ALL) NOPASSWD: {cmd_list}\n"
+
 
 PROACTIVE_PROMPT = """You are running in PROACTIVE mode. No one asked you to do anything — you are
 checking on your own initiative whether there is work to be done.
@@ -164,21 +229,104 @@ class AgentManager:
         self.docker = docker
         self.redis = redis
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None) -> Agent:
+    @staticmethod
+    def _build_provider_env() -> dict[str, str]:
+        """Build environment variables for the active model provider.
+
+        Returns the correct auth env vars depending on ``settings.model_provider``:
+        - ``anthropic`` (default): ANTHROPIC_API_KEY *or* CLAUDE_CODE_OAUTH_TOKEN
+        - ``bedrock``: CLAUDE_CODE_USE_BEDROCK + AWS credentials
+        - ``vertex``:  CLAUDE_CODE_USE_VERTEX + GCP credentials
+        - ``foundry``: CLAUDE_CODE_USE_FOUNDRY + Azure Foundry credentials
+        """
+        provider = settings.model_provider
+
+        if provider == "bedrock":
+            env: dict[str, str] = {"CLAUDE_CODE_USE_BEDROCK": "1"}
+            if settings.aws_access_key_id:
+                env["AWS_ACCESS_KEY_ID"] = settings.aws_access_key_id
+            if settings.aws_secret_access_key:
+                env["AWS_SECRET_ACCESS_KEY"] = settings.aws_secret_access_key
+            if settings.aws_region:
+                env["AWS_REGION"] = settings.aws_region
+            return env
+
+        if provider == "vertex":
+            env = {
+                "CLAUDE_CODE_USE_VERTEX": "1",
+                "CLOUD_ML_REGION": settings.vertex_region or "us-east5",
+            }
+            if settings.vertex_project_id:
+                env["ANTHROPIC_VERTEX_PROJECT_ID"] = settings.vertex_project_id
+            if settings.vertex_credentials_json:
+                # The agent entrypoint will write this to a file and set
+                # GOOGLE_APPLICATION_CREDENTIALS accordingly.
+                env["GOOGLE_CREDENTIALS_JSON"] = settings.vertex_credentials_json
+            return env
+
+        if provider == "foundry":
+            env = {"CLAUDE_CODE_USE_FOUNDRY": "1"}
+            if settings.foundry_api_key:
+                env["ANTHROPIC_FOUNDRY_API_KEY"] = settings.foundry_api_key
+            if settings.foundry_resource:
+                env["ANTHROPIC_FOUNDRY_RESOURCE"] = settings.foundry_resource
+            return env
+
+        # Default: Anthropic Direct
+        env = {}
+        if settings.anthropic_api_key:
+            env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+        elif settings.claude_code_oauth_token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+        return env
+
+    async def _publish_event(self, agent_id: str, event_type: str, message: str) -> None:
+        """Publish a lifecycle event to the agent's log channel."""
+        try:
+            event = json.dumps({
+                "agent_id": agent_id,
+                "task_id": "",
+                "type": event_type,
+                "data": {"message": message},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            channel = f"agent:{agent_id}:logs"
+            await self.redis.client.publish(channel, event)
+            # Store in activity history (keep last 200 events)
+            history_key = f"agent:{agent_id}:activity"
+            await self.redis.client.rpush(history_key, event)
+            await self.redis.client.ltrim(history_key, -200, -1)
+        except Exception as e:
+            logger.warning(f"Could not publish event for agent {agent_id}: {e}")
+
+    async def _get_custom_mcp_env(self) -> dict[str, str]:
+        """Load enabled custom MCP servers and return as env var dict."""
+        result = await self.db.execute(
+            select(McpServer).where(McpServer.enabled == True)
+        )
+        servers = result.scalars().all()
+        if not servers:
+            return {}
+        mcp_map = {s.name: s.url for s in servers}
+        return {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
+
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
         session_volume = f"claude-session-{agent_id}"
         model = model or settings.default_model
 
-        # Build auth environment (API key or OAuth token)
-        auth_env = {}
-        if settings.anthropic_api_key:
-            auth_env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
-        elif settings.claude_code_oauth_token:
-            auth_env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+        # Build provider-specific auth environment
+        provider_env = self._build_provider_env()
+
+        # Load custom MCP servers
+        mcp_env = await self._get_custom_mcp_env()
 
         # Create Docker container with workspace + session + shared volumes
+        agent_token = make_agent_token(agent_id)
+        agent_permissions = permissions if permissions is not None else DEFAULT_PERMISSIONS
+        needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
@@ -186,9 +334,11 @@ class AgentManager:
                 "AGENT_ID": agent_id,
                 "AGENT_NAME": name,
                 "AGENT_ROLE": role or "",
+                "AGENT_TOKEN": agent_token,
                 "REDIS_URL": settings.redis_url_internal,
                 "ORCHESTRATOR_URL": "http://orchestrator:8000",
-                **auth_env,
+                **provider_env,
+                **mcp_env,
                 "DEFAULT_MODEL": model,
                 "MAX_TURNS": str(settings.max_turns),
             },
@@ -198,7 +348,14 @@ class AgentManager:
             network=settings.agent_network,
             memory_limit=settings.agent_memory_limit,
             cpu_quota=settings.agent_cpu_quota,
+            needs_sudo=needs_sudo,
         )
+
+        # Apply permission packages (write sudoers file as root)
+        try:
+            self._apply_permissions(container.id, agent_permissions)
+        except Exception as e:
+            logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
         # Initialize CLAUDE.md (system instructions) and knowledge.md (agent knowledge)
         try:
@@ -224,13 +381,16 @@ class AgentManager:
             name=name,
             container_id=container.id,
             volume_name=volume_name,
+            user_id=user_id,
             state=AgentState.RUNNING,
             model=model,
+            budget_usd=budget_usd,
             config={
                 "session_volume": session_volume,
                 "role": role or "",
                 "onboarding_complete": False,
                 "integrations": integrations or [],
+                "permissions": agent_permissions,
                 "agent_version": AGENT_VERSION,
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
             },
@@ -269,7 +429,34 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not create proactive schedule: {e}")
 
+        await self._publish_event(agent_id, "system", f"Agent created: {name} (model: {model or 'default'})")
         return agent
+
+    def _apply_permissions(self, container_id: str, permissions: list[str]) -> None:
+        """Write sudoers file into container based on permission packages."""
+        sudoers_content = generate_sudoers(permissions)
+        if sudoers_content:
+            # Write sudoers file via tar archive (avoids shell escaping issues)
+            self.docker.write_file_in_container(
+                container_id,
+                "/etc/sudoers.d/agent-permissions",
+                sudoers_content,
+            )
+            # Fix ownership and permissions (must be root:root, 0440)
+            self.docker.exec_in_container(
+                container_id,
+                "chmod 0440 /etc/sudoers.d/agent-permissions",
+                user="root",
+            )
+            logger.info(f"Applied permissions {permissions} to container {container_id[:12]}")
+        else:
+            # No permissions - remove any existing sudoers file
+            self.docker.exec_in_container(
+                container_id,
+                "rm -f /etc/sudoers.d/agent-permissions",
+                user="root",
+            )
+            logger.info(f"Removed all sudo permissions from container {container_id[:12]}")
 
     def _update_team_registry(self, container_id: str, agent_id: str, name: str, role: str) -> None:
         """Update the shared team.json with this agent's info."""
@@ -297,7 +484,89 @@ class AgentManager:
             container_id, "/shared/team.json", json_module.dumps(team, indent=2)
         )
 
+    async def restart_agent(self, agent_id: str) -> Agent:
+        """Restart agent by recreating its container with fresh env vars.
+
+        Preserves all data (volumes, knowledge, config) but picks up
+        new environment (MCP servers, integrations, etc).
+        """
+        await self._publish_event(agent_id, "system", "Agent restarting (recreating container with fresh config)...")
+        agent = await self._get_agent(agent_id)
+        config = agent.config or {}
+
+        # 1. Stop and remove old container (volumes stay!)
+        if agent.container_id:
+            try:
+                self.docker.stop_container(agent.container_id)
+            except (NotFound, APIError):
+                pass
+            try:
+                self.docker.remove_container(agent.container_id)
+            except (NotFound, APIError):
+                pass
+
+        # 2. Build fresh environment
+        provider_env = self._build_provider_env()
+        mcp_env = await self._get_custom_mcp_env()
+
+        volume_name = agent.volume_name
+        session_volume = config.get("session_volume", f"claude-session-{agent_id}")
+        role = config.get("role", "")
+        model = agent.model or settings.default_model
+        container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
+
+        # 3. Create new container with same volumes
+        agent_token = make_agent_token(agent_id)
+        agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
+        needs_sudo = len(agent_permissions) > 0
+        container = self.docker.create_container(
+            image=settings.agent_image,
+            name=container_name,
+            environment={
+                "AGENT_ID": agent_id,
+                "AGENT_NAME": agent.name,
+                "AGENT_ROLE": role,
+                "AGENT_TOKEN": agent_token,
+                "REDIS_URL": settings.redis_url_internal,
+                "ORCHESTRATOR_URL": "http://orchestrator:8000",
+                **provider_env,
+                **mcp_env,
+                "DEFAULT_MODEL": model,
+                "MAX_TURNS": str(settings.max_turns),
+            },
+            volume_name=volume_name,
+            session_volume_name=session_volume,
+            shared_volume_name="ai-employee-shared",
+            network=settings.agent_network,
+            memory_limit=settings.agent_memory_limit,
+            cpu_quota=settings.agent_cpu_quota,
+            needs_sudo=needs_sudo,
+        )
+
+        # 4. Re-apply permissions
+        try:
+            self._apply_permissions(container.id, agent_permissions)
+        except Exception as e:
+            logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
+
+        # 5. Update team registry
+        try:
+            self._update_team_registry(container.id, agent_id, agent.name, role or "Unassigned")
+        except Exception as e:
+            logger.warning(f"Could not update team registry: {e}")
+
+        # 6. Update DB
+        agent.container_id = container.id
+        agent.state = AgentState.RUNNING
+        await self.db.commit()
+        await self.db.refresh(agent)
+
+        logger.info(f"Agent {agent_id} restarted with fresh config")
+        await self._publish_event(agent_id, "system", "Agent restarted successfully with updated config")
+        return agent
+
     async def stop_agent(self, agent_id: str) -> Agent:
+        await self._publish_event(agent_id, "system", "Agent stopping...")
         agent = await self._get_agent(agent_id)
         if agent.container_id:
             try:
@@ -306,9 +575,11 @@ class AgentManager:
                 logger.warning(f"Container {agent.container_id} not found when stopping agent {agent_id}: {e}")
         agent.state = AgentState.STOPPED
         await self.db.commit()
+        await self._publish_event(agent_id, "system", "Agent stopped")
         return agent
 
     async def start_agent(self, agent_id: str) -> Agent:
+        await self._publish_event(agent_id, "system", "Agent starting...")
         agent = await self._get_agent(agent_id)
         if agent.container_id:
             try:
@@ -317,9 +588,11 @@ class AgentManager:
                 logger.warning(f"Container {agent.container_id} not found for agent {agent_id}")
                 agent.state = AgentState.ERROR
                 await self.db.commit()
+                await self._publish_event(agent_id, "error", "Agent container not found - delete and recreate")
                 raise ValueError(f"Agent container no longer exists. Delete and recreate the agent.")
         agent.state = AgentState.RUNNING
         await self.db.commit()
+        await self._publish_event(agent_id, "system", "Agent started")
         return agent
 
     async def update_agent(self, agent_id: str) -> Agent:
@@ -339,11 +612,8 @@ class AgentManager:
                 pass
 
         # 2. Build environment (same as create)
-        auth_env = {}
-        if settings.anthropic_api_key:
-            auth_env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
-        elif settings.claude_code_oauth_token:
-            auth_env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+        provider_env = self._build_provider_env()
+        mcp_env = await self._get_custom_mcp_env()
 
         volume_name = agent.volume_name
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
@@ -353,6 +623,9 @@ class AgentManager:
         container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
 
         # 3. Create new container with same volumes
+        agent_token = make_agent_token(agent_id)
+        agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
+        needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
@@ -360,9 +633,11 @@ class AgentManager:
                 "AGENT_ID": agent_id,
                 "AGENT_NAME": agent.name,
                 "AGENT_ROLE": role,
+                "AGENT_TOKEN": agent_token,
                 "REDIS_URL": settings.redis_url_internal,
                 "ORCHESTRATOR_URL": "http://orchestrator:8000",
-                **auth_env,
+                **provider_env,
+                **mcp_env,
                 "DEFAULT_MODEL": model,
                 "MAX_TURNS": str(settings.max_turns),
             },
@@ -372,9 +647,16 @@ class AgentManager:
             network=settings.agent_network,
             memory_limit=settings.agent_memory_limit,
             cpu_quota=settings.agent_cpu_quota,
+            needs_sudo=needs_sudo,
         )
 
-        # 4. Update CLAUDE.md (system instructions) but keep knowledge.md (agent data)
+        # 4. Re-apply permission packages from config
+        try:
+            self._apply_permissions(container.id, agent_permissions)
+        except Exception as e:
+            logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
+
+        # 5. Update CLAUDE.md (system instructions) but keep knowledge.md (agent data)
         try:
             self.docker.write_file_in_container(
                 container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
@@ -383,13 +665,13 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not update CLAUDE.md: {e}")
 
-        # 5. Update team registry
+        # 6. Update team registry
         try:
             self._update_team_registry(container.id, agent_id, agent.name, role or "Unassigned")
         except Exception as e:
             logger.warning(f"Could not update team registry: {e}")
 
-        # 6. Update DB
+        # 7. Update DB
         agent.container_id = container.id
         agent.state = AgentState.RUNNING
         config["agent_version"] = AGENT_VERSION
@@ -402,6 +684,7 @@ class AgentManager:
         return agent
 
     async def remove_agent(self, agent_id: str, remove_data: bool = False) -> None:
+        await self._publish_event(agent_id, "system", f"Agent being removed (delete data: {remove_data})")
         agent = await self._get_agent(agent_id)
         if agent.container_id:
             try:
@@ -458,7 +741,11 @@ class AgentManager:
             "role": config.get("role", ""),
             "onboarding_complete": config.get("onboarding_complete", False),
             "integrations": config.get("integrations", []),
+            "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,
+            "budget_usd": agent.budget_usd,
+            "total_cost_usd": config.get("total_cost_usd", 0.0),
+            "user_id": agent.user_id,
             "created_at": agent.created_at,
             "updated_at": agent.updated_at,
         }

@@ -48,7 +48,7 @@ export function LiveTerminal({ agentId }: LiveTerminalProps) {
       >
         {messages.length === 0 ? (
           <div className="text-muted-foreground">
-            Waiting for agent output...
+            Waiting for agent activity...
           </div>
         ) : (
           messages.map((msg, i) => (

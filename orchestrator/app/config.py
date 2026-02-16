@@ -18,6 +18,23 @@ class Settings(BaseSettings):
     default_model: str = "claude-sonnet-4-5-20250929"
     max_turns: int = 100
 
+    # Model Provider: "anthropic", "bedrock", "vertex", "foundry"
+    model_provider: str = "anthropic"
+
+    # Amazon Bedrock
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region: str = "us-east-1"
+
+    # Google Vertex AI
+    vertex_project_id: str = ""
+    vertex_region: str = "us-east5"
+    vertex_credentials_json: str = ""
+
+    # Microsoft Foundry (Azure)
+    foundry_api_key: str = ""
+    foundry_resource: str = ""
+
     # Docker
     agent_image: str = "ai-employee-agent:latest"
     agent_network: str = "ai-employee-network"
@@ -31,6 +48,8 @@ class Settings(BaseSettings):
 
     # Security
     encryption_key: str = ""
+    api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
+    registration_open: bool = True  # Allow new user registration
 
     # OAuth Integrations
     oauth_google_client_id: str = ""

@@ -8,9 +8,15 @@ from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.memory import AgentMemory
 from app.models.notification import Notification
 from app.models.webhook import WebhookEvent
+from app.models.mcp_server import McpServer
+from app.models.user import User, UserRole
+from app.models.agent_template import AgentTemplate
+from app.models.platform_settings import PlatformSettings
+from app.models.agent_access import AgentAccess
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
     "TaskLog", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
-    "AgentMemory", "Notification", "WebhookEvent",
+    "AgentMemory", "Notification", "WebhookEvent", "McpServer",
+    "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
 ]

@@ -10,6 +10,8 @@ class AgentCreate(BaseModel):
     model: str | None = None
     role: str | None = None
     integrations: list[str] | None = None
+    permissions: list[str] | None = None
+    budget_usd: float | None = None
 
 
 class AgentResponse(BaseModel):
@@ -21,7 +23,11 @@ class AgentResponse(BaseModel):
     role: str | None = None
     onboarding_complete: bool = False
     integrations: list[str] = []
+    permissions: list[str] = []
     update_available: bool = False
+    budget_usd: float | None = None
+    total_cost_usd: float = 0.0
+    user_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

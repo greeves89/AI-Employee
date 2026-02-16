@@ -4,10 +4,15 @@ FROM python:3.12-slim AS base
 LABEL ai-employee.version="1.2.0"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
+# Pre-install common tools the agent might need
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     build-essential \
+    jq \
+    wget \
+    unzip \
+    python3-venv \
     sudo \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
@@ -16,9 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create non-root user with passwordless sudo (can install system packages)
-RUN useradd -m -s /bin/bash agent \
-    && echo "agent ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/agent
+# Create non-root user with sudo installed (permissions configured dynamically by orchestrator)
+# Container isolation is the real sandbox - sudo rules are set per-agent via permission packages
+RUN useradd -m -s /bin/bash agent
 
 # Install Python dependencies
 WORKDIR /opt/agent

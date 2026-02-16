@@ -1,10 +1,52 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import {
+  Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
+  Network, ChevronRight, Wrench, Brain, Bell, Cpu,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Integration } from "@/lib/types";
+import type { McpServerInfo } from "@/lib/api";
+
+// Built-in MCP servers that every agent has
+const BUILTIN_MCP_SERVERS = [
+  {
+    name: "Memory",
+    icon: Brain,
+    color: "text-purple-400",
+    iconBg: "bg-purple-500/10",
+    tools: [
+      { name: "memory_save", description: "Save important information to categorized memory" },
+      { name: "memory_search", description: "Search memories by keyword and/or category" },
+      { name: "memory_list", description: "List all memories, filtered by category" },
+      { name: "memory_delete", description: "Delete a specific memory" },
+    ],
+  },
+  {
+    name: "Notifications",
+    icon: Bell,
+    color: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tools: [
+      { name: "notify_user", description: "Send notification (Web UI + Telegram for high/urgent)" },
+      { name: "request_approval", description: "Ask for explicit approval before critical actions" },
+    ],
+  },
+  {
+    name: "Orchestrator",
+    icon: Cpu,
+    color: "text-blue-400",
+    iconBg: "bg-blue-500/10",
+    tools: [
+      { name: "create_task", description: "Create tasks for self or other agents" },
+      { name: "list_team", description: "See all team members with roles and status" },
+      { name: "send_message", description: "Send a text message to another agent" },
+      { name: "create_schedule", description: "Create recurring task schedules" },
+    ],
+  },
+];
 
 interface IntegrationSelectorProps {
   agentId: string;
@@ -13,18 +55,22 @@ interface IntegrationSelectorProps {
 export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [agentIntegrations, setAgentIntegrations] = useState<string[]>([]);
+  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [changed, setChanged] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [{ integrations: all }, { integrations: enabled }] = await Promise.all([
+      const [{ integrations: all }, { integrations: enabled }, { servers }] = await Promise.all([
         api.getIntegrations(),
         api.getAgentIntegrations(agentId),
+        api.getMcpServers(),
       ]);
       setIntegrations(all);
       setAgentIntegrations(enabled);
+      setMcpServers(servers);
     } catch {
       // API not ready
     } finally {
@@ -59,6 +105,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   };
 
   const connectedIntegrations = integrations.filter((i) => i.connected);
+  const enabledMcpServers = mcpServers.filter((s) => s.enabled);
+  const totalMcpCount = BUILTIN_MCP_SERVERS.length + enabledMcpServers.length;
 
   if (loading) {
     return (
@@ -70,11 +118,160 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
   return (
     <div className="space-y-4">
+      {/* MCP Servers - Built-in + External */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Network className="h-4 w-4 text-violet-400" />
+            <span className="text-sm font-medium">MCP Tools</span>
+            <span className="text-[10px] text-muted-foreground/60">
+              Tool servers available to this agent
+            </span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            {totalMcpCount} servers active
+          </span>
+        </div>
+
+        <div className="divide-y divide-foreground/[0.04]">
+          {/* Built-in servers */}
+          {BUILTIN_MCP_SERVERS.map((server) => {
+            const Icon = server.icon;
+            const key = `builtin-${server.name}`;
+            const isExpanded = expandedItem === key;
+            return (
+              <div key={key}>
+                <button
+                  onClick={() => setExpandedItem(isExpanded ? null : key)}
+                  className="flex items-center gap-3 w-full px-5 py-3 hover:bg-foreground/[0.02] transition-colors"
+                >
+                  <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", server.iconBg)}>
+                    <Icon className={cn("h-4 w-4", server.color)} />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{server.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">
+                        built-in
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                      {server.tools.length} tools
+                    </p>
+                  </div>
+                  <ChevronRight
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground/40 transition-transform duration-200 shrink-0",
+                      isExpanded && "rotate-90"
+                    )}
+                  />
+                </button>
+
+                {isExpanded && (
+                  <div className="px-5 pb-3 space-y-1.5">
+                    <div className="pl-11 space-y-1">
+                      {server.tools.map((tool) => (
+                        <div
+                          key={tool.name}
+                          className="flex items-start gap-2.5 py-1.5 px-3 rounded-lg bg-foreground/[0.02]"
+                        >
+                          <Wrench className="h-3 w-3 text-muted-foreground/40 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className="text-[11px] font-mono font-medium text-foreground/80">
+                              {tool.name}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/60 ml-2">
+                              {tool.description}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* External MCP servers */}
+          {enabledMcpServers.map((server) => {
+            const key = `ext-${server.id}`;
+            const isExpanded = expandedItem === key;
+            const toolCount = server.tools?.length ?? 0;
+            return (
+              <div key={key}>
+                <button
+                  onClick={() => setExpandedItem(isExpanded ? null : key)}
+                  className="flex items-center gap-3 w-full px-5 py-3 hover:bg-foreground/[0.02] transition-colors"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
+                    <Network className="h-4 w-4 text-violet-400" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{server.name}</span>
+                      <span className="text-[10px] text-muted-foreground/50 truncate max-w-[300px]">
+                        {server.url}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                      {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <ChevronRight
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground/40 transition-transform duration-200 shrink-0",
+                      isExpanded && "rotate-90"
+                    )}
+                  />
+                </button>
+
+                {isExpanded && server.tools && server.tools.length > 0 && (
+                  <div className="px-5 pb-3 space-y-1.5">
+                    <div className="pl-11 space-y-1">
+                      {server.tools.map((tool) => (
+                        <div
+                          key={tool.name}
+                          className="flex items-start gap-2.5 py-1.5 px-3 rounded-lg bg-foreground/[0.02]"
+                        >
+                          <Wrench className="h-3 w-3 text-violet-400/60 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className="text-[11px] font-mono font-medium text-foreground/80">
+                              {tool.name}
+                            </span>
+                            {tool.description && (
+                              <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                                {tool.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {enabledMcpServers.length === 0 && (
+          <div className="border-t border-foreground/[0.04] px-5 py-3">
+            <p className="text-[11px] text-muted-foreground/50">
+              Add external MCP servers on the{" "}
+              <a href="/integrations" className="text-primary hover:underline">Integrations</a>{" "}
+              page, then restart the agent to activate them.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* OAuth Integrations */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <Plug className="h-4 w-4 text-blue-400" />
-            <span className="text-sm font-medium">Agent Integrations</span>
+            <span className="text-sm font-medium">OAuth Integrations</span>
             <span className="text-[10px] text-muted-foreground/60">
               Select which services this agent can access
             </span>

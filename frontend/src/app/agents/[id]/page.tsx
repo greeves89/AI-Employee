@@ -5,11 +5,12 @@ import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  Cpu, MemoryStick, MessageSquare, Terminal, History,
+  Cpu, MemoryStick, MessageSquare, History,
   CheckCircle2, XCircle, Clock, Loader2, RotateCcw,
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
+  Settings, Package, ShieldOff, Check,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
@@ -22,7 +23,7 @@ import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { Agent, FileEntry } from "@/lib/types";
+import type { Agent, FileEntry, PermissionPackage } from "@/lib/types";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
   pending: { icon: Clock, color: "text-amber-400", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
@@ -44,12 +45,13 @@ const agentStateConfig: Record<string, { dot: string; label: string; badge: stri
 
 const tabs = [
   { key: "chat", label: "Chat", icon: MessageSquare },
-  { key: "terminal", label: "Live Output", icon: Terminal },
+  { key: "terminal", label: "Activity", icon: Activity },
   { key: "files", label: "Files", icon: FolderOpen },
   { key: "history", label: "Task History", icon: History },
   { key: "knowledge", label: "Knowledge", icon: Brain },
   { key: "memory", label: "Memory", icon: MemoryStick },
   { key: "integrations", label: "Integrations", icon: Plug },
+  { key: "settings", label: "Settings", icon: Settings },
 ] as const;
 
 type TabKey = (typeof tabs)[number]["key"];
@@ -60,6 +62,7 @@ export default function AgentDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const { tasks } = useTasks(agentId);
   const [activeTab, setActiveTab] = useState<TabKey>("chat");
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -102,17 +105,38 @@ export default function AgentDetailPage() {
         title={agent.name}
         subtitle={`Agent ${agent.id.slice(0, 8)}`}
         actions={
-          <div className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
-            stateConfig.badge
-          )}>
-            <span className="relative flex h-1.5 w-1.5">
-              {isActive && (
-                <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", stateConfig.dot)} />
-              )}
-              <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", stateConfig.dot)} />
-            </span>
-            {stateConfig.label}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setRestarting(true);
+                try {
+                  const updated = await api.restartAgent(agentId);
+                  setAgent(updated as Agent);
+                } catch {
+                  // ignore
+                } finally {
+                  setRestarting(false);
+                }
+              }}
+              disabled={restarting}
+              className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/[0.2] hover:bg-foreground/[0.04] transition-all disabled:opacity-50"
+              title="Restart agent (picks up new MCP servers, integrations)"
+            >
+              <RefreshCw className={cn("h-3 w-3", restarting && "animate-spin")} />
+              {restarting ? "Restarting..." : "Restart"}
+            </button>
+            <div className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
+              stateConfig.badge
+            )}>
+              <span className="relative flex h-1.5 w-1.5">
+                {isActive && (
+                  <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", stateConfig.dot)} />
+                )}
+                <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", stateConfig.dot)} />
+              </span>
+              {stateConfig.label}
+            </div>
           </div>
         }
       />
@@ -157,11 +181,10 @@ export default function AgentDetailPage() {
           />
         </div>
 
-        {/* Proactive mode + MCP Tools */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <ProactiveToggle agentId={agentId} />
-          <McpInfo />
-        </div>
+        {/* Budget progress */}
+        {agent.budget_usd != null && agent.budget_usd > 0 && (
+          <BudgetBar spent={agent.total_cost_usd ?? 0} budget={agent.budget_usd} />
+        )}
 
         {/* Update available banner */}
         {agent.update_available && (
@@ -214,6 +237,7 @@ export default function AgentDetailPage() {
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
           {activeTab === "memory" && <MemoryTab agentId={agentId} />}
           {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
+          {activeTab === "settings" && <AgentSettings agentId={agentId} currentPermissions={agent.permissions ?? []} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>
     </div>
@@ -299,6 +323,43 @@ function InfoCard({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
+  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const color =
+    pct >= 100
+      ? "from-red-500 to-red-400"
+      : pct >= 80
+        ? "from-amber-500 to-amber-400"
+        : "from-emerald-500 to-teal-400";
+  const labelColor =
+    pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-400" : "text-emerald-400";
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
+            <DollarSign className="h-3.5 w-3.5 text-amber-400" />
+          </div>
+          <span className="text-[11px] font-medium text-muted-foreground">Budget</span>
+        </div>
+        <span className={cn("text-sm font-bold tabular-nums", labelColor)}>
+          ${spent.toFixed(2)} / ${budget.toFixed(2)}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-foreground/[0.06]">
+        <div
+          className={cn("h-2 rounded-full bg-gradient-to-r transition-all duration-700 ease-out", color)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-right">
+        {pct.toFixed(0)}% used
+      </p>
     </div>
   );
 }
@@ -552,45 +613,242 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0)} ${sizes[i]}`;
 }
 
+const PERM_ICON_MAP: Record<string, React.ElementType> = {
+  package: Package,
+  settings: Settings,
+  "shield-off": ShieldOff,
+};
+
+function AgentSettings({
+  agentId,
+  currentPermissions,
+  onUpdated,
+}: {
+  agentId: string;
+  currentPermissions: string[];
+  onUpdated: (agent: Agent) => void;
+}) {
+  const [packages, setPackages] = useState<PermissionPackage[]>([]);
+  const [selected, setSelected] = useState<string[]>(currentPermissions);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    api.getPermissionPackages().then((data) => {
+      setPackages(data.packages);
+    }).catch(() => setPackages([]));
+  }, []);
+
+  useEffect(() => {
+    setSelected(currentPermissions);
+  }, [currentPermissions]);
+
+  const togglePermission = (id: string) => {
+    setSelected((prev) => {
+      if (id === "full-access") {
+        return prev.includes(id) ? [] : ["full-access"];
+      }
+      const without = prev.filter((p) => p !== "full-access" && p !== id);
+      if (prev.includes(id)) return without;
+      return [...without, id];
+    });
+  };
+
+  const hasChanges = JSON.stringify([...selected].sort()) !== JSON.stringify([...currentPermissions].sort());
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const result = await api.updateAgentPermissions(agentId, selected);
+      if (result.warning) {
+        setMessage({ type: "warning", text: result.warning });
+      } else {
+        setMessage({ type: "success", text: "Berechtigungen aktualisiert." });
+      }
+      // Refresh agent data
+      const updated = await api.getAgent(agentId);
+      onUpdated(updated as Agent);
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Fehler beim Speichern" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Proactive Mode */}
+      <ProactiveToggle agentId={agentId} />
+
+      {/* Permissions */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">Berechtigungen (Sudo-Pakete)</span>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving || !hasChanges}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Speichern
+          </button>
+        </div>
+
+        <div className="p-5 space-y-2">
+          {packages.map((pkg) => {
+            const Icon = PERM_ICON_MAP[pkg.icon] || Package;
+            const isSelected = selected.includes(pkg.id);
+            const isFullAccess = pkg.id === "full-access";
+
+            return (
+              <button
+                key={pkg.id}
+                type="button"
+                onClick={() => togglePermission(pkg.id)}
+                className={cn(
+                  "w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200",
+                  isSelected
+                    ? isFullAccess
+                      ? "border-amber-500/40 bg-amber-500/[0.08]"
+                      : "border-primary/40 bg-primary/[0.08]"
+                    : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+                    isSelected
+                      ? isFullAccess
+                        ? "bg-amber-500/20 text-amber-400"
+                        : "bg-primary/20 text-primary"
+                      : "bg-foreground/[0.06] text-muted-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        isSelected ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      {pkg.label}
+                    </span>
+                    {pkg.default && !isFullAccess && (
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-primary/60 bg-primary/10 px-1.5 py-0.5 rounded">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">
+                    {pkg.description}
+                  </p>
+                </div>
+                <div
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all mt-0.5",
+                    isSelected
+                      ? isFullAccess
+                        ? "border-amber-500 bg-amber-500 text-white"
+                        : "border-primary bg-primary text-white"
+                      : "border-foreground/20"
+                  )}
+                >
+                  {isSelected && <Check className="h-3 w-3" />}
+                </div>
+              </button>
+            );
+          })}
+
+          {packages.length === 0 && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
+              <span className="text-xs text-muted-foreground/50">Berechtigungspakete werden geladen...</span>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 pb-4">
+          <p className="text-[11px] text-muted-foreground/50">
+            Ohne Auswahl: nur pip/npm install (kein sudo). Basis-Tools (git, curl, node) sind immer verfuegbar.
+          </p>
+        </div>
+      </div>
+
+      {/* Status messages */}
+      {message && (
+        <div className={cn(
+          "rounded-lg border px-4 py-2.5 text-sm",
+          message.type === "success" && "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+          message.type === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-400",
+          message.type === "error" && "border-red-500/20 bg-red-500/10 text-red-400",
+        )}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FileBrowser({ agentId }: { agentId: string }) {
-  const [currentPath, setCurrentPath] = useState("/workspace");
-  const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace"]));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadFiles = async (path: string) => {
-    setLoading(true);
+  const loadDir = async (path: string) => {
     try {
       const data = await api.getFiles(agentId, path);
-      setEntries(data.entries);
-      setCurrentPath(path);
+      setTreeData((prev) => ({ ...prev, [path]: data.entries }));
     } catch {
-      setEntries([]);
-    } finally {
-      setLoading(false);
+      setTreeData((prev) => ({ ...prev, [path]: [] }));
     }
   };
 
   useEffect(() => {
-    loadFiles(currentPath);
+    setLoading(true);
+    loadDir("/workspace").finally(() => setLoading(false));
   }, [agentId]);
 
-  const navigateTo = (path: string) => {
-    loadFiles(path);
+  const toggleDir = async (path: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        // Collapse: remove this and all children
+        Array.from(next).forEach((p) => {
+          if (p.startsWith(path) && p !== "/workspace") next.delete(p);
+        });
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+    // Load children if not already loaded
+    if (!treeData[path]) {
+      await loadDir(path);
+    }
   };
 
-  const goUp = () => {
-    const parent = currentPath.split("/").slice(0, -1).join("/") || "/";
-    loadFiles(parent);
+  const refreshAll = async () => {
+    setLoading(true);
+    const paths = Array.from(new Set(["/workspace"].concat(Array.from(expanded))));
+    await Promise.all(paths.map(loadDir));
+    setLoading(false);
   };
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
-      await api.uploadFiles(agentId, currentPath, files);
-      await loadFiles(currentPath);
+      await api.uploadFiles(agentId, "/workspace", files);
+      await refreshAll();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -604,55 +862,99 @@ function FileBrowser({ agentId }: { agentId: string }) {
     window.open(url, "_blank");
   };
 
-  // Breadcrumb segments
-  const pathParts = currentPath.split("/").filter(Boolean);
+  const sortEntries = (entries: FileEntry[]) =>
+    [...entries].sort((a, b) => {
+      if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
 
-  // Sort: directories first, then files, alphabetically
-  const sorted = [...entries].sort((a, b) => {
-    if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
+  const renderTree = (path: string, depth: number): React.ReactNode => {
+    const entries = treeData[path];
+    if (!entries) return null;
+    const sorted = sortEntries(entries);
+
+    return sorted.map((entry) => {
+      const isDir = entry.type === "directory";
+      const isExpanded = expanded.has(entry.path);
+      const hasChildren = treeData[entry.path]?.length;
+
+      return (
+        <div key={entry.path}>
+          <div
+            className="flex items-center gap-2 py-1.5 px-3 hover:bg-foreground/[0.03] transition-colors cursor-pointer group"
+            style={{ paddingLeft: `${depth * 20 + 12}px` }}
+            onClick={() => isDir ? toggleDir(entry.path) : handleDownload(entry)}
+          >
+            {/* Expand/collapse chevron or spacer */}
+            {isDir ? (
+              <ChevronRight className={cn(
+                "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
+                isExpanded && "rotate-90"
+              )} />
+            ) : (
+              <span className="w-3 shrink-0" />
+            )}
+
+            {/* Icon */}
+            {isDir ? (
+              isExpanded ? (
+                <FolderOpen className="h-4 w-4 text-amber-400 shrink-0" />
+              ) : (
+                <Folder className="h-4 w-4 text-amber-400 shrink-0" />
+              )
+            ) : (
+              <File className="h-4 w-4 text-blue-400 shrink-0" />
+            )}
+
+            {/* Name */}
+            <span className="text-[13px] truncate flex-1 min-w-0">
+              {entry.name}
+            </span>
+
+            {/* Size for files */}
+            {!isDir && (
+              <span className="text-[11px] text-muted-foreground/50 tabular-nums shrink-0">
+                {formatFileSize(entry.size)}
+              </span>
+            )}
+
+            {/* Download button for files */}
+            {!isDir && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDownload(entry); }}
+                className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title="Download"
+              >
+                <Download className="h-3 w-3" />
+              </button>
+            )}
+
+            {/* Loading indicator for expanding dirs */}
+            {isDir && isExpanded && !treeData[entry.path] && (
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
+            )}
+          </div>
+
+          {/* Children */}
+          {isDir && isExpanded && treeData[entry.path] && (
+            renderTree(entry.path, depth + 1)
+          )}
+        </div>
+      );
+    });
+  };
 
   return (
-    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
-        <div className="flex items-center gap-2 min-w-0">
-          {currentPath !== "/" && currentPath !== "/workspace" && (
-            <button
-              onClick={goUp}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
-              title="Go up"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <div className="flex items-center gap-1 text-xs min-w-0 overflow-hidden">
-            <button
-              onClick={() => navigateTo("/workspace")}
-              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            >
-              workspace
-            </button>
-            {pathParts.slice(1).map((part, i) => {
-              const fullPath = "/" + pathParts.slice(0, i + 2).join("/");
-              return (
-                <span key={fullPath} className="flex items-center gap-1 min-w-0">
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />
-                  <button
-                    onClick={() => navigateTo(fullPath)}
-                    className="text-muted-foreground hover:text-foreground transition-colors truncate"
-                  >
-                    {part}
-                  </button>
-                </span>
-              );
-            })}
-          </div>
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3 shrink-0">
+        <div className="flex items-center gap-2">
+          <FolderOpen className="h-4 w-4 text-amber-400" />
+          <span className="text-sm font-medium">/workspace</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => loadFiles(currentPath)}
+            onClick={refreshAll}
             className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
           >
             <RefreshCw className="h-3 w-3" />
@@ -676,66 +978,19 @@ function FileBrowser({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      {/* File list */}
+      {/* Tree */}
       {loading ? (
-        <div className="flex items-center justify-center h-48">
+        <div className="flex items-center justify-center flex-1">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : sorted.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-48 text-muted-foreground/50">
+      ) : !treeData["/workspace"] || treeData["/workspace"].length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground/50">
           <FolderOpen className="h-8 w-8 mb-2" />
-          <p className="text-sm">Empty directory</p>
+          <p className="text-sm">Empty workspace</p>
         </div>
       ) : (
-        <div className="divide-y divide-foreground/[0.04] max-h-[500px] overflow-auto">
-          {sorted.map((entry) => (
-            <div
-              key={entry.path}
-              className="flex items-center gap-3 px-5 py-2.5 hover:bg-foreground/[0.03] transition-colors cursor-pointer group"
-              onClick={() => {
-                if (entry.type === "directory") {
-                  navigateTo(entry.path);
-                }
-              }}
-            >
-              <div className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-lg shrink-0",
-                entry.type === "directory" ? "bg-amber-500/10" : "bg-blue-500/10"
-              )}>
-                {entry.type === "directory" ? (
-                  <Folder className="h-4 w-4 text-amber-400" />
-                ) : (
-                  <File className="h-4 w-4 text-blue-400" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{entry.name}</p>
-                <p className="text-[11px] text-muted-foreground/60">
-                  {entry.type === "directory"
-                    ? "Directory"
-                    : formatFileSize(entry.size)}
-                  {entry.modified > 0 && (
-                    <span className="ml-2">{new Date(entry.modified * 1000).toLocaleDateString()}</span>
-                  )}
-                </p>
-              </div>
-              {entry.type === "file" && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload(entry);
-                  }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                  title="Download"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {entry.type === "directory" && (
-                <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-              )}
-            </div>
-          ))}
+        <div className="py-2 overflow-auto font-mono flex-1">
+          {renderTree("/workspace", 0)}
         </div>
       )}
     </div>

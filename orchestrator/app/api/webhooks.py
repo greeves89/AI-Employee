@@ -9,9 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_redis_service
+from app.dependencies import get_redis_service, require_auth
 from app.models.agent import Agent
 from app.models.webhook import WebhookEvent
+from app.security.agent_guard import (
+    check_webhook_payload,
+    notify_security_block,
+    sanitize_webhook_payload,
+    webhook_rate_limiter,
+)
 from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -20,7 +26,6 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 class WebhookTrigger(BaseModel):
     source: str = "custom"
     event_type: str = "generic"
-    prompt_template: str | None = None  # optional: override the default prompt
 
 
 @router.post("/agents/{agent_id}")
@@ -35,6 +40,10 @@ async def receive_webhook(
     The full request body is passed as context to the agent.
     Supports JSON, form data, or raw text.
     """
+    # --- AgentGuard: Rate limiting ---
+    if not webhook_rate_limiter.check(agent_id):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded for this agent")
+
     # Verify agent exists
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
@@ -64,6 +73,27 @@ async def receive_webhook(
         or payload.get("event_type", "generic")
     )
 
+    # --- Security Layer: check payload for injection ---
+    verdict = check_webhook_payload(payload, str(source))
+    if not verdict.allowed:
+        # Block the webhook, log it, and notify user
+        event = WebhookEvent(
+            agent_id=agent_id,
+            source=str(source),
+            event_type=str(event_type),
+            payload=payload,
+            status="blocked",
+        )
+        db.add(event)
+        await db.commit()
+        await notify_security_block(
+            redis.client, source=f"webhook/{source}", reason=verdict.reason, agent_id=agent_id
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Blocked by security layer: {verdict.reason}",
+        )
+
     # Save webhook event
     event = WebhookEvent(
         agent_id=agent_id,
@@ -76,19 +106,8 @@ async def receive_webhook(
     await db.commit()
     await db.refresh(event)
 
-    # Build prompt for the agent
-    prompt_template = payload.get("prompt_template")
-    if prompt_template:
-        prompt = prompt_template.replace("{{payload}}", json.dumps(payload, indent=2))
-    else:
-        prompt = (
-            f"Webhook Event received:\n"
-            f"Source: {source}\n"
-            f"Event: {event_type}\n"
-            f"Payload:\n```json\n{json.dumps(payload, indent=2)}\n```\n\n"
-            f"Process this event according to your role and knowledge. "
-            f"If you're unsure what to do, send a notification to the user."
-        )
+    # Build prompt with structural wrapping (defence in depth)
+    prompt = sanitize_webhook_payload(payload, str(source), str(event_type))
 
     # Create task via Redis queue
     task_id = uuid.uuid4().hex[:12]
@@ -116,6 +135,7 @@ async def receive_webhook(
 async def list_webhook_events(
     agent_id: str,
     limit: int = 50,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """List webhook events for an agent."""

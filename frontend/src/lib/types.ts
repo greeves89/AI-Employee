@@ -23,13 +23,27 @@ export interface Agent {
   role: string | null;
   onboarding_complete: boolean;
   integrations: string[];
+  permissions: string[];
   update_available: boolean;
+  budget_usd: number | null;
+  total_cost_usd: number;
+  user_id: string | null;
   created_at: string;
   updated_at: string;
   current_task: string | null;
   cpu_percent: number | null;
   memory_usage_mb: number | null;
   queue_depth: number | null;
+}
+
+export type UserRole = "admin" | "manager" | "member" | "viewer";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  is_active: boolean;
 }
 
 export interface Integration {
@@ -97,6 +111,8 @@ export interface Schedule {
   updated_at: string;
 }
 
+export type ModelProvider = "anthropic" | "bedrock" | "vertex" | "foundry";
+
 export interface Settings {
   has_api_key: boolean;
   has_oauth_token: boolean;
@@ -105,6 +121,15 @@ export interface Settings {
   default_model: string;
   max_turns: number;
   max_agents: number;
+  registration_open: boolean;
+  // Provider info
+  model_provider: ModelProvider;
+  has_bedrock: boolean;
+  has_vertex: boolean;
+  has_foundry: boolean;
+  aws_region: string;
+  vertex_region: string;
+  foundry_resource: string;
 }
 
 export interface AgentMemory {
@@ -152,6 +177,14 @@ export interface ProactiveResponse {
   } | null;
 }
 
+export interface PermissionPackage {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  default: boolean;
+}
+
 export interface WebhookEvent {
   id: number;
   source: string;
@@ -159,4 +192,22 @@ export interface WebhookEvent {
   status: string;
   task_id: string | null;
   created_at: string;
+}
+
+export interface AgentTemplate {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string;
+  icon: string;
+  category: string;
+  model: string;
+  role: string;
+  permissions: string[];
+  integrations: string[];
+  mcp_server_ids: number[];
+  knowledge_template: string;
+  is_builtin: boolean;
+  created_by: string | null;
+  created_at: string | null;
 }
