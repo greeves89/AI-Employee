@@ -10,13 +10,14 @@ import {
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
-  Settings, Package, ShieldOff, Check,
+  Settings, Package, ShieldOff, Check, ListTodo,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { MemoryTab } from "@/components/agents/memory-tab";
+import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
 import { ProactiveToggle } from "@/components/agents/proactive-toggle";
 import { useTasks } from "@/hooks/use-tasks";
@@ -34,18 +35,19 @@ const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; b
   cancelled: { icon: XCircle, color: "text-zinc-400", badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
 };
 
-const agentStateConfig: Record<string, { dot: string; label: string; badge: string }> = {
-  running: { dot: "bg-emerald-500", label: "Online", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-  working: { dot: "bg-blue-500", label: "Working", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-  idle: { dot: "bg-amber-500", label: "Idle", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  stopped: { dot: "bg-zinc-500", label: "Stopped", badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
-  error: { dot: "bg-red-500", label: "Error", badge: "bg-red-500/10 text-red-400 border-red-500/20" },
-  created: { dot: "bg-violet-500", label: "Starting", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
+const agentStateConfig: Record<string, { online: boolean; label: string; badge: string }> = {
+  running: { online: true, label: "Idle", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  idle: { online: true, label: "Idle", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  working: { online: true, label: "Working", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  stopped: { online: false, label: "Stopped", badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
+  error: { online: false, label: "Error", badge: "bg-red-500/10 text-red-400 border-red-500/20" },
+  created: { online: false, label: "Starting", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
 };
 
 const tabs = [
   { key: "chat", label: "Chat", icon: MessageSquare },
   { key: "terminal", label: "Activity", icon: Activity },
+  { key: "todos", label: "Todos", icon: ListTodo },
   { key: "files", label: "Files", icon: FolderOpen },
   { key: "history", label: "Task History", icon: History },
   { key: "knowledge", label: "Knowledge", icon: Brain },
@@ -95,7 +97,7 @@ export default function AgentDetailPage() {
   }
 
   const stateConfig = agentStateConfig[agent.state] ?? agentStateConfig.stopped;
-  const isActive = agent.state === "running" || agent.state === "working";
+  const isActive = stateConfig.online;
   const cpuPercent = agent.cpu_percent ?? 0;
   const memMb = agent.memory_usage_mb ?? 0;
 
@@ -126,14 +128,18 @@ export default function AgentDetailPage() {
               {restarting ? "Restarting..." : "Restart"}
             </button>
             <div className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
+              "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",
               stateConfig.badge
             )}>
+              {/* Green/red dot = online/offline */}
               <span className="relative flex h-1.5 w-1.5">
-                {isActive && (
-                  <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", stateConfig.dot)} />
+                {stateConfig.online && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
                 )}
-                <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", stateConfig.dot)} />
+                <span className={cn(
+                  "relative inline-flex h-1.5 w-1.5 rounded-full",
+                  stateConfig.online ? "bg-emerald-500" : "bg-red-500"
+                )} />
               </span>
               {stateConfig.label}
             </div>
@@ -152,9 +158,9 @@ export default function AgentDetailPage() {
           <InfoCard
             icon={Activity}
             label="State"
-            value={stateConfig.label}
-            color="text-blue-400"
-            iconBg="bg-blue-500/10"
+            value={stateConfig.online ? `Online · ${stateConfig.label}` : stateConfig.label}
+            color={stateConfig.online ? "text-emerald-400" : "text-red-400"}
+            iconBg={stateConfig.online ? "bg-emerald-500/10" : "bg-red-500/10"}
           />
           <InfoCard
             icon={Cpu}
@@ -232,6 +238,7 @@ export default function AgentDetailPage() {
         <div className="flex-1 min-h-0">
           {activeTab === "chat" && <AgentChat agentId={agentId} />}
           {activeTab === "terminal" && <LiveTerminal agentId={agentId} />}
+          {activeTab === "todos" && <TodoTab agentId={agentId} />}
           {activeTab === "files" && <FileBrowser agentId={agentId} />}
           {activeTab === "history" && <TaskHistory tasks={tasks} />}
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}

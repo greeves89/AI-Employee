@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -16,9 +17,11 @@ import {
   Bot,
   Sun,
   Moon,
+  MessageSquarePlus,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UserMenu } from "./user-menu";
+import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
 
 const navItems = [
@@ -26,7 +29,7 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Cpu },
   { href: "/tasks", label: "Tasks", icon: ListTodo },
   { href: "/schedules", label: "Schedules", icon: Clock },
-  { href: "/files", label: "Files", icon: FolderOpen },
+  { href: "/files", label: "Explorer", icon: FolderOpen },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -36,15 +39,16 @@ export function Sidebar() {
   const { theme, toggleTheme } = useTheme();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-[260px] border-r border-border bg-card/50 backdrop-blur-xl flex flex-col">
-      {/* Logo */}
+      {/* Logo + Feedback */}
       <div className="flex h-14 items-center gap-3 px-5 border-b border-border">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
           <Bot className="h-4 w-4 text-white" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <span className="text-sm font-semibold tracking-tight">AI Employee</span>
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
@@ -54,7 +58,16 @@ export function Sidebar() {
             <span className="text-[10px] text-muted-foreground">Online</span>
           </div>
         </div>
+        <button
+          onClick={() => setFeedbackOpen(true)}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
+          title="Feedback senden"
+        >
+          <MessageSquarePlus className="h-4 w-4" />
+        </button>
       </div>
+
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 p-3 pt-4">

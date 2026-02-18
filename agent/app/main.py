@@ -37,6 +37,7 @@ def register_mcp_servers() -> None:
     to be registered via `claude mcp add --scope user`.
     """
     # Built-in stdio servers
+    # AGENT_TOKEN is required for all API calls (verify_agent_token auth)
     builtin_servers = {
         "memory": {
             "command": "node",
@@ -44,6 +45,7 @@ def register_mcp_servers() -> None:
             "env": {
                 "ORCHESTRATOR_URL": settings.orchestrator_url,
                 "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
             },
         },
         "notifications": {
@@ -52,6 +54,7 @@ def register_mcp_servers() -> None:
             "env": {
                 "ORCHESTRATOR_URL": settings.orchestrator_url,
                 "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
             },
         },
         "orchestrator": {
@@ -61,6 +64,7 @@ def register_mcp_servers() -> None:
                 "ORCHESTRATOR_URL": settings.orchestrator_url,
                 "AGENT_ID": settings.agent_id,
                 "AGENT_NAME": settings.agent_name or settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
                 "DEFAULT_MODEL": settings.default_model,
             },
         },
@@ -70,7 +74,7 @@ def register_mcp_servers() -> None:
         env_args: list[str] = []
         for k, v in cfg["env"].items():
             env_args.extend(["-e", f"{k}={v}"])
-        cmd_args = env_args + [name, "--", cfg["command"]] + cfg["args"]
+        cmd_args = env_args + ["--", name, cfg["command"]] + cfg["args"]
         if _run_mcp_add(cmd_args):
             print(f"[Agent] Registered MCP server: {name} (stdio)")
         else:
@@ -99,11 +103,11 @@ def _write_mcp_json_fallback() -> None:
     """Write .mcp.json as fallback for interactive mode / documentation."""
     mcp_config: dict = {"mcpServers": {}}
 
-    # Built-in servers
+    # Built-in servers (AGENT_TOKEN required for API auth)
     for name, cmd, envs in [
-        ("memory", "/opt/mcp/memory-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id}),
-        ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id}),
-        ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "DEFAULT_MODEL": settings.default_model}),
+        ("memory", "/opt/mcp/memory-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+        ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+        ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
     ]:
         mcp_config["mcpServers"][name] = {"command": "node", "args": [cmd], "env": envs}
 
@@ -119,6 +123,27 @@ def _write_mcp_json_fallback() -> None:
     config_path = os.path.join(settings.workspace_dir, ".mcp.json")
     with open(config_path, "w") as f:
         json.dump(mcp_config, f, indent=2)
+
+
+def setup_github_credentials() -> None:
+    """If GITHUB_TOKEN env is set, configure git and gh CLI for authentication."""
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return
+
+    agent_name = settings.agent_name or settings.agent_id
+
+    # Configure git to use token for HTTPS GitHub access
+    subprocess.run(
+        ["git", "config", "--global", "url.https://oauth2:{t}@github.com/.insteadOf".format(t=token),
+         "https://github.com/"],
+        capture_output=True, text=True,
+    )
+    subprocess.run(["git", "config", "--global", "user.name", agent_name], capture_output=True, text=True)
+    subprocess.run(["git", "config", "--global", "user.email", f"{settings.agent_id}@ai-employee.local"], capture_output=True, text=True)
+
+    # gh CLI uses GH_TOKEN env var automatically (set by orchestrator)
+    print(f"[Agent] GitHub credentials configured for {agent_name}")
 
 
 def setup_vertex_credentials() -> None:
@@ -138,8 +163,9 @@ async def main() -> None:
     agent_id = settings.agent_id
     print(f"[Agent {agent_id}] Starting up...")
 
-    # Set up Vertex AI credentials if provided
+    # Set up credentials
     setup_vertex_credentials()
+    setup_github_credentials()
 
     # Register MCP servers with Claude Code CLI
     register_mcp_servers()

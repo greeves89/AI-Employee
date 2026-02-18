@@ -13,6 +13,7 @@ class OAuthProvider(str, enum.Enum):
     GOOGLE = "google"
     MICROSOFT = "microsoft"
     APPLE = "apple"
+    GITHUB = "github"
 
 
 class OAuthIntegration(Base, TimestampMixin):

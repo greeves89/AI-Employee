@@ -165,6 +165,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
+  const pendingCountRef = useRef(0);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -502,7 +503,10 @@ export function AgentChat({ agentId }: { agentId: string }) {
           content: String(data.message || "Unknown error"),
           timestamp: event.timestamp,
         });
-        setIsWaiting(false);
+        pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
+        if (pendingCountRef.current === 0) {
+          setIsWaiting(false);
+        }
       } else if (type === "done") {
         if (assistantIdx !== -1) {
           const meta = {
@@ -526,7 +530,11 @@ export function AgentChat({ agentId }: { agentId: string }) {
           setTotalTurns((t) => t + meta.num_turns);
           setMessageCount((c) => c + 1);
         }
-        setIsWaiting(false);
+        // Decrement pending count - only stop waiting when all messages are processed
+        pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
+        if (pendingCountRef.current === 0) {
+          setIsWaiting(false);
+        }
       }
 
       return msgs;
@@ -565,6 +573,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
       session_id: activeSessionId || currentWsSessionId.current,
     }));
     setInput("");
+    pendingCountRef.current += 1;
     setIsWaiting(true);
     inputRef.current?.focus();
 
@@ -791,14 +800,14 @@ export function AgentChat({ agentId }: { agentId: string }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={connectionFailed ? "Agent not connected" : isWaiting ? "Waiting for response..." : "Type a message... (Enter to send)"}
-            disabled={!isConnected || isWaiting}
+            placeholder={connectionFailed ? "Agent not connected" : isWaiting ? "Agent arbeitet... (du kannst trotzdem schreiben)" : "Type a message... (Enter to send)"}
+            disabled={!isConnected}
             className="flex-1 resize-none rounded-xl border border-border bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-40 transition-all placeholder:text-muted-foreground/30"
             rows={1}
           />
           <button
             onClick={sendMessage}
-            disabled={!isConnected || isWaiting || !input.trim()}
+            disabled={!isConnected || !input.trim()}
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
           >
             <Send className="h-4 w-4" />

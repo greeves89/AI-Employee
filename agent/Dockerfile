@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.2.0"
+LABEL ai-employee.version="1.4.3"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -16,6 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI globally

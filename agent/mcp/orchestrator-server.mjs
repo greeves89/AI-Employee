@@ -187,6 +187,84 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["schedule_id", "action"],
       },
     },
+    {
+      name: "list_todos",
+      description:
+        "List your TODO items. TODOs are persistent and visible to the user in the Todo tab. " +
+        "Use this to check what work is pending, in progress, or completed. " +
+        "In proactive mode, always check TODOs first before doing anything else.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["pending", "in_progress", "completed"],
+            description: "Filter by status. Omit to show all TODOs.",
+          },
+          task_id: {
+            type: "string",
+            description: "Filter by task ID to see steps for a specific task. Omit for all TODOs.",
+          },
+        },
+      },
+    },
+    {
+      name: "update_todos",
+      description:
+        "Add or replace pending TODOs. Completed TODOs are NEVER deleted (preserved automatically). " +
+        "IMPORTANT: ALWAYS call list_todos FIRST to check existing TODOs before using this! " +
+        "Existing TODOs represent the user's work plan - review and work on them before creating new ones. " +
+        "Only pending/in_progress items are replaced; completed items are always kept.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          task_id: {
+            type: "string",
+            description:
+              "Link TODOs to a specific task. Omit for general/recurring TODOs.",
+          },
+          todos: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short TODO description." },
+                description: { type: "string", description: "Optional details." },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in_progress", "completed"],
+                  description: "Status. Default: pending.",
+                },
+                priority: {
+                  type: "number",
+                  minimum: 1,
+                  maximum: 5,
+                  description: "Priority (1=highest, 5=lowest). Default: 3.",
+                },
+              },
+              required: ["title"],
+            },
+            description: "New/updated TODOs. Replaces pending/in_progress items only (completed are preserved).",
+          },
+        },
+        required: ["todos"],
+      },
+    },
+    {
+      name: "complete_todo",
+      description:
+        "Mark a single TODO as completed by its ID. Use this when you finish a step.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          todo_id: {
+            type: "number",
+            description: "ID of the TODO to mark as completed.",
+          },
+        },
+        required: ["todo_id"],
+      },
+    },
   ],
 }));
 
@@ -336,6 +414,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           {
             type: "text",
             text: `Schedule ${schedule_id} ${action === "pause" ? "paused" : "resumed"}.`,
+          },
+        ],
+      };
+    }
+
+    case "list_todos": {
+      const params = new URLSearchParams();
+      if (args.status) params.set("status", args.status);
+      if (args.task_id) params.set("task_id", args.task_id);
+      const qs = params.toString() ? `?${params}` : "";
+
+      const result = await apiCall(`/todos/agent/list${qs}`);
+      if (!result.todos || result.todos.length === 0) {
+        return {
+          content: [{ type: "text", text: "No TODOs found." }],
+        };
+      }
+      const lines = result.todos.map(
+        (t) =>
+          `[${t.status}] #${t.id}: ${t.title}${t.description ? ` - ${t.description}` : ""} (priority: ${t.priority})`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${result.total} TODOs (${result.pending} pending, ${result.in_progress} in progress, ${result.completed} completed):\n\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+
+    case "update_todos": {
+      const result = await apiCall("/todos/agent/bulk", {
+        method: "PUT",
+        body: JSON.stringify({
+          task_id: args.task_id || null,
+          todos: (args.todos || []).map((t) => ({
+            title: t.title,
+            description: t.description || null,
+            status: t.status || "pending",
+            priority: t.priority || 3,
+          })),
+        }),
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `TODOs updated: ${result.updated} items.`,
+          },
+        ],
+      };
+    }
+
+    case "complete_todo": {
+      const result = await apiCall(`/todos/agent/${args.todo_id}/complete`, {
+        method: "PATCH",
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `TODO #${result.id} "${result.title}" marked as completed.`,
           },
         ],
       };

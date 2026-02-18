@@ -111,6 +111,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     _streaming_responses: dict[str, dict] = {}
     # Track seen tool_use_ids to prevent duplicate persistence
     _seen_tool_ids: set[str] = set()
+    # Track messages sent but not yet completed (for drain)
+    _pending_message_ids: set[str] = set()
     # Session tracking - defer session creation until first message
     # so the client can provide an existing session_id
     _session: dict[str, str | None] = {"id": None}
@@ -141,8 +143,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     _ws_connected = True
 
     def _process_event(raw_data: str):
-        """Process a PubSub event for persistence tracking. Returns True if a 'done' event was handled."""
-        nonlocal _streaming_responses, _seen_tool_ids
+        """Process a PubSub event for persistence tracking. Returns tuple on done/error, None otherwise."""
+        nonlocal _streaming_responses, _seen_tool_ids, _pending_message_ids
         try:
             event = json.loads(raw_data)
             mid = event.get("message_id", "")
@@ -164,8 +166,10 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         "input": json.dumps(edata.get("input", {}))[:200],
                     })
             elif etype == "error":
+                _pending_message_ids.discard(mid)
                 return ("error", mid, str(edata.get("message", "Unknown error")), None)
             elif etype == "done":
+                _pending_message_ids.discard(mid)
                 resp = _streaming_responses.pop(mid, {})
                 meta = {
                     "cost_usd": edata.get("cost_usd"),
@@ -218,12 +222,20 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             pass
 
     async def _drain_remaining():
-        """After WS disconnect, keep listening briefly to persist pending responses."""
-        if not _streaming_responses or not _session["id"]:
+        """After WS disconnect, keep listening to persist pending responses.
+
+        Uses _pending_message_ids (not just _streaming_responses) to determine
+        if there are still unfinished messages, so we also catch cases where
+        the agent hasn't started streaming yet when the user disconnects.
+        """
+        if not _session["id"]:
             return  # Don't persist without a valid session
+        has_pending = bool(_pending_message_ids) or bool(_streaming_responses)
+        if not has_pending:
+            return  # Nothing to wait for
         deadline = asyncio.get_event_loop().time() + 120  # Wait up to 2 min
         try:
-            while _streaming_responses and asyncio.get_event_loop().time() < deadline:
+            while (_pending_message_ids or _streaming_responses) and asyncio.get_event_loop().time() < deadline:
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True, timeout=1.0
                 )
@@ -324,6 +336,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
             # Generate message ID and push to agent's chat queue
             message_id = uuid.uuid4().hex[:12]
+            _pending_message_ids.add(message_id)
             chat_payload = json.dumps({
                 "id": message_id,
                 "text": text,

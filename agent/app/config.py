@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     agent_id: str = "agent-001"
     agent_name: str = ""
+    agent_token: str = ""
     redis_url: str = "redis://redis:6379"
     health_port: int = 8080
     default_model: str = "claude-sonnet-4-5-20250929"

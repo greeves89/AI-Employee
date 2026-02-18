@@ -594,6 +594,53 @@ async def update_agent_integrations(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+# --- Per-Agent MCP Servers ---
+
+
+@router.get("/{agent_id}/mcp-servers")
+async def get_agent_mcp_servers(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Get the list of MCP server IDs assigned to this agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        return {"agent_id": agent_id, "mcp_servers": config.get("mcp_servers", None)}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.patch("/{agent_id}/mcp-servers")
+async def update_agent_mcp_servers(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Update which MCP servers this agent uses. Pass null to use all enabled servers."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        mcp_servers = body.get("mcp_servers")
+        if mcp_servers is None:
+            config.pop("mcp_servers", None)
+        else:
+            config["mcp_servers"] = mcp_servers
+        agent.config = config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {"agent_id": agent_id, "mcp_servers": config.get("mcp_servers", None)}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 # --- Proactive Mode ---
 
 class ProactiveUpdate(BaseModel):

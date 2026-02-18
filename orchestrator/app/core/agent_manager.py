@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import AGENT_VERSION, settings
+from app.core.encryption import decrypt_token
 from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
 from app.models.mcp_server import McpServer
+from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.schedule import Schedule
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
@@ -81,22 +83,45 @@ def generate_sudoers(permissions: list[str]) -> str:
     return f"agent ALL=(ALL) NOPASSWD: {cmd_list}\n"
 
 
-PROACTIVE_PROMPT = """You are running in PROACTIVE mode. No one asked you to do anything — you are
-checking on your own initiative whether there is work to be done.
+PROACTIVE_PROMPT = """You are running in PROACTIVE mode. Your job is to check for pending work and DO IT.
 
-Steps:
-1. Read your knowledge base (/workspace/knowledge.md) to recall your role and responsibilities
-2. Use memory_search to check for any pending items, recent context, and follow-ups
-3. Check your task list with list_tasks to see what has been completed recently
-4. Based on your role and context, decide:
-   - Is there a pending responsibility I should handle (reports, checks, cleanups)?
-   - Did I learn something last time that I should act on?
-   - Are there follow-up items in my memories I haven't addressed?
-   - Is my workspace organized? Any cleanup needed?
-5. If you find genuine work: Execute it, then notify the user about what you did.
-6. If there is nothing to do: Simply respond "No proactive actions needed." and stop.
+## YOUR #1 JOB: WORK ON TODOs
 
-IMPORTANT: Do NOT create busywork. Only act if there is genuine value.
+1. Use `list_todos` to see all pending and in_progress items
+2. **If there are ANY pending TODOs: Pick the highest-priority one and DO THE WORK.**
+3. Mark it in_progress with `update_todos`, then implement it fully (write code, run tests, etc.)
+4. After completing: mark it as completed with `complete_todo`
+5. After completing one TODO, go back to step 1 and pick the next one. Keep going until all TODOs are done or you run out of context.
+
+**CRITICAL: TODOs are YOUR assigned tasks. They exist because they need to be done by YOU.**
+**DO NOT analyze whether TODOs are "genuine proactive work" — just DO them.**
+**DO NOT skip TODOs because they seem like "the user's plan" — YOU are the one who must execute that plan.**
+**DO NOT just list/summarize TODOs and then stop — that is a FAILURE. You must pick one and complete it.**
+
+If a TODO is too vague, break it down with `update_todos` into concrete subtasks, then work on the first one.
+
+## ONLY IF ZERO TODOs EXIST:
+
+### Check Git projects for open issues
+- Look through /workspace for git repositories
+- If GitHub integration is active: run `gh issue list` to check for open issues
+- For solvable issues: create a feature branch, implement the fix, commit
+- Notify the user via `notify_user` when an issue is resolved
+
+### Review and maintain long-term memory
+- Use `memory_list` to review your memories
+- Delete outdated or incorrect memories with `memory_delete`
+- Update memories that need correction with `memory_save` (same key = overwrite)
+
+### General workspace maintenance
+- Check workspace organization, clean up temp files
+- Any follow-up items from previous work?
+
+## WHEN DONE:
+- If you completed TODOs: notify the user via `notify_user` about what you accomplished (list all completed TODOs)
+- If truly nothing to do (ZERO TODOs, no issues, workspace clean): respond "No proactive actions needed."
+- Do NOT invent new tasks or create busywork. But ALWAYS complete existing TODOs.
+
 IMPORTANT: If you haven't completed onboarding yet, skip the proactive check.
 """
 
@@ -115,6 +140,11 @@ tools in my tool list - I use them like any other tool (no bash commands needed)
 **CRITICAL: I MUST use MCP tools for memory, NOT the Write tool or MEMORY.md!**
 The built-in auto-memory (MEMORY.md) is NOT visible in the Web UI.
 Only `memory_save` stores data that the user can see in the Memory tab.
+
+**CRITICAL: I MUST NEVER use the built-in TodoWrite tool!**
+The built-in TodoWrite is LOCAL ONLY - the user CANNOT see it in the Web UI Todo tab!
+ALWAYS use the MCP tools `update_todos` / `complete_todo` / `list_todos` instead.
+These save to the database and are visible in the Todo tab in real-time.
 
 ### Memory Tools (mcp-memory)
 I have persistent long-term memory that survives across ALL conversations and tasks.
@@ -151,6 +181,18 @@ I have persistent long-term memory that survives across ALL conversations and ta
 - **list_schedules** - List all recurring schedules
 - **manage_schedule** - Pause, resume, or delete a schedule
 
+### TODO Tools (mcp-orchestrator) - VISIBLE IN WEB UI!
+**⚠️ NEVER use the built-in TodoWrite tool - it is NOT visible to the user!**
+**⚠️ ONLY use these MCP tools for TODOs - they save to the database!**
+TODOs are persistent and displayed in the "Todos" tab for the user to see.
+- **list_todos** - List my TODO items (filter by status or task_id). **ALWAYS call this FIRST!**
+- **update_todos** - Add/replace pending TODOs (completed TODOs are preserved automatically)
+  - ⚠️ **ALWAYS `list_todos` first** before using this! Existing TODOs are the user's work plan!
+  - Only replaces pending/in_progress items, completed ones are never deleted
+  - Include task_id to link TODOs to a specific task
+- **complete_todo** - Mark a single TODO as completed by ID
+**When starting a task: `list_todos` first → work on existing ones → only add NEW if needed!**
+
 ### Legacy CLI (still available as fallback)
 The `ai-team` bash command still works for all the above operations.
 Run `ai-team help` for usage. Prefer MCP tools over CLI when possible.
@@ -163,12 +205,28 @@ My knowledge, role, and learned patterns are stored in `/workspace/knowledge.md`
 
 ## Proactive Mode
 I periodically wake up (via schedule) to check if there is work to do on my own.
-When running in proactive mode:
-- Review my role and pending responsibilities from knowledge.md
-- Check memories for follow-up items and unfinished business
+When running in proactive mode (priority order):
+1. **Check TODOs first** - `list_todos` for pending items → work on highest priority
+2. **Check Git issues** - `gh issue list` in workspace repos → create branches, fix issues
+3. **Memory hygiene** - Review, clean up, and update long-term memories
+4. **Workspace maintenance** - Review knowledge.md, organize files, follow-ups
+5. **Report** - Notify user about completed work via `notify_user`
 - Execute genuine work only (no busywork!)
-- Notify the user about what I did proactively via notify_user
 - If nothing to do, just respond briefly and stop
+
+## TODO Management (CRITICAL - NEVER USE TodoWrite!)
+The built-in TodoWrite tool is BROKEN for this platform - it does NOT save to the database!
+
+**ALWAYS check existing TODOs first before creating new ones!**
+1. **FIRST: `list_todos`** - Check what TODOs already exist (pending, in_progress, completed)
+2. **Evaluate existing TODOs** - Are they still relevant? Should I work on them?
+3. **Work on existing TODOs** - Pick highest-priority pending item, mark in_progress, do the work
+4. **Complete with `complete_todo`** - Mark individual steps as done
+5. **Only add NEW TODOs** if there is genuinely new work not already covered
+6. **NEVER blindly replace** the entire TODO list - use `update_todos` only to ADD new items or update specific ones
+
+TODOs persist across sessions and container restarts. Previous TODOs are the user's work plan!
+**If I accidentally use TodoWrite, the user sees NOTHING. Always use MCP tools!**
 
 ## Workspace Organization (IMPORTANT!)
 I MUST keep my workspace organized with proper directories:
@@ -299,16 +357,47 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not publish event for agent {agent_id}: {e}")
 
-    async def _get_custom_mcp_env(self) -> dict[str, str]:
-        """Load enabled custom MCP servers and return as env var dict."""
+    async def _get_custom_mcp_env(self, agent_config: dict | None = None) -> dict[str, str]:
+        """Load custom MCP servers and return as env var dict.
+
+        If agent_config contains 'mcp_servers' (list of IDs), only those
+        servers are included. Otherwise all enabled servers are returned.
+        """
         result = await self.db.execute(
             select(McpServer).where(McpServer.enabled == True)
         )
         servers = result.scalars().all()
         if not servers:
             return {}
+
+        # Per-agent filtering
+        agent_mcp_ids = None
+        if agent_config and "mcp_servers" in agent_config:
+            agent_mcp_ids = set(agent_config["mcp_servers"])
+
+        if agent_mcp_ids is not None:
+            servers = [s for s in servers if s.id in agent_mcp_ids]
+
+        if not servers:
+            return {}
         mcp_map = {s.name: s.url for s in servers}
         return {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
+
+    async def _get_integration_env(self, agent_integrations: list[str]) -> dict[str, str]:
+        """Get environment variables for agent integrations (e.g., GitHub token)."""
+        env: dict[str, str] = {}
+        if "github" in agent_integrations:
+            result = await self.db.execute(
+                select(OAuthIntegration).where(
+                    OAuthIntegration.provider == OAuthProvider.GITHUB
+                )
+            )
+            integration = result.scalar_one_or_none()
+            if integration:
+                token = decrypt_token(integration.access_token_encrypted)
+                env["GITHUB_TOKEN"] = token
+                env["GH_TOKEN"] = token  # gh CLI uses GH_TOKEN
+        return env
 
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
@@ -320,8 +409,11 @@ class AgentManager:
         # Build provider-specific auth environment
         provider_env = self._build_provider_env()
 
-        # Load custom MCP servers
+        # Load custom MCP servers (no per-agent config yet for new agent)
         mcp_env = await self._get_custom_mcp_env()
+
+        # Load integration tokens (e.g., GitHub PAT)
+        integration_env = await self._get_integration_env(integrations or [])
 
         # Create Docker container with workspace + session + shared volumes
         agent_token = make_agent_token(agent_id)
@@ -339,6 +431,7 @@ class AgentManager:
                 "ORCHESTRATOR_URL": "http://orchestrator:8000",
                 **provider_env,
                 **mcp_env,
+                **integration_env,
                 "DEFAULT_MODEL": model,
                 "MAX_TURNS": str(settings.max_turns),
             },
@@ -507,7 +600,8 @@ class AgentManager:
 
         # 2. Build fresh environment
         provider_env = self._build_provider_env()
-        mcp_env = await self._get_custom_mcp_env()
+        mcp_env = await self._get_custom_mcp_env(agent_config=config)
+        integration_env = await self._get_integration_env(config.get("integrations", []))
 
         volume_name = agent.volume_name
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
@@ -531,6 +625,7 @@ class AgentManager:
                 "ORCHESTRATOR_URL": "http://orchestrator:8000",
                 **provider_env,
                 **mcp_env,
+                **integration_env,
                 "DEFAULT_MODEL": model,
                 "MAX_TURNS": str(settings.max_turns),
             },
@@ -613,7 +708,8 @@ class AgentManager:
 
         # 2. Build environment (same as create)
         provider_env = self._build_provider_env()
-        mcp_env = await self._get_custom_mcp_env()
+        mcp_env = await self._get_custom_mcp_env(agent_config=config)
+        integration_env = await self._get_integration_env(config.get("integrations", []))
 
         volume_name = agent.volume_name
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
@@ -638,6 +734,7 @@ class AgentManager:
                 "ORCHESTRATOR_URL": "http://orchestrator:8000",
                 **provider_env,
                 **mcp_env,
+                **integration_env,
                 "DEFAULT_MODEL": model,
                 "MAX_TURNS": str(settings.max_turns),
             },
@@ -754,6 +851,13 @@ class AgentManager:
         status = await self.redis.get_agent_status(agent_id)
         result["current_task"] = status.get("current_task", "")
         result["queue_depth"] = await self.redis.get_queue_depth(agent_id)
+
+        # Sync live state from Redis (agent reports idle/working in real-time)
+        redis_state = status.get("state", "")
+        if redis_state in ("idle", "working") and agent.state in (
+            AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
+        ):
+            result["state"] = redis_state
 
         # Add Docker stats if running (run in thread pool to avoid blocking)
         if include_stats and agent.container_id and agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):

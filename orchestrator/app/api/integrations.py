@@ -1,7 +1,8 @@
-"""API endpoints for OAuth integrations."""
+"""API endpoints for OAuth integrations and PAT-based integrations (GitHub)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -112,5 +113,31 @@ async def get_token(
     try:
         token = await service.get_valid_token(provider)
         return {"token": token, "provider": provider}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- PAT-based integrations (GitHub etc.) ---
+
+
+class PatRequest(BaseModel):
+    token: str
+
+
+@router.post("/{provider}/pat")
+async def store_pat(
+    provider: str,
+    body: PatRequest,
+    user=Depends(require_auth),
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Store a Personal Access Token for a provider (e.g., GitHub PAT)."""
+    try:
+        integration = await service.store_pat(provider, body.token)
+        return {
+            "status": "connected",
+            "provider": provider,
+            "account_label": integration.account_label,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

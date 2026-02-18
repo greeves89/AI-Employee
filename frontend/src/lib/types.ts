@@ -56,6 +56,7 @@ export interface Integration {
   expires_at: string | null;
   scopes: string;
   available: boolean;
+  auth_type: "oauth" | "pat";
 }
 
 export interface Task {
@@ -192,6 +193,56 @@ export interface WebhookEvent {
   status: string;
   task_id: string | null;
   created_at: string;
+}
+
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+export interface AgentTodo {
+  id: number;
+  agent_id: string;
+  task_id: string | null;
+  title: string;
+  description: string | null;
+  status: TodoStatus;
+  priority: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string | null;
+  completed_at: string | null;
+}
+
+export interface TodoListResponse {
+  todos: AgentTodo[];
+  total: number;
+  pending: number;
+  in_progress: number;
+  completed: number;
+}
+
+export type FeedbackStatus = "pending" | "reviewed" | "in_progress" | "closed";
+export type FeedbackCategory = "bug" | "feature" | "improvement" | "general";
+
+export interface Feedback {
+  id: number;
+  user_id: string;
+  user_name: string | null;
+  title: string;
+  description: string | null;
+  category: FeedbackCategory;
+  status: FeedbackStatus;
+  admin_notes: string | null;
+  github_issue_url: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface FeedbackListResponse {
+  feedback: Feedback[];
+  total: number;
+  pending: number;
+  reviewed: number;
+  in_progress: number;
+  closed: number;
 }
 
 export interface AgentTemplate {

@@ -204,6 +204,54 @@ class OAuthService:
         logger.info(f"Refreshed token for {integration.provider.value}")
         return integration
 
+    async def store_pat(self, provider_name: str, token: str) -> OAuthIntegration:
+        """Store a Personal Access Token (e.g., GitHub PAT) - no OAuth flow needed."""
+        provider_enum = OAuthProvider(provider_name)
+
+        # Validate the token by fetching user info
+        provider = get_provider(provider_name)
+        account_label = None
+        if provider.userinfo_url:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    provider.userinfo_url,
+                    headers={
+                        "Authorization": f"Bearer {token}" if not token.startswith("ghp_") else f"token {token}",
+                        "Accept": "application/json",
+                    },
+                )
+                if resp.status_code != 200:
+                    raise ValueError(f"Invalid token: API returned {resp.status_code}")
+                userinfo = resp.json()
+                account_label = userinfo.get("login") or userinfo.get("email") or userinfo.get("name")
+
+        # Upsert
+        result = await self.db.execute(
+            select(OAuthIntegration).where(OAuthIntegration.provider == provider_enum)
+        )
+        integration = result.scalar_one_or_none()
+
+        if integration:
+            integration.access_token_encrypted = encrypt_token(token)
+            integration.refresh_token_encrypted = None
+            integration.expires_at = None
+            integration.scopes = " ".join(provider.scopes)
+            integration.account_label = account_label
+        else:
+            integration = OAuthIntegration(
+                provider=provider_enum,
+                access_token_encrypted=encrypt_token(token),
+                token_type="token",
+                scopes=" ".join(provider.scopes),
+                account_label=account_label,
+            )
+            self.db.add(integration)
+
+        await self.db.commit()
+        await self.db.refresh(integration)
+        logger.info(f"Stored PAT for {provider_name} (account: {account_label})")
+        return integration
+
     async def disconnect(self, provider_name: str) -> None:
         """Remove an OAuth integration."""
         provider_enum = OAuthProvider(provider_name)
@@ -223,6 +271,7 @@ class OAuthService:
         integrations = []
         for name, provider in PROVIDERS.items():
             integration = connected.get(name)
+            is_pat_provider = provider.token_exchange_method == "pat_or_oauth"
             integrations.append({
                 "provider": name,
                 "display_name": provider.display_name,
@@ -232,7 +281,8 @@ class OAuthService:
                 "account_label": integration.account_label if integration else None,
                 "expires_at": integration.expires_at.isoformat() if integration and integration.expires_at else None,
                 "scopes": integration.scopes if integration else " ".join(provider.scopes),
-                "available": is_provider_available(provider),
+                "available": is_pat_provider or is_provider_available(provider),
+                "auth_type": "pat" if is_pat_provider else "oauth",
             })
         return integrations
 

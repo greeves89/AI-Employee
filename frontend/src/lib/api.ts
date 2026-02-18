@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentTemplate, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentTemplate, AgentTodo, Feedback, FeedbackListResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const BASE = `${API_URL}/api/v1`;
@@ -287,6 +287,26 @@ export async function updateAgentIntegrations(agentId: string, integrations: str
   });
 }
 
+// PAT-based integrations (GitHub)
+export async function savePatToken(provider: string, token: string): Promise<{ status: string; provider: string; account_label?: string }> {
+  return fetchJSON(`${BASE}/integrations/${provider}/pat`, {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+// Per-agent MCP servers
+export async function getAgentMcpServers(agentId: string): Promise<{ agent_id: string; mcp_servers: number[] | null }> {
+  return fetchJSON(`${BASE}/agents/${agentId}/mcp-servers`);
+}
+
+export async function updateAgentMcpServers(agentId: string, mcpServers: number[] | null): Promise<void> {
+  await fetchJSON(`${BASE}/agents/${agentId}/mcp-servers`, {
+    method: "PATCH",
+    body: JSON.stringify({ mcp_servers: mcpServers }),
+  });
+}
+
 // Settings
 export async function getSettings(): Promise<Settings> {
   return fetchJSON(`${BASE}/settings/`);
@@ -508,6 +528,48 @@ export async function getTemplates(): Promise<{ templates: AgentTemplate[] }> {
   return fetchJSON(`${BASE}/templates`);
 }
 
+export async function createTemplate(data: {
+  name: string;
+  display_name: string;
+  description?: string;
+  icon?: string;
+  category?: string;
+  model?: string;
+  role?: string;
+  permissions?: string[];
+  integrations?: string[];
+  knowledge_template?: string;
+}): Promise<AgentTemplate> {
+  return fetchJSON(`${BASE}/templates`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTemplate(
+  templateId: number,
+  data: {
+    display_name?: string;
+    description?: string;
+    icon?: string;
+    category?: string;
+    model?: string;
+    role?: string;
+    permissions?: string[];
+    integrations?: string[];
+    knowledge_template?: string;
+  },
+): Promise<AgentTemplate> {
+  return fetchJSON(`${BASE}/templates/${templateId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTemplate(templateId: number): Promise<void> {
+  await fetchJSON(`${BASE}/templates/${templateId}`, { method: "DELETE" });
+}
+
 export async function createAgentFromTemplate(
   templateId: number,
   name?: string,
@@ -515,5 +577,83 @@ export async function createAgentFromTemplate(
   return fetchJSON(`${BASE}/templates/${templateId}/create-agent`, {
     method: "POST",
     body: JSON.stringify({ name: name || undefined }),
+  });
+}
+
+// --- Agent TODOs ---
+
+export async function getAgentTodos(
+  agentId: string,
+  status?: string,
+  taskId?: string,
+): Promise<TodoListResponse> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (taskId) params.set("task_id", taskId);
+  const qs = params.toString() ? `?${params}` : "";
+  return fetchJSON(`${BASE}/todos/agents/${agentId}${qs}`);
+}
+
+export async function createAgentTodo(
+  agentId: string,
+  data: { title: string; description?: string; task_id?: string; priority?: number },
+): Promise<AgentTodo> {
+  return fetchJSON(`${BASE}/todos/agents/${agentId}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAgentTodo(
+  todoId: number,
+  data: { title?: string; description?: string; status?: string; priority?: number; sort_order?: number },
+): Promise<AgentTodo> {
+  return fetchJSON(`${BASE}/todos/${todoId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAgentTodo(todoId: number): Promise<void> {
+  return fetchJSON(`${BASE}/todos/${todoId}`, { method: "DELETE" });
+}
+
+// --- Feedback ---
+
+export async function createFeedback(data: {
+  title: string;
+  description?: string;
+  category?: string;
+}): Promise<Feedback> {
+  return fetchJSON(`${BASE}/feedback/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getFeedback(status?: string): Promise<FeedbackListResponse> {
+  const params = status ? `?status=${status}` : "";
+  return fetchJSON(`${BASE}/feedback/${params}`);
+}
+
+export async function updateFeedback(
+  feedbackId: number,
+  data: { status?: string; admin_notes?: string },
+): Promise<Feedback> {
+  return fetchJSON(`${BASE}/feedback/${feedbackId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFeedback(feedbackId: number): Promise<void> {
+  await fetchJSON(`${BASE}/feedback/${feedbackId}`, { method: "DELETE" });
+}
+
+export async function createGithubIssueFromFeedback(
+  feedbackId: number,
+): Promise<{ issue_url: string; issue_number: number; feedback: Feedback }> {
+  return fetchJSON(`${BASE}/feedback/${feedbackId}/github-issue`, {
+    method: "POST",
   });
 }

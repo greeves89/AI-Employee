@@ -22,7 +22,7 @@ export function LiveTerminal({ agentId }: LiveTerminalProps) {
   }, [messages]);
 
   return (
-    <div className="rounded-lg border border-border bg-black">
+    <div className="rounded-lg border border-border bg-black flex flex-col h-full">
       {/* Terminal header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-2">
@@ -44,7 +44,7 @@ export function LiveTerminal({ agentId }: LiveTerminalProps) {
       {/* Terminal content */}
       <div
         ref={containerRef}
-        className="h-96 overflow-y-auto p-4 font-mono text-sm"
+        className="flex-1 min-h-0 overflow-y-auto p-4 font-mono text-sm"
       >
         {messages.length === 0 ? (
           <div className="text-muted-foreground">

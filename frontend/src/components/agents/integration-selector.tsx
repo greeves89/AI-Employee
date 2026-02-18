@@ -56,21 +56,25 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [agentIntegrations, setAgentIntegrations] = useState<string[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
+  const [agentMcpServerIds, setAgentMcpServerIds] = useState<number[] | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [changed, setChanged] = useState(false);
+  const [mcpChanged, setMcpChanged] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [{ integrations: all }, { integrations: enabled }, { servers }] = await Promise.all([
+      const [{ integrations: all }, { integrations: enabled }, { servers }, mcpResp] = await Promise.all([
         api.getIntegrations(),
         api.getAgentIntegrations(agentId),
         api.getMcpServers(),
+        api.getAgentMcpServers(agentId),
       ]);
       setIntegrations(all);
       setAgentIntegrations(enabled);
       setMcpServers(servers);
+      setAgentMcpServerIds(mcpResp.mcp_servers);
     } catch {
       // API not ready
     } finally {
@@ -92,11 +96,39 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
     });
   };
 
+  const toggleMcp = (serverId: number) => {
+    setAgentMcpServerIds((prev) => {
+      if (prev === null) {
+        // Switching from "all" to explicit selection - include all except toggled
+        const allIds = enabledMcpServers.map((s) => s.id);
+        return allIds.filter((id) => id !== serverId);
+      }
+      const next = prev.includes(serverId)
+        ? prev.filter((id) => id !== serverId)
+        : [...prev, serverId];
+      return next;
+    });
+    setMcpChanged(true);
+  };
+
+  const isMcpEnabled = (serverId: number) => {
+    if (agentMcpServerIds === null) return true;
+    return agentMcpServerIds.includes(serverId);
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      await api.updateAgentIntegrations(agentId, agentIntegrations);
+      const promises: Promise<void>[] = [];
+      if (changed) {
+        promises.push(api.updateAgentIntegrations(agentId, agentIntegrations));
+      }
+      if (mcpChanged) {
+        promises.push(api.updateAgentMcpServers(agentId, agentMcpServerIds));
+      }
+      await Promise.all(promises);
       setChanged(false);
+      setMcpChanged(false);
     } catch {
       // handle error
     } finally {
@@ -106,7 +138,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
   const connectedIntegrations = integrations.filter((i) => i.connected);
   const enabledMcpServers = mcpServers.filter((s) => s.enabled);
-  const totalMcpCount = BUILTIN_MCP_SERVERS.length + enabledMcpServers.length;
+  const activeMcpCount = agentMcpServerIds === null
+    ? enabledMcpServers.length
+    : enabledMcpServers.filter((s) => agentMcpServerIds.includes(s.id)).length;
+  const totalMcpCount = BUILTIN_MCP_SERVERS.length + activeMcpCount;
+  const hasChanges = changed || mcpChanged;
 
   if (loading) {
     return (
@@ -128,9 +164,21 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               Tool servers available to this agent
             </span>
           </div>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
-            {totalMcpCount} servers active
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+              {totalMcpCount} servers active
+            </span>
+            {mcpChanged && (
+              <button
+                onClick={save}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                Save
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="divide-y divide-foreground/[0.04]">
@@ -193,38 +241,47 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             );
           })}
 
-          {/* External MCP servers */}
+          {/* External MCP servers - with per-agent checkboxes */}
           {enabledMcpServers.map((server) => {
             const key = `ext-${server.id}`;
             const isExpanded = expandedItem === key;
             const toolCount = server.tools?.length ?? 0;
+            const enabled = isMcpEnabled(server.id);
             return (
-              <div key={key}>
-                <button
-                  onClick={() => setExpandedItem(isExpanded ? null : key)}
-                  className="flex items-center gap-3 w-full px-5 py-3 hover:bg-foreground/[0.02] transition-colors"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
-                    <Network className="h-4 w-4 text-violet-400" />
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{server.name}</span>
-                      <span className="text-[10px] text-muted-foreground/50 truncate max-w-[300px]">
-                        {server.url}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                      {toolCount} tool{toolCount !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <ChevronRight
-                    className={cn(
-                      "h-4 w-4 text-muted-foreground/40 transition-transform duration-200 shrink-0",
-                      isExpanded && "rotate-90"
-                    )}
+              <div key={key} className={cn(!enabled && "opacity-50")}>
+                <div className="flex items-center gap-3 w-full px-5 py-3 hover:bg-foreground/[0.02] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => toggleMcp(server.id)}
+                    className="h-4 w-4 rounded border-foreground/20 bg-background text-violet-500 focus:ring-violet-500/30 shrink-0"
                   />
-                </button>
+                  <button
+                    onClick={() => setExpandedItem(isExpanded ? null : key)}
+                    className="flex items-center gap-3 flex-1 min-w-0"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
+                      <Network className="h-4 w-4 text-violet-400" />
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{server.name}</span>
+                        <span className="text-[10px] text-muted-foreground/50 truncate max-w-[300px]">
+                          {server.url}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                        {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <ChevronRight
+                      className={cn(
+                        "h-4 w-4 text-muted-foreground/40 transition-transform duration-200 shrink-0",
+                        isExpanded && "rotate-90"
+                      )}
+                    />
+                  </button>
+                </div>
 
                 {isExpanded && server.tools && server.tools.length > 0 && (
                   <div className="px-5 pb-3 space-y-1.5">
@@ -264,6 +321,15 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             </p>
           </div>
         )}
+
+        {mcpChanged && (
+          <div className="border-t border-foreground/[0.06] px-5 py-3">
+            <p className="text-[10px] text-yellow-500/80 flex items-center gap-1.5">
+              <AlertCircle className="h-3 w-3" />
+              Changes require an agent restart to take effect
+            </p>
+          </div>
+        )}
       </div>
 
       {/* OAuth Integrations */}
@@ -271,7 +337,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <Plug className="h-4 w-4 text-blue-400" />
-            <span className="text-sm font-medium">OAuth Integrations</span>
+            <span className="text-sm font-medium">Integrations</span>
             <span className="text-[10px] text-muted-foreground/60">
               Select which services this agent can access
             </span>
@@ -347,7 +413,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           )}
         </div>
 
-        {changed && (
+        {hasChanges && (
           <div className="border-t border-foreground/[0.06] px-5 py-3">
             <p className="text-[10px] text-yellow-500/80 flex items-center gap-1.5">
               <AlertCircle className="h-3 w-3" />

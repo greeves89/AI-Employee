@@ -173,6 +173,89 @@ async def _listen_task_events(redis: RedisService) -> None:
             await asyncio.sleep(1)
 
 
+async def _listen_chat_completions(redis: RedisService) -> None:
+    """Background listener that persists chat responses independent of WebSocket connections.
+
+    Ensures chat responses are saved to DB even if the user navigated away
+    (WebSocket disconnected) before the agent finished responding.
+    """
+    pubsub = await redis.subscribe("chat:completions")
+
+    while True:
+        try:
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=1.0
+            )
+            if message and message["type"] == "message":
+                data = message["data"]
+                if isinstance(data, str):
+                    data = json.loads(data)
+                elif isinstance(data, bytes):
+                    data = json.loads(data.decode("utf-8"))
+
+                agent_id = data.get("agent_id", "")
+                message_id = data.get("message_id", "")
+                event_data = data.get("data", {})
+
+                if not agent_id or not message_id:
+                    continue
+
+                from app.db.session import async_session_factory
+                from app.models.chat_message import ChatMessage
+                from sqlalchemy import select as sel
+
+                async with async_session_factory() as db:
+                    # Check if assistant response already persisted (by WS handler)
+                    existing = await db.scalar(
+                        sel(ChatMessage).where(
+                            ChatMessage.agent_id == agent_id,
+                            ChatMessage.message_id == message_id,
+                            ChatMessage.role == "assistant",
+                        )
+                    )
+                    if existing:
+                        continue  # Already saved by WebSocket handler
+
+                    # Look up session_id from the user message
+                    user_msg = await db.scalar(
+                        sel(ChatMessage).where(
+                            ChatMessage.agent_id == agent_id,
+                            ChatMessage.message_id == message_id,
+                            ChatMessage.role == "user",
+                        )
+                    )
+                    if not user_msg:
+                        print(f"[ChatPersist] No user message found for {message_id}, skipping")
+                        continue
+
+                    session_id = user_msg.session_id
+                    content = str(event_data.get("text", ""))
+                    tool_calls = event_data.get("tool_calls")
+                    meta = {
+                        "cost_usd": event_data.get("cost_usd"),
+                        "duration_ms": event_data.get("duration_ms"),
+                        "num_turns": event_data.get("num_turns"),
+                    }
+
+                    db.add(ChatMessage(
+                        agent_id=agent_id,
+                        session_id=session_id,
+                        message_id=message_id,
+                        role="assistant",
+                        content=content,
+                        tool_calls=tool_calls,
+                        meta=meta,
+                    ))
+                    await db.commit()
+                    print(
+                        f"[ChatPersist] Saved response for {message_id} "
+                        f"(agent={agent_id}, session={session_id})"
+                    )
+        except Exception as e:
+            print(f"[ChatPersist] Error: {e}")
+            await asyncio.sleep(1)
+
+
 # --- Lifespan ---
 
 
@@ -196,16 +279,25 @@ async def lifespan(app: FastAPI):
         from app.models.agent_template import AgentTemplate
 
         async with async_session_factory() as db:
+            from sqlalchemy import select as sel
             for tmpl_data in BUILTIN_TEMPLATES:
-                from sqlalchemy import select as sel
                 existing = await db.scalar(
                     sel(AgentTemplate).where(AgentTemplate.name == tmpl_data["name"])
                 )
                 if not existing:
                     tmpl = AgentTemplate(is_builtin=True, **tmpl_data)
                     db.add(tmpl)
+                elif existing.is_builtin:
+                    # Update builtin templates if source has changed
+                    for field in (
+                        "display_name", "description", "role", "permissions",
+                        "integrations", "knowledge_template", "icon", "category", "model",
+                    ):
+                        source_val = tmpl_data.get(field)
+                        if source_val is not None and getattr(existing, field) != source_val:
+                            setattr(existing, field, source_val)
             await db.commit()
-        logger.info(f"Seeded {len(BUILTIN_TEMPLATES)} builtin agent templates")
+        logger.info(f"Seeded/synced {len(BUILTIN_TEMPLATES)} builtin agent templates")
     except Exception as e:
         logger.warning(f"Failed to seed templates: {e}")
 
@@ -246,6 +338,9 @@ async def lifespan(app: FastAPI):
     # Start background task listener (completions + starts)
     completion_task = asyncio.create_task(_listen_task_events(app.state.redis))
 
+    # Start chat completion persistence listener
+    chat_persist_task = asyncio.create_task(_listen_chat_completions(app.state.redis))
+
     # Start OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
 
@@ -268,6 +363,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     completion_task.cancel()
+    chat_persist_task.cancel()
     oauth_refresh_task.cancel()
     scheduler_task.cancel()
     if telegram_task:

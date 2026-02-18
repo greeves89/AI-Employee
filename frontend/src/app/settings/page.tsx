@@ -5,10 +5,11 @@ import { motion } from "framer-motion";
 import {
   Key, MessageSquare, Save, Loader2,
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
-  UserPlus, Cloud, Server, Lock, Globe, Cpu,
+  UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
+import { TemplateManager } from "@/components/settings/template-manager";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Settings, ModelProvider } from "@/lib/types";
@@ -228,7 +229,7 @@ export default function SettingsPage() {
       <Header title="Settings" subtitle="Configure your AI Employee platform" />
 
       <motion.div
-        className="px-8 py-8 max-w-3xl space-y-6"
+        className="px-8 py-8 max-w-5xl mx-auto space-y-6"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
@@ -375,7 +376,7 @@ export default function SettingsPage() {
                       value={oauthToken}
                       onChange={setOauthToken}
                       placeholder="sk-ant-oat01-..."
-                      hint='Run "claude login" and extract the token from macOS Keychain'
+                      hint='Run "claude login" then extract token: macOS → Keychain Access, Linux → secret-tool, Windows → Credential Manager'
                       mono
                     />
                   )}
@@ -551,7 +552,18 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* ─── Section 3: Integrations ─── */}
+        {/* ─── Section 3: Agent Templates ─── */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Layers className="h-4 w-4 text-muted-foreground/60" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              Agent Templates
+            </h2>
+          </div>
+          <TemplateManager isAdmin={isAdmin} />
+        </section>
+
+        {/* ─── Section 4: Notifications ─── */}
         <section>
           <div className="flex items-center gap-2 mb-3">
             <MessageSquare className="h-4 w-4 text-muted-foreground/60" />

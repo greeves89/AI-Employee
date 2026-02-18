@@ -5,12 +5,22 @@ import { motion } from "framer-motion";
 import {
   FolderOpen, File, Folder, ChevronRight, Upload,
   Code, FileText, Loader2, Bot, Download, RefreshCw,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { FileEntry } from "@/lib/types";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp"]);
+const markdownExtensions = new Set(["md", "mdx"]);
+
+function getFileExt(path: string): string {
+  return path.split(".").pop()?.toLowerCase() || "";
+}
 
 const fileColorMap: Record<string, string> = {
   py: "text-blue-400",
@@ -113,6 +123,15 @@ export default function FilesPage() {
     setSelectedFile({ agentId, path });
     setLoadingContent(true);
     setFileContent(null);
+
+    const ext = getFileExt(path);
+    // Images don't need content fetching - we use the download URL directly
+    if (imageExtensions.has(ext)) {
+      setFileContent(null);
+      setLoadingContent(false);
+      return;
+    }
+
     try {
       const url = api.getFileDownloadUrl(agentId, path);
       const res = await fetch(url);
@@ -340,7 +359,11 @@ export default function FilesPage() {
               <div className="border-b border-foreground/[0.06] px-4 py-2.5 flex items-center gap-2">
                 {selectedFile ? (
                   <>
-                    <Code className={cn("h-3.5 w-3.5", getFileColor(selectedFile.path.split("/").pop() || ""))} />
+                    {imageExtensions.has(getFileExt(selectedFile.path)) ? (
+                      <ImageIcon className="h-3.5 w-3.5 text-violet-400" />
+                    ) : (
+                      <Code className={cn("h-3.5 w-3.5", getFileColor(selectedFile.path.split("/").pop() || ""))} />
+                    )}
                     <span className="text-xs font-mono text-muted-foreground truncate">
                       {selectedFile.path}
                     </span>
@@ -364,16 +387,30 @@ export default function FilesPage() {
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
+                ) : selectedFile && imageExtensions.has(getFileExt(selectedFile.path)) ? (
+                  <div className="flex items-center justify-center h-full p-4 bg-[repeating-conic-gradient(#80808015_0%_25%,transparent_0%_50%)] bg-[length:16px_16px]">
+                    <img
+                      src={api.getFileDownloadUrl(selectedFile.agentId, selectedFile.path)}
+                      alt={selectedFile.path.split("/").pop() || ""}
+                      className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                    />
+                  </div>
+                ) : selectedFile && markdownExtensions.has(getFileExt(selectedFile.path)) && fileContent !== null ? (
+                  <div className="p-6 prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-code:text-xs prose-pre:bg-foreground/5 prose-pre:text-foreground/80">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {fileContent}
+                    </ReactMarkdown>
+                  </div>
                 ) : fileContent !== null ? (
                   <pre className="p-4 text-[12px] font-mono leading-relaxed whitespace-pre-wrap text-foreground/90">
                     {fileContent}
                   </pre>
-                ) : (
+                ) : !selectedFile ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30">
                     <FileText className="h-10 w-10 mb-3" />
                     <span className="text-sm">Datei auswaehlen</span>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>

@@ -41,6 +41,9 @@ class LogPublisher:
             }
         )
         await self.redis.publish(f"agent:{self.agent_id}:chat:response", message)
+        # Publish "done" events to global channel for persistence independent of WebSocket
+        if event_type == "done":
+            await self.redis.publish("chat:completions", message)
 
     async def publish_status(self, state: str, current_task: str = "") -> None:
         await self.redis.hset(

@@ -38,3 +38,12 @@ logs/
 # Database
 *.db
 *.sqlite3
+
+# Auto-generated secrets
+orchestrator/data/
+
+# Temporary/generated files
+cookies.txt
+create_pptx.py
+AI_Employee_Feature_Overview.pptx
+frontend/tsconfig.tsbuildinfo

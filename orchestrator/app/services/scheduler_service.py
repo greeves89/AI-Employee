@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agent_manager import PROACTIVE_PROMPT
 from app.core.load_balancer import LoadBalancer
 from app.core.task_router import TaskRouter
 from app.db.session import async_session_factory
@@ -22,12 +23,12 @@ class SchedulerService:
 
     async def run(self) -> None:
         """Main loop - checks every 30 seconds for due schedules."""
-        logger.info("Scheduler service started")
+        print("[Scheduler] Service started")
         while True:
             try:
                 await self._check_due_schedules()
             except Exception as e:
-                logger.error(f"Scheduler error: {e}")
+                print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)
 
     async def _check_due_schedules(self) -> None:
@@ -52,7 +53,7 @@ class SchedulerService:
                 try:
                     await self._execute_schedule(db, router, schedule, now)
                 except Exception as e:
-                    logger.error(f"Failed to execute schedule {schedule.id}: {e}")
+                    print(f"[Scheduler] Failed to execute schedule {schedule.id}: {e}")
 
             await db.commit()
 
@@ -64,21 +65,32 @@ class SchedulerService:
         now: datetime,
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
-        # Skip proactive schedules if the agent is already busy
+        # Skip proactive schedules if the agent is busy with a TASK (not chat)
         if schedule.name.startswith("[Proactive]") and schedule.agent_id:
             queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
             status = await self.redis.get_agent_status(schedule.agent_id)
-            if queue_depth > 0 or status.get("current_task"):
-                # Agent is busy - postpone proactive check
+            current_task = status.get("current_task", "")
+            # Chat sessions (current_task starts with "chat:") don't block proactive tasks
+            # because chat and task consumers run concurrently in the agent
+            is_busy_with_task = queue_depth > 0 or (
+                current_task and not current_task.startswith("chat:")
+            )
+            if is_busy_with_task:
                 schedule.next_run_at = now + timedelta(seconds=schedule.interval_seconds)
-                logger.debug(
-                    f"Proactive schedule {schedule.id} skipped - agent {schedule.agent_id} is busy"
+                print(
+                    f"[Scheduler] Proactive {schedule.name} skipped - "
+                    f"agent busy (queue={queue_depth}, task={current_task!r})"
                 )
                 return
 
+        # For proactive schedules: always use the latest PROACTIVE_PROMPT from code
+        # so prompt improvements apply immediately to all agents without DB migration
+        is_proactive = schedule.name.startswith("[Proactive]")
+        prompt = PROACTIVE_PROMPT if is_proactive else schedule.prompt
+
         task = await router.create_and_route_task(
             title=f"[Scheduled] {schedule.name}",
-            prompt=schedule.prompt,
+            prompt=prompt,
             priority=schedule.priority,
             agent_id=schedule.agent_id,
             model=schedule.model,
@@ -92,7 +104,7 @@ class SchedulerService:
         schedule.total_runs += 1
         schedule.next_run_at = now + timedelta(seconds=schedule.interval_seconds)
 
-        logger.info(
-            f"Schedule {schedule.id} ({schedule.name}) triggered task {task.id}, "
+        print(
+            f"[Scheduler] {schedule.name} triggered task {task.id}, "
             f"next run at {schedule.next_run_at.isoformat()}"
         )

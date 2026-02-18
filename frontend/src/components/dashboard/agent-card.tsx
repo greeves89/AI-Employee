@@ -6,43 +6,41 @@ import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const statusConfig: Record<string, {
-  dot: string;
-  badge: string;
+  online: boolean;
   label: string;
+  badge: string;
   glow?: string;
 }> = {
   running: {
-    dot: "bg-emerald-500",
+    online: true,
+    label: "Idle",
     badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    label: "Online",
-    glow: "from-emerald-500/20 to-transparent",
-  },
-  working: {
-    dot: "bg-blue-500",
-    badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    label: "Working",
-    glow: "from-blue-500/20 to-transparent",
   },
   idle: {
-    dot: "bg-amber-500",
-    badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    online: true,
     label: "Idle",
+    badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  },
+  working: {
+    online: true,
+    label: "Working",
+    badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    glow: "from-blue-500/20 to-transparent",
   },
   stopped: {
-    dot: "bg-zinc-500",
-    badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+    online: false,
     label: "Stopped",
+    badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
   },
   error: {
-    dot: "bg-red-500",
-    badge: "bg-red-500/10 text-red-400 border-red-500/20",
+    online: false,
     label: "Error",
-    glow: "from-red-500/20 to-transparent",
+    badge: "bg-red-500/10 text-red-400 border-red-500/20",
   },
   created: {
-    dot: "bg-violet-500",
-    badge: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+    online: false,
     label: "Starting",
+    badge: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   },
 };
 
@@ -54,7 +52,7 @@ export function AgentCard({ agent }: AgentCardProps) {
   const cpuPercent = agent.cpu_percent ?? 0;
   const memMb = agent.memory_usage_mb ?? 0;
   const config = statusConfig[agent.state] ?? statusConfig.stopped;
-  const isActive = agent.state === "running" || agent.state === "working";
+  const isActive = config.online;
 
   return (
     <Link href={`/agents/${agent.id}`} className="group block h-full">
@@ -106,11 +104,15 @@ export function AgentCard({ agent }: AgentCardProps) {
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
               config.badge
             )}>
+              {/* Green/red dot = online/offline */}
               <span className="relative flex h-1.5 w-1.5">
-                {isActive && (
-                  <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", config.dot)} />
+                {config.online && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
                 )}
-                <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", config.dot)} />
+                <span className={cn(
+                  "relative inline-flex h-1.5 w-1.5 rounded-full",
+                  config.online ? "bg-emerald-500" : "bg-red-500"
+                )} />
               </span>
               {config.label}
             </div>

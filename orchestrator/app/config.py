@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 # Bump this when the agent image changes and agents need updating
-AGENT_VERSION = "1.2.0"
+AGENT_VERSION = "1.4.3"
 
 
 class Settings(BaseSettings):
@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     oauth_google_client_secret: str = ""
     oauth_microsoft_client_id: str = ""
     oauth_microsoft_client_secret: str = ""
+    oauth_github_client_id: str = ""
+    oauth_github_client_secret: str = ""
     oauth_apple_client_id: str = ""
     oauth_apple_team_id: str = ""
     oauth_apple_key_id: str = ""

@@ -19,15 +19,22 @@ import {
   X,
   Eye,
   EyeOff,
+  MessageSquare,
+  ExternalLink,
+  Github,
+  Bug,
+  Lightbulb,
+  TrendingUp,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
-import type { AdminUser, Agent } from "@/lib/types";
+import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
-type Tab = "users" | "agents";
+type Tab = "users" | "agents" | "feedback";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -51,6 +58,9 @@ export default function AdminPage() {
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [addUserError, setAddUserError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  // Feedback
+  const [feedbackItems, setFeedbackItems] = useState<Feedback[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   // Redirect non-admins
   useEffect(() => {
@@ -77,10 +87,26 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchFeedback = useCallback(async () => {
+    try {
+      const data = await api.getFeedback();
+      setFeedbackItems(data.feedback);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchUsers(), fetchAgents()]).finally(() => setLoading(false));
   }, [fetchUsers, fetchAgents]);
+
+  useEffect(() => {
+    if (tab === "feedback" && feedbackItems.length === 0) {
+      setFeedbackLoading(true);
+      fetchFeedback().finally(() => setFeedbackLoading(false));
+    }
+  }, [tab, fetchFeedback, feedbackItems.length]);
 
   const ROLE_CYCLE = ["viewer", "member", "manager", "admin"] as const;
 
@@ -190,9 +216,10 @@ export default function AdminPage() {
 
   if (user?.role !== "admin") return null;
 
-  const tabs: { id: Tab; label: string; icon: typeof Users }[] = [
-    { id: "users", label: "Users", icon: Users },
-    { id: "agents", label: "All Agents", icon: Cpu },
+  const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] = [
+    { id: "users", label: "Users", icon: Users, count: users.length },
+    { id: "agents", label: "All Agents", icon: Cpu, count: agents.length },
+    { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
   ];
 
   return (
@@ -225,14 +252,12 @@ export default function AdminPage() {
               >
                 <Icon className="h-4 w-4" />
                 {t.label}
-                {t.id === "users" && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-foreground/10">
-                    {users.length}
-                  </span>
-                )}
-                {t.id === "agents" && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-foreground/10">
-                    {agents.length}
+                {t.count != null && t.count > 0 && (
+                  <span className={cn(
+                    "ml-1 px-1.5 py-0.5 rounded text-[10px]",
+                    t.id === "feedback" ? "bg-amber-500/20 text-amber-400" : "bg-foreground/10"
+                  )}>
+                    {t.count}
                   </span>
                 )}
               </button>
@@ -482,6 +507,27 @@ export default function AdminPage() {
                 )}
               </div>
             )}
+
+            {/* Feedback Tab */}
+            {tab === "feedback" && (
+              <FeedbackTab
+                items={feedbackItems}
+                loading={feedbackLoading}
+                onRefresh={async () => {
+                  setFeedbackLoading(true);
+                  await fetchFeedback();
+                  setFeedbackLoading(false);
+                }}
+                onUpdate={(updated) => {
+                  setFeedbackItems((prev) =>
+                    prev.map((f) => (f.id === updated.id ? updated : f))
+                  );
+                }}
+                onDelete={(id) => {
+                  setFeedbackItems((prev) => prev.filter((f) => f.id !== id));
+                }}
+              />
+            )}
           </>
         )}
       </motion.div>
@@ -591,6 +637,270 @@ export default function AdminPage() {
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Feedback Tab Component ---
+
+const STATUS_OPTIONS: { value: FeedbackStatus; label: string; color: string }[] = [
+  { value: "pending", label: "Pending", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  { value: "reviewed", label: "Reviewed", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+  { value: "in_progress", label: "In Progress", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+  { value: "closed", label: "Closed", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20" },
+];
+
+const CATEGORY_ICONS: Record<string, typeof Bug> = {
+  bug: Bug,
+  feature: Lightbulb,
+  improvement: TrendingUp,
+  general: MessageSquare,
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  bug: "text-red-400",
+  feature: "text-amber-400",
+  improvement: "text-blue-400",
+  general: "text-zinc-400",
+};
+
+function FeedbackTab({
+  items,
+  loading,
+  onRefresh,
+  onUpdate,
+  onDelete,
+}: {
+  items: Feedback[];
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+  onUpdate: (feedback: Feedback) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [expandedNotes, setExpandedNotes] = useState<number | null>(null);
+  const [noteText, setNoteText] = useState("");
+
+  const handleStatusChange = async (f: Feedback, newStatus: FeedbackStatus) => {
+    setActionLoading(f.id);
+    try {
+      const updated = await api.updateFeedback(f.id, { status: newStatus });
+      onUpdate(updated);
+    } catch {
+      // ignore
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSaveNotes = async (f: Feedback) => {
+    setActionLoading(f.id);
+    try {
+      const updated = await api.updateFeedback(f.id, { admin_notes: noteText });
+      onUpdate(updated);
+      setExpandedNotes(null);
+    } catch {
+      // ignore
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreateIssue = async (f: Feedback) => {
+    setActionLoading(f.id);
+    try {
+      const result = await api.createGithubIssueFromFeedback(f.id);
+      onUpdate(result.feedback);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to create issue");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async (f: Feedback) => {
+    if (!confirm(`Feedback "${f.title}" wirklich loeschen?`)) return;
+    setActionLoading(f.id);
+    try {
+      await api.deleteFeedback(f.id);
+      onDelete(f.id);
+    } catch {
+      // ignore
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((f, i) => {
+        const CatIcon = CATEGORY_ICONS[f.category] || MessageSquare;
+        const catColor = CATEGORY_COLORS[f.category] || "text-zinc-400";
+        const statusCfg = STATUS_OPTIONS.find((s) => s.value === f.status) || STATUS_OPTIONS[0];
+        const isExpanded = expandedNotes === f.id;
+
+        return (
+          <motion.div
+            key={f.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.03, duration: 0.2 }}
+            className="rounded-xl border border-border bg-card/80 backdrop-blur-sm overflow-hidden"
+          >
+            <div className="p-4">
+              <div className="flex items-start gap-3">
+                {/* Category icon */}
+                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.04]", catColor)}>
+                  <CatIcon className="h-4 w-4" />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-sm font-medium truncate">{f.title}</h4>
+                    <span className={cn(
+                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                      statusCfg.color
+                    )}>
+                      {statusCfg.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/50 capitalize">{f.category}</span>
+                  </div>
+                  {f.description && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{f.description}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/50">
+                    <span>{f.user_name || f.user_id}</span>
+                    <span>{new Date(f.created_at).toLocaleString("de-DE")}</span>
+                    {f.github_issue_url && (
+                      <a
+                        href={f.github_issue_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <Github className="h-3 w-3" />
+                        Issue
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    )}
+                  </div>
+                  {f.admin_notes && !isExpanded && (
+                    <p className="text-[11px] text-muted-foreground/70 mt-1.5 italic">
+                      Admin: {f.admin_notes}
+                    </p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Status dropdown */}
+                  <div className="relative">
+                    <select
+                      value={f.status}
+                      onChange={(e) => handleStatusChange(f, e.target.value as FeedbackStatus)}
+                      disabled={actionLoading === f.id}
+                      className="appearance-none rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-2.5 pr-6 py-1.5 text-[11px] font-medium outline-none cursor-pointer hover:bg-foreground/[0.06] transition-colors"
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                  </div>
+
+                  {/* Notes button */}
+                  <button
+                    onClick={() => {
+                      if (isExpanded) {
+                        setExpandedNotes(null);
+                      } else {
+                        setNoteText(f.admin_notes || "");
+                        setExpandedNotes(f.id);
+                      }
+                    }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                    title="Admin-Notizen"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </button>
+
+                  {/* GitHub Issue button */}
+                  {!f.github_issue_url && (
+                    <button
+                      onClick={() => handleCreateIssue(f)}
+                      disabled={actionLoading === f.id}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
+                      title="GitHub Issue erstellen"
+                    >
+                      {actionLoading === f.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Github className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDelete(f)}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Loeschen"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Expanded admin notes */}
+            {isExpanded && (
+              <div className="px-4 pb-4 pt-0 border-t border-foreground/[0.04]">
+                <div className="pt-3 space-y-2">
+                  <textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Admin-Notizen..."
+                    rows={2}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setExpandedNotes(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      onClick={() => handleSaveNotes(f)}
+                      disabled={actionLoading === f.id}
+                      className="px-3 py-1.5 rounded-lg text-xs bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      Speichern
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        );
+      })}
+
+      {items.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">Noch kein Feedback erhalten</p>
+          <p className="text-xs text-muted-foreground/50 mt-1">Feedback wird hier angezeigt, sobald User welches senden.</p>
         </div>
       )}
     </div>

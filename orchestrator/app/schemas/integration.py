@@ -15,6 +15,7 @@ class IntegrationStatus(BaseModel):
     expires_at: datetime | None = None
     scopes: str = ""
     available: bool  # True if client credentials are configured
+    auth_type: str = "oauth"  # "oauth" or "pat"
 
 
 class IntegrationListResponse(BaseModel):

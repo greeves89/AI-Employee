@@ -82,6 +82,7 @@ class ChatHandler:
 
         result_data: dict = {"status": "completed", "text": ""}
         stream_had_error = False
+        accumulated_tool_calls: list[dict] = []  # Track tool calls for persistence
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -115,15 +116,27 @@ class ChatHandler:
                             if tool_id and tool_id in seen_tool_ids:
                                 continue  # Skip already-published tool calls
                             seen_tool_ids.add(tool_id)
+                            tool_name = block.get("name", "unknown")
+                            tool_input = block.get("input", {})
+                            accumulated_tool_calls.append({
+                                "tool": tool_name,
+                                "input": json.dumps(tool_input)[:200],
+                            })
                             await self.log_publisher.publish_chat(
                                 message_id,
                                 "tool_call",
                                 {
                                     "tool_use_id": tool_id,
-                                    "tool": block.get("name", "unknown"),
-                                    "input": block.get("input", {}),
+                                    "tool": tool_name,
+                                    "input": tool_input,
                                 },
                             )
+                    # Detect new assistant turn: if current text is shorter
+                    # than what we've already seen, the content array has reset
+                    # (new assistant message after tool use in multi-turn)
+                    if len(current_full_text) < seen_text_len:
+                        seen_text_len = 0
+
                     # Only send NEW text (delta since last event)
                     if len(current_full_text) > seen_text_len:
                         new_text = current_full_text[seen_text_len:]
@@ -165,6 +178,7 @@ class ChatHandler:
                             "cost_usd": event.get("cost_usd", 0),
                             "duration_ms": event.get("duration_ms", 0),
                             "num_turns": event.get("num_turns", 0),
+                            "tool_calls": accumulated_tool_calls or None,
                         }
                         # If we got text from result but didn't stream it yet, send it now
                         if not full_text and final_text:

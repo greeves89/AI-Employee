@@ -43,12 +43,19 @@ class ChatConsumer:
                     await self._handler.reset_session()
                     continue
 
-                # Process the chat message
-                await self._handler.handle_message(
-                    message_id=message_id,
-                    text=text,
-                    model=model,
-                )
+                # Mark as working while processing chat
+                await log_publisher.publish_status("working", f"chat:{message_id}")
+
+                try:
+                    # Process the chat message
+                    await self._handler.handle_message(
+                        message_id=message_id,
+                        text=text,
+                        model=model,
+                    )
+                finally:
+                    # Back to idle after response
+                    await log_publisher.publish_status("idle")
 
             except aioredis.ConnectionError:
                 await asyncio.sleep(2)
