@@ -39,6 +39,15 @@ def register_mcp_servers() -> None:
     # Built-in stdio servers
     # AGENT_TOKEN is required for all API calls (verify_agent_token auth)
     builtin_servers = {
+        "bash-approval": {
+            "command": "node",
+            "args": ["/opt/mcp/bash-approval-server.mjs"],
+            "env": {
+                "ORCHESTRATOR_URL": settings.orchestrator_url,
+                "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
+            },
+        },
         "memory": {
             "command": "node",
             "args": ["/opt/mcp/memory-server.mjs"],
@@ -105,6 +114,7 @@ def _write_mcp_json_fallback() -> None:
 
     # Built-in servers (AGENT_TOKEN required for API auth)
     for name, cmd, envs in [
+        ("bash-approval", "/opt/mcp/bash-approval-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("memory", "/opt/mcp/memory-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
