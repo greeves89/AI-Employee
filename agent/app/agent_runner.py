@@ -50,8 +50,7 @@ class AgentRunner:
             "-p", enhanced_prompt,
             "--output-format", "stream-json",
             "--verbose",
-            # ✅ REMOVED: --dangerously-skip-permissions
-            # Tool calls now require user approval via orchestrator
+            "--dangerously-skip-permissions",
             "--max-turns", str(settings.max_turns),
             "--model", model,
         ]
