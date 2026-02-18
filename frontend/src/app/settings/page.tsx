@@ -376,7 +376,7 @@ export default function SettingsPage() {
                       value={oauthToken}
                       onChange={setOauthToken}
                       placeholder="sk-ant-oat01-..."
-                      hint='Run "claude login" then extract token: macOS → Keychain Access, Linux → secret-tool, Windows → Credential Manager'
+                      hint='Run "claude login", then set CLAUDE_CODE_OAUTH_TOKEN in .env and restart. Auto-detected on startup!'
                       mono
                     />
                   )}

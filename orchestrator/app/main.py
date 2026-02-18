@@ -312,6 +312,43 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not load persisted settings: {e}")
 
+    # Auto-detect Claude token from environment if not configured in DB
+    try:
+        from app.db.session import async_session_factory as _sf2
+        from app.services.settings_service import SettingsService as _SS2
+
+        async with _sf2() as db:
+            svc = _SS2(db)
+            has_api_key = bool(settings.anthropic_api_key)
+            has_oauth = bool(settings.claude_code_oauth_token)
+
+            if not has_api_key and not has_oauth:
+                # Check env vars that might be passed from host
+                env_oauth = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+                env_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+                if env_oauth:
+                    settings.claude_code_oauth_token = env_oauth
+                    await svc.set("claude_code_oauth_token", env_oauth)
+                    await svc.set("model_provider", "anthropic")
+                    await db.commit()
+                    logger.info("Auto-detected CLAUDE_CODE_OAUTH_TOKEN from environment - saved to platform settings")
+                elif env_api_key:
+                    settings.anthropic_api_key = env_api_key
+                    await svc.set("anthropic_api_key", env_api_key)
+                    await svc.set("model_provider", "anthropic")
+                    await db.commit()
+                    logger.info("Auto-detected ANTHROPIC_API_KEY from environment - saved to platform settings")
+                else:
+                    logger.info("No Claude authentication found - configure in Settings page")
+            else:
+                logger.info(
+                    f"Claude authentication configured: "
+                    f"{'API Key' if has_api_key else 'OAuth Token'}"
+                )
+    except Exception as e:
+        logger.warning(f"Auto-detection of Claude token failed: {e}")
+
     # Initialize services
     app.state.redis = RedisService(settings.redis_url)
     await app.state.redis.connect()

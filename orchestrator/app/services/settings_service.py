@@ -115,10 +115,10 @@ class SettingsService:
             if hasattr(settings, key):
                 current = getattr(settings, key)
                 # Convert types
-                if isinstance(current, int):
-                    value = int(value)
-                elif isinstance(current, bool):
+                if isinstance(current, bool):
                     value = value.lower() in ("true", "1", "yes")
+                elif isinstance(current, int):
+                    value = int(value)
                 setattr(settings, key, value)
                 loaded += 1
 
