@@ -55,6 +55,10 @@ class AgentRunner:
             "--model", model,
         ]
 
+        # Add extended thinking flag if enabled
+        if settings.extended_thinking:
+            cmd.append("--thinking")
+
         env = os.environ.copy()
         if settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
