@@ -70,7 +70,8 @@ class ChatHandler:
             "-p", text,
             "--output-format", "stream-json",
             "--verbose",
-            "--dangerously-skip-permissions",
+            # ✅ REMOVED: --dangerously-skip-permissions
+            # Tool calls now require user approval via orchestrator
             "--model", model,
         ])
 
