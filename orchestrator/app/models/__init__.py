@@ -15,6 +15,7 @@ from app.models.platform_settings import PlatformSettings
 from app.models.agent_access import AgentAccess
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.models.feedback import Feedback, FeedbackStatus, FeedbackCategory
+from app.models.command_approval import CommandApproval, ApprovalStatus
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -23,4 +24,5 @@ __all__ = [
     "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
     "AgentTodo", "TodoStatus",
     "Feedback", "FeedbackStatus", "FeedbackCategory",
+    "CommandApproval", "ApprovalStatus",
 ]

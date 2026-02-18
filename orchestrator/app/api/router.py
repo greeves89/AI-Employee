@@ -1,9 +1,10 @@
 from fastapi import APIRouter
 
-from app.api import admin, agents, auth, feedback, integrations, memory, mcp_servers, notifications, schedules, tasks, templates, todos, webhooks, ws, settings
+from app.api import admin, agents, approvals, auth, feedback, integrations, memory, mcp_servers, notifications, schedules, tasks, templates, todos, webhooks, ws, settings
 
 api_router = APIRouter()
 api_router.include_router(admin.router)
+api_router.include_router(approvals.router)
 api_router.include_router(auth.router)
 api_router.include_router(agents.router)
 api_router.include_router(feedback.router)
