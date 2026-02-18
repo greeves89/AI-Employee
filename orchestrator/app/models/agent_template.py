@@ -17,7 +17,7 @@ class AgentTemplate(Base, TimestampMixin):
     category: Mapped[str] = mapped_column(String, default="general")
 
     # Agent configuration
-    model: Mapped[str] = mapped_column(String, default="claude-sonnet-4-5-20250929")
+    model: Mapped[str] = mapped_column(String, default="claude-sonnet-4-6")
     role: Mapped[str] = mapped_column(Text, default="")
     permissions: Mapped[list] = mapped_column(JSON, default=list)
     integrations: Mapped[list] = mapped_column(JSON, default=list)

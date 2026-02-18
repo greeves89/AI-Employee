@@ -25,7 +25,7 @@ class TemplateCreate(BaseModel):
     description: str = ""
     icon: str = "Bot"
     category: str = "general"
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = "claude-sonnet-4-6"
     role: str = ""
     permissions: list[str] = []
     integrations: list[str] = []

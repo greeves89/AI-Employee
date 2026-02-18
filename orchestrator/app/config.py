@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Claude Authentication (either API key OR OAuth token)
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""
-    default_model: str = "claude-sonnet-4-5-20250929"
+    default_model: str = "claude-sonnet-4-6"
     max_turns: int = 100
 
     # Model Provider: "anthropic", "bedrock", "vertex", "foundry"

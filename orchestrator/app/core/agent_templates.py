@@ -7,7 +7,7 @@ BUILTIN_TEMPLATES = [
         "description": "Builds web applications with React/Next.js frontend and Python/Node backend",
         "icon": "Code2",
         "category": "dev",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "role": (
             "Senior Fullstack Developer with expertise in React, Next.js, Python, "
             "FastAPI, TypeScript, databases, and modern web architecture"
@@ -53,7 +53,7 @@ BUILTIN_TEMPLATES = [
         "description": "Analyzes data, creates visualizations and reports with Python/pandas",
         "icon": "BarChart3",
         "category": "data",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "role": (
             "Data Analyst specialized in Python, pandas, matplotlib, statistical "
             "analysis, business intelligence, and automated reporting"
@@ -95,7 +95,7 @@ BUILTIN_TEMPLATES = [
         "description": "Creates documentation, guides, API docs, and technical content",
         "icon": "FileText",
         "category": "writing",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "role": (
             "Technical Writer creating clear, well-structured documentation, "
             "API guides, user manuals, tutorials, and blog posts"
@@ -139,7 +139,7 @@ BUILTIN_TEMPLATES = [
         "description": "Manages infrastructure, CI/CD, Docker, monitoring, and deployments",
         "icon": "Server",
         "category": "ops",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "role": (
             "DevOps Engineer managing Docker, CI/CD pipelines, infrastructure, "
             "monitoring, security hardening, and automated deployments"
@@ -182,7 +182,7 @@ BUILTIN_TEMPLATES = [
         "description": "Conducts research, summarizes findings, and organizes knowledge",
         "icon": "Search",
         "category": "general",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "role": (
             "Research Assistant that thoroughly gathers information, analyzes sources, "
             "summarizes findings, and maintains organized research notes"

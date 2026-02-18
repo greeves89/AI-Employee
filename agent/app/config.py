@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     agent_token: str = ""
     redis_url: str = "redis://redis:6379"
     health_port: int = 8080
-    default_model: str = "claude-sonnet-4-5-20250929"
+    default_model: str = "claude-sonnet-4-6"
     max_turns: int = 100
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""

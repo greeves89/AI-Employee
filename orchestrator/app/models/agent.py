@@ -29,7 +29,7 @@ class Agent(Base, TimestampMixin):
         Enum(AgentState), default=AgentState.CREATED
     )
     model: Mapped[str] = mapped_column(
-        String, default="claude-sonnet-4-5-20250929"
+        String, default="claude-sonnet-4-6"
     )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
