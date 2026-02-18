@@ -17,21 +17,25 @@ import type { Settings, ModelProvider } from "@/lib/types";
 // ── Model options per provider ──────────────────────────────
 const MODEL_OPTIONS: Record<ModelProvider, { value: string; label: string; tier: string }[]> = {
   anthropic: [
+    { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (Latest)", tier: "Balanced" },
     { value: "claude-sonnet-4-5-20250929", label: "Sonnet 4.5", tier: "Balanced" },
     { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", tier: "Fast" },
     { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
   ],
   bedrock: [
+    { value: "us.anthropic.claude-sonnet-4-6-v1:0", label: "Sonnet 4.6 (Latest)", tier: "Balanced" },
     { value: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Balanced" },
     { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Fast" },
     { value: "us.anthropic.claude-opus-4-20250514-v1:0", label: "Opus 4", tier: "Powerful" },
   ],
   vertex: [
+    { value: "claude-sonnet-4-6@latest", label: "Sonnet 4.6 (Latest)", tier: "Balanced" },
     { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Balanced" },
     { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Fast" },
     { value: "claude-opus-4@20250514", label: "Opus 4", tier: "Powerful" },
   ],
   foundry: [
+    { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (Latest)", tier: "Balanced" },
     { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Balanced" },
     { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
     { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
