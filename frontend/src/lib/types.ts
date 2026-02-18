@@ -262,3 +262,19 @@ export interface AgentTemplate {
   created_by: string | null;
   created_at: string | null;
 }
+
+export interface ApprovalRequest {
+  approval_id: string;
+  agent_id: string;
+  tool: string;
+  input: Record<string, unknown>;
+  reasoning: string;
+  risk_level: "blocked" | "high" | "medium" | "low";
+  status: "pending" | "approved" | "denied";
+  created_at: string;
+  approved_by?: string;
+  approved_at?: string;
+  denied_by?: string;
+  denied_at?: string;
+  deny_reason?: string;
+}

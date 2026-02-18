@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   MessageSquarePlus,
+  ShieldCheck,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UserMenu } from "./user-menu";
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Cpu },
   { href: "/tasks", label: "Tasks", icon: ListTodo },
   { href: "/schedules", label: "Schedules", icon: Clock },
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
   { href: "/files", label: "Explorer", icon: FolderOpen },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
