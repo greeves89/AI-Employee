@@ -7,8 +7,8 @@
 
 import { create } from "zustand";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const BASE = `${API_URL}/api/v1/auth`;
+import { getApiUrl } from "./config";
+function authBase() { return `${getApiUrl()}/api/v1/auth`; }
 
 export interface AuthUser {
   id: string;
@@ -63,7 +63,7 @@ async function authFetch<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
-  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${BASE}/login`, {
+  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${authBase()}/login`, {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
@@ -75,7 +75,7 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 }
 
 export async function register(name: string, email: string, password: string): Promise<AuthUser> {
-  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${BASE}/register`, {
+  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${authBase()}/register`, {
     method: "POST",
     body: JSON.stringify({ name, email, password }),
   });
@@ -87,18 +87,18 @@ export async function register(name: string, email: string, password: string): P
 }
 
 export async function logout(): Promise<void> {
-  await authFetch(`${BASE}/logout`, { method: "POST" });
+  await authFetch(`${authBase()}/logout`, { method: "POST" });
   const store = useAuthStore.getState();
   store.setUser(null);
   store.setWsToken(null);
 }
 
 export async function getMe(): Promise<AuthUser> {
-  return authFetch<AuthUser>(`${BASE}/me`);
+  return authFetch<AuthUser>(`${authBase()}/me`);
 }
 
 export async function refreshToken(): Promise<AuthUser> {
-  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${BASE}/refresh`, {
+  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${authBase()}/refresh`, {
     method: "POST",
   });
   const store = useAuthStore.getState();
@@ -111,7 +111,7 @@ export async function getRegistrationStatus(): Promise<{
   registration_open: boolean;
   needs_setup: boolean;
 }> {
-  return authFetch(`${BASE}/registration-status`);
+  return authFetch(`${authBase()}/registration-status`);
 }
 
 export interface SSOProvider {
@@ -121,7 +121,7 @@ export interface SSOProvider {
 }
 
 export async function getSSOProviders(): Promise<SSOProvider[]> {
-  const data = await authFetch<{ providers: SSOProvider[] }>(`${BASE}/sso/providers`);
+  const data = await authFetch<{ providers: SSOProvider[] }>(`${authBase()}/sso/providers`);
   return data.providers;
 }
 

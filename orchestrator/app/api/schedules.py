@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -92,6 +93,43 @@ async def delete_schedule(schedule_id: str, user=Depends(require_auth), db: Asyn
     await db.delete(schedule)
     await db.commit()
     return {"status": "deleted", "schedule_id": schedule_id}
+
+
+@router.post("/{schedule_id}/trigger")
+async def trigger_schedule(schedule_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Manually trigger a schedule to run immediately."""
+    from app.core.agent_manager import PROACTIVE_PROMPT
+    from app.core.load_balancer import LoadBalancer
+    from app.core.task_router import TaskRouter
+    from app.services.redis_service import RedisService
+
+    schedule = await _get_schedule(db, schedule_id)
+
+    redis = RedisService(os.environ.get("REDIS_URL", "redis://redis:6379"))
+    await redis.connect()
+    try:
+        lb = LoadBalancer(redis)
+        router = TaskRouter(db, redis, lb)
+
+        is_proactive = schedule.name.startswith("[Proactive]")
+        prompt = PROACTIVE_PROMPT if is_proactive else schedule.prompt
+
+        task = await router.create_and_route_task(
+            title=f"[Manual] {schedule.name}",
+            prompt=prompt,
+            priority=schedule.priority,
+            agent_id=schedule.agent_id,
+            model=schedule.model,
+        )
+
+        now = datetime.now(timezone.utc)
+        schedule.last_run_at = now
+        schedule.total_runs += 1
+        await db.commit()
+
+        return {"status": "triggered", "schedule_id": schedule_id, "task_id": task.id}
+    finally:
+        await redis.disconnect()
 
 
 @router.post("/{schedule_id}/pause")

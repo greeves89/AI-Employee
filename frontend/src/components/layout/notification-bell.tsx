@@ -13,8 +13,7 @@ import {
 import type { Notification } from "@/lib/types";
 import { useAuthStore } from "@/lib/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const WS_URL = API_URL.replace(/^http/, "ws");
+import { getWsUrl } from "@/lib/config";
 
 const typeColors: Record<string, string> = {
   info: "bg-blue-500",
@@ -67,7 +66,7 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
 
     const connect = () => {
       const tokenParam = wsToken ? `?token=${wsToken}` : "";
-      const ws = new WebSocket(`${WS_URL}/api/v1/ws/notifications${tokenParam}`);
+      const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/notifications${tokenParam}`);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {

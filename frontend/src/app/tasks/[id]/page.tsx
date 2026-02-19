@@ -16,7 +16,7 @@ import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import type { Task, LogEvent } from "@/lib/types";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+import { getWsUrl } from "@/lib/config";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string; label: string }> = {
   pending:   { icon: Clock,        color: "text-amber-400",   badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",     label: "Pending" },
@@ -56,7 +56,7 @@ export default function TaskDetailPage() {
   const connectWs = useCallback((agentId: string) => {
     const token = useAuthStore.getState().wsToken;
     const tokenParam = token ? `?token=${token}` : "";
-    const ws = new WebSocket(`${WS_URL}/api/v1/ws/agents/${agentId}/logs${tokenParam}`);
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/logs${tokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => setIsConnected(true);

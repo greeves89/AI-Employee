@@ -12,7 +12,7 @@ from app.core.agent_manager import AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth, require_manager
-from app.models.agent import Agent
+from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
 from app.schemas.agent import AgentCreate, AgentListResponse, AgentResponse, KnowledgeResponse, KnowledgeUpdate
@@ -579,16 +579,23 @@ async def update_agent_integrations(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Update the enabled integrations for an agent."""
+    """Update the enabled integrations for an agent and restart to apply."""
     await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        config["integrations"] = body.get("integrations", [])
+        old_integrations = set(config.get("integrations", []))
+        new_integrations = body.get("integrations", [])
+        config["integrations"] = new_integrations
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
+
+        # Auto-restart running agents so new tokens are injected
+        if set(new_integrations) != old_integrations and agent.state == AgentState.RUNNING:
+            await manager.restart_agent(agent_id)
+
         return {"agent_id": agent_id, "integrations": config["integrations"]}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")

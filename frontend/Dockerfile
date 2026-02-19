@@ -19,10 +19,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+# NOTE: Do NOT set NEXT_PUBLIC_API_URL / NEXT_PUBLIC_WS_URL here!
+# Next.js bakes NEXT_PUBLIC_* into the JS bundle at build time.
+# Leaving them empty lets the runtime config (config.ts) dynamically
+# resolve the API URL from window.location.hostname, so the app
+# works from localhost, LAN IP, VPN, etc. without rebuilding.
 RUN npm run build
 
 # ---- Production ----

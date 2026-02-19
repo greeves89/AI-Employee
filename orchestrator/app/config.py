@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     claude_code_oauth_token: str = ""
     default_model: str = "claude-sonnet-4-6"
     max_turns: int = 100
-    extended_thinking: bool = True  # Enable extended thinking by default
+    extended_thinking: bool = False  # Thinking is model-controlled, not a CLI flag
 
     # Model Provider: "anthropic", "bedrock", "vertex", "foundry"
     model_provider: str = "anthropic"

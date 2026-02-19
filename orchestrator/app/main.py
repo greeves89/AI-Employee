@@ -11,8 +11,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.router import api_router
 from app.api.ws import init_stream_manager
 from app.config import settings
-from app.db.session import engine
-from app.models.base import Base
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -264,13 +262,23 @@ async def lifespan(app: FastAPI):
     # Validate config on startup
     _validate_config()
 
-    # Create tables (ignore if enums/tables already exist)
+    # Run Alembic migrations to create/update tables
+    import subprocess
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    except Exception:
-        # Tables/enums already exist from a previous run - that's fine
-        pass
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd="/app",
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.error(f"Alembic migration failed: {result.stderr}")
+            raise RuntimeError(f"Database migration failed: {result.stderr}")
+        logger.info("Database migrations applied successfully")
+    except subprocess.TimeoutExpired:
+        logger.error("Alembic migration timed out")
+        raise
 
     # Seed builtin agent templates
     try:
@@ -426,21 +434,35 @@ app.add_middleware(SecurityHeadersMiddleware)
 # API rate limiting (120 requests/minute per user or IP)
 app.add_middleware(APIRateLimitMiddleware, max_requests=120, window_seconds=60)
 
-# CORS
-_allowed_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-if os.environ.get("CORS_ALLOW_ORIGIN"):
-    _allowed_origins.append(os.environ["CORS_ALLOW_ORIGIN"])
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
+# CORS - allow access from any origin so the app works from LAN, VPN, etc.
+# In production, restrict via CORS_ALLOW_ORIGIN env var.
+_cors_env = os.environ.get("CORS_ALLOW_ORIGIN", "").strip()
+if _cors_env == "*" or not _cors_env:
+    # Allow all origins (dev mode / LAN access)
+    # NOTE: allow_origin_regex echoes the actual Origin header back instead of "*",
+    # which is required when allow_credentials=True (browser CORS spec).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=".*",
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
+else:
+    _allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        _cors_env,
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
 
 app.include_router(api_router, prefix="/api/v1")
 

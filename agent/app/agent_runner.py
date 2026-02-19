@@ -11,15 +11,24 @@ from app.log_publisher import LogPublisher
 SELF_IMPROVEMENT_SUFFIX = """
 
 ---
-IMPORTANT FINAL STEP: After completing the task above, you MUST update
-/workspace/CLAUDE.md with any new learnings from this task. Add concise
-bullet points under the appropriate section:
-- Learned Patterns: New patterns or approaches that worked well
-- Tools & Libraries: New tools/packages you discovered or used
-- Errors & Fixes: Problems encountered and their solutions
-- Common Solutions: Reusable solutions for future tasks
-Keep each entry to ONE line. Max 3 new entries per task.
-Do NOT remove existing entries - only append new ones.
+IMPORTANT FINAL STEPS (do ALL of these before finishing):
+
+1. **VALIDATE before committing**: If you wrote code, run the build/test command
+   (e.g. `npm run build`, `pytest`, `go build`) to verify everything compiles.
+   Fix any errors before committing. NEVER commit broken code.
+
+2. **Push your work**: After committing, always `git push`. Never leave work only local.
+
+3. **Save learnings via MCP**: If you learned something useful during this task,
+   use the `memory_save` MCP tool (category: "learning") to remember it.
+   Examples: patterns that worked, errors and fixes, useful commands, project conventions.
+   Do NOT write to CLAUDE.md or MEMORY.md — use `memory_save` so the user can see it.
+
+4. **Review & update knowledge.md**: Read `/workspace/knowledge.md` and update it:
+   - Add new learned patterns to "## Learned Patterns" (e.g. library quirks, architecture decisions)
+   - Add errors you encountered and how you fixed them to "## Errors & Fixes"
+   - If your role or responsibilities changed during this task, update those sections too
+   - Keep it concise — knowledge.md is your persistent profile that you read at task start
 """
 
 
@@ -54,10 +63,6 @@ class AgentRunner:
             "--max-turns", str(settings.max_turns),
             "--model", model,
         ]
-
-        # Add extended thinking flag if enabled
-        if settings.extended_thinking:
-            cmd.append("--thinking")
 
         env = os.environ.copy()
         if settings.anthropic_api_key:

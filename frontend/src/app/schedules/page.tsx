@@ -7,6 +7,7 @@ import {
   Plus,
   Pause,
   Play,
+  PlayCircle,
   Trash2,
   CheckCircle2,
   XCircle,
@@ -73,6 +74,7 @@ export default function SchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [triggering, setTriggering] = useState<string | null>(null);
   const { agents } = useAgents();
 
   // Create form state
@@ -129,6 +131,16 @@ export default function SchedulesPage() {
       await api.resumeSchedule(schedule.id);
     }
     await refresh();
+  };
+
+  const handleTrigger = async (id: string) => {
+    setTriggering(id);
+    try {
+      await api.triggerSchedule(id);
+      await refresh();
+    } finally {
+      setTriggering(null);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -345,6 +357,18 @@ export default function SchedulesPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleTrigger(schedule.id)}
+                    disabled={triggering === schedule.id}
+                    title="Run Now"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 backdrop-blur-sm transition-colors disabled:opacity-50"
+                  >
+                    {triggering === schedule.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <PlayCircle className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                   <button
                     onClick={() => handleToggle(schedule)}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur-sm transition-colors ${

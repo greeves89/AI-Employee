@@ -1,7 +1,5 @@
-import type { AdminUser, Agent, AgentMemory, AgentTemplate, AgentTodo, Feedback, FeedbackListResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const BASE = `${API_URL}/api/v1`;
+import type { AdminUser, Agent, AgentMemory, AgentTemplate, AgentTodo, ApprovalRequest, Feedback, FeedbackListResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
 
@@ -15,7 +13,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
   // Auto-refresh on 401 and retry once
   if (res.status === 401 && !_isRetry) {
     if (!_refreshing) {
-      _refreshing = fetch(`${API_URL}/api/v1/auth/refresh`, {
+      _refreshing = fetch(`${getApiUrl()}/api/v1/auth/refresh`, {
         method: "POST",
         credentials: "include",
       }).then((r) => {
@@ -44,49 +42,49 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
 
 // Agents
 export async function getAgents(): Promise<{ agents: Agent[]; total: number }> {
-  return fetchJSON(`${BASE}/agents/`);
+  return fetchJSON(`${getBase()}/agents/`);
 }
 
 export async function getAgent(id: string): Promise<Agent> {
-  return fetchJSON(`${BASE}/agents/${id}`);
+  return fetchJSON(`${getBase()}/agents/${id}`);
 }
 
 export async function createAgent(name: string, model?: string, role?: string, permissions?: string[], budget_usd?: number): Promise<Agent> {
-  return fetchJSON(`${BASE}/agents/`, {
+  return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
     body: JSON.stringify({ name, model, role, permissions, budget_usd }),
   });
 }
 
 export async function getPermissionPackages(): Promise<{ packages: PermissionPackage[]; defaults: string[] }> {
-  return fetchJSON(`${BASE}/agents/permissions`);
+  return fetchJSON(`${getBase()}/agents/permissions`);
 }
 
 export async function updateAgentPermissions(agentId: string, permissions: string[]): Promise<{ agent_id: string; permissions: string[]; warning?: string }> {
-  return fetchJSON(`${BASE}/agents/${agentId}/permissions`, {
+  return fetchJSON(`${getBase()}/agents/${agentId}/permissions`, {
     method: "PATCH",
     body: JSON.stringify({ permissions }),
   });
 }
 
 export async function stopAgent(id: string): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${id}/stop`, { method: "POST" });
+  await fetchJSON(`${getBase()}/agents/${id}/stop`, { method: "POST" });
 }
 
 export async function startAgent(id: string): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${id}/start`, { method: "POST" });
+  await fetchJSON(`${getBase()}/agents/${id}/start`, { method: "POST" });
 }
 
 export async function restartAgent(id: string): Promise<Agent> {
-  return fetchJSON(`${BASE}/agents/${id}/restart`, { method: "POST" });
+  return fetchJSON(`${getBase()}/agents/${id}/restart`, { method: "POST" });
 }
 
 export async function updateAgent(id: string): Promise<Agent> {
-  return fetchJSON(`${BASE}/agents/${id}/update`, { method: "POST" });
+  return fetchJSON(`${getBase()}/agents/${id}/update`, { method: "POST" });
 }
 
 export async function removeAgent(id: string, removeData = false): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${id}?remove_data=${removeData}`, {
+  await fetchJSON(`${getBase()}/agents/${id}?remove_data=${removeData}`, {
     method: "DELETE",
   });
 }
@@ -99,11 +97,11 @@ export async function getTasks(
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (agentId) params.set("agent_id", agentId);
-  return fetchJSON(`${BASE}/tasks/?${params}`);
+  return fetchJSON(`${getBase()}/tasks/?${params}`);
 }
 
 export async function getTask(id: string): Promise<Task> {
-  return fetchJSON(`${BASE}/tasks/${id}`);
+  return fetchJSON(`${getBase()}/tasks/${id}`);
 }
 
 export async function createTask(data: {
@@ -113,32 +111,32 @@ export async function createTask(data: {
   agent_id?: string;
   model?: string;
 }): Promise<Task> {
-  return fetchJSON(`${BASE}/tasks/`, {
+  return fetchJSON(`${getBase()}/tasks/`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  await fetchJSON(`${BASE}/tasks/${id}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/tasks/${id}`, { method: "DELETE" });
 }
 
 export async function cancelTask(id: string): Promise<Task> {
-  return fetchJSON(`${BASE}/tasks/${id}/cancel`, { method: "POST" });
+  return fetchJSON(`${getBase()}/tasks/${id}/cancel`, { method: "POST" });
 }
 
 // Knowledge
 export async function getAgentKnowledge(
   agentId: string
 ): Promise<{ knowledge: string; metrics: Record<string, number> }> {
-  return fetchJSON(`${BASE}/agents/${agentId}/knowledge`);
+  return fetchJSON(`${getBase()}/agents/${agentId}/knowledge`);
 }
 
 export async function updateAgentKnowledge(
   agentId: string,
   content: string
 ): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${agentId}/knowledge`, {
+  await fetchJSON(`${getBase()}/agents/${agentId}/knowledge`, {
     method: "PUT",
     body: JSON.stringify({ content }),
   });
@@ -146,7 +144,7 @@ export async function updateAgentKnowledge(
 
 // Schedules
 export async function getSchedules(): Promise<{ schedules: Schedule[]; total: number }> {
-  return fetchJSON(`${BASE}/schedules/`);
+  return fetchJSON(`${getBase()}/schedules/`);
 }
 
 export async function createSchedule(data: {
@@ -157,7 +155,7 @@ export async function createSchedule(data: {
   agent_id?: string;
   model?: string;
 }): Promise<Schedule> {
-  return fetchJSON(`${BASE}/schedules/`, {
+  return fetchJSON(`${getBase()}/schedules/`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -167,22 +165,26 @@ export async function updateSchedule(
   id: string,
   data: Record<string, unknown>
 ): Promise<Schedule> {
-  return fetchJSON(`${BASE}/schedules/${id}`, {
+  return fetchJSON(`${getBase()}/schedules/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteSchedule(id: string): Promise<void> {
-  await fetchJSON(`${BASE}/schedules/${id}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/schedules/${id}`, { method: "DELETE" });
 }
 
 export async function pauseSchedule(id: string): Promise<void> {
-  await fetchJSON(`${BASE}/schedules/${id}/pause`, { method: "POST" });
+  await fetchJSON(`${getBase()}/schedules/${id}/pause`, { method: "POST" });
 }
 
 export async function resumeSchedule(id: string): Promise<void> {
-  await fetchJSON(`${BASE}/schedules/${id}/resume`, { method: "POST" });
+  await fetchJSON(`${getBase()}/schedules/${id}/resume`, { method: "POST" });
+}
+
+export async function triggerSchedule(id: string): Promise<{ status: string; task_id: string }> {
+  return fetchJSON(`${getBase()}/schedules/${id}/trigger`, { method: "POST" });
 }
 
 // Files
@@ -191,12 +193,12 @@ export async function getFiles(
   path = "/workspace"
 ): Promise<{ path: string; entries: FileEntry[] }> {
   return fetchJSON(
-    `${BASE}/agents/${agentId}/files?path=${encodeURIComponent(path)}`
+    `${getBase()}/agents/${agentId}/files?path=${encodeURIComponent(path)}`
   );
 }
 
 export function getFileDownloadUrl(agentId: string, path: string): string {
-  return `${BASE}/agents/${agentId}/files/download?path=${encodeURIComponent(path)}`;
+  return `${getBase()}/agents/${agentId}/files/download?path=${encodeURIComponent(path)}`;
 }
 
 export async function uploadFiles(
@@ -209,7 +211,7 @@ export async function uploadFiles(
     formData.append("files", file);
   }
   const res = await fetch(
-    `${BASE}/agents/${agentId}/files/upload?path=${encodeURIComponent(path)}`,
+    `${getBase()}/agents/${agentId}/files/upload?path=${encodeURIComponent(path)}`,
     { method: "POST", body: formData, credentials: "include" }
   );
   if (!res.ok) {
@@ -241,7 +243,7 @@ export interface ChatSession {
 export async function getChatSessions(
   agentId: string,
 ): Promise<{ sessions: ChatSession[] }> {
-  return fetchJSON(`${BASE}/agents/${agentId}/chat/sessions`);
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions`);
 }
 
 export async function getChatHistory(
@@ -251,37 +253,37 @@ export async function getChatHistory(
 ): Promise<{ messages: ChatHistoryMessage[]; has_more: boolean }> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (sessionId) params.set("session_id", sessionId);
-  return fetchJSON(`${BASE}/agents/${agentId}/chat/history?${params}`);
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/history?${params}`);
 }
 
 export async function deleteChatSession(
   agentId: string,
   sessionId: string,
 ): Promise<{ deleted: number }> {
-  return fetchJSON(`${BASE}/agents/${agentId}/chat/sessions/${sessionId}`, {
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}`, {
     method: "DELETE",
   });
 }
 
 // Integrations (OAuth)
 export async function getIntegrations(): Promise<{ integrations: Integration[] }> {
-  return fetchJSON(`${BASE}/integrations/`);
+  return fetchJSON(`${getBase()}/integrations/`);
 }
 
 export async function getAuthUrl(provider: string): Promise<{ auth_url: string; provider: string }> {
-  return fetchJSON(`${BASE}/integrations/${provider}/auth`);
+  return fetchJSON(`${getBase()}/integrations/${provider}/auth`);
 }
 
 export async function disconnectIntegration(provider: string): Promise<void> {
-  await fetchJSON(`${BASE}/integrations/${provider}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/integrations/${provider}`, { method: "DELETE" });
 }
 
 export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[] }> {
-  return fetchJSON(`${BASE}/agents/${agentId}/integrations`);
+  return fetchJSON(`${getBase()}/agents/${agentId}/integrations`);
 }
 
 export async function updateAgentIntegrations(agentId: string, integrations: string[]): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${agentId}/integrations`, {
+  await fetchJSON(`${getBase()}/agents/${agentId}/integrations`, {
     method: "PATCH",
     body: JSON.stringify({ integrations }),
   });
@@ -289,7 +291,7 @@ export async function updateAgentIntegrations(agentId: string, integrations: str
 
 // PAT-based integrations (GitHub)
 export async function savePatToken(provider: string, token: string): Promise<{ status: string; provider: string; account_label?: string }> {
-  return fetchJSON(`${BASE}/integrations/${provider}/pat`, {
+  return fetchJSON(`${getBase()}/integrations/${provider}/pat`, {
     method: "POST",
     body: JSON.stringify({ token }),
   });
@@ -297,11 +299,11 @@ export async function savePatToken(provider: string, token: string): Promise<{ s
 
 // Per-agent MCP servers
 export async function getAgentMcpServers(agentId: string): Promise<{ agent_id: string; mcp_servers: number[] | null }> {
-  return fetchJSON(`${BASE}/agents/${agentId}/mcp-servers`);
+  return fetchJSON(`${getBase()}/agents/${agentId}/mcp-servers`);
 }
 
 export async function updateAgentMcpServers(agentId: string, mcpServers: number[] | null): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${agentId}/mcp-servers`, {
+  await fetchJSON(`${getBase()}/agents/${agentId}/mcp-servers`, {
     method: "PATCH",
     body: JSON.stringify({ mcp_servers: mcpServers }),
   });
@@ -309,11 +311,11 @@ export async function updateAgentMcpServers(agentId: string, mcpServers: number[
 
 // Settings
 export async function getSettings(): Promise<Settings> {
-  return fetchJSON(`${BASE}/settings/`);
+  return fetchJSON(`${getBase()}/settings/`);
 }
 
 export async function updateSettings(data: Record<string, unknown>): Promise<void> {
-  await fetchJSON(`${BASE}/settings/`, {
+  await fetchJSON(`${getBase()}/settings/`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -326,70 +328,70 @@ export async function getAgentMemories(
 ): Promise<{ memories: AgentMemory[]; total: number; categories: Record<string, number> }> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
-  return fetchJSON(`${BASE}/memory/agents/${agentId}?${params}`);
+  return fetchJSON(`${getBase()}/memory/agents/${agentId}?${params}`);
 }
 
 export async function updateMemory(
   memoryId: number,
   data: { content?: string; importance?: number; category?: string },
 ): Promise<AgentMemory> {
-  return fetchJSON(`${BASE}/memory/${memoryId}`, {
+  return fetchJSON(`${getBase()}/memory/${memoryId}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteMemory(memoryId: number): Promise<void> {
-  await fetchJSON(`${BASE}/memory/${memoryId}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/memory/${memoryId}`, { method: "DELETE" });
 }
 
 // Notifications
 export async function getNotifications(
   unreadOnly = false,
 ): Promise<{ notifications: Notification[] }> {
-  return fetchJSON(`${BASE}/notifications/?unread_only=${unreadOnly}`);
+  return fetchJSON(`${getBase()}/notifications/?unread_only=${unreadOnly}`);
 }
 
 export async function getUnreadCount(): Promise<{ unread: number }> {
-  return fetchJSON(`${BASE}/notifications/count`);
+  return fetchJSON(`${getBase()}/notifications/count`);
 }
 
 export async function markNotificationRead(id: number): Promise<void> {
-  await fetchJSON(`${BASE}/notifications/${id}/read`, { method: "POST" });
+  await fetchJSON(`${getBase()}/notifications/${id}/read`, { method: "POST" });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  await fetchJSON(`${BASE}/notifications/read-all`, { method: "POST" });
+  await fetchJSON(`${getBase()}/notifications/read-all`, { method: "POST" });
 }
 
 export async function deleteNotification(id: number): Promise<void> {
-  await fetchJSON(`${BASE}/notifications/${id}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/notifications/${id}`, { method: "DELETE" });
 }
 
 // Proactive Mode
 export async function getProactiveConfig(agentId: string): Promise<ProactiveResponse> {
-  return fetchJSON(`${BASE}/agents/${agentId}/proactive`);
+  return fetchJSON(`${getBase()}/agents/${agentId}/proactive`);
 }
 
 export async function updateProactiveConfig(
   agentId: string,
   config: { enabled: boolean; interval_seconds: number; prompt?: string },
 ): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${agentId}/proactive`, {
+  await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {
     method: "POST",
     body: JSON.stringify(config),
   });
 }
 
 export async function deleteProactiveConfig(agentId: string): Promise<void> {
-  await fetchJSON(`${BASE}/agents/${agentId}/proactive`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, { method: "DELETE" });
 }
 
 // Webhooks
 export async function getWebhookEvents(
   agentId: string,
 ): Promise<{ events: WebhookEvent[] }> {
-  return fetchJSON(`${BASE}/webhooks/agents/${agentId}/events`);
+  return fetchJSON(`${getBase()}/webhooks/agents/${agentId}/events`);
 }
 
 // MCP Servers
@@ -409,33 +411,33 @@ export interface McpTool {
 }
 
 export async function getMcpServers(): Promise<{ servers: McpServerInfo[] }> {
-  return fetchJSON(`${BASE}/mcp-servers`);
+  return fetchJSON(`${getBase()}/mcp-servers`);
 }
 
 export async function addMcpServer(name: string, url: string): Promise<McpServerInfo> {
-  return fetchJSON(`${BASE}/mcp-servers`, {
+  return fetchJSON(`${getBase()}/mcp-servers`, {
     method: "POST",
     body: JSON.stringify({ name, url }),
   });
 }
 
 export async function refreshMcpServer(id: number): Promise<McpServerInfo> {
-  return fetchJSON(`${BASE}/mcp-servers/${id}/refresh`, { method: "POST" });
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/refresh`, { method: "POST" });
 }
 
 export async function updateMcpServer(id: number, data: { name?: string; url?: string; enabled?: boolean }): Promise<McpServerInfo> {
-  return fetchJSON(`${BASE}/mcp-servers/${id}`, {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteMcpServer(id: number): Promise<void> {
-  await fetchJSON(`${BASE}/mcp-servers/${id}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/mcp-servers/${id}`, { method: "DELETE" });
 }
 
 export async function probeMcpServer(name: string, url: string): Promise<{ url: string; tools: McpTool[]; tool_count: number }> {
-  return fetchJSON(`${BASE}/mcp-servers/probe`, {
+  return fetchJSON(`${getBase()}/mcp-servers/probe`, {
     method: "POST",
     body: JSON.stringify({ name, url }),
   });
@@ -443,7 +445,7 @@ export async function probeMcpServer(name: string, url: string): Promise<{ url: 
 
 // Admin: User Management
 export async function getUsers(): Promise<{ users: AdminUser[] }> {
-  return fetchJSON(`${BASE}/auth/users`);
+  return fetchJSON(`${getBase()}/auth/users`);
 }
 
 export async function createUser(data: {
@@ -452,7 +454,7 @@ export async function createUser(data: {
   password: string;
   role?: string;
 }): Promise<AdminUser> {
-  return fetchJSON(`${BASE}/auth/users`, {
+  return fetchJSON(`${getBase()}/auth/users`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -462,14 +464,14 @@ export async function updateUser(
   userId: string,
   data: { name?: string; role?: string; is_active?: boolean },
 ): Promise<AdminUser> {
-  return fetchJSON(`${BASE}/auth/users/${userId}`, {
+  return fetchJSON(`${getBase()}/auth/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteUser(userId: string): Promise<void> {
-  await fetchJSON(`${BASE}/auth/users/${userId}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/auth/users/${userId}`, { method: "DELETE" });
 }
 
 // Admin: Agent Stats
@@ -509,7 +511,7 @@ export interface AdminAgentStats {
 }
 
 export async function getAdminAgentStats(agentId: string): Promise<AdminAgentStats> {
-  return fetchJSON(`${BASE}/admin/agents/${agentId}/stats`);
+  return fetchJSON(`${getBase()}/admin/agents/${agentId}/stats`);
 }
 
 export interface AdminOverview {
@@ -520,12 +522,12 @@ export interface AdminOverview {
 }
 
 export async function getAdminOverview(): Promise<AdminOverview> {
-  return fetchJSON(`${BASE}/admin/overview`);
+  return fetchJSON(`${getBase()}/admin/overview`);
 }
 
 // Agent Templates
 export async function getTemplates(): Promise<{ templates: AgentTemplate[] }> {
-  return fetchJSON(`${BASE}/templates`);
+  return fetchJSON(`${getBase()}/templates`);
 }
 
 export async function createTemplate(data: {
@@ -540,7 +542,7 @@ export async function createTemplate(data: {
   integrations?: string[];
   knowledge_template?: string;
 }): Promise<AgentTemplate> {
-  return fetchJSON(`${BASE}/templates`, {
+  return fetchJSON(`${getBase()}/templates`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -560,21 +562,21 @@ export async function updateTemplate(
     knowledge_template?: string;
   },
 ): Promise<AgentTemplate> {
-  return fetchJSON(`${BASE}/templates/${templateId}`, {
+  return fetchJSON(`${getBase()}/templates/${templateId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteTemplate(templateId: number): Promise<void> {
-  await fetchJSON(`${BASE}/templates/${templateId}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/templates/${templateId}`, { method: "DELETE" });
 }
 
 export async function createAgentFromTemplate(
   templateId: number,
   name?: string,
 ): Promise<Agent> {
-  return fetchJSON(`${BASE}/templates/${templateId}/create-agent`, {
+  return fetchJSON(`${getBase()}/templates/${templateId}/create-agent`, {
     method: "POST",
     body: JSON.stringify({ name: name || undefined }),
   });
@@ -591,14 +593,14 @@ export async function getAgentTodos(
   if (status) params.set("status", status);
   if (taskId) params.set("task_id", taskId);
   const qs = params.toString() ? `?${params}` : "";
-  return fetchJSON(`${BASE}/todos/agents/${agentId}${qs}`);
+  return fetchJSON(`${getBase()}/todos/agents/${agentId}${qs}`);
 }
 
 export async function createAgentTodo(
   agentId: string,
   data: { title: string; description?: string; task_id?: string; priority?: number },
 ): Promise<AgentTodo> {
-  return fetchJSON(`${BASE}/todos/agents/${agentId}`, {
+  return fetchJSON(`${getBase()}/todos/agents/${agentId}`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -608,14 +610,14 @@ export async function updateAgentTodo(
   todoId: number,
   data: { title?: string; description?: string; status?: string; priority?: number; sort_order?: number },
 ): Promise<AgentTodo> {
-  return fetchJSON(`${BASE}/todos/${todoId}`, {
+  return fetchJSON(`${getBase()}/todos/${todoId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteAgentTodo(todoId: number): Promise<void> {
-  return fetchJSON(`${BASE}/todos/${todoId}`, { method: "DELETE" });
+  return fetchJSON(`${getBase()}/todos/${todoId}`, { method: "DELETE" });
 }
 
 // --- Feedback ---
@@ -625,7 +627,7 @@ export async function createFeedback(data: {
   description?: string;
   category?: string;
 }): Promise<Feedback> {
-  return fetchJSON(`${BASE}/feedback/`, {
+  return fetchJSON(`${getBase()}/feedback/`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -633,27 +635,46 @@ export async function createFeedback(data: {
 
 export async function getFeedback(status?: string): Promise<FeedbackListResponse> {
   const params = status ? `?status=${status}` : "";
-  return fetchJSON(`${BASE}/feedback/${params}`);
+  return fetchJSON(`${getBase()}/feedback/${params}`);
 }
 
 export async function updateFeedback(
   feedbackId: number,
   data: { status?: string; admin_notes?: string },
 ): Promise<Feedback> {
-  return fetchJSON(`${BASE}/feedback/${feedbackId}`, {
+  return fetchJSON(`${getBase()}/feedback/${feedbackId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteFeedback(feedbackId: number): Promise<void> {
-  await fetchJSON(`${BASE}/feedback/${feedbackId}`, { method: "DELETE" });
+  await fetchJSON(`${getBase()}/feedback/${feedbackId}`, { method: "DELETE" });
 }
 
 export async function createGithubIssueFromFeedback(
   feedbackId: number,
 ): Promise<{ issue_url: string; issue_number: number; feedback: Feedback }> {
-  return fetchJSON(`${BASE}/feedback/${feedbackId}/github-issue`, {
+  return fetchJSON(`${getBase()}/feedback/${feedbackId}/github-issue`, {
     method: "POST",
+  });
+}
+
+// --- Command Approvals ---
+
+export async function getPendingApprovals(): Promise<{ approvals: ApprovalRequest[]; count: number }> {
+  return fetchJSON(`${getBase()}/approvals/pending`);
+}
+
+export async function approveCommand(approvalId: string): Promise<{ approval_id: string; status: string }> {
+  return fetchJSON(`${getBase()}/approvals/${approvalId}/approve`, {
+    method: "POST",
+  });
+}
+
+export async function denyCommand(approvalId: string, reason?: string): Promise<{ approval_id: string; status: string }> {
+  return fetchJSON(`${getBase()}/approvals/${approvalId}/deny`, {
+    method: "POST",
+    body: JSON.stringify({ decision: "deny", reason: reason || null }),
   });
 }

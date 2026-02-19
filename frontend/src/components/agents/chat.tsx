@@ -56,7 +56,7 @@ interface SessionTab {
   isNew?: boolean;
 }
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+import { getWsUrl } from "@/lib/config";
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
@@ -310,7 +310,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
     const token = useAuthStore.getState().wsToken;
     const tokenParam = token ? `?token=${token}` : "";
-    const ws = new WebSocket(`${WS_URL}/api/v1/ws/agents/${agentId}/chat${tokenParam}`);
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat${tokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => {

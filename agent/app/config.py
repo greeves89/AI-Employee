@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     health_port: int = 8080
     default_model: str = "claude-sonnet-4-6"
     max_turns: int = 100
-    extended_thinking: bool = True  # Enable extended thinking by default
+    extended_thinking: bool = False  # Not a CLI flag - thinking is model-controlled
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""
     workspace_dir: str = "/workspace"

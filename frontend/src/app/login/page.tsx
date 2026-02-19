@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Bot, Eye, EyeOff, LogIn } from "lucide-react";
 import { login, getSSOProviders, type SSOProvider } from "@/lib/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { getApiUrl } from "@/lib/config";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,7 +28,7 @@ export default function LoginPage() {
   }, [searchParams]);
 
   const handleSSO = (provider: string) => {
-    window.location.href = `${API_URL}/api/v1/auth/sso/${provider}/login`;
+    window.location.href = `${getApiUrl()}/api/v1/auth/sso/${provider}/login`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

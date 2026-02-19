@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { LogEvent } from "@/lib/types";
 import { useAuthStore } from "@/lib/auth";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+import { getWsUrl } from "@/lib/config";
 
 export function useWebSocket(path: string) {
   const [messages, setMessages] = useState<LogEvent[]>([]);
@@ -25,7 +25,7 @@ export function useWebSocket(path: string) {
     }
 
     const tokenParam = wsToken ? `${path.includes("?") ? "&" : "?"}token=${wsToken}` : "";
-    const ws = new WebSocket(`${WS_URL}/api/v1${path}${tokenParam}`);
+    const ws = new WebSocket(`${getWsUrl()}/api/v1${path}${tokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => {

@@ -7,6 +7,7 @@ import { getProactiveConfig, updateProactiveConfig } from "@/lib/api";
 import type { ProactiveResponse } from "@/lib/types";
 
 const INTERVALS = [
+  { label: "15 min", seconds: 900 },
   { label: "30 min", seconds: 1800 },
   { label: "1h", seconds: 3600 },
   { label: "2h", seconds: 7200 },

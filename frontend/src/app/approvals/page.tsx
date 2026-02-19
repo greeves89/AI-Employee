@@ -1,18 +1,70 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ApprovalModal } from "@/components/agents/approval-modal";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { approveCommand, denyCommand, getPendingApprovals } from "@/lib/api";
+import { getPendingApprovals, approveCommand, denyCommand } from "@/lib/api";
 import type { ApprovalRequest } from "@/lib/types";
-import { AlertCircle, ShieldAlert, AlertTriangle, Info, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  ShieldAlert,
+  AlertTriangle,
+  Info,
+  RefreshCw,
+  ShieldCheck,
+  Loader2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] as const },
+  },
+};
+
+const riskConfig = {
+  blocked: {
+    icon: ShieldAlert,
+    color: "text-red-400",
+    bg: "bg-red-500/10",
+    border: "border-red-500/20",
+    label: "BLOCKED",
+  },
+  high: {
+    icon: AlertCircle,
+    color: "text-orange-400",
+    bg: "bg-orange-500/10",
+    border: "border-orange-500/20",
+    label: "HIGH RISK",
+  },
+  medium: {
+    icon: AlertTriangle,
+    color: "text-amber-400",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/20",
+    label: "MEDIUM RISK",
+  },
+  low: {
+    icon: Info,
+    color: "text-blue-400",
+    bg: "bg-blue-500/10",
+    border: "border-blue-500/20",
+    label: "LOW RISK",
+  },
+};
 
 export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [selectedRequest, setSelectedRequest] = useState<ApprovalRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] =
+    useState<ApprovalRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -30,18 +82,17 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     loadApprovals();
-    // Poll for new approvals every 5 seconds
     const interval = setInterval(loadApprovals, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const handleApprove = async (approvalId: string) => {
-    await approveCommand(Number(approvalId));
+    await approveCommand(approvalId);
     await loadApprovals();
   };
 
   const handleDeny = async (approvalId: string, reason?: string) => {
-    await denyCommand(Number(approvalId), reason);
+    await denyCommand(approvalId, reason);
     await loadApprovals();
   };
 
@@ -50,100 +101,131 @@ export default function ApprovalsPage() {
     setIsModalOpen(true);
   };
 
-  const riskConfig = {
-    blocked: { icon: ShieldAlert, color: "text-red-600", label: "BLOCKED" },
-    high: { icon: AlertCircle, color: "text-orange-600", label: "HIGH RISK" },
-    medium: { icon: AlertTriangle, color: "text-yellow-600", label: "MEDIUM RISK" },
-    low: { icon: Info, color: "text-blue-600", label: "LOW RISK" },
-  };
-
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Command Approvals</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Review and approve agent command requests
-          </p>
+    <div className="px-8 py-8 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Command Approvals
+            </h1>
+            <p className="text-sm text-muted-foreground/60 mt-0.5">
+              Review and approve agent command requests
+            </p>
+          </div>
         </div>
-        <Button onClick={loadApprovals} variant="outline" size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
+        <button
+          onClick={loadApprovals}
+          className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", isLoading && "animate-spin")}
+          />
           Refresh
-        </Button>
+        </button>
       </div>
 
+      {/* Content */}
       {isLoading && approvals.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          Loading approvals...
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+          <Loader2 className="h-6 w-6 animate-spin mb-3" />
+          <span className="text-sm">Loading approvals...</span>
         </div>
       ) : approvals.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-gray-500">
+        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+          <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground/50">
             No pending approval requests
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {approvals.map((approval) => {
-            const config = riskConfig[approval.risk_level];
-            const Icon = config.icon;
-            
-            return (
-              <Card key={approval.approval_id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1">
-                      <Icon className={cn("h-5 w-5 mt-0.5", config.color)} />
-                      <div className="flex-1">
-                        <CardTitle className="text-lg">
-                          {approval.tool}
-                        </CardTitle>
-                        <CardDescription className="mt-1">
-                          Agent: {approval.agent_id}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={approval.risk_level === "high" || approval.risk_level === "blocked" ? "destructive" : "secondary"}
-                    >
-                      {config.label}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Command
-                      </div>
-                      <div className="text-sm font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded-md overflow-x-auto">
-                        {approval.input.command || JSON.stringify(approval.input)}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Reasoning
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {approval.reasoning}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2">
-                      <div className="text-xs text-gray-500">
-                        {new Date(approval.created_at).toLocaleString()}
-                      </div>
-                      <Button onClick={() => openModal(approval)} size="sm">
-                        Review Request
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          </p>
+          <p className="text-[11px] text-muted-foreground/30 mt-1">
+            Approval requests from agents will appear here
+          </p>
         </div>
+      ) : (
+        <motion.div
+          className="space-y-3"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <AnimatePresence>
+            {approvals.map((approval) => {
+              const config = riskConfig[approval.risk_level];
+              const Icon = config.icon;
+
+              return (
+                <motion.div
+                  key={approval.approval_id}
+                  variants={itemVariants}
+                  layout
+                  className="group relative rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 transition-all duration-200 hover:border-foreground/[0.1] hover:bg-card/90 hover:shadow-lg hover:shadow-primary/5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Left: icon + details */}
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                          config.bg
+                        )}
+                      >
+                        <Icon className={cn("h-4 w-4", config.color)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium truncate">
+                            {approval.tool}
+                          </span>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                              config.bg,
+                              config.color,
+                              config.border
+                            )}
+                          >
+                            {config.label}
+                          </span>
+                        </div>
+
+                        {/* Command preview */}
+                        <div className="text-xs font-mono bg-foreground/[0.04] border border-foreground/[0.06] rounded-lg px-3 py-2 mb-2 overflow-x-auto text-muted-foreground">
+                          {(approval.input.command as string) ||
+                            JSON.stringify(approval.input)}
+                        </div>
+
+                        {/* Reasoning */}
+                        <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
+                          {approval.reasoning}
+                        </p>
+
+                        {/* Meta */}
+                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/40">
+                          <span>Agent: {approval.agent_id}</span>
+                          <span>
+                            {new Date(approval.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: action button */}
+                    <button
+                      onClick={() => openModal(approval)}
+                      className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                    >
+                      Review
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </motion.div>
       )}
 
       <ApprovalModal
