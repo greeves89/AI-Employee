@@ -25,6 +25,8 @@ def _to_response(t: AgentTodo) -> dict:
         "id": t.id,
         "agent_id": t.agent_id,
         "task_id": t.task_id,
+        "project": t.project,
+        "project_path": t.project_path,
         "title": t.title,
         "description": t.description,
         "status": t.status.value if isinstance(t.status, TodoStatus) else t.status,
@@ -53,6 +55,7 @@ async def list_todos_ui(
     agent_id: str,
     status: str | None = Query(None),
     task_id: str | None = Query(None),
+    project: str | None = Query(None),
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
@@ -62,13 +65,18 @@ async def list_todos_ui(
         query = query.where(AgentTodo.status == TodoStatus(status))
     if task_id is not None:
         query = query.where(AgentTodo.task_id == task_id)
+    if project is not None:
+        query = query.where(AgentTodo.project == project)
     query = query.order_by(AgentTodo.priority.asc(), AgentTodo.sort_order.asc(), AgentTodo.created_at.asc())
     result = await db.execute(query)
     todos = list(result.scalars().all())
     counts = _count_by_status(todos)
+    # Collect unique project names
+    projects = sorted({t.project for t in todos if t.project})
     return {
         "todos": [_to_response(t) for t in todos],
         "total": len(todos),
+        "projects": projects,
         **counts,
     }
 
@@ -84,6 +92,8 @@ async def create_todo_ui(
     todo = AgentTodo(
         agent_id=agent_id,
         task_id=body.task_id,
+        project=body.project,
+        project_path=body.project_path,
         title=body.title,
         description=body.description,
         priority=body.priority,
@@ -112,6 +122,10 @@ async def update_todo(
         todo.title = body.title
     if body.description is not None:
         todo.description = body.description
+    if body.project is not None:
+        todo.project = body.project
+    if body.project_path is not None:
+        todo.project_path = body.project_path
     if body.status is not None:
         todo.status = TodoStatus(body.status)
         if body.status == "completed":
@@ -151,6 +165,7 @@ async def delete_todo(
 async def list_todos_agent(
     status: str | None = Query(None),
     task_id: str | None = Query(None),
+    project: str | None = Query(None),
     auth: dict = Depends(verify_agent_token),
     db: AsyncSession = Depends(get_db),
 ):
@@ -161,13 +176,17 @@ async def list_todos_agent(
         query = query.where(AgentTodo.status == TodoStatus(status))
     if task_id is not None:
         query = query.where(AgentTodo.task_id == task_id)
+    if project is not None:
+        query = query.where(AgentTodo.project == project)
     query = query.order_by(AgentTodo.priority.asc(), AgentTodo.sort_order.asc())
     result = await db.execute(query)
     todos = list(result.scalars().all())
     counts = _count_by_status(todos)
+    projects = sorted({t.project for t in todos if t.project})
     return {
         "todos": [_to_response(t) for t in todos],
         "total": len(todos),
+        "projects": projects,
         **counts,
     }
 
@@ -188,12 +207,19 @@ async def bulk_update_todos(
     """
     agent_id = auth["agent_id"]
 
+    # Resolve project from body-level or per-item level
+    bulk_project = body.project
+    bulk_project_path = body.project_path
+
     # Find existing TODOs for this scope
     existing_query = select(AgentTodo).where(AgentTodo.agent_id == agent_id)
     if body.task_id is not None:
         existing_query = existing_query.where(AgentTodo.task_id == body.task_id)
+    elif bulk_project is not None:
+        # Scope by project when no task_id given
+        existing_query = existing_query.where(AgentTodo.project == bulk_project)
     else:
-        existing_query = existing_query.where(AgentTodo.task_id.is_(None))
+        existing_query = existing_query.where(AgentTodo.task_id.is_(None)).where(AgentTodo.project.is_(None))
 
     result = await db.execute(existing_query)
     existing = list(result.scalars().all())
@@ -209,6 +235,9 @@ async def bulk_update_todos(
 
     for item in body.todos:
         key = item.title.strip().lower()
+        # Per-item project overrides bulk-level project
+        item_project = item.project or bulk_project
+        item_project_path = item.project_path or bulk_project_path
         if key in existing_by_title:
             # Update existing todo
             t = existing_by_title[key]
@@ -220,6 +249,10 @@ async def bulk_update_todos(
                     t.completed_at = datetime.now(timezone.utc)
             if item.priority:
                 t.priority = item.priority
+            if item_project:
+                t.project = item_project
+            if item_project_path:
+                t.project_path = item_project_path
             updated_count += 1
         else:
             # Add new todo
@@ -227,6 +260,8 @@ async def bulk_update_todos(
             todo = AgentTodo(
                 agent_id=agent_id,
                 task_id=body.task_id,
+                project=item_project,
+                project_path=item_project_path,
                 title=item.title,
                 description=item.description,
                 status=TodoStatus(item.status) if item.status else TodoStatus.PENDING,

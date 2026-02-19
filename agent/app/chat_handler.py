@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 from typing import AsyncIterator
 
 from app.config import settings
@@ -237,6 +238,19 @@ class ChatHandler:
                         yield json.loads(line)
                     except json.JSONDecodeError:
                         yield {"type": "raw", "text": line}
+
+    async def stop_current(self) -> None:
+        """Stop the currently running Claude CLI process."""
+        if self._process and self._process.returncode is None:
+            logger.info("Stopping current chat process (SIGINT)")
+            try:
+                self._process.send_signal(signal.SIGINT)
+                await asyncio.wait_for(self._process.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                logger.warning("SIGINT timeout, killing process")
+                self._process.kill()
+            except ProcessLookupError:
+                pass  # Process already exited
 
     async def reset_session(self) -> None:
         """Reset the chat session (start a new conversation)."""

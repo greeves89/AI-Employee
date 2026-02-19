@@ -17,13 +17,41 @@ class ChatConsumer:
         self.agent_id = agent_id
         self.redis: aioredis.Redis | None = None
         self.queue_name = f"agent:{agent_id}:chat"
+        self.cancel_channel = f"agent:{agent_id}:chat:cancel"
         self.running = True
         self._handler: ChatHandler | None = None
+        self._cancel_listener_task: asyncio.Task | None = None
+
+    async def _listen_for_cancel(self) -> None:
+        """Listen on Redis PubSub for cancel signals and stop the handler."""
+        cancel_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pubsub = cancel_redis.pubsub()
+        await pubsub.subscribe(self.cancel_channel)
+        try:
+            while self.running:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=1.0
+                )
+                if message and message["type"] == "message":
+                    if self._handler and self._handler.is_running:
+                        await self._handler.stop_current()
+                await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        finally:
+            await pubsub.unsubscribe(self.cancel_channel)
+            await pubsub.aclose()
+            await cancel_redis.aclose()
 
     async def start(self) -> None:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         log_publisher = LogPublisher(self.redis, self.agent_id)
         self._handler = ChatHandler(log_publisher)
+
+        # Start cancel listener in background
+        self._cancel_listener_task = asyncio.create_task(self._listen_for_cancel())
 
         while self.running:
             try:
@@ -72,5 +100,11 @@ class ChatConsumer:
 
     async def stop(self) -> None:
         self.running = False
+        if self._cancel_listener_task:
+            self._cancel_listener_task.cancel()
+            try:
+                await self._cancel_listener_task
+            except asyncio.CancelledError:
+                pass
         if self.redis:
             await self.redis.aclose()

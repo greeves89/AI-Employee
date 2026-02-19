@@ -285,6 +285,18 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             except json.JSONDecodeError:
                 msg = {"text": raw}
 
+            # Handle stop/cancel action
+            action = msg.get("action", "")
+            if action == "stop":
+                cancel_channel = f"agent:{agent_id}:chat:cancel"
+                await _redis.client.publish(cancel_channel, "stop")
+                await websocket.send_text(json.dumps({
+                    "type": "cancelled",
+                    "data": {"message": "Stop signal sent to agent"},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }))
+                continue
+
             text = msg.get("text", "").strip()
             if not text:
                 continue

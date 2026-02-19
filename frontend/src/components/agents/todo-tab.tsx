@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  FolderOpen,
   Loader2,
   ListTodo,
   Plus,
@@ -51,31 +52,42 @@ export function TodoTab({ agentId }: TodoTabProps) {
   const [todos, setTodos] = useState<AgentTodo[]>([]);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState({ pending: 0, in_progress: 0, completed: 0 });
+  const [projects, setProjects] = useState<string[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState(3);
+  const [newProject, setNewProject] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   const fetchTodos = useCallback(async () => {
     try {
-      const data = await getAgentTodos(agentId);
+      const data = await getAgentTodos(
+        agentId,
+        undefined,
+        undefined,
+        selectedProject ?? undefined,
+      );
       setTodos(data.todos);
       setCounts({
         pending: data.pending,
         in_progress: data.in_progress,
         completed: data.completed,
       });
+      // Only update project list when not filtering (so we always see all projects)
+      if (!selectedProject) {
+        setProjects(data.projects || []);
+      }
     } catch {
       // ignore
     }
     setLoading(false);
-  }, [agentId]);
+  }, [agentId, selectedProject]);
 
   useEffect(() => {
     fetchTodos();
-    // Poll every 5s for real-time updates from agent
     pollRef.current = setInterval(fetchTodos, 5000);
     return () => clearInterval(pollRef.current);
   }, [fetchTodos]);
@@ -107,10 +119,12 @@ export function TodoTab({ agentId }: TodoTabProps) {
         title: newTitle.trim(),
         description: newDescription.trim() || undefined,
         priority: newPriority,
+        project: newProject.trim() || undefined,
       });
       setNewTitle("");
       setNewDescription("");
       setNewPriority(3);
+      setNewProject("");
       setShowAddForm(false);
       fetchTodos();
     } catch {
@@ -121,19 +135,19 @@ export function TodoTab({ agentId }: TodoTabProps) {
   const activeTodos = todos.filter((t) => t.status !== "completed");
   const completedTodos = todos.filter((t) => t.status === "completed");
 
-  // Group active todos by task_id
-  const taskGroups = new Map<string | null, AgentTodo[]>();
+  // Group active todos by project (primary) then task_id (secondary)
+  const projectGroups = new Map<string, AgentTodo[]>();
   for (const todo of activeTodos) {
-    const key = todo.task_id;
-    if (!taskGroups.has(key)) taskGroups.set(key, []);
-    taskGroups.get(key)!.push(todo);
+    const key = todo.project || "_general";
+    if (!projectGroups.has(key)) projectGroups.set(key, []);
+    projectGroups.get(key)!.push(todo);
   }
 
-  // Sort: task-specific groups first, then general
-  const sortedGroups = Array.from(taskGroups.entries()).sort((a, b) => {
-    if (a[0] === null && b[0] !== null) return 1;
-    if (a[0] !== null && b[0] === null) return -1;
-    return 0;
+  // Sort: named projects alphabetically first, then "_general" last
+  const sortedGroups = Array.from(projectGroups.entries()).sort((a, b) => {
+    if (a[0] === "_general" && b[0] !== "_general") return 1;
+    if (a[0] !== "_general" && b[0] === "_general") return -1;
+    return a[0].localeCompare(b[0]);
   });
 
   if (loading) {
@@ -177,6 +191,38 @@ export function TodoTab({ agentId }: TodoTabProps) {
           </button>
         </div>
       </div>
+
+      {/* Project filter pills */}
+      {projects.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setSelectedProject(null)}
+            className={cn(
+              "rounded-full px-3 py-1 text-[10px] font-medium transition-colors border",
+              selectedProject === null
+                ? "bg-primary/15 text-primary border-primary/30"
+                : "text-muted-foreground/60 border-foreground/[0.08] hover:text-foreground hover:border-foreground/20"
+            )}
+          >
+            Alle
+          </button>
+          {projects.map((p) => (
+            <button
+              key={p}
+              onClick={() => setSelectedProject(selectedProject === p ? null : p)}
+              className={cn(
+                "rounded-full px-3 py-1 text-[10px] font-medium transition-colors border",
+                selectedProject === p
+                  ? "bg-primary/15 text-primary border-primary/30"
+                  : "text-muted-foreground/60 border-foreground/[0.08] hover:text-foreground hover:border-foreground/20"
+              )}
+            >
+              <FolderOpen className="h-2.5 w-2.5 inline mr-1 -mt-px" />
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Progress bar */}
       {todos.length > 0 && (
@@ -225,6 +271,24 @@ export function TodoTab({ agentId }: TodoTabProps) {
             className="w-full rounded-lg border border-foreground/[0.08] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50 resize-none"
             rows={2}
           />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <FolderOpen className="h-3 w-3 text-muted-foreground/50" />
+              <input
+                type="text"
+                value={newProject}
+                onChange={(e) => setNewProject(e.target.value)}
+                placeholder="Projekt (optional)"
+                list="project-suggestions"
+                className="w-36 rounded-lg border border-foreground/[0.08] bg-background/80 px-2 py-1 text-xs outline-none focus:border-primary/50"
+              />
+              <datalist id="project-suggestions">
+                {projects.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+            </div>
+          </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">Prioritaet:</span>
@@ -277,13 +341,16 @@ export function TodoTab({ agentId }: TodoTabProps) {
         </div>
       )}
 
-      {/* Active TODOs grouped by task */}
-      {sortedGroups.map(([taskId, groupTodos]) => (
-        <div key={taskId ?? "general"} className="space-y-1">
+      {/* Active TODOs grouped by project */}
+      {sortedGroups.map(([projectKey, groupTodos]) => (
+        <div key={projectKey} className="space-y-1">
           {/* Group header */}
           <div className="flex items-center gap-2 px-1 pb-1">
+            {projectKey !== "_general" && (
+              <FolderOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+            )}
             <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
-              {taskId ? `Task #${taskId.slice(0, 8)}` : "Allgemein"}
+              {projectKey !== "_general" ? projectKey : "Allgemein"}
             </span>
             <div className="flex-1 h-px bg-foreground/[0.06]" />
             <span className="text-[10px] text-muted-foreground/40 tabular-nums">
@@ -333,7 +400,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
   );
 }
 
-/* ─── Single TODO Item ─────────────────────────────────────────────── */
+/* --- Single TODO Item --- */
 
 function TodoItem({
   todo,
@@ -375,7 +442,7 @@ function TodoItem({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span
             className={cn(
               "text-sm font-medium",
@@ -398,6 +465,11 @@ function TodoItem({
           >
             {priorityLabels[todo.priority]}
           </span>
+          {todo.project && (
+            <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-medium text-violet-400 border border-violet-500/20">
+              {todo.project}
+            </span>
+          )}
         </div>
         {todo.description && (
           <p className="mt-0.5 text-xs text-muted-foreground/60 line-clamp-2">

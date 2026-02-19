@@ -588,17 +588,19 @@ export async function getAgentTodos(
   agentId: string,
   status?: string,
   taskId?: string,
+  project?: string,
 ): Promise<TodoListResponse> {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (taskId) params.set("task_id", taskId);
+  if (project) params.set("project", project);
   const qs = params.toString() ? `?${params}` : "";
   return fetchJSON(`${getBase()}/todos/agents/${agentId}${qs}`);
 }
 
 export async function createAgentTodo(
   agentId: string,
-  data: { title: string; description?: string; task_id?: string; priority?: number },
+  data: { title: string; description?: string; task_id?: string; project?: string; project_path?: string; priority?: number },
 ): Promise<AgentTodo> {
   return fetchJSON(`${getBase()}/todos/agents/${agentId}`, {
     method: "POST",

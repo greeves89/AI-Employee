@@ -201,6 +201,8 @@ export interface AgentTodo {
   id: number;
   agent_id: string;
   task_id: string | null;
+  project: string | null;
+  project_path: string | null;
   title: string;
   description: string | null;
   status: TodoStatus;
@@ -217,6 +219,7 @@ export interface TodoListResponse {
   pending: number;
   in_progress: number;
   completed: number;
+  projects: string[];
 }
 
 export type FeedbackStatus = "pending" | "reviewed" | "in_progress" | "closed";

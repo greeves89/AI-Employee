@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Bot, Code2, BarChart3, FileText, Server, Search,
+  Bot, Code2, BarChart3, FileText, Server, Search, Presentation,
   Pencil, Trash2, Save, X, Plus, Lock, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, AlertCircle, Copy,
 } from "lucide-react";
@@ -11,7 +11,7 @@ import * as api from "@/lib/api";
 import type { AgentTemplate } from "@/lib/types";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
-  Bot, Code2, BarChart3, FileText, Server, Search,
+  Bot, Code2, BarChart3, FileText, Server, Search, Presentation,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -19,6 +19,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   data: "Data & Analytics",
   writing: "Writing & Docs",
   ops: "Operations",
+  creative: "Creative",
   general: "General",
 };
 
@@ -27,6 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   data: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   writing: "bg-purple-500/10 text-purple-400 border-purple-500/20",
   ops: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  creative: "bg-pink-500/10 text-pink-400 border-pink-500/20",
   general: "bg-gray-500/10 text-gray-400 border-gray-500/20",
 };
 

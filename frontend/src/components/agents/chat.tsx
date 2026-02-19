@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import {
   Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
-  Paperclip, Loader2, Plus, MessageSquare, Gauge,
+  Paperclip, Loader2, Plus, MessageSquare, Gauge, Square,
   ChevronRight, CheckCircle2, XCircle, Clock, X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -44,7 +44,7 @@ interface ChatMessage {
 interface ChatEvent {
   agent_id: string;
   message_id: string;
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled";
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -507,6 +507,22 @@ export function AgentChat({ agentId }: { agentId: string }) {
         if (pendingCountRef.current === 0) {
           setIsWaiting(false);
         }
+      } else if (type === "cancelled") {
+        // Agent was stopped by user
+        if (assistantIdx !== -1) {
+          const steps = (msgs[assistantIdx].steps || []).map((s) =>
+            s.type === "tool_call" && s.status === "running"
+              ? { ...s, status: "done" as const }
+              : s
+          );
+          msgs[assistantIdx] = {
+            ...msgs[assistantIdx],
+            isStreaming: false,
+            steps,
+          };
+        }
+        pendingCountRef.current = 0;
+        setIsWaiting(false);
       } else if (type === "done") {
         if (assistantIdx !== -1) {
           const meta = {
@@ -585,6 +601,11 @@ export function AgentChat({ agentId }: { agentId: string }) {
       )
     );
   }, [input, activeSessionId]);
+
+  const stopGeneration = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ action: "stop" }));
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -805,13 +826,23 @@ export function AgentChat({ agentId }: { agentId: string }) {
             className="flex-1 resize-none rounded-xl border border-border bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-40 transition-all placeholder:text-muted-foreground/30"
             rows={1}
           />
-          <button
-            onClick={sendMessage}
-            disabled={!isConnected || !input.trim()}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+          {isWaiting ? (
+            <button
+              onClick={stopGeneration}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/90 text-white hover:bg-red-500 shadow-lg shadow-red-500/20 transition-all"
+              title="Stop"
+            >
+              <Square className="h-4 w-4 fill-current" />
+            </button>
+          ) : (
+            <button
+              onClick={sendMessage}
+              disabled={!isConnected || !input.trim()}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 

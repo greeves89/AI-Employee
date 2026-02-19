@@ -21,6 +21,8 @@ class AgentTodo(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     agent_id: Mapped[str] = mapped_column(String, index=True)
     task_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    project: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    project_path: Mapped[str | None] = mapped_column(String, nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[TodoStatus] = mapped_column(

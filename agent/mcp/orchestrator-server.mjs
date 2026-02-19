@@ -192,7 +192,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         "List your TODO items. TODOs are persistent and visible to the user in the Todo tab. " +
         "Use this to check what work is pending, in progress, or completed. " +
-        "In proactive mode, always check TODOs first before doing anything else.",
+        "In proactive mode, always check TODOs first before doing anything else. " +
+        "TODOs can be grouped by project - use the project filter to see TODOs for a specific project.",
       inputSchema: {
         type: "object",
         properties: {
@@ -205,6 +206,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description: "Filter by task ID to see steps for a specific task. Omit for all TODOs.",
           },
+          project: {
+            type: "string",
+            description:
+              "Filter by project name (e.g. 'Deeskalator', 'Entscheidungs-App'). " +
+              "Omit to show all TODOs across all projects.",
+          },
         },
       },
     },
@@ -214,7 +221,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         "Add or replace pending TODOs. Completed TODOs are NEVER deleted (preserved automatically). " +
         "IMPORTANT: ALWAYS call list_todos FIRST to check existing TODOs before using this! " +
         "Existing TODOs represent the user's work plan - review and work on them before creating new ones. " +
-        "Only pending/in_progress items are replaced; completed items are always kept.",
+        "Only pending/in_progress items are replaced; completed items are always kept. " +
+        "ALWAYS set the 'project' field to group TODOs by project (e.g. 'Deeskalator', 'Entscheidungs-App'). " +
+        "Set project_path to the workspace path of the project (e.g. '/workspace/deeskalator/').",
       inputSchema: {
         type: "object",
         properties: {
@@ -223,12 +232,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
               "Link TODOs to a specific task. Omit for general/recurring TODOs.",
           },
+          project: {
+            type: "string",
+            description:
+              "Project name to group these TODOs under (e.g. 'Deeskalator', 'Entscheidungs-App'). " +
+              "ALWAYS set this when TODOs belong to a specific project. " +
+              "Applied to all TODOs in this batch unless overridden per-item.",
+          },
+          project_path: {
+            type: "string",
+            description:
+              "Workspace path of the project (e.g. '/workspace/deeskalator/'). " +
+              "Applied to all TODOs in this batch unless overridden per-item.",
+          },
           todos: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                title: { type: "string", description: "Short TODO description." },
+                title: { type: "string", description: "Short TODO description. Do NOT prefix with [ProjectName] - use the project field instead." },
                 description: { type: "string", description: "Optional details." },
                 status: {
                   type: "string",
@@ -240,6 +262,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                   minimum: 1,
                   maximum: 5,
                   description: "Priority (1=highest, 5=lowest). Default: 3.",
+                },
+                project: {
+                  type: "string",
+                  description: "Override project name for this specific TODO (optional, inherits from batch-level).",
+                },
+                project_path: {
+                  type: "string",
+                  description: "Override project path for this specific TODO (optional, inherits from batch-level).",
                 },
               },
               required: ["title"],
@@ -423,6 +453,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const params = new URLSearchParams();
       if (args.status) params.set("status", args.status);
       if (args.task_id) params.set("task_id", args.task_id);
+      if (args.project) params.set("project", args.project);
       const qs = params.toString() ? `?${params}` : "";
 
       const result = await apiCall(`/todos/agent/list${qs}`);
@@ -433,13 +464,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const lines = result.todos.map(
         (t) =>
-          `[${t.status}] #${t.id}: ${t.title}${t.description ? ` - ${t.description}` : ""} (priority: ${t.priority})`
+          `[${t.status}] #${t.id}: ${t.title}${t.project ? ` [${t.project}]` : ""}${t.description ? ` - ${t.description}` : ""} (priority: ${t.priority})`
       );
+      const projectInfo = result.projects && result.projects.length > 0
+        ? `\nProjects: ${result.projects.join(", ")}`
+        : "";
       return {
         content: [
           {
             type: "text",
-            text: `${result.total} TODOs (${result.pending} pending, ${result.in_progress} in progress, ${result.completed} completed):\n\n${lines.join("\n")}`,
+            text: `${result.total} TODOs (${result.pending} pending, ${result.in_progress} in progress, ${result.completed} completed):${projectInfo}\n\n${lines.join("\n")}`,
           },
         ],
       };
@@ -450,11 +484,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         method: "PUT",
         body: JSON.stringify({
           task_id: args.task_id || null,
+          project: args.project || null,
+          project_path: args.project_path || null,
           todos: (args.todos || []).map((t) => ({
             title: t.title,
             description: t.description || null,
             status: t.status || "pending",
             priority: t.priority || 3,
+            project: t.project || null,
+            project_path: t.project_path || null,
           })),
         }),
       });
@@ -462,7 +500,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `TODOs updated: ${result.updated} items.`,
+            text: `TODOs updated: ${result.updated} updated, ${result.added} added (total: ${result.total}).`,
           },
         ],
       };

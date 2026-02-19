@@ -506,7 +506,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4 h-full">
       {/* Metrics bar */}
       {Object.keys(metrics).length > 0 && (
         <div className="flex items-center gap-4 rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
@@ -546,8 +546,8 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
       )}
 
       {/* Knowledge editor */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3 shrink-0">
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-violet-400" />
             <span className="text-sm font-medium">knowledge.md</span>
@@ -594,14 +594,14 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
           <textarea
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
-            className="w-full h-[500px] p-5 text-[12px] font-mono leading-relaxed bg-transparent outline-none resize-none"
+            className="w-full flex-1 min-h-0 p-5 pb-8 text-[12px] font-mono leading-relaxed bg-transparent outline-none resize-none"
           />
         ) : knowledge ? (
-          <pre className="p-5 text-[12px] font-mono leading-relaxed whitespace-pre-wrap text-foreground/90 max-h-[500px] overflow-auto">
+          <pre className="p-5 pb-8 text-[12px] font-mono leading-relaxed whitespace-pre-wrap text-foreground/90 flex-1 min-h-0 overflow-auto">
             {knowledge}
           </pre>
         ) : (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground/50">
+          <div className="flex flex-col items-center justify-center flex-1 min-h-[12rem] text-muted-foreground/50">
             <Brain className="h-8 w-8 mb-2" />
             <p className="text-sm">No knowledge base yet</p>
             <p className="text-xs text-muted-foreground/40 mt-1">Run a task to start building knowledge</p>
