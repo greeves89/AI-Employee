@@ -251,7 +251,8 @@ class OpenAIProvider(BaseLLMProvider):
 
         if instructions:
             body["instructions"] = instructions
-        if self.temperature is not None:
+        # Codex models don't support temperature
+        if self.temperature is not None and not self._is_responses_model():
             body["temperature"] = self.temperature
 
         # Tools in Responses API format
