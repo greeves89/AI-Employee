@@ -1,56 +1,21 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   FolderOpen, File, Folder, ChevronRight, Upload,
-  Code, FileText, Loader2, Bot, Download, RefreshCw,
-  Image as ImageIcon,
+  Loader2, Bot, Download, RefreshCw,
+  Search, ArrowUpDown, Clock, Hash, X,
 } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { FileEntry } from "@/lib/types";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-
-const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp"]);
-const markdownExtensions = new Set(["md", "mdx"]);
-
-function getFileExt(path: string): string {
-  return path.split(".").pop()?.toLowerCase() || "";
-}
-
-const fileColorMap: Record<string, string> = {
-  py: "text-blue-400",
-  ts: "text-blue-400",
-  tsx: "text-cyan-400",
-  js: "text-amber-400",
-  jsx: "text-amber-400",
-  json: "text-emerald-400",
-  md: "text-zinc-400",
-  html: "text-orange-400",
-  css: "text-violet-400",
-  sh: "text-emerald-400",
-  yml: "text-red-400",
-  yaml: "text-red-400",
-  sql: "text-blue-400",
-  txt: "text-zinc-400",
-};
-
-function getFileColor(name: string): string {
-  const ext = name.split(".").pop()?.toLowerCase() || "";
-  return fileColorMap[ext] || "text-muted-foreground";
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0)} ${sizes[i]}`;
-}
+import {
+  FilePreview, FilePreviewEmpty,
+  getFileColor, formatFileSize, formatModified, formatModifiedFull,
+} from "@/components/files/file-preview";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-400",
@@ -61,15 +26,17 @@ const stateColors: Record<string, string> = {
   created: "bg-amber-400",
 };
 
+type SortMode = "name" | "date" | "size";
+
 export default function FilesPage() {
   const { agents } = useAgents();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const [selectedFile, setSelectedFile] = useState<{ agentId: string; path: string } | null>(null);
-  const [fileContent, setFileContent] = useState<string | null>(null);
-  const [loadingContent, setLoadingContent] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<{ agentId: string; path: string; entry?: FileEntry } | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("name");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadAgentRef = useRef<string>("");
 
@@ -119,29 +86,8 @@ export default function FilesPage() {
     }
   };
 
-  const handleFileClick = async (agentId: string, path: string) => {
-    setSelectedFile({ agentId, path });
-    setLoadingContent(true);
-    setFileContent(null);
-
-    const ext = getFileExt(path);
-    // Images don't need content fetching - we use the download URL directly
-    if (imageExtensions.has(ext)) {
-      setFileContent(null);
-      setLoadingContent(false);
-      return;
-    }
-
-    try {
-      const url = api.getFileDownloadUrl(agentId, path);
-      const res = await fetch(url);
-      const text = await res.text();
-      setFileContent(text);
-    } catch {
-      setFileContent("Error loading file");
-    } finally {
-      setLoadingContent(false);
-    }
+  const handleFileClick = (agentId: string, entry: FileEntry) => {
+    setSelectedFile({ agentId, path: entry.path, entry });
   };
 
   const handleDownload = (agentId: string, path: string) => {
@@ -180,8 +126,30 @@ export default function FilesPage() {
   const sortEntries = (entries: FileEntry[]) =>
     [...entries].sort((a, b) => {
       if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+      if (sortMode === "date") return (b.modified || 0) - (a.modified || 0);
+      if (sortMode === "size") return (b.size || 0) - (a.size || 0);
       return a.name.localeCompare(b.name);
     });
+
+  const allFiles = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    const results: { agentId: string; agentName: string; entry: FileEntry }[] = [];
+    for (const agent of runningAgents) {
+      for (const [key, entries] of Object.entries(treeData)) {
+        if (!key.startsWith(`${agent.id}:`)) continue;
+        for (const entry of entries) {
+          if (entry.type === "file" && entry.name.toLowerCase().includes(query)) {
+            results.push({ agentId: agent.id, agentName: agent.name, entry });
+          }
+        }
+      }
+    }
+    return sortEntries(results.map(r => r.entry)).map(e => {
+      const match = results.find(r => r.entry.path === e.path);
+      return match!;
+    });
+  }, [searchQuery, treeData, runningAgents, sortMode]);
 
   const renderTree = (agentId: string, path: string, depth: number): React.ReactNode => {
     const key = `${agentId}:${path}`;
@@ -199,10 +167,10 @@ export default function FilesPage() {
           <div
             className={cn(
               "flex items-center gap-2 py-1 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group",
-              isSelected && "bg-foreground/[0.06]"
+              isSelected && "bg-primary/10 border-r-2 border-primary"
             )}
             style={{ paddingLeft: `${depth * 18 + 12}px` }}
-            onClick={() => isDir ? toggleDir(agentId, entry.path) : handleFileClick(agentId, entry.path)}
+            onClick={() => isDir ? toggleDir(agentId, entry.path) : handleFileClick(agentId, entry)}
           >
             {isDir ? (
               <ChevronRight className={cn(
@@ -222,8 +190,13 @@ export default function FilesPage() {
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
             )}
             <span className="text-[12px] truncate flex-1 min-w-0">{entry.name}</span>
+            {!isDir && entry.modified > 0 && (
+              <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+                {formatModified(entry.modified)}
+              </span>
+            )}
             {!isDir && (
-              <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0">
+              <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
                 {formatFileSize(entry.size)}
               </span>
             )}
@@ -245,7 +218,7 @@ export default function FilesPage() {
 
   return (
     <div>
-      <Header title="Files" subtitle="Browse agent workspace files" />
+      <Header title="Explorer" subtitle="Agent Workspace Dateien durchsuchen" />
 
       <motion.div
         className="px-8 py-8"
@@ -253,7 +226,6 @@ export default function FilesPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Hidden file input for uploads */}
         <input
           ref={fileInputRef}
           type="file"
@@ -275,143 +247,169 @@ export default function FilesPage() {
         ) : (
           <div className="flex gap-4 h-[calc(100vh-240px)]">
             {/* Tree panel */}
-            <div className="w-[360px] shrink-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
-              <div className="border-b border-foreground/[0.06] px-4 py-2.5 flex items-center gap-2">
-                <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
-                <span className="text-xs font-medium">Workspaces</span>
-                <span className="text-[10px] text-muted-foreground/50 ml-auto">
-                  {runningAgents.length} Agent{runningAgents.length !== 1 && "s"}
-                </span>
+            <div className="w-[420px] shrink-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
+              {/* Search + Sort header */}
+              <div className="border-b border-foreground/[0.06] px-3 py-2 space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/40" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Dateien suchen..."
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/30 transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {(["name", "date", "size"] as SortMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setSortMode(mode)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
+                        sortMode === mode
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-foreground/[0.04]"
+                      )}
+                    >
+                      {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
+                      {mode === "date" && <><Clock className="h-2.5 w-2.5" /> Datum</>}
+                      {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Groesse</>}
+                    </button>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground/30 ml-auto">
+                    {runningAgents.length} Agent{runningAgents.length !== 1 && "s"}
+                  </span>
+                </div>
               </div>
 
+              {/* File tree or search results */}
               <div className="flex-1 overflow-y-auto py-1 font-mono">
-                {runningAgents.map((agent) => {
-                  const isExpanded = expandedAgents.has(agent.id);
-                  const wsKey = `${agent.id}:/workspace`;
-                  const isLoading = isExpanded && !treeData[wsKey];
-
-                  return (
-                    <div key={agent.id}>
-                      {/* Agent root node */}
-                      <div
-                        className="flex items-center gap-2 py-1.5 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group"
-                        onClick={() => toggleAgent(agent.id)}
-                      >
-                        <ChevronRight className={cn(
-                          "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
-                          isExpanded && "rotate-90"
-                        )} />
-                        <div className="relative shrink-0">
-                          <Bot className="h-4 w-4 text-primary" />
-                          <div className={cn(
-                            "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-card",
-                            stateColors[agent.state] || "bg-zinc-500"
-                          )} />
-                        </div>
-                        <span className="text-[12px] font-medium truncate flex-1 min-w-0 font-sans">
-                          {agent.name}
-                        </span>
-
-                        {/* Agent actions */}
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleUploadClick(agent.id); }}
-                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
-                            title="Upload"
-                          >
-                            {uploading === agent.id ? (
-                              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                            ) : (
-                              <Upload className="h-2.5 w-2.5" />
+                {searchQuery.trim() ? (
+                  allFiles.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/30">
+                      <Search className="h-5 w-5 mb-2" />
+                      <span className="text-[11px]">Keine Treffer</span>
+                    </div>
+                  ) : (
+                    <div className="py-1">
+                      <div className="px-3 py-1 text-[10px] text-muted-foreground/40">
+                        {allFiles.length} Treffer
+                      </div>
+                      {allFiles.map(({ agentId, agentName, entry }) => {
+                        const isSelected = selectedFile?.agentId === agentId && selectedFile?.path === entry.path;
+                        return (
+                          <div
+                            key={`${agentId}:${entry.path}`}
+                            className={cn(
+                              "flex items-center gap-2 py-1.5 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group",
+                              isSelected && "bg-primary/10 border-r-2 border-primary"
                             )}
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); refreshAgent(agent.id); }}
-                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
-                            title="Refresh"
+                            onClick={() => handleFileClick(agentId, entry)}
                           >
-                            <RefreshCw className="h-2.5 w-2.5" />
-                          </button>
-                        </div>
+                            <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
+                            <div className="flex flex-col flex-1 min-w-0">
+                              <span className="text-[12px] truncate">{entry.name}</span>
+                              <span className="text-[10px] text-muted-foreground/30 truncate">{agentName} &middot; {entry.path}</span>
+                            </div>
+                            {entry.modified > 0 && (
+                              <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+                                {formatModified(entry.modified)}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
+                              {formatFileSize(entry.size)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : (
+                  runningAgents.map((agent) => {
+                    const isExpanded = expandedAgents.has(agent.id);
+                    const wsKey = `${agent.id}:/workspace`;
+                    const isLoading = isExpanded && !treeData[wsKey];
 
-                        {isLoading && (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
+                    return (
+                      <div key={agent.id}>
+                        <div
+                          className="flex items-center gap-2 py-1.5 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group"
+                          onClick={() => toggleAgent(agent.id)}
+                        >
+                          <ChevronRight className={cn(
+                            "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
+                            isExpanded && "rotate-90"
+                          )} />
+                          <div className="relative shrink-0">
+                            <Bot className="h-4 w-4 text-primary" />
+                            <div className={cn(
+                              "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-card",
+                              stateColors[agent.state] || "bg-zinc-500"
+                            )} />
+                          </div>
+                          <span className="text-[12px] font-medium truncate flex-1 min-w-0 font-sans">
+                            {agent.name}
+                          </span>
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleUploadClick(agent.id); }}
+                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
+                              title="Upload"
+                            >
+                              {uploading === agent.id ? (
+                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <Upload className="h-2.5 w-2.5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); refreshAgent(agent.id); }}
+                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
+                              title="Refresh"
+                            >
+                              <RefreshCw className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                          {isLoading && (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
+                          )}
+                        </div>
+                        {isExpanded && treeData[wsKey] && renderTree(agent.id, "/workspace", 1)}
+                        {isExpanded && treeData[wsKey]?.length === 0 && (
+                          <div className="py-2 pl-12 text-[11px] text-muted-foreground/40 font-sans">
+                            Leerer Workspace
+                          </div>
                         )}
                       </div>
-
-                      {/* Agent workspace tree */}
-                      {isExpanded && treeData[wsKey] && renderTree(agent.id, "/workspace", 1)}
-
-                      {/* Empty workspace */}
-                      {isExpanded && treeData[wsKey]?.length === 0 && (
-                        <div className="py-2 pl-12 text-[11px] text-muted-foreground/40 font-sans">
-                          Leerer Workspace
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
 
-            {/* File preview */}
+            {/* File preview - uses shared component */}
             <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
-              <div className="border-b border-foreground/[0.06] px-4 py-2.5 flex items-center gap-2">
-                {selectedFile ? (
-                  <>
-                    {imageExtensions.has(getFileExt(selectedFile.path)) ? (
-                      <ImageIcon className="h-3.5 w-3.5 text-violet-400" />
-                    ) : (
-                      <Code className={cn("h-3.5 w-3.5", getFileColor(selectedFile.path.split("/").pop() || ""))} />
-                    )}
-                    <span className="text-xs font-mono text-muted-foreground truncate">
-                      {selectedFile.path}
-                    </span>
-                    <button
-                      onClick={() => handleDownload(selectedFile.agentId, selectedFile.path)}
-                      className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-                    >
-                      <Download className="h-3 w-3" />
-                      Download
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <FileText className="h-3.5 w-3.5 text-muted-foreground/50" />
-                    <span className="text-xs text-muted-foreground/50">Datei auswaehlen</span>
-                  </>
-                )}
-              </div>
-              <div className="flex-1 overflow-auto">
-                {loadingContent ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : selectedFile && imageExtensions.has(getFileExt(selectedFile.path)) ? (
-                  <div className="flex items-center justify-center h-full p-4 bg-[repeating-conic-gradient(#80808015_0%_25%,transparent_0%_50%)] bg-[length:16px_16px]">
-                    <img
-                      src={api.getFileDownloadUrl(selectedFile.agentId, selectedFile.path)}
-                      alt={selectedFile.path.split("/").pop() || ""}
-                      className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-                    />
-                  </div>
-                ) : selectedFile && markdownExtensions.has(getFileExt(selectedFile.path)) && fileContent !== null ? (
-                  <div className="p-6 prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-code:text-xs prose-pre:bg-foreground/5 prose-pre:text-foreground/80">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {fileContent}
-                    </ReactMarkdown>
-                  </div>
-                ) : fileContent !== null ? (
-                  <pre className="p-4 text-[12px] font-mono leading-relaxed whitespace-pre-wrap text-foreground/90">
-                    {fileContent}
-                  </pre>
-                ) : !selectedFile ? (
-                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30">
-                    <FileText className="h-10 w-10 mb-3" />
-                    <span className="text-sm">Datei auswaehlen</span>
-                  </div>
-                ) : null}
-              </div>
+              {selectedFile ? (
+                <FilePreview
+                  key={`${selectedFile.agentId}:${selectedFile.path}`}
+                  fileUrl={api.getFileDownloadUrl(selectedFile.agentId, selectedFile.path)}
+                  filePath={selectedFile.path}
+                  fileSize={selectedFile.entry?.size}
+                  fileModified={selectedFile.entry?.modified}
+                  onDownload={() => handleDownload(selectedFile.agentId, selectedFile.path)}
+                />
+              ) : (
+                <FilePreviewEmpty />
+              )}
             </div>
           </div>
         )}

@@ -19,6 +19,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
+    "docx-preview": "^0.3.7",
     "framer-motion": "^12.34.0",
     "geist": "^1.7.0",
     "lucide-react": "^0.460.0",
@@ -26,8 +27,10 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-markdown": "^10.1.0",
+    "react-pdf": "^10.3.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.6.0",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

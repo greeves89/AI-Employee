@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -11,9 +11,15 @@ import {
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, Package, ShieldOff, Check, ListTodo,
-  Eye, EyeOff,
+  Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
+import {
+  FilePreview, FilePreviewEmpty,
+  getFileColor, formatModified, formatModifiedFull,
+  formatFileSize as formatFileSizeShared,
+} from "@/components/files/file-preview";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
@@ -1067,11 +1073,16 @@ function AgentSettings({
   );
 }
 
+type FileSortMode = "name" | "date" | "size";
+
 function FileBrowser({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace"]));
+  const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortMode, setSortMode] = useState<FileSortMode>("name");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadDir = async (path: string) => {
@@ -1092,7 +1103,6 @@ function FileBrowser({ agentId }: { agentId: string }) {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(path)) {
-        // Collapse: remove this and all children
         Array.from(next).forEach((p) => {
           if (p.startsWith(path) && p !== "/workspace") next.delete(p);
         });
@@ -1101,7 +1111,6 @@ function FileBrowser({ agentId }: { agentId: string }) {
       }
       return next;
     });
-    // Load children if not already loaded
     if (!treeData[path]) {
       await loadDir(path);
     }
@@ -1128,35 +1137,53 @@ function FileBrowser({ agentId }: { agentId: string }) {
     }
   };
 
-  const handleDownload = (entry: FileEntry) => {
-    const url = api.getFileDownloadUrl(agentId, entry.path);
+  const handleDownload = (path: string) => {
+    const url = api.getFileDownloadUrl(agentId, path);
     window.open(url, "_blank");
   };
 
   const sortEntries = (entries: FileEntry[]) =>
     [...entries].sort((a, b) => {
       if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+      if (sortMode === "date") return (b.modified || 0) - (a.modified || 0);
+      if (sortMode === "size") return (b.size || 0) - (a.size || 0);
       return a.name.localeCompare(b.name);
     });
+
+  // Search across all loaded files
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    const results: FileEntry[] = [];
+    for (const entries of Object.values(treeData)) {
+      for (const entry of entries) {
+        if (entry.type === "file" && entry.name.toLowerCase().includes(query)) {
+          results.push(entry);
+        }
+      }
+    }
+    return sortEntries(results);
+  }, [searchQuery, treeData, sortMode]);
 
   const renderTree = (path: string, depth: number): React.ReactNode => {
     const entries = treeData[path];
     if (!entries) return null;
-    const sorted = sortEntries(entries);
 
-    return sorted.map((entry) => {
+    return sortEntries(entries).map((entry) => {
       const isDir = entry.type === "directory";
       const isExpanded = expanded.has(entry.path);
-      const hasChildren = treeData[entry.path]?.length;
+      const isSelected = selectedFile?.path === entry.path;
 
       return (
         <div key={entry.path}>
           <div
-            className="flex items-center gap-2 py-1.5 px-3 hover:bg-foreground/[0.03] transition-colors cursor-pointer group"
-            style={{ paddingLeft: `${depth * 20 + 12}px` }}
-            onClick={() => isDir ? toggleDir(entry.path) : handleDownload(entry)}
+            className={cn(
+              "flex items-center gap-2 py-1 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group",
+              isSelected && "bg-primary/10 border-r-2 border-primary"
+            )}
+            style={{ paddingLeft: `${depth * 18 + 12}px` }}
+            onClick={() => isDir ? toggleDir(entry.path) : setSelectedFile(entry)}
           >
-            {/* Expand/collapse chevron or spacer */}
             {isDir ? (
               <ChevronRight className={cn(
                 "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
@@ -1165,105 +1192,185 @@ function FileBrowser({ agentId }: { agentId: string }) {
             ) : (
               <span className="w-3 shrink-0" />
             )}
-
-            {/* Icon */}
             {isDir ? (
               isExpanded ? (
-                <FolderOpen className="h-4 w-4 text-amber-400 shrink-0" />
+                <FolderOpen className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
               ) : (
-                <Folder className="h-4 w-4 text-amber-400 shrink-0" />
+                <Folder className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
               )
             ) : (
-              <File className="h-4 w-4 text-blue-400 shrink-0" />
+              <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
             )}
-
-            {/* Name */}
-            <span className="text-[13px] truncate flex-1 min-w-0">
-              {entry.name}
-            </span>
-
-            {/* Size for files */}
+            <span className="text-[12px] truncate flex-1 min-w-0">{entry.name}</span>
+            {!isDir && entry.modified > 0 && (
+              <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+                {formatModified(entry.modified)}
+              </span>
+            )}
             {!isDir && (
-              <span className="text-[11px] text-muted-foreground/50 tabular-nums shrink-0">
+              <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
                 {formatFileSize(entry.size)}
               </span>
             )}
-
-            {/* Download button for files */}
             {!isDir && (
               <button
-                onClick={(e) => { e.stopPropagation(); handleDownload(entry); }}
-                className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                onClick={(e) => { e.stopPropagation(); handleDownload(entry.path); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
                 title="Download"
               >
-                <Download className="h-3 w-3" />
+                <Download className="h-2.5 w-2.5" />
               </button>
             )}
-
-            {/* Loading indicator for expanding dirs */}
             {isDir && isExpanded && !treeData[entry.path] && (
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
             )}
           </div>
-
-          {/* Children */}
-          {isDir && isExpanded && treeData[entry.path] && (
-            renderTree(entry.path, depth + 1)
-          )}
+          {isDir && isExpanded && treeData[entry.path] && renderTree(entry.path, depth + 1)}
         </div>
       );
     });
   };
 
   return (
-    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <FolderOpen className="h-4 w-4 text-amber-400" />
-          <span className="text-sm font-medium">/workspace</span>
+    <div className="flex gap-4 h-full">
+      {/* Tree panel */}
+      <div className="w-[380px] shrink-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
+        {/* Search + Sort + Toolbar */}
+        <div className="border-b border-foreground/[0.06] px-3 py-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/40" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Dateien suchen..."
+                className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/30 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={refreshAll}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
+              title="Refresh"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => handleUpload(e.target.files)}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
+            >
+              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              Upload
+            </button>
+          </div>
+          <div className="flex items-center gap-1">
+            {(["name", "date", "size"] as FileSortMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setSortMode(mode)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
+                  sortMode === mode
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-foreground/[0.04]"
+                )}
+              >
+                {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
+                {mode === "date" && <><Clock className="h-2.5 w-2.5" /> Datum</>}
+                {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Groesse</>}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={refreshAll}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-          >
-            <RefreshCw className="h-3 w-3" />
-            Refresh
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => handleUpload(e.target.files)}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-            Upload
-          </button>
+
+        {/* Tree content */}
+        <div className="flex-1 overflow-y-auto py-1 font-mono">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : searchQuery.trim() ? (
+            searchResults.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/30">
+                <Search className="h-5 w-5 mb-2" />
+                <span className="text-[11px]">Keine Treffer</span>
+              </div>
+            ) : (
+              <div className="py-1">
+                <div className="px-3 py-1 text-[10px] text-muted-foreground/40 font-sans">
+                  {searchResults.length} Treffer
+                </div>
+                {searchResults.map((entry) => {
+                  const isSelected = selectedFile?.path === entry.path;
+                  return (
+                    <div
+                      key={entry.path}
+                      className={cn(
+                        "flex items-center gap-2 py-1.5 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer",
+                        isSelected && "bg-primary/10 border-r-2 border-primary"
+                      )}
+                      onClick={() => setSelectedFile(entry)}
+                    >
+                      <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="text-[12px] truncate">{entry.name}</span>
+                        <span className="text-[10px] text-muted-foreground/30 truncate font-sans">{entry.path}</span>
+                      </div>
+                      {entry.modified > 0 && (
+                        <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0">
+                          {formatModified(entry.modified)}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
+                        {formatFileSize(entry.size)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : !treeData["/workspace"] || treeData["/workspace"].length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground/50 font-sans">
+              <FolderOpen className="h-8 w-8 mb-2" />
+              <p className="text-sm">Leerer Workspace</p>
+            </div>
+          ) : (
+            renderTree("/workspace", 0)
+          )}
         </div>
       </div>
 
-      {/* Tree */}
-      {loading ? (
-        <div className="flex items-center justify-center flex-1">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : !treeData["/workspace"] || treeData["/workspace"].length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground/50">
-          <FolderOpen className="h-8 w-8 mb-2" />
-          <p className="text-sm">Empty workspace</p>
-        </div>
-      ) : (
-        <div className="py-2 overflow-auto font-mono flex-1">
-          {renderTree("/workspace", 0)}
-        </div>
-      )}
+      {/* File preview panel */}
+      <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
+        {selectedFile ? (
+          <FilePreview
+            key={selectedFile.path}
+            fileUrl={api.getFileDownloadUrl(agentId, selectedFile.path)}
+            filePath={selectedFile.path}
+            fileSize={selectedFile.size}
+            fileModified={selectedFile.modified}
+            onDownload={() => handleDownload(selectedFile.path)}
+          />
+        ) : (
+          <FilePreviewEmpty />
+        )}
+      </div>
     </div>
   );
 }
