@@ -23,6 +23,7 @@ const htmlExtensions = new Set(["html", "htm"]);
 const pdfExtensions = new Set(["pdf"]);
 const docxExtensions = new Set(["docx"]);
 const xlsxExtensions = new Set(["xlsx", "xls"]);
+const pptxExtensions = new Set(["pptx"]);
 const binaryExtensions = new Set([
   "pptx", "zip", "tar", "gz", "7z", "rar", "exe", "bin", "dll",
   "so", "dylib", "woff", "woff2", "ttf", "eot", "mp3", "mp4",
@@ -48,7 +49,7 @@ export function needsBlobUrl(path: string): boolean {
   return pdfExtensions.has(ext);
 }
 
-export { imageExtensions, markdownExtensions, binaryExtensions, htmlExtensions, pdfExtensions, docxExtensions, xlsxExtensions };
+export { imageExtensions, markdownExtensions, binaryExtensions, htmlExtensions, pdfExtensions, docxExtensions, xlsxExtensions, pptxExtensions };
 
 // ── File color map ───────────────────────────────────────────────────
 
