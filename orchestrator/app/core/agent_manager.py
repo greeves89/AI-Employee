@@ -442,43 +442,74 @@ class AgentManager:
                 env["GH_TOKEN"] = token  # gh CLI uses GH_TOKEN
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None) -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
         session_volume = f"claude-session-{agent_id}"
         model = model or settings.default_model
 
-        # Build provider-specific auth environment
-        provider_env = self._build_provider_env()
+        # Encrypt API key for custom_llm before storing
+        encrypted_llm_config = None
+        if mode == "custom_llm" and llm_config:
+            from app.core.encryption import encrypt_token
+            encrypted_llm_config = dict(llm_config)
+            if encrypted_llm_config.get("api_key"):
+                encrypted_llm_config["api_key_encrypted"] = encrypt_token(
+                    encrypted_llm_config.pop("api_key")
+                )
+            # Use the custom model name as the display model
+            model = llm_config.get("model_name", model)
 
-        # Load custom MCP servers (no per-agent config yet for new agent)
-        mcp_env = await self._get_custom_mcp_env()
+        # Build environment based on mode
+        env_vars: dict[str, str] = {
+            "AGENT_ID": agent_id,
+            "AGENT_NAME": name,
+            "AGENT_ROLE": role or "",
+            "AGENT_TOKEN": make_agent_token(agent_id),
+            "REDIS_URL": settings.redis_url_internal,
+            "ORCHESTRATOR_URL": "http://orchestrator:8000",
+            "AGENT_MODE": mode,
+            "MAX_TURNS": str(settings.max_turns),
+        }
 
-        # Load integration tokens (e.g., GitHub PAT)
-        integration_env = await self._get_integration_env(integrations or [])
+        if mode == "custom_llm" and llm_config:
+            # Custom LLM: LLM-specific env vars + integrations + MCP servers
+            mcp_env = await self._get_custom_mcp_env()
+            integration_env = await self._get_integration_env(integrations or [])
+            env_vars.update({
+                "LLM_PROVIDER_TYPE": llm_config["provider_type"],
+                "LLM_API_ENDPOINT": llm_config["api_endpoint"],
+                "LLM_API_KEY": llm_config["api_key"],
+                "LLM_MODEL_NAME": llm_config["model_name"],
+                "LLM_MAX_TOKENS": str(llm_config.get("max_tokens", 4096)),
+                "LLM_TEMPERATURE": str(llm_config.get("temperature", 0.7)),
+                "LLM_SYSTEM_PROMPT": llm_config.get("system_prompt", ""),
+                "LLM_TOOLS_ENABLED": str(llm_config.get("tools_enabled", True)).lower(),
+                "DEFAULT_MODEL": llm_config["model_name"],
+                **mcp_env,
+                **integration_env,
+            })
+        else:
+            # Claude Code: standard provider env + MCP + integrations
+            provider_env = self._build_provider_env()
+            mcp_env = await self._get_custom_mcp_env()
+            integration_env = await self._get_integration_env(integrations or [])
+            env_vars.update({
+                **provider_env,
+                **mcp_env,
+                **integration_env,
+                "DEFAULT_MODEL": model,
+                "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
+            })
 
         # Create Docker container with workspace + session + shared volumes
-        agent_token = make_agent_token(agent_id)
         agent_permissions = permissions if permissions is not None else DEFAULT_PERMISSIONS
         needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
-            environment={
-                "AGENT_ID": agent_id,
-                "AGENT_NAME": name,
-                "AGENT_ROLE": role or "",
-                "AGENT_TOKEN": agent_token,
-                "REDIS_URL": settings.redis_url_internal,
-                "ORCHESTRATOR_URL": "http://orchestrator:8000",
-                **provider_env,
-                **mcp_env,
-                **integration_env,
-                "DEFAULT_MODEL": model,
-                "MAX_TURNS": str(settings.max_turns),
-                "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
-            },
+            environment=env_vars,
             volume_name=volume_name,
             session_volume_name=session_volume,
             shared_volume_name="ai-employee-shared",
@@ -494,17 +525,31 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
-        # Initialize CLAUDE.md (system instructions) and knowledge.md (agent knowledge)
-        try:
-            self.docker.write_file_in_container(
-                container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
-            )
-            self.docker.write_file_in_container(
-                container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
-            )
-            logger.info(f"Initialized CLAUDE.md + knowledge.md for agent {agent_id}")
-        except Exception as e:
-            logger.warning(f"Could not initialize agent files: {e}")
+        # Initialize workspace files
+        if mode == "claude_code":
+            # Claude Code: full CLAUDE.md + knowledge.md
+            try:
+                self.docker.write_file_in_container(
+                    container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
+                )
+                self.docker.write_file_in_container(
+                    container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
+                )
+                logger.info(f"Initialized CLAUDE.md + knowledge.md for agent {agent_id}")
+            except Exception as e:
+                logger.warning(f"Could not initialize agent files: {e}")
+        else:
+            # Custom LLM: full workspace setup (same as Claude Code for parity)
+            try:
+                self.docker.write_file_in_container(
+                    container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
+                )
+                self.docker.write_file_in_container(
+                    container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
+                )
+                logger.info(f"Initialized CLAUDE.md + knowledge.md for custom_llm agent {agent_id}")
+            except Exception as e:
+                logger.warning(f"Could not initialize agent files: {e}")
 
         # Update shared team registry
         try:
@@ -521,11 +566,13 @@ class AgentManager:
             user_id=user_id,
             state=AgentState.RUNNING,
             model=model,
+            mode=mode,
+            llm_config=encrypted_llm_config,
             budget_usd=budget_usd,
             config={
                 "session_volume": session_volume,
                 "role": role or "",
-                "onboarding_complete": False,
+                "onboarding_complete": False if mode == "claude_code" else True,
                 "integrations": integrations or [],
                 "permissions": agent_permissions,
                 "agent_version": AGENT_VERSION,
@@ -642,38 +689,63 @@ class AgentManager:
             except (NotFound, APIError):
                 pass
 
-        # 2. Build fresh environment
-        provider_env = self._build_provider_env()
-        mcp_env = await self._get_custom_mcp_env(agent_config=config)
-        integration_env = await self._get_integration_env(config.get("integrations", []))
-
+        # 2. Build fresh environment based on mode
         volume_name = agent.volume_name
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
         role = config.get("role", "")
         model = agent.model or settings.default_model
         container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
+        mode = agent.mode or "claude_code"
+
+        env_vars: dict[str, str] = {
+            "AGENT_ID": agent_id,
+            "AGENT_NAME": agent.name,
+            "AGENT_ROLE": role,
+            "AGENT_TOKEN": make_agent_token(agent_id),
+            "REDIS_URL": settings.redis_url_internal,
+            "ORCHESTRATOR_URL": "http://orchestrator:8000",
+            "AGENT_MODE": mode,
+            "MAX_TURNS": str(settings.max_turns),
+        }
+
+        if mode == "custom_llm" and agent.llm_config:
+            from app.core.encryption import decrypt_token as _decrypt
+            llm_cfg = agent.llm_config
+            api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
+            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            integration_env = await self._get_integration_env(config.get("integrations", []))
+            env_vars.update({
+                "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
+                "LLM_API_ENDPOINT": llm_cfg.get("api_endpoint", ""),
+                "LLM_API_KEY": api_key,
+                "LLM_MODEL_NAME": llm_cfg.get("model_name", ""),
+                "LLM_MAX_TOKENS": str(llm_cfg.get("max_tokens", 4096)),
+                "LLM_TEMPERATURE": str(llm_cfg.get("temperature", 0.7)),
+                "LLM_SYSTEM_PROMPT": llm_cfg.get("system_prompt", ""),
+                "LLM_TOOLS_ENABLED": str(llm_cfg.get("tools_enabled", True)).lower(),
+                "DEFAULT_MODEL": llm_cfg.get("model_name", model),
+                **mcp_env,
+                **integration_env,
+            })
+        else:
+            provider_env = self._build_provider_env()
+            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            integration_env = await self._get_integration_env(config.get("integrations", []))
+            env_vars.update({
+                **provider_env,
+                **mcp_env,
+                **integration_env,
+                "DEFAULT_MODEL": model,
+                "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
+            })
 
         # 3. Create new container with same volumes
-        agent_token = make_agent_token(agent_id)
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
-            environment={
-                "AGENT_ID": agent_id,
-                "AGENT_NAME": agent.name,
-                "AGENT_ROLE": role,
-                "AGENT_TOKEN": agent_token,
-                "REDIS_URL": settings.redis_url_internal,
-                "ORCHESTRATOR_URL": "http://orchestrator:8000",
-                **provider_env,
-                **mcp_env,
-                **integration_env,
-                "DEFAULT_MODEL": model,
-                "MAX_TURNS": str(settings.max_turns),
-                "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
-            },
+            environment=env_vars,
             volume_name=volume_name,
             session_volume_name=session_volume,
             shared_volume_name="ai-employee-shared",
@@ -751,39 +823,63 @@ class AgentManager:
             except (NotFound, APIError):
                 pass
 
-        # 2. Build environment (same as create)
-        provider_env = self._build_provider_env()
-        mcp_env = await self._get_custom_mcp_env(agent_config=config)
-        integration_env = await self._get_integration_env(config.get("integrations", []))
-
+        # 2. Build environment based on mode (same logic as restart)
         volume_name = agent.volume_name
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
         role = config.get("role", "")
         model = agent.model or settings.default_model
-
         container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
+        mode = agent.mode or "claude_code"
+
+        env_vars: dict[str, str] = {
+            "AGENT_ID": agent_id,
+            "AGENT_NAME": agent.name,
+            "AGENT_ROLE": role,
+            "AGENT_TOKEN": make_agent_token(agent_id),
+            "REDIS_URL": settings.redis_url_internal,
+            "ORCHESTRATOR_URL": "http://orchestrator:8000",
+            "AGENT_MODE": mode,
+            "MAX_TURNS": str(settings.max_turns),
+        }
+
+        if mode == "custom_llm" and agent.llm_config:
+            from app.core.encryption import decrypt_token as _decrypt
+            llm_cfg = agent.llm_config
+            api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
+            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            integration_env = await self._get_integration_env(config.get("integrations", []))
+            env_vars.update({
+                "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
+                "LLM_API_ENDPOINT": llm_cfg.get("api_endpoint", ""),
+                "LLM_API_KEY": api_key,
+                "LLM_MODEL_NAME": llm_cfg.get("model_name", ""),
+                "LLM_MAX_TOKENS": str(llm_cfg.get("max_tokens", 4096)),
+                "LLM_TEMPERATURE": str(llm_cfg.get("temperature", 0.7)),
+                "LLM_SYSTEM_PROMPT": llm_cfg.get("system_prompt", ""),
+                "LLM_TOOLS_ENABLED": str(llm_cfg.get("tools_enabled", True)).lower(),
+                "DEFAULT_MODEL": llm_cfg.get("model_name", model),
+                **mcp_env,
+                **integration_env,
+            })
+        else:
+            provider_env = self._build_provider_env()
+            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            integration_env = await self._get_integration_env(config.get("integrations", []))
+            env_vars.update({
+                **provider_env,
+                **mcp_env,
+                **integration_env,
+                "DEFAULT_MODEL": model,
+                "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
+            })
 
         # 3. Create new container with same volumes
-        agent_token = make_agent_token(agent_id)
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
-            environment={
-                "AGENT_ID": agent_id,
-                "AGENT_NAME": agent.name,
-                "AGENT_ROLE": role,
-                "AGENT_TOKEN": agent_token,
-                "REDIS_URL": settings.redis_url_internal,
-                "ORCHESTRATOR_URL": "http://orchestrator:8000",
-                **provider_env,
-                **mcp_env,
-                **integration_env,
-                "DEFAULT_MODEL": model,
-                "MAX_TURNS": str(settings.max_turns),
-                "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
-            },
+            environment=env_vars,
             volume_name=volume_name,
             session_volume_name=session_volume,
             shared_volume_name="ai-employee-shared",
@@ -799,14 +895,15 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
-        # 5. Update CLAUDE.md (system instructions) but keep knowledge.md (agent data)
-        try:
-            self.docker.write_file_in_container(
-                container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
-            )
-            logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
-        except Exception as e:
-            logger.warning(f"Could not update CLAUDE.md: {e}")
+        # 5. Update workspace files (only CLAUDE.md for claude_code, knowledge preserved)
+        if mode == "claude_code":
+            try:
+                self.docker.write_file_in_container(
+                    container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
+                )
+                logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
+            except Exception as e:
+                logger.warning(f"Could not update CLAUDE.md: {e}")
 
         # 6. Update team registry
         try:
@@ -825,6 +922,48 @@ class AgentManager:
 
         logger.info(f"Agent {agent_id} updated to new image version")
         return agent
+
+    async def update_llm_config(self, agent_id: str, updates: dict) -> dict:
+        """Update LLM config fields for a custom_llm agent. Returns safe config (no key)."""
+        from app.core.encryption import encrypt_token
+        agent = await self._get_agent(agent_id)
+        if agent.mode != "custom_llm":
+            raise ValueError("Agent is not in custom_llm mode")
+
+        llm_cfg = dict(agent.llm_config or {})
+
+        # Handle API key update (encrypt it)
+        if "api_key" in updates:
+            llm_cfg["api_key_encrypted"] = encrypt_token(updates.pop("api_key"))
+
+        # Merge other fields
+        for key, value in updates.items():
+            llm_cfg[key] = value
+
+        agent.llm_config = llm_cfg
+        flag_modified(agent, "llm_config")
+
+        # Update model display name if model_name changed
+        if "model_name" in updates:
+            agent.model = updates["model_name"]
+
+        await self.db.commit()
+        await self.db.refresh(agent)
+
+        # Restart container to pick up new config
+        if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+            await self.restart_agent(agent_id)
+
+        # Return safe config (no API key)
+        return {
+            "provider_type": llm_cfg.get("provider_type", ""),
+            "api_endpoint": llm_cfg.get("api_endpoint", ""),
+            "model_name": llm_cfg.get("model_name", ""),
+            "max_tokens": llm_cfg.get("max_tokens", 4096),
+            "temperature": llm_cfg.get("temperature", 0.7),
+            "system_prompt": llm_cfg.get("system_prompt", ""),
+            "tools_enabled": llm_cfg.get("tools_enabled", True),
+        }
 
     async def remove_agent(self, agent_id: str, remove_data: bool = False) -> None:
         await self._publish_event(agent_id, "system", f"Agent being removed (delete data: {remove_data})")
@@ -875,12 +1014,28 @@ class AgentManager:
         if stored_version != AGENT_VERSION:
             update_available = True
 
+        # Build safe LLM config for response (no API key!)
+        llm_config_response = None
+        if agent.mode == "custom_llm" and agent.llm_config:
+            llm_cfg = agent.llm_config
+            llm_config_response = {
+                "provider_type": llm_cfg.get("provider_type", ""),
+                "api_endpoint": llm_cfg.get("api_endpoint", ""),
+                "model_name": llm_cfg.get("model_name", ""),
+                "max_tokens": llm_cfg.get("max_tokens", 4096),
+                "temperature": llm_cfg.get("temperature", 0.7),
+                "system_prompt": llm_cfg.get("system_prompt", ""),
+                "tools_enabled": llm_cfg.get("tools_enabled", True),
+            }
+
         result = {
             "id": agent.id,
             "name": agent.name,
             "container_id": agent.container_id,
             "state": agent.state,
             "model": agent.model,
+            "mode": agent.mode or "claude_code",
+            "llm_config": llm_config_response,
             "role": config.get("role", ""),
             "onboarding_complete": config.get("onboarding_complete", False),
             "integrations": config.get("integrations", []),

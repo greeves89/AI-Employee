@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentTemplate, AgentTodo, ApprovalRequest, Feedback, FeedbackListResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, Feedback, FeedbackListResponse, LLMConfig, LLMConfigResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -49,10 +49,28 @@ export async function getAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}`);
 }
 
-export async function createAgent(name: string, model?: string, role?: string, permissions?: string[], budget_usd?: number): Promise<Agent> {
+export async function createAgent(
+  name: string,
+  model?: string,
+  role?: string,
+  permissions?: string[],
+  budget_usd?: number,
+  mode: AgentMode = "claude_code",
+  llm_config?: LLMConfig,
+): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
-    body: JSON.stringify({ name, model, role, permissions, budget_usd }),
+    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config }),
+  });
+}
+
+export async function updateLLMConfig(
+  agentId: string,
+  config: Partial<LLMConfig>,
+): Promise<{ agent_id: string; llm_config: LLMConfigResponse }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/llm-config`, {
+    method: "PATCH",
+    body: JSON.stringify(config),
   });
 }
 

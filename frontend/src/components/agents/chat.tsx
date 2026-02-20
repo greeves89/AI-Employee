@@ -170,6 +170,8 @@ export function AgentChat({ agentId }: { agentId: string }) {
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [thinkingStartTime, setThinkingStartTime] = useState<number | null>(null);
+  const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [totalCost, setTotalCost] = useState(0);
   const [totalTurns, setTotalTurns] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
@@ -251,8 +253,10 @@ export function AgentChat({ agentId }: { agentId: string }) {
                 steps.push({ type: "text", content: m.content });
               }
             }
+            // Use message_id for user messages, response-{message_id} for assistant
+            const displayId = m.role === "assistant" ? `response-${m.id}` : m.id;
             return {
-              id: m.id,
+              id: displayId,
               role: m.role,
               content: m.content,
               timestamp: m.timestamp,
@@ -260,7 +264,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
               meta: m.meta ?? undefined,
             };
           });
-          // Deduplicate by id+role (message_id is shared between user & assistant)
+          // Deduplicate by id+role
           const seen = new Set<string>();
           const deduped = restored.filter((m) => {
             const key = `${m.id}-${m.role}`;
@@ -268,7 +272,15 @@ export function AgentChat({ agentId }: { agentId: string }) {
             seen.add(key);
             return true;
           });
-          setMessages(deduped);
+          // Merge with any currently streaming messages (don't lose active streams)
+          setMessages((prev) => {
+            const streaming = prev.filter((m) => m.isStreaming);
+            if (streaming.length === 0) return deduped;
+            // Keep streaming messages, add history that isn't already present
+            const streamIds = new Set(streaming.map((m) => m.id));
+            const merged = [...deduped.filter((m) => !streamIds.has(m.id)), ...streaming];
+            return merged;
+          });
           let cost = 0;
           let turns = 0;
           for (const m of restored) {
@@ -696,6 +708,30 @@ export function AgentChat({ agentId }: { agentId: string }) {
     }
   }, [agentId]);
 
+  // Thinking timer - counts up while waiting for first response
+  useEffect(() => {
+    if (!isWaiting) {
+      setThinkingStartTime(null);
+      setThinkingElapsed(0);
+      return;
+    }
+    // Only start timer if no streaming message exists yet
+    const hasStreaming = messages.some((m) => m.isStreaming);
+    if (hasStreaming) {
+      setThinkingStartTime(null);
+      return;
+    }
+    if (!thinkingStartTime) {
+      setThinkingStartTime(Date.now());
+    }
+    const interval = setInterval(() => {
+      if (thinkingStartTime) {
+        setThinkingElapsed(Math.floor((Date.now() - thinkingStartTime) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isWaiting, messages, thinkingStartTime]);
+
   const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
   const contextLimit = 200000;
   const contextPercent = Math.min((estimatedTokens / contextLimit) * 100, 100);
@@ -796,9 +832,27 @@ export function AgentChat({ agentId }: { agentId: string }) {
           <MessageRow key={`${msg.id}-${msg.role}`} message={msg} />
         ))}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
-          <div className="flex items-center gap-2 text-zinc-500 text-sm pl-1">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span className="text-xs">Thinking...</span>
+          <div className="flex items-center gap-3 pl-1 py-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/20 shrink-0">
+              <Bot className="h-3.5 w-3.5 text-violet-400" />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <span className="text-xs text-zinc-500">
+                {thinkingElapsed > 0 ? (
+                  <>Thinking... <span className="tabular-nums text-zinc-600">{thinkingElapsed}s</span></>
+                ) : (
+                  "Thinking..."
+                )}
+              </span>
+              {thinkingElapsed > 30 && (
+                <span className="text-[10px] text-zinc-600 italic">Complex task — this may take a while</span>
+              )}
+            </div>
           </div>
         )}
         <div ref={bottomRef} />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +94,15 @@ export function AgentCard({ agent }: AgentCardProps) {
 
           {/* Status badges */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {agent.mode === "custom_llm" && agent.llm_config && (
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
+                <Plug className="h-3 w-3" />
+                {agent.llm_config.provider_type === "openai" ? "OpenAI" :
+                 agent.llm_config.provider_type === "google" ? "Gemini" :
+                 agent.llm_config.provider_type === "anthropic" ? "Anthropic" :
+                 agent.llm_config.provider_type}
+              </div>
+            )}
             {agent.update_available && (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border-amber-500/20">
                 <ArrowUpCircle className="h-3 w-3" />

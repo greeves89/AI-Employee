@@ -5,13 +5,12 @@ import json
 
 import redis.asyncio as aioredis
 
-from app.chat_handler import ChatHandler
 from app.config import settings
 from app.log_publisher import LogPublisher
 
 
 class ChatConsumer:
-    """Consumes chat messages from Redis queue and processes them via ChatHandler."""
+    """Consumes chat messages from Redis queue and processes them via ChatHandler or LLMChatHandler."""
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -19,7 +18,7 @@ class ChatConsumer:
         self.queue_name = f"agent:{agent_id}:chat"
         self.cancel_channel = f"agent:{agent_id}:chat:cancel"
         self.running = True
-        self._handler: ChatHandler | None = None
+        self._handler = None  # ChatHandler or LLMChatHandler
         self._cancel_listener_task: asyncio.Task | None = None
 
     async def _listen_for_cancel(self) -> None:
@@ -48,7 +47,14 @@ class ChatConsumer:
     async def start(self) -> None:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         log_publisher = LogPublisher(self.redis, self.agent_id)
-        self._handler = ChatHandler(log_publisher)
+
+        # Choose handler based on agent mode
+        if settings.agent_mode == "custom_llm":
+            from app.llm_chat_handler import LLMChatHandler
+            self._handler = LLMChatHandler(log_publisher)
+        else:
+            from app.chat_handler import ChatHandler
+            self._handler = ChatHandler(log_publisher)
 
         # Start cancel listener in background
         self._cancel_listener_task = asyncio.create_task(self._listen_for_cancel())

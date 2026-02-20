@@ -3,25 +3,31 @@ import json
 
 import redis.asyncio as aioredis
 
-from app.agent_runner import AgentRunner
 from app.config import settings
 from app.log_publisher import LogPublisher
 
 
 class TaskConsumer:
-    """Consumes tasks from a Redis queue and executes them via AgentRunner."""
+    """Consumes tasks from a Redis queue and executes them via AgentRunner or LLMRunner."""
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
         self.redis: aioredis.Redis | None = None
         self.queue_name = f"agent:{agent_id}:tasks"
         self.running = True
-        self._runner: AgentRunner | None = None
+        self._runner = None  # AgentRunner or LLMRunner
 
     async def start(self) -> None:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         log_publisher = LogPublisher(self.redis, self.agent_id)
-        self._runner = AgentRunner(log_publisher)
+
+        # Choose runner based on agent mode
+        if settings.agent_mode == "custom_llm":
+            from app.llm_runner import LLMRunner
+            self._runner = LLMRunner(log_publisher)
+        else:
+            from app.agent_runner import AgentRunner
+            self._runner = AgentRunner(log_publisher)
 
         # Report as ready
         await log_publisher.publish_status("idle")

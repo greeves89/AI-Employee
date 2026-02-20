@@ -11,6 +11,28 @@ from app.task_consumer import TaskConsumer
 from app.chat_consumer import ChatConsumer
 
 
+async def discover_custom_mcp_tools() -> int:
+    """Discover tools from custom MCP HTTP servers for custom_llm mode.
+
+    Adds discovered tools to TOOL_DEFINITIONS so the LLM can use them.
+    Returns the number of tools discovered.
+    """
+    from app.tools.mcp_client import MCPHTTPClient
+    from app.tools.definitions import TOOL_DEFINITIONS
+
+    client = MCPHTTPClient()
+    try:
+        tools = await client.discover_tools()
+        if tools:
+            TOOL_DEFINITIONS.extend(tools)
+        return len(tools)
+    except Exception as e:
+        print(f"[Agent] Warning: MCP tool discovery failed: {e}")
+        return 0
+    finally:
+        await client.close()
+
+
 def _sanitize_mcp_name(name: str) -> str:
     """Sanitize MCP server name: only letters, numbers, hyphens, underscores."""
     return re.sub(r"[^a-zA-Z0-9_-]", "-", name).strip("-")
@@ -171,15 +193,31 @@ def setup_vertex_credentials() -> None:
 
 async def main() -> None:
     agent_id = settings.agent_id
-    print(f"[Agent {agent_id}] Starting up...")
+    mode = settings.agent_mode
+    print(f"[Agent {agent_id}] Starting up (mode: {mode})...")
 
-    # Set up credentials
-    setup_vertex_credentials()
-    setup_github_credentials()
+    if mode == "custom_llm":
+        # Custom LLM mode: skip Claude CLI setup, but set up integrations
+        print(f"[Agent {agent_id}] Custom LLM: {settings.llm_provider_type}/{settings.llm_model_name}")
+        print(f"[Agent {agent_id}] Tools enabled: {settings.llm_tools_enabled}")
 
-    # Register MCP servers with Claude Code CLI
-    register_mcp_servers()
-    print(f"[Agent {agent_id}] MCP servers registered")
+        # GitHub credentials (needed for proactive mode git operations)
+        setup_github_credentials()
+
+        # Discover custom MCP server tools (if any configured)
+        mcp_tool_count = await discover_custom_mcp_tools()
+        if mcp_tool_count > 0:
+            print(f"[Agent {agent_id}] Discovered {mcp_tool_count} custom MCP tools")
+
+        # Built-in orchestrator API tools are always available
+        from app.tools.definitions import ORCHESTRATOR_TOOL_NAMES
+        print(f"[Agent {agent_id}] {len(ORCHESTRATOR_TOOL_NAMES)} orchestrator API tools available")
+    else:
+        # Claude Code mode: full setup (MCP servers, credentials, etc.)
+        setup_vertex_credentials()
+        setup_github_credentials()
+        register_mcp_servers()
+        print(f"[Agent {agent_id}] MCP servers registered")
 
     # Start health server
     health_runner = await start_health_server(agent_id, settings.health_port)

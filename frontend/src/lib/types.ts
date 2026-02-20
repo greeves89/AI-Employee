@@ -14,12 +14,38 @@ export type TaskStatus =
   | "failed"
   | "cancelled";
 
+export type AgentMode = "claude_code" | "custom_llm";
+export type LLMProviderType = "openai" | "anthropic" | "google";
+
+export interface LLMConfig {
+  provider_type: LLMProviderType;
+  api_endpoint: string;
+  api_key: string;
+  model_name: string;
+  max_tokens?: number;
+  temperature?: number;
+  system_prompt?: string;
+  tools_enabled?: boolean;
+}
+
+export interface LLMConfigResponse {
+  provider_type: string;
+  api_endpoint: string;
+  model_name: string;
+  max_tokens: number;
+  temperature: number;
+  system_prompt: string;
+  tools_enabled: boolean;
+}
+
 export interface Agent {
   id: string;
   name: string;
   container_id: string | null;
   state: AgentState;
   model: string;
+  mode: AgentMode;
+  llm_config: LLMConfigResponse | null;
   role: string | null;
   onboarding_complete: boolean;
   integrations: string[];

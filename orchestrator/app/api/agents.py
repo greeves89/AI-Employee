@@ -15,7 +15,7 @@ from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
-from app.schemas.agent import AgentCreate, AgentListResponse, AgentResponse, KnowledgeResponse, KnowledgeUpdate
+from app.schemas.agent import AgentCreate, AgentListResponse, AgentResponse, KnowledgeResponse, KnowledgeUpdate, LLMConfigResponse, LLMConfigUpdate
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -84,15 +84,26 @@ async def create_agent(
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     try:
+        # Validate: custom_llm mode requires llm_config
+        if data.mode == "custom_llm" and not data.llm_config:
+            raise HTTPException(
+                status_code=422,
+                detail="llm_config is required when mode is 'custom_llm'",
+            )
+
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
         agent = await manager.create_agent(
             name=data.name, model=data.model, role=data.role,
             integrations=data.integrations, permissions=data.permissions,
             user_id=uid, budget_usd=data.budget_usd,
+            mode=data.mode,
+            llm_config=data.llm_config.model_dump() if data.llm_config else None,
         )
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -175,6 +186,27 @@ async def update_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{agent_id}/llm-config")
+async def update_llm_config(
+    agent_id: str,
+    body: LLMConfigUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Update the LLM configuration for a custom_llm agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if agent.mode != "custom_llm":
+            raise HTTPException(status_code=400, detail="Agent is not in custom_llm mode")
+
+        updated = await manager.update_llm_config(agent_id, body.model_dump(exclude_none=True))
+        return {"agent_id": agent_id, "llm_config": updated}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
 
 @router.delete("/{agent_id}")
@@ -475,7 +507,7 @@ async def get_chat_history(
     return {
         "messages": [
             {
-                "id": str(msg.id),
+                "id": msg.message_id or str(msg.id),
                 "role": msg.role,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
@@ -643,6 +675,11 @@ async def update_agent_mcp_servers(
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
+
+        # Auto-restart running agents so new MCP servers are registered
+        if agent.state == AgentState.RUNNING:
+            await manager.restart_agent(agent_id)
+
         return {"agent_id": agent_id, "mcp_servers": config.get("mcp_servers", None)}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")

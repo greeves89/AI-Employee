@@ -31,6 +31,10 @@ class Agent(Base, TimestampMixin):
     model: Mapped[str] = mapped_column(
         String, default="claude-sonnet-4-6"
     )
+    mode: Mapped[str] = mapped_column(
+        String, default="claude_code"
+    )
+    llm_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
 

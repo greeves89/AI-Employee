@@ -11,6 +11,7 @@ import {
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, Package, ShieldOff, Check, ListTodo,
+  Eye, EyeOff,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
@@ -127,6 +128,12 @@ export default function AgentDetailPage() {
               <RefreshCw className={cn("h-3 w-3", restarting && "animate-spin")} />
               {restarting ? "Restarting..." : "Restart"}
             </button>
+            {agent.mode === "custom_llm" && (
+              <div className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
+                <Plug className="h-3 w-3" />
+                Custom LLM
+              </div>
+            )}
             <div className={cn(
               "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",
               stateConfig.badge
@@ -179,9 +186,11 @@ export default function AgentDetailPage() {
             bar={{ value: memMb, max: 2048, gradient: "from-emerald-500 to-teal-400" }}
           />
           <InfoCard
-            icon={Hash}
-            label="Model"
-            value={agent.model.split("-").slice(0, 2).join("-")}
+            icon={agent.mode === "custom_llm" ? Plug : Hash}
+            label={agent.mode === "custom_llm" ? "LLM Provider" : "Model"}
+            value={agent.mode === "custom_llm" && agent.llm_config
+              ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
+              : agent.model.split("-").slice(0, 2).join("-")}
             color="text-violet-400"
             iconBg="bg-violet-500/10"
           />
@@ -244,7 +253,7 @@ export default function AgentDetailPage() {
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
           {activeTab === "memory" && <MemoryTab agentId={agentId} />}
           {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
-          {activeTab === "settings" && <AgentSettings agentId={agentId} currentPermissions={agent.permissions ?? []} onUpdated={(a) => setAgent(a)} />}
+          {activeTab === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>
     </div>
@@ -627,18 +636,31 @@ const PERM_ICON_MAP: Record<string, React.ElementType> = {
 };
 
 function AgentSettings({
-  agentId,
-  currentPermissions,
+  agent,
   onUpdated,
 }: {
-  agentId: string;
-  currentPermissions: string[];
+  agent: Agent;
   onUpdated: (agent: Agent) => void;
 }) {
+  const agentId = agent.id;
+  const currentPermissions = agent.permissions ?? [];
+
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [selected, setSelected] = useState<string[]>(currentPermissions);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null);
+
+  // LLM Config state (for custom_llm agents)
+  const [llmEditing, setLlmEditing] = useState(false);
+  const [llmSaving, setLlmSaving] = useState(false);
+  const [llmEndpoint, setLlmEndpoint] = useState(agent.llm_config?.api_endpoint ?? "");
+  const [llmModel, setLlmModel] = useState(agent.llm_config?.model_name ?? "");
+  const [llmTemp, setLlmTemp] = useState(String(agent.llm_config?.temperature ?? 0.7));
+  const [llmMaxTokens, setLlmMaxTokens] = useState(String(agent.llm_config?.max_tokens ?? 4096));
+  const [llmSystemPrompt, setLlmSystemPrompt] = useState(agent.llm_config?.system_prompt ?? "");
+  const [llmToolsEnabled, setLlmToolsEnabled] = useState(agent.llm_config?.tools_enabled ?? true);
+  const [llmNewApiKey, setLlmNewApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     api.getPermissionPackages().then((data) => {
@@ -649,6 +671,18 @@ function AgentSettings({
   useEffect(() => {
     setSelected(currentPermissions);
   }, [currentPermissions]);
+
+  // Sync LLM config when agent updates
+  useEffect(() => {
+    if (agent.llm_config) {
+      setLlmEndpoint(agent.llm_config.api_endpoint);
+      setLlmModel(agent.llm_config.model_name);
+      setLlmTemp(String(agent.llm_config.temperature));
+      setLlmMaxTokens(String(agent.llm_config.max_tokens));
+      setLlmSystemPrompt(agent.llm_config.system_prompt);
+      setLlmToolsEnabled(agent.llm_config.tools_enabled);
+    }
+  }, [agent.llm_config]);
 
   const togglePermission = (id: string) => {
     setSelected((prev) => {
@@ -673,7 +707,6 @@ function AgentSettings({
       } else {
         setMessage({ type: "success", text: "Berechtigungen aktualisiert." });
       }
-      // Refresh agent data
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
     } catch (e) {
@@ -683,10 +716,241 @@ function AgentSettings({
     }
   };
 
+  const handleLlmSave = async () => {
+    setLlmSaving(true);
+    setMessage(null);
+    try {
+      const update: Record<string, unknown> = {
+        api_endpoint: llmEndpoint.trim(),
+        model_name: llmModel.trim(),
+        temperature: parseFloat(llmTemp) || 0.7,
+        max_tokens: parseInt(llmMaxTokens) || 4096,
+        system_prompt: llmSystemPrompt.trim(),
+        tools_enabled: llmToolsEnabled,
+      };
+      if (llmNewApiKey.trim()) {
+        update.api_key = llmNewApiKey.trim();
+      }
+      await api.updateLLMConfig(agentId, update as Parameters<typeof api.updateLLMConfig>[1]);
+      setLlmNewApiKey("");
+      setLlmEditing(false);
+      setMessage({ type: "success", text: "LLM-Konfiguration aktualisiert. Restart empfohlen." });
+      const updated = await api.getAgent(agentId);
+      onUpdated(updated as Agent);
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Fehler beim Speichern" });
+    } finally {
+      setLlmSaving(false);
+    }
+  };
+
+  const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-auto max-h-[calc(100vh-22rem)] pb-4">
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
+
+      {/* LLM Configuration (custom_llm only) */}
+      {agent.mode === "custom_llm" && agent.llm_config && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Plug className="h-4 w-4 text-violet-400" />
+              <span className="text-sm font-medium">LLM-Konfiguration</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-medium">
+                {providerLabel}
+              </span>
+            </div>
+            {llmEditing ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleLlmSave}
+                  disabled={llmSaving}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-all"
+                >
+                  {llmSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  Speichern
+                </button>
+                <button
+                  onClick={() => {
+                    setLlmEditing(false);
+                    setLlmNewApiKey("");
+                    // Reset to current values
+                    if (agent.llm_config) {
+                      setLlmEndpoint(agent.llm_config.api_endpoint);
+                      setLlmModel(agent.llm_config.model_name);
+                      setLlmTemp(String(agent.llm_config.temperature));
+                      setLlmMaxTokens(String(agent.llm_config.max_tokens));
+                      setLlmSystemPrompt(agent.llm_config.system_prompt);
+                      setLlmToolsEnabled(agent.llm_config.tools_enabled);
+                    }
+                  }}
+                  className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setLlmEditing(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+              >
+                <Edit3 className="h-3 w-3" />
+                Bearbeiten
+              </button>
+            )}
+          </div>
+
+          <div className="p-5 space-y-4">
+            {llmEditing ? (
+              <>
+                {/* Editable fields */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">API Endpoint</label>
+                    <input
+                      type="text"
+                      value={llmEndpoint}
+                      onChange={(e) => setLlmEndpoint(e.target.value)}
+                      className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Model</label>
+                    <input
+                      type="text"
+                      value={llmModel}
+                      onChange={(e) => setLlmModel(e.target.value)}
+                      className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Temperature</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    value={llmTemp}
+                    onChange={(e) => setLlmTemp(e.target.value)}
+                    className="w-full max-w-[200px] rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
+                  />
+                  <p className="text-[10px] text-muted-foreground/40 mt-1">0 = praezise, 1 = kreativ</p>
+                </div>
+
+                {/* API Key (change) */}
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+                    API Key{" "}
+                    <span className="text-muted-foreground/40">(leer lassen = beibehalten)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? "text" : "password"}
+                      value={llmNewApiKey}
+                      onChange={(e) => setLlmNewApiKey(e.target.value)}
+                      placeholder="Neuen API Key eingeben..."
+                      className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 pr-10 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                    >
+                      {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* System Prompt */}
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">System Prompt</label>
+                  <textarea
+                    value={llmSystemPrompt}
+                    onChange={(e) => setLlmSystemPrompt(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all resize-none"
+                  />
+                </div>
+
+                {/* Tools toggle */}
+                <div className="flex items-center justify-between rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">Tool-Nutzung</p>
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                      Shell, Dateien, Memory, TODOs, Notifications, Team-Koordination
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLlmToolsEnabled(!llmToolsEnabled)}
+                    className={cn(
+                      "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                      llmToolsEnabled ? "bg-violet-500" : "bg-foreground/20"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                        llmToolsEnabled && "translate-x-5"
+                      )}
+                    />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Read-only view */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Provider</span>
+                    <p className="text-sm font-medium mt-0.5">{providerLabel}</p>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Model</span>
+                    <p className="text-sm font-medium mt-0.5 font-mono">{agent.llm_config.model_name}</p>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">API Endpoint</span>
+                    <p className="text-sm font-mono text-muted-foreground mt-0.5 truncate">{agent.llm_config.api_endpoint}</p>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">API Key</span>
+                    <p className="text-sm text-muted-foreground mt-0.5 font-mono">********</p>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Temperature</span>
+                    <p className="text-sm tabular-nums mt-0.5">{agent.llm_config.temperature}</p>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Tools</span>
+                    <p className="text-sm mt-0.5">
+                      {agent.llm_config.tools_enabled ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-400">
+                          <Check className="h-3 w-3" /> Aktiviert
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Deaktiviert</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                {agent.llm_config.system_prompt && (
+                  <div className="mt-2 pt-3 border-t border-foreground/[0.06]">
+                    <span className="text-[11px] font-medium text-muted-foreground/60">System Prompt</span>
+                    <pre className="mt-1.5 text-xs font-mono text-muted-foreground/80 whitespace-pre-wrap bg-foreground/[0.02] rounded-lg p-3 max-h-32 overflow-auto">
+                      {agent.llm_config.system_prompt}
+                    </pre>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Permissions */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
