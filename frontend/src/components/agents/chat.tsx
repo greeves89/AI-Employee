@@ -804,22 +804,22 @@ export function AgentChat({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      {/* Messages area - dark terminal-like background */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-[#0d1117]">
+      {/* Messages area */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]">
         {messages.length === 0 && !connectionFailed && historyLoaded && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Bot className="h-8 w-8 mb-2" />
             <p className="text-sm">Send a message to start chatting</p>
           </div>
         )}
         {messages.length === 0 && !connectionFailed && !historyLoaded && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin mb-2" />
             <p className="text-xs">Loading chat history...</p>
           </div>
         )}
         {messages.length === 0 && connectionFailed && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <WifiOff className="h-8 w-8 mb-2 text-red-400" />
             <p className="text-sm text-red-400">Agent is not reachable</p>
             <p className="text-xs mt-1">The container may be stopped or removed</p>
@@ -842,15 +842,15 @@ export function AgentChat({ agentId }: { agentId: string }) {
                 <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-muted-foreground">
                 {thinkingElapsed > 0 ? (
-                  <>Thinking... <span className="tabular-nums text-zinc-600">{thinkingElapsed}s</span></>
+                  <>Thinking... <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed}s</span></>
                 ) : (
                   "Thinking..."
                 )}
               </span>
               {thinkingElapsed > 30 && (
-                <span className="text-[10px] text-zinc-600 italic">Complex task — this may take a while</span>
+                <span className="text-[10px] text-muted-foreground/60 italic">Complex task — this may take a while</span>
               )}
             </div>
           </div>
@@ -930,7 +930,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
     return (
       <div className="text-center py-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800/60 border border-zinc-700/50 px-3 py-1 text-[10px] text-zinc-500">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 border border-border px-3 py-1 text-[10px] text-muted-foreground">
           {message.content}
         </span>
       </div>
@@ -959,10 +959,10 @@ function MessageRow({ message }: { message: ChatMessage }) {
 function UserMessage({ content }: { content: string }) {
   return (
     <div className="flex items-start gap-3 pl-1">
-      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/20 shrink-0 mt-0.5">
-        <User className="h-3.5 w-3.5 text-blue-400" />
+      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 dark:bg-blue-500/20 shrink-0 mt-0.5">
+        <User className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
       </div>
-      <div className="text-sm text-zinc-200 leading-relaxed pt-0.5">
+      <div className="text-sm text-foreground leading-relaxed pt-0.5">
         {content}
       </div>
     </div>
@@ -992,7 +992,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
             <div key={`text-${i}`}>
               <MarkdownContent content={step.content} />
               {message.isStreaming && i === steps.length - 1 && (
-                <span className="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse ml-0.5 rounded-sm" />
+                <span className="inline-block w-1.5 h-4 bg-muted-foreground/50 animate-pulse ml-0.5 rounded-sm" />
               )}
             </div>
           );
@@ -1025,7 +1025,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
     <div className="group">
       {/* Header row */}
       <div
-        className="flex items-center gap-2 cursor-pointer hover:bg-zinc-800/40 rounded-md px-1.5 py-1 -mx-1.5 transition-colors"
+        className="flex items-center gap-2 cursor-pointer hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06] rounded-md px-1.5 py-1 -mx-1.5 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         {/* Status dot */}
@@ -1043,17 +1043,17 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
         </span>
 
         {/* Tool label */}
-        <span className="text-[13px] font-semibold text-zinc-200">{label}</span>
+        <span className="text-[13px] font-semibold text-foreground">{label}</span>
 
         {/* Description */}
         {description && (
-          <span className="text-[12px] text-zinc-500 truncate">{description}</span>
+          <span className="text-[12px] text-muted-foreground truncate">{description}</span>
         )}
 
         {/* Expand chevron */}
         <ChevronRight
           className={cn(
-            "h-3 w-3 text-zinc-600 transition-transform ml-auto shrink-0",
+            "h-3 w-3 text-muted-foreground/50 transition-transform ml-auto shrink-0",
             expanded && "rotate-90"
           )}
         />
@@ -1065,8 +1065,8 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {/* IN block */}
           {detail && (
             <div className="flex gap-0">
-              <span className="text-[10px] text-zinc-600 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">IN</span>
-              <pre className="text-[12px] font-mono text-zinc-400 bg-zinc-900/80 border border-zinc-800 rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 whitespace-pre-wrap break-all">
+              <span className="text-[10px] text-muted-foreground/50 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">IN</span>
+              <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 whitespace-pre-wrap break-all">
                 {detail}
               </pre>
             </div>
@@ -1075,8 +1075,8 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {/* OUT block */}
           {hasOutput && (
             <div className="flex gap-0">
-              <span className="text-[10px] text-zinc-600 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
-              <pre className="text-[12px] font-mono text-zinc-400 bg-zinc-900/80 border border-zinc-800 rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
+              <span className="text-[10px] text-muted-foreground/50 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
+              <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
                 {(step.output || "").length > 2000
                   ? step.output!.slice(0, 2000) + "\n... (truncated)"
                   : step.output}
@@ -1086,7 +1086,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
 
           {/* Running indicator */}
           {isRunning && !hasOutput && (
-            <div className="flex items-center gap-2 ml-10 text-zinc-600 text-xs">
+            <div className="flex items-center gap-2 ml-10 text-muted-foreground/60 text-xs">
               <Loader2 className="h-3 w-3 animate-spin" />
               <span>Running...</span>
             </div>
@@ -1107,8 +1107,8 @@ function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; nu
   if (parts.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 text-[10px] text-zinc-600 tabular-nums pl-1 pt-1">
-      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 tabular-nums pl-1 pt-1">
+      <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-500" />
       <span>{parts.join(" \u00b7 ")}</span>
     </div>
   );
@@ -1120,26 +1120,26 @@ const MarkdownContent = memo(function MarkdownContent({ content }: { content: st
   return (
     <div
       className={cn(
-        "prose prose-sm prose-invert max-w-none break-words leading-relaxed",
-        "text-zinc-300",
-        "[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h1]:text-zinc-200",
-        "[&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2.5 [&_h2]:mb-1 [&_h2]:text-zinc-200",
-        "[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-zinc-300",
+        "prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed",
+        "text-foreground/80",
+        "[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h1]:text-foreground",
+        "[&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2.5 [&_h2]:mb-1 [&_h2]:text-foreground",
+        "[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-foreground/90",
         "[&_p]:my-1.5 [&_p]:leading-relaxed",
         "[&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
         "[&_ul]:my-1.5 [&_ul]:pl-4 [&_ul]:space-y-0.5",
         "[&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:space-y-0.5",
-        "[&_li]:text-sm [&_li]:text-zinc-300",
-        "[&_strong]:font-semibold [&_strong]:text-zinc-200",
-        "[&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-zinc-800 [&_code]:text-amber-300",
-        "[&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:text-xs [&_pre]:bg-zinc-900/80 [&_pre]:border [&_pre]:border-zinc-800",
-        "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-zinc-400",
-        "[&_blockquote]:border-l-2 [&_blockquote]:border-zinc-700 [&_blockquote]:pl-3 [&_blockquote]:my-2 [&_blockquote]:text-zinc-400",
-        "[&_hr]:my-3 [&_hr]:border-zinc-800",
+        "[&_li]:text-sm [&_li]:text-foreground/80",
+        "[&_strong]:font-semibold [&_strong]:text-foreground",
+        "[&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-muted [&_code]:text-amber-600 dark:[&_code]:text-amber-300",
+        "[&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:text-xs [&_pre]:bg-muted/80 dark:[&_pre]:bg-muted/40 [&_pre]:border [&_pre]:border-border",
+        "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-muted-foreground",
+        "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:my-2 [&_blockquote]:text-muted-foreground",
+        "[&_hr]:my-3 [&_hr]:border-border",
         "[&_table]:my-2 [&_table]:text-xs",
-        "[&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-zinc-700 [&_th]:text-zinc-300",
-        "[&_td]:px-2 [&_td]:py-1 [&_td]:border-b [&_td]:border-zinc-800 [&_td]:text-zinc-400",
-        "[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2"
+        "[&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_th]:border-b [&_th]:border-border [&_th]:text-foreground/80",
+        "[&_td]:px-2 [&_td]:py-1 [&_td]:border-b [&_td]:border-border [&_td]:text-muted-foreground",
+        "[&_a]:text-blue-500 dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2"
       )}
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>

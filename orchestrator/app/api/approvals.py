@@ -4,16 +4,17 @@ When agents need to execute risky commands, they request approval from users.
 Users can approve or deny requests via WebSocket notifications + this API.
 """
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth, verify_agent_token
+from app.dependencies import get_redis_service, require_auth, verify_agent_token
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
@@ -26,11 +27,16 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 # ══════════════════════════════════════════════════════════════════════════════
 
 class ApprovalRequest(BaseModel):
-    """Agent requests approval for a tool call."""
-    tool: str
-    input: dict
-    reasoning: str
-    risk_level: str  # "low", "medium", "high", "blocked"
+    """Agent requests approval for a tool call or a question."""
+    # Tool-based approval (bash-approval-server)
+    tool: str | None = None
+    input: dict | None = None
+    reasoning: str | None = None
+    risk_level: str = "medium"  # "low", "medium", "high", "blocked"
+    # Question-based approval (custom LLM agents)
+    question: str | None = None
+    options: list[str] | None = None
+    context: str | None = None
 
 
 class ApprovalDecision(BaseModel):
@@ -56,6 +62,7 @@ pending_approvals: dict[str, dict] = {}
 async def request_approval(
     body: ApprovalRequest,
     agent_auth: dict = Depends(verify_agent_token),
+    redis: RedisService = Depends(get_redis_service),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -89,21 +96,35 @@ async def request_approval(
         "approval_id": approval_id,
         "agent_id": agent_id,
         "tool": body.tool,
-        "input": body.input,
-        "reasoning": body.reasoning,
+        "input": body.input or {},
+        "reasoning": body.reasoning or "",
         "risk_level": body.risk_level,
+        "question": body.question,
+        "options": body.options,
+        "context": body.context,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     pending_approvals[approval_id] = approval_request
 
-    # TODO: Broadcast via WebSocket to notify user
-    # await notify_user_approval_needed(agent_id, approval_request)
+    # Broadcast via Redis PubSub to notify frontend
+    try:
+        if redis.client:
+            await redis.client.publish("notifications:live", json.dumps({
+                "type": "approval_request",
+                "approval_id": approval_id,
+                "agent_id": agent_id,
+                "question": body.question,
+                "tool": body.tool,
+                "risk_level": body.risk_level,
+            }))
+    except Exception:
+        pass  # Non-critical
 
     logger.info(
         f"Approval request created: {approval_id} for agent {agent_id} - "
-        f"{body.tool} (risk: {body.risk_level})"
+        f"{body.question or body.tool} (risk: {body.risk_level})"
     )
 
     return {

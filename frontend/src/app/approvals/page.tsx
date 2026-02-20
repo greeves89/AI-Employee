@@ -154,8 +154,9 @@ export default function ApprovalsPage() {
         >
           <AnimatePresence>
             {approvals.map((approval) => {
-              const config = riskConfig[approval.risk_level];
+              const config = riskConfig[approval.risk_level] ?? riskConfig.medium;
               const Icon = config.icon;
+              const isQuestion = Boolean(approval.question);
 
               return (
                 <motion.div
@@ -178,7 +179,7 @@ export default function ApprovalsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium truncate">
-                            {approval.tool}
+                            {isQuestion ? "Agent Question" : approval.tool}
                           </span>
                           <span
                             className={cn(
@@ -188,20 +189,47 @@ export default function ApprovalsPage() {
                               config.border
                             )}
                           >
-                            {config.label}
+                            {isQuestion ? "APPROVAL" : config.label}
                           </span>
                         </div>
 
-                        {/* Command preview */}
-                        <div className="text-xs font-mono bg-foreground/[0.04] border border-foreground/[0.06] rounded-lg px-3 py-2 mb-2 overflow-x-auto text-muted-foreground">
-                          {(approval.input.command as string) ||
-                            JSON.stringify(approval.input)}
-                        </div>
-
-                        {/* Reasoning */}
-                        <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
-                          {approval.reasoning}
-                        </p>
+                        {isQuestion ? (
+                          <>
+                            {/* Question */}
+                            <p className="text-sm mb-2">{approval.question}</p>
+                            {/* Options */}
+                            {approval.options && approval.options.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {approval.options.map((opt) => (
+                                  <span
+                                    key={opt}
+                                    className="inline-flex items-center rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-2.5 py-1 text-xs text-muted-foreground"
+                                  >
+                                    {opt}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {/* Context */}
+                            {approval.context && (
+                              <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
+                                {approval.context}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {/* Command preview */}
+                            <div className="text-xs font-mono bg-foreground/[0.04] border border-foreground/[0.06] rounded-lg px-3 py-2 mb-2 overflow-x-auto text-muted-foreground">
+                              {(approval.input?.command as string) ||
+                                JSON.stringify(approval.input)}
+                            </div>
+                            {/* Reasoning */}
+                            <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
+                              {approval.reasoning}
+                            </p>
+                          </>
+                        )}
 
                         {/* Meta */}
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/40">

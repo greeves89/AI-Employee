@@ -295,10 +295,16 @@ export interface AgentTemplate {
 export interface ApprovalRequest {
   approval_id: string;
   agent_id: string;
-  tool: string;
-  input: Record<string, unknown>;
-  reasoning: string;
+  // Tool-based approval (bash commands)
+  tool: string | null;
+  input: Record<string, unknown> | null;
+  reasoning: string | null;
   risk_level: "blocked" | "high" | "medium" | "low";
+  // Question-based approval (custom LLM agents)
+  question?: string | null;
+  options?: string[] | null;
+  context?: string | null;
+  // Status
   status: "pending" | "approved" | "denied";
   created_at: string;
   approved_by?: string;

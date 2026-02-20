@@ -282,23 +282,40 @@ class OrchestratorAPIClient:
         return f"Notification sent (priority: {result.get('priority', 'normal')})"
 
     async def request_approval(self, params: dict) -> str:
-        """Request user approval for an action."""
-        options = params.get("options", ["Yes", "No"])
+        """Request user approval for an action via the approvals system."""
         body = {
-            "agent_id": self.agent_id,
-            "type": "approval",
-            "title": "Approval Required",
-            "message": params.get("question", ""),
-            "priority": "high",
-            "meta": {
-                "options": options,
-                "context": params.get("context", ""),
-            },
+            "question": params.get("question", ""),
+            "options": params.get("options", ["Yes", "No"]),
+            "context": params.get("context", ""),
+            "risk_level": "medium",
         }
-        result = await self._request("POST", "/notifications/", json=body)
+        result = await self._request("POST", "/approvals/request", json=body)
         if isinstance(result, str):
             return result
-        return f"Approval requested (id: {result.get('id')}). Waiting for user response."
+        approval_id = result.get("approval_id", "unknown")
+        return (
+            f"Approval requested (id: {approval_id}). "
+            f"The user will see this on the Approvals page. "
+            f"Use check_approval(approval_id='{approval_id}') to check the user's decision."
+        )
+
+    async def check_approval(self, params: dict) -> str:
+        """Check the status of a previously requested approval."""
+        approval_id = params.get("approval_id", "")
+        if not approval_id:
+            return "Error: approval_id is required"
+        result = await self._request("GET", f"/approvals/check/{approval_id}")
+        if isinstance(result, str):
+            return result
+        status = result.get("status", "unknown")
+        if status == "pending":
+            return f"Approval {approval_id}: PENDING - User has not decided yet."
+        elif status == "approved":
+            return f"Approval {approval_id}: APPROVED by user at {result.get('approved_at', 'unknown')}."
+        elif status == "denied":
+            reason = result.get("deny_reason", "No reason given")
+            return f"Approval {approval_id}: DENIED. Reason: {reason}"
+        return f"Approval {approval_id}: Status is '{status}'."
 
     async def close(self) -> None:
         """Close the HTTP client."""

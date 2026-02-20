@@ -70,9 +70,10 @@ export function ApprovalModal({
 
   if (!request) return null;
 
-  const config = riskConfig[request.risk_level];
+  const config = riskConfig[request.risk_level] ?? riskConfig.medium;
   const Icon = config.icon;
   const isBlocked = request.risk_level === "blocked";
+  const isQuestion = Boolean(request.question);
 
   const handleApprove = async () => {
     setIsSubmitting(true);
@@ -148,11 +149,12 @@ export function ApprovalModal({
                       </div>
                       <div>
                         <Dialog.Title className="text-lg font-semibold">
-                          Command Approval Required
+                          {isQuestion ? "Agent Approval Required" : "Command Approval Required"}
                         </Dialog.Title>
                         <Dialog.Description className="text-[11px] text-muted-foreground/60">
-                          Agent wants to execute a command that requires your
-                          approval
+                          {isQuestion
+                            ? "The agent needs your decision before proceeding"
+                            : "Agent wants to execute a command that requires your approval"}
                         </Dialog.Description>
                       </div>
                     </div>
@@ -184,39 +186,88 @@ export function ApprovalModal({
                       )}
                     >
                       <p className={cn("text-sm font-medium", config.color)}>
-                        {config.description}
+                        {isQuestion ? "The agent is asking for your decision." : config.description}
                       </p>
                     </div>
 
-                    {/* Tool */}
-                    <div>
-                      <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                        Tool
-                      </label>
-                      <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono">
-                        {request.tool}
-                      </div>
-                    </div>
+                    {isQuestion ? (
+                      <>
+                        {/* Question */}
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                            Question
+                          </label>
+                          <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
+                            {request.question}
+                          </div>
+                        </div>
 
-                    {/* Command */}
-                    <div>
-                      <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                        Command
-                      </label>
-                      <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono whitespace-pre-wrap break-all">
-                        {formatInput(request.input)}
-                      </div>
-                    </div>
+                        {/* Options */}
+                        {request.options && request.options.length > 0 && (
+                          <div>
+                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                              Options
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {request.options.map((opt) => (
+                                <span
+                                  key={opt}
+                                  className="inline-flex items-center rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-3 py-1.5 text-sm"
+                                >
+                                  {opt}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
-                    {/* Reasoning */}
-                    <div>
-                      <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                        Agent&apos;s Reasoning
-                      </label>
-                      <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
-                        {request.reasoning}
-                      </div>
-                    </div>
+                        {/* Context */}
+                        {request.context && (
+                          <div>
+                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                              Context
+                            </label>
+                            <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
+                              {request.context}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {/* Tool */}
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                            Tool
+                          </label>
+                          <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono">
+                            {request.tool}
+                          </div>
+                        </div>
+
+                        {/* Command */}
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                            Command
+                          </label>
+                          <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono whitespace-pre-wrap break-all">
+                            {formatInput(request.input || {})}
+                          </div>
+                        </div>
+
+                        {/* Reasoning */}
+                        {request.reasoning && (
+                          <div>
+                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                              Agent&apos;s Reasoning
+                            </label>
+                            <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
+                              {request.reasoning}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
 
                     {/* Meta */}
                     <div className="text-[10px] text-muted-foreground/40">
@@ -228,10 +279,10 @@ export function ApprovalModal({
                     {showDenyForm && (
                       <div>
                         <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                          Reason for Denial (Optional)
+                          {isQuestion ? "Response / Reason for Denial (Optional)" : "Reason for Denial (Optional)"}
                         </label>
                         <textarea
-                          placeholder="Why are you denying this command?"
+                          placeholder={isQuestion ? "Your response to the agent..." : "Why are you denying this command?"}
                           value={denyReason}
                           onChange={(e) => setDenyReason(e.target.value)}
                           rows={3}
@@ -295,7 +346,7 @@ export function ApprovalModal({
                           {isSubmitting && (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           )}
-                          {isSubmitting ? "Approving..." : "Approve & Execute"}
+                          {isSubmitting ? "Approving..." : isQuestion ? "Approve" : "Approve & Execute"}
                         </button>
                       </>
                     )}

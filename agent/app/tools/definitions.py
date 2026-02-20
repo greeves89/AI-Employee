@@ -450,7 +450,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "request_approval",
-            "description": "Request user approval for an action. Shows clickable options in the UI. Use before irreversible or important actions.",
+            "description": "Request user approval for an action. The user will see the request on the Approvals page and can approve or deny it. Returns an approval_id that you can later check with check_approval. Use before irreversible or important actions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -470,6 +470,23 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     },
                 },
                 "required": ["question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_approval",
+            "description": "Check the status of a previously requested approval. Returns PENDING, APPROVED, or DENIED with the user's reason.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "approval_id": {
+                        "type": "string",
+                        "description": "The approval_id returned by request_approval",
+                    },
+                },
+                "required": ["approval_id"],
             },
         },
     },
