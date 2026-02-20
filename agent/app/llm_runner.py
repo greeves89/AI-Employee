@@ -10,6 +10,7 @@ from app.providers import create_provider
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolExecutor
+from app.tools.mcp_client import MCPHTTPClient
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,24 @@ class LLMRunner:
         self.is_running = False
         self._provider: BaseLLMProvider | None = None
         self._tool_executor = ToolExecutor()
+        self._mcp_client = MCPHTTPClient()
+        self._all_tools: list[dict] | None = None
+
+    async def _get_tools(self) -> list[dict] | None:
+        """Get combined built-in + MCP tool definitions."""
+        if not settings.llm_tools_enabled:
+            return None
+        if self._all_tools is not None:
+            return self._all_tools
+        self._all_tools = list(TOOL_DEFINITIONS)
+        try:
+            mcp_tools = await self._mcp_client.discover_tools()
+            if mcp_tools:
+                self._all_tools.extend(mcp_tools)
+                logger.info(f"Discovered {len(mcp_tools)} MCP tools")
+        except Exception as e:
+            logger.warning(f"MCP tool discovery failed: {e}")
+        return self._all_tools
 
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
@@ -60,7 +79,7 @@ class LLMRunner:
             ChatMessage(role="user", content=prompt),
         ]
 
-        tools = TOOL_DEFINITIONS if settings.llm_tools_enabled else None
+        tools = await self._get_tools()
         total_input_tokens = 0
         total_output_tokens = 0
         num_turns = 0
