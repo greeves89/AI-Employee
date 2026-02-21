@@ -247,7 +247,7 @@ BUILTIN_TEMPLATES = [
         "description": "Creates professional slide decks, pitch decks, and visual presentations",
         "icon": "Presentation",
         "category": "creative",
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "role": (
             "Presentation Designer creating compelling slide decks, pitch presentations, "
             "and visual storytelling with Marp, reveal.js, and python-pptx"

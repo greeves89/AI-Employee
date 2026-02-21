@@ -7,7 +7,7 @@ import os
 import signal
 from typing import AsyncIterator
 
-from app.config import settings
+from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
 
 logger = logging.getLogger(__name__)
@@ -78,8 +78,10 @@ class ChatHandler:
         env = os.environ.copy()
         if settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
-        elif settings.claude_code_oauth_token:
-            env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+        else:
+            oauth_token = get_oauth_token()
+            if oauth_token:
+                env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
 
         result_data: dict = {"status": "completed", "text": ""}
         stream_had_error = False

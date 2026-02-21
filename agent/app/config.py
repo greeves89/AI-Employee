@@ -1,4 +1,11 @@
+import json
+import logging
+
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
+
+SHARED_TOKEN_PATH = "/shared/.auth/token.json"
 
 
 class Settings(BaseSettings):
@@ -35,3 +42,20 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_oauth_token() -> str:
+    """Return the most current OAuth token.
+
+    Checks the shared volume JSON file first (written by the orchestrator
+    after each token refresh), falling back to the env-var based config.
+    """
+    try:
+        with open(SHARED_TOKEN_PATH) as f:
+            data = json.load(f)
+        token = data.get("access_token", "")
+        if token:
+            return token
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    return settings.claude_code_oauth_token

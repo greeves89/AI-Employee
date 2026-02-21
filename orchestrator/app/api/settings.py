@@ -25,6 +25,7 @@ async def get_settings(user=Depends(require_auth)):
     return SettingsResponse(
         has_api_key=has_api_key,
         has_oauth_token=has_oauth_token,
+        has_oauth_refresh_token=bool(settings.claude_code_oauth_refresh_token),
         auth_method=auth_method,
         has_telegram=bool(settings.telegram_bot_token),
         default_model=settings.default_model,
@@ -86,6 +87,9 @@ async def update_settings(
         if data.claude_oauth_token:
             settings.anthropic_api_key = ""
             await svc.set("anthropic_api_key", "")
+    if data.claude_oauth_refresh_token is not None:
+        settings.claude_code_oauth_refresh_token = data.claude_oauth_refresh_token
+        await svc.set("claude_code_oauth_refresh_token", data.claude_oauth_refresh_token)
 
     # Telegram
     if data.telegram is not None:

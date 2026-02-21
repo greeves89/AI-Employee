@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 SECRET_KEYS = {
     "anthropic_api_key",
     "claude_code_oauth_token",
+    "claude_code_oauth_refresh_token",
     "aws_access_key_id",
     "aws_secret_access_key",
     "vertex_credentials_json",

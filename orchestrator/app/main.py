@@ -118,7 +118,7 @@ def _validate_config() -> None:
 
 
 async def _refresh_oauth_tokens(redis: RedisService) -> None:
-    """Background task that refreshes OAuth tokens before they expire."""
+    """Background task that refreshes third-party OAuth tokens before they expire."""
     while True:
         try:
             from app.db.session import async_session_factory
@@ -130,6 +130,32 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
         except Exception:
             pass
         await asyncio.sleep(300)  # Check every 5 minutes
+
+
+async def _refresh_claude_token() -> None:
+    """Background task that refreshes the Claude Code OAuth access token every 2 hours.
+
+    Access tokens expire after ~3-8 hours. We refresh proactively every 2h.
+    Refresh tokens are single-use — each refresh returns a new pair.
+    """
+    from app.services.claude_token_service import ClaudeTokenService
+
+    service = ClaudeTokenService()
+
+    while True:
+        try:
+            if settings.claude_code_oauth_refresh_token:
+                success = await service.refresh_access_token()
+                if not success and service.consecutive_failures >= 3:
+                    logger.error(
+                        "Claude token refresh failed 3 times in a row - "
+                        "the refresh token may be invalid. "
+                        "Re-run 'claude login' and update the tokens."
+                    )
+        except Exception as e:
+            logger.error(f"Claude token refresh task error: {e}")
+
+        await asyncio.sleep(7200)  # Every 2 hours
 
 
 async def _listen_task_events(redis: RedisService) -> None:
@@ -354,8 +380,36 @@ async def lifespan(app: FastAPI):
                     f"Claude authentication configured: "
                     f"{'API Key' if has_api_key else 'OAuth Token'}"
                 )
+
+            # Auto-detect refresh token from environment
+            env_refresh = os.environ.get("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "")
+            if env_refresh and not settings.claude_code_oauth_refresh_token:
+                settings.claude_code_oauth_refresh_token = env_refresh
+                await svc.set("claude_code_oauth_refresh_token", env_refresh)
+                await db.commit()
+                logger.info("Auto-detected CLAUDE_CODE_OAUTH_REFRESH_TOKEN from environment")
     except Exception as e:
         logger.warning(f"Auto-detection of Claude token failed: {e}")
+
+    # Initial token refresh if we have a refresh token (gets a fresh access token)
+    from app.services.claude_token_service import ClaudeTokenService
+
+    token_svc = ClaudeTokenService()
+    if settings.claude_code_oauth_refresh_token:
+        try:
+            success = await token_svc.refresh_access_token()
+            if success:
+                logger.info("Initial Claude token refresh successful - access token is fresh")
+            else:
+                logger.warning("Initial Claude token refresh failed - using existing access token")
+                # Still write whatever token we have to the shared volume
+                token_svc.write_initial_token()
+        except Exception as e:
+            logger.warning(f"Initial Claude token refresh failed: {e}")
+            token_svc.write_initial_token()
+    elif settings.claude_code_oauth_token:
+        # No refresh token, but we have an access token - write it to shared volume
+        token_svc.write_initial_token()
 
     # Initialize services
     app.state.redis = RedisService(settings.redis_url)
@@ -386,8 +440,11 @@ async def lifespan(app: FastAPI):
     # Start chat completion persistence listener
     chat_persist_task = asyncio.create_task(_listen_chat_completions(app.state.redis))
 
-    # Start OAuth token refresh background task
+    # Start third-party OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
+
+    # Start Claude Code OAuth token refresh background task
+    claude_token_task = asyncio.create_task(_refresh_claude_token())
 
     # Start scheduler service for recurring tasks
     from app.services.scheduler_service import SchedulerService
@@ -410,6 +467,7 @@ async def lifespan(app: FastAPI):
     completion_task.cancel()
     chat_persist_task.cancel()
     oauth_refresh_task.cancel()
+    claude_token_task.cancel()
     scheduler_task.cancel()
     if telegram_task:
         telegram_task.cancel()

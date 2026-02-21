@@ -55,6 +55,7 @@ services:
       REDIS_URL_INTERNAL: redis://redis:6379
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
       MAX_TURNS: ${MAX_TURNS:-100}
       MAX_AGENTS: ${MAX_AGENTS:-10}
@@ -77,6 +78,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./orchestrator:/app
+      - ai-employee-shared:/shared
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +112,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  ai-employee-shared:
+    external: true
 
 networks:
   internal:
