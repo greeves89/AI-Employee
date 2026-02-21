@@ -698,3 +698,67 @@ export async function denyCommand(approvalId: string, reason?: string): Promise<
     body: JSON.stringify({ decision: "deny", reason: reason || null }),
   });
 }
+
+// --- Docker Apps ---
+
+import type { DockerApp, DockerAppContainer, DockerAppLog } from "./types";
+
+export async function getDockerApps(agentId: string): Promise<{ apps: DockerApp[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps`);
+}
+
+export async function startDockerApp(
+  agentId: string,
+  path: string,
+): Promise<{ project: string; status: string; containers: DockerAppContainer[]; output: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps/up?path=${encodeURIComponent(path)}`, {
+    method: "POST",
+  });
+}
+
+export async function stopDockerApp(
+  agentId: string,
+  path: string,
+): Promise<{ project: string; status: string; output: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps/down?path=${encodeURIComponent(path)}`, {
+    method: "POST",
+  });
+}
+
+export async function getDockerAppStatus(
+  agentId: string,
+  path: string,
+): Promise<{ project: string; status: string; containers: DockerAppContainer[]; running: number; total: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps/status?path=${encodeURIComponent(path)}`);
+}
+
+export async function getDockerAppLogs(
+  agentId: string,
+  path: string,
+  service?: string,
+  lines = 100,
+): Promise<{ logs: DockerAppLog[]; project: string; total_lines: number }> {
+  const params = new URLSearchParams({ path, lines: String(lines) });
+  if (service) params.set("service", service);
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps/logs?${params}`);
+}
+
+export async function rebuildDockerApp(
+  agentId: string,
+  path: string,
+): Promise<{ project: string; status: string; containers: DockerAppContainer[]; output: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps/rebuild?path=${encodeURIComponent(path)}`, {
+    method: "POST",
+  });
+}
+
+export async function restartDockerService(
+  agentId: string,
+  path: string,
+  service: string,
+): Promise<{ project: string; service: string; status: string; containers: DockerAppContainer[] }> {
+  const params = new URLSearchParams({ path, service });
+  return fetchJSON(`${getBase()}/agents/${agentId}/apps/restart-service?${params}`, {
+    method: "POST",
+  });
+}

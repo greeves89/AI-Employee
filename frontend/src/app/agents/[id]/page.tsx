@@ -12,7 +12,7 @@ import {
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, Package, ShieldOff, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
-  Image as ImageIcon,
+  Image as ImageIcon, Container,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import {
@@ -27,6 +27,7 @@ import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
 import { ProactiveToggle } from "@/components/agents/proactive-toggle";
+import { DockerAppsTab } from "@/components/agents/docker-apps-tab";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -56,6 +57,7 @@ const tabs = [
   { key: "terminal", label: "Activity", icon: Activity },
   { key: "todos", label: "Todos", icon: ListTodo },
   { key: "files", label: "Files", icon: FolderOpen },
+  { key: "apps", label: "Apps", icon: Container },
   { key: "history", label: "Task History", icon: History },
   { key: "knowledge", label: "Knowledge", icon: Brain },
   { key: "memory", label: "Memory", icon: MemoryStick },
@@ -255,6 +257,7 @@ export default function AgentDetailPage() {
           {activeTab === "terminal" && <LiveTerminal agentId={agentId} />}
           {activeTab === "todos" && <TodoTab agentId={agentId} />}
           {activeTab === "files" && <FileBrowser agentId={agentId} />}
+          {activeTab === "apps" && <DockerAppsTab agentId={agentId} />}
           {activeTab === "history" && <TaskHistory tasks={tasks} />}
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
           {activeTab === "memory" && <MemoryTab agentId={agentId} />}

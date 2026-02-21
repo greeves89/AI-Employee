@@ -313,3 +313,42 @@ export interface ApprovalRequest {
   denied_at?: string;
   deny_reason?: string;
 }
+
+// Docker Apps
+export interface DockerAppPort {
+  host_port: number;
+  container_port: string;
+  host_ip: string;
+}
+
+export interface DockerAppContainer {
+  id: string;
+  name: string;
+  service: string;
+  image: string;
+  status: string;
+  state: string;
+  ports: DockerAppPort[];
+}
+
+export interface DockerAppService {
+  name: string;
+  image: string;
+  build: boolean;
+  ports: (string | number)[];
+}
+
+export interface DockerApp {
+  name: string;
+  path: string;
+  compose_file: string;
+  services: DockerAppService[];
+  status: "running" | "stopped" | "partial";
+  containers: DockerAppContainer[];
+  error?: string;
+}
+
+export interface DockerAppLog {
+  service: string;
+  line: string;
+}
