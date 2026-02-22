@@ -36,6 +36,7 @@ interface ChatMessage {
   content: string;
   timestamp: string;
   isStreaming?: boolean;
+  isQueued?: boolean;
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
   meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number };
@@ -44,7 +45,7 @@ interface ChatMessage {
 interface ChatEvent {
   agent_id: string;
   message_id: string;
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued";
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -427,6 +428,12 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
       // Create assistant message if it doesn't exist yet
       if (assistantIdx === -1 && (type === "text" || type === "tool_call" || type === "tool_result")) {
+        // Remove the queued indicator for this message (if any)
+        const queuedMsgId = `queued-${message_id}`;
+        const withoutQueued = msgs.filter((m) => m.id !== queuedMsgId);
+        msgs.length = 0;
+        msgs.push(...withoutQueued);
+
         msgs.push({
           id: `response-${message_id}`,
           role: "assistant",
@@ -508,6 +515,18 @@ export function AgentChat({ agentId }: { agentId: string }) {
           steps[tcIdx] = { ...tc, output: content, status: "done" };
         }
         msgs[assistantIdx] = { ...msgs[assistantIdx], steps };
+      } else if (type === "queued") {
+        // Show a temporary queued indicator that will be replaced once processing starts
+        const queuedMsgId = `queued-${message_id}`;
+        if (!msgs.some((m) => m.id === queuedMsgId)) {
+          msgs.push({
+            id: queuedMsgId,
+            role: "system",
+            content: "⏳ Message queued — agent is finishing its current response...",
+            timestamp: event.timestamp,
+            isQueued: true,
+          });
+        }
       } else if (type === "error") {
         msgs.push({
           id: `error-${message_id}-${Date.now()}`,
@@ -928,6 +947,16 @@ export function AgentChat({ agentId }: { agentId: string }) {
 
 function MessageRow({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
+    if (message.isQueued) {
+      return (
+        <div className="text-center py-1">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-[10px] text-amber-500/80">
+            <Clock className="h-3 w-3" />
+            Message queued — agent will respond after current task
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="text-center py-1">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 border border-border px-3 py-1 text-[10px] text-muted-foreground">

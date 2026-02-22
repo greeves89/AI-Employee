@@ -369,6 +369,25 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
             await _redis.client.lpush(f"agent:{agent_id}:chat", chat_payload)
 
+            # Check if agent is currently busy — if so, notify client the message is queued
+            try:
+                agent_status = await _redis.client.hgetall(f"agent:{agent_id}:status")
+                state = str(agent_status.get("state", ""))
+                queue_depth = await _redis.client.llen(f"agent:{agent_id}:chat")
+                if state == "working" or queue_depth > 1:
+                    await websocket.send_text(json.dumps({
+                        "agent_id": agent_id,
+                        "message_id": message_id,
+                        "type": "queued",
+                        "data": {
+                            "message": "Agent is busy — your message will be processed next.",
+                            "queue_position": int(queue_depth),
+                        },
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }))
+            except Exception:
+                pass  # Don't break chat if queue-depth check fails
+
             # Publish chat activity event to activity log
             preview = text[:60] + ("..." if len(text) > 60 else "")
             activity_event = json.dumps({
