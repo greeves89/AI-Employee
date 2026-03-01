@@ -91,7 +91,7 @@ export default function TaskDetailPage() {
     init();
 
     // Poll task status for updates
-    const interval = setInterval(loadTask, 3000);
+    const interval = setInterval(loadTask, 5000);
 
     return () => {
       clearInterval(interval);

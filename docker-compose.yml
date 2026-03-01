@@ -109,6 +109,43 @@ services:
       - internal
       - agent-network
 
+  # Reverse proxy - routes /api and /ws to orchestrator, everything else to frontend
+  caddy:
+    image: caddy:2-alpine
+    container_name: ai-employee-caddy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - orchestrator
+      - frontend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - internal
+
+  # Cloudflare Tunnel - exposes the app via HTTPS without opening ports
+  # Set CLOUDFLARE_TUNNEL_TOKEN in .env to enable
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ai-employee-cloudflared
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - caddy
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - internal
+
 volumes:
   postgres_data:
   redis_data:

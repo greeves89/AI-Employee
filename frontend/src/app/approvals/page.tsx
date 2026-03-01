@@ -82,7 +82,7 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     loadApprovals();
-    const interval = setInterval(loadApprovals, 5000);
+    const interval = setInterval(loadApprovals, 10000);
     return () => clearInterval(interval);
   }, []);
 

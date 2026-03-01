@@ -15,7 +15,11 @@ export function getApiUrl(): string {
 
   if (typeof window === "undefined") return "http://localhost:8000";
 
-  const { hostname, protocol } = window.location;
+  const { hostname, protocol, port } = window.location;
+  // Behind reverse proxy (HTTPS or standard port) → same origin, Caddy routes /api
+  if (protocol === "https:" || port === "" || port === "80") {
+    return `${protocol}//${hostname}`;
+  }
   return `${protocol}//${hostname}:8000`;
 }
 
@@ -25,8 +29,12 @@ export function getWsUrl(): string {
 
   if (typeof window === "undefined") return "ws://localhost:8000";
 
-  const { hostname } = window.location;
-  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const { hostname, protocol, port } = window.location;
+  const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
+  // Behind reverse proxy → same origin, Caddy routes /ws
+  if (protocol === "https:" || port === "" || port === "80") {
+    return `${wsProtocol}//${hostname}`;
+  }
   return `${wsProtocol}//${hostname}:8000`;
 }
 

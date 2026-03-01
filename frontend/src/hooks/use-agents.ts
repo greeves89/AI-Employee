@@ -23,7 +23,7 @@ export function useAgents() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 5000); // Poll every 5s
+    const interval = setInterval(refresh, 15000); // Poll every 15s
     return () => clearInterval(interval);
   }, [refresh]);
 

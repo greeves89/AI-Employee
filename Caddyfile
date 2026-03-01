@@ -1,0 +1,23 @@
+# Internal reverse proxy - Cloudflare Tunnel terminates TLS
+# Caddy routes requests to the correct backend service
+
+:80 {
+	# API + health endpoints → orchestrator
+	handle /api/* {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
+	handle /health {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
+	# WebSocket connections → orchestrator
+	handle /ws/* {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
+	# Everything else → frontend
+	handle {
+		reverse_proxy ai-employee-frontend:3000
+	}
+}

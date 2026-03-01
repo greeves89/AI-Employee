@@ -88,7 +88,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
 
   useEffect(() => {
     fetchTodos();
-    pollRef.current = setInterval(fetchTodos, 5000);
+    pollRef.current = setInterval(fetchTodos, 15000);
     return () => clearInterval(pollRef.current);
   }, [fetchTodos]);
 
