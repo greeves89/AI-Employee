@@ -452,7 +452,7 @@ async def lifespan(app: FastAPI):
     scheduler = SchedulerService(app.state.redis)
     scheduler_task = asyncio.create_task(scheduler.run())
 
-    # Start Telegram bot if configured
+    # Start global Telegram bot if configured (for notifications)
     telegram_task = None
     if settings.telegram_bot_token:
         from app.telegram.bot import TelegramBot
@@ -460,6 +460,15 @@ async def lifespan(app: FastAPI):
         bot = TelegramBot()
         telegram_task = asyncio.create_task(bot.start())
         app.state.telegram_bot = bot
+
+    # Start per-agent Telegram bots
+    from app.telegram.bot_manager import TelegramBotManager
+    from app.db.session import async_session_factory
+
+    tg_manager = TelegramBotManager()
+    app.state.telegram_bot_manager = tg_manager
+    async with async_session_factory() as db:
+        await tg_manager.load_all_from_db(db)
 
     yield
 
@@ -473,6 +482,7 @@ async def lifespan(app: FastAPI):
         telegram_task.cancel()
         if hasattr(app.state, "telegram_bot"):
             await app.state.telegram_bot.stop()
+    await tg_manager.stop_all()
     await app.state.redis.disconnect()
 
 

@@ -12,7 +12,7 @@ import {
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, Package, ShieldOff, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
-  Image as ImageIcon, Container,
+  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import {
@@ -644,6 +644,207 @@ const PERM_ICON_MAP: Record<string, React.ElementType> = {
   "shield-off": ShieldOff,
 };
 
+function TelegramAgentSection({ agentId }: { agentId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [hasToken, setHasToken] = useState(false);
+  const [authKey, setAuthKey] = useState("");
+  const [botRunning, setBotRunning] = useState(false);
+  const [botToken, setBotToken] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = async () => {
+    try {
+      const data = await api.getAgentTelegram(agentId);
+      setHasToken(data.has_token);
+      setAuthKey(data.auth_key);
+      setBotRunning(data.bot_running);
+    } catch {
+      // Telegram not configured yet
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [agentId]);
+
+  const handleSave = async () => {
+    if (!botToken.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const data = await api.setAgentTelegram(agentId, botToken.trim());
+      setHasToken(true);
+      setAuthKey(data.auth_key);
+      setBotRunning(data.bot_running);
+      setBotToken("");
+      if (data.error) setError(data.error);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Fehler beim Speichern");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setSaving(true);
+    try {
+      await api.removeAgentTelegram(agentId);
+      setHasToken(false);
+      setAuthKey("");
+      setBotRunning(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Fehler");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRegenerateKey = async () => {
+    try {
+      const data = await api.regenerateTelegramKey(agentId);
+      setAuthKey(data.auth_key);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Fehler");
+    }
+  };
+
+  const copyKey = () => {
+    navigator.clipboard.writeText(authKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+        <div className="flex items-center gap-2">
+          <Send className="h-4 w-4 text-sky-400" />
+          <span className="text-sm font-medium">Telegram Bot</span>
+          {hasToken && (
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+              botRunning
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+            )}>
+              {botRunning ? "Verbunden" : "Nicht aktiv"}
+            </span>
+          )}
+        </div>
+        {hasToken && (
+          <button
+            onClick={handleRemove}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 className="h-3 w-3" />
+            Entfernen
+          </button>
+        )}
+      </div>
+
+      <div className="p-5 space-y-4">
+        {!hasToken ? (
+          <>
+            <p className="text-xs text-muted-foreground/70">
+              Erstelle einen Bot bei{" "}
+              <span className="text-sky-400 font-medium">@BotFather</span> auf Telegram
+              und gib hier den Token ein. Nutzer muessen sich mit einem Auth-Key autorisieren.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={botToken}
+                onChange={(e) => setBotToken(e.target.value)}
+                placeholder="Bot Token von @BotFather..."
+                className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all"
+              />
+              <button
+                onClick={handleSave}
+                disabled={saving || !botToken.trim()}
+                className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500 disabled:opacity-40 transition-all"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verbinden"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Auth Key display */}
+            <div>
+              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+                Auth-Key (zum Teilen mit Nutzern)
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5">
+                  <Key className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                  <code className="text-sm font-mono tracking-wider text-foreground select-all">{authKey}</code>
+                </div>
+                <button
+                  onClick={copyKey}
+                  className={cn(
+                    "rounded-lg p-2.5 transition-all border",
+                    copied
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                      : "border-foreground/[0.08] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                  )}
+                  title="Key kopieren"
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={handleRegenerateKey}
+                  className="rounded-lg p-2.5 border border-foreground/[0.08] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                  title="Key neu generieren (alle Sessions ungueltig)"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+                Nutzer senden <code className="text-sky-400/80">/auth {authKey}</code> im Telegram-Chat um sich zu autorisieren.
+              </p>
+            </div>
+
+            {/* Change token */}
+            <div>
+              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+                Bot Token aendern
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={botToken}
+                  onChange={(e) => setBotToken(e.target.value)}
+                  placeholder="Neuer Bot Token..."
+                  className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all"
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !botToken.trim()}
+                  className="rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-40 transition-all"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aktualisieren"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {error && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function AgentSettings({
   agent,
   onUpdated,
@@ -960,6 +1161,9 @@ function AgentSettings({
           </div>
         </div>
       )}
+
+      {/* Telegram Bot */}
+      <TelegramAgentSection agentId={agentId} />
 
       {/* Permissions */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">

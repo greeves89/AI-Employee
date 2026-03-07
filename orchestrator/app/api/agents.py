@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.agent_manager import AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
@@ -827,6 +828,183 @@ async def delete_proactive_config(
         await db.commit()
 
         return {"agent_id": agent_id, "status": "proactive_removed"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+# --- Per-Agent Telegram Bot ---
+
+
+class TelegramConfigUpdate(BaseModel):
+    bot_token: str
+
+
+@router.get("/{agent_id}/telegram")
+async def get_agent_telegram(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Get Telegram bot config for an agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        has_token = bool(config.get("telegram_bot_token"))
+        auth_key = config.get("telegram_auth_key", "")
+
+        # Check if bot is running
+        from fastapi import Request
+        bot_running = False
+        try:
+            from starlette.requests import Request as _  # noqa
+            import app.main as main_mod
+            if hasattr(main_mod, "app"):
+                tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
+                if tg_manager:
+                    bot_running = tg_manager.is_running(agent_id)
+        except Exception:
+            pass
+
+        return {
+            "agent_id": agent_id,
+            "has_token": has_token,
+            "auth_key": auth_key if has_token else "",
+            "bot_running": bot_running,
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.put("/{agent_id}/telegram")
+async def set_agent_telegram(
+    agent_id: str,
+    body: TelegramConfigUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set Telegram bot token for an agent and start the bot."""
+    await _check_owner(agent_id, user, db)
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.telegram.bot_manager import generate_auth_key
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+
+        # Generate auth key if not exists
+        auth_key = config.get("telegram_auth_key") or generate_auth_key()
+        config["telegram_bot_token"] = body.bot_token
+        config["telegram_auth_key"] = auth_key
+        agent.config = config
+        flag_modified(agent, "config")
+        await db.commit()
+
+        # Start the bot
+        bot_running = False
+        try:
+            import app.main as main_mod
+            tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
+            if tg_manager:
+                await tg_manager.start_bot(agent_id, agent.name, body.bot_token, auth_key)
+                bot_running = True
+        except Exception as e:
+            # Token may be invalid - save config but report error
+            return {
+                "agent_id": agent_id,
+                "auth_key": auth_key,
+                "bot_running": False,
+                "error": str(e),
+            }
+
+        return {
+            "agent_id": agent_id,
+            "auth_key": auth_key,
+            "bot_running": bot_running,
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.delete("/{agent_id}/telegram")
+async def remove_agent_telegram(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Remove Telegram bot from an agent and stop it."""
+    await _check_owner(agent_id, user, db)
+    from sqlalchemy.orm.attributes import flag_modified
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        config.pop("telegram_bot_token", None)
+        config.pop("telegram_auth_key", None)
+        agent.config = config
+        flag_modified(agent, "config")
+        await db.commit()
+
+        # Stop the bot
+        try:
+            import app.main as main_mod
+            tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
+            if tg_manager:
+                await tg_manager.stop_bot(agent_id)
+        except Exception:
+            pass
+
+        return {"agent_id": agent_id, "status": "telegram_removed"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.post("/{agent_id}/telegram/regenerate-key")
+async def regenerate_telegram_key(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Regenerate the Telegram auth key (invalidates all current sessions)."""
+    await _check_owner(agent_id, user, db)
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.telegram.bot_manager import generate_auth_key
+    import redis.asyncio as aioredis
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+
+        if not config.get("telegram_bot_token"):
+            raise HTTPException(status_code=400, detail="Telegram not configured for this agent")
+
+        new_key = generate_auth_key()
+        config["telegram_auth_key"] = new_key
+        agent.config = config
+        flag_modified(agent, "config")
+        await db.commit()
+
+        # Clear all authorized users in Redis
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        await redis.delete(f"agent:{agent_id}:tg_auth")
+        await redis.aclose()
+
+        # Restart bot with new key
+        try:
+            import app.main as main_mod
+            tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
+            if tg_manager:
+                await tg_manager.start_bot(
+                    agent_id, agent.name, config["telegram_bot_token"], new_key
+                )
+        except Exception:
+            pass
+
+        return {"agent_id": agent_id, "auth_key": new_key}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

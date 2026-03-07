@@ -762,3 +762,32 @@ export async function restartDockerService(
     method: "POST",
   });
 }
+
+// --- Per-Agent Telegram ---
+
+export interface AgentTelegramConfig {
+  agent_id: string;
+  has_token: boolean;
+  auth_key: string;
+  bot_running: boolean;
+  error?: string;
+}
+
+export async function getAgentTelegram(agentId: string): Promise<AgentTelegramConfig> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/telegram`);
+}
+
+export async function setAgentTelegram(agentId: string, botToken: string): Promise<AgentTelegramConfig> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/telegram`, {
+    method: "PUT",
+    body: JSON.stringify({ bot_token: botToken }),
+  });
+}
+
+export async function removeAgentTelegram(agentId: string): Promise<void> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/telegram`, { method: "DELETE" });
+}
+
+export async function regenerateTelegramKey(agentId: string): Promise<{ agent_id: string; auth_key: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/telegram/regenerate-key`, { method: "POST" });
+}
