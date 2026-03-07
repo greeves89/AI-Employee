@@ -13,6 +13,7 @@ from app.telegram.handlers.commands import (
     handle_callback,
     handle_message,
 )
+from app.telegram.handlers.voice import handle_voice
 
 
 class TelegramBot:
@@ -45,6 +46,12 @@ class TelegramBot:
         # Callback handler for inline keyboards
         self.app.add_handler(CallbackQueryHandler(handle_callback))
 
+        # Voice message handler
+        self.app.add_handler(MessageHandler(
+            filters.VOICE | filters.AUDIO,
+            handle_voice,
+        ))
+
         # Message handler for chat (must be last!)
         self.app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -57,7 +64,7 @@ class TelegramBot:
         # Start polling - drop pending to avoid processing stale messages
         await self.app.updater.start_polling(
             drop_pending_updates=True,
-            allowed_updates=["message", "callback_query"],
+            allowed_updates=["message", "callback_query", "voice"],
         )
         print("[Telegram] Bot started: @DaAIEmployeeBot")
 

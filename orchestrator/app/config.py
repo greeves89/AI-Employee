@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # OpenAI (for Whisper voice transcription + TTS)
+    openai_api_key: str = ""
+
     # Security
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
