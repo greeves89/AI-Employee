@@ -226,19 +226,41 @@ class TelegramAgentBot:
             self._listen_responses(chat_id)
         )
 
+    async def send_to_all_authorized(self, text: str) -> None:
+        """Send a message to ALL authorized Telegram users of this agent."""
+        if not self.app or not self._started:
+            return
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            chat_ids = await redis.smembers(f"agent:{self.agent_id}:tg_auth")
+            for cid in chat_ids:
+                try:
+                    for i in range(0, len(text), 4000):
+                        chunk = text[i : i + 4000]
+                        await self.app.bot.send_message(chat_id=int(cid), text=chunk)
+                except Exception:
+                    pass
+        finally:
+            await redis.aclose()
+
     async def _listen_responses(self, chat_id: int) -> None:
-        """Listen to agent chat responses and forward to Telegram."""
+        """Listen to agent chat responses and forward to Telegram with streaming."""
         try:
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
             pubsub = redis.pubsub()
             await pubsub.subscribe(f"agent:{self.agent_id}:chat:response")
 
             response_buffer = ""
+            last_flush = asyncio.get_event_loop().time()
+            FLUSH_INTERVAL = 3.0  # Send buffered text every 3 seconds
+            MIN_CHUNK_SIZE = 100  # Don't send tiny fragments
 
             while True:
                 message = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=1.0
+                    ignore_subscribe_messages=True, timeout=0.5
                 )
+                now = asyncio.get_event_loop().time()
+
                 if message and message["type"] == "message":
                     data = json.loads(message["data"])
                     event_type = data.get("type", "")
@@ -248,9 +270,18 @@ class TelegramAgentBot:
                         response_buffer += str(event_data.get("text", ""))
 
                     elif event_type == "tool_call":
+                        # Flush any buffered text first
+                        if response_buffer.strip():
+                            await self._send_chunked(chat_id, response_buffer.strip())
+                            response_buffer = ""
+                            last_flush = now
+                        # Send tool call immediately
                         tool = event_data.get("tool", "unknown")
                         tool_input = json.dumps(event_data.get("input", {}))[:200]
-                        response_buffer += f"\n🔧 [{tool}] {tool_input}\n"
+                        await self.app.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"🔧 [{tool}] {tool_input}",
+                        )
 
                     elif event_type == "error":
                         error_msg = str(event_data.get("message", "Unknown error"))
@@ -260,15 +291,13 @@ class TelegramAgentBot:
                         response_buffer = ""
 
                     elif event_type == "done":
+                        # Flush remaining buffer
                         if response_buffer.strip():
-                            text = response_buffer.strip()
-                            for i in range(0, len(text), 4000):
-                                chunk = text[i : i + 4000]
-                                await self.app.bot.send_message(
-                                    chat_id=chat_id, text=chunk
-                                )
+                            await self._send_chunked(chat_id, response_buffer.strip())
                         response_buffer = ""
+                        last_flush = now
 
+                        # Show meta info
                         cost = event_data.get("cost_usd", 0)
                         duration = event_data.get("duration_ms", 0)
                         turns = event_data.get("num_turns", 0)
@@ -281,6 +310,13 @@ class TelegramAgentBot:
                             await self.app.bot.send_message(
                                 chat_id=chat_id, text=meta
                             )
+
+                # Periodic flush: send buffered text every FLUSH_INTERVAL seconds
+                if response_buffer.strip() and (now - last_flush) >= FLUSH_INTERVAL:
+                    if len(response_buffer.strip()) >= MIN_CHUNK_SIZE:
+                        await self._send_chunked(chat_id, response_buffer.strip())
+                        response_buffer = ""
+                        last_flush = now
 
                 await asyncio.sleep(0.05)
 
@@ -295,3 +331,9 @@ class TelegramAgentBot:
                 await redis.aclose()
             except Exception:
                 pass
+
+    async def _send_chunked(self, chat_id: int, text: str) -> None:
+        """Send text in Telegram-safe chunks (max 4096 chars)."""
+        for i in range(0, len(text), 4000):
+            chunk = text[i : i + 4000]
+            await self.app.bot.send_message(chat_id=chat_id, text=chunk)

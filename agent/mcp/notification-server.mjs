@@ -83,6 +83,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "send_telegram",
+      description:
+        "Send a direct message to the user via Telegram. Use this for live progress updates, " +
+        "intermediate results, and status messages DURING work. Unlike notify_user (which goes " +
+        "to the notification center), this goes DIRECTLY to Telegram as a chat message. " +
+        "Use this frequently to keep the user informed about what you're doing: " +
+        "e.g. 'Step 1/3 done: Database schema created', 'Building frontend...', " +
+        "'Found 3 issues, fixing now'. The user expects regular updates!",
+      inputSchema: {
+        type: "object",
+        properties: {
+          message: {
+            type: "string",
+            description:
+              "The message to send via Telegram. Supports basic formatting. " +
+              "Keep it concise but informative. Use emojis for visual structure.",
+          },
+        },
+        required: ["message"],
+      },
+    },
+    {
       name: "request_approval",
       description:
         "Request explicit user approval before taking a critical action. " +
@@ -143,6 +165,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               (result.priority === "high" || result.priority === "urgent"
                 ? "Also forwarded to Telegram."
                 : "Visible in Web UI."),
+          },
+        ],
+      };
+    }
+
+    case "send_telegram": {
+      const result = await apiCall(`/agents/${AGENT_ID}/telegram/send`, {
+        method: "POST",
+        body: JSON.stringify({
+          message: args.message,
+        }),
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: result.sent_to > 0
+              ? `Telegram message sent to ${result.sent_to} user(s).`
+              : "No authorized Telegram users found. Message not delivered.",
           },
         ],
       };

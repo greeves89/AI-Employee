@@ -962,6 +962,39 @@ async def remove_agent_telegram(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+class TelegramSendMessage(BaseModel):
+    message: str
+
+
+@router.post("/{agent_id}/telegram/send")
+async def send_telegram_message(
+    agent_id: str,
+    body: TelegramSendMessage,
+):
+    """Send a direct Telegram message to all authorized users of this agent.
+
+    Called by the agent's MCP send_telegram tool (no user auth needed,
+    agent authenticates via AGENT_TOKEN header).
+    """
+    sent_to = 0
+    try:
+        import app.main as main_mod
+        tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
+        if tg_manager:
+            bot = tg_manager.get_bot(agent_id)
+            if bot and bot._started:
+                await bot.send_to_all_authorized(body.message)
+                # Count authorized users
+                import redis.asyncio as aioredis
+                redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+                sent_to = await redis.scard(f"agent:{agent_id}:tg_auth")
+                await redis.aclose()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"agent_id": agent_id, "sent_to": sent_to}
+
+
 @router.post("/{agent_id}/telegram/regenerate-key")
 async def regenerate_telegram_key(
     agent_id: str,

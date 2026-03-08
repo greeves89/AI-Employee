@@ -132,12 +132,33 @@ async def delete_notification(notification_id: int, user=Depends(require_auth), 
 
 
 async def _send_telegram(body: NotificationCreate, redis: RedisService) -> None:
-    """Send high-priority notifications via Telegram (if configured)."""
+    """Send high-priority notifications via Telegram.
+
+    Routes to:
+    1. Per-agent Telegram bot (if configured) -> all authorized users
+    2. Global Telegram bot (fallback) -> admin chat
+    """
+    # 1. Try per-agent bot first
+    try:
+        import app.main as main_mod
+        tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
+        if tg_manager and body.agent_id:
+            bot = tg_manager.get_bot(body.agent_id)
+            if bot and bot._started:
+                emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "success": "✅"}.get(body.type, "📢")
+                text = f"{emoji} *{body.title}*"
+                if body.message:
+                    text += f"\n\n{body.message}"
+                await bot.send_to_all_authorized(text)
+                return  # Sent via agent bot, no need for global bot
+    except Exception:
+        pass
+
+    # 2. Fallback: global bot
     try:
         from app.config import settings
         if not settings.telegram_bot_token or not settings.telegram_chat_id:
             return
-        # Publish to Telegram channel - the bot picks it up
         await redis.client.publish("telegram:notifications", json.dumps({
             "title": body.title,
             "message": body.message,
