@@ -1,0 +1,37 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US
+  keyboard:
+    layout: us
+  network:
+    network:
+      version: 2
+      ethernets:
+        enp0s3:
+          dhcp4: true
+  storage:
+    layout:
+      name: direct
+  identity:
+    hostname: ai-employee-demo
+    username: demo
+    # Password: demo (hashed with mkpasswd --method=SHA-512)
+    password: "$6$rounds=4096$demo$XhHipUV1PBrJfyKZE07oBpF1bGF1OkCm7VNEgvRivlJQh7cqkRkDz5qkEMiNJV8wX5lVhkM9oqoLIDV7cSo0/"
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - curl
+    - git
+    - wget
+    - ca-certificates
+    - gnupg
+    - lsb-release
+    - apt-transport-https
+    - software-properties-common
+  user-data:
+    disable_root: false
+  late-commands:
+    - echo 'demo ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/demo
+    - chmod 440 /target/etc/sudoers.d/demo

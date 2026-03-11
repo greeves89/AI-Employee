@@ -1,0 +1,272 @@
+# High Availability Override for AI Employee
+#
+# Replaces single-node PostgreSQL and Redis with:
+#   - PostgreSQL: 1 primary + 1 read replica (streaming replication)
+#   - Redis: 1 primary + 1 replica + 3 Sentinel nodes for auto-failover
+#   - Orchestrator: 2 replicas behind Traefik load balancer
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d --build
+#
+# For production with HTTPS:
+#   docker compose -f docker-compose.yml -f docker-compose.ha.yml -f docker-compose.prod.yml up -d --build
+#
+# Required additional env vars:
+#   REPLICATION_PASSWORD=<strong-password>   # PostgreSQL replication user password
+#   REDIS_SENTINEL_URL=redis+sentinel://sentinel-1:26379,sentinel-2:26379,sentinel-3:26379/mymaster
+#
+# After starting: verify replication with:
+#   docker exec ai-employee-postgres-primary psql -U ai_employee -c "SELECT * FROM pg_stat_replication;"
+#   docker exec ai-employee-redis-sentinel-1 redis-cli -p 26379 sentinel masters
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # PostgreSQL: Disable single-node, add Primary + Replica
+  # ─────────────────────────────────────────────────────────────
+  postgres:
+    # Override the base postgres service to act as primary
+    container_name: ai-employee-postgres-primary
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./ha/postgres/init-primary.sh:/docker-entrypoint-initdb.d/01-init-replication.sh:ro
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_employee}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_employee}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-replicapassword}
+    command: >
+      postgres
+        -c wal_level=replica
+        -c max_wal_senders=5
+        -c max_replication_slots=5
+        -c wal_keep_size=256MB
+        -c synchronous_commit=on
+        -c listen_addresses=*
+
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: ai-employee-postgres-replica
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_employee}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_employee}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+      PGDATA: /var/lib/postgresql/data
+      PRIMARY_HOST: postgres
+      PRIMARY_PORT: "5432"
+      REPLICATION_USER: replicator
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-replicapassword}
+      # Needed so the replica entrypoint doesn't re-initialize
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./ha/postgres/init-replica.sh:/init-replica.sh:ro
+    entrypoint: ["/bin/bash", "/init-replica.sh"]
+    command: ["postgres"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_employee}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - internal
+
+  # ─────────────────────────────────────────────────────────────
+  # Redis: Primary + Replica + 3 Sentinel nodes
+  # ─────────────────────────────────────────────────────────────
+  redis:
+    # Override base redis to be the primary with a stable hostname
+    container_name: ai-employee-redis-primary
+    hostname: redis-primary
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --bind 0.0.0.0
+    volumes:
+      - redis_primary_data:/data
+
+  redis-replica:
+    image: redis:7-alpine
+    container_name: ai-employee-redis-replica
+    hostname: redis-replica
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --replicaof redis 6379
+        --replica-read-only yes
+    volumes:
+      - redis_replica_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - internal
+      - agent-network
+
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: ai-employee-redis-sentinel-1
+    hostname: redis-sentinel-1
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    volumes:
+      - ./ha/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    networks:
+      - internal
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: ai-employee-redis-sentinel-2
+    hostname: redis-sentinel-2
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    volumes:
+      - ./ha/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    networks:
+      - internal
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: ai-employee-redis-sentinel-3
+    hostname: redis-sentinel-3
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    volumes:
+      - ./ha/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    networks:
+      - internal
+
+  # ─────────────────────────────────────────────────────────────
+  # Orchestrator: Scale to 2 replicas
+  # Container name removed so Docker Compose can manage replicas
+  # ─────────────────────────────────────────────────────────────
+  orchestrator:
+    container_name: ""   # Remove fixed name to allow scaling
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-sentinel-1:
+        condition: service_healthy
+      redis-sentinel-2:
+        condition: service_healthy
+      redis-sentinel-3:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_healthy
+    environment:
+      # Read replica for SELECT queries (offloads primary)
+      DATABASE_URL_REPLICA: postgresql+asyncpg://${POSTGRES_USER:-ai_employee}:${DB_PASSWORD:-devpassword}@postgres-replica:5432/${POSTGRES_DB:-ai_employee}
+      # Redis Sentinel URL for auto-failover (replaces plain redis URL)
+      REDIS_SENTINEL_URL: redis+sentinel://redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379/mymaster
+      REDIS_URL: redis+sentinel://redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379/mymaster
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    ports: []   # Remove direct port binding; Traefik handles routing
+
+  # ─────────────────────────────────────────────────────────────
+  # HAProxy: TCP load balancer for PostgreSQL (optional, for
+  # connection pooling across primary + read replicas)
+  # ─────────────────────────────────────────────────────────────
+  pgbouncer:
+    image: bitnami/pgbouncer:1.23.1
+    container_name: ai-employee-pgbouncer
+    environment:
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DATABASE: ${POSTGRES_DB:-ai_employee}
+      POSTGRESQL_USERNAME: ${POSTGRES_USER:-ai_employee}
+      POSTGRESQL_PASSWORD: ${DB_PASSWORD:-devpassword}
+      PGBOUNCER_DATABASE: ${POSTGRES_DB:-ai_employee}
+      PGBOUNCER_PORT: "5432"
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: "200"
+      PGBOUNCER_DEFAULT_POOL_SIZE: "20"
+      PGBOUNCER_MIN_POOL_SIZE: "5"
+      PGBOUNCER_RESERVE_POOL_SIZE: "5"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U ${POSTGRES_USER:-ai_employee}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    networks:
+      - internal
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  redis_primary_data:
+  redis_replica_data:

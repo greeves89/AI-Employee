@@ -232,7 +232,10 @@ export function AgentChat({ agentId }: { agentId: string }) {
     setHistoryLoaded(false);
     const loadHistory = async () => {
       try {
-        const { messages: history } = await api.getChatHistory(agentId, 100, activeSessionId);
+        const { messages: history, has_more: hasMore } = await api.getChatHistory(agentId, 500, activeSessionId);
+        if (hasMore) {
+          console.warn("[Chat] More than 500 messages in session - older messages not shown");
+        }
         if (history.length > 0) {
           const restored: ChatMessage[] = history.map((m) => {
             // Convert legacy toolCalls to steps

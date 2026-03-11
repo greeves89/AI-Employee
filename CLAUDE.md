@@ -51,3 +51,10 @@ cd orchestrator && alembic upgrade head
 - `orchestrator/app/core/agent_manager.py` - Docker container lifecycle
 - `orchestrator/app/core/load_balancer.py` - Task distribution
 - `orchestrator/app/api/ws.py` - WebSocket log streaming
+
+## Learned Patterns
+- Audit logging: model + alembic migration + API router + register in router.py + export from models/__init__.py
+- Health checks: use `request.app.state.redis` and `request.app.state.docker` to access services; return 503 on critical failure
+- Monitoring stack: use docker-compose.monitoring.yml overlay; prometheus scrapes orchestrator:8000/metrics, postgres-exporter, redis-exporter, node-exporter, cadvisor
+- Production infra already uses Traefik (docker-compose.prod.yml) — nginx TODOs are covered by Traefik config in traefik/traefik.yml
+- Backup scripts: pg_dump via `docker exec`, volume backup via `docker run alpine tar czf`, SHA256 manifest for integrity; systemd timer preferred over cron

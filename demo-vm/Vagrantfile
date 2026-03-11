@@ -1,0 +1,71 @@
+# Vagrantfile for AI Employee Demo
+#
+# A faster alternative to building the full OVA — uses a pre-built Ubuntu box.
+# Requires: Vagrant >= 2.3 + VirtualBox >= 7.0
+#
+# Usage:
+#   cd demo-vm/
+#   ANTHROPIC_API_KEY=sk-ant-... vagrant up
+#   open http://localhost:3000
+#
+# SSH access:
+#   vagrant ssh
+#
+# Stop:
+#   vagrant halt
+#
+# Remove:
+#   vagrant destroy
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.box_version = "~> 20240301"
+
+  config.vm.hostname = "ai-employee-demo"
+
+  # ── Port Forwarding ──────────────────────────────────────────────────────────
+  config.vm.network "forwarded_port", guest: 3000, host: 3000, host_ip: "127.0.0.1"  # Frontend
+  config.vm.network "forwarded_port", guest: 8000, host: 8000, host_ip: "127.0.0.1"  # API
+  config.vm.network "forwarded_port", guest: 80,   host: 8080, host_ip: "127.0.0.1"  # Traefik
+
+  # ── VM Resources ─────────────────────────────────────────────────────────────
+  config.vm.provider "virtualbox" do |vb|
+    vb.name   = "ai-employee-demo"
+    vb.memory = 4096
+    vb.cpus   = 2
+    vb.gui    = false
+    vb.customize ["modifyvm", :id, "--nat-localhostreachable1", "on"]
+  end
+
+  # ── Provisioning ─────────────────────────────────────────────────────────────
+  api_key = ENV.fetch("ANTHROPIC_API_KEY", "")
+
+  # Install Docker
+  config.vm.provision "shell", path: "scripts/vm-install-docker.sh",
+    env: { "DEMO_USER" => "vagrant" }
+
+  # Setup AI Employee
+  config.vm.provision "shell", path: "scripts/vm-setup-ai-employee.sh",
+    env: {
+      "DEMO_USER"          => "vagrant",
+      "ANTHROPIC_API_KEY"  => api_key
+    }
+
+  # Configure demo (autostart, MOTD, helper scripts)
+  config.vm.provision "shell", path: "scripts/vm-configure-demo.sh",
+    env: { "DEMO_USER" => "vagrant" }
+
+  # Print access info on first boot
+  config.vm.provision "shell", inline: <<-SHELL
+    echo ""
+    echo "╔══════════════════════════════════════════════════╗"
+    echo "║  AI Employee is ready!                           ║"
+    echo "║                                                  ║"
+    echo "║  Frontend:  http://localhost:3000                ║"
+    echo "║  API:       http://localhost:8000                ║"
+    echo "║                                                  ║"
+    echo "║  SSH:       vagrant ssh                          ║"
+    echo "╚══════════════════════════════════════════════════╝"
+    echo ""
+  SHELL
+end
