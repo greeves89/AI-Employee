@@ -18,20 +18,23 @@ import {
   Moon,
   MessageSquarePlus,
   ShieldCheck,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UserMenu } from "./user-menu";
 import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/agents", label: "Agents", icon: Cpu },
-  { href: "/tasks", label: "Tasks", icon: ListTodo },
-  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
-  { href: "/files", label: "Explorer", icon: FolderOpen },
-  { href: "/integrations", label: "Integrations", icon: Plug },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
+  { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
+  { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
+  { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
+  { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+  { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },
 ];
 
 export function Sidebar() {
@@ -40,6 +43,11 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { simpleMode, toggleSimpleMode } = useSimpleMode();
+
+  const visibleNavItems = simpleMode
+    ? navItems.filter((item) => item.simpleVisible)
+    : navItems;
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-[260px] border-r border-border bg-card/50 backdrop-blur-xl flex flex-col">
@@ -74,7 +82,7 @@ export function Sidebar() {
         <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Navigation
         </p>
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname.startsWith(item.href);
           return (
@@ -106,6 +114,20 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="border-t border-border p-3 space-y-1">
+        {/* Simple/Advanced Mode Toggle */}
+        <button
+          onClick={toggleSimpleMode}
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
+        >
+          {simpleMode ? (
+            <ToggleLeft className="h-4 w-4 text-primary" />
+          ) : (
+            <ToggleRight className="h-4 w-4 text-primary" />
+          )}
+          <span className="text-[13px] font-medium">
+            {simpleMode ? "Einfache Ansicht" : "Erweiterte Ansicht"}
+          </span>
+        </button>
         {/* Admin link */}
         {isAdmin && (
           <Link

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const statusConfig: Record<string, {
   online: boolean;
@@ -53,6 +54,7 @@ export function AgentCard({ agent }: AgentCardProps) {
   const memMb = agent.memory_usage_mb ?? 0;
   const config = statusConfig[agent.state] ?? statusConfig.stopped;
   const isActive = config.online;
+  const { simpleMode } = useSimpleMode();
 
   return (
     <Link href={`/agents/${agent.id}`} className="group block h-full">
@@ -137,48 +139,50 @@ export function AgentCard({ agent }: AgentCardProps) {
           </div>
         )}
 
-        {/* Metrics */}
-        <div className="space-y-3 flex-1">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Cpu className="h-3 w-3" /> CPU
-              </span>
-              <span className="font-mono font-medium tabular-nums">{cpuPercent.toFixed(1)}%</span>
+        {/* Metrics (hidden in simple mode) */}
+        {!simpleMode && (
+          <div className="space-y-3 flex-1">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <Cpu className="h-3 w-3" /> CPU
+                </span>
+                <span className="font-mono font-medium tabular-nums">{cpuPercent.toFixed(1)}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-foreground/[0.06]">
+                <div
+                  className="h-1.5 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all duration-700 ease-out"
+                  style={{ width: `${Math.min(cpuPercent, 100)}%` }}
+                />
+              </div>
             </div>
-            <div className="h-1.5 rounded-full bg-foreground/[0.06]">
-              <div
-                className="h-1.5 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all duration-700 ease-out"
-                style={{ width: `${Math.min(cpuPercent, 100)}%` }}
-              />
-            </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <MemoryStick className="h-3 w-3" /> Memory
-              </span>
-              <span className="font-mono font-medium tabular-nums">{memMb.toFixed(0)} MB</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-foreground/[0.06]">
-              <div
-                className="h-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_8px_rgba(34,197,94,0.3)] transition-all duration-700 ease-out"
-                style={{ width: `${Math.min((memMb / 2048) * 100, 100)}%` }}
-              />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <MemoryStick className="h-3 w-3" /> Memory
+                </span>
+                <span className="font-mono font-medium tabular-nums">{memMb.toFixed(0)} MB</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-foreground/[0.06]">
+                <div
+                  className="h-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_8px_rgba(34,197,94,0.3)] transition-all duration-700 ease-out"
+                  style={{ width: `${Math.min((memMb / 2048) * 100, 100)}%` }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between pt-3 border-t border-foreground/[0.04]">
-          {agent.queue_depth !== null && agent.queue_depth > 0 ? (
+          {!simpleMode && agent.queue_depth !== null && agent.queue_depth > 0 ? (
             <div className="flex items-center gap-1.5 text-[11px] text-amber-400">
               <Layers className="h-3 w-3" />
               {agent.queue_depth} queued
             </div>
           ) : (
-            <span className="text-[11px] text-muted-foreground/50">No queue</span>
+            <span className="text-[11px] text-muted-foreground/50">{simpleMode ? "" : "No queue"}</span>
           )}
           <div className="flex items-center gap-1 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
             Open <ArrowUpRight className="h-3 w-3" />

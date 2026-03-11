@@ -118,7 +118,7 @@ def _get_project_containers(docker: DockerService, project_name: str) -> list[di
     )
     results = []
     for c in containers:
-        # Extract port mappings
+        # Extract port mappings (published ports)
         ports = []
         for port_key, bindings in (c.ports or {}).items():
             if bindings:
@@ -129,6 +129,14 @@ def _get_project_containers(docker: DockerService, project_name: str) -> list[di
                         "host_ip": b.get("HostIp", "0.0.0.0"),
                     })
 
+        # Also detect exposed but unmapped ports from the image
+        exposed_ports = []
+        config_ports = c.attrs.get("Config", {}).get("ExposedPorts", {})
+        mapped_container_ports = {p["container_port"] for p in ports}
+        for port_key in (config_ports or {}):
+            if port_key not in mapped_container_ports:
+                exposed_ports.append(port_key)
+
         results.append({
             "id": c.short_id,
             "name": c.name,
@@ -137,6 +145,7 @@ def _get_project_containers(docker: DockerService, project_name: str) -> list[di
             "status": c.status,
             "state": c.attrs.get("State", {}).get("Status", "unknown"),
             "ports": ports,
+            "exposed_ports": exposed_ports,
         })
     return results
 

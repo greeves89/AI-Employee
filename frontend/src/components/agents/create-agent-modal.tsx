@@ -27,6 +27,7 @@ import {
 import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, LLMConfig, LLMProviderType, PermissionPackage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const PERMISSION_ICON_MAP: Record<string, React.ElementType> = {
   package: Package,
@@ -90,6 +91,7 @@ export function CreateAgentModal({
   onOpenChange,
   onCreated,
 }: CreateAgentModalProps) {
+  const { simpleMode } = useSimpleMode();
   const [step, setStep] = useState<Step>("template");
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
@@ -298,7 +300,7 @@ export function CreateAgentModal({
                       </button>
                     )}
                     <Dialog.Title className="text-lg font-semibold">
-                      {step === "template" ? "Vorlage waehlen" : "Agent konfigurieren"}
+                      {step === "template" ? "Vorlage waehlen" : simpleMode ? "Agent benennen" : "Agent konfigurieren"}
                     </Dialog.Title>
                   </div>
                   <Dialog.Close className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors">
@@ -395,7 +397,8 @@ export function CreateAgentModal({
                         </div>
                       )}
 
-                      {/* Mode Selector */}
+                      {/* Mode Selector (hidden in simple mode) */}
+                      {!simpleMode && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-2.5">
                           Agent-Modus
@@ -450,6 +453,7 @@ export function CreateAgentModal({
                             </button>
                           </div>
                         </div>
+                      )}
 
                       {/* Name */}
                       <div>
@@ -475,8 +479,8 @@ export function CreateAgentModal({
                         />
                       </div>
 
-                      {/* ===== CUSTOM LLM FIELDS ===== */}
-                      {mode === "custom_llm" && (
+                      {/* ===== CUSTOM LLM FIELDS (hidden in simple mode) ===== */}
+                      {!simpleMode && mode === "custom_llm" && (
                         <>
                           {/* Provider */}
                           <div>
@@ -613,8 +617,8 @@ export function CreateAgentModal({
                         </>
                       )}
 
-                      {/* ===== SHARED FIELDS (both modes, no template) ===== */}
-                      {!selectedTemplate && (
+                      {/* ===== SHARED FIELDS (both modes, no template, hidden in simple mode) ===== */}
+                      {!simpleMode && !selectedTemplate && (
                         <>
                           {/* Role */}
                           <div>

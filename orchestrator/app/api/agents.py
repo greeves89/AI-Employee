@@ -1042,6 +1042,180 @@ async def regenerate_telegram_key(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+# --- Skills (Claude Code SKILL.md files) ---
+
+
+class SkillCreate(BaseModel):
+    name: str  # skill directory name (lowercase, hyphens)
+    description: str  # what the skill does
+    content: str  # the instruction markdown (body of SKILL.md)
+
+
+class SkillResponse(BaseModel):
+    name: str
+    description: str
+    content: str
+
+
+def _build_skill_md(name: str, description: str, content: str) -> str:
+    return f"---\nname: {name}\ndescription: {description}\n---\n\n{content}\n"
+
+
+def _parse_skill_md(raw: str) -> dict:
+    """Parse a SKILL.md file into name, description, content."""
+    import re
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)", raw, re.DOTALL)
+    if not m:
+        return {"name": "", "description": "", "content": raw.strip()}
+    frontmatter, body = m.group(1), m.group(2).strip()
+    meta: dict[str, str] = {}
+    for line in frontmatter.strip().splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    return {
+        "name": meta.get("name", ""),
+        "description": meta.get("description", ""),
+        "content": body,
+    }
+
+
+@router.get("/{agent_id}/skills", response_model=list[SkillResponse])
+async def list_skills(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """List all Claude Code skills for an agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if not agent.container_id:
+            raise HTTPException(status_code=400, detail="Agent has no container")
+
+        # Find all SKILL.md files
+        try:
+            _, output = docker.exec_in_container(
+                agent.container_id,
+                "find /workspace/.claude/skills -name SKILL.md 2>/dev/null || true",
+            )
+        except Exception:
+            return []
+
+        paths = [p.strip() for p in output.strip().splitlines() if p.strip()]
+        skills = []
+        for path in paths:
+            try:
+                _, raw = docker.exec_in_container(
+                    agent.container_id, f"cat '{path}'"
+                )
+                parsed = _parse_skill_md(raw)
+                # Derive name from directory if not in frontmatter
+                dir_name = path.split("/")[-2] if "/" in path else ""
+                if not parsed["name"]:
+                    parsed["name"] = dir_name
+                skills.append(SkillResponse(**parsed))
+            except Exception:
+                continue
+
+        return skills
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.post("/{agent_id}/skills", response_model=SkillResponse, status_code=201)
+async def create_skill(
+    agent_id: str,
+    body: SkillCreate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Create a new Claude Code skill for an agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if not agent.container_id:
+            raise HTTPException(status_code=400, detail="Agent has no container")
+
+        skill_dir = f"/workspace/.claude/skills/{body.name}"
+        docker.exec_in_container(agent.container_id, f"mkdir -p '{skill_dir}'")
+
+        content = _build_skill_md(body.name, body.description, body.content)
+        docker.write_file_in_container(
+            agent.container_id, f"{skill_dir}/SKILL.md", content
+        )
+
+        return SkillResponse(name=body.name, description=body.description, content=body.content)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.put("/{agent_id}/skills/{skill_name}", response_model=SkillResponse)
+async def update_skill(
+    agent_id: str,
+    skill_name: str,
+    body: SkillCreate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Update an existing Claude Code skill."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if not agent.container_id:
+            raise HTTPException(status_code=400, detail="Agent has no container")
+
+        skill_path = f"/workspace/.claude/skills/{skill_name}/SKILL.md"
+
+        # If renaming, remove old directory and create new one
+        if body.name != skill_name:
+            docker.exec_in_container(
+                agent.container_id,
+                f"rm -rf '/workspace/.claude/skills/{skill_name}'",
+            )
+            new_dir = f"/workspace/.claude/skills/{body.name}"
+            docker.exec_in_container(agent.container_id, f"mkdir -p '{new_dir}'")
+            skill_path = f"{new_dir}/SKILL.md"
+
+        content = _build_skill_md(body.name, body.description, body.content)
+        docker.write_file_in_container(agent.container_id, skill_path, content)
+
+        return SkillResponse(name=body.name, description=body.description, content=body.content)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.delete("/{agent_id}/skills/{skill_name}")
+async def delete_skill(
+    agent_id: str,
+    skill_name: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Delete a Claude Code skill from an agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if not agent.container_id:
+            raise HTTPException(status_code=400, detail="Agent has no container")
+
+        docker.exec_in_container(
+            agent.container_id,
+            f"rm -rf '/workspace/.claude/skills/{skill_name}'",
+        )
+        return {"status": "deleted", "skill": skill_name}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.get("/team/directory")
 async def get_team_directory(
     user=Depends(require_auth),
