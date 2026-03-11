@@ -12,7 +12,7 @@ import {
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, Package, ShieldOff, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
-  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key,
+  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import {
@@ -28,11 +28,13 @@ import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
 import { ProactiveToggle } from "@/components/agents/proactive-toggle";
 import { DockerAppsTab } from "@/components/agents/docker-apps-tab";
+import { SkillsTab } from "@/components/agents/skills-tab";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Agent, FileEntry, PermissionPackage } from "@/lib/types";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
   pending: { icon: Clock, color: "text-amber-400", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
@@ -53,16 +55,17 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
 };
 
 const tabs = [
-  { key: "chat", label: "Chat", icon: MessageSquare },
-  { key: "terminal", label: "Activity", icon: Activity },
-  { key: "todos", label: "Todos", icon: ListTodo },
-  { key: "files", label: "Files", icon: FolderOpen },
-  { key: "apps", label: "Apps", icon: Container },
-  { key: "history", label: "Task History", icon: History },
-  { key: "knowledge", label: "Knowledge", icon: Brain },
-  { key: "memory", label: "Memory", icon: MemoryStick },
-  { key: "integrations", label: "Integrations", icon: Plug },
-  { key: "settings", label: "Settings", icon: Settings },
+  { key: "chat", label: "Chat", icon: MessageSquare, simpleVisible: true },
+  { key: "terminal", label: "Activity", icon: Activity, simpleVisible: false },
+  { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
+  { key: "files", label: "Files", icon: FolderOpen, simpleVisible: true },
+  { key: "apps", label: "Apps", icon: Container, simpleVisible: false },
+  { key: "history", label: "Task History", icon: History, simpleVisible: true },
+  { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
+  { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
+  { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+  { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+  { key: "settings", label: "Settings", icon: Settings, simpleVisible: false },
 ] as const;
 
 type TabKey = (typeof tabs)[number]["key"];
@@ -74,6 +77,11 @@ export default function AgentDetailPage() {
   const { tasks } = useTasks(agentId);
   const [activeTab, setActiveTab] = useState<TabKey>("chat");
   const [restarting, setRestarting] = useState(false);
+  const { simpleMode } = useSimpleMode();
+
+  const visibleTabs = simpleMode
+    ? tabs.filter((t) => t.simpleVisible)
+    : tabs;
 
   useEffect(() => {
     const load = async () => {
@@ -169,39 +177,43 @@ export default function AgentDetailPage() {
         transition={{ duration: 0.3 }}
       >
         {/* Info cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className={cn("grid gap-3", simpleMode ? "grid-cols-1 md:grid-cols-1 max-w-xs" : "grid-cols-2 md:grid-cols-4")}>
           <InfoCard
             icon={Activity}
-            label="State"
+            label="Status"
             value={stateConfig.online ? `Online · ${stateConfig.label}` : stateConfig.label}
             color={stateConfig.online ? "text-emerald-400" : "text-red-400"}
             iconBg={stateConfig.online ? "bg-emerald-500/10" : "bg-red-500/10"}
           />
-          <InfoCard
-            icon={Cpu}
-            label="CPU"
-            value={`${cpuPercent.toFixed(1)}%`}
-            color="text-cyan-400"
-            iconBg="bg-cyan-500/10"
-            bar={{ value: cpuPercent, max: 100, gradient: "from-blue-500 to-cyan-400" }}
-          />
-          <InfoCard
-            icon={MemoryStick}
-            label="Memory"
-            value={`${memMb.toFixed(0)} MB`}
-            color="text-emerald-400"
-            iconBg="bg-emerald-500/10"
-            bar={{ value: memMb, max: 2048, gradient: "from-emerald-500 to-teal-400" }}
-          />
-          <InfoCard
-            icon={agent.mode === "custom_llm" ? Plug : Hash}
-            label={agent.mode === "custom_llm" ? "LLM Provider" : "Model"}
-            value={agent.mode === "custom_llm" && agent.llm_config
-              ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
-              : agent.model.split("-").slice(0, 2).join("-")}
-            color="text-violet-400"
-            iconBg="bg-violet-500/10"
-          />
+          {!simpleMode && (
+            <>
+              <InfoCard
+                icon={Cpu}
+                label="CPU"
+                value={`${cpuPercent.toFixed(1)}%`}
+                color="text-cyan-400"
+                iconBg="bg-cyan-500/10"
+                bar={{ value: cpuPercent, max: 100, gradient: "from-blue-500 to-cyan-400" }}
+              />
+              <InfoCard
+                icon={MemoryStick}
+                label="Memory"
+                value={`${memMb.toFixed(0)} MB`}
+                color="text-emerald-400"
+                iconBg="bg-emerald-500/10"
+                bar={{ value: memMb, max: 2048, gradient: "from-emerald-500 to-teal-400" }}
+              />
+              <InfoCard
+                icon={agent.mode === "custom_llm" ? Plug : Hash}
+                label={agent.mode === "custom_llm" ? "LLM Provider" : "Model"}
+                value={agent.mode === "custom_llm" && agent.llm_config
+                  ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
+                  : agent.model.split("-").slice(0, 2).join("-")}
+                color="text-violet-400"
+                iconBg="bg-violet-500/10"
+              />
+            </>
+          )}
         </div>
 
         {/* Budget progress */}
@@ -230,8 +242,8 @@ export default function AgentDetailPage() {
         )}
 
         {/* Pill tab switcher */}
-        <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit">
-          {tabs.map((tab) => {
+        <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit overflow-x-auto">
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -262,6 +274,7 @@ export default function AgentDetailPage() {
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
           {activeTab === "memory" && <MemoryTab agentId={agentId} />}
           {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
+          {activeTab === "skills" && <SkillsTab agentId={agentId} />}
           {activeTab === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>

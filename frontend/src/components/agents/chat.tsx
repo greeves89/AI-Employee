@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -160,6 +161,7 @@ function extractResultContent(content: unknown): string {
 /* ─── Main Component ────────────────────────────────────────────────── */
 
 export function AgentChat({ agentId }: { agentId: string }) {
+  const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -919,8 +921,8 @@ export function AgentChat({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      {/* Context usage bar */}
-      <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
+      {/* Context usage bar (hidden in simple mode) */}
+      {!simpleMode && <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
         <div className="flex items-center gap-1.5">
           <Gauge className="h-3 w-3" />
           <span>Context</span>
@@ -938,7 +940,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
         <span className="border-l border-border pl-3">{messageCount} msgs</span>
         {totalTurns > 0 && <span>{totalTurns} turns</span>}
         {totalCost > 0 && <span>${totalCost.toFixed(4)}</span>}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1002,25 +1004,41 @@ function UserMessage({ content }: { content: string }) {
 
 function AssistantResponse({ message }: { message: ChatMessage }) {
   const steps = message.steps || [];
+  const { simpleMode } = useSimpleMode();
 
   // If no steps at all (legacy), show as simple text
   if (steps.length === 0 && message.content) {
     return (
       <div className="pl-1 space-y-2">
         <MarkdownContent content={message.content} />
-        {message.meta && <MetaBar meta={message.meta} />}
+        {message.meta && !simpleMode && <MetaBar meta={message.meta} />}
       </div>
     );
   }
 
+  // Simple mode: only show text steps, hide tool calls
+  const visibleSteps = simpleMode
+    ? steps.filter((s) => s.type === "text")
+    : steps;
+
+  // In simple mode, if there are no text steps yet (only tool calls running), show a working indicator
+  const hasRunningTools = simpleMode && steps.some((s) => s.type === "tool_call" && s.status === "running");
+  const noVisibleContent = visibleSteps.length === 0;
+
   return (
     <div className="space-y-2.5 pl-1">
-      {steps.map((step, i) => {
+      {simpleMode && hasRunningTools && noVisibleContent && (
+        <div className="flex items-center gap-2 text-muted-foreground/60 text-xs py-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          <span>Arbeitet...</span>
+        </div>
+      )}
+      {visibleSteps.map((step, i) => {
         if (step.type === "text") {
           return (
             <div key={`text-${i}`}>
               <MarkdownContent content={step.content} />
-              {message.isStreaming && i === steps.length - 1 && (
+              {message.isStreaming && i === visibleSteps.length - 1 && (
                 <span className="inline-block w-1.5 h-4 bg-muted-foreground/50 animate-pulse ml-0.5 rounded-sm" />
               )}
             </div>
@@ -1037,7 +1055,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
         }
         return null;
       })}
-      {message.meta && !message.isStreaming && <MetaBar meta={message.meta} />}
+      {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
     </div>
   );
 }

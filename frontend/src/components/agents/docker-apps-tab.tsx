@@ -370,9 +370,24 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground/50 font-mono mt-0.5">
-                        /workspace/{app.path}/{app.compose_file}
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-[11px] text-muted-foreground/50 font-mono">
+                          /workspace/{app.path}/{app.compose_file}
+                        </p>
+                        {/* Auto-detected ports in header */}
+                        {(app.containers || []).flatMap(c => (c.ports || []).map(p => ({ ...p, service: c.service }))).map((p) => (
+                          <a
+                            key={`hdr-${p.service}-${p.host_port}`}
+                            href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${p.host_port}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-0.5 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            :{p.host_port}
+                            <ExternalLink className="h-2 w-2" />
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -473,18 +488,69 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                   </motion.div>
                 )}
 
-                {/* Services Summary (compact) */}
+                {/* Services Summary + Auto Port Scan (compact) */}
                 {!isExpanded && !isBuilding && app.services.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2.5 ml-[52px]">
-                    {app.services.map((svc) => (
-                      <span
-                        key={svc.name}
-                        className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] text-muted-foreground"
-                      >
-                        <Box className="h-2.5 w-2.5" />
-                        {svc.name}
-                      </span>
-                    ))}
+                  <div className="mt-2.5 ml-[52px] space-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {app.services.map((svc) => {
+                        const container = app.containers?.find(c => c.service === svc.name);
+                        const isRunning = container?.status === "running";
+                        return (
+                          <div
+                            key={svc.name}
+                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] text-muted-foreground"
+                          >
+                            <Circle className={cn("h-2 w-2 fill-current", isRunning ? "text-emerald-400" : container ? "text-zinc-500" : "text-zinc-600")} />
+                            {svc.name}
+                            {container && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRestartService(app, svc.name); }}
+                                disabled={restartingService === svc.name}
+                                className={cn(
+                                  "ml-0.5 rounded p-0.5 transition-all disabled:opacity-50",
+                                  isRunning
+                                    ? "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.08]"
+                                    : "text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/10"
+                                )}
+                                title={`${isRunning ? "Restart" : "Start"} ${svc.name}`}
+                              >
+                                {restartingService === svc.name ? (
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                ) : isRunning ? (
+                                  <RotateCcw className="h-2.5 w-2.5" />
+                                ) : (
+                                  <Play className="h-2.5 w-2.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Auto-detected ports from running containers */}
+                    {(() => {
+                      const allPorts = (app.containers || []).flatMap(c =>
+                        (c.ports || []).map(p => ({ ...p, service: c.service }))
+                      );
+                      if (allPorts.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground/40 mr-0.5">Ports:</span>
+                          {allPorts.map((p) => (
+                            <a
+                              key={`${p.service}-${p.host_port}`}
+                              href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${p.host_port}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
+                            >
+                              {p.service}:{p.host_port}
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -540,7 +606,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                               {container?.ports?.map((p) => (
                                 <a
                                   key={`${p.host_port}-${p.container_port}`}
-                                  href={`http://localhost:${p.host_port}`}
+                                  href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${p.host_port}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
@@ -559,24 +625,40 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                   </span>
                                 ))
                               )}
+                              {container?.exposed_ports?.map((ep) => (
+                                <span
+                                  key={ep}
+                                  className="inline-flex items-center rounded-md bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 text-[10px] font-mono text-amber-400/60"
+                                  title="Exposed but not mapped to host"
+                                >
+                                  {ep}
+                                </span>
+                              ))}
                               {container && (
                                 <span className="text-[10px] text-muted-foreground/30">
                                   {container.status}
                                 </span>
                               )}
-                              {container && isRunning && (
+                              {container && (
                                 <button
                                   onClick={() => handleRestartService(app, svc.name)}
                                   disabled={restartingService === svc.name}
-                                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.06] transition-all disabled:opacity-50"
-                                  title={`Restart ${svc.name}`}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-all disabled:opacity-50",
+                                    isRunning
+                                      ? "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.06]"
+                                      : "text-emerald-400/70 hover:text-emerald-400 hover:bg-emerald-500/10"
+                                  )}
+                                  title={`${isRunning ? "Restart" : "Start"} ${svc.name}`}
                                 >
                                   {restartingService === svc.name ? (
                                     <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                                  ) : (
+                                  ) : isRunning ? (
                                     <RotateCcw className="h-2.5 w-2.5" />
+                                  ) : (
+                                    <Play className="h-2.5 w-2.5" />
                                   )}
-                                  Restart
+                                  {isRunning ? "Restart" : "Start"}
                                 </button>
                               )}
                             </div>

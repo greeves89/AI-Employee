@@ -329,6 +329,7 @@ export interface DockerAppContainer {
   status: string;
   state: string;
   ports: DockerAppPort[];
+  exposed_ports?: string[];
 }
 
 export interface DockerAppService {

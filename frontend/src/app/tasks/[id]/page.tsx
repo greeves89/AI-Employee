@@ -15,6 +15,7 @@ import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import type { Task, LogEvent } from "@/lib/types";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 import { getWsUrl } from "@/lib/config";
 
@@ -30,6 +31,7 @@ const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; b
 export default function TaskDetailPage() {
   const params = useParams();
   const taskId = params.id as string;
+  const { simpleMode } = useSimpleMode();
   const [task, setTask] = useState<Task | null>(null);
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -160,15 +162,15 @@ export default function TaskDetailPage() {
               <MiniCard icon={Cpu} label="Agent" value={task.agent_id} clickable />
             </Link>
           )}
-          {task.duration_ms ? (
+          {!simpleMode && task.duration_ms ? (
             <MiniCard icon={Timer} label="Duration" value={formatDuration(task.duration_ms)} />
-          ) : isActive ? (
+          ) : !simpleMode && isActive ? (
             <MiniCard icon={Timer} label="Duration" value="In progress..." />
           ) : null}
-          {task.cost_usd ? (
+          {!simpleMode && task.cost_usd ? (
             <MiniCard icon={DollarSign} label="Cost" value={formatCost(task.cost_usd)} />
           ) : null}
-          {task.num_turns ? (
+          {!simpleMode && task.num_turns ? (
             <MiniCard icon={RotateCcw} label="Turns" value={String(task.num_turns)} />
           ) : null}
         </div>
@@ -206,8 +208,8 @@ export default function TaskDetailPage() {
           </div>
         )}
 
-        {/* Live Output */}
-        <div className="rounded-xl border border-foreground/[0.06] bg-black overflow-hidden">
+        {/* Live Output (hidden in simple mode) */}
+        {!simpleMode && <div className="rounded-xl border border-foreground/[0.06] bg-black overflow-hidden">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2.5">
               <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
@@ -259,7 +261,7 @@ export default function TaskDetailPage() {
               logs.map((log, i) => <TaskLogLine key={i} event={log} />)
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Timestamps */}
         <div className="flex items-center gap-6 text-[11px] text-muted-foreground/50">

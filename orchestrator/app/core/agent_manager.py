@@ -151,6 +151,12 @@ If a TODO is too vague, break it down with `update_todos` into concrete subtasks
 
 ## WHEN DONE:
 - Notify the user via `notify_user` about what you accomplished (resolved issues, completed TODOs, PRs created)
+- **ALWAYS send a Telegram broadcast** summarizing what you did (even if nothing to do).
+  This sends to ALL authorized Telegram users. Keep it short (2-5 sentences):
+  curl -s -X POST $ORCHESTRATOR_URL/api/v1/telegram/broadcast \
+    -H "X-Agent-ID: $AGENT_ID" -H "Authorization: Bearer $AGENT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"text": "YOUR SUMMARY HERE"}'
 - If truly nothing to do (ZERO TODOs, no open issues, workspace clean): respond "No proactive actions needed."
 - Do NOT invent new tasks or create busywork. But ALWAYS complete existing TODOs and check issues.
 

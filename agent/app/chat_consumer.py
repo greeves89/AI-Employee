@@ -9,8 +9,101 @@ from app.config import settings
 from app.log_publisher import LogPublisher
 
 
+def _build_telegram_prompt(text: str, tg: dict) -> str:
+    """Wrap the user message with Telegram context and API instructions."""
+    chat_id = tg.get("chat_id", "")
+    username = tg.get("username", "")
+    first_name = tg.get("first_name", "")
+    media_type = tg.get("media_type", "")
+    file_id = tg.get("file_id", "")
+    callback_data = tg.get("callback_data", "")
+    callback_query_id = tg.get("callback_query_id", "")
+
+    orch_url = settings.orchestrator_url
+    agent_id = settings.agent_id
+    agent_token = settings.agent_token
+
+    # Build header
+    header = f"[TELEGRAM] From: {first_name or username or 'User'} | chat_id: {chat_id}"
+    if media_type:
+        header += f" | media: {media_type} (file_id: {file_id})"
+    if callback_data:
+        header += f" | callback: {callback_data} (query_id: {callback_query_id})"
+
+    api_base = f"{orch_url}/api/v1/telegram"
+    auth = f"-H 'X-Agent-ID: {agent_id}' -H 'Authorization: Bearer {agent_token}'"
+
+    return f"""{header}
+
+{text}
+
+---
+TELEGRAM CONTEXT (read carefully):
+
+This message came from Telegram. The user's chat_id is {chat_id}.
+You ALREADY have the chat_id. Do NOT look it up. Do NOT call getUpdates.
+
+RULES:
+- NEVER call api.telegram.org directly. You do NOT have the bot token.
+- Your plain text reply is AUTOMATICALLY forwarded to Telegram. No action needed for text.
+- To send files/voice/photos/videos, use the Orchestrator Telegram API below.
+- You have FULL access to all your MCP tools (memory, todos, notifications, orchestrator).
+  Use them exactly as you would for Web UI messages! Save memories, create/update TODOs,
+  read knowledge.md, and use notify_user — Telegram is just another input channel.
+
+ORCHESTRATOR TELEGRAM API (use these curl commands):
+
+Send a document/file to the user:
+  curl -X POST {api_base}/send-document {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "document_base64": "'$(base64 -w0 /path/to/file)'", "filename": "report.pdf"}}'
+
+Send a voice message (MUST be OGG OPUS — convert with ffmpeg first):
+  ffmpeg -i input.mp3 -c:a libopus -b:a 64k output.ogg
+  curl -X POST {api_base}/send-voice {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "voice_base64": "'$(base64 -w0 output.ogg)'"}}'
+
+Send a photo (from file):
+  curl -X POST {api_base}/send-photo {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "photo_base64": "'$(base64 -w0 /path/to/image.jpg)'"}}'
+
+Send a photo (from URL):
+  curl -X POST {api_base}/send-photo {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "photo_url": "https://example.com/img.jpg"}}'
+
+Send a video:
+  curl -X POST {api_base}/send-video {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "video_base64": "'$(base64 -w0 /path/to/video.mp4)'"}}'
+
+Send a text message with inline keyboard:
+  curl -X POST {api_base}/send-message {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "text": "Choose:", "reply_markup": {{"inline_keyboard": [[{{"text": "A", "callback_data": "a"}}, {{"text": "B", "callback_data": "b"}}]]}}}}'
+
+Set bot menu commands:
+  curl -X POST {api_base}/set-commands {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"commands": [{{"command": "help", "description": "Hilfe"}}, {{"command": "status", "description": "Status"}}]}}'
+
+Set bot description:
+  curl -X POST {api_base}/set-description {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"description": "Dein KI-Assistent", "short_description": "KI Assistent"}}'
+
+Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-action, /edit-message, /pin-message, /answer-callback, GET /info, GET /get-commands"""
+
+
 class ChatConsumer:
-    """Consumes chat messages from Redis queue and processes them via ChatHandler or LLMChatHandler."""
+    """Consumes chat messages from Redis queue and processes them via ChatHandler or LLMChatHandler.
+
+    Supports message interruption: if a new message arrives while the agent is
+    working, the current CLI process is interrupted (SIGINT) and the new message
+    is processed immediately. The --resume flag preserves conversation context.
+    """
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -20,6 +113,8 @@ class ChatConsumer:
         self.running = True
         self._handler = None  # ChatHandler or LLMChatHandler
         self._cancel_listener_task: asyncio.Task | None = None
+        self._queue_watcher_task: asyncio.Task | None = None
+        self._interrupt_event = asyncio.Event()
 
     async def _listen_for_cancel(self) -> None:
         """Listen on Redis PubSub for cancel signals and stop the handler."""
@@ -43,6 +138,32 @@ class ChatConsumer:
             await pubsub.unsubscribe(self.cancel_channel)
             await pubsub.aclose()
             await cancel_redis.aclose()
+
+    async def _watch_queue_for_interrupt(self) -> None:
+        """Monitor queue while handler is busy. Interrupt if new message arrives."""
+        watch_redis = aioredis.from_url(settings.redis_url, decode_responses=False)
+        try:
+            while self.running:
+                # Check if there are pending messages in the queue
+                queue_len = await watch_redis.llen(self.queue_name)
+                if queue_len > 0 and self._handler and self._handler.is_running:
+                    # New message arrived while we're busy — interrupt!
+                    self._interrupt_event.set()
+                    await self._handler.stop_current()
+                    return  # Job done, main loop will pick up the new message
+                await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        finally:
+            await watch_redis.aclose()
+
+    def _prepare_text(self, text: str, telegram_ctx: dict | None) -> str:
+        """Prepare message text, adding Telegram context if present."""
+        if telegram_ctx:
+            return _build_telegram_prompt(text, telegram_ctx)
+        return text
 
     async def start(self) -> None:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
@@ -71,14 +192,25 @@ class ChatConsumer:
                 message_id = msg["id"]
                 text = msg["text"]
                 model = msg.get("model")
+                telegram_ctx = msg.get("telegram")
 
                 # Handle special commands
                 if text.strip() == "/reset":
                     await self._handler.reset_session()
                     continue
 
+                text = self._prepare_text(text, telegram_ctx)
+
                 # Mark as working while processing chat
                 await log_publisher.publish_status("working", f"chat:{message_id}")
+
+                # Reset interrupt event
+                self._interrupt_event.clear()
+
+                # Start queue watcher to detect new messages while we're busy
+                self._queue_watcher_task = asyncio.create_task(
+                    self._watch_queue_for_interrupt()
+                )
 
                 try:
                     # Process the chat message
@@ -88,6 +220,54 @@ class ChatConsumer:
                         model=model,
                     )
                 finally:
+                    # Stop queue watcher
+                    if self._queue_watcher_task and not self._queue_watcher_task.done():
+                        self._queue_watcher_task.cancel()
+                        try:
+                            await self._queue_watcher_task
+                        except asyncio.CancelledError:
+                            pass
+                    self._queue_watcher_task = None
+
+                    # If we were interrupted, drain all queued messages and
+                    # combine them into a single follow-up prompt so the agent
+                    # processes everything together (with --resume context).
+                    if self._interrupt_event.is_set():
+                        combined_texts = []
+                        combined_id = None
+                        combined_model = model
+                        while True:
+                            queued = await self.redis.rpop(self.queue_name)
+                            if queued is None:
+                                break
+                            qmsg = json.loads(queued)
+                            if qmsg["text"].strip() == "/reset":
+                                await self._handler.reset_session()
+                                combined_texts.clear()
+                                continue
+                            qtxt = self._prepare_text(
+                                qmsg["text"], qmsg.get("telegram")
+                            )
+                            combined_texts.append(qtxt)
+                            combined_id = combined_id or qmsg["id"]
+                            combined_model = qmsg.get("model") or combined_model
+
+                        if combined_texts:
+                            # Join all queued messages into one prompt
+                            follow_up = "\n\n".join(combined_texts)
+                            await log_publisher.publish_chat(
+                                combined_id, "system",
+                                {"message": "New messages received — continuing with full context..."},
+                            )
+                            await log_publisher.publish_status(
+                                "working", f"chat:{combined_id}"
+                            )
+                            await self._handler.handle_message(
+                                message_id=combined_id,
+                                text=follow_up,
+                                model=combined_model,
+                            )
+
                     # Back to idle after response
                     await log_publisher.publish_status("idle")
 
@@ -110,6 +290,12 @@ class ChatConsumer:
             self._cancel_listener_task.cancel()
             try:
                 await self._cancel_listener_task
+            except asyncio.CancelledError:
+                pass
+        if self._queue_watcher_task:
+            self._queue_watcher_task.cancel()
+            try:
+                await self._queue_watcher_task
             except asyncio.CancelledError:
                 pass
         if self.redis:
