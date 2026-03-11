@@ -102,11 +102,11 @@ export default function AdminPage() {
   }, [fetchUsers, fetchAgents]);
 
   useEffect(() => {
-    if (tab === "feedback" && feedbackItems.length === 0) {
+    if (tab === "feedback") {
       setFeedbackLoading(true);
       fetchFeedback().finally(() => setFeedbackLoading(false));
     }
-  }, [tab, fetchFeedback, feedbackItems.length]);
+  }, [tab, fetchFeedback]);
 
   const ROLE_CYCLE = ["viewer", "member", "manager", "admin"] as const;
 

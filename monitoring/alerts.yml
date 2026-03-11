@@ -1,0 +1,121 @@
+groups:
+  - name: ai_employee_alerts
+    interval: 30s
+    rules:
+      # ─── Infrastructure ────────────────────────────────────────────────────
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on host"
+          description: "Disk space is {{ $value | humanizePercentage }} free (threshold: 15%)"
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical: disk space almost full"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value | humanize }}% for 10+ minutes"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanize }}%"
+
+      # ─── Database ──────────────────────────────────────────────────────────
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "Database is not responding"
+
+      - alert: PostgresTooManyConnections
+        expr: sum(pg_stat_activity_count) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Too many PostgreSQL connections"
+          description: "{{ $value }} active connections (limit: 100)"
+
+      # ─── Redis ─────────────────────────────────────────────────────────────
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis server is not responding"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis is using {{ $value | humanize }}% of max memory"
+
+      # ─── Orchestrator ──────────────────────────────────────────────────────
+
+      - alert: OrchestratorDown
+        expr: up{job="orchestrator"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Orchestrator API is down"
+          description: "The orchestrator service is not responding"
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="orchestrator"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API response latency"
+          description: "95th percentile latency is {{ $value | humanize }}s"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="orchestrator", status=~"5.."}[5m]) / rate(http_requests_total{job="orchestrator"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API error rate"
+          description: "{{ $value | humanizePercentage }} of requests are failing (5xx)"
+
+      # ─── Agent Containers ──────────────────────────────────────────────────
+
+      - alert: AgentContainerCrashLoop
+        expr: rate(container_last_seen{name=~"agent-.*"}[5m]) == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent container may be crash-looping"
+          description: "Container {{ $labels.name }} has not been seen recently"

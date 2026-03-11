@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     oauth_apple_private_key: str = ""
     oauth_redirect_base_url: str = "http://localhost:8000"
 
+    # GitHub Webhook
+    github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures
+
     model_config = {"env_prefix": "", "case_sensitive": False}
 
 

@@ -163,7 +163,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         _streaming_responses[mid] = {"content": "", "tool_calls": []}
                     _streaming_responses[mid]["tool_calls"].append({
                         "tool": str(edata.get("tool", "")),
-                        "input": json.dumps(edata.get("input", {}))[:200],
+                        "input": json.dumps(edata.get("input", {})),
                     })
             elif etype == "error":
                 _pending_message_ids.discard(mid)

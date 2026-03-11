@@ -266,11 +266,13 @@ export async function getChatSessions(
 
 export async function getChatHistory(
   agentId: string,
-  limit = 100,
+  limit = 500,
   sessionId?: string,
+  beforeId?: number,
 ): Promise<{ messages: ChatHistoryMessage[]; has_more: boolean }> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (sessionId) params.set("session_id", sessionId);
+  if (beforeId !== undefined) params.set("before_id", String(beforeId));
   return fetchJSON(`${getBase()}/agents/${agentId}/chat/history?${params}`);
 }
 

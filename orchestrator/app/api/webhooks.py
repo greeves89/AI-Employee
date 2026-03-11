@@ -1,5 +1,7 @@
 """Webhook API - external services can trigger agent tasks."""
 
+import hashlib
+import hmac
 import json
 import uuid
 
@@ -11,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.dependencies import get_redis_service, require_auth
 from app.models.agent import Agent
+from app.models.feedback import Feedback, FeedbackStatus
 from app.models.webhook import WebhookEvent
 from app.security.agent_guard import (
     check_webhook_payload,
@@ -129,6 +132,62 @@ async def receive_webhook(
         "task_id": task_id,
         "agent_id": agent_id,
     }
+
+
+@router.post("/github")
+async def github_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Receive GitHub webhook events and sync feedback status.
+
+    Listens for 'issues' events: when a GitHub issue linked to feedback
+    is closed, the feedback status is automatically updated to 'closed'.
+    """
+    from app.config import settings as app_settings
+
+    # Verify HMAC signature if secret is configured
+    secret = app_settings.github_webhook_secret
+    if secret:
+        sig_header = request.headers.get("x-hub-signature-256", "")
+        body = await request.body()
+        expected = "sha256=" + hmac.new(
+            secret.encode(), body, hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(sig_header, expected):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    else:
+        body = await request.body()
+
+    event_type = request.headers.get("x-github-event", "")
+    if event_type != "issues":
+        return {"status": "ignored", "reason": "not an issues event"}
+
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    action = payload.get("action")
+    issue = payload.get("issue", {})
+    issue_url = issue.get("html_url", "")
+
+    if action != "closed" or not issue_url:
+        return {"status": "ignored", "reason": f"action={action}"}
+
+    # Find feedback linked to this GitHub issue
+    result = await db.execute(
+        select(Feedback).where(Feedback.github_issue_url == issue_url)
+    )
+    feedback = result.scalar_one_or_none()
+
+    if not feedback:
+        return {"status": "ignored", "reason": "no feedback linked to this issue"}
+
+    feedback.status = FeedbackStatus.CLOSED
+    await db.commit()
+
+    return {"status": "updated", "feedback_id": feedback.id, "new_status": "closed"}
 
 
 @router.get("/agents/{agent_id}/events")

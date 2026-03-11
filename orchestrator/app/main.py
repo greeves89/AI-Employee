@@ -536,5 +536,57 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "orchestrator"}
+async def health_check(request: Request):
+    """
+    Enhanced health check that verifies database, Redis, and Docker connectivity.
+    Returns HTTP 200 if all checks pass, 503 if any critical component is down.
+    """
+    from sqlalchemy import text as sa_text
+    from app.db.session import async_session_factory
+
+    checks: dict[str, dict] = {}
+    overall_healthy = True
+
+    # Database check
+    try:
+        async with async_session_factory() as db:
+            await db.execute(sa_text("SELECT 1"))
+        checks["database"] = {"status": "healthy"}
+    except Exception as e:
+        checks["database"] = {"status": "unhealthy", "error": str(e)}
+        overall_healthy = False
+
+    # Redis check
+    try:
+        redis: RedisService = request.app.state.redis
+        if redis.client:
+            await redis.client.ping()
+            checks["redis"] = {"status": "healthy"}
+        else:
+            checks["redis"] = {"status": "unhealthy", "error": "not connected"}
+            overall_healthy = False
+    except Exception as e:
+        checks["redis"] = {"status": "unhealthy", "error": str(e)}
+        overall_healthy = False
+
+    # Docker check
+    try:
+        docker: DockerService = request.app.state.docker
+        containers = await docker.list_agent_containers()
+        checks["docker"] = {"status": "healthy", "agent_containers": len(containers)}
+    except Exception as e:
+        # Docker being unavailable is non-critical for the API itself
+        checks["docker"] = {"status": "degraded", "error": str(e)}
+
+    status_code = 200 if overall_healthy else 503
+    response_body = {
+        "status": "healthy" if overall_healthy else "unhealthy",
+        "service": "orchestrator",
+        "checks": checks,
+    }
+
+    return Response(
+        content=json.dumps(response_body),
+        status_code=status_code,
+        media_type="application/json",
+    )
