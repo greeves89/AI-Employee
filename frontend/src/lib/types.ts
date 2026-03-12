@@ -353,3 +353,35 @@ export interface DockerAppLog {
   service: string;
   line: string;
 }
+
+// Knowledge Base
+export interface KnowledgeEntry {
+  id: number;
+  title: string;
+  content: string;
+  tags: string[];
+  backlinks: string[];
+  incoming_backlinks?: string[];
+  created_by: string | null;
+  updated_by: string | null;
+  access_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeTag {
+  name: string;
+  count: number;
+}
+
+export interface KnowledgeGraphNode {
+  id: number;
+  title: string;
+  tags: string[];
+  size: number;
+}
+
+export interface KnowledgeGraphEdge {
+  source: number;
+  target: number;
+}
