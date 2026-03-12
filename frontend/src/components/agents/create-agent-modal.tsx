@@ -19,6 +19,10 @@ import {
   Server,
   Search,
   Presentation,
+  Megaphone,
+  Headphones,
+  TrendingUp,
+  Crown,
   Zap,
   Plug,
   Eye,
@@ -43,6 +47,10 @@ const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Server,
   Search,
   Presentation,
+  Megaphone,
+  Headphones,
+  TrendingUp,
+  Crown,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -52,6 +60,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   ops: "Operations",
   creative: "Creative",
   general: "General",
+  marketing: "Marketing",
+  support: "Support",
+  sales: "Sales",
+  management: "Management",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -61,6 +73,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   ops: "bg-amber-500/10 text-amber-400",
   creative: "bg-pink-500/10 text-pink-400",
   general: "bg-gray-500/10 text-gray-400",
+  marketing: "bg-orange-500/10 text-orange-400",
+  support: "bg-cyan-500/10 text-cyan-400",
+  sales: "bg-rose-500/10 text-rose-400",
+  management: "bg-indigo-500/10 text-indigo-400",
 };
 
 const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[] }> = {

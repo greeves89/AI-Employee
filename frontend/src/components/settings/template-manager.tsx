@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Bot, Code2, BarChart3, FileText, Server, Search, Presentation,
+  Megaphone, Headphones, TrendingUp, Crown,
   Pencil, Trash2, Save, X, Plus, Lock, ChevronDown, ChevronUp,
   Loader2, CheckCircle2, AlertCircle, Copy,
 } from "lucide-react";
@@ -12,6 +13,7 @@ import type { AgentTemplate } from "@/lib/types";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot, Code2, BarChart3, FileText, Server, Search, Presentation,
+  Megaphone, Headphones, TrendingUp, Crown,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -21,6 +23,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   ops: "Operations",
   creative: "Creative",
   general: "General",
+  marketing: "Marketing",
+  support: "Support",
+  sales: "Sales",
+  management: "Management",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -30,6 +36,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   ops: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   creative: "bg-pink-500/10 text-pink-400 border-pink-500/20",
   general: "bg-gray-500/10 text-gray-400 border-gray-500/20",
+  marketing: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  support: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+  sales: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  management: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
 };
 
 const AVAILABLE_PERMISSIONS = [
