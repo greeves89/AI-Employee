@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, Feedback, FeedbackListResponse, LLMConfig, LLMConfigResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -792,4 +792,44 @@ export async function removeAgentTelegram(agentId: string): Promise<void> {
 
 export async function regenerateTelegramKey(agentId: string): Promise<{ agent_id: string; auth_key: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/telegram/regenerate-key`, { method: "POST" });
+}
+
+// --- Knowledge Base ---
+
+export async function getKnowledgeEntries(q?: string, tag?: string): Promise<{ entries: KnowledgeEntry[]; total: number }> {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (tag) params.set("tag", tag);
+  const qs = params.toString() ? `?${params}` : "";
+  return fetchJSON(`${getBase()}/knowledge/entries${qs}`);
+}
+
+export async function getKnowledgeEntry(id: number): Promise<KnowledgeEntry> {
+  return fetchJSON(`${getBase()}/knowledge/entries/${id}`);
+}
+
+export async function createKnowledgeEntry(data: { title: string; content: string; tags: string[] }): Promise<KnowledgeEntry> {
+  return fetchJSON(`${getBase()}/knowledge/entries`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateKnowledgeEntry(id: number, data: { title?: string; content?: string; tags?: string[] }): Promise<KnowledgeEntry> {
+  return fetchJSON(`${getBase()}/knowledge/entries/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteKnowledgeEntry(id: number): Promise<void> {
+  return fetchJSON(`${getBase()}/knowledge/entries/${id}`, { method: "DELETE" });
+}
+
+export async function getKnowledgeTags(): Promise<{ tags: KnowledgeTag[] }> {
+  return fetchJSON(`${getBase()}/knowledge/tags`);
+}
+
+export async function getKnowledgeGraph(): Promise<{ nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }> {
+  return fetchJSON(`${getBase()}/knowledge/graph`);
 }

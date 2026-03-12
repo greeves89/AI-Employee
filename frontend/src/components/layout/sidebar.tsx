@@ -18,6 +18,7 @@ import {
   Moon,
   MessageSquarePlus,
   ShieldCheck,
+  BookOpen,
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
   { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
   { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
+  { href: "/knowledge", label: "Knowledge", icon: BookOpen, simpleVisible: true },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
   { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
   { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
