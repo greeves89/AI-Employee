@@ -136,12 +136,18 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: ai-employee-cloudflared
-    command: tunnel --protocol http2 run
+    command: tunnel --protocol http2 --edge-ip-version auto --retries 10 --grace-period 60s run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - caddy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --max-time 10 https://agents.future-app.de/ || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     profiles:
       - tunnel
     deploy:
@@ -150,6 +156,23 @@ services:
           memory: 128M
     networks:
       - internal
+
+  # Auto-restart unhealthy containers (monitors cloudflared healthcheck)
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: ai-employee-autoheal
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: all
+      AUTOHEAL_INTERVAL: 30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    deploy:
+      resources:
+        limits:
+          memory: 32M
 
 volumes:
   postgres_data:
