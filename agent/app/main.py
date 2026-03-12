@@ -191,6 +191,44 @@ def setup_vertex_credentials() -> None:
     print(f"[Agent] Wrote GCP credentials to {creds_path}")
 
 
+def setup_default_skills() -> None:
+    """Install default Claude Code skills if not already present.
+
+    These skills enhance agent capabilities across all agent types.
+    Failures are non-critical — agents can install them manually later.
+    """
+    skills_dir = os.path.join(settings.workspace_dir, ".claude", "skills")
+    default_skills = [
+        {
+            "repo": "https://github.com/vercel-labs/skills",
+            "skill": "find-skills",
+            "check_dir": os.path.join(skills_dir, "find-skills"),
+        },
+        {
+            "repo": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+            "skill": "ui-ux-pro-max",
+            "check_dir": os.path.join(skills_dir, "ui-ux-pro-max"),
+        },
+    ]
+
+    for skill_info in default_skills:
+        if os.path.isdir(skill_info["check_dir"]):
+            print(f"[Agent] Skill already installed: {skill_info['skill']}")
+            continue
+        try:
+            result = subprocess.run(
+                ["npx", "skills", "add", skill_info["repo"], "--skill", skill_info["skill"]],
+                capture_output=True, text=True, timeout=60,
+                cwd=settings.workspace_dir,
+            )
+            if result.returncode == 0:
+                print(f"[Agent] Installed skill: {skill_info['skill']}")
+            else:
+                print(f"[Agent] Skill install failed ({skill_info['skill']}): {result.stderr.strip()[:200]}")
+        except Exception as e:
+            print(f"[Agent] Skill install error ({skill_info['skill']}): {e}")
+
+
 async def main() -> None:
     agent_id = settings.agent_id
     mode = settings.agent_mode
@@ -218,6 +256,8 @@ async def main() -> None:
         setup_github_credentials()
         register_mcp_servers()
         print(f"[Agent {agent_id}] MCP servers registered")
+        setup_default_skills()
+        print(f"[Agent {agent_id}] Default skills checked")
 
     # Start health server
     health_runner = await start_health_server(agent_id, settings.health_port)

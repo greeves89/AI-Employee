@@ -29,6 +29,12 @@ IMPORTANT FINAL STEPS (do ALL of these before finishing):
    - Add errors you encountered and how you fixed them to "## Errors & Fixes"
    - If your role or responsibilities changed during this task, update those sections too
    - Keep it concise — knowledge.md is your persistent profile that you read at task start
+
+5. **Create skills for repeatable patterns**: If you discovered a workflow, pattern, or technique
+   during this task that you might reuse, create a Claude Code skill for it:
+   - `mkdir -p /workspace/.claude/skills/<skill-name>`
+   - Write a SKILL.md with `---` frontmatter (name, description) and detailed instructions
+   - This makes you better at similar tasks in the future
 """
 
 
