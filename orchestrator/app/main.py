@@ -133,14 +133,18 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
 
 
 async def _refresh_claude_token() -> None:
-    """Background task that refreshes the Claude Code OAuth access token every 2 hours.
+    """Background task that refreshes the Claude Code OAuth access token.
 
-    Access tokens expire after ~3-8 hours. We refresh proactively every 2h.
+    Access tokens expire after ~3-8 hours. We refresh proactively every 45 min
+    and write the initial token to shared volume immediately on startup.
     Refresh tokens are single-use — each refresh returns a new pair.
     """
     from app.services.claude_token_service import ClaudeTokenService
 
     service = ClaudeTokenService()
+
+    # Write current token to shared volume immediately so agents have it at startup
+    service.write_initial_token()
 
     while True:
         try:
@@ -155,7 +159,7 @@ async def _refresh_claude_token() -> None:
         except Exception as e:
             logger.error(f"Claude token refresh task error: {e}")
 
-        await asyncio.sleep(7200)  # Every 2 hours
+        await asyncio.sleep(2700)  # Every 45 minutes
 
 
 async def _listen_task_events(redis: RedisService) -> None:
@@ -452,6 +456,13 @@ async def lifespan(app: FastAPI):
     scheduler = SchedulerService(app.state.redis)
     scheduler_task = asyncio.create_task(scheduler.run())
 
+    # Start skill catalog crawler (daily GitHub crawl)
+    from app.services.skill_crawler import SkillCrawlerService
+
+    skill_crawler = SkillCrawlerService(app.state.redis)
+    app.state.skill_crawler = skill_crawler
+    skill_crawler_task = asyncio.create_task(skill_crawler.run())
+
     # Start global Telegram bot if configured (for notifications)
     telegram_task = None
     if settings.telegram_bot_token:
@@ -478,6 +489,7 @@ async def lifespan(app: FastAPI):
     oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
+    skill_crawler_task.cancel()
     if telegram_task:
         telegram_task.cancel()
         if hasattr(app.state, "telegram_bot"):

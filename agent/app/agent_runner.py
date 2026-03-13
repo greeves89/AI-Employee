@@ -35,6 +35,10 @@ IMPORTANT FINAL STEPS (do ALL of these before finishing):
    - `mkdir -p /workspace/.claude/skills/<skill-name>`
    - Write a SKILL.md with `---` frontmatter (name, description) and detailed instructions
    - This makes you better at similar tasks in the future
+   - **Important**: When using `npx skills add` to install community skills, they end up in a temp
+     directory. After install, always copy them: `cp -r /tmp/skills-*/skills/<name> /workspace/.claude/skills/<name>`
+     or `cp -r /home/agent/.agents/skills/<name> /workspace/.claude/skills/<name>`
+   - All skills MUST live under `/workspace/.claude/skills/` to be visible in the platform UI
 """
 
 

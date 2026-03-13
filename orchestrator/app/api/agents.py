@@ -1095,11 +1095,11 @@ async def list_skills(
         if not agent.container_id:
             raise HTTPException(status_code=400, detail="Agent has no container")
 
-        # Find all SKILL.md files
+        # Find all SKILL.md files (scan multiple known locations)
         try:
             _, output = docker.exec_in_container(
                 agent.container_id,
-                "find /workspace/.claude/skills -name SKILL.md 2>/dev/null || true",
+                "sh -c 'find /workspace/.claude/skills /home/agent/.agents/skills /home/agent/.claude/skills -name SKILL.md 2>/dev/null || true'",
             )
         except Exception:
             return []
@@ -1187,6 +1187,57 @@ async def update_skill(
         docker.write_file_in_container(agent.container_id, skill_path, content)
 
         return SkillResponse(name=body.name, description=body.description, content=body.content)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+class SkillInstall(BaseModel):
+    repo: str  # GitHub URL or shorthand (e.g. "vercel-labs/skills")
+    skill: str  # Skill name within the repo
+
+
+@router.post("/{agent_id}/skills/install")
+async def install_skill_from_repo(
+    agent_id: str,
+    body: SkillInstall,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Install a Claude Code skill from a GitHub repository using npx skills add."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if not agent.container_id:
+            raise HTTPException(status_code=400, detail="Agent has no container")
+
+        # Run npx skills add, then copy from temp dir to workspace
+        skill_name = body.skill.replace("'", "").replace(";", "").replace("&", "")
+        install_cmd = f"sh -c 'cd /workspace && npx -y skills add {body.repo} --skill {skill_name}'"
+        copy_cmd = (
+            f"sh -c '"
+            f"mkdir -p /workspace/.claude/skills && "
+            f"src=$(find /tmp/skills-* -type d -name \"{skill_name}\" 2>/dev/null | head -1) && "
+            f"if [ -n \"$src\" ] && [ ! -d \"/workspace/.claude/skills/{skill_name}\" ]; then "
+            f"cp -r \"$src\" /workspace/.claude/skills/{skill_name}; fi'"
+        )
+        try:
+            docker.exec_in_container(agent.container_id, install_cmd)
+            docker.exec_in_container(agent.container_id, copy_cmd)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Skill install failed: {str(e)[:300]}")
+
+        # Verify it was installed by reading the SKILL.md
+        skill_path = f"/workspace/.claude/skills/{skill_name}/SKILL.md"
+        try:
+            _, raw = docker.exec_in_container(agent.container_id, f"sh -c 'cat \"{skill_path}\"'")
+            parsed = _parse_skill_md(raw)
+            if not parsed["name"]:
+                parsed["name"] = body.skill
+            return SkillResponse(**parsed)
+        except Exception:
+            return SkillResponse(name=body.skill, description=f"Installed from {body.repo}", content="")
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
