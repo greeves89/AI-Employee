@@ -201,6 +201,26 @@ def setup_vertex_credentials() -> None:
     print(f"[Agent] Wrote GCP credentials to {creds_path}")
 
 
+def _copy_skill_to_workspace(skill_name: str, target_dir: str) -> None:
+    """Find a skill installed by npx in /tmp and copy it to the workspace skills dir."""
+    import glob
+    import shutil
+
+    # npx skills add puts files in /tmp/skills-*/
+    patterns = [
+        f"/tmp/skills-*/.claude/skills/{skill_name}",
+        f"/tmp/skills-*/skills/{skill_name}",
+    ]
+    for pattern in patterns:
+        matches = glob.glob(pattern)
+        if matches:
+            os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir)
+            shutil.copytree(matches[0], target_dir)
+            return
+
+
 def setup_default_skills() -> None:
     """Install default Claude Code skills if not already present.
 
@@ -227,11 +247,13 @@ def setup_default_skills() -> None:
             continue
         try:
             result = subprocess.run(
-                ["npx", "skills", "add", skill_info["repo"], "--skill", skill_info["skill"]],
+                ["npx", "-y", "skills", "add", skill_info["repo"], "--skill", skill_info["skill"]],
                 capture_output=True, text=True, timeout=60,
                 cwd=settings.workspace_dir,
             )
             if result.returncode == 0:
+                # npx skills installs to a temp dir — find and copy to workspace
+                _copy_skill_to_workspace(skill_info["skill"], skill_info["check_dir"])
                 print(f"[Agent] Installed skill: {skill_info['skill']}")
             else:
                 print(f"[Agent] Skill install failed ({skill_info['skill']}): {result.stderr.strip()[:200]}")

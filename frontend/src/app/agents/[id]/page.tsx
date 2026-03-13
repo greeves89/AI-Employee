@@ -124,7 +124,28 @@ export default function AgentDetailPage() {
         title={agent.name}
         subtitle={`Agent ${agent.id.slice(0, 8)}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Inline status metrics */}
+            {!simpleMode && (
+              <div className="hidden lg:flex items-center gap-3 mr-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Cpu className="h-3 w-3 text-cyan-400" />
+                  <span className="text-cyan-400 font-medium">{cpuPercent.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <MemoryStick className="h-3 w-3 text-emerald-400" />
+                  <span className="text-emerald-400 font-medium">{memMb.toFixed(0)} MB</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {agent.mode === "custom_llm" ? <Plug className="h-3 w-3 text-violet-400" /> : <Hash className="h-3 w-3 text-violet-400" />}
+                  <span className="text-violet-400 font-medium">
+                    {agent.mode === "custom_llm" && agent.llm_config
+                      ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
+                      : agent.model.split("-").slice(0, 2).join("-")}
+                  </span>
+                </div>
+              </div>
+            )}
             <button
               onClick={async () => {
                 setRestarting(true);
@@ -154,7 +175,6 @@ export default function AgentDetailPage() {
               "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",
               stateConfig.badge
             )}>
-              {/* Green/red dot = online/offline */}
               <span className="relative flex h-1.5 w-1.5">
                 {stateConfig.online && (
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
@@ -176,45 +196,6 @@ export default function AgentDetailPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Info cards */}
-        <div className={cn("grid gap-3", simpleMode ? "grid-cols-1 md:grid-cols-1 max-w-xs" : "grid-cols-2 md:grid-cols-4")}>
-          <InfoCard
-            icon={Activity}
-            label="Status"
-            value={stateConfig.online ? `Online · ${stateConfig.label}` : stateConfig.label}
-            color={stateConfig.online ? "text-emerald-400" : "text-red-400"}
-            iconBg={stateConfig.online ? "bg-emerald-500/10" : "bg-red-500/10"}
-          />
-          {!simpleMode && (
-            <>
-              <InfoCard
-                icon={Cpu}
-                label="CPU"
-                value={`${cpuPercent.toFixed(1)}%`}
-                color="text-cyan-400"
-                iconBg="bg-cyan-500/10"
-                bar={{ value: cpuPercent, max: 100, gradient: "from-blue-500 to-cyan-400" }}
-              />
-              <InfoCard
-                icon={MemoryStick}
-                label="Memory"
-                value={`${memMb.toFixed(0)} MB`}
-                color="text-emerald-400"
-                iconBg="bg-emerald-500/10"
-                bar={{ value: memMb, max: 2048, gradient: "from-emerald-500 to-teal-400" }}
-              />
-              <InfoCard
-                icon={agent.mode === "custom_llm" ? Plug : Hash}
-                label={agent.mode === "custom_llm" ? "LLM Provider" : "Model"}
-                value={agent.mode === "custom_llm" && agent.llm_config
-                  ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
-                  : agent.model.split("-").slice(0, 2).join("-")}
-                color="text-violet-400"
-                iconBg="bg-violet-500/10"
-              />
-            </>
-          )}
-        </div>
 
         {/* Budget progress */}
         {agent.budget_usd != null && agent.budget_usd > 0 && (

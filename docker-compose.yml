@@ -142,12 +142,8 @@ services:
     depends_on:
       - caddy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf --max-time 10 https://agents.future-app.de/ || exit 1"]
-      interval: 30s
-      timeout: 15s
-      retries: 3
-      start_period: 30s
+    # No healthcheck — cloudflared has its own retry logic (--retries 10)
+    # and the minimal image has no curl/sh for external checks.
     profiles:
       - tunnel
     deploy:
@@ -157,13 +153,13 @@ services:
     networks:
       - internal
 
-  # Auto-restart unhealthy containers (monitors cloudflared healthcheck)
+  # Auto-restart unhealthy containers (only those with autoheal label)
   autoheal:
     image: willfarrell/autoheal:latest
     container_name: ai-employee-autoheal
     environment:
-      AUTOHEAL_CONTAINER_LABEL: all
-      AUTOHEAL_INTERVAL: 30
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 60
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped

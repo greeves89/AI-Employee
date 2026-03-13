@@ -165,6 +165,13 @@ IMPORTANT: If you haven't completed onboarding yet, skip the proactive check.
 
 DEFAULT_CLAUDE_MD = """# Agent System Instructions
 
+## Communication (CRITICAL!)
+- **ALWAYS respond to the user** with a clear, helpful text message. Never end silently.
+- After completing an action (tool use, code change, file creation), summarize what you did.
+- Use the user's language — if they write in German, respond in German.
+- Keep responses concise but informative. The user should never wonder "did it work?"
+- For multi-step tasks, provide brief progress updates via `send_telegram` if available.
+
 ## Environment
 - Workspace: `/workspace/` (persistent across tasks)
 - Shared files: `/shared/` (all agents can read/write)

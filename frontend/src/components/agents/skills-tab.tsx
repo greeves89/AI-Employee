@@ -12,6 +12,13 @@ import {
   RefreshCw,
   Save,
   X,
+  Download,
+  Github,
+  Loader2,
+  ExternalLink,
+  Search,
+  Store,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +29,41 @@ interface Skill {
   description: string;
   content: string;
 }
+
+interface CatalogSkill {
+  name: string;
+  repo: string;
+  description: string;
+  installs?: string;
+  category: string;
+}
+
+// Fallback catalog used when the API hasn't crawled yet
+const FALLBACK_CATALOG: CatalogSkill[] = [
+  { name: "find-skills", repo: "vercel-labs/skills", description: "Discover and install new skills from the community", installs: "", category: "core" },
+  { name: "ui-ux-pro-max", repo: "nextlevelbuilder/ui-ux-pro-max-skill", description: "UI/UX design intelligence with 50+ styles, color palettes, fonts", installs: "", category: "design" },
+  { name: "frontend-design", repo: "anthropics/skills", description: "Guidance for visual interface development", installs: "", category: "design" },
+  { name: "skill-creator", repo: "anthropics/skills", description: "Create new custom skills", installs: "", category: "core" },
+];
+
+const CATALOG_CATEGORIES: Record<string, string> = {
+  all: "All",
+  core: "Core",
+  dev: "Development",
+  design: "Design",
+  marketing: "Marketing",
+  docs: "Documents",
+  tools: "Tools",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  core: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  dev: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  design: "bg-pink-500/10 text-pink-400 border-pink-500/20",
+  marketing: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  docs: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  tools: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+};
 
 interface SkillsTabProps {
   agentId: string;
@@ -37,6 +79,109 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
   const [formDescription, setFormDescription] = useState("");
   const [formContent, setFormContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showInstall, setShowInstall] = useState(false);
+  const [installRepo, setInstallRepo] = useState("");
+  const [installSkill, setInstallSkill] = useState("");
+  const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState("");
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [catalogFilter, setCatalogFilter] = useState("all");
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [installingSkill, setInstallingSkill] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<CatalogSkill[]>(FALLBACK_CATALOG);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogCrawledAt, setCatalogCrawledAt] = useState<string | null>(null);
+
+  const installedNames = skills.map((s) => s.name);
+
+  // Fetch catalog from API when store is opened
+  const fetchCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    try {
+      const res = await fetch(`${API}/api/v1/skills/catalog`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.skills && data.skills.length > 0) {
+          setCatalog(data.skills);
+          setCatalogCrawledAt(data.crawled_at || null);
+        }
+      }
+    } catch {
+      // Use fallback
+    }
+    setCatalogLoading(false);
+  }, []);
+
+  const handleInstallFromCatalog = async (cat: CatalogSkill) => {
+    setInstallingSkill(cat.name);
+    setInstallError("");
+    try {
+      const res = await fetch(`${API}/api/v1/agents/${agentId}/skills/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ repo: cat.repo, skill: cat.name }),
+      });
+      if (res.ok) {
+        fetchSkills();
+      } else {
+        const data = await res.json().catch(() => ({ detail: "Install failed" }));
+        setInstallError(`${cat.name}: ${data.detail || "Install failed"}`);
+      }
+    } catch {
+      setInstallError(`${cat.name}: Network error`);
+    }
+    setInstallingSkill(null);
+  };
+
+  // Fetch catalog when store is opened
+  useEffect(() => {
+    if (showCatalog) {
+      fetchCatalog();
+    }
+  }, [showCatalog, fetchCatalog]);
+
+  // Build dynamic category list from catalog data
+  const dynamicCategories: Record<string, string> = { all: "All" };
+  for (const s of catalog) {
+    if (s.category && !dynamicCategories[s.category]) {
+      dynamicCategories[s.category] = CATALOG_CATEGORIES[s.category] || s.category.charAt(0).toUpperCase() + s.category.slice(1);
+    }
+  }
+
+  const filteredCatalog = catalog.filter((s) => {
+    if (catalogFilter !== "all" && s.category !== catalogFilter) return false;
+    if (catalogSearch && !s.name.includes(catalogSearch.toLowerCase()) && !s.description.toLowerCase().includes(catalogSearch.toLowerCase())) return false;
+    return true;
+  });
+
+  const handleInstallFromRepo = async () => {
+    if (!installRepo.trim() || !installSkill.trim()) return;
+    setInstalling(true);
+    setInstallError("");
+    try {
+      const res = await fetch(`${API}/api/v1/agents/${agentId}/skills/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ repo: installRepo.trim(), skill: installSkill.trim() }),
+      });
+      if (res.ok) {
+        setShowInstall(false);
+        setInstallRepo("");
+        setInstallSkill("");
+        fetchSkills();
+      } else {
+        const data = await res.json().catch(() => ({ detail: "Install failed" }));
+        setInstallError(data.detail || "Install failed");
+      }
+    } catch {
+      setInstallError("Network error");
+    }
+    setInstalling(false);
+  };
 
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -142,8 +287,32 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
           </button>
           <button
             onClick={() => {
+              setShowInstall(!showInstall);
+              setShowCatalog(false);
+              resetForm();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium border border-foreground/[0.08] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+          >
+            <Github className="h-3.5 w-3.5" />
+            Custom URL
+          </button>
+          <button
+            onClick={() => {
+              setShowCatalog(!showCatalog);
+              setShowInstall(false);
+              resetForm();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium border border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
+          >
+            <Store className="h-3.5 w-3.5" />
+            Skill Store
+          </button>
+          <button
+            onClick={() => {
               resetForm();
               setShowForm(true);
+              setShowInstall(false);
+              setShowCatalog(false);
             }}
             className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 inline-flex items-center gap-1.5"
           >
@@ -161,6 +330,252 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
         </code>{" "}
         files. The agent can invoke them as slash commands.
       </p>
+
+      {/* Install from GitHub Form */}
+      <AnimatePresence>
+        {showInstall && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Github className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">Install Skill from GitHub</h3>
+                </div>
+                <button
+                  onClick={() => { setShowInstall(false); setInstallError(""); }}
+                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                    GitHub Repository URL
+                  </label>
+                  <input
+                    type="text"
+                    value={installRepo}
+                    onChange={(e) => setInstallRepo(e.target.value)}
+                    placeholder="https://github.com/vercel-labs/skills"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                    Skill Name
+                  </label>
+                  <input
+                    type="text"
+                    value={installSkill}
+                    onChange={(e) => setInstallSkill(e.target.value)}
+                    placeholder="e.g. find-skills"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Quick-install suggestions */}
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground/70 block mb-2">
+                  Popular Skills
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { repo: "https://github.com/vercel-labs/skills", skill: "find-skills", label: "Skill Finder" },
+                    { repo: "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill", skill: "ui-ux-pro-max", label: "UI/UX Pro Max" },
+                  ].map((s) => (
+                    <button
+                      key={s.skill}
+                      onClick={() => { setInstallRepo(s.repo); setInstallSkill(s.skill); }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                        installSkill === s.skill
+                          ? "bg-primary/10 text-primary border-primary/20"
+                          : "border-foreground/[0.08] text-muted-foreground hover:text-foreground hover:border-foreground/[0.15]"
+                      )}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {installError && (
+                <p className="text-xs text-red-400">{installError}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => { setShowInstall(false); setInstallError(""); }}
+                  className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleInstallFromRepo}
+                  disabled={installing || !installRepo.trim() || !installSkill.trim()}
+                  className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {installing ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Installing...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-3.5 w-3.5" />
+                      Install
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Skill Store Catalog */}
+      <AnimatePresence>
+        {showCatalog && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Store className="h-4 w-4 text-amber-400" />
+                  <h3 className="text-sm font-medium">Skill Store</h3>
+                  <span className="text-[11px] text-muted-foreground/60">from skills.sh</span>
+                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                    {catalog.length} skills
+                  </span>
+                  {catalogCrawledAt && (
+                    <span className="text-[10px] text-muted-foreground/40">
+                      updated {new Date(catalogCrawledAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={fetchCatalog}
+                    disabled={catalogLoading}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    title="Refresh catalog"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", catalogLoading && "animate-spin")} />
+                  </button>
+                  <button
+                    onClick={() => setShowCatalog(false)}
+                    className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Search + Category filter */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                  <input
+                    type="text"
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    placeholder="Search skills..."
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-9 pr-3.5 py-2 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                  {Object.entries(dynamicCategories).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setCatalogFilter(key)}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                        catalogFilter === key
+                          ? "bg-foreground/[0.08] text-foreground border-foreground/[0.15]"
+                          : "border-foreground/[0.06] text-muted-foreground/60 hover:text-muted-foreground hover:border-foreground/[0.1]"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {installError && (
+                <p className="text-xs text-red-400">{installError}</p>
+              )}
+
+              {/* Skill grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-1">
+                {catalogLoading && catalog.length <= 4 && (
+                  <div className="col-span-full flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading skill catalog...</span>
+                  </div>
+                )}
+                {filteredCatalog.map((cat) => {
+                  const isInstalled = installedNames.includes(cat.name);
+                  const isInstalling = installingSkill === cat.name;
+                  return (
+                    <div
+                      key={cat.name}
+                      className="group flex items-center gap-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.01] p-3 hover:bg-foreground/[0.03] transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{cat.name}</span>
+                          <span className={cn(
+                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+                            CATEGORY_COLORS[cat.category] || "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                          )}>
+                            {CATALOG_CATEGORIES[cat.category]}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground/70 mt-0.5 line-clamp-1">{cat.description}</p>
+                        {cat.installs && <p className="text-[10px] text-muted-foreground/40 mt-0.5">{cat.installs} installs</p>}
+                        {!cat.installs && <p className="text-[10px] text-muted-foreground/40 mt-0.5">{cat.repo}</p>}
+                      </div>
+                      <button
+                        onClick={() => !isInstalled && !isInstalling && handleInstallFromCatalog(cat)}
+                        disabled={isInstalled || isInstalling}
+                        className={cn(
+                          "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                          isInstalled
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default"
+                            : isInstalling
+                              ? "bg-foreground/[0.04] text-muted-foreground"
+                              : "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+                        )}
+                      >
+                        {isInstalled ? (
+                          <span className="flex items-center gap-1"><Check className="h-3 w-3" /> Installed</span>
+                        ) : isInstalling ? (
+                          <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Installing</span>
+                        ) : (
+                          <span className="flex items-center gap-1"><Download className="h-3 w-3" /> Install</span>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add/Edit Form */}
       <AnimatePresence>
@@ -290,7 +705,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                         skill
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                       {skill.description}
                     </p>
                   </div>
