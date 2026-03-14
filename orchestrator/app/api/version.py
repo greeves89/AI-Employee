@@ -77,6 +77,48 @@ async def _fetch_latest_version() -> str | None:
     return None
 
 
+GITHUB_COMMITS_URL = (
+    "https://api.github.com/repos/greeves89/AI-Employee/commits"
+)
+
+
+async def _fetch_changelog(gh_token: str, limit: int = 20) -> list[dict]:
+    """Fetch recent commits from GitHub as changelog."""
+    if not gh_token:
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                GITHUB_COMMITS_URL,
+                params={"per_page": str(limit), "sha": "main"},
+                headers={
+                    "Accept": "application/vnd.github.v3+json",
+                    "Authorization": f"Bearer {gh_token}",
+                },
+            )
+            if resp.status_code != 200:
+                return []
+
+            commits = []
+            for c in resp.json():
+                msg = c.get("commit", {}).get("message", "")
+                # Skip merge commits and co-authored lines
+                first_line = msg.split("\n")[0].strip()
+                if first_line.startswith("Merge") or not first_line:
+                    continue
+                commits.append({
+                    "sha": c.get("sha", "")[:7],
+                    "message": first_line,
+                    "date": c.get("commit", {}).get("author", {}).get("date", ""),
+                    "author": c.get("commit", {}).get("author", {}).get("name", ""),
+                })
+            return commits
+    except Exception as e:
+        logger.debug(f"Changelog fetch failed: {e}")
+        return []
+
+
 @router.get("/")
 async def check_version():
     """Return current version and check GitHub for updates."""
@@ -88,3 +130,11 @@ async def check_version():
         "latest": remote_version,
         "update_available": update_available,
     }
+
+
+@router.get("/changelog")
+async def get_changelog():
+    """Return recent commits as changelog."""
+    gh_token = await _get_github_token()
+    commits = await _fetch_changelog(gh_token)
+    return {"commits": commits}
