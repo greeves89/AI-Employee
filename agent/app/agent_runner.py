@@ -1,11 +1,14 @@
 import asyncio
 import json
+import logging
 import os
 import signal
 from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
+
+logger = logging.getLogger(__name__)
 
 
 TASK_STARTUP_PREFIX = """
@@ -99,6 +102,20 @@ class AgentRunner:
         )
 
         result_data: dict = {"status": "completed"}
+        stderr_lines: list[str] = []
+
+        async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
+            """Read stderr concurrently so it's not lost when process exits."""
+            if not proc.stderr:
+                return
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if decoded:
+                    stderr_lines.append(decoded)
+                    logger.warning(f"[Claude CLI stderr] {decoded}")
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -108,6 +125,9 @@ class AgentRunner:
                 cwd=settings.workspace_dir,
                 env=env,
             )
+
+            # Read stderr in background
+            stderr_task = asyncio.create_task(_collect_stderr(self._process))
 
             async for event in self._stream_output(self._process):
                 await self._process_event(task_id, event)
@@ -122,14 +142,15 @@ class AgentRunner:
                     }
 
             returncode = await self._process.wait()
+            await stderr_task
+
             if returncode != 0:
-                stderr = ""
-                if self._process.stderr:
-                    stderr_bytes = await self._process.stderr.read()
-                    stderr = stderr_bytes.decode("utf-8", errors="replace")
+                stderr_text = "\n".join(stderr_lines).strip()
+                error_msg = stderr_text or f"Claude CLI exited with code {returncode}"
+                logger.error(f"Claude CLI failed (code {returncode}): {error_msg}")
                 result_data = {
                     "status": "error",
-                    "error": f"Claude CLI exited with code {returncode}: {stderr}",
+                    "error": f"Claude CLI exited with code {returncode}: {error_msg}",
                 }
                 await self.log_publisher.publish(
                     task_id, "error", {"message": result_data["error"]}
