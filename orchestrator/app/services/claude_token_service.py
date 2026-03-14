@@ -1,12 +1,16 @@
-"""Service for refreshing Claude Code OAuth tokens automatically.
+"""Service for reading Claude Code OAuth tokens from the host Keychain sync.
 
-Uses Anthropic's OAuth endpoint to exchange a refresh token for a new
-access token before the current one expires.  Refresh tokens are single-use:
-each refresh returns a *new* refresh token that replaces the old one.
+Instead of refreshing tokens ourselves (which causes race conditions with
+the user's local Claude Code CLI), we read the token from a host-mounted
+file that is kept up-to-date by a launchd job running sync-token.sh.
 
-After each successful refresh the new access token is written to a shared
-JSON file (/shared/.auth/token.json) so that agent containers can pick it
-up without needing a restart.
+The sync script reads from macOS Keychain → writes to host-auth/token.json
+→ mounted read-only at /host-auth/token.json in the container.
+
+Fallback chain:
+1. /host-auth/token.json (Keychain sync - preferred, always fresh)
+2. /shared/.auth/token.json (legacy shared volume)
+3. settings.claude_code_oauth_token (env var / DB)
 """
 
 import json
@@ -14,127 +18,104 @@ import logging
 import os
 from datetime import datetime, timezone
 
-import httpx
-
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Anthropic OAuth endpoint (used by Claude Code CLI)
-ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-CLAUDE_CODE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+HOST_TOKEN_PATH = "/host-auth/token.json"
+SHARED_TOKEN_PATH = "/shared/.auth/token.json"
 
 
 class ClaudeTokenService:
-    """Handles automatic refresh of Claude Code OAuth access tokens."""
+    """Reads Claude OAuth tokens from the Keychain-synced file."""
 
     def __init__(self) -> None:
         self.last_refresh: datetime | None = None
         self.consecutive_failures: int = 0
+        self._last_token_suffix: str = ""
+
+    def _read_token_file(self, path: str) -> str | None:
+        """Read access_token from a token.json file."""
+        try:
+            if not os.path.exists(path):
+                return None
+            with open(path) as f:
+                data = json.load(f)
+            token = data.get("access_token", "")
+            if not token:
+                return None
+            return token
+        except Exception as e:
+            logger.debug(f"Failed to read {path}: {e}")
+            return None
 
     async def refresh_access_token(self) -> bool:
-        """Exchange the refresh token for a new access + refresh token pair.
+        """Read fresh token from Keychain-synced file.
 
-        Returns True on success, False on failure.
-        Updates ``settings`` in-memory AND persists to the database.
+        This replaces the old Anthropic OAuth refresh — we now just read
+        the token that the host sync-token.sh script writes from Keychain.
         """
-        refresh_token = settings.claude_code_oauth_refresh_token
-        if not refresh_token:
+        # Priority 1: Host-mounted Keychain sync file
+        token = self._read_token_file(HOST_TOKEN_PATH)
+        source = "keychain"
+
+        # Priority 2: Shared volume (legacy)
+        if not token:
+            token = self._read_token_file(SHARED_TOKEN_PATH)
+            source = "shared-volume"
+
+        if not token:
+            self.consecutive_failures += 1
+            if self.consecutive_failures <= 1:
+                logger.warning(
+                    "No token file found at /host-auth/token.json — "
+                    "run scripts/sync-token.sh on the host"
+                )
             return False
 
-        try:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-                resp = await client.post(
-                    ANTHROPIC_TOKEN_URL,
-                    json={
-                        "grant_type": "refresh_token",
-                        "refresh_token": refresh_token,
-                        "client_id": CLAUDE_CODE_CLIENT_ID,
-                    },
-                )
+        token_suffix = token[-8:]
 
-            if resp.status_code != 200:
-                logger.error(
-                    f"Token refresh failed (HTTP {resp.status_code}): {resp.text}"
-                )
-                self.consecutive_failures += 1
-                return False
-
-            data = resp.json()
-            new_access = data.get("access_token", "")
-            new_refresh = data.get("refresh_token", "")
-
-            if not new_access:
-                logger.error("Token refresh response missing access_token")
-                self.consecutive_failures += 1
-                return False
-
-            # Update in-memory config
-            old_token_suffix = settings.claude_code_oauth_token[-8:] if settings.claude_code_oauth_token else "n/a"
-            settings.claude_code_oauth_token = new_access
-            if new_refresh:
-                settings.claude_code_oauth_refresh_token = new_refresh
-
-            # Persist to database
-            await self._persist_tokens(new_access, new_refresh)
-
-            # Write to shared volume so agent containers pick it up
-            self._write_shared_token(new_access)
-
+        # Only update if token actually changed
+        if token_suffix != self._last_token_suffix:
+            old_suffix = settings.claude_code_oauth_token[-8:] if settings.claude_code_oauth_token else "n/a"
+            settings.claude_code_oauth_token = token
+            self._write_shared_token(token)
+            self._last_token_suffix = token_suffix
             self.last_refresh = datetime.now(timezone.utc)
             self.consecutive_failures = 0
-
-            new_token_suffix = new_access[-8:]
             logger.info(
-                f"Claude OAuth token refreshed successfully "
-                f"(…{old_token_suffix} → …{new_token_suffix})"
+                f"Claude token updated from {source} "
+                f"(…{old_suffix} → …{token_suffix})"
             )
-            return True
+        else:
+            self.consecutive_failures = 0
 
-        except httpx.TimeoutException:
-            logger.error("Token refresh timed out")
-            self.consecutive_failures += 1
-            return False
-        except Exception as e:
-            logger.error(f"Token refresh error: {e}")
-            self.consecutive_failures += 1
-            return False
-
-    SHARED_TOKEN_PATH = "/shared/.auth/token.json"
+        return True
 
     def _write_shared_token(self, access_token: str) -> None:
         """Write the access token to the shared volume for agent containers."""
         try:
-            os.makedirs(os.path.dirname(self.SHARED_TOKEN_PATH), exist_ok=True)
+            os.makedirs(os.path.dirname(SHARED_TOKEN_PATH), exist_ok=True)
             payload = {
                 "access_token": access_token,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
-            tmp_path = self.SHARED_TOKEN_PATH + ".tmp"
+            tmp_path = SHARED_TOKEN_PATH + ".tmp"
             with open(tmp_path, "w") as f:
                 json.dump(payload, f)
-            os.replace(tmp_path, self.SHARED_TOKEN_PATH)
-            logger.info("Wrote refreshed token to shared volume")
+            os.replace(tmp_path, SHARED_TOKEN_PATH)
         except Exception as e:
             logger.error(f"Failed to write shared token file: {e}")
 
     def write_initial_token(self) -> None:
         """Write the current token to shared volume (called at startup)."""
-        token = settings.claude_code_oauth_token
+        # Try Keychain file first
+        token = self._read_token_file(HOST_TOKEN_PATH)
+        if token:
+            settings.claude_code_oauth_token = token
+            self._last_token_suffix = token[-8:]
+            logger.info(f"Loaded initial token from Keychain sync (…{token[-8:]})")
+
+        token = token or settings.claude_code_oauth_token
         if token:
             self._write_shared_token(token)
-
-    async def _persist_tokens(self, access_token: str, refresh_token: str) -> None:
-        """Save the new tokens to the database (encrypted)."""
-        from app.db.session import async_session_factory
-        from app.services.settings_service import SettingsService
-
-        try:
-            async with async_session_factory() as db:
-                svc = SettingsService(db)
-                await svc.set("claude_code_oauth_token", access_token)
-                if refresh_token:
-                    await svc.set("claude_code_oauth_refresh_token", refresh_token)
-                await db.commit()
-        except Exception as e:
-            logger.error(f"Failed to persist refreshed tokens to DB: {e}")

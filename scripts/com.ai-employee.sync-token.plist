@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ai-employee.sync-token</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string><![CDATA[
+KEYCHAIN_SERVICE="Claude Code-credentials"
+AUTH_DIR="/Volumes/AI_Base/GIT Repos/AI-Employee/host-auth"
+TOKEN_FILE="$AUTH_DIR/token.json"
+
+CREDS=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null) || exit 1
+ACCESS_TOKEN=$(echo "$CREDS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('accessToken',''))")
+EXPIRES_AT=$(echo "$CREDS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('expiresAt',0))")
+
+[ -z "$ACCESS_TOKEN" ] && exit 1
+
+if [ -f "$TOKEN_FILE" ]; then
+    OLD=$(python3 -c "import json; print(json.load(open('$TOKEN_FILE')).get('access_token',''))" 2>/dev/null || echo "")
+    [ "$OLD" = "$ACCESS_TOKEN" ] && exit 0
+fi
+
+mkdir -p "$AUTH_DIR"
+python3 -c "
+import json, sys
+from datetime import datetime, timezone
+json.dump({
+    'access_token': sys.argv[1],
+    'expires_at': int(sys.argv[2]),
+    'updated_at': datetime.now(timezone.utc).isoformat(),
+    'source': 'keychain'
+}, open(sys.argv[3], 'w'))
+" "$ACCESS_TOKEN" "$EXPIRES_AT" "$TOKEN_FILE"
+
+echo "[sync-token] Synced (...${ACCESS_TOKEN: -8}) at $(date '+%H:%M:%S')"
+]]></string>
+    </array>
+    <key>StartInterval</key>
+    <integer>120</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/sync-token.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/sync-token.log</string>
+</dict>
+</plist>

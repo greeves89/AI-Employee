@@ -133,33 +133,34 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
 
 
 async def _refresh_claude_token() -> None:
-    """Background task that refreshes the Claude Code OAuth access token.
+    """Background task that reads the Claude OAuth token from the Keychain sync file.
 
-    Access tokens expire after ~3-8 hours. We refresh proactively every 45 min
-    and write the initial token to shared volume immediately on startup.
-    Refresh tokens are single-use — each refresh returns a new pair.
+    The host runs scripts/sync-token.sh (via launchd) which reads from macOS
+    Keychain and writes to host-auth/token.json. This task reads that file
+    every 2 minutes and updates the in-memory token + shared volume.
+
+    No direct Anthropic OAuth calls — the local Claude Code CLI manages
+    the token lifecycle, avoiding race conditions with parallel usage.
     """
     from app.services.claude_token_service import ClaudeTokenService
 
     service = ClaudeTokenService()
 
-    # Write current token to shared volume immediately so agents have it at startup
+    # Load initial token from Keychain file (or fallback to env/DB)
     service.write_initial_token()
 
     while True:
         try:
-            if settings.claude_code_oauth_refresh_token:
-                success = await service.refresh_access_token()
-                if not success and service.consecutive_failures >= 3:
-                    logger.error(
-                        "Claude token refresh failed 3 times in a row - "
-                        "the refresh token may be invalid. "
-                        "Re-run 'claude login' and update the tokens."
-                    )
+            success = await service.refresh_access_token()
+            if not success and service.consecutive_failures == 3:
+                logger.error(
+                    "No token file found — run scripts/sync-token.sh on host. "
+                    "Falling back to env/DB token."
+                )
         except Exception as e:
-            logger.error(f"Claude token refresh task error: {e}")
+            logger.error(f"Token sync task error: {e}")
 
-        await asyncio.sleep(2700)  # Every 45 minutes
+        await asyncio.sleep(120)  # Check every 2 minutes
 
 
 async def _listen_task_events(redis: RedisService) -> None:
@@ -395,25 +396,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Auto-detection of Claude token failed: {e}")
 
-    # Initial token refresh if we have a refresh token (gets a fresh access token)
+    # Load initial token from Keychain sync file (or fallback to env/DB)
     from app.services.claude_token_service import ClaudeTokenService
 
     token_svc = ClaudeTokenService()
-    if settings.claude_code_oauth_refresh_token:
-        try:
-            success = await token_svc.refresh_access_token()
-            if success:
-                logger.info("Initial Claude token refresh successful - access token is fresh")
-            else:
-                logger.warning("Initial Claude token refresh failed - using existing access token")
-                # Still write whatever token we have to the shared volume
-                token_svc.write_initial_token()
-        except Exception as e:
-            logger.warning(f"Initial Claude token refresh failed: {e}")
-            token_svc.write_initial_token()
-    elif settings.claude_code_oauth_token:
-        # No refresh token, but we have an access token - write it to shared volume
-        token_svc.write_initial_token()
+    token_svc.write_initial_token()
+    logger.info("Claude token initialized (background sync every 2 min from Keychain file)")
 
     # Initialize services
     app.state.redis = RedisService(settings.redis_url)
