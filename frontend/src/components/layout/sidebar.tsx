@@ -23,6 +23,7 @@ import {
   ToggleRight,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
+import { UpdateBanner } from "./update-banner";
 import { UserMenu } from "./user-menu";
 import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
@@ -113,6 +114,9 @@ export function Sidebar() {
         })}
 
       </nav>
+
+      {/* Update Banner */}
+      <UpdateBanner />
 
       {/* Bottom */}
       <div className="border-t border-border p-3 space-y-1">
