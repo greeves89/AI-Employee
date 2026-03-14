@@ -153,8 +153,9 @@ export function UpdateBanner() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}
-              className="fixed left-1/2 top-1/2 z-50 w-[560px] max-h-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-foreground/[0.06] bg-card shadow-2xl shadow-black/40 flex flex-col"
+              className="fixed inset-0 z-50 ml-[130px] flex items-center justify-center pointer-events-none"
             >
+              <div className="w-[560px] max-h-[80vh] rounded-2xl border border-foreground/[0.06] bg-card shadow-2xl shadow-black/40 flex flex-col pointer-events-auto">
               {/* Header */}
               <div className="flex items-center gap-3 border-b border-foreground/[0.06] px-6 py-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10">
@@ -234,6 +235,7 @@ export function UpdateBanner() {
                 <Dialog.Close className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors">
                   Verstanden
                 </Dialog.Close>
+              </div>
               </div>
             </motion.div>
           </Dialog.Content>
