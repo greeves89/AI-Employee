@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 # Bump this when the agent image changes and agents need updating
-AGENT_VERSION = "1.8.0"
+AGENT_VERSION = "1.9.0"
 
 
 class Settings(BaseSettings):
