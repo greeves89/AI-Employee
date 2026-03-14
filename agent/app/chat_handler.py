@@ -49,6 +49,29 @@ class ChatHandler:
                 )
                 result = await self._execute_cli(message_id, text, model)
 
+            # If auth error, wait for token refresh and retry once
+            error_text = result.get("error", "").lower()
+            if result.get("status") == "error" and any(
+                phrase in error_text
+                for phrase in [
+                    "does not have access",
+                    "invalid_grant",
+                    "unauthorized",
+                    "401",
+                    "token",
+                    "oauth",
+                    "authentication",
+                ]
+            ):
+                logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
+                await self.log_publisher.publish_chat(
+                    message_id,
+                    "system",
+                    {"message": "Auth token issue detected, refreshing and retrying..."},
+                )
+                await asyncio.sleep(10)  # Wait for token sync
+                result = await self._execute_cli(message_id, text, model)
+
         finally:
             self.is_running = False
             self._process = None
@@ -86,6 +109,20 @@ class ChatHandler:
         result_data: dict = {"status": "completed", "text": ""}
         stream_had_error = False
         accumulated_tool_calls: list[dict] = []  # Track tool calls for persistence
+        stderr_lines: list[str] = []  # Collect stderr concurrently
+
+        async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
+            """Read stderr concurrently so it's not lost when process exits."""
+            if not proc.stderr:
+                return
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").strip()
+                if decoded:
+                    stderr_lines.append(decoded)
+                    logger.warning(f"[Claude CLI stderr] {decoded}")
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -95,6 +132,9 @@ class ChatHandler:
                 cwd=settings.workspace_dir,
                 env=env,
             )
+
+            # Read stderr in background so we capture it even if CLI crashes
+            stderr_task = asyncio.create_task(_collect_stderr(self._process))
 
             full_text = ""
             seen_text_len = 0  # Track how much text we already sent
@@ -190,13 +230,14 @@ class ChatHandler:
                             )
 
             returncode = await self._process.wait()
+            # Ensure stderr collection is complete
+            await stderr_task
+
             if returncode != 0 and not stream_had_error:
-                # Only publish error from returncode if stream didn't already report one
-                stderr = ""
-                if self._process.stderr:
-                    stderr_bytes = await self._process.stderr.read()
-                    stderr = stderr_bytes.decode("utf-8", errors="replace")
-                error_msg = stderr.strip() or "Claude CLI failed"
+                # Build error message from collected stderr
+                stderr_text = "\n".join(stderr_lines).strip()
+                error_msg = stderr_text or f"Claude CLI exited with code {returncode}"
+                logger.error(f"Claude CLI failed (code {returncode}): {error_msg}")
                 result_data = {"status": "error", "error": error_msg}
                 await self.log_publisher.publish_chat(
                     message_id, "error", {"message": error_msg}
