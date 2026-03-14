@@ -63,11 +63,20 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
   // WebSocket for live notifications
   useEffect(() => {
     intentionalClose.current = false;
+    let failCount = 0;
 
     const connect = () => {
+      if (failCount >= 5) return; // Stop retrying after repeated auth failures
+
       const tokenParam = wsToken ? `?token=${wsToken}` : "";
       const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/notifications${tokenParam}`);
       wsRef.current = ws;
+      let wasOpen = false;
+
+      ws.onopen = () => {
+        wasOpen = true;
+        failCount = 0;
+      };
 
       ws.onmessage = (event) => {
         try {
@@ -83,8 +92,10 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
 
       ws.onclose = () => {
         if (intentionalClose.current) return;
-        // Reconnect after 5 seconds
-        reconnectTimeout.current = setTimeout(connect, 5000);
+        if (!wasOpen) failCount++;
+        if (failCount >= 5) return;
+        const delay = 5000 * Math.pow(2, Math.min(failCount, 3));
+        reconnectTimeout.current = setTimeout(connect, delay);
       };
 
       ws.onerror = () => ws.close();

@@ -64,8 +64,13 @@ async def _tg_request(token: str, method: str, data: dict | None = None, files: 
 
 
 class BroadcastRequest(BaseModel):
-    text: str
+    text: str | None = None
+    message: str | None = None  # Alias — agent may send "message" instead of "text"
     parse_mode: str | None = None
+
+    @property
+    def resolved_text(self) -> str:
+        return self.text or self.message or ""
 
 
 class SendMessageRequest(BaseModel):
@@ -195,6 +200,10 @@ async def broadcast(
     Use this when the agent doesn't have a specific chat_id (e.g. proactive tasks).
     """
     agent_id = agent_auth["agent_id"]
+    text = body.resolved_text
+    if not text:
+        raise HTTPException(status_code=422, detail="text or message field required")
+
     token = await _get_bot_token(agent_id, db)
     r = aioredis.from_url(settings.redis_url, decode_responses=True)
     try:
@@ -207,7 +216,7 @@ async def broadcast(
     sent = 0
     for cid in chat_ids:
         try:
-            data = {"chat_id": int(cid), "text": body.text}
+            data = {"chat_id": int(cid), "text": text}
             if body.parse_mode:
                 data["parse_mode"] = body.parse_mode
             await _tg_request(token, "sendMessage", data)

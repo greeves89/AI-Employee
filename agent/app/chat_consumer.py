@@ -9,7 +9,7 @@ from app.config import settings
 from app.log_publisher import LogPublisher
 
 
-def _build_telegram_prompt(text: str, tg: dict) -> str:
+def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) -> str:
     """Wrap the user message with Telegram context and API instructions."""
     chat_id = tg.get("chat_id", "")
     username = tg.get("username", "")
@@ -33,9 +33,29 @@ def _build_telegram_prompt(text: str, tg: dict) -> str:
     api_base = f"{orch_url}/api/v1/telegram"
     auth = f"-H 'X-Agent-ID: {agent_id}' -H 'Authorization: Bearer {agent_token}'"
 
+    # Session startup instructions — read knowledge + memories FIRST
+    startup_block = ""
+    if is_new_session:
+        startup_block = """
+FIRST STEPS (do these BEFORE responding to the user):
+1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
+2. Use knowledge_search (query relevant to this message) to check the shared knowledge base
+3. Use memory_search (query: "") to check for recent memories and user preferences
+4. Use list_todos to check for pending work items
+Then respond to the user's message below with full context.
+
+"""
+    else:
+        # Even on resumed sessions, remind to check knowledge for the current topic
+        startup_block = """
+CONTEXT REMINDER: If this message involves a topic you're unsure about, use knowledge_search
+and memory_search BEFORE responding. Do NOT guess or send error messages without checking first.
+
+"""
+
     return f"""{header}
 
-{text}
+{startup_block}{text}
 
 ---
 TELEGRAM CONTEXT (read carefully):
@@ -50,6 +70,7 @@ RULES:
 - You have FULL access to all your MCP tools (memory, todos, notifications, orchestrator).
   Use them exactly as you would for Web UI messages! Save memories, create/update TODOs,
   read knowledge.md, and use notify_user — Telegram is just another input channel.
+- If unsure about context: READ /workspace/knowledge.md — it has your role, patterns, and learnings.
 
 ORCHESTRATOR TELEGRAM API (use these curl commands):
 
@@ -159,11 +180,30 @@ class ChatConsumer:
         finally:
             await watch_redis.aclose()
 
+    def _is_new_session(self) -> bool:
+        """Check if the handler has no active session (first message)."""
+        if self._handler and hasattr(self._handler, "session_id"):
+            return self._handler.session_id is None
+        return True
+
     def _prepare_text(self, text: str, telegram_ctx: dict | None) -> str:
         """Prepare message text, adding Telegram context if present."""
         if telegram_ctx:
-            return _build_telegram_prompt(text, telegram_ctx)
-        return text
+            return _build_telegram_prompt(text, telegram_ctx, is_new_session=self._is_new_session())
+        # For Web UI chat: also add startup instructions for new sessions
+        if self._is_new_session():
+            return (
+                "FIRST STEPS (do these BEFORE responding):\n"
+                "1. Read /workspace/knowledge.md to recall your role and learnings\n"
+                "2. Use knowledge_search (query relevant to this message) for shared knowledge\n"
+                "3. Use memory_search (query: '') for recent memories\n"
+                "Then respond to:\n\n" + text
+            )
+        # Resumed session — still remind to check knowledge if unsure
+        return (
+            "REMINDER: If unsure about this topic, use knowledge_search and memory_search first.\n\n"
+            + text
+        )
 
     async def start(self) -> None:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
