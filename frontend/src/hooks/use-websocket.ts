@@ -12,11 +12,15 @@ export function useWebSocket(path: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const mountedRef = useRef(false);
+  const failCountRef = useRef(0);
   const wsToken = useAuthStore((s) => s.wsToken);
 
   const connect = useCallback(() => {
     // Don't connect if unmounted (prevents StrictMode double-connection)
     if (!mountedRef.current) return;
+
+    // Stop retrying after 5 consecutive failures (likely auth error)
+    if (failCountRef.current >= 5) return;
 
     // Close any existing connection first
     if (wsRef.current) {
@@ -27,15 +31,27 @@ export function useWebSocket(path: string) {
     const tokenParam = wsToken ? `${path.includes("?") ? "&" : "?"}token=${wsToken}` : "";
     const ws = new WebSocket(`${getWsUrl()}/api/v1${path}${tokenParam}`);
     wsRef.current = ws;
+    let wasOpen = false;
 
     ws.onopen = () => {
       if (mountedRef.current) setIsConnected(true);
+      wasOpen = true;
+      failCountRef.current = 0; // Reset on successful connection
     };
 
     ws.onclose = () => {
       if (!mountedRef.current) return; // Don't reconnect after unmount
       setIsConnected(false);
-      reconnectTimeout.current = setTimeout(connect, 3000);
+
+      if (!wasOpen) {
+        // Connection was rejected (403/401) — count as failure
+        failCountRef.current++;
+      }
+
+      // Exponential backoff: 3s, 6s, 12s, 24s, then stop
+      if (failCountRef.current >= 5) return;
+      const delay = 3000 * Math.pow(2, Math.min(failCountRef.current, 3));
+      reconnectTimeout.current = setTimeout(connect, delay);
     };
 
     ws.onerror = () => ws.close();
@@ -53,10 +69,11 @@ export function useWebSocket(path: string) {
         // Ignore non-JSON messages
       }
     };
-  }, [path]);
+  }, [path, wsToken]);
 
   useEffect(() => {
     mountedRef.current = true;
+    failCountRef.current = 0; // Reset when token changes
     connect();
     return () => {
       mountedRef.current = false;

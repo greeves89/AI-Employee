@@ -58,7 +58,15 @@
       "Read(//Volumes/AI_Base/GIT Repos/future-app-landingpage/**)",
       "Bash(rm -rf \"Neuer Ordner\")",
       "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --turbopack)",
-      "Bash(docker compose logs orchestrator --since 5s)"
+      "Bash(docker compose logs orchestrator --since 5s)",
+      "Bash(docker version)",
+      "Bash(DOCKER_API_VERSION=1.45 docker ps --format \"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}\")",
+      "Bash(docker restart:*)",
+      "Bash(python -m alembic heads)",
+      "Bash(docker compose:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker images:*)",
+      "WebFetch(domain:skills.sh)"
     ],
     "additionalDirectories": [
       "/Volumes/AI_Base/GIT Repos/future-app-landingpage/src/app",

@@ -8,6 +8,18 @@ from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
 
 
+TASK_STARTUP_PREFIX = """
+FIRST STEPS (do these BEFORE starting the actual task):
+1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
+2. Use knowledge_search (query relevant to this task) to check the shared knowledge base
+3. Use memory_search (query: "") to check for recent memories and user preferences
+4. Use list_todos to check for pending work items
+If you encounter ANY problem during the task, ALWAYS search knowledge_search and memory_search
+for solutions BEFORE reporting errors or asking the user.
+
+---
+"""
+
 SELF_IMPROVEMENT_SUFFIX = """
 
 ---
@@ -61,8 +73,8 @@ class AgentRunner:
         model = model or settings.default_model
         self.is_running = True
 
-        # Enhance prompt with self-improvement instruction
-        enhanced_prompt = prompt + SELF_IMPROVEMENT_SUFFIX
+        # Enhance prompt with startup context + self-improvement instruction
+        enhanced_prompt = TASK_STARTUP_PREFIX + prompt + SELF_IMPROVEMENT_SUFFIX
 
         cmd = [
             "claude",
