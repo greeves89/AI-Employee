@@ -133,14 +133,11 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
 
 
 async def _refresh_claude_token() -> None:
-    """Background task that reads the Claude OAuth token from the Keychain sync file.
+    """Background task that manages the Claude OAuth token lifecycle.
 
-    The host runs scripts/sync-token.sh (via launchd) which reads from macOS
-    Keychain and writes to host-auth/token.json. This task reads that file
-    every 2 minutes and updates the in-memory token + shared volume.
-
-    No direct Anthropic OAuth calls — the local Claude Code CLI manages
-    the token lifecycle, avoiding race conditions with parallel usage.
+    - Reads token from host-auth/token.json (synced from macOS Keychain by launchd)
+    - Only refreshes via Anthropic OAuth when token is actually expired
+    - Checks file for changes every 2 min, but only calls Anthropic when needed
     """
     from app.services.claude_token_service import ClaudeTokenService
 
@@ -160,7 +157,7 @@ async def _refresh_claude_token() -> None:
         except Exception as e:
             logger.error(f"Token sync task error: {e}")
 
-        await asyncio.sleep(120)  # Check every 2 minutes
+        await asyncio.sleep(120)  # Check file every 2 min (cheap file read, NOT an API call)
 
 
 async def _listen_task_events(redis: RedisService) -> None:
