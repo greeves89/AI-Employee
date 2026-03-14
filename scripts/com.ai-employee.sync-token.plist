@@ -14,7 +14,10 @@ AUTH_DIR="/Volumes/AI_Base/GIT Repos/AI-Employee/host-auth"
 TOKEN_FILE="$AUTH_DIR/token.json"
 
 CREDS=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null) || exit 1
+
+# Extract all OAuth fields
 ACCESS_TOKEN=$(echo "$CREDS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('accessToken',''))")
+REFRESH_TOKEN=$(echo "$CREDS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('refreshToken',''))")
 EXPIRES_AT=$(echo "$CREDS" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('expiresAt',0))")
 
 [ -z "$ACCESS_TOKEN" ] && exit 1
@@ -25,18 +28,23 @@ if [ -f "$TOKEN_FILE" ]; then
 fi
 
 mkdir -p "$AUTH_DIR"
+# Remove macOS quarantine/provenance attributes that block writes
+xattr -d com.apple.provenance "$TOKEN_FILE" 2>/dev/null
+xattr -d com.apple.quarantine "$TOKEN_FILE" 2>/dev/null
+
 python3 -c "
 import json, sys
 from datetime import datetime, timezone
 json.dump({
     'access_token': sys.argv[1],
-    'expires_at': int(sys.argv[2]),
+    'refresh_token': sys.argv[2],
+    'expires_at': int(sys.argv[3]),
     'updated_at': datetime.now(timezone.utc).isoformat(),
     'source': 'keychain'
-}, open(sys.argv[3], 'w'))
-" "$ACCESS_TOKEN" "$EXPIRES_AT" "$TOKEN_FILE"
+}, open(sys.argv[4], 'w'))
+" "$ACCESS_TOKEN" "$REFRESH_TOKEN" "$EXPIRES_AT" "$TOKEN_FILE"
 
-echo "[sync-token] Synced (...${ACCESS_TOKEN: -8}) at $(date '+%H:%M:%S')"
+echo "[sync-token] Synced (...${ACCESS_TOKEN: -8}) refresh=(...${REFRESH_TOKEN: -8}) at $(date '+%H:%M:%S')"
 ]]></string>
     </array>
     <key>StartInterval</key>
