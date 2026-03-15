@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 HOST_TOKEN_PATH = "/host-auth/token.json"
 SHARED_TOKEN_PATH = "/shared/.auth/token.json"
 
-# Anthropic OAuth endpoints
-ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-ANTHROPIC_CLIENT_ID = "cdc4db18-3b34-4345-b8d5-eb1f826346d5"
+# Claude Code OAuth endpoints (extracted from Claude Code CLI source)
+ANTHROPIC_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 
 class ClaudeTokenService:
