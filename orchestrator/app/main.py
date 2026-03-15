@@ -149,15 +149,15 @@ async def _refresh_claude_token() -> None:
     while True:
         try:
             success = await service.refresh_access_token()
-            if not success and service.consecutive_failures == 3:
-                logger.error(
-                    "No token file found — run scripts/sync-token.sh on host. "
-                    "Falling back to env/DB token."
+            if not success:
+                logger.warning(
+                    "No token file found at /host-auth/token.json — "
+                    "ensure launchd sync job is running on host."
                 )
         except Exception as e:
             logger.error(f"Token sync task error: {e}")
 
-        await asyncio.sleep(120)  # Check file every 2 min (cheap file read, NOT an API call)
+        await asyncio.sleep(300)  # Check file every 5 min (cheap file read, NOT an API call)
 
 
 async def _listen_task_events(redis: RedisService) -> None:
