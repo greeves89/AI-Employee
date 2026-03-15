@@ -82,7 +82,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./orchestrator:/app
       - ai-employee-shared:/shared
-      - ./host-auth:/host-auth:ro
+      - ${HOME}/.ai-employee:/host-auth:ro
     depends_on:
       postgres:
         condition: service_healthy
