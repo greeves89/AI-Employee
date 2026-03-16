@@ -71,6 +71,7 @@ class ClaudeTokenService:
             )
             settings.claude_code_oauth_token = token
             self._last_token_suffix = token_suffix
+            self._write_shared_token(token)
             logger.info(
                 f"Claude token updated from {source} "
                 f"(…{old_suffix} → …{token_suffix})"

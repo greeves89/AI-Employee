@@ -157,7 +157,7 @@ async def _refresh_claude_token() -> None:
         except Exception as e:
             logger.error(f"Token sync task error: {e}")
 
-        await asyncio.sleep(300)  # Check file every 5 min (cheap file read, NOT an API call)
+        await asyncio.sleep(30)  # Check file every 30s (cheap file read, NOT an API call)
 
 
 async def _listen_task_events(redis: RedisService) -> None:
