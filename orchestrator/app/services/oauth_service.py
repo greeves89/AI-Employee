@@ -1,5 +1,7 @@
 """OAuth service - handles OAuth flows, token storage, and token refresh."""
 
+import base64
+import hashlib
 import json
 import logging
 import secrets
@@ -45,20 +47,39 @@ class OAuthService:
         state_key = f"oauth:state:{state}"
         await self.redis.client.setex(state_key, STATE_TTL_SECONDS, provider_name)
 
-        # Anthropic uses manual redirect (user copies code from platform page)
+        # Anthropic uses manual redirect + PKCE (public client)
         if provider.token_exchange_method == "anthropic_oauth":
             redirect_uri = "https://platform.claude.com/oauth/code/callback"
+
+            # Generate PKCE code_verifier and code_challenge
+            code_verifier = secrets.token_urlsafe(64)
+            code_challenge = base64.urlsafe_b64encode(
+                hashlib.sha256(code_verifier.encode()).digest()
+            ).rstrip(b"=").decode()
+
+            # Store code_verifier alongside state in Redis
+            verifier_key = f"oauth:verifier:{state}"
+            await self.redis.client.setex(verifier_key, STATE_TTL_SECONDS, code_verifier)
+
+            params = {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": " ".join(provider.scopes),
+                "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            }
         else:
             redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/integrations/{provider_name}/callback"
-
-        params = {
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-            "scope": " ".join(provider.scopes),
-            "state": state,
-            **provider.auth_extra_params,
-        }
+            params = {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": " ".join(provider.scopes),
+                "state": state,
+                **provider.auth_extra_params,
+            }
 
         return f"{provider.authorization_url}?{urlencode(params)}"
 
@@ -87,7 +108,13 @@ class OAuthService:
         # Exchange code for tokens
         async with httpx.AsyncClient() as client:
             if provider.token_exchange_method == "anthropic_oauth":
-                # Anthropic: JSON body, no client_secret (public client)
+                # Anthropic: JSON body, PKCE code_verifier, no client_secret
+                verifier_key = f"oauth:verifier:{state}"
+                code_verifier = await self.redis.client.get(verifier_key)
+                if code_verifier and isinstance(code_verifier, bytes):
+                    code_verifier = code_verifier.decode()
+                await self.redis.client.delete(verifier_key)
+
                 token_response = await client.post(
                     provider.token_url,
                     json={
@@ -95,6 +122,7 @@ class OAuthService:
                         "code": code,
                         "redirect_uri": redirect_uri,
                         "client_id": client_id,
+                        "code_verifier": code_verifier or "",
                     },
                     headers={"Content-Type": "application/json"},
                 )
