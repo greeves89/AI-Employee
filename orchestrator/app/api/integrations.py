@@ -134,7 +134,9 @@ async def exchange_code_manual(
 ):
     """Exchange an authorization code for tokens (manual flow - user pastes code)."""
     try:
-        integration = await service.exchange_code(provider, body.code, body.state)
+        # Strip URL fragment (everything after #) — user may accidentally copy it
+        code = body.code.split("#")[0].strip()
+        integration = await service.exchange_code(provider, code, body.state)
         return {
             "status": "connected",
             "provider": provider,
