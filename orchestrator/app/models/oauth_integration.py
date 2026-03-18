@@ -14,6 +14,7 @@ class OAuthProvider(str, enum.Enum):
     MICROSOFT = "microsoft"
     APPLE = "apple"
     GITHUB = "github"
+    ANTHROPIC = "anthropic"
 
 
 class OAuthIntegration(Base, TimestampMixin):

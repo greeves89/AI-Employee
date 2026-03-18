@@ -45,7 +45,11 @@ class OAuthService:
         state_key = f"oauth:state:{state}"
         await self.redis.client.setex(state_key, STATE_TTL_SECONDS, provider_name)
 
-        redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/integrations/{provider_name}/callback"
+        # Anthropic uses manual redirect (user copies code from platform page)
+        if provider.token_exchange_method == "anthropic_oauth":
+            redirect_uri = "https://platform.claude.com/oauth/code/callback"
+        else:
+            redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/integrations/{provider_name}/callback"
 
         params = {
             "client_id": client_id,
@@ -74,21 +78,38 @@ class OAuthService:
         provider = get_provider(provider_name)
         client_id = get_provider_client_id(provider)
         client_secret = get_provider_client_secret(provider)
-        redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/integrations/{provider_name}/callback"
+
+        if provider.token_exchange_method == "anthropic_oauth":
+            redirect_uri = "https://platform.claude.com/oauth/code/callback"
+        else:
+            redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/integrations/{provider_name}/callback"
 
         # Exchange code for tokens
         async with httpx.AsyncClient() as client:
-            token_response = await client.post(
-                provider.token_url,
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": redirect_uri,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
-                headers={"Accept": "application/json"},
-            )
+            if provider.token_exchange_method == "anthropic_oauth":
+                # Anthropic: JSON body, no client_secret (public client)
+                token_response = await client.post(
+                    provider.token_url,
+                    json={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "redirect_uri": redirect_uri,
+                        "client_id": client_id,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+            else:
+                token_response = await client.post(
+                    provider.token_url,
+                    data={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "redirect_uri": redirect_uri,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                    },
+                    headers={"Accept": "application/json"},
+                )
             if token_response.status_code != 200:
                 logger.error(f"Token exchange failed: {token_response.text}")
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
@@ -178,16 +199,28 @@ class OAuthService:
         refresh_token = decrypt_token(integration.refresh_token_encrypted)
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                provider.token_url,
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
-                headers={"Accept": "application/json"},
-            )
+            if provider.token_exchange_method == "anthropic_oauth":
+                # Anthropic: JSON body, no client_secret
+                response = await client.post(
+                    provider.token_url,
+                    json={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": client_id,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+            else:
+                response = await client.post(
+                    provider.token_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                    },
+                    headers={"Accept": "application/json"},
+                )
             if response.status_code != 200:
                 logger.error(f"Token refresh failed for {integration.provider.value}: {response.text}")
                 raise ValueError(f"Token refresh failed: {response.status_code}")

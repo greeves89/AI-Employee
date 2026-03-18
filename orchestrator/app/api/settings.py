@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
+from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.schemas.settings import SettingsResponse, SettingsUpdate
 from app.services.settings_service import SettingsService
 
@@ -11,9 +13,15 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 @router.get("/", response_model=SettingsResponse)
-async def get_settings(user=Depends(require_auth)):
+async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     has_api_key = bool(settings.anthropic_api_key)
-    has_oauth_token = bool(settings.claude_code_oauth_token)
+
+    # Check DB for Anthropic OAuth integration (bot's own session)
+    result = await db.execute(
+        select(OAuthIntegration).where(OAuthIntegration.provider == OAuthProvider.ANTHROPIC)
+    )
+    anthropic_integration = result.scalar_one_or_none()
+    has_oauth_token = anthropic_integration is not None or bool(settings.claude_code_oauth_token)
 
     if has_api_key:
         auth_method = "api_key"

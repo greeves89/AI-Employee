@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 # Bump this when the agent image changes and agents need updating
-AGENT_VERSION = "1.11.0"
+AGENT_VERSION = "1.12.0"
 
 
 class Settings(BaseSettings):
@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     oauth_apple_team_id: str = ""
     oauth_apple_key_id: str = ""
     oauth_apple_private_key: str = ""
+    # Anthropic OAuth (Claude Code public client — no secret needed)
+    oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
 
     # GitHub Webhook

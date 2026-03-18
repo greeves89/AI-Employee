@@ -1,14 +1,12 @@
 """Service for managing Claude Code OAuth tokens.
 
 Token sources (priority order):
-1. /host-auth/token.json (Keychain sync from macOS host via launchd job)
-2. /shared/.auth/token.json (shared volume fallback)
-3. settings.claude_code_oauth_token (env var / DB fallback)
+1. DB: oauth_integrations table (provider='anthropic') — BOT'S OWN SESSION
+2. /host-auth/token.json (Keychain sync from macOS host — LEGACY FALLBACK)
+3. settings.claude_code_oauth_token (env var / manual paste — LAST RESORT)
 
-The launchd job on the host (com.ai-employee.sync-token) handles ALL token
-refreshes and writes the result back to the macOS Keychain so VS Code stays
-logged in. The server NEVER refreshes tokens directly — doing so would
-invalidate VS Code's session.
+The preferred flow is: user logs in via WebUI → tokens stored encrypted in DB
+→ background task auto-refreshes → agents get fresh token from shared volume.
 """
 
 import json
@@ -26,7 +24,7 @@ SHARED_TOKEN_PATH = "/shared/.auth/token.json"
 
 
 class ClaudeTokenService:
-    """Manages Claude OAuth tokens — reads from Keychain sync, never self-refreshes."""
+    """Manages Claude OAuth tokens — prefers DB (own session), falls back to Keychain sync."""
 
     def __init__(self) -> None:
         self._last_token_suffix: str = ""
@@ -45,22 +43,68 @@ class ClaudeTokenService:
             logger.debug(f"Failed to read {path}: {e}")
             return None
 
+    async def _get_db_token(self) -> str | None:
+        """Read token from DB (oauth_integrations, provider='anthropic').
+
+        This is the bot's OWN OAuth session — independent of VS Code.
+        Auto-refresh is handled by the existing _refresh_oauth_tokens background task.
+        """
+        try:
+            from app.db.session import async_session_factory
+            from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+            from app.core.encryption import decrypt_token
+            from sqlalchemy import select
+
+            async with async_session_factory() as db:
+                result = await db.execute(
+                    select(OAuthIntegration).where(
+                        OAuthIntegration.provider == OAuthProvider.ANTHROPIC
+                    )
+                )
+                integration = result.scalar_one_or_none()
+                if not integration:
+                    return None
+
+                token = decrypt_token(integration.access_token_encrypted)
+                if token:
+                    return token
+        except Exception as e:
+            logger.debug(f"Failed to read Anthropic token from DB: {e}")
+        return None
+
     async def refresh_access_token(self) -> bool:
-        """Read fresh token from Keychain sync file. Never self-refreshes."""
-        token_data = self._read_token_data(HOST_TOKEN_PATH)
-        source = "keychain"
+        """Get the best available token and propagate to shared volume.
 
-        if not token_data:
-            token_data = self._read_token_data(SHARED_TOKEN_PATH)
-            source = "shared-volume"
+        Priority:
+        1. DB (anthropic integration) — bot's own session
+        2. /host-auth/token.json (Keychain sync)
+        3. settings.claude_code_oauth_token (env/manual)
+        """
+        token = None
+        source = "unknown"
 
-        if not token_data:
-            logger.warning(
-                "No token file found — ensure launchd sync job is running on host"
-            )
+        # Priority 1: DB (own OAuth session)
+        db_token = await self._get_db_token()
+        if db_token:
+            token = db_token
+            source = "db (own session)"
+
+        # Priority 2: Keychain sync file
+        if not token:
+            token_data = self._read_token_data(HOST_TOKEN_PATH)
+            if token_data:
+                token = token_data["access_token"]
+                source = "keychain"
+
+        # Priority 3: Env/manual
+        if not token and settings.claude_code_oauth_token:
+            token = settings.claude_code_oauth_token
+            source = "settings"
+
+        if not token:
+            logger.warning("No Claude token found in DB, Keychain file, or settings")
             return False
 
-        token = token_data["access_token"]
         token_suffix = token[-8:]
 
         if token_suffix != self._last_token_suffix:
