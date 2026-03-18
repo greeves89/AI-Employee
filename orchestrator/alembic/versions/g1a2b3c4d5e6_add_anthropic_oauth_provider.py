@@ -16,7 +16,7 @@ depends_on = None
 
 def upgrade() -> None:
     # Add 'anthropic' to the oauthprovider enum type
-    op.execute("ALTER TYPE oauthprovider ADD VALUE IF NOT EXISTS 'anthropic'")
+    op.execute("ALTER TYPE oauthprovider ADD VALUE IF NOT EXISTS 'ANTHROPIC'")
 
 
 def downgrade() -> None:

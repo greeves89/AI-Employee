@@ -108,7 +108,7 @@ class OAuthService:
         # Exchange code for tokens
         async with httpx.AsyncClient() as client:
             if provider.token_exchange_method == "anthropic_oauth":
-                # Anthropic: JSON body, PKCE code_verifier, no client_secret
+                # Anthropic: form-encoded body, PKCE code_verifier, no client_secret
                 verifier_key = f"oauth:verifier:{state}"
                 code_verifier = await self.redis.client.get(verifier_key)
                 if code_verifier and isinstance(code_verifier, bytes):
@@ -117,14 +117,18 @@ class OAuthService:
 
                 token_response = await client.post(
                     provider.token_url,
-                    json={
+                    data={
                         "grant_type": "authorization_code",
                         "code": code,
                         "redirect_uri": redirect_uri,
                         "client_id": client_id,
                         "code_verifier": code_verifier or "",
+                        "state": state,
                     },
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Accept": "application/json",
+                    },
                 )
             else:
                 token_response = await client.post(
@@ -228,15 +232,18 @@ class OAuthService:
 
         async with httpx.AsyncClient() as client:
             if provider.token_exchange_method == "anthropic_oauth":
-                # Anthropic: JSON body, no client_secret
+                # Anthropic: form-encoded, no client_secret
                 response = await client.post(
                     provider.token_url,
-                    json={
+                    data={
                         "grant_type": "refresh_token",
                         "refresh_token": refresh_token,
                         "client_id": client_id,
                     },
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Accept": "application/json",
+                    },
                 )
             else:
                 response = await client.post(
