@@ -282,6 +282,36 @@ async def _listen_chat_completions(redis: RedisService) -> None:
             await asyncio.sleep(1)
 
 
+async def _init_db_from_models() -> None:
+    """Create all tables from SQLAlchemy models and stamp Alembic to HEAD.
+
+    Used as fallback when Alembic migrations fail (fresh DB, broken chain).
+    """
+    import subprocess
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.models import Base  # noqa: F401
+
+    engine = create_async_engine(settings.database_url)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await engine.dispose()
+    logger.info("Tables created from SQLAlchemy models")
+
+    result = subprocess.run(
+        ["alembic", "stamp", "head"],
+        cwd="/app",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode == 0:
+        logger.info("Alembic stamped to HEAD")
+    else:
+        logger.warning(f"Alembic stamp failed: {result.stderr.strip()[:200]}")
+
+
 # --- Lifespan ---
 
 
@@ -291,6 +321,8 @@ async def lifespan(app: FastAPI):
     _validate_config()
 
     # Run Alembic migrations to create/update tables
+    # If Alembic fails (fresh DB, broken migration chain), fall back to
+    # creating tables directly from SQLAlchemy models + stamp HEAD.
     import subprocess
     try:
         result = subprocess.run(
@@ -301,12 +333,14 @@ async def lifespan(app: FastAPI):
             timeout=30,
         )
         if result.returncode != 0:
-            logger.error(f"Alembic migration failed: {result.stderr}")
-            raise RuntimeError(f"Database migration failed: {result.stderr}")
-        logger.info("Database migrations applied successfully")
+            logger.warning(f"Alembic migration failed: {result.stderr.strip()[:200]}")
+            logger.info("Falling back to direct table creation from models ...")
+            await _init_db_from_models()
+        else:
+            logger.info("Database migrations applied successfully")
     except subprocess.TimeoutExpired:
-        logger.error("Alembic migration timed out")
-        raise
+        logger.warning("Alembic migration timed out, falling back to direct init ...")
+        await _init_db_from_models()
 
     # Seed builtin agent templates
     try:
