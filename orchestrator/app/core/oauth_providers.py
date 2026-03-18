@@ -93,7 +93,13 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
         authorization_url="https://platform.claude.com/oauth/authorize",
         token_url="https://platform.claude.com/v1/oauth/token",
         userinfo_url=None,
-        scopes=["user:inference", "user:profile"],
+        scopes=[
+            "user:inference",
+            "user:profile",
+            "user:file_upload",
+            "user:mcp_servers",
+            "user:sessions:claude_code",
+        ],
         supports_refresh=True,
         auth_extra_params={"response_type": "code"},
         token_exchange_method="anthropic_oauth",  # JSON body, no client_secret
