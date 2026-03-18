@@ -49,7 +49,7 @@ class OAuthService:
 
         # Anthropic uses manual redirect + PKCE (public client)
         if provider.token_exchange_method == "anthropic_oauth":
-            redirect_uri = "https://claude.ai/oauth/code/callback"
+            redirect_uri = "https://platform.claude.com/oauth/code/callback"
 
             # Generate PKCE code_verifier and code_challenge
             code_verifier = secrets.token_urlsafe(64)
@@ -101,7 +101,7 @@ class OAuthService:
         client_secret = get_provider_client_secret(provider)
 
         if provider.token_exchange_method == "anthropic_oauth":
-            redirect_uri = "https://claude.ai/oauth/code/callback"
+            redirect_uri = "https://platform.claude.com/oauth/code/callback"
         else:
             redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/integrations/{provider_name}/callback"
 
