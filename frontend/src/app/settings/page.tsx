@@ -533,35 +533,11 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Card Footer: Default Model */}
-            <div className="px-5 py-3.5 bg-foreground/[0.015] border-t border-foreground/[0.04]">
-              <div className="flex items-center gap-4">
-                <label className="text-[11px] font-medium text-muted-foreground/70 whitespace-nowrap">
-                  Default Model
-                </label>
-                <div className="flex gap-1.5 flex-1">
-                  {modelOptions.map((m) => (
-                    <button
-                      key={m.value}
-                      onClick={() => setDefaultModel(m.value)}
-                      className={cn(
-                        "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
-                        defaultModel === m.value
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
-                      )}
-                    >
-                      <span className="block">{m.label}</span>
-                      <span className={cn(
-                        "block text-[9px] mt-0.5",
-                        defaultModel === m.value ? "opacity-70" : "opacity-40"
-                      )}>
-                        {m.tier}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* Footer: configured providers info */}
+            <div className="px-5 py-3 bg-foreground/[0.015] border-t border-foreground/[0.04]">
+              <p className="text-[10px] text-muted-foreground/40">
+                Modell-Auswahl erfolgt pro Agent in den Agent-Settings.
+              </p>
             </div>
           </div>
         </section>

@@ -16,7 +16,7 @@ from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
-from app.schemas.agent import AgentCreate, AgentListResponse, AgentResponse, KnowledgeResponse, KnowledgeUpdate, LLMConfigResponse, LLMConfigUpdate
+from app.schemas.agent import AgentCreate, AgentListResponse, AgentModelUpdate, AgentResponse, KnowledgeResponse, KnowledgeUpdate, LLMConfigResponse, LLMConfigUpdate
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -206,6 +206,42 @@ async def update_llm_config(
 
         updated = await manager.update_llm_config(agent_id, body.model_dump(exclude_none=True))
         return {"agent_id": agent_id, "llm_config": updated}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.patch("/{agent_id}/model")
+async def update_agent_model(
+    agent_id: str,
+    body: AgentModelUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Update the model provider and model for an agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        agent.model = body.model
+        config = dict(agent.config or {})
+        config["model_provider"] = body.model_provider
+        agent.config = config
+        await db.commit()
+        await db.refresh(agent)
+
+        # Restart container to pick up new model
+        if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+            try:
+                await manager.restart_agent(agent_id)
+            except Exception:
+                pass  # Non-critical — next task will use new model
+
+        return {
+            "agent_id": agent_id,
+            "model": agent.model,
+            "model_provider": body.model_provider,
+            "status": "updated",
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
