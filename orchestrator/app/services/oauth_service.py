@@ -143,7 +143,11 @@ class OAuthService:
                     headers={"Accept": "application/json"},
                 )
             if token_response.status_code != 200:
-                logger.error(f"Token exchange failed: {token_response.text}")
+                logger.error(
+                    f"Token exchange failed ({token_response.status_code}): {token_response.text} | "
+                    f"provider={provider_name}, code_len={len(code)}, code_start={code[:20]}..., "
+                    f"redirect_uri={redirect_uri}, has_verifier={bool(code_verifier) if provider.token_exchange_method == 'anthropic_oauth' else 'n/a'}"
+                )
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
 
