@@ -947,12 +947,144 @@ function AgentSettings({
     }
   };
 
+  // Claude Code model selection state
+  const [agentModel, setAgentModel] = useState(agent.model);
+  const [agentProvider, setAgentProvider] = useState<string>(agent.model_provider || "anthropic");
+  const [modelSaving, setModelSaving] = useState(false);
+
+  const CLAUDE_MODELS: Record<string, { value: string; label: string; tier: string }[]> = {
+    anthropic: [
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
+      { value: "claude-sonnet-4-5-20250929", label: "Sonnet 4.5", tier: "Balanced" },
+      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
+    ],
+    bedrock: [
+      { value: "us.anthropic.claude-sonnet-4-6-v1:0", label: "Sonnet 4.6", tier: "Balanced" },
+      { value: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Balanced" },
+      { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Fast" },
+      { value: "us.anthropic.claude-opus-4-20250514-v1:0", label: "Opus 4", tier: "Powerful" },
+    ],
+    vertex: [
+      { value: "claude-sonnet-4-6@latest", label: "Sonnet 4.6", tier: "Balanced" },
+      { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Balanced" },
+      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-opus-4@20250514", label: "Opus 4", tier: "Powerful" },
+    ],
+    foundry: [
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
+      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Balanced" },
+      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
+    ],
+  };
+
+  const PROVIDER_LABELS: Record<string, string> = {
+    anthropic: "Anthropic Direct",
+    bedrock: "Amazon Bedrock",
+    vertex: "Google Vertex",
+    foundry: "Azure Foundry",
+  };
+
+  const modelOptions = CLAUDE_MODELS[agentProvider] || CLAUDE_MODELS.anthropic;
+  const modelChanged = agentModel !== agent.model || agentProvider !== (agent.model_provider || "anthropic");
+
+  const handleModelSave = async () => {
+    setModelSaving(true);
+    try {
+      await api.updateAgentModel(agentId, agentProvider, agentModel);
+      setMessage({ type: "success", text: "Modell aktualisiert. Agent wird neu gestartet." });
+      const updated = await api.getAgent(agentId);
+      onUpdated(updated as Agent);
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Fehler" });
+    } finally {
+      setModelSaving(false);
+    }
+  };
+
+  // When provider changes, reset model to first option
+  useEffect(() => {
+    const models = CLAUDE_MODELS[agentProvider] || [];
+    if (models.length && !models.some((m) => m.value === agentModel)) {
+      setAgentModel(models[0].value);
+    }
+  }, [agentProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
 
   return (
     <div className="space-y-6 overflow-auto max-h-[calc(100vh-22rem)] pb-4">
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
+
+      {/* Model Selection (Claude Code agents) */}
+      {agent.mode === "claude_code" && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-blue-400" />
+              <span className="text-sm font-medium">Modell</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+                {PROVIDER_LABELS[agentProvider] || agentProvider}
+              </span>
+            </div>
+            {modelChanged && (
+              <button
+                onClick={handleModelSave}
+                disabled={modelSaving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:opacity-40 transition-all"
+              >
+                {modelSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Speichern
+              </button>
+            )}
+          </div>
+          <div className="p-5 space-y-4">
+            {/* Provider */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground/70">Provider</label>
+              <div className="flex gap-1.5">
+                {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setAgentProvider(key)}
+                    className={cn(
+                      "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
+                      agentProvider === key
+                        ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                        : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground border border-transparent"
+                    )}
+                  >
+                    {label.split(" ")[0]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Model */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground/70">Model</label>
+              <div className="flex gap-1.5">
+                {modelOptions.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => setAgentModel(m.value)}
+                    className={cn(
+                      "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
+                      agentModel === m.value
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
+                    )}
+                  >
+                    <span className="block">{m.label}</span>
+                    <span className={cn("block text-[9px] mt-0.5", agentModel === m.value ? "opacity-70" : "opacity-40")}>{m.tier}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* LLM Configuration (custom_llm only) */}
       {agent.mode === "custom_llm" && agent.llm_config && (

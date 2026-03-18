@@ -64,6 +64,17 @@ export async function createAgent(
   });
 }
 
+export async function updateAgentModel(
+  agentId: string,
+  modelProvider: string,
+  model: string,
+): Promise<{ agent_id: string; model: string; model_provider: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/model`, {
+    method: "PATCH",
+    body: JSON.stringify({ model_provider: modelProvider, model }),
+  });
+}
+
 export async function updateLLMConfig(
   agentId: string,
   config: Partial<LLMConfig>,

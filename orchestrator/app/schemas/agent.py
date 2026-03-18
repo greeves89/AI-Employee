@@ -60,6 +60,7 @@ class AgentResponse(BaseModel):
     container_id: str | None
     state: AgentState
     model: str
+    model_provider: str = "anthropic"
     mode: str = "claude_code"
     llm_config: LLMConfigResponse | None = None
     role: str | None = None
@@ -85,6 +86,12 @@ class AgentResponse(BaseModel):
 class AgentListResponse(BaseModel):
     agents: list[AgentResponse]
     total: int
+
+
+class AgentModelUpdate(BaseModel):
+    """Update agent's model provider and model."""
+    model_provider: str  # "anthropic", "bedrock", "vertex", "foundry"
+    model: str  # e.g., "claude-sonnet-4-6"
 
 
 class KnowledgeResponse(BaseModel):

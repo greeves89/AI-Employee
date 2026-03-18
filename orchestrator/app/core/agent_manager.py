@@ -391,16 +391,17 @@ class AgentManager:
         self.redis = redis
 
     @staticmethod
-    def _build_provider_env() -> dict[str, str]:
+    def _build_provider_env(agent_provider: str | None = None) -> dict[str, str]:
         """Build environment variables for the active model provider.
 
-        Returns the correct auth env vars depending on ``settings.model_provider``:
+        Uses per-agent provider if set, otherwise falls back to global settings.
+
         - ``anthropic`` (default): ANTHROPIC_API_KEY *or* CLAUDE_CODE_OAUTH_TOKEN
         - ``bedrock``: CLAUDE_CODE_USE_BEDROCK + AWS credentials
         - ``vertex``:  CLAUDE_CODE_USE_VERTEX + GCP credentials
         - ``foundry``: CLAUDE_CODE_USE_FOUNDRY + Azure Foundry credentials
         """
-        provider = settings.model_provider
+        provider = agent_provider or settings.model_provider
 
         if provider == "bedrock":
             env: dict[str, str] = {"CLAUDE_CODE_USE_BEDROCK": "1"}
@@ -552,7 +553,9 @@ class AgentManager:
             })
         else:
             # Claude Code: standard provider env + MCP + integrations
-            provider_env = self._build_provider_env()
+            # Per-agent provider from config, fallback to global
+            agent_provider = None  # Will be set from DB config after agent is created
+            provider_env = self._build_provider_env(agent_provider)
             mcp_env = await self._get_custom_mcp_env()
             integration_env = await self._get_integration_env(integrations or [])
             env_vars.update({
@@ -788,7 +791,8 @@ class AgentManager:
                 **integration_env,
             })
         else:
-            provider_env = self._build_provider_env()
+            agent_provider = config.get("model_provider")
+            provider_env = self._build_provider_env(agent_provider)
             mcp_env = await self._get_custom_mcp_env(agent_config=config)
             integration_env = await self._get_integration_env(config.get("integrations", []))
             env_vars.update({
@@ -922,7 +926,8 @@ class AgentManager:
                 **integration_env,
             })
         else:
-            provider_env = self._build_provider_env()
+            agent_provider = config.get("model_provider")
+            provider_env = self._build_provider_env(agent_provider)
             mcp_env = await self._get_custom_mcp_env(agent_config=config)
             integration_env = await self._get_integration_env(config.get("integrations", []))
             env_vars.update({
@@ -1094,6 +1099,7 @@ class AgentManager:
             "container_id": agent.container_id,
             "state": agent.state,
             "model": agent.model,
+            "model_provider": config.get("model_provider", settings.model_provider),
             "mode": agent.mode or "claude_code",
             "llm_config": llm_config_response,
             "role": config.get("role", ""),

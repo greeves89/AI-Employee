@@ -44,6 +44,7 @@ export interface Agent {
   container_id: string | null;
   state: AgentState;
   model: string;
+  model_provider: ModelProvider;
   mode: AgentMode;
   llm_config: LLMConfigResponse | null;
   role: string | null;
