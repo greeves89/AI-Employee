@@ -90,8 +90,8 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
         display_name="Anthropic (Claude)",
         icon="Bot",
         description="Claude Code OAuth — eigene Bot-Session",
-        authorization_url="https://platform.claude.com/oauth/authorize",
-        token_url="https://platform.claude.com/v1/oauth/token",
+        authorization_url="https://claude.ai/oauth/authorize",
+        token_url="https://claude.ai/v1/oauth/token",
         userinfo_url=None,
         scopes=[
             "user:inference",
