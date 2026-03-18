@@ -85,6 +85,21 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
         client_id_setting="oauth_github_client_id",
         client_secret_setting="oauth_github_client_secret",
     ),
+    "anthropic": OAuthProviderConfig(
+        name="anthropic",
+        display_name="Anthropic (Claude)",
+        icon="Bot",
+        description="Claude Code OAuth — eigene Bot-Session",
+        authorization_url="https://platform.claude.com/oauth/authorize",
+        token_url="https://platform.claude.com/v1/oauth/token",
+        userinfo_url=None,
+        scopes=["user:inference", "user:profile"],
+        supports_refresh=True,
+        auth_extra_params={"response_type": "code"},
+        token_exchange_method="anthropic_oauth",  # JSON body, no client_secret
+        client_id_setting="oauth_anthropic_client_id",
+        client_secret_setting="",  # Public client — no secret needed
+    ),
     "apple": OAuthProviderConfig(
         name="apple",
         display_name="Apple",

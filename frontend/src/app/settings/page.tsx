@@ -6,6 +6,7 @@ import {
   Key, MessageSquare, Save, Loader2,
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
+  ExternalLink, Copy, LogIn,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -127,6 +128,12 @@ export default function SettingsPage() {
   const [maxTurns, setMaxTurns] = useState(100);
   const [maxAgents, setMaxAgents] = useState(10);
   const [registrationOpen, setRegistrationOpen] = useState(true);
+  // Claude OAuth login
+  const [claudeLoginOpen, setClaudeLoginOpen] = useState(false);
+  const [claudeAuthState, setClaudeAuthState] = useState("");
+  const [claudeCode, setClaudeCode] = useState("");
+  const [claudeLoginLoading, setClaudeLoginLoading] = useState(false);
+  const [claudeLoginError, setClaudeLoginError] = useState("");
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -213,6 +220,43 @@ export default function SettingsPage() {
       setMessage(`Error: ${e instanceof Error ? e.message : "Failed"}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Claude OAuth login handlers
+  const handleClaudeLogin = async () => {
+    try {
+      setClaudeLoginError("");
+      const { auth_url } = await api.getAuthUrl("anthropic");
+      // Extract state from auth URL
+      const url = new URL(auth_url);
+      const state = url.searchParams.get("state") || "";
+      setClaudeAuthState(state);
+      setClaudeLoginOpen(true);
+      setClaudeCode("");
+      // Open Anthropic login in new tab
+      window.open(auth_url, "_blank");
+    } catch (e) {
+      setMessage(`Error: ${e instanceof Error ? e.message : "Failed to start login"}`);
+    }
+  };
+
+  const handleClaudeCodeSubmit = async () => {
+    if (!claudeCode.trim()) return;
+    setClaudeLoginLoading(true);
+    setClaudeLoginError("");
+    try {
+      await api.exchangeOAuthCode("anthropic", claudeCode.trim(), claudeAuthState);
+      setClaudeLoginOpen(false);
+      setClaudeCode("");
+      setMessage("Claude Login erfolgreich! Bot hat eigene Session.");
+      // Refresh settings
+      const s = await api.getSettings();
+      setSettings(s);
+    } catch (e) {
+      setClaudeLoginError(e instanceof Error ? e.message : "Code exchange failed");
+    } finally {
+      setClaudeLoginLoading(false);
     }
   };
 
@@ -374,15 +418,25 @@ export default function SettingsPage() {
                       mono
                     />
                   ) : (
-                    <CredentialField
-                      label="OAuth Token"
-                      type="password"
-                      value={oauthToken}
-                      onChange={setOauthToken}
-                      placeholder="sk-ant-oat01-..."
-                      hint='Run "claude login", then set CLAUDE_CODE_OAUTH_TOKEN in .env and restart. Auto-detected on startup!'
-                      mono
-                    />
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleClaudeLogin}
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-orange-500/10 border border-orange-500/20 px-4 py-3 text-sm font-medium text-orange-400 hover:bg-orange-500/20 transition-all duration-200"
+                      >
+                        <LogIn className="h-4 w-4" />
+                        Mit Claude einloggen
+                        <ExternalLink className="h-3 w-3 opacity-50" />
+                      </button>
+                      <p className="text-[10px] text-muted-foreground/40">
+                        Erstellt eine eigene OAuth-Session für den Bot. Kein Konflikt mit VS Code.
+                      </p>
+                      {settings?.has_oauth_token && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                          <CheckCircle2 className="h-3 w-3" />
+                          OAuth Session aktiv
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -699,6 +753,59 @@ export default function SettingsPage() {
             </span>
           )}
         </div>
+        {/* ─── Claude OAuth Code Paste Modal ─── */}
+        {claudeLoginOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
+            >
+              <h3 className="text-base font-semibold mb-1">Claude Login Code eingeben</h3>
+              <p className="text-xs text-muted-foreground/60 mb-4">
+                Ein neuer Tab wurde geöffnet. Logge dich dort ein und kopiere den angezeigten Code hierher.
+              </p>
+
+              <input
+                type="text"
+                value={claudeCode}
+                onChange={(e) => setClaudeCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleClaudeCodeSubmit()}
+                placeholder="Code hier einfügen..."
+                autoFocus
+                className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-3 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25"
+              />
+
+              {claudeLoginError && (
+                <p className="text-xs text-red-400 mt-2 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {claudeLoginError}
+                </p>
+              )}
+
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={handleClaudeCodeSubmit}
+                  disabled={claudeLoginLoading || !claudeCode.trim()}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
+                >
+                  {claudeLoginLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Verbinden
+                </button>
+                <button
+                  onClick={() => { setClaudeLoginOpen(false); setClaudeCode(""); setClaudeLoginError(""); }}
+                  className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </motion.div>
     </div>
   );

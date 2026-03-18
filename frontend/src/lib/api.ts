@@ -309,6 +309,18 @@ export async function updateAgentIntegrations(agentId: string, integrations: str
   });
 }
 
+// Manual code exchange (Anthropic OAuth)
+export async function exchangeOAuthCode(
+  provider: string,
+  code: string,
+  state: string,
+): Promise<{ status: string; provider: string; account_label?: string; expires_at?: string }> {
+  return fetchJSON(`${getBase()}/integrations/${provider}/exchange-code`, {
+    method: "POST",
+    body: JSON.stringify({ code, state }),
+  });
+}
+
 // PAT-based integrations (GitHub)
 export async function savePatToken(provider: string, token: string): Promise<{ status: string; provider: string; account_label?: string }> {
   return fetchJSON(`${getBase()}/integrations/${provider}/pat`, {

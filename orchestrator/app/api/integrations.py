@@ -117,6 +117,34 @@ async def get_token(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# --- Manual code exchange (Anthropic OAuth — user copies code from platform page) ---
+
+
+class CodeExchangeRequest(BaseModel):
+    code: str
+    state: str
+
+
+@router.post("/{provider}/exchange-code")
+async def exchange_code_manual(
+    provider: str,
+    body: CodeExchangeRequest,
+    user=Depends(require_auth),
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Exchange an authorization code for tokens (manual flow - user pastes code)."""
+    try:
+        integration = await service.exchange_code(provider, body.code, body.state)
+        return {
+            "status": "connected",
+            "provider": provider,
+            "account_label": integration.account_label,
+            "expires_at": integration.expires_at.isoformat() if integration.expires_at else None,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # --- PAT-based integrations (GitHub etc.) ---
 
 
