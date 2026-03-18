@@ -207,23 +207,9 @@ export default function AgentDetailPage() {
           <UpdateBanner agentId={agentId} onUpdated={(a) => setAgent(a)} />
         )}
 
-        {/* Current task banner */}
-        {agent.current_task && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl bg-blue-500/5 border border-blue-500/10 px-5 py-3 flex items-center gap-3"
-          >
-            <Loader2 className="h-4 w-4 text-blue-400 animate-spin shrink-0" />
-            <div>
-              <p className="text-xs font-medium text-blue-400/70">Currently working on</p>
-              <p className="text-sm font-medium text-blue-400 truncate">{agent.current_task}</p>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Pill tab switcher */}
-        <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit overflow-x-auto">
+        {/* Pill tab switcher + current task indicator */}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit overflow-x-auto">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -242,6 +228,19 @@ export default function AgentDetailPage() {
               </button>
             );
           })}
+          </div>
+
+          {/* Current task indicator (inline) */}
+          {agent.current_task && (
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-1.5 max-w-xs"
+            >
+              <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
+              <p className="text-[11px] font-medium text-blue-400 truncate">{agent.current_task}</p>
+            </motion.div>
+          )}
         </div>
 
         {/* Tab content */}
