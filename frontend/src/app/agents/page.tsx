@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
@@ -18,6 +18,20 @@ export default function AgentsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  const [stoppingAll, setStoppingAll] = useState(false);
+
+  const handleStopAll = async () => {
+    if (!confirm("Alle Agents stoppen?")) return;
+    setStoppingAll(true);
+    try {
+      const running = agents.filter((a) => ["running", "idle", "working"].includes(a.state));
+      await Promise.all(running.map((a) => api.stopAgent(a.id)));
+      await refresh();
+    } finally {
+      setStoppingAll(false);
+    }
+  };
 
   const handleStop = async (id: string) => {
     setActionLoading(id);
@@ -80,6 +94,18 @@ export default function AgentsPage() {
                 <Network className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Stop All */}
+            {agents.some((a) => ["running", "idle", "working"].includes(a.state)) && (
+              <button
+                onClick={handleStopAll}
+                disabled={stoppingAll}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all duration-200"
+              >
+                {stoppingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
+                Stop All
+              </button>
+            )}
 
             <button
               onClick={() => setShowCreate(true)}

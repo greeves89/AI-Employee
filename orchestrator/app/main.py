@@ -282,6 +282,30 @@ async def _listen_chat_completions(redis: RedisService) -> None:
             await asyncio.sleep(1)
 
 
+async def _persist_agent_messages(redis: RedisService) -> None:
+    """Listen for inter-agent message events and persist them to DB."""
+    from app.db.session import async_session_factory
+    from app.models.agent_message import AgentMessage
+
+    pubsub = await redis.subscribe("agent:messages:persist")
+    while True:
+        try:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5)
+            if message and message["type"] == "message":
+                data = json.loads(message["data"])
+                async with async_session_factory() as db:
+                    db.add(AgentMessage(
+                        from_agent_id=data.get("from_agent_id", ""),
+                        from_agent_name=data.get("from_name", ""),
+                        to_agent_id=data.get("to_agent_id", ""),
+                        text=data.get("text", ""),
+                    ))
+                    await db.commit()
+        except Exception as e:
+            logger.debug(f"[MessagePersist] Error: {e}")
+            await asyncio.sleep(1)
+
+
 async def _init_db_from_models() -> None:
     """Create all tables from SQLAlchemy models and stamp Alembic to HEAD.
 
@@ -468,6 +492,9 @@ async def lifespan(app: FastAPI):
 
     # Start Claude Code OAuth token refresh background task
     claude_token_task = asyncio.create_task(_refresh_claude_token())
+
+    # Start inter-agent message persistence listener
+    message_persist_task = asyncio.create_task(_persist_agent_messages(app.state.redis))
 
     # Start scheduler service for recurring tasks
     from app.services.scheduler_service import SchedulerService
