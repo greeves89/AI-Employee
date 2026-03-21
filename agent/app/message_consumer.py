@@ -76,42 +76,19 @@ class MessageConsumer:
             return f"[Error] {str(e)[:200]}"
 
     async def _send_reply(self, to_agent_id: str, message: str) -> bool:
-        """Send reply back to the sender agent via orchestrator API."""
-        import urllib.request
-        import urllib.error
-
-        url = f"{settings.orchestrator_url}/api/v1/agents/{to_agent_id}/message"
-        payload = json.dumps({
-            "from_agent_id": self.agent_id,
-            "from_name": settings.agent_name,
-            "text": message,
-        }).encode()
-
-        # Build agent token for auth
-        import hashlib
-        import hmac as hmac_mod
-        token = hmac_mod.new(
-            settings.agent_token.encode() if hasattr(settings, "agent_token") and settings.agent_token else b"",
-            b"",
-            hashlib.sha256,
-        ).hexdigest()
-
-        # Use the AGENT_TOKEN directly (it's already the HMAC token)
-        agent_token = settings.agent_token
-
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {agent_token}",
-                "X-Agent-ID": self.agent_id,
-            },
-            method="POST",
-        )
+        """Send reply back to the sender agent via Redis queue (bypasses HTTP)."""
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return resp.status == 200
+            if not self.redis:
+                return False
+            reply_payload = json.dumps({
+                "id": f"reply-{to_agent_id}-{self.agent_id}",
+                "from_agent_id": self.agent_id,
+                "from_name": settings.agent_name,
+                "text": message,
+                "to_agent_id": to_agent_id,
+            })
+            await self.redis.lpush(f"agent:{to_agent_id}:messages", reply_payload)
+            return True
         except Exception as e:
             logger.warning(f"Failed to send reply to {to_agent_id}: {e}")
             return False

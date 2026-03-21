@@ -18,6 +18,7 @@ from app.models.feedback import Feedback, FeedbackStatus, FeedbackCategory
 from app.models.command_approval import CommandApproval, ApprovalStatus
 from app.models.audit_log import AuditLog, AuditEventType
 from app.models.knowledge import KnowledgeEntry
+from app.models.agent_message import AgentMessage
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -29,4 +30,5 @@ __all__ = [
     "CommandApproval", "ApprovalStatus",
     "AuditLog", "AuditEventType",
     "KnowledgeEntry",
+    "AgentMessage",
 ]

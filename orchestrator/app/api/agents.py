@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -457,6 +457,26 @@ async def send_message_to_agent(
             "to_agent_id": agent_id,
         })
         await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
+
+        # Persist in DB for history/visualization
+        from app.models.agent_message import AgentMessage as AgentMessageModel
+        db_msg = AgentMessageModel(
+            from_agent_id=from_id,
+            from_agent_name=sender,
+            to_agent_id=agent_id,
+            text=body.text,
+        )
+        db.add(db_msg)
+        await db.commit()
+
+        # Publish event for real-time frontend updates
+        await redis.client.publish("agent:messages", json.dumps({
+            "id": message_id,
+            "from_agent_id": from_id,
+            "from_name": sender,
+            "to_agent_id": agent_id,
+            "text": body.text[:100],
+        }))
 
         return {"status": "sent", "message_id": message_id, "to_agent": agent_id}
     except ValueError:
@@ -1326,3 +1346,64 @@ async def get_team_directory(
             "model": agent.model,
         })
     return {"agents": directory, "total": len(directory)}
+
+
+@router.get("/team/messages")
+async def get_agent_messages(
+    minutes: int = 60,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get recent inter-agent messages for visualization.
+
+    Returns connections (which agents talked) and recent messages.
+    """
+    from datetime import timedelta
+    from sqlalchemy import select, func, and_
+
+    from app.models.agent_message import AgentMessage as AgentMessageModel
+
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+
+    # Get recent messages
+    result = await db.execute(
+        select(AgentMessageModel)
+        .where(AgentMessageModel.timestamp >= since)
+        .order_by(AgentMessageModel.timestamp.desc())
+        .limit(100)
+    )
+    messages = result.scalars().all()
+
+    # Build connections (unique pairs with message count)
+    connections: dict[str, dict] = {}
+    recent_bubbles: list[dict] = []
+
+    for msg in messages:
+        # Connection key (sorted so A->B and B->A are the same connection)
+        pair = tuple(sorted([msg.from_agent_id, msg.to_agent_id]))
+        key = f"{pair[0]}:{pair[1]}"
+
+        if key not in connections:
+            connections[key] = {
+                "from": pair[0],
+                "to": pair[1],
+                "count": 0,
+                "last_at": msg.timestamp.isoformat(),
+            }
+        connections[key]["count"] += 1
+
+    # Recent bubbles (last 10 messages for floating chat bubbles)
+    for msg in messages[:10]:
+        recent_bubbles.append({
+            "from": msg.from_agent_id,
+            "to": msg.to_agent_id,
+            "text": msg.text[:60] + ("..." if len(msg.text) > 60 else ""),
+            "from_name": msg.from_agent_name,
+            "timestamp": msg.timestamp.isoformat(),
+        })
+
+    return {
+        "connections": list(connections.values()),
+        "messages": recent_bubbles,
+        "total": len(messages),
+    }
