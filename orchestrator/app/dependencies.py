@@ -205,8 +205,8 @@ async def verify_agent_token(request: Request) -> dict:
     token = auth.removeprefix("Bearer ").strip()
     agent_id = request.headers.get("X-Agent-ID", "")
 
-    # Also try to extract agent_id from request body for POST requests
-    if not agent_id:
+    # Also try to extract agent_id from request body for POST requests only
+    if not agent_id and request.method == "POST":
         try:
             body = await request.json()
             agent_id = body.get("agent_id", "")
