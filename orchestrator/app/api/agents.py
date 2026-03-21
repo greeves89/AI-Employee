@@ -60,6 +60,132 @@ async def get_permission_packages(user=Depends(require_auth)):
     return {"packages": packages, "defaults": DEFAULT_PERMISSIONS}
 
 
+# --- Team routes (MUST be before /{agent_id} to avoid path conflicts) ---
+
+
+@router.get("/team/directory")
+async def get_team_directory(
+    user=Depends(require_auth_or_agent),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Get the team directory - all agents with their roles and status."""
+    agents = await manager.list_agents()
+    directory = []
+    for agent in agents:
+        config = agent.config or {}
+        directory.append({
+            "id": agent.id,
+            "name": agent.name,
+            "role": config.get("role", ""),
+            "onboarding_complete": config.get("onboarding_complete", False),
+            "state": agent.state.value if hasattr(agent.state, "value") else str(agent.state),
+            "model": agent.model,
+        })
+    return {"agents": directory, "total": len(directory)}
+
+
+@router.get("/team/messages")
+async def get_agent_messages(
+    minutes: int = 60,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get recent inter-agent messages for visualization."""
+    from datetime import timedelta
+    from sqlalchemy import select
+
+    from app.models.agent_message import AgentMessage as AgentMessageModel
+
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+
+    result = await db.execute(
+        select(AgentMessageModel)
+        .where(AgentMessageModel.timestamp >= since)
+        .order_by(AgentMessageModel.timestamp.desc())
+        .limit(100)
+    )
+    messages = result.scalars().all()
+
+    connections: dict[str, dict] = {}
+    recent_bubbles: list[dict] = []
+
+    for msg in messages:
+        pair = tuple(sorted([msg.from_agent_id, msg.to_agent_id]))
+        key = f"{pair[0]}:{pair[1]}"
+        if key not in connections:
+            connections[key] = {
+                "from": pair[0],
+                "to": pair[1],
+                "count": 0,
+                "last_at": msg.timestamp.isoformat(),
+            }
+        connections[key]["count"] += 1
+
+    for msg in messages[:10]:
+        recent_bubbles.append({
+            "from": msg.from_agent_id,
+            "to": msg.to_agent_id,
+            "text": msg.text[:60] + ("..." if len(msg.text) > 60 else ""),
+            "from_name": msg.from_agent_name,
+            "timestamp": msg.timestamp.isoformat(),
+        })
+
+    return {
+        "connections": list(connections.values()),
+        "messages": recent_bubbles,
+        "total": len(messages),
+    }
+
+
+@router.get("/team/conversation")
+async def get_agent_conversation(
+    agent_a: str,
+    agent_b: str,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the full conversation between two specific agents."""
+    from sqlalchemy import select, or_, and_
+
+    from app.models.agent_message import AgentMessage as AgentMessageModel
+
+    result = await db.execute(
+        select(AgentMessageModel)
+        .where(
+            or_(
+                and_(
+                    AgentMessageModel.from_agent_id == agent_a,
+                    AgentMessageModel.to_agent_id == agent_b,
+                ),
+                and_(
+                    AgentMessageModel.from_agent_id == agent_b,
+                    AgentMessageModel.to_agent_id == agent_a,
+                ),
+            )
+        )
+        .order_by(AgentMessageModel.timestamp.asc())
+        .limit(200)
+    )
+    messages = result.scalars().all()
+
+    return {
+        "messages": [
+            {
+                "from_id": msg.from_agent_id,
+                "from_name": msg.from_agent_name,
+                "to_id": msg.to_agent_id,
+                "text": msg.text,
+                "timestamp": msg.timestamp.isoformat(),
+            }
+            for msg in messages
+        ],
+        "total": len(messages),
+    }
+
+
+# --- End team routes ---
+
+
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
     user=Depends(require_auth),
@@ -1327,129 +1453,4 @@ async def delete_skill(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
-@router.get("/team/directory")
-async def get_team_directory(
-    user=Depends(require_auth_or_agent),
-    manager: AgentManager = Depends(_get_agent_manager),
-):
-    """Get the team directory - all agents with their roles and status."""
-    agents = await manager.list_agents()
-    directory = []
-    for agent in agents:
-        config = agent.config or {}
-        directory.append({
-            "id": agent.id,
-            "name": agent.name,
-            "role": config.get("role", ""),
-            "onboarding_complete": config.get("onboarding_complete", False),
-            "state": agent.state.value if hasattr(agent.state, "value") else str(agent.state),
-            "model": agent.model,
-        })
-    return {"agents": directory, "total": len(directory)}
-
-
-@router.get("/team/messages")
-async def get_agent_messages(
-    minutes: int = 60,
-    user=Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get recent inter-agent messages for visualization.
-
-    Returns connections (which agents talked) and recent messages.
-    """
-    from datetime import timedelta
-    from sqlalchemy import select, func, and_
-
-    from app.models.agent_message import AgentMessage as AgentMessageModel
-
-    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-
-    # Get recent messages
-    result = await db.execute(
-        select(AgentMessageModel)
-        .where(AgentMessageModel.timestamp >= since)
-        .order_by(AgentMessageModel.timestamp.desc())
-        .limit(100)
-    )
-    messages = result.scalars().all()
-
-    # Build connections (unique pairs with message count)
-    connections: dict[str, dict] = {}
-    recent_bubbles: list[dict] = []
-
-    for msg in messages:
-        # Connection key (sorted so A->B and B->A are the same connection)
-        pair = tuple(sorted([msg.from_agent_id, msg.to_agent_id]))
-        key = f"{pair[0]}:{pair[1]}"
-
-        if key not in connections:
-            connections[key] = {
-                "from": pair[0],
-                "to": pair[1],
-                "count": 0,
-                "last_at": msg.timestamp.isoformat(),
-            }
-        connections[key]["count"] += 1
-
-    # Recent bubbles (last 10 messages for floating chat bubbles)
-    for msg in messages[:10]:
-        recent_bubbles.append({
-            "from": msg.from_agent_id,
-            "to": msg.to_agent_id,
-            "text": msg.text[:60] + ("..." if len(msg.text) > 60 else ""),
-            "from_name": msg.from_agent_name,
-            "timestamp": msg.timestamp.isoformat(),
-        })
-
-    return {
-        "connections": list(connections.values()),
-        "messages": recent_bubbles,
-        "total": len(messages),
-    }
-
-
-@router.get("/team/conversation")
-async def get_agent_conversation(
-    agent_a: str,
-    agent_b: str,
-    user=Depends(require_auth_or_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get the full conversation between two specific agents."""
-    from sqlalchemy import select, or_, and_
-
-    from app.models.agent_message import AgentMessage as AgentMessageModel
-
-    result = await db.execute(
-        select(AgentMessageModel)
-        .where(
-            or_(
-                and_(
-                    AgentMessageModel.from_agent_id == agent_a,
-                    AgentMessageModel.to_agent_id == agent_b,
-                ),
-                and_(
-                    AgentMessageModel.from_agent_id == agent_b,
-                    AgentMessageModel.to_agent_id == agent_a,
-                ),
-            )
-        )
-        .order_by(AgentMessageModel.timestamp.asc())
-        .limit(200)
-    )
-    messages = result.scalars().all()
-
-    return {
-        "messages": [
-            {
-                "from_id": msg.from_agent_id,
-                "from_name": msg.from_agent_name,
-                "to_id": msg.to_agent_id,
-                "text": msg.text,
-                "timestamp": msg.timestamp.isoformat(),
-            }
-            for msg in messages
-        ],
-        "total": len(messages),
-    }
+    # Old team routes removed — moved to top of file (before /{agent_id} routes)
