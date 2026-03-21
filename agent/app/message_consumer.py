@@ -32,6 +32,37 @@ class MessageConsumer:
         self._reply_counts: dict[str, int] = {}  # agent_id -> count this hour
         self._reply_reset_at: float = 0
 
+    async def _get_conversation_history(self, other_agent_id: str) -> str:
+        """Load recent conversation history with another agent from orchestrator API."""
+        import urllib.request
+        import urllib.error
+
+        url = (
+            f"{settings.orchestrator_url}/api/v1/agents/team/conversation"
+            f"?agent_a={self.agent_id}&agent_b={other_agent_id}"
+        )
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "Authorization": f"Bearer {settings.agent_token}",
+                    "X-Agent-ID": self.agent_id,
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+                messages = data.get("messages", [])
+                if not messages:
+                    return "(Keine bisherigen Nachrichten)"
+                # Format last 10 messages
+                lines = []
+                for msg in messages[-10:]:
+                    lines.append(f"[{msg['from_name']}]: {msg['text'][:200]}")
+                return "\n".join(lines)
+        except Exception as e:
+            logger.debug(f"Could not load conversation history: {e}")
+            return "(Verlauf nicht verfügbar)"
+
     async def _execute_cli(self, prompt: str, model: str | None = None) -> str:
         """Run Claude CLI with the prompt and return the text response."""
         import os
@@ -117,17 +148,13 @@ class MessageConsumer:
                 _, msg_json = result
                 msg = json.loads(msg_json)
 
-                # Skip replies — they are for display only, not for processing
-                if msg.get("is_reply"):
-                    logger.info(f"[Message] Reply from {msg.get('from_name', '?')} received (display only)")
-                    continue
-
                 from_agent_id = msg.get("from_agent_id", "unknown")
                 from_name = msg.get("from_name", "Unknown Agent")
                 text = msg.get("text", "")
                 message_id = msg.get("id", "msg-unknown")
+                is_reply = msg.get("is_reply", False)
 
-                logger.info(f"[Message] From {from_name} ({from_agent_id}): {text[:80]}...")
+                logger.info(f"[Message] {'Reply' if is_reply else 'New'} from {from_name} ({from_agent_id}): {text[:80]}...")
 
                 # Rate limit check — reset counts every hour
                 import time
@@ -148,42 +175,59 @@ class MessageConsumer:
                     "message": f"Processing message from {from_name}..."
                 })
 
-                # Build prompt with context
-                prompt = (
-                    f"Inter-agent message from '{from_name}':\n{text}\n\n"
-                    f"RULES:\n"
-                    f"- Do NOT use send_message, list_team, or any orchestrator MCP tools.\n"
-                    f"- You CAN use Bash, Read, Write, Glob, Grep — normal coding tools are fine.\n"
-                    f"- If this is a TASK (research, analysis, content, file creation):\n"
-                    f"  1. Do the actual work using your tools\n"
-                    f"  2. Save results to /workspace/transfer/<topic>.md\n"
-                    f"  3. Your final output should ONLY be: 'Ergebnis: /workspace/transfer/<filename>.md'\n"
-                    f"- If this is a simple question: max 2 sentences.\n"
-                    f"- If you lack context: 'Keine Informationen vorhanden.'\n"
-                    f"- No pleasantries, no offers, no 'standing by'."
-                )
+                # Load conversation history for context
+                history_text = await self._get_conversation_history(from_agent_id)
+
+                # Build prompt with full conversation context
+                if is_reply:
+                    # This is a REPLY to something we asked — work with the info
+                    prompt = (
+                        f"Du bist Agent '{settings.agent_name}'. Agent '{from_name}' hat auf deine Anfrage geantwortet.\n\n"
+                        f"=== KONVERSATIONSVERLAUF ===\n{history_text}\n"
+                        f"=== ANTWORT von {from_name} ===\n{text}\n\n"
+                        f"REGELN:\n"
+                        f"- Verarbeite die erhaltenen Informationen und arbeite damit weiter.\n"
+                        f"- Du KANNST Bash, Read, Write, Glob, Grep nutzen — arbeite wirklich!\n"
+                        f"- Speichere Ergebnisse in /workspace/transfer/<thema>.md\n"
+                        f"- NICHT antworten — dein Output wird NICHT zurückgesendet.\n"
+                        f"- Wenn du weitere Infos von einem Agent brauchst: nutze send_message.\n"
+                        f"- Wenn alles erledigt: nur 'Erledigt.' ausgeben."
+                    )
+                else:
+                    # This is a NEW request from another agent
+                    prompt = (
+                        f"Inter-agent Auftrag von '{from_name}':\n{text}\n\n"
+                        f"=== KONTEXT (bisherige Nachrichten) ===\n{history_text}\n\n"
+                        f"REGELN:\n"
+                        f"- Du KANNST Bash, Read, Write, Glob, Grep nutzen — arbeite wirklich!\n"
+                        f"- Speichere Ergebnisse in /workspace/transfer/<thema>.md\n"
+                        f"- Dein Output wird automatisch an {from_name} zurückgesendet.\n"
+                        f"- Halte die Antwort kurz — verweise auf Dateien statt langer Texte.\n"
+                        f"- Wenn du nichts beitragen kannst: 'Keine Informationen vorhanden.'"
+                    )
 
                 # Execute via CLI
                 response = await self._execute_cli(prompt)
 
-                # Send reply back
                 if response and not response.startswith("[Error]") and not response.startswith("[Timeout"):
-                    sent = await self._send_reply(from_agent_id, response)
-                    if sent:
-                        logger.info(f"[Message] Replied to {from_name}: {response[:80]}...")
+                    if is_reply:
+                        # Reply processed — no response back (agent worked with the info)
+                        logger.info(f"[Message] Processed reply from {from_name}: {response[:80]}...")
                         await log_publisher.publish(message_id, "system", {
-                            "message": f"Replied to {from_name}"
+                            "message": f"Reply von {from_name} verarbeitet"
                         })
                     else:
-                        logger.warning(f"[Message] Failed to send reply to {from_name}")
-                        await log_publisher.publish(message_id, "system", {
-                            "message": f"Reply failed to {from_name}: could not reach orchestrator"
-                        })
+                        # New request — send response back
+                        sent = await self._send_reply(from_agent_id, response)
+                        if sent:
+                            logger.info(f"[Message] Replied to {from_name}: {response[:80]}...")
+                            await log_publisher.publish(message_id, "system", {
+                                "message": f"Replied to {from_name}"
+                            })
+                        else:
+                            logger.warning(f"[Message] Failed to send reply to {from_name}")
                 else:
-                    logger.warning(f"[Message] CLI error for message from {from_name}: {response[:100]}")
-                    await log_publisher.publish(message_id, "system", {
-                        "message": f"Message processing failed: {response[:100]}"
-                    })
+                    logger.warning(f"[Message] CLI error for message from {from_name}: {response[:100] if response else 'empty'}")
 
                 await log_publisher.publish_status("idle")
 
