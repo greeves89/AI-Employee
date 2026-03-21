@@ -145,12 +145,15 @@ class MessageConsumer:
                 prompt = (
                     f"Inter-agent message from '{from_name}':\n{text}\n\n"
                     f"STRICT RULES:\n"
-                    f"- MAX 1-2 sentences. Be extremely brief.\n"
-                    f"- Your reply is sent back AUTOMATICALLY. Do NOT use any tools.\n"
-                    f"- If you lack context or cannot help: reply ONLY 'Kann ich ohne Kontext nicht beantworten.'\n"
-                    f"- Do NOT offer help, do NOT ask questions, do NOT discuss permissions.\n"
-                    f"- Only reply with substance if you actually have useful information.\n"
-                    f"- No pleasantries. No 'standing by'. No 'let me know'."
+                    f"- Do NOT use any MCP tools. Do NOT discuss permissions.\n"
+                    f"- If you lack context or cannot help: reply ONLY 'Keine Informationen vorhanden.'\n"
+                    f"- No pleasantries. No 'standing by'. No 'let me know'. No offers.\n"
+                    f"- If this is a TASK (research, analysis, content creation, etc.):\n"
+                    f"  1. Do the work\n"
+                    f"  2. Save the result to /workspace/transfer/<topic>.md\n"
+                    f"  3. Reply ONLY with: 'Ergebnis: /workspace/transfer/<topic>.md'\n"
+                    f"- If this is a simple question you CAN answer: max 2 sentences.\n"
+                    f"- If this is just a greeting or status check: 'OK.'"
                 )
 
                 # Execute via CLI
