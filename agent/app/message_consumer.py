@@ -20,12 +20,17 @@ logger = logging.getLogger(__name__)
 class MessageConsumer:
     """Consumes inter-agent messages and auto-replies."""
 
+    # Rate limit: max messages per agent pair per hour
+    MAX_REPLIES_PER_PAIR = 5
+
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
         self.redis: aioredis.Redis | None = None
         self.queue_name = f"agent:{agent_id}:messages"
         self.running = True
         self._process: asyncio.subprocess.Process | None = None
+        self._reply_counts: dict[str, int] = {}  # agent_id -> count this hour
+        self._reply_reset_at: float = 0
 
     async def _execute_cli(self, prompt: str, model: str | None = None) -> str:
         """Run Claude CLI with the prompt and return the text response."""
@@ -117,6 +122,19 @@ class MessageConsumer:
 
                 logger.info(f"[Message] From {from_name} ({from_agent_id}): {text[:80]}...")
 
+                # Rate limit check — reset counts every hour
+                import time
+                now = time.time()
+                if now > self._reply_reset_at:
+                    self._reply_counts = {}
+                    self._reply_reset_at = now + 3600
+
+                pair_count = self._reply_counts.get(from_agent_id, 0)
+                if pair_count >= self.MAX_REPLIES_PER_PAIR:
+                    logger.info(f"[Message] Rate limited: already replied {pair_count}x to {from_name} this hour")
+                    continue
+                self._reply_counts[from_agent_id] = pair_count + 1
+
                 # Publish status
                 await log_publisher.publish_status("working", f"msg:{message_id}")
                 await log_publisher.publish(message_id, "system", {
@@ -125,11 +143,14 @@ class MessageConsumer:
 
                 # Build prompt with context
                 prompt = (
-                    f"You received a message from another agent named '{from_name}' "
-                    f"(agent ID: {from_agent_id}).\n\n"
+                    f"You received a message from another agent named '{from_name}'.\n\n"
                     f"Their message:\n{text}\n\n"
-                    f"Respond helpfully and concisely. Your response will be sent "
-                    f"back to them automatically."
+                    f"RULES:\n"
+                    f"- Reply with a SHORT, helpful response (max 2-3 sentences)\n"
+                    f"- Your reply is sent back AUTOMATICALLY — do NOT use send_message or any MCP tools\n"
+                    f"- Do NOT ask for permissions or try to call orchestrator tools\n"
+                    f"- Just answer the question or acknowledge the message\n"
+                    f"- If you don't know the answer, say so briefly"
                 )
 
                 # Execute via CLI
