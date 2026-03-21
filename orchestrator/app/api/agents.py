@@ -1351,7 +1351,7 @@ async def get_team_directory(
 @router.get("/team/messages")
 async def get_agent_messages(
     minutes: int = 60,
-    user=Depends(require_auth_or_agent),
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Get recent inter-agent messages for visualization.
