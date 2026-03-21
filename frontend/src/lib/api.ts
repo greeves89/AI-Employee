@@ -64,6 +64,14 @@ export async function createAgent(
   });
 }
 
+export async function getAgentMessages(minutes: number = 60): Promise<{
+  connections: { from: string; to: string; count: number; last_at: string }[];
+  messages: { from: string; to: string; text: string; from_name: string; timestamp: string }[];
+  total: number;
+}> {
+  return fetchJSON(`${getBase()}/agents/team/messages?minutes=${minutes}`);
+}
+
 export async function updateAgentModel(
   agentId: string,
   modelProvider: string,
