@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.agent_manager import AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
-from app.dependencies import get_docker_service, get_redis_service, require_auth, require_manager
+from app.dependencies import get_docker_service, get_redis_service, require_auth, require_auth_or_agent, require_manager
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
@@ -415,13 +415,15 @@ class AgentMessage(BaseModel):
 async def send_message_to_agent(
     agent_id: str,
     body: AgentMessage,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
     redis: RedisService = Depends(get_redis_service),
 ):
     """Send a message to an agent's chat queue (for inter-agent or external messaging)."""
-    await _check_owner(agent_id, user, db)
+    # Skip owner check for agent-to-agent messages
+    if getattr(user, "role", "") != "agent":
+        await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -1305,7 +1307,7 @@ async def delete_skill(
 
 @router.get("/team/directory")
 async def get_team_directory(
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Get the team directory - all agents with their roles and status."""
