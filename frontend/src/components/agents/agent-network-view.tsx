@@ -130,10 +130,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     setConvoLoading(true);
     try {
       const data = await api.getAgentConversation(agentA, agentB);
-      // Apply time filter — only show messages within the selected range
-      const cutoff = Date.now() - timeFilter * 60 * 1000;
-      const filtered = data.messages.filter((m) => new Date(m.timestamp).getTime() >= cutoff);
-      setConvoMessages(filtered);
+      setConvoMessages(data.messages);
     } catch {
       setConvoMessages([]);
     } finally {
