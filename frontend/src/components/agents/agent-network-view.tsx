@@ -118,7 +118,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   // Fetch real inter-agent messages
   const fetchMessages = useCallback(async () => {
     try {
-      const data = await api.getAgentMessages(120); // last 2 hours
+      const data = await api.getAgentMessages(1440); // last 24 hours
       setConnections(data.connections);
       setBubbles(data.messages);
       setMessageCount(data.total);
