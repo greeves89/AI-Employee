@@ -72,6 +72,13 @@ export async function getAgentMessages(minutes: number = 60): Promise<{
   return fetchJSON(`${getBase()}/agents/team/messages?minutes=${minutes}`);
 }
 
+export async function getAgentConversation(agentA: string, agentB: string): Promise<{
+  messages: { from_id: string; from_name: string; to_id: string; text: string; timestamp: string }[];
+  total: number;
+}> {
+  return fetchJSON(`${getBase()}/agents/team/conversation?agent_a=${agentA}&agent_b=${agentB}`);
+}
+
 export async function updateAgentModel(
   agentId: string,
   modelProvider: string,
