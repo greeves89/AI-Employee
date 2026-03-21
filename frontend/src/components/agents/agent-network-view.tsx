@@ -148,7 +148,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     } catch {
       // API might not be available yet
     }
-  }, []);
+  }, [timeFilter]);
 
   useEffect(() => {
     fetchMessages();
