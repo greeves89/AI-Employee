@@ -141,7 +141,7 @@ async def get_agent_messages(
 async def get_agent_conversation(
     agent_a: str,
     agent_b: str,
-    user=Depends(require_auth_or_agent),
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the full conversation between two specific agents."""
