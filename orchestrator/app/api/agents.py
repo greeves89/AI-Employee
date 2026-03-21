@@ -446,17 +446,31 @@ async def send_message_to_agent(
 
         # Build message with sender context
         sender = body.from_name or body.from_agent_id or "System"
-        text = f"[Message from {sender}]: {body.text}"
+        from_id = body.from_agent_id or "external"
 
-        message_id = uuid.uuid4().hex[:12]
-        chat_payload = json.dumps({
-            "id": message_id,
-            "text": text,
-            "model": None,
+        # Inter-agent messages go as TASKS so they get processed immediately
+        # and the response stays in the agent's task history (visible to all)
+        task_prompt = (
+            f"[Inter-Agent Message from {sender} (agent {from_id})]\n\n"
+            f"{body.text}\n\n"
+            f"---\n"
+            f"IMPORTANT: This is a message from another agent. Respond by using "
+            f"send_message to reply back to agent {from_id}. "
+            f"Be concise and helpful."
+        )
+
+        # Create a task via Redis queue (same as regular tasks)
+        task_id = uuid.uuid4().hex[:12]
+        task_payload = json.dumps({
+            "id": task_id,
+            "title": f"Message from {sender}",
+            "prompt": task_prompt,
+            "priority": 3,
+            "model": agent.model or "claude-sonnet-4-6",
         })
+        await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
 
-        await redis.client.lpush(f"agent:{agent_id}:chat", chat_payload)
-        return {"status": "sent", "message_id": message_id, "to_agent": agent_id}
+        return {"status": "sent", "message_id": task_id, "to_agent": agent_id}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
