@@ -221,3 +221,29 @@ async def verify_agent_token(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid agent token")
 
     return {"agent_id": agent_id}
+
+
+async def require_auth_or_agent(request: Request) -> dict:
+    """Accept either a User JWT or an Agent HMAC token.
+
+    Returns a user-like dict so endpoints can work with both.
+    Agent tokens produce a pseudo-user with role='agent'.
+    """
+    # Try user JWT first
+    try:
+        return await require_auth(request)
+    except HTTPException:
+        pass
+
+    # Fall back to agent token
+    try:
+        agent_info = await verify_agent_token(request)
+        # Return a pseudo-user object compatible with require_auth responses
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            id=agent_info["agent_id"],
+            role="agent",
+            username=f"agent-{agent_info['agent_id']}",
+        )
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Authentication required (user or agent token)")
