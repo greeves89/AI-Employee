@@ -36,7 +36,7 @@ class MessageConsumer:
         """Run Claude CLI with the prompt and return the text response."""
         import os
 
-        cmd = ["claude", "-p", prompt, "--output-format", "json"]
+        cmd = ["claude", "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
         if model and model != "default":
             cmd.extend(["--model", model])
 
