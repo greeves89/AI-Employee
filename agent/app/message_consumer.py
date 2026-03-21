@@ -143,14 +143,14 @@ class MessageConsumer:
 
                 # Build prompt with context
                 prompt = (
-                    f"You received a message from another agent named '{from_name}'.\n\n"
-                    f"Their message:\n{text}\n\n"
-                    f"RULES:\n"
-                    f"- Reply with a SHORT, helpful response (max 2-3 sentences)\n"
-                    f"- Your reply is sent back AUTOMATICALLY — do NOT use send_message or any MCP tools\n"
-                    f"- Do NOT ask for permissions or try to call orchestrator tools\n"
-                    f"- Just answer the question or acknowledge the message\n"
-                    f"- If you don't know the answer, say so briefly"
+                    f"Inter-agent message from '{from_name}':\n{text}\n\n"
+                    f"STRICT RULES:\n"
+                    f"- MAX 1-2 sentences. Be extremely brief.\n"
+                    f"- Your reply is sent back AUTOMATICALLY. Do NOT use any tools.\n"
+                    f"- If you lack context or cannot help: reply ONLY 'Kann ich ohne Kontext nicht beantworten.'\n"
+                    f"- Do NOT offer help, do NOT ask questions, do NOT discuss permissions.\n"
+                    f"- Only reply with substance if you actually have useful information.\n"
+                    f"- No pleasantries. No 'standing by'. No 'let me know'."
                 )
 
                 # Execute via CLI
