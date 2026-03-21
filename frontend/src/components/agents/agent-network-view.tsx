@@ -114,6 +114,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [connections, setConnections] = useState<ApiConnection[]>([]);
   const [bubbles, setBubbles] = useState<ApiBubble[]>([]);
   const [messageCount, setMessageCount] = useState(0);
+  const [timeFilter, setTimeFilter] = useState(60); // minutes
 
   // Conversation modal
   const [convoOpen, setConvoOpen] = useState(false);
@@ -140,7 +141,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   // Fetch real inter-agent messages
   const fetchMessages = useCallback(async () => {
     try {
-      const data = await api.getAgentMessages(1440); // last 24 hours
+      const data = await api.getAgentMessages(timeFilter);
       setConnections(data.connections);
       setBubbles(data.messages);
       setMessageCount(data.total);
@@ -153,7 +154,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     fetchMessages();
     const interval = setInterval(fetchMessages, 10000); // refresh every 10s
     return () => clearInterval(interval);
-  }, [fetchMessages]);
+  }, [fetchMessages, timeFilter]);
 
   // Responsive resize
   useEffect(() => {
@@ -235,8 +236,39 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     );
   }
 
+  const TIME_OPTIONS = [
+    { value: 5, label: "5 Min" },
+    { value: 30, label: "30 Min" },
+    { value: 60, label: "1h" },
+    { value: 360, label: "6h" },
+    { value: 1440, label: "24h" },
+  ];
+
   return (
     <>
+    {/* Time filter */}
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-foreground/[0.03] border border-foreground/[0.06]">
+        {TIME_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setTimeFilter(opt.value)}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-[11px] font-medium transition-all",
+              timeFilter === opt.value
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <span className="text-[10px] text-muted-foreground/50">
+        {messageCount} Nachrichten · {connections.length} Verbindungen
+      </span>
+    </div>
+
     <div
       id="network-container"
       className="relative w-full rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm overflow-hidden"
