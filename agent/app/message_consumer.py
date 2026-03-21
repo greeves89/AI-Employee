@@ -92,6 +92,7 @@ class MessageConsumer:
                 "from_name": settings.agent_name,
                 "text": message,
                 "to_agent_id": to_agent_id,
+                "is_reply": True,
             }
             # Push to recipient's message queue
             await self.redis.lpush(f"agent:{to_agent_id}:messages", json.dumps(payload))
@@ -115,6 +116,11 @@ class MessageConsumer:
 
                 _, msg_json = result
                 msg = json.loads(msg_json)
+
+                # Skip replies — they are for display only, not for processing
+                if msg.get("is_reply"):
+                    logger.info(f"[Message] Reply from {msg.get('from_name', '?')} received (display only)")
+                    continue
 
                 from_agent_id = msg.get("from_agent_id", "unknown")
                 from_name = msg.get("from_name", "Unknown Agent")
