@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, MessageSquare, Users } from "lucide-react";
+import { Bot, MessageSquare, Users, X, ArrowRight } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -114,6 +114,28 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [connections, setConnections] = useState<ApiConnection[]>([]);
   const [bubbles, setBubbles] = useState<ApiBubble[]>([]);
   const [messageCount, setMessageCount] = useState(0);
+
+  // Conversation modal
+  const [convoOpen, setConvoOpen] = useState(false);
+  const [convoAgents, setConvoAgents] = useState<{ a: string; b: string; aName: string; bName: string } | null>(null);
+  const [convoMessages, setConvoMessages] = useState<{ from_id: string; from_name: string; to_id: string; text: string; timestamp: string }[]>([]);
+  const [convoLoading, setConvoLoading] = useState(false);
+
+  const openConversation = async (agentA: string, agentB: string) => {
+    const nameA = agents.find((a) => a.id === agentA)?.name || agentA;
+    const nameB = agents.find((a) => a.id === agentB)?.name || agentB;
+    setConvoAgents({ a: agentA, b: agentB, aName: nameA, bName: nameB });
+    setConvoOpen(true);
+    setConvoLoading(true);
+    try {
+      const data = await api.getAgentConversation(agentA, agentB);
+      setConvoMessages(data.messages);
+    } catch {
+      setConvoMessages([]);
+    } finally {
+      setConvoLoading(false);
+    }
+  };
 
   // Fetch real inter-agent messages
   const fetchMessages = useCallback(async () => {
@@ -265,8 +287,15 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           // Thicker line = more messages
           const strokeW = Math.min(1 + conn.count * 0.3, 4);
 
+          const fromAgent = agents[conn.fromIdx];
+          const toAgent = agents[conn.toIdx];
+
           return (
-            <g key={`conn-${i}`}>
+            <g key={`conn-${i}`} className="cursor-pointer" onClick={() => {
+              if (fromAgent && toAgent) openConversation(fromAgent.id, toAgent.id);
+            }}>
+              {/* Invisible wide hitbox for easier clicking */}
+              <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} />
               <motion.path
                 d={pathD}
                 fill="none"
@@ -495,38 +524,113 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       </motion.div>
     </div>
 
-    {/* Message Log */}
-    {bubbles.length > 0 && (
+    {/* Clickable Conversations */}
+    {connections.length > 0 && (
       <div className="rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm p-4 mt-4">
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare className="h-4 w-4 text-indigo-400" />
-          <span className="text-xs font-semibold text-foreground/80">Agent-Kommunikation</span>
-          <span className="text-[10px] text-muted-foreground/50 ml-auto">{messageCount} Nachrichten (2h)</span>
+          <span className="text-xs font-semibold text-foreground/80">Konversationen</span>
+          <span className="text-[10px] text-muted-foreground/50 ml-auto">{messageCount} Nachrichten gesamt</span>
         </div>
-        <div className="space-y-1.5 max-h-48 overflow-y-auto">
-          {bubbles.map((msg, i) => {
-            const toAgent = agents.find((a) => a.id === msg.to);
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {connections.map((conn, i) => {
+            const agentA = agents.find((a) => a.id === conn.from);
+            const agentB = agents.find((a) => a.id === conn.to);
             return (
-              <motion.div
-                key={`log-${i}`}
-                className="flex items-start gap-2 text-[11px] py-1.5 px-2 rounded-lg hover:bg-foreground/[0.03] transition-colors"
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
+              <motion.button
+                key={`conv-${i}`}
+                onClick={() => openConversation(conn.from, conn.to)}
+                className="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5 text-left hover:bg-foreground/[0.05] hover:border-indigo-500/20 transition-all group"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
               >
-                <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 mt-0.5">
-                  {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="text-[11px] font-semibold text-indigo-400 truncate">{agentA?.name || conn.from}</span>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground/30 shrink-0 group-hover:text-indigo-400/50 transition-colors" />
+                  <span className="text-[11px] font-semibold text-violet-400 truncate">{agentB?.name || conn.to}</span>
+                </div>
+                <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-indigo-500/10 border border-indigo-500/20 px-1.5 text-[10px] font-bold text-indigo-400 shrink-0">
+                  {conn.count}
                 </span>
-                <span className="font-semibold text-indigo-400 shrink-0">{msg.from_name}</span>
-                <span className="text-muted-foreground/40">→</span>
-                <span className="font-semibold text-violet-400 shrink-0">{toAgent?.name || msg.to}</span>
-                <span className="text-muted-foreground/70 truncate">{msg.text}</span>
-              </motion.div>
+              </motion.button>
             );
           })}
         </div>
       </div>
     )}
+
+    {/* Conversation Modal */}
+    <AnimatePresence>
+      {convoOpen && convoAgents && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setConvoOpen(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            className="w-full max-w-2xl max-h-[80vh] rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-foreground/[0.06]">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-indigo-400" />
+                <span className="text-sm font-semibold text-indigo-400">{convoAgents.aName}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40" />
+                <span className="text-sm font-semibold text-violet-400">{convoAgents.bName}</span>
+                <span className="text-[10px] text-muted-foreground/50 ml-2">
+                  {convoMessages.length} Nachrichten
+                </span>
+              </div>
+              <button onClick={() => setConvoOpen(false)} className="rounded-lg p-1.5 hover:bg-foreground/[0.06] transition-colors">
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {convoLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="h-6 w-6 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                </div>
+              ) : convoMessages.length === 0 ? (
+                <p className="text-sm text-muted-foreground/50 text-center py-12">Keine Nachrichten</p>
+              ) : (
+                convoMessages.map((msg, i) => {
+                  const isFromA = msg.from_id === convoAgents.a;
+                  return (
+                    <motion.div
+                      key={i}
+                      className={cn("flex", isFromA ? "justify-start" : "justify-end")}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                    >
+                      <div className={cn(
+                        "max-w-[80%] rounded-2xl px-4 py-2.5",
+                        isFromA
+                          ? "bg-indigo-500/10 border border-indigo-500/15 rounded-tl-md"
+                          : "bg-violet-500/10 border border-violet-500/15 rounded-tr-md"
+                      )}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={cn("text-[10px] font-semibold", isFromA ? "text-indigo-400" : "text-violet-400")}>
+                            {msg.from_name}
+                          </span>
+                          <span className="text-[9px] text-muted-foreground/40">
+                            {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-foreground/80 whitespace-pre-wrap break-words leading-relaxed">{msg.text}</p>
+                      </div>
+                    </motion.div>
+                  );
+                })
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
     </>
   );
 }

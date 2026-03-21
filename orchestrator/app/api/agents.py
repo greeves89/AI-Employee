@@ -1407,3 +1407,49 @@ async def get_agent_messages(
         "messages": recent_bubbles,
         "total": len(messages),
     }
+
+
+@router.get("/team/conversation")
+async def get_agent_conversation(
+    agent_a: str,
+    agent_b: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the full conversation between two specific agents."""
+    from sqlalchemy import select, or_, and_
+
+    from app.models.agent_message import AgentMessage as AgentMessageModel
+
+    result = await db.execute(
+        select(AgentMessageModel)
+        .where(
+            or_(
+                and_(
+                    AgentMessageModel.from_agent_id == agent_a,
+                    AgentMessageModel.to_agent_id == agent_b,
+                ),
+                and_(
+                    AgentMessageModel.from_agent_id == agent_b,
+                    AgentMessageModel.to_agent_id == agent_a,
+                ),
+            )
+        )
+        .order_by(AgentMessageModel.timestamp.asc())
+        .limit(200)
+    )
+    messages = result.scalars().all()
+
+    return {
+        "messages": [
+            {
+                "from_id": msg.from_agent_id,
+                "from_name": msg.from_agent_name,
+                "to_id": msg.to_agent_id,
+                "text": msg.text,
+                "timestamp": msg.timestamp.isoformat(),
+            }
+            for msg in messages
+        ],
+        "total": len(messages),
+    }
