@@ -2,17 +2,22 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
 import { CreateAgentModal } from "@/components/agents/create-agent-modal";
+import { AgentNetworkView } from "@/components/agents/agent-network-view";
+import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+
+type ViewMode = "grid" | "network";
 
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const handleStop = async (id: string) => {
     setActionLoading(id);
@@ -51,13 +56,39 @@ export default function AgentsPage() {
         title="Agents"
         subtitle="Manage your Claude Code agent containers"
         actions={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
-          >
-            <Plus className="h-4 w-4" />
-            New Agent
-          </button>
+          <div className="flex items-center gap-2">
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-foreground/[0.06] bg-card/50 p-0.5">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={cn(
+                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
+                  viewMode === "grid" && "bg-foreground/[0.08] text-foreground"
+                )}
+                title="Grid View"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setViewMode("network")}
+                className={cn(
+                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
+                  viewMode === "network" && "bg-foreground/[0.08] text-foreground"
+                )}
+                title="Network View"
+              >
+                <Network className="h-4 w-4" />
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
+            >
+              <Plus className="h-4 w-4" />
+              New Agent
+            </button>
+          </div>
         }
       />
 
@@ -83,6 +114,8 @@ export default function AgentsPage() {
               />
             ))}
           </div>
+        ) : viewMode === "network" ? (
+          <AgentNetworkView agents={agents} />
         ) : agents.length === 0 ? (
           <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
