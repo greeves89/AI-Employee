@@ -202,9 +202,17 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       .filter((c) => c.fromIdx !== undefined && c.toIdx !== undefined);
   }, [connections, agentIndexMap]);
 
-  // Map API bubbles to position indices
+  // One bubble per connection — the LATEST message only
   const mappedBubbles = useMemo(() => {
-    return bubbles
+    // For each connection, find the most recent message
+    const latestPerPair: Record<string, typeof bubbles[0]> = {};
+    for (const msg of bubbles) {
+      const pair = [msg.from, msg.to].sort().join(":");
+      if (!latestPerPair[pair]) {
+        latestPerPair[pair] = msg; // bubbles are already sorted desc
+      }
+    }
+    return Object.values(latestPerPair)
       .map((b, i) => ({
         id: `bubble-${i}`,
         fromIdx: agentIndexMap[b.from],
@@ -212,8 +220,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         text: b.text,
         fromName: b.from_name,
       }))
-      .filter((b) => b.fromIdx !== undefined && b.toIdx !== undefined)
-      .slice(0, 6); // max 6 floating bubbles
+      .filter((b) => b.fromIdx !== undefined && b.toIdx !== undefined);
   }, [bubbles, agentIndexMap]);
 
   if (agents.length === 0) {

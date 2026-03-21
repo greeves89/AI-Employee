@@ -53,10 +53,11 @@ class MessageConsumer:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=settings.workspace_dir,
                 env=env,
             )
             stdout, stderr = await asyncio.wait_for(
-                self._process.communicate(), timeout=120
+                self._process.communicate(), timeout=300
             )
             self._process = None
 
