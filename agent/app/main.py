@@ -9,6 +9,7 @@ from app.config import settings
 from app.health import start_health_server
 from app.task_consumer import TaskConsumer
 from app.chat_consumer import ChatConsumer
+from app.message_consumer import MessageConsumer
 
 
 async def discover_custom_mcp_tools() -> int:
@@ -295,11 +296,10 @@ async def main() -> None:
     health_runner = await start_health_server(agent_id, settings.health_port)
     print(f"[Agent {agent_id}] Health server on port {settings.health_port}")
 
-    # Start task consumer
+    # Start consumers
     task_consumer = TaskConsumer(agent_id)
-
-    # Start chat consumer
     chat_consumer = ChatConsumer(agent_id)
+    message_consumer = MessageConsumer(agent_id)
 
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_running_loop()
@@ -307,24 +307,27 @@ async def main() -> None:
         loop.add_signal_handler(
             sig,
             lambda: asyncio.create_task(
-                shutdown(task_consumer, chat_consumer, health_runner)
+                shutdown(task_consumer, chat_consumer, message_consumer, health_runner)
             ),
         )
 
     print(f"[Agent {agent_id}] Listening for tasks on queue agent:{agent_id}:tasks")
     print(f"[Agent {agent_id}] Listening for chat on queue agent:{agent_id}:chat")
+    print(f"[Agent {agent_id}] Listening for messages on queue agent:{agent_id}:messages")
 
-    # Run both consumers concurrently
+    # Run all three consumers concurrently
     await asyncio.gather(
         task_consumer.start(),
         chat_consumer.start(),
+        message_consumer.start(),
     )
 
 
-async def shutdown(task_consumer: TaskConsumer, chat_consumer: ChatConsumer, health_runner) -> None:
+async def shutdown(task_consumer: TaskConsumer, chat_consumer: ChatConsumer, message_consumer: MessageConsumer, health_runner) -> None:
     print("[Agent] Shutting down gracefully...")
     await task_consumer.stop()
     await chat_consumer.stop()
+    await message_consumer.stop()
     await health_runner.cleanup()
 
 
