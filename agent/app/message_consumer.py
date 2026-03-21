@@ -76,18 +76,21 @@ class MessageConsumer:
             return f"[Error] {str(e)[:200]}"
 
     async def _send_reply(self, to_agent_id: str, message: str) -> bool:
-        """Send reply back to the sender agent via Redis queue (bypasses HTTP)."""
+        """Send reply back to the sender agent via Redis queue + persist event."""
         try:
             if not self.redis:
                 return False
-            reply_payload = json.dumps({
+            payload = {
                 "id": f"reply-{to_agent_id}-{self.agent_id}",
                 "from_agent_id": self.agent_id,
                 "from_name": settings.agent_name,
                 "text": message,
                 "to_agent_id": to_agent_id,
-            })
-            await self.redis.lpush(f"agent:{to_agent_id}:messages", reply_payload)
+            }
+            # Push to recipient's message queue
+            await self.redis.lpush(f"agent:{to_agent_id}:messages", json.dumps(payload))
+            # Publish for DB persistence (orchestrator listens on this channel)
+            await self.redis.publish("agent:messages:persist", json.dumps(payload))
             return True
         except Exception as e:
             logger.warning(f"Failed to send reply to {to_agent_id}: {e}")

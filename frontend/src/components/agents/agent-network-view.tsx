@@ -207,6 +207,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   }
 
   return (
+    <>
     <div
       id="network-container"
       className="relative w-full rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm overflow-hidden"
@@ -493,5 +494,39 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         </div>
       </motion.div>
     </div>
+
+    {/* Message Log */}
+    {bubbles.length > 0 && (
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm p-4 mt-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MessageSquare className="h-4 w-4 text-indigo-400" />
+          <span className="text-xs font-semibold text-foreground/80">Agent-Kommunikation</span>
+          <span className="text-[10px] text-muted-foreground/50 ml-auto">{messageCount} Nachrichten (2h)</span>
+        </div>
+        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+          {bubbles.map((msg, i) => {
+            const toAgent = agents.find((a) => a.id === msg.to);
+            return (
+              <motion.div
+                key={`log-${i}`}
+                className="flex items-start gap-2 text-[11px] py-1.5 px-2 rounded-lg hover:bg-foreground/[0.03] transition-colors"
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 mt-0.5">
+                  {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <span className="font-semibold text-indigo-400 shrink-0">{msg.from_name}</span>
+                <span className="text-muted-foreground/40">→</span>
+                <span className="font-semibold text-violet-400 shrink-0">{toAgent?.name || msg.to}</span>
+                <span className="text-muted-foreground/70 truncate">{msg.text}</span>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+    </>
   );
 }
