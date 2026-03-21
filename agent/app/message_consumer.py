@@ -145,16 +145,16 @@ class MessageConsumer:
                 # Build prompt with context
                 prompt = (
                     f"Inter-agent message from '{from_name}':\n{text}\n\n"
-                    f"STRICT RULES:\n"
-                    f"- Do NOT use any MCP tools. Do NOT discuss permissions.\n"
-                    f"- If you lack context or cannot help: reply ONLY 'Keine Informationen vorhanden.'\n"
-                    f"- No pleasantries. No 'standing by'. No 'let me know'. No offers.\n"
-                    f"- If this is a TASK (research, analysis, content creation, etc.):\n"
-                    f"  1. Do the work\n"
-                    f"  2. Save the result to /workspace/transfer/<topic>.md\n"
-                    f"  3. Reply ONLY with: 'Ergebnis: /workspace/transfer/<topic>.md'\n"
-                    f"- If this is a simple question you CAN answer: max 2 sentences.\n"
-                    f"- If this is just a greeting or status check: 'OK.'"
+                    f"RULES:\n"
+                    f"- Do NOT use send_message, list_team, or any orchestrator MCP tools.\n"
+                    f"- You CAN use Bash, Read, Write, Glob, Grep — normal coding tools are fine.\n"
+                    f"- If this is a TASK (research, analysis, content, file creation):\n"
+                    f"  1. Do the actual work using your tools\n"
+                    f"  2. Save results to /workspace/transfer/<topic>.md\n"
+                    f"  3. Your final output should ONLY be: 'Ergebnis: /workspace/transfer/<filename>.md'\n"
+                    f"- If this is a simple question: max 2 sentences.\n"
+                    f"- If you lack context: 'Keine Informationen vorhanden.'\n"
+                    f"- No pleasantries, no offers, no 'standing by'."
                 )
 
                 # Execute via CLI
