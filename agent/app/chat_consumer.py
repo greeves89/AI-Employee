@@ -46,10 +46,9 @@ Then respond to the user's message below with full context.
 
 """
     else:
-        # Even on resumed sessions, remind to check knowledge for the current topic
         startup_block = """
-CONTEXT REMINDER: If this message involves a topic you're unsure about, use knowledge_search
-and memory_search BEFORE responding. Do NOT guess or send error messages without checking first.
+BEFORE responding: use knowledge_search and memory_search to check for relevant context.
+AFTER responding: if you learned something new, use memory_save (category: 'learning').
 
 """
 
@@ -193,15 +192,19 @@ class ChatConsumer:
         # For Web UI chat: also add startup instructions for new sessions
         if self._is_new_session():
             return (
-                "FIRST STEPS (do these BEFORE responding):\n"
-                "1. Read /workspace/knowledge.md to recall your role and learnings\n"
+                "MANDATORY FIRST STEPS (do these BEFORE responding):\n"
+                "1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
                 "2. Use knowledge_search (query relevant to this message) for shared knowledge\n"
-                "3. Use memory_search (query: '') for recent memories\n"
+                "3. Use memory_search (query: '') for recent memories and user preferences\n"
+                "4. Use list_todos to check for pending work items\n"
+                "AFTER responding: if you learned something new or the user corrected you,\n"
+                "use memory_save (category: 'learning') to remember it for next time.\n"
                 "Then respond to:\n\n" + text
             )
-        # Resumed session — still remind to check knowledge if unsure
+        # Resumed session — MUST check knowledge/memory for context
         return (
-            "REMINDER: If unsure about this topic, use knowledge_search and memory_search first.\n\n"
+            "BEFORE responding: use knowledge_search and memory_search to check for relevant context.\n"
+            "AFTER responding: if you learned something new, use memory_save (category: 'learning').\n\n"
             + text
         )
 
