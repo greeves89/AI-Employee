@@ -178,10 +178,18 @@ class MessageConsumer:
                 # Load conversation history for context
                 history_text = await self._get_conversation_history(from_agent_id)
 
+                # Knowledge/Memory context prefix (MUST be included in every message)
+                context_prefix = (
+                    f"MANDATORY FIRST STEPS — do these BEFORE processing the message:\n"
+                    f"1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
+                    f"2. Use knowledge_search (query relevant to this message) to check shared knowledge\n"
+                    f"3. Use memory_search (query: '') for recent memories and preferences\n\n"
+                )
+
                 # Build prompt with full conversation context
                 if is_reply:
-                    # This is a REPLY to something we asked — work with the info
                     prompt = (
+                        f"{context_prefix}"
                         f"Du bist Agent '{settings.agent_name}'. Agent '{from_name}' hat auf deine Anfrage geantwortet.\n\n"
                         f"=== KONVERSATIONSVERLAUF ===\n{history_text}\n"
                         f"=== ANTWORT von {from_name} ===\n{text}\n\n"
@@ -191,11 +199,12 @@ class MessageConsumer:
                         f"- Speichere Ergebnisse in /workspace/transfer/<thema>.md\n"
                         f"- NICHT antworten — dein Output wird NICHT zurückgesendet.\n"
                         f"- Wenn du weitere Infos von einem Agent brauchst: nutze send_message.\n"
-                        f"- Wenn alles erledigt: nur 'Erledigt.' ausgeben."
+                        f"- Wenn alles erledigt: nur 'Erledigt.' ausgeben.\n"
+                        f"- NACH ABSCHLUSS: Speichere was du gelernt hast mit memory_save (category: 'learning')."
                     )
                 else:
-                    # This is a NEW request from another agent
                     prompt = (
+                        f"{context_prefix}"
                         f"Inter-agent Auftrag von '{from_name}':\n{text}\n\n"
                         f"=== KONTEXT (bisherige Nachrichten) ===\n{history_text}\n\n"
                         f"REGELN:\n"
@@ -203,7 +212,8 @@ class MessageConsumer:
                         f"- Speichere Ergebnisse in /workspace/transfer/<thema>.md\n"
                         f"- Dein Output wird automatisch an {from_name} zurückgesendet.\n"
                         f"- Halte die Antwort kurz — verweise auf Dateien statt langer Texte.\n"
-                        f"- Wenn du nichts beitragen kannst: 'Keine Informationen vorhanden.'"
+                        f"- Wenn du nichts beitragen kannst: 'Keine Informationen vorhanden.'\n"
+                        f"- NACH ABSCHLUSS: Speichere was du gelernt hast mit memory_save (category: 'learning')."
                     )
 
                 # Execute via CLI
