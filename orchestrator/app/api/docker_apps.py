@@ -137,11 +137,16 @@ def _get_project_containers(docker: DockerService, project_name: str) -> list[di
             if port_key not in mapped_container_ports:
                 exposed_ports.append(port_key)
 
+        try:
+            image_name = c.image.tags[0] if c.image.tags else str(c.image.id)[:20]
+        except Exception:
+            image_name = c.attrs.get("Config", {}).get("Image", "unknown")
+
         results.append({
             "id": c.short_id,
             "name": c.name,
             "service": c.labels.get("com.docker.compose.service", "unknown"),
-            "image": c.image.tags[0] if c.image.tags else str(c.image.id)[:20],
+            "image": image_name,
             "status": c.status,
             "state": c.attrs.get("State", {}).get("Status", "unknown"),
             "ports": ports,
