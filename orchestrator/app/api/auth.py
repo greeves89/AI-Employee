@@ -1,7 +1,9 @@
 """Authentication API endpoints: register, login, logout, user management."""
 
 import logging
+import time
 import uuid
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
@@ -23,6 +25,32 @@ from app.models.user import User, UserRole
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# --- Login brute-force protection ---
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_login_rate(email: str) -> None:
+    """Block login if too many failed attempts for this email."""
+    now = time.time()
+    attempts = _login_attempts[email]
+    # Clean old entries
+    _login_attempts[email] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(_login_attempts[email]) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many login attempts. Try again in {_LOGIN_WINDOW_SECONDS // 60} minutes.",
+        )
+
+
+def _record_failed_login(email: str) -> None:
+    _login_attempts[email].append(time.time())
+
+
+def _clear_login_attempts(email: str) -> None:
+    _login_attempts.pop(email, None)
 
 # Cookie config
 COOKIE_ACCESS = "access_token"
@@ -121,13 +149,18 @@ async def register(body: RegisterRequest, response: Response, db: AsyncSession =
 
 @router.post("/login")
 async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+    # Brute-force protection: check rate limit per email
+    _check_login_rate(body.email)
+
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+        _record_failed_login(body.email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
+    _clear_login_attempts(body.email)
     tokens = _set_auth_cookies(response, user)
     return {
         "user": UserResponse.model_validate(user).model_dump(),

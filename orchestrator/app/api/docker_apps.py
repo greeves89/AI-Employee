@@ -13,6 +13,7 @@ How it works:
 import asyncio
 import logging
 import re
+import shlex
 from typing import Any
 
 import yaml
@@ -288,16 +289,22 @@ async def start_app(
     """Start a docker-compose project from agent workspace."""
     agent = await _get_agent(agent_id, user, db)
 
-    # Verify compose file exists
-    compose_file = f"/workspace/{path}/docker-compose.yml"
+    # Validate path to prevent directory traversal
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    # Verify compose file exists (shell-quote path to prevent injection)
+    safe_path = shlex.quote(f"/workspace/{path}/docker-compose.yml")
     exit_code, _ = docker.exec_in_container(
-        agent.container_id, f"test -f {compose_file}"
+        agent.container_id, f"test -f {safe_path}"
     )
+    compose_file = f"/workspace/{path}/docker-compose.yml"
     if exit_code != 0:
         # Try alternative names
         for alt in ["docker-compose.yaml", "compose.yml", "compose.yaml"]:
             alt_path = f"/workspace/{path}/{alt}"
-            ec, _ = docker.exec_in_container(agent.container_id, f"test -f {alt_path}")
+            safe_alt = shlex.quote(alt_path)
+            ec, _ = docker.exec_in_container(agent.container_id, f"test -f {safe_alt}")
             if ec == 0:
                 compose_file = alt_path
                 break
@@ -313,7 +320,7 @@ async def start_app(
     # Ensure .env file exists (compose fails if env_file references missing .env)
     docker.exec_in_container(
         agent.container_id,
-        f"touch /workspace/{path}/.env",
+        f"touch {shlex.quote(f'/workspace/{path}/.env')}",
     )
 
     logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
@@ -357,6 +364,9 @@ async def stop_app(
     docker: DockerService = Depends(get_docker_service),
 ):
     """Stop a docker-compose project."""
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
     agent = await _get_agent(agent_id, user, db)
 
     project_name = _project_name(agent_id, path)
@@ -366,7 +376,7 @@ async def stop_app(
     compose_file = f"/workspace/{path}/docker-compose.yml"
     for name in ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]:
         candidate = f"/workspace/{path}/{name}"
-        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {candidate}")
+        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {shlex.quote(candidate)}")
         if ec == 0:
             compose_file = candidate
             break
@@ -482,12 +492,15 @@ async def rebuild_app(
     docker: DockerService = Depends(get_docker_service),
 ):
     """Rebuild and restart a docker-compose project (forces image rebuild)."""
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
     agent = await _get_agent(agent_id, user, db)
 
     compose_file = f"/workspace/{path}/docker-compose.yml"
     for name in ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]:
         candidate = f"/workspace/{path}/{name}"
-        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {candidate}")
+        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {shlex.quote(candidate)}")
         if ec == 0:
             compose_file = candidate
             break
@@ -496,7 +509,7 @@ async def rebuild_app(
     workspace_volume = agent.volume_name or f"workspace-{agent_id}"
 
     # Ensure .env file exists
-    docker.exec_in_container(agent.container_id, f"touch /workspace/{path}/.env")
+    docker.exec_in_container(agent.container_id, f"touch {shlex.quote(f'/workspace/{path}/.env')}")
 
     logger.info(f"Rebuilding Docker app: {project_name}")
 

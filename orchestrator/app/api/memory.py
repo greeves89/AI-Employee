@@ -83,8 +83,12 @@ async def search_memories(
     category: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
 ):
-    """Search agent memories by keyword and/or category."""
+    """Search agent memories by keyword and/or category. Requires agent auth."""
+    # Enforce agent can only search its own memories
+    if agent_id != auth["agent_id"]:
+        raise HTTPException(status_code=403, detail="Cannot search another agent's memory")
     query = select(AgentMemory).where(AgentMemory.agent_id == agent_id)
 
     if category:
