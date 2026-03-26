@@ -42,7 +42,21 @@ async def receive_webhook(
 
     The full request body is passed as context to the agent.
     Supports JSON, form data, or raw text.
+    Requires HMAC signature in X-Webhook-Signature header (HMAC-SHA256 of body
+    using the API_SECRET_KEY). Skip validation only if webhook secret is not configured.
     """
+    # --- HMAC Signature Verification ---
+    from app.config import settings as app_settings
+
+    body_bytes = await request.body()
+    if app_settings.api_secret_key and app_settings.api_secret_key != "change-me-in-production":
+        sig_header = request.headers.get("x-webhook-signature", "")
+        expected = hmac.new(
+            app_settings.api_secret_key.encode(), body_bytes, hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(sig_header, expected):
+            raise HTTPException(status_code=401, detail="Invalid or missing webhook signature")
+
     # --- AgentGuard: Rate limiting ---
     if not webhook_rate_limiter.check(agent_id):
         raise HTTPException(status_code=429, detail="Rate limit exceeded for this agent")
@@ -53,16 +67,16 @@ async def receive_webhook(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Parse payload
+    # Parse payload (body_bytes already read above for HMAC)
     content_type = request.headers.get("content-type", "")
     if "json" in content_type:
         try:
-            payload = await request.json()
+            import json as _json
+            payload = _json.loads(body_bytes)
         except Exception:
-            payload = {"raw": (await request.body()).decode("utf-8", errors="replace")}
+            payload = {"raw": body_bytes.decode("utf-8", errors="replace")}
     else:
-        body = await request.body()
-        payload = {"raw": body.decode("utf-8", errors="replace")}
+        payload = {"raw": body_bytes.decode("utf-8", errors="replace")}
 
     # Extract source/event from headers or payload
     source = (

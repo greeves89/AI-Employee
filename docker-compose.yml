@@ -28,7 +28,7 @@ services:
     # No host port binding - only accessible via internal network
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme-redis-password}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -53,8 +53,8 @@ services:
       - "${ORCHESTRATOR_PORT:-8000}:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://ai_employee:${DB_PASSWORD:-devpassword}@postgres:5432/ai_employee
-      REDIS_URL: redis://redis:6379
-      REDIS_URL_INTERNAL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@redis:6379
+      REDIS_URL_INTERNAL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@redis:6379
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
@@ -83,6 +83,10 @@ services:
       - ./orchestrator:/app
       - ai-employee-shared:/shared
       - ${HOME}/.ai-employee:/host-auth:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     depends_on:
       postgres:
         condition: service_healthy

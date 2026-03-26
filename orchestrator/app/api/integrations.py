@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_auth
+from app.dependencies import get_redis_service, require_admin, require_auth
 from app.schemas.integration import (
     AgentIntegrationsResponse,
     AgentIntegrationsUpdate,
@@ -106,10 +106,10 @@ async def refresh_token(
 @router.get("/{provider}/token")
 async def get_token(
     provider: str,
-    user=Depends(require_auth),
+    user=Depends(require_admin),
     service: OAuthService = Depends(_get_oauth_service),
 ):
-    """Get a fresh decrypted token (for agent internal use)."""
+    """Get a fresh decrypted token (admin only — for agent internal use)."""
     try:
         token = await service.get_valid_token(provider)
         return {"token": token, "provider": provider}

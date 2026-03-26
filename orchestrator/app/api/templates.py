@@ -226,10 +226,11 @@ async def create_agent_from_template(
         if template.knowledge_template and agent.container_id:
             try:
                 knowledge_content = template.knowledge_template
-                # Prepend to the default knowledge.md
-                docker.exec_in_container(
+                # Write via tar (safe — no shell injection possible)
+                docker.write_file_in_container(
                     agent.container_id,
-                    f"cat > /workspace/knowledge_template.md << 'TMPL_EOF'\n{knowledge_content}\nTMPL_EOF",
+                    "/workspace/knowledge_template.md",
+                    knowledge_content,
                 )
                 # Append template knowledge to existing knowledge.md
                 docker.exec_in_container(

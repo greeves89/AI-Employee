@@ -12,8 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.db.session import get_db
-from app.dependencies import require_auth, verify_agent_token
+from app.dependencies import require_agent_access, require_auth, verify_agent_token
+from app.models.agent import Agent
 from app.models.audit_log import AuditLog, AuditEventType
 from app.services.redis_service import RedisService
 
@@ -158,17 +161,29 @@ async def list_pending_approvals(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List all pending approval requests for current user's agents.
+    List pending approval requests for current user's agents.
 
     Returns list of approval requests sorted by created_at (newest first).
+    Admins/Managers see all; members only see approvals for their own agents.
     """
-    # TODO: Filter by agents owned by user
-    # For now, return all pending approvals
+    from app.models.user import UserRole
+
+    # Get agent IDs the user has access to
+    if user.role in (UserRole.ADMIN, UserRole.MANAGER):
+        # Admins/Managers see everything
+        allowed_agent_ids = None
+    else:
+        # Members only see their own agents
+        result = await db.execute(
+            select(Agent.id).where(Agent.user_id == user.id)
+        )
+        allowed_agent_ids = set(result.scalars().all())
 
     pending = [
         req
         for req in pending_approvals.values()
         if req["status"] == "pending"
+        and (allowed_agent_ids is None or req.get("agent_id") in allowed_agent_ids)
     ]
 
     # Sort by created_at (newest first)
@@ -192,6 +207,9 @@ async def approve_request(
         raise HTTPException(status_code=404, detail="Approval request not found")
 
     request = pending_approvals[approval_id]
+
+    # Verify user has access to this agent
+    await require_agent_access(request["agent_id"], user, db)
 
     if request["status"] != "pending":
         raise HTTPException(
@@ -248,6 +266,9 @@ async def deny_request(
         raise HTTPException(status_code=404, detail="Approval request not found")
 
     request = pending_approvals[approval_id]
+
+    # Verify user has access to this agent
+    await require_agent_access(request["agent_id"], user, db)
 
     if request["status"] != "pending":
         raise HTTPException(

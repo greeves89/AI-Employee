@@ -31,7 +31,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # CSP - allow self + inline styles (Tailwind) + wss for websockets
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "connect-src 'self' ws: wss:; "
@@ -102,9 +102,10 @@ def _validate_config() -> None:
         warnings.append("ENCRYPTION_KEY is not set - OAuth token encryption will fail!")
 
     if settings.api_secret_key == "change-me-in-production":
-        warnings.append(
-            "API_SECRET_KEY is still the default value! "
-            "Set a strong random key for JWT signing and agent auth."
+        raise RuntimeError(
+            "FATAL: API_SECRET_KEY is still the default value 'change-me-in-production'. "
+            "Set a strong random key (min 32 chars) in your .env file. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
         )
 
     if not settings.anthropic_api_key and not settings.claude_code_oauth_token:
