@@ -234,14 +234,17 @@ class ChatHandler:
             await stderr_task
 
             if returncode != 0 and not stream_had_error:
-                # Build error message from collected stderr
-                stderr_text = "\n".join(stderr_lines).strip()
-                error_msg = stderr_text or f"Claude CLI exited with code {returncode}"
-                logger.error(f"Claude CLI failed (code {returncode}): {error_msg}")
-                result_data = {"status": "error", "error": error_msg}
-                await self.log_publisher.publish_chat(
-                    message_id, "error", {"message": error_msg}
-                )
+                # Code -2 (SIGINT) = graceful interrupt for queued messages — not an error
+                if returncode == -2:
+                    logger.info("Claude CLI interrupted (SIGINT) — new messages pending")
+                else:
+                    stderr_text = "\n".join(stderr_lines).strip()
+                    error_msg = stderr_text or f"Claude CLI exited with code {returncode}"
+                    logger.error(f"Claude CLI failed (code {returncode}): {error_msg}")
+                    result_data = {"status": "error", "error": error_msg}
+                    await self.log_publisher.publish_chat(
+                        message_id, "error", {"message": error_msg}
+                    )
 
         except Exception as e:
             result_data = {"status": "error", "error": str(e)}
