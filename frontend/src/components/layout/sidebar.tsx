@@ -30,6 +30,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const navItems = [
+  { href: "/chat", label: "Chat", icon: MessageSquarePlus, simpleVisible: true },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
   { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
   { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
