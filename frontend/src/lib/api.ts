@@ -693,6 +693,22 @@ export async function createFeedback(data: {
   });
 }
 
+// Agent Assignments (Admin)
+export async function assignAgentToUser(userId: string, templateId: number, name?: string, budgetUsd?: number): Promise<{ status: string; agent_id: string; agent_name: string; user_name: string; template_name: string }> {
+  return fetchJSON(`${getBase()}/admin/assign-agent`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, template_id: templateId, name: name || undefined, budget_usd: budgetUsd || undefined }),
+  });
+}
+
+export async function getAssignments(): Promise<{ assignments: { agent_id: string; agent_name: string; user_id: string; user_name: string; user_email: string; template_id: number | null; template_name: string | null; state: string; model: string; role: string; created_at: string }[]; total: number }> {
+  return fetchJSON(`${getBase()}/admin/assignments`);
+}
+
+export async function revokeAssignment(agentId: string): Promise<void> {
+  await fetchJSON(`${getBase()}/admin/assignments/${agentId}`, { method: "DELETE" });
+}
+
 export async function getFeedback(status?: string): Promise<FeedbackListResponse> {
   const params = status ? `?status=${status}` : "";
   return fetchJSON(`${getBase()}/feedback/${params}`);

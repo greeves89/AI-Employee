@@ -34,7 +34,7 @@ import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
-type Tab = "users" | "agents" | "feedback";
+type Tab = "users" | "agents" | "assignments" | "feedback";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -216,9 +216,51 @@ export default function AdminPage() {
 
   if (user?.role !== "admin") return null;
 
+  // Assignments state
+  const [assignments, setAssignments] = useState<{ agent_id: string; agent_name: string; user_id: string; user_name: string; user_email: string; template_id: number | null; template_name: string | null; state: string; model: string; role: string; created_at: string }[]>([]);
+  const [templates, setTemplates] = useState<{ id: number; name: string; display_name: string; category: string }[]>([]);
+  const [showAssign, setShowAssign] = useState(false);
+  const [assignForm, setAssignForm] = useState({ userId: "", templateId: 0, name: "" });
+  const [assignLoading, setAssignLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab === "assignments") {
+      api.getAssignments().then((d) => setAssignments(d.assignments)).catch(() => {});
+      api.getTemplates().then((d) => setTemplates(d.templates as never[])).catch(() => {});
+    }
+  }, [tab]);
+
+  const handleAssign = async () => {
+    if (!assignForm.userId || !assignForm.templateId) return;
+    setAssignLoading(true);
+    try {
+      await api.assignAgentToUser(assignForm.userId, assignForm.templateId, assignForm.name || undefined);
+      setShowAssign(false);
+      setAssignForm({ userId: "", templateId: 0, name: "" });
+      const d = await api.getAssignments();
+      setAssignments(d.assignments);
+      await fetchAgents();
+    } catch { /* ignore */ } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const handleRevoke = async (agentId: string) => {
+    if (!confirm("Agent-Zuweisung entfernen? Container wird gestoppt.")) return;
+    setActionLoading(agentId);
+    try {
+      await api.revokeAssignment(agentId);
+      setAssignments((prev) => prev.filter((a) => a.agent_id !== agentId));
+      await fetchAgents();
+    } catch { /* ignore */ } finally {
+      setActionLoading(null);
+    }
+  };
+
   const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] = [
     { id: "users", label: "Users", icon: Users, count: users.length },
     { id: "agents", label: "All Agents", icon: Cpu, count: agents.length },
+    { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
     { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
   ];
 
@@ -509,6 +551,135 @@ export default function AdminPage() {
             )}
 
             {/* Feedback Tab */}
+            {/* Assignments Tab */}
+            {tab === "assignments" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Agent-Zuweisungen</h3>
+                  <button
+                    onClick={() => setShowAssign(true)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Agent zuweisen
+                  </button>
+                </div>
+
+                {assignments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
+                    <UserCog className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="text-sm text-muted-foreground">Noch keine Zuweisungen</p>
+                    <p className="text-xs text-muted-foreground/50 mt-1">Weise einem User ein Agent-Template zu</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {assignments.map((a) => (
+                      <div key={a.agent_id} className="flex items-center justify-between rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
+                            <Cpu className="h-5 w-5 text-violet-400" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">{a.agent_name}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <span>User: <strong className="text-foreground/80">{a.user_name}</strong></span>
+                              <span>•</span>
+                              <span>{a.template_name || "Custom"}</span>
+                              <span>•</span>
+                              <span className={cn(
+                                "font-medium",
+                                a.state === "running" || a.state === "idle" ? "text-emerald-400" :
+                                a.state === "working" ? "text-blue-400" : "text-zinc-400"
+                              )}>{a.state}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRevoke(a.agent_id)}
+                          disabled={actionLoading === a.agent_id}
+                          className="rounded-lg p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Zuweisung entfernen"
+                        >
+                          {actionLoading === a.agent_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Assign Modal */}
+                {showAssign && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAssign(false)}>
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h3 className="text-base font-semibold mb-4">Agent an User zuweisen</h3>
+
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">User</label>
+                          <select
+                            value={assignForm.userId}
+                            onChange={(e) => setAssignForm({ ...assignForm, userId: e.target.value })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          >
+                            <option value="">User wählen...</option>
+                            {users.filter((u) => u.is_active).map((u) => (
+                              <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Template</label>
+                          <select
+                            value={assignForm.templateId}
+                            onChange={(e) => setAssignForm({ ...assignForm, templateId: Number(e.target.value) })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          >
+                            <option value={0}>Template wählen...</option>
+                            {templates.map((t) => (
+                              <option key={t.id} value={t.id}>{t.display_name} ({t.category})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Name (optional)</label>
+                          <input
+                            value={assignForm.name}
+                            onChange={(e) => setAssignForm({ ...assignForm, name: e.target.value })}
+                            placeholder="Wird automatisch generiert..."
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-5">
+                        <button
+                          onClick={handleAssign}
+                          disabled={assignLoading || !assignForm.userId || !assignForm.templateId}
+                          className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
+                        >
+                          {assignLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          Zuweisen
+                        </button>
+                        <button
+                          onClick={() => setShowAssign(false)}
+                          className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {tab === "feedback" && (
               <FeedbackTab
                 items={feedbackItems}

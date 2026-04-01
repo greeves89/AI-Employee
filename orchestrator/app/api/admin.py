@@ -1,15 +1,20 @@
-"""Admin API - aggregated stats and system overview (admin-only)."""
+"""Admin API - aggregated stats, system overview, and agent assignments (admin-only)."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
+from app.models.agent_access import AgentAccess
+from app.models.agent_template import AgentTemplate
 from app.models.chat_message import ChatMessage
 from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
+from app.services.docker_service import DockerService
+from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -192,3 +197,137 @@ async def get_admin_overview(
         },
         "cost": {"total_usd": float(total_cost or 0)},
     }
+
+
+# --- Agent Assignments (Multi-Tenant) ---
+
+
+class AssignAgentRequest(BaseModel):
+    user_id: str
+    template_id: int
+    name: str | None = None
+    budget_usd: float | None = None
+
+
+@router.post("/assign-agent")
+async def assign_agent_to_user(
+    body: AssignAgentRequest,
+    user=Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Create a new agent from a template and assign it to a specific user."""
+    from app.core.agent_manager import AgentManager
+
+    # Validate template
+    template = await db.scalar(select(AgentTemplate).where(AgentTemplate.id == body.template_id))
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Validate user
+    target_user = await db.scalar(select(User).where(User.id == body.user_id))
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target_user.is_active:
+        raise HTTPException(status_code=400, detail="User is inactive")
+
+    # Create agent from template
+    agent_name = body.name or f"{template.display_name} ({target_user.name})"
+    manager = AgentManager(db, docker, redis)
+
+    agent = await manager.create_agent(
+        name=agent_name,
+        model=template.model,
+        role=template.role,
+        integrations=template.integrations or [],
+        permissions=template.permissions or [],
+        user_id=body.user_id,
+        budget_usd=body.budget_usd,
+        mode="claude_code",
+    )
+
+    # Track template origin
+    agent.template_id = body.template_id
+    await db.commit()
+
+    # Write knowledge template to workspace
+    if template.knowledge_template:
+        try:
+            docker_svc = DockerService()
+            docker_svc.exec_in_container(
+                agent.container_id,
+                f"mkdir -p /workspace && cat > /workspace/knowledge.md << 'KNOWLEDGE_EOF'\n{template.knowledge_template}\nKNOWLEDGE_EOF",
+            )
+        except Exception:
+            pass  # Non-critical
+
+    # Create AgentAccess entry
+    access = AgentAccess(agent_id=agent.id, user_id=body.user_id)
+    db.add(access)
+    await db.commit()
+
+    return {
+        "status": "assigned",
+        "agent_id": agent.id,
+        "agent_name": agent.name,
+        "user_id": body.user_id,
+        "user_name": target_user.name,
+        "template_name": template.display_name,
+    }
+
+
+@router.get("/assignments")
+async def list_assignments(
+    user=Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all agent-to-user assignments."""
+    result = await db.execute(
+        select(Agent, User, AgentTemplate)
+        .outerjoin(User, Agent.user_id == User.id)
+        .outerjoin(AgentTemplate, Agent.template_id == AgentTemplate.id)
+        .where(Agent.user_id.isnot(None))
+        .order_by(Agent.created_at.desc())
+    )
+    rows = result.all()
+
+    assignments = []
+    for agent, owner, template in rows:
+        config = agent.config or {}
+        assignments.append({
+            "agent_id": agent.id,
+            "agent_name": agent.name,
+            "user_id": owner.id if owner else None,
+            "user_name": owner.name if owner else "Unknown",
+            "user_email": owner.email if owner else "",
+            "template_id": template.id if template else None,
+            "template_name": template.display_name if template else None,
+            "state": agent.state.value if hasattr(agent.state, "value") else str(agent.state),
+            "model": agent.model,
+            "role": config.get("role", ""),
+            "created_at": agent.created_at.isoformat() if agent.created_at else None,
+        })
+
+    return {"assignments": assignments, "total": len(assignments)}
+
+
+@router.delete("/assignments/{agent_id}")
+async def revoke_assignment(
+    agent_id: str,
+    user=Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Remove an agent assignment — stops container and deletes agent."""
+    from app.core.agent_manager import AgentManager
+
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    manager = AgentManager(db, docker, redis)
+    await manager.remove_agent(agent_id, remove_data=False)
+
+    return {"status": "revoked", "agent_id": agent_id}
