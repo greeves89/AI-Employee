@@ -6,6 +6,7 @@ import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 
 const PUBLIC_PATHS = ["/login", "/register"];
+const CUSTOM_LAYOUT_PATHS = ["/chat"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -53,6 +54,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (isPublicPage) {
     router.replace("/dashboard");
     return null;
+  }
+
+  // Pages with custom layout (e.g. /chat has its own sidebar)
+  const hasCustomLayout = CUSTOM_LAYOUT_PATHS.some((p) => pathname.startsWith(p));
+  if (hasCustomLayout) {
+    return <>{children}</>;
   }
 
   // Authenticated - show full layout with sidebar
