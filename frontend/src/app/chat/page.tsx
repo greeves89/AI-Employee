@@ -81,7 +81,7 @@ export default function ChatPage() {
   const switchAgent = (agent: Agent) => {
     setSelectedAgent(agent);
     setShowAgentPicker(false);
-    router.push(`/chat?agent=${agent.id}`);
+    router.push(`/chat?agent=${agent.id}&t=${Date.now()}`);
   };
 
   const stateConfig = selectedAgent
@@ -239,9 +239,9 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Chat Area */}
+      {/* Chat Area — key forces remount on agent/session change = fresh chat */}
       <div className="flex-1 min-h-0">
-        <AgentChat agentId={selectedAgent.id} />
+        <AgentChat key={`${selectedAgent.id}-${sessionId || "new"}`} agentId={selectedAgent.id} />
       </div>
     </div>
   );

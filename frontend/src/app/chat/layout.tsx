@@ -122,7 +122,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   const startNewChat = (agentId?: string) => {
     const targetAgent = agentId || agents[0]?.id;
     if (targetAgent) {
-      router.push(`/chat?agent=${targetAgent}`);
+      // Add timestamp to force new session (key change in page.tsx)
+      router.push(`/chat?agent=${targetAgent}&t=${Date.now()}`);
     }
   };
 
