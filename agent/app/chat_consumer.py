@@ -160,18 +160,22 @@ class ChatConsumer:
             await cancel_redis.aclose()
 
     async def _watch_queue_for_interrupt(self) -> None:
-        """Monitor queue while handler is busy. Interrupt if new message arrives."""
+        """Monitor queue while handler is busy.
+
+        Instead of interrupting, we just set the event flag so the main loop
+        knows there are pending messages to process AFTER the current response.
+        The agent finishes its current response, then immediately processes
+        the queued messages as a follow-up with --resume context.
+        """
         watch_redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         try:
             while self.running:
-                # Check if there are pending messages in the queue
                 queue_len = await watch_redis.llen(self.queue_name)
-                if queue_len > 0 and self._handler and self._handler.is_running:
-                    # New message arrived while we're busy — interrupt!
+                if queue_len > 0:
+                    # Flag that there are pending messages — do NOT interrupt
                     self._interrupt_event.set()
-                    await self._handler.stop_current()
-                    return  # Job done, main loop will pick up the new message
-                await asyncio.sleep(0.3)
+                    return
+                await asyncio.sleep(0.5)
         except asyncio.CancelledError:
             pass
         except Exception:
