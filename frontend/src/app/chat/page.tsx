@@ -33,6 +33,7 @@ export default function ChatPage() {
   const router = useRouter();
   const agentId = searchParams.get("agent");
   const sessionId = searchParams.get("session");
+  const chatKey = searchParams.get("t") || "default"; // forces remount on new chat
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -239,9 +240,9 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Chat Area — key forces remount on agent/session change = fresh chat */}
+      {/* Chat Area — key forces remount on agent/session/new-chat change */}
       <div className="flex-1 min-h-0">
-        <AgentChat key={`${selectedAgent.id}-${sessionId || "new"}`} agentId={selectedAgent.id} />
+        <AgentChat key={`${selectedAgent.id}-${sessionId || chatKey}`} agentId={selectedAgent.id} />
       </div>
     </div>
   );
