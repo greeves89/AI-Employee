@@ -233,7 +233,9 @@ async def assign_agent_to_user(
         raise HTTPException(status_code=400, detail="User is inactive")
 
     # Create agent from template
-    agent_name = body.name or f"{template.display_name} ({target_user.name})"
+    # Sanitize name for Docker container compatibility
+    raw_name = body.name or f"{template.display_name}-{target_user.name}"
+    agent_name = "".join(c if c.isalnum() or c in "-_ " else "" for c in raw_name).strip()
     manager = AgentManager(db, docker, redis)
 
     agent = await manager.create_agent(
