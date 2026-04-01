@@ -189,14 +189,23 @@ async def get_agent_conversation(
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
     user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     from app.models.user import UserRole
 
     agents = await manager.list_agents()
-    # Non-admins only see their own agents (+ unowned legacy agents)
+    # Non-admins only see their own agents (+ unowned + shared via AgentAccess)
     if user.role != UserRole.ADMIN:
-        agents = [a for a in agents if a.user_id is None or a.user_id == user.id]
+        from app.models.agent_access import AgentAccess
+        access_result = await db.execute(
+            select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
+        )
+        accessible_ids = {row[0] for row in access_result.all()}
+        agents = [
+            a for a in agents
+            if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+        ]
     metrics_list = await asyncio.gather(
         *(manager.get_agent_with_metrics(agent.id, include_stats=False) for agent in agents)
     )

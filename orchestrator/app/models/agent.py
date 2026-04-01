@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import JSON, Enum, Float, ForeignKey, String
+from sqlalchemy import JSON, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -35,6 +35,9 @@ class Agent(Base, TimestampMixin):
         String, default="claude_code"
     )
     llm_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    template_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("agent_templates.id"), nullable=True, index=True
+    )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
 
