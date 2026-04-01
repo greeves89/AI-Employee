@@ -162,20 +162,24 @@ class ChatConsumer:
     async def _watch_queue_for_interrupt(self) -> None:
         """Monitor queue while handler is busy.
 
-        Instead of interrupting, we just set the event flag so the main loop
-        knows there are pending messages to process AFTER the current response.
-        The agent finishes its current response, then immediately processes
-        the queued messages as a follow-up with --resume context.
+        When a new message arrives, send SIGINT to the Claude CLI process.
+        SIGINT makes Claude CLI finish the CURRENT turn gracefully (no lost
+        output), then exit. The queued messages are processed as a follow-up
+        with --resume to preserve conversation context.
+
+        This means: the agent sees new messages after the current turn,
+        not after ALL turns of a multi-turn task.
         """
         watch_redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         try:
             while self.running:
                 queue_len = await watch_redis.llen(self.queue_name)
-                if queue_len > 0:
-                    # Flag that there are pending messages — do NOT interrupt
+                if queue_len > 0 and self._handler and self._handler.is_running:
+                    # New message — finish current turn, then handle it
                     self._interrupt_event.set()
+                    await self._handler.stop_current()  # SIGINT → finishes current turn
                     return
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
         except asyncio.CancelledError:
             pass
         except Exception:
