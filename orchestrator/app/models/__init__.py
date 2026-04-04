@@ -20,6 +20,7 @@ from app.models.audit_log import AuditLog, AuditEventType
 from app.models.knowledge import KnowledgeEntry
 from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
+from app.models.test_run import TestRun
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -33,4 +34,5 @@ __all__ = [
     "KnowledgeEntry",
     "AgentMessage",
     "TaskRating",
+    "TestRun",
 ]
