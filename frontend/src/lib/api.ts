@@ -736,6 +736,137 @@ export async function createGithubIssueFromFeedback(
   });
 }
 
+// --- Health & Performance ---
+
+export interface HealthDashboard {
+  status: string;
+  agents: { id: string; name: string; state: string; health: string }[];
+  recent_tests: { id: string; status: string; passed: number; failed: number; created_at: string }[];
+  improvements: { agent_id: string; suggestion: string; priority: string }[];
+}
+
+export interface TestRun {
+  id: string;
+  status: string;
+  total_tests: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  duration_ms: number;
+  results: { name: string; status: string; message?: string }[];
+  created_at: string;
+}
+
+export async function getHealthDashboard(): Promise<HealthDashboard> {
+  return fetchJSON(`${getBase()}/health/dashboard`);
+}
+
+export async function getTestRuns(): Promise<{ runs: TestRun[]; total: number }> {
+  return fetchJSON(`${getBase()}/health/test-runs`);
+}
+
+export async function getLatestTestRun(): Promise<TestRun | null> {
+  try { return await fetchJSON(`${getBase()}/health/test-runs/latest`); } catch { return null; }
+}
+
+export async function triggerTestRun(): Promise<TestRun> {
+  return fetchJSON(`${getBase()}/health/test-runs/trigger`, { method: "POST" });
+}
+
+export interface ImprovementReport {
+  agent_id: string;
+  agent_name: string;
+  total_ratings: number;
+  average_rating: number | null;
+  rating_trend: number[];
+  cost_trend: (number | null)[];
+  duration_trend: (number | null)[];
+  top_issues: string[];
+  summary: string;
+}
+
+export async function getImprovementReport(agentId: string): Promise<ImprovementReport> {
+  return fetchJSON(`${getBase()}/ratings/agents/${agentId}/improvement-report`);
+}
+
+export interface AgentAutoMetrics {
+  agent_id: string;
+  agent_name: string;
+  total_tasks: number;
+  succeeded: number;
+  failed: number;
+  success_rate: number;
+  avg_cost_usd: number | null;
+  total_cost_usd: number | null;
+  avg_duration_ms: number | null;
+  avg_turns: number | null;
+  daily: {
+    date: string;
+    total: number;
+    succeeded: number;
+    success_rate: number;
+    cost: number;
+    avg_duration_ms: number;
+  }[];
+  top_errors: { error: string; count: number }[];
+}
+
+export interface AutoMetrics {
+  days: number;
+  total_tasks: number;
+  total_cost_usd: number;
+  success_rate: number;
+  agents: AgentAutoMetrics[];
+}
+
+export async function getAutoMetrics(days = 7): Promise<AutoMetrics> {
+  return fetchJSON(`${getBase()}/health/auto-metrics?days=${days}`);
+}
+
+// --- Approval Rules ---
+
+export interface ApprovalRule {
+  id: number;
+  name: string;
+  description: string;
+  category: string;
+  threshold: number | null;
+  is_active: boolean;
+  agent_id: string | null;
+  created_at: string | null;
+}
+
+export async function getApprovalRules(): Promise<{ rules: ApprovalRule[] }> {
+  return fetchJSON(`${getBase()}/approval-rules/`);
+}
+
+export async function createApprovalRule(data: {
+  name: string;
+  description: string;
+  category: string;
+  threshold?: number | null;
+  agent_id?: string | null;
+}): Promise<ApprovalRule> {
+  return fetchJSON(`${getBase()}/approval-rules/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateApprovalRule(
+  id: number,
+  data: Partial<Omit<ApprovalRule, "id" | "created_at">>,
+): Promise<ApprovalRule> {
+  return fetchJSON(`${getBase()}/approval-rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteApprovalRule(id: number): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/approval-rules/${id}`, { method: "DELETE" });
+}
+
 // --- Command Approvals ---
 
 export async function getPendingApprovals(): Promise<{ approvals: ApprovalRequest[]; count: number }> {
@@ -752,6 +883,50 @@ export async function denyCommand(approvalId: string, reason?: string): Promise<
   return fetchJSON(`${getBase()}/approvals/${approvalId}/deny`, {
     method: "POST",
     body: JSON.stringify({ decision: "deny", reason: reason || null }),
+  });
+}
+
+// --- Skills Catalog ---
+
+export interface CatalogSkill {
+  name: string;
+  description: string;
+  repo: string;
+  category: string;
+  install_cmd: string;
+}
+
+export interface AgentSkill {
+  name: string;
+  description: string;
+  content: string;
+}
+
+export async function getSkillCatalog(): Promise<{
+  skills: CatalogSkill[];
+  crawled_at: string | null;
+  repo_count: number;
+  skill_count: number;
+}> {
+  return fetchJSON(`${getBase()}/skills/catalog`);
+}
+
+export async function refreshSkillCatalog(): Promise<{ detail: string }> {
+  return fetchJSON(`${getBase()}/skills/catalog/refresh`, { method: "POST" });
+}
+
+export async function getAgentSkills(agentId: string): Promise<AgentSkill[]> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/skills`);
+}
+
+export async function installSkill(
+  agentId: string,
+  repo: string,
+  skill: string,
+): Promise<{ detail: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/skills/install`, {
+    method: "POST",
+    body: JSON.stringify({ repo, skill }),
   });
 }
 

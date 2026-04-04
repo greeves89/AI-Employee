@@ -17,7 +17,9 @@
 		reverse_proxy ai-employee-orchestrator:8000
 	}
 
-	handle /health {
+	# Backend healthcheck (for Docker/monitoring) → orchestrator
+	# Use /healthz to avoid conflict with frontend /health route
+	handle /healthz {
 		reverse_proxy ai-employee-orchestrator:8000
 	}
 

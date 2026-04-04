@@ -195,11 +195,14 @@ class ChatConsumer:
 
     def _prepare_text(self, text: str, telegram_ctx: dict | None) -> str:
         """Prepare message text, adding Telegram context if present."""
+        # Approval rules apply to all messages
+        from app.agent_runner import _get_approval_rules_prefix
+        rules_prefix = _get_approval_rules_prefix()
         if telegram_ctx:
-            return _build_telegram_prompt(text, telegram_ctx, is_new_session=self._is_new_session())
+            return rules_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=self._is_new_session())
         # For Web UI chat: also add startup instructions for new sessions
         if self._is_new_session():
-            return (
+            return rules_prefix + (
                 "MANDATORY FIRST STEPS (do these BEFORE responding):\n"
                 "1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
                 "2. Use knowledge_search (query relevant to this message) for shared knowledge\n"
@@ -210,7 +213,7 @@ class ChatConsumer:
                 "Then respond to:\n\n" + text
             )
         # Resumed session — MUST check knowledge/memory for context
-        return (
+        return rules_prefix + (
             "BEFORE responding: use knowledge_search and memory_search to check for relevant context.\n"
             "AFTER responding: if you learned something new, use memory_save (category: 'learning').\n\n"
             + text

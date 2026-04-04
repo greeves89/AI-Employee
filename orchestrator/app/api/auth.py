@@ -148,7 +148,7 @@ async def register(body: RegisterRequest, response: Response, db: AsyncSession =
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     # Brute-force protection: check rate limit per email
     _check_login_rate(body.email)
 
@@ -162,6 +162,20 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
 
     _clear_login_attempts(body.email)
     tokens = _set_auth_cookies(response, user)
+
+    # Update activity + wake user's agents (fire-and-forget)
+    from datetime import datetime, timezone
+    from app.services.user_lifecycle import wake_user_agents
+    user.last_active_at = datetime.now(timezone.utc)
+    await db.commit()
+    try:
+        docker_service = request.app.state.docker
+        woken = await wake_user_agents(db, docker_service, user.id)
+        if woken:
+            logger.info(f"Woke {len(woken)} agents for user {user.email} on login")
+    except Exception as e:
+        logger.warning(f"Agent wake-up failed on login: {e}")
+
     return {
         "user": UserResponse.model_validate(user).model_dump(),
         **tokens,

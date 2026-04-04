@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 class SchedulerService:
     """Background service that checks for due schedules and spawns tasks."""
 
-    def __init__(self, redis: RedisService):
+    def __init__(self, redis: RedisService, docker_service=None):
         self.redis = redis
+        self.docker = docker_service
 
     async def run(self) -> None:
         """Main loop - checks every 30 seconds for due schedules."""
@@ -47,7 +48,7 @@ class SchedulerService:
                 return
 
             lb = LoadBalancer(self.redis)
-            router = TaskRouter(db, self.redis, lb)
+            router = TaskRouter(db, self.redis, lb, docker_service=self.docker)
 
             for schedule in schedules:
                 try:

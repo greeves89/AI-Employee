@@ -119,11 +119,22 @@ async def _fetch_changelog(gh_token: str, limit: int = 20) -> list[dict]:
         return []
 
 
+def _version_tuple(v: str) -> tuple[int, ...]:
+    """Parse semver-like version string to tuple for comparison."""
+    try:
+        return tuple(int(p) for p in v.strip().split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
 @router.get("/")
 async def check_version():
     """Return current version and check GitHub for updates."""
     remote_version = await _fetch_latest_version()
-    update_available = bool(remote_version and remote_version != AGENT_VERSION)
+    # Only signal an update when remote is STRICTLY newer than local
+    update_available = False
+    if remote_version:
+        update_available = _version_tuple(remote_version) > _version_tuple(AGENT_VERSION)
 
     return {
         "current": AGENT_VERSION,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
@@ -13,11 +13,13 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 def _get_task_router(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: RedisService = Depends(get_redis_service),
 ) -> TaskRouter:
     lb = LoadBalancer(redis)
-    return TaskRouter(db, redis, lb)
+    docker = getattr(request.app.state, "docker", None)
+    return TaskRouter(db, redis, lb, docker_service=docker)
 
 
 @router.get("/", response_model=TaskListResponse)

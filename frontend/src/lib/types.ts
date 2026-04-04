@@ -158,6 +158,10 @@ export interface Settings {
   aws_region: string;
   vertex_region: string;
   foundry_resource: string;
+  // OAuth integrations
+  has_google_oauth: boolean;
+  has_microsoft_oauth: boolean;
+  has_apple_oauth: boolean;
 }
 
 export interface AgentMemory {

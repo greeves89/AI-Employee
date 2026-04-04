@@ -7,54 +7,14 @@ from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
+from app.runner_hooks import (
+    SELF_IMPROVEMENT_SUFFIX,
+    TASK_STARTUP_PREFIX,
+    get_improvement_context,
+    get_memory_preload,
+)
 
 logger = logging.getLogger(__name__)
-
-
-TASK_STARTUP_PREFIX = """
-FIRST STEPS (do these BEFORE starting the actual task):
-1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
-2. Use knowledge_search (query relevant to this task) to check the shared knowledge base
-3. Use memory_search (query: "") to check for recent memories and user preferences
-4. Use list_todos to check for pending work items
-If you encounter ANY problem during the task, ALWAYS search knowledge_search and memory_search
-for solutions BEFORE reporting errors or asking the user.
-
----
-"""
-
-SELF_IMPROVEMENT_SUFFIX = """
-
----
-IMPORTANT FINAL STEPS (do ALL of these before finishing):
-
-1. **VALIDATE before committing**: If you wrote code, run the build/test command
-   (e.g. `npm run build`, `pytest`, `go build`) to verify everything compiles.
-   Fix any errors before committing. NEVER commit broken code.
-
-2. **Push your work**: After committing, always `git push`. Never leave work only local.
-
-3. **Save learnings via MCP**: If you learned something useful during this task,
-   use the `memory_save` MCP tool (category: "learning") to remember it.
-   Examples: patterns that worked, errors and fixes, useful commands, project conventions.
-   Do NOT write to CLAUDE.md or MEMORY.md — use `memory_save` so the user can see it.
-
-4. **Review & update knowledge.md**: Read `/workspace/knowledge.md` and update it:
-   - Add new learned patterns to "## Learned Patterns" (e.g. library quirks, architecture decisions)
-   - Add errors you encountered and how you fixed them to "## Errors & Fixes"
-   - If your role or responsibilities changed during this task, update those sections too
-   - Keep it concise — knowledge.md is your persistent profile that you read at task start
-
-5. **Create skills for repeatable patterns**: If you discovered a workflow, pattern, or technique
-   during this task that you might reuse, create a Claude Code skill for it:
-   - `mkdir -p /workspace/.claude/skills/<skill-name>`
-   - Write a SKILL.md with `---` frontmatter (name, description) and detailed instructions
-   - This makes you better at similar tasks in the future
-   - **Important**: When using `npx skills add` to install community skills, they end up in a temp
-     directory. After install, always copy them: `cp -r /tmp/skills-*/skills/<name> /workspace/.claude/skills/<name>`
-     or `cp -r /home/agent/.agents/skills/<name> /workspace/.claude/skills/<name>`
-   - All skills MUST live under `/workspace/.claude/skills/` to be visible in the platform UI
-"""
 
 
 class AgentRunner:
@@ -76,8 +36,16 @@ class AgentRunner:
         model = model or settings.default_model
         self.is_running = True
 
-        # Enhance prompt with startup context + self-improvement instruction
-        enhanced_prompt = TASK_STARTUP_PREFIX + prompt + SELF_IMPROVEMENT_SUFFIX
+        # Enhance prompt with startup context + memory preload + performance feedback + self-improvement
+        memory_preload = get_memory_preload()
+        improvement_ctx = get_improvement_context()
+        enhanced_prompt = (
+            TASK_STARTUP_PREFIX
+            + memory_preload
+            + improvement_ctx
+            + prompt
+            + SELF_IMPROVEMENT_SUFFIX
+        )
 
         cmd = [
             "claude",

@@ -6,6 +6,7 @@ Users must authenticate with /auth <key> before chatting.
 
 import asyncio
 import json
+import logging
 import uuid
 
 import redis.asyncio as aioredis
@@ -221,6 +222,9 @@ class TelegramAgentBot:
             "chat_type": update.effective_chat.type,
         }
 
+        # Wake up agent if stopped (auto-lifecycle), with user-visible status messages
+        woke_up = await self._ensure_agent_running(update)
+
         # Send message to agent via Redis
         try:
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -235,8 +239,38 @@ class TelegramAgentBot:
             await redis.aclose()
 
             await update.effective_chat.send_action("typing")
+            if woke_up:
+                await update.message.reply_text("✅ Agent hochgefahren!")
         except Exception as e:
             await update.message.reply_text(f"Fehler beim Senden: {e}")
+
+    async def _ensure_agent_running(self, update: Update) -> bool:
+        """If this agent's container is stopped, wake it up. Returns True if we had to wake.
+
+        Sends user-visible messages: "Agent fährt hoch, einen Moment!" then "Agent hochgefahren!"
+        """
+        try:
+            from app.db.session import async_session_factory
+            from app.models.agent import Agent, AgentState
+            from app.services.user_lifecycle import wake_agent
+            from sqlalchemy import select
+
+            async with async_session_factory() as db:
+                agent = await db.scalar(select(Agent).where(Agent.id == self.agent_id))
+                if not agent:
+                    return False
+                if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+                    return False
+
+                # Needs waking — tell user and start
+                await update.message.reply_text("⏳ Agent fährt hoch, einen Moment...")
+                from app.services.docker_service import DockerService
+                docker = DockerService()
+                ok = await wake_agent(db, docker, self.agent_id, wait=True, timeout=20)
+                return ok
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Telegram wake-up failed: {e}")
+            return False
 
     # --- Media & callback handling ---
 

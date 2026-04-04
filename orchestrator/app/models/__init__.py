@@ -21,6 +21,8 @@ from app.models.knowledge import KnowledgeEntry
 from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
 from app.models.test_run import TestRun
+from app.models.meeting_room import MeetingRoom
+from app.models.approval_rule import ApprovalRule
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -35,4 +37,6 @@ __all__ = [
     "AgentMessage",
     "TaskRating",
     "TestRun",
+    "MeetingRoom",
+    "ApprovalRule",
 ]

@@ -242,7 +242,7 @@ export default function ChatPage() {
 
       {/* Chat Area — key forces remount on agent/session/new-chat change */}
       <div className="flex-1 min-h-0">
-        <AgentChat key={`${selectedAgent.id}-${sessionId || chatKey}`} agentId={selectedAgent.id} />
+        <AgentChat key={`${selectedAgent.id}-${sessionId || chatKey}`} agentId={selectedAgent.id} initialSessionId={sessionId} />
       </div>
     </div>
   );

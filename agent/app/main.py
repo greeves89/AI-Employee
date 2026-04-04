@@ -262,6 +262,54 @@ def setup_default_skills() -> None:
             print(f"[Agent] Skill install error ({skill_info['skill']}): {e}")
 
 
+async def bootstrap_knowledge() -> None:
+    """Fetch agent info from orchestrator and create /workspace/knowledge.md if missing.
+
+    This ensures the agent always starts with its template knowledge available
+    as a local file that startup instructions reference.
+    """
+    knowledge_path = os.path.join(settings.workspace_dir, "knowledge.md")
+    if os.path.exists(knowledge_path):
+        print(f"[Agent] knowledge.md already exists, skipping bootstrap")
+        return
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Fetch agent details (includes template knowledge)
+            url = f"{settings.orchestrator_url}/api/v1/agents/{settings.agent_id}"
+            resp = await client.get(url, headers={"X-Agent-Token": settings.agent_token})
+            if resp.status_code != 200:
+                print(f"[Agent] Could not fetch agent info: {resp.status_code}")
+                return
+            data = resp.json()
+            knowledge = data.get("knowledge_template") or data.get("knowledge", "")
+            if not knowledge:
+                knowledge = f"## Role: {data.get('name', settings.agent_id)}\n\n{data.get('role', '')}\n"
+
+            # Also fetch improvement data if available
+            config = data.get("config") or {}
+            improvement = config.get("improvement")
+            if improvement:
+                knowledge += (
+                    f"\n\n## Performance Metrics\n"
+                    f"- Average Rating: {improvement.get('average_rating', 'N/A')}/5\n"
+                    f"- Status: {improvement.get('status', 'unknown')}\n"
+                    f"- Total Ratings: {improvement.get('total_ratings', 0)}\n"
+                )
+                top_issues = improvement.get("top_issues", [])
+                if top_issues:
+                    knowledge += "- Top Issues from User Feedback:\n"
+                    for issue in top_issues:
+                        knowledge += f"  - {issue}\n"
+
+            with open(knowledge_path, "w") as f:
+                f.write(knowledge)
+            print(f"[Agent] Created knowledge.md from template ({len(knowledge)} chars)")
+    except Exception as e:
+        print(f"[Agent] Warning: knowledge.md bootstrap failed: {e}")
+
+
 async def main() -> None:
     agent_id = settings.agent_id
     mode = settings.agent_mode
@@ -291,6 +339,9 @@ async def main() -> None:
         print(f"[Agent {agent_id}] MCP servers registered")
         setup_default_skills()
         print(f"[Agent {agent_id}] Default skills checked")
+
+    # Bootstrap knowledge.md from template (if not exists)
+    await bootstrap_knowledge()
 
     # Start health server
     health_runner = await start_health_server(agent_id, settings.health_port)

@@ -160,7 +160,7 @@ function extractResultContent(content: unknown): string {
 
 /* ─── Main Component ────────────────────────────────────────────────── */
 
-export function AgentChat({ agentId }: { agentId: string }) {
+export function AgentChat({ agentId, initialSessionId }: { agentId: string; initialSessionId?: string | null }) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -212,7 +212,13 @@ export function AgentChat({ agentId }: { agentId: string }) {
             preview: s.preview || "",
           }));
           setSessions(tabs);
-          setActiveSessionId(tabs[0].id);
+          // Only auto-select a session if explicitly requested (e.g. from conversation list)
+          // If no initialSessionId → user wants a new chat, don't auto-select
+          if (initialSessionId) {
+            const found = tabs.find((t) => t.id === initialSessionId);
+            setActiveSessionId(found ? found.id : tabs[0].id);
+          }
+          // If no initialSessionId, leave activeSessionId null → new chat
         }
       } catch {
         // No sessions yet
@@ -221,7 +227,7 @@ export function AgentChat({ agentId }: { agentId: string }) {
       }
     };
     loadSessions();
-  }, [agentId, sessionsLoaded]);
+  }, [agentId, sessionsLoaded, initialSessionId]);
 
   // Load messages when active session changes
   useEffect(() => {
@@ -660,10 +666,13 @@ export function AgentChat({ agentId }: { agentId: string }) {
   const createNewSession = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ text: "/reset" }));
+      // Clear active session so the next "session" event from backend adopts the new one
+      setActiveSessionId(null);
+      currentWsSessionId.current = null;
       setMessages([{
         id: "new-session",
         role: "system",
-        content: "New chat session started.",
+        content: "Neuer Chat gestartet.",
         timestamp: new Date().toISOString(),
       }]);
       setTotalCost(0);

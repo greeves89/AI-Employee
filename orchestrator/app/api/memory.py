@@ -121,6 +121,72 @@ async def search_memories(
 
 # --- UI-facing endpoints ---
 
+@router.get("/preload/{agent_id}")
+async def preload_critical_memories(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the agent's most critical memories for prompt injection.
+
+    Returns memories that the agent should ALWAYS know:
+    - importance >= 4 (user corrections, key decisions, credentials)
+    - categories: credentials, preference, procedure
+    - recent learnings (last 10)
+
+    Open endpoint (no auth) — agents fetch their own preload on every task start.
+    """
+    # High-importance memories (importance >= 4)
+    high_imp_result = await db.execute(
+        select(AgentMemory)
+        .where(AgentMemory.agent_id == agent_id)
+        .where(AgentMemory.importance >= 4)
+        .order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc())
+        .limit(20)
+    )
+    high_imp = list(high_imp_result.scalars().all())
+
+    # All credentials/keys (always relevant)
+    creds_result = await db.execute(
+        select(AgentMemory)
+        .where(AgentMemory.agent_id == agent_id)
+        .where(AgentMemory.category.in_(["credentials", "api_key", "secret", "auth"]))
+        .order_by(AgentMemory.updated_at.desc())
+        .limit(30)
+    )
+    creds = list(creds_result.scalars().all())
+
+    # Recent learnings (last 10)
+    learnings_result = await db.execute(
+        select(AgentMemory)
+        .where(AgentMemory.agent_id == agent_id)
+        .where(AgentMemory.category == "learning")
+        .order_by(AgentMemory.updated_at.desc())
+        .limit(10)
+    )
+    learnings = list(learnings_result.scalars().all())
+
+    # Deduplicate by ID
+    seen_ids = set()
+    def _dedupe(items):
+        out = []
+        for m in items:
+            if m.id not in seen_ids:
+                seen_ids.add(m.id)
+                out.append({
+                    "key": m.key,
+                    "category": m.category,
+                    "content": m.content,
+                    "importance": m.importance,
+                })
+        return out
+
+    return {
+        "critical": _dedupe(high_imp),
+        "credentials": _dedupe(creds),
+        "recent_learnings": _dedupe(learnings),
+    }
+
+
 @router.get("/agents/{agent_id}")
 async def list_agent_memories(
     agent_id: str,
