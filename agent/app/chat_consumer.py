@@ -196,8 +196,8 @@ class ChatConsumer:
     def _prepare_text(self, text: str, telegram_ctx: dict | None) -> str:
         """Prepare message text, adding Telegram context if present."""
         # Approval rules apply to all messages
-        from app.agent_runner import _get_approval_rules_prefix
-        rules_prefix = _get_approval_rules_prefix()
+        from app.runner_hooks import get_approval_rules_prefix
+        rules_prefix = get_approval_rules_prefix()
         if telegram_ctx:
             return rules_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=self._is_new_session())
         # For Web UI chat: also add startup instructions for new sessions

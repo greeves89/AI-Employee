@@ -9,6 +9,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   deleteNotification,
+  respondToApproval,
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
 import { useAuthStore } from "@/lib/auth";
@@ -153,6 +154,23 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
     }
   };
 
+  const handleApprovalChoice = async (id: number, choice: string) => {
+    try {
+      await respondToApproval(id, choice);
+      // Mark visually: update the notification to show the chosen option
+      setNotifications((prev) =>
+        prev.map((n) => {
+          if (n.id !== id) return n;
+          const meta = { ...(n.meta || {}), response: choice };
+          return { ...n, meta, read: true };
+        })
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // ignore
+    }
+  };
+
   const handleDelete = async (id: number) => {
     try {
       const notif = notifications.find((n) => n.id === id);
@@ -280,20 +298,28 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
                     )}
                     {/* Approval buttons */}
                     {notif.type === "approval" && Array.isArray(notif.meta?.options) && (
-                      <div className="flex gap-1.5 mt-2">
-                        {(notif.meta.options as string[]).map((opt, i) => (
-                          <button
-                            key={i}
-                            className={cn(
-                              "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
-                              i === 0
-                                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                                : "bg-accent text-foreground hover:bg-accent/80"
-                            )}
-                          >
-                            {opt}
-                          </button>
-                        ))}
+                      <div className="flex gap-1.5 mt-2 flex-wrap">
+                        {notif.meta?.response ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <Check className="h-3 w-3" />
+                            {String(notif.meta.response)}
+                          </span>
+                        ) : (
+                          (notif.meta.options as string[]).map((opt, i) => (
+                            <button
+                              key={i}
+                              onClick={() => handleApprovalChoice(notif.id, opt)}
+                              className={cn(
+                                "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
+                                i === 0
+                                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                  : "bg-accent text-foreground hover:bg-accent/80"
+                              )}
+                            >
+                              {opt}
+                            </button>
+                          ))
+                        )}
                       </div>
                     )}
                     <p className="text-[10px] text-muted-foreground/60 mt-1">

@@ -426,6 +426,13 @@ export async function deleteNotification(id: number): Promise<void> {
   await fetchJSON(`${getBase()}/notifications/${id}`, { method: "DELETE" });
 }
 
+export async function respondToApproval(notificationId: number, choice: string): Promise<{ status: string; choice: string }> {
+  return fetchJSON(`${getBase()}/notifications/${notificationId}/respond`, {
+    method: "POST",
+    body: JSON.stringify({ choice }),
+  });
+}
+
 // Proactive Mode
 export async function getProactiveConfig(agentId: string): Promise<ProactiveResponse> {
   return fetchJSON(`${getBase()}/agents/${agentId}/proactive`);

@@ -71,6 +71,18 @@ export default function HealthPage() {
   const [triggering, setTriggering] = useState(false);
   const [testProgress, setTestProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [testRuns, setTestRuns] = useState<TestRun[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expandedRun, setExpandedRun] = useState<string | null>(null);
+
+  const loadTestRunHistory = async () => {
+    try {
+      const data = await api.getTestRuns();
+      setTestRuns(data.runs || []);
+    } catch {
+      // ignore
+    }
+  };
 
   async function load() {
     try {
@@ -720,10 +732,18 @@ export default function HealthPage() {
 
           {/* Latest Test Run */}
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-primary" />
-              Letzter Self-Test
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+                Letzter Self-Test
+              </h3>
+              <button
+                onClick={() => { setShowHistory(true); loadTestRunHistory(); }}
+                className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                Alle Runs anzeigen
+              </button>
+            </div>
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -799,6 +819,85 @@ export default function HealthPage() {
           </div>
         )}
       </div>
+
+      {/* Test Run History Modal */}
+      {showHistory && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowHistory(false)}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[85vh] rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-foreground/[0.06]">
+              <div>
+                <h2 className="text-lg font-semibold">Self-Test Historie</h2>
+                <p className="text-[11px] text-muted-foreground/70">Alle bisherigen Test-Durchläufe</p>
+              </div>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {testRuns.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Loader2 className="w-6 h-6 animate-spin mb-2" />
+                  <p className="text-sm">Laden...</p>
+                </div>
+              ) : (
+                testRuns.map((run) => {
+                  const isExpanded = expandedRun === String(run.id);
+                  return (
+                    <div key={run.id} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]">
+                      <button
+                        onClick={() => setExpandedRun(isExpanded ? null : String(run.id))}
+                        className="w-full flex items-center justify-between p-3 text-left hover:bg-foreground/[0.02] transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <StatusBadge status={run.status} />
+                          <div>
+                            <p className="text-sm font-medium">
+                              {run.passed}/{run.passed + run.failed + run.skipped} passed
+                            </p>
+                            <p className="text-[10px] text-muted-foreground/60">
+                              {new Date(run.created_at).toLocaleString("de-DE")}
+                              {run.duration_ms && ` · ${run.duration_ms}ms`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="text-emerald-400">✓ {run.passed}</span>
+                          {run.failed > 0 && <span className="text-red-400">✗ {run.failed}</span>}
+                          {run.skipped > 0 && <span className="text-muted-foreground">⊘ {run.skipped}</span>}
+                        </div>
+                      </button>
+                      {isExpanded && run.results && run.results.length > 0 && (
+                        <div className="border-t border-foreground/[0.06] p-3 space-y-1.5 max-h-80 overflow-y-auto">
+                          {run.results.map((r, i) => (
+                            <div key={i} className="flex items-start gap-2 p-2 rounded bg-foreground/[0.02] text-xs">
+                              {r.status === "passed" ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" /> :
+                               r.status === "failed" ? <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" /> :
+                               <AlertTriangle className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium">{r.name}</p>
+                                {r.message && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{r.message}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
