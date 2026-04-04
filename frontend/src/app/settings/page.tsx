@@ -128,6 +128,13 @@ export default function SettingsPage() {
   const [maxTurns, setMaxTurns] = useState(100);
   const [maxAgents, setMaxAgents] = useState(10);
   const [registrationOpen, setRegistrationOpen] = useState(true);
+  // OAuth integration credentials
+  const [googleClientId, setGoogleClientId] = useState("");
+  const [googleClientSecret, setGoogleClientSecret] = useState("");
+  const [microsoftClientId, setMicrosoftClientId] = useState("");
+  const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
+  const [appleClientId, setAppleClientId] = useState("");
+  const [appleTeamId, setAppleTeamId] = useState("");
   // Claude OAuth login
   const [claudeLoginOpen, setClaudeLoginOpen] = useState(false);
   const [claudeAuthState, setClaudeAuthState] = useState("");
@@ -205,6 +212,13 @@ export default function SettingsPage() {
       if (telegramToken && telegramChatId) {
         data.telegram = { bot_token: telegramToken, chat_id: telegramChatId };
       }
+      // OAuth integration credentials
+      if (googleClientId) data.oauth_google_client_id = googleClientId;
+      if (googleClientSecret) data.oauth_google_client_secret = googleClientSecret;
+      if (microsoftClientId) data.oauth_microsoft_client_id = microsoftClientId;
+      if (microsoftClientSecret) data.oauth_microsoft_client_secret = microsoftClientSecret;
+      if (appleClientId) data.oauth_apple_client_id = appleClientId;
+      if (appleTeamId) data.oauth_apple_team_id = appleTeamId;
       await api.updateSettings(data);
       setMessage("Settings saved!");
       // Clear secret fields
@@ -214,6 +228,12 @@ export default function SettingsPage() {
       setAwsSecretKey("");
       setVertexCredentials("");
       setFoundryApiKey("");
+      setGoogleClientId("");
+      setGoogleClientSecret("");
+      setMicrosoftClientId("");
+      setMicrosoftClientSecret("");
+      setAppleClientId("");
+      setAppleTeamId("");
       const s = await api.getSettings();
       setSettings(s);
     } catch (e) {
@@ -653,7 +673,149 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* ─── Section 4: Access Control (Admin only) ─── */}
+        {/* ─── Section 5: OAuth Integrations ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Globe className="h-4 w-4 text-muted-foreground/60" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                OAuth Integrations
+              </h2>
+            </div>
+
+            <div className="space-y-3">
+              {/* Google */}
+              <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.04]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 border border-red-500/20">
+                      <Globe className="h-4 w-4 text-red-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold">Google OAuth</h3>
+                      <p className="text-[11px] text-muted-foreground/60">Gmail, Calendar, Drive</p>
+                    </div>
+                  </div>
+                  {settings?.has_google_oauth ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Configured
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                      Not configured
+                    </span>
+                  )}
+                </div>
+                <div className="p-5 grid grid-cols-2 gap-3">
+                  <CredentialField
+                    label="Client ID"
+                    value={googleClientId}
+                    onChange={setGoogleClientId}
+                    placeholder="123456.apps.googleusercontent.com"
+                    mono
+                  />
+                  <CredentialField
+                    label="Client Secret"
+                    type="password"
+                    value={googleClientSecret}
+                    onChange={setGoogleClientSecret}
+                    placeholder="GOCSPX-..."
+                    mono
+                  />
+                </div>
+              </div>
+
+              {/* Microsoft */}
+              <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.04]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <Globe className="h-4 w-4 text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold">Microsoft OAuth</h3>
+                      <p className="text-[11px] text-muted-foreground/60">Outlook, OneDrive, Teams</p>
+                    </div>
+                  </div>
+                  {settings?.has_microsoft_oauth ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Configured
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                      Not configured
+                    </span>
+                  )}
+                </div>
+                <div className="p-5 grid grid-cols-2 gap-3">
+                  <CredentialField
+                    label="Application (Client) ID"
+                    value={microsoftClientId}
+                    onChange={setMicrosoftClientId}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    mono
+                  />
+                  <CredentialField
+                    label="Client Secret"
+                    type="password"
+                    value={microsoftClientSecret}
+                    onChange={setMicrosoftClientSecret}
+                    placeholder="Client secret value..."
+                    mono
+                  />
+                </div>
+              </div>
+
+              {/* Apple */}
+              <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.04]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-500/10 border border-zinc-500/20">
+                      <Globe className="h-4 w-4 text-zinc-300" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold">Apple Sign In</h3>
+                      <p className="text-[11px] text-muted-foreground/60">Apple ID authentication</p>
+                    </div>
+                  </div>
+                  {settings?.has_apple_oauth ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Configured
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                      Not configured
+                    </span>
+                  )}
+                </div>
+                <div className="p-5 grid grid-cols-2 gap-3">
+                  <CredentialField
+                    label="Services ID"
+                    value={appleClientId}
+                    onChange={setAppleClientId}
+                    placeholder="com.example.app"
+                    mono
+                  />
+                  <CredentialField
+                    label="Team ID"
+                    value={appleTeamId}
+                    onChange={setAppleTeamId}
+                    placeholder="ABCDE12345"
+                    mono
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ─── Section 6: Access Control (Admin only) ─── */}
         {isAdmin && (
           <section>
             <div className="flex items-center gap-2 mb-3">

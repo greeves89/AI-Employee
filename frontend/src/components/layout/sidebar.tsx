@@ -21,6 +21,8 @@ import {
   BookOpen,
   ToggleLeft,
   ToggleRight,
+  HeartPulse,
+  Sparkles,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
@@ -30,11 +32,12 @@ import { useAuthStore } from "@/lib/auth";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const navItems = [
-  { href: "/chat", label: "Chat", icon: MessageSquarePlus, simpleVisible: true },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
   { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
   { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen, simpleVisible: true },
+  { href: "/skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+  { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
   { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
   { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },

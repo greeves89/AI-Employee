@@ -27,6 +27,18 @@ import {
   Plug,
   Eye,
   EyeOff,
+  ShieldAlert,
+  GitPullRequest,
+  TestTube2,
+  Share2,
+  Scale,
+  UserPlus,
+  Languages,
+  Kanban,
+  Database,
+  Palette,
+  PenTool,
+  Globe,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, LLMConfig, LLMProviderType, PermissionPackage } from "@/lib/types";
@@ -51,6 +63,20 @@ const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Headphones,
   TrendingUp,
   Crown,
+  ShieldAlert,
+  GitPullRequest,
+  TestTube2,
+  Share2,
+  Scale,
+  UserPlus,
+  Languages,
+  Kanban,
+  Database,
+  Palette,
+  PenTool,
+  Globe,
+  Zap,
+  Plug,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -64,6 +90,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   support: "Support",
   sales: "Sales",
   management: "Management",
+  security: "Security",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -77,6 +104,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   support: "bg-cyan-500/10 text-cyan-400",
   sales: "bg-rose-500/10 text-rose-400",
   management: "bg-indigo-500/10 text-indigo-400",
+  security: "bg-red-500/10 text-red-400",
 };
 
 const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[] }> = {

@@ -95,6 +95,191 @@ LOCAL_TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Perform an exact string replacement in a file. STRONGLY PREFER THIS over write_file for modifying existing files — it's token-efficient and safe. The old_string must match EXACTLY (including whitespace/indentation) and appear exactly once in the file (unless replace_all=true). Include enough surrounding context in old_string to make it unique.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute or workspace-relative path to the file",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": "The exact text to find and replace (must be unique in the file)",
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "The text to replace it with",
+                    },
+                    "replace_all": {
+                        "type": "boolean",
+                        "description": "Replace every occurrence of old_string (default: false)",
+                        "default": False,
+                    },
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "multi_edit",
+            "description": "Apply multiple edits to a single file atomically. All edits succeed or all fail. Each edit is applied sequentially to the result of the previous one. Use when you need several related changes in one file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute or workspace-relative path to the file",
+                    },
+                    "edits": {
+                        "type": "array",
+                        "description": "List of edits to apply in order",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "old_string": {"type": "string"},
+                                "new_string": {"type": "string"},
+                                "replace_all": {"type": "boolean", "default": False},
+                            },
+                            "required": ["old_string", "new_string"],
+                        },
+                    },
+                },
+                "required": ["path", "edits"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "grep",
+            "description": "Fast regex search across files using ripgrep. Returns matching lines with file paths and line numbers. Use this INSTEAD of bash(grep/find). Supports glob filters.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Regex pattern to search for",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Directory or file to search in (default: workspace)",
+                    },
+                    "glob": {
+                        "type": "string",
+                        "description": "Glob filter e.g. '*.py', '**/*.ts' (optional)",
+                    },
+                    "case_insensitive": {
+                        "type": "boolean",
+                        "description": "Case-insensitive match (default: false)",
+                        "default": False,
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Max matches to return (default: 100)",
+                        "default": 100,
+                    },
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "glob",
+            "description": "Find files matching a glob pattern, sorted by modification time (newest first). Use INSTEAD of bash(find). Patterns like '**/*.py' match recursively.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Glob pattern (e.g. '**/*.ts', 'src/**/*.py')",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Root directory to search (default: workspace)",
+                    },
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_fetch",
+            "description": "Fetch a URL and return its content as text/markdown. Use for reading documentation, API specs, GitHub README files, etc. HTML is stripped to readable text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch (http:// or https://)",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Max characters to return (default: 20000)",
+                        "default": 20000,
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "Show the git working tree status (modified/staged/untracked files). Much cleaner than bash(git status).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Repository path (default: workspace)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff",
+            "description": "Show git diff. By default shows unstaged changes. Set staged=true for staged, or provide a ref (e.g. 'HEAD~1') to diff against a commit.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Repository path (default: workspace)",
+                    },
+                    "staged": {
+                        "type": "boolean",
+                        "description": "Show staged changes instead of unstaged",
+                        "default": False,
+                    },
+                    "ref": {
+                        "type": "string",
+                        "description": "Compare against this ref (e.g. 'HEAD~1', 'main')",
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "Limit diff to this file path",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 # ── Orchestrator API Tools (replicate MCP server functionality) ──

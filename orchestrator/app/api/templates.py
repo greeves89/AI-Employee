@@ -222,21 +222,22 @@ async def create_agent_from_template(
             user_id=uid,
         )
 
-        # Write knowledge template to agent's workspace if provided
+        # Write knowledge template INSTEAD of the generic default
         if template.knowledge_template and agent.container_id:
             try:
-                knowledge_content = template.knowledge_template
-                # Write via tar (safe — no shell injection possible)
+                # Overwrite (not append) — template already has complete role definition
                 docker.write_file_in_container(
                     agent.container_id,
-                    "/workspace/knowledge_template.md",
-                    knowledge_content,
+                    "/workspace/knowledge.md",
+                    template.knowledge_template,
                 )
-                # Append template knowledge to existing knowledge.md
-                docker.exec_in_container(
-                    agent.container_id,
-                    "cat /workspace/knowledge_template.md >> /workspace/knowledge.md && rm /workspace/knowledge_template.md",
-                )
+                # Mark onboarding as complete since template provides the role
+                agent.config = {
+                    **agent.config,
+                    "onboarding_complete": True,
+                    "knowledge_template": template.knowledge_template,
+                }
+                await db.commit()
             except Exception as e:
                 logger.warning(f"Failed to write knowledge template: {e}")
 

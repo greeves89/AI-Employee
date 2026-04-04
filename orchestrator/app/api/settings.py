@@ -48,6 +48,10 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         aws_region=settings.aws_region,
         vertex_region=settings.vertex_region,
         foundry_resource=settings.foundry_resource,
+        # OAuth integrations
+        has_google_oauth=bool(settings.oauth_google_client_id),
+        has_microsoft_oauth=bool(settings.oauth_microsoft_client_id),
+        has_apple_oauth=bool(settings.oauth_apple_client_id),
     )
 
 
@@ -67,6 +71,15 @@ _FIELD_MAP: dict[str, str] = {
     "vertex_credentials_json": "vertex_credentials_json",
     "foundry_api_key": "foundry_api_key",
     "foundry_resource": "foundry_resource",
+    # OAuth integration credentials
+    "oauth_google_client_id": "oauth_google_client_id",
+    "oauth_google_client_secret": "oauth_google_client_secret",
+    "oauth_microsoft_client_id": "oauth_microsoft_client_id",
+    "oauth_microsoft_client_secret": "oauth_microsoft_client_secret",
+    "oauth_apple_client_id": "oauth_apple_client_id",
+    "oauth_apple_team_id": "oauth_apple_team_id",
+    "oauth_apple_key_id": "oauth_apple_key_id",
+    "oauth_apple_private_key": "oauth_apple_private_key",
 }
 
 

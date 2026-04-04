@@ -79,6 +79,13 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
+    # Update activity timestamp (for lifecycle manager) — throttle to once per minute
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    if not user.last_active_at or user.last_active_at < now - timedelta(minutes=1):
+        user.last_active_at = now
+        await db.commit()
+
     return user
 
 

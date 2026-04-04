@@ -7,19 +7,59 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
+from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 
 
+async def _build_approval_rules_prefix(db: AsyncSession, agent_id: str) -> str:
+    """Build a prompt prefix that lists all active approval rules for the agent.
+
+    The agent is told to call the `request_approval` MCP tool whenever a rule matches
+    before taking the action.
+    """
+    try:
+        result = await db.execute(
+            select(ApprovalRule)
+            .where(ApprovalRule.is_active == True)
+            .where((ApprovalRule.agent_id.is_(None)) | (ApprovalRule.agent_id == agent_id))
+        )
+        rules = list(result.scalars().all())
+    except Exception:
+        return ""
+
+    if not rules:
+        return ""
+
+    lines = [
+        "",
+        "=== APPROVAL RULES (MANDATORY) ===",
+        "The user has defined these rules. You MUST call `request_approval` BEFORE acting",
+        "whenever any of these rules apply to what you are about to do:",
+        "",
+    ]
+    for r in rules:
+        threshold_str = f" (threshold: {r.threshold})" if r.threshold is not None else ""
+        lines.append(f"  [{r.category}] {r.name}{threshold_str}: {r.description}")
+    lines.extend([
+        "",
+        "If unsure whether a rule applies, ASK via request_approval. Better safe than sorry.",
+        "=== END APPROVAL RULES ===",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 class TaskRouter:
     """Routes tasks to agents via Redis queues with load balancing."""
 
-    def __init__(self, db: AsyncSession, redis: RedisService, load_balancer: LoadBalancer):
+    def __init__(self, db: AsyncSession, redis: RedisService, load_balancer: LoadBalancer, docker_service=None):
         self.db = db
         self.redis = redis
         self.load_balancer = load_balancer
+        self.docker = docker_service
 
     async def create_and_route_task(
         self,
@@ -67,11 +107,23 @@ class TaskRouter:
         self.db.add(task)
         await self.db.commit()
 
+        # Inject active approval rules into the prompt
+        rules_prefix = await _build_approval_rules_prefix(self.db, agent_id)
+        final_prompt = rules_prefix + prompt if rules_prefix else prompt
+
+        # Wake agent if stopped (auto-lifecycle)
+        if self.docker:
+            try:
+                from app.services.user_lifecycle import wake_agent
+                await wake_agent(self.db, self.docker, agent_id)
+            except Exception as e:
+                logger.warning(f"Could not wake agent {agent_id} before task: {e}")
+
         # Push to agent's Redis queue
         task_payload = json.dumps(
             {
                 "id": task_id,
-                "prompt": prompt,
+                "prompt": final_prompt,
                 "model": model,
                 "priority": priority,
             }

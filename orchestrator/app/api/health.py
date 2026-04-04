@@ -249,3 +249,117 @@ async def get_health_dashboard(
         "total_cost_7d": total_cost_7d,
         "total_tasks_7d": total_tasks_7d,
     }
+
+
+@router.get("/auto-metrics")
+async def get_auto_metrics(
+    days: int = Query(7, ge=1, le=90),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Automatic per-agent metrics derived from task execution (no ratings needed).
+
+    Returns per-agent: task count, success rate, avg cost, avg duration, avg turns,
+    plus daily time-series for each metric.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    agents_result = await db.execute(select(Agent))
+    agents = list(agents_result.scalars().all())
+
+    agent_metrics = []
+    for agent in agents:
+        # Fetch all completed/failed tasks in window
+        result = await db.execute(
+            select(Task)
+            .where(Task.agent_id == agent.id)
+            .where(Task.completed_at >= since)
+            .where(Task.status.in_([TaskStatus.COMPLETED, TaskStatus.FAILED]))
+            .order_by(Task.completed_at.asc())
+        )
+        tasks = list(result.scalars().all())
+
+        if not tasks:
+            continue
+
+        total = len(tasks)
+        succeeded = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
+        failed = total - succeeded
+        success_rate = round(succeeded / total * 100, 1) if total else 0
+
+        costs = [t.cost_usd for t in tasks if t.cost_usd is not None]
+        durations = [t.duration_ms for t in tasks if t.duration_ms is not None]
+        turns = [t.num_turns for t in tasks if t.num_turns is not None]
+
+        avg_cost = round(sum(costs) / len(costs), 4) if costs else None
+        total_cost = round(sum(costs), 4) if costs else None
+        avg_duration_ms = round(sum(durations) / len(durations)) if durations else None
+        avg_turns = round(sum(turns) / len(turns), 1) if turns else None
+
+        # Daily time-series
+        from collections import defaultdict
+        daily: dict[str, dict] = defaultdict(lambda: {"total": 0, "succeeded": 0, "cost": 0.0, "duration_ms": 0, "duration_count": 0})
+        for t in tasks:
+            if not t.completed_at:
+                continue
+            day = t.completed_at.strftime("%Y-%m-%d")
+            daily[day]["total"] += 1
+            if t.status == TaskStatus.COMPLETED:
+                daily[day]["succeeded"] += 1
+            if t.cost_usd is not None:
+                daily[day]["cost"] += t.cost_usd
+            if t.duration_ms is not None:
+                daily[day]["duration_ms"] += t.duration_ms
+                daily[day]["duration_count"] += 1
+
+        daily_series = []
+        for day in sorted(daily.keys()):
+            d = daily[day]
+            daily_series.append({
+                "date": day,
+                "total": d["total"],
+                "succeeded": d["succeeded"],
+                "success_rate": round(d["succeeded"] / d["total"] * 100, 1) if d["total"] else 0,
+                "cost": round(d["cost"], 4),
+                "avg_duration_ms": round(d["duration_ms"] / d["duration_count"]) if d["duration_count"] else 0,
+            })
+
+        # Top error messages (most frequent)
+        error_counts: dict[str, int] = defaultdict(int)
+        for t in tasks:
+            if t.status == TaskStatus.FAILED and t.error:
+                key = t.error.strip().split("\n")[0][:80]
+                error_counts[key] += 1
+        top_errors = [
+            {"error": err, "count": count}
+            for err, count in sorted(error_counts.items(), key=lambda x: -x[1])[:5]
+        ]
+
+        agent_metrics.append({
+            "agent_id": agent.id,
+            "agent_name": agent.name,
+            "total_tasks": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "success_rate": success_rate,
+            "avg_cost_usd": avg_cost,
+            "total_cost_usd": total_cost,
+            "avg_duration_ms": avg_duration_ms,
+            "avg_turns": avg_turns,
+            "daily": daily_series,
+            "top_errors": top_errors,
+        })
+
+    # Platform totals
+    total_tasks = sum(m["total_tasks"] for m in agent_metrics)
+    total_cost = sum(m["total_cost_usd"] or 0 for m in agent_metrics)
+    total_succeeded = sum(m["succeeded"] for m in agent_metrics)
+    overall_success_rate = round(total_succeeded / total_tasks * 100, 1) if total_tasks else 0
+
+    return {
+        "days": days,
+        "total_tasks": total_tasks,
+        "total_cost_usd": round(total_cost, 4),
+        "success_rate": overall_success_rate,
+        "agents": agent_metrics,
+    }

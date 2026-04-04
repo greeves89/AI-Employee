@@ -178,8 +178,12 @@ class MessageConsumer:
                 # Load conversation history for context
                 history_text = await self._get_conversation_history(from_agent_id)
 
+                # Approval rules (user-defined triggers for request_approval)
+                from app.agent_runner import _get_approval_rules_prefix
+                rules_prefix = _get_approval_rules_prefix()
+
                 # Knowledge/Memory context prefix (MUST be included in every message)
-                context_prefix = (
+                context_prefix = rules_prefix + (
                     f"MANDATORY FIRST STEPS — do these BEFORE processing the message:\n"
                     f"1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
                     f"2. Use knowledge_search (query relevant to this message) to check shared knowledge\n"

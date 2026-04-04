@@ -1,8 +1,11 @@
 """Tool executor - runs tools locally or via orchestrator API."""
 
 import asyncio
+import glob as _glob
 import logging
 import os
+import re
+import shutil
 from pathlib import Path
 
 from app.config import settings
@@ -207,9 +210,272 @@ class ToolExecutor:
         except Exception as e:
             return f"Error listing directory: {e}"
 
+    async def _tool_edit_file(self, params: dict) -> str:
+        """Perform an exact string replacement in a file."""
+        path = self._resolve_path(params.get("path", ""))
+        old_string = params.get("old_string", "")
+        new_string = params.get("new_string", "")
+        replace_all = params.get("replace_all", False)
+
+        if not old_string:
+            return "Error: old_string cannot be empty"
+        if old_string == new_string:
+            return "Error: old_string and new_string are identical"
+        if not os.path.exists(path):
+            return f"Error: File not found: {path}"
+        if not os.path.isfile(path):
+            return f"Error: Not a file: {path}"
+
+        try:
+            with open(path, "r", errors="replace") as f:
+                content = f.read()
+
+            count = content.count(old_string)
+            if count == 0:
+                return (
+                    f"Error: old_string not found in {path}. "
+                    "Check whitespace, indentation, and line endings."
+                )
+            if count > 1 and not replace_all:
+                return (
+                    f"Error: old_string appears {count} times in {path}. "
+                    "Include more surrounding context to make it unique, "
+                    "or set replace_all=true."
+                )
+
+            new_content = content.replace(old_string, new_string)
+            with open(path, "w") as f:
+                f.write(new_content)
+
+            applied = count if replace_all else 1
+            return f"Edited {path} ({applied} replacement{'s' if applied != 1 else ''})"
+        except Exception as e:
+            return f"Error editing file: {e}"
+
+    async def _tool_multi_edit(self, params: dict) -> str:
+        """Apply multiple edits to a file atomically."""
+        path = self._resolve_path(params.get("path", ""))
+        edits = params.get("edits", [])
+
+        if not edits:
+            return "Error: no edits provided"
+        if not os.path.exists(path):
+            return f"Error: File not found: {path}"
+        if not os.path.isfile(path):
+            return f"Error: Not a file: {path}"
+
+        try:
+            with open(path, "r", errors="replace") as f:
+                content = f.read()
+            original = content
+
+            for i, edit in enumerate(edits, 1):
+                old_s = edit.get("old_string", "")
+                new_s = edit.get("new_string", "")
+                replace_all = edit.get("replace_all", False)
+                if not old_s:
+                    return f"Error (edit #{i}): old_string cannot be empty"
+                if old_s == new_s:
+                    return f"Error (edit #{i}): old_string and new_string are identical"
+                cnt = content.count(old_s)
+                if cnt == 0:
+                    return f"Error (edit #{i}): old_string not found. File unchanged."
+                if cnt > 1 and not replace_all:
+                    return (
+                        f"Error (edit #{i}): old_string appears {cnt} times. "
+                        "Add more context or set replace_all=true. File unchanged."
+                    )
+                content = content.replace(old_s, new_s)
+
+            # All edits succeeded — write atomically
+            with open(path, "w") as f:
+                f.write(content)
+            return f"Applied {len(edits)} edits to {path}"
+        except Exception as e:
+            return f"Error in multi_edit: {e}"
+
+    async def _tool_grep(self, params: dict) -> str:
+        """Search file contents with ripgrep (falls back to grep)."""
+        pattern = params.get("pattern", "")
+        if not pattern:
+            return "Error: pattern cannot be empty"
+
+        search_path = self._resolve_path(params.get("path") or self.workspace_dir)
+        glob_filter = params.get("glob", "")
+        case_insensitive = params.get("case_insensitive", False)
+        max_results = min(params.get("max_results", 100), 1000)
+
+        rg = shutil.which("rg")
+        if rg:
+            cmd = [rg, "--line-number", "--no-heading", "--color=never", "-H"]
+            if case_insensitive:
+                cmd.append("-i")
+            if glob_filter:
+                cmd.extend(["--glob", glob_filter])
+            cmd.extend(["--max-count", str(max_results), pattern, search_path])
+        else:
+            # Fallback to grep -r
+            cmd = ["grep", "-rn", "--color=never"]
+            if case_insensitive:
+                cmd.append("-i")
+            if glob_filter:
+                cmd.extend(["--include", glob_filter])
+            cmd.extend(["-m", str(max_results), pattern, search_path])
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+            output = stdout.decode("utf-8", errors="replace")
+            # Exit code 1 = no matches (both rg and grep)
+            if process.returncode == 1:
+                return "(no matches)"
+            if process.returncode != 0:
+                err = stderr.decode("utf-8", errors="replace").strip()
+                return f"Error (exit {process.returncode}): {err or 'search failed'}"
+
+            lines = output.splitlines()
+            if len(lines) > max_results:
+                lines = lines[:max_results]
+                lines.append(f"... (truncated at {max_results} matches)")
+            result = "\n".join(lines)
+            if len(result) > MAX_OUTPUT_CHARS:
+                result = result[:MAX_OUTPUT_CHARS] + "\n... (output truncated)"
+            return result or "(no matches)"
+        except asyncio.TimeoutError:
+            return "Error: grep timed out after 30s"
+        except Exception as e:
+            return f"Error running grep: {e}"
+
+    async def _tool_glob(self, params: dict) -> str:
+        """Find files by glob pattern, sorted by mtime (newest first)."""
+        pattern = params.get("pattern", "")
+        if not pattern:
+            return "Error: pattern cannot be empty"
+        root = self._resolve_path(params.get("path") or self.workspace_dir)
+        try:
+            # Absolute pattern: use as-is. Relative: join with root.
+            if os.path.isabs(pattern):
+                matches = _glob.glob(pattern, recursive=True)
+            else:
+                matches = _glob.glob(os.path.join(root, pattern), recursive=True)
+            # Filter out directories, sort by mtime desc
+            files = [m for m in matches if os.path.isfile(m)]
+            files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            if not files:
+                return "(no matches)"
+            if len(files) > 500:
+                files = files[:500]
+                files.append(f"... (truncated at 500 files)")
+            return "\n".join(files)
+        except Exception as e:
+            return f"Error running glob: {e}"
+
+    async def _tool_web_fetch(self, params: dict) -> str:
+        """Fetch a URL and return its content as readable text."""
+        url = params.get("url", "").strip()
+        max_chars = min(params.get("max_chars", 20000), 100000)
+        if not url:
+            return "Error: url cannot be empty"
+        if not url.startswith(("http://", "https://")):
+            return "Error: url must start with http:// or https://"
+
+        try:
+            import httpx
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=30,
+                headers={"User-Agent": "AI-Employee-Agent/1.0"},
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").lower()
+                text = response.text
+
+            # Strip HTML if needed
+            if "html" in content_type or text.lstrip().startswith("<"):
+                text = _html_to_text(text)
+
+            if len(text) > max_chars:
+                text = text[:max_chars] + f"\n... (truncated, {len(text)} total chars)"
+            return text
+        except Exception as e:
+            return f"Error fetching {url}: {e}"
+
+    async def _tool_git_status(self, params: dict) -> str:
+        """Run git status in porcelain format."""
+        repo = self._resolve_path(params.get("path") or self.workspace_dir)
+        return await _run_git(["status", "--short", "--branch"], repo)
+
+    async def _tool_git_diff(self, params: dict) -> str:
+        """Run git diff with common options."""
+        repo = self._resolve_path(params.get("path") or self.workspace_dir)
+        args = ["diff", "--no-color"]
+        if params.get("staged"):
+            args.append("--staged")
+        ref = params.get("ref")
+        if ref:
+            args.append(ref)
+        file = params.get("file")
+        if file:
+            args.append("--")
+            args.append(file)
+        return await _run_git(args, repo)
+
     async def close(self) -> None:
         """Clean up resources."""
         if self._api_client:
             await self._api_client.close()
         if self._mcp_client:
             await self._mcp_client.close()
+
+
+async def _run_git(args: list[str], cwd: str) -> str:
+    """Helper to run a git command and return its output."""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "git", *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+        output = stdout.decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
+        if process.returncode != 0:
+            return f"git error (exit {process.returncode}): {err.strip() or output.strip()}"
+        result = output if output else "(no output)"
+        if len(result) > MAX_OUTPUT_CHARS:
+            result = result[:MAX_OUTPUT_CHARS] + "\n... (truncated)"
+        return result
+    except asyncio.TimeoutError:
+        return "Error: git command timed out"
+    except FileNotFoundError:
+        return "Error: git not installed"
+    except Exception as e:
+        return f"Error running git: {e}"
+
+
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\n\s*\n\s*\n+")
+
+
+def _html_to_text(html: str) -> str:
+    """Minimal HTML → plain text without adding dependencies."""
+    # Strip script/style blocks entirely
+    text = _SCRIPT_STYLE_RE.sub("", html)
+    # Convert common block tags to newlines BEFORE stripping tags
+    text = re.sub(r"</(p|div|br|h[1-6]|li|tr|section|article)\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    # Strip all remaining tags
+    text = _TAG_RE.sub("", text)
+    # Decode HTML entities
+    import html as _html
+    text = _html.unescape(text)
+    # Collapse excessive blank lines
+    text = _WS_RE.sub("\n\n", text)
+    return text.strip()

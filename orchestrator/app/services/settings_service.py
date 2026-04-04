@@ -20,6 +20,13 @@ SECRET_KEYS = {
     "vertex_credentials_json",
     "foundry_api_key",
     "telegram_bot_token",
+    # OAuth integration credentials
+    "oauth_google_client_id",
+    "oauth_google_client_secret",
+    "oauth_microsoft_client_id",
+    "oauth_microsoft_client_secret",
+    "oauth_apple_client_id",
+    "oauth_apple_private_key",
 }
 
 # All settings keys that can be persisted
@@ -34,6 +41,9 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "foundry_resource",
     "telegram_chat_id",
     "registration_open",
+    # OAuth non-secret fields
+    "oauth_apple_team_id",
+    "oauth_apple_key_id",
 }
 
 

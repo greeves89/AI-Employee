@@ -1112,6 +1112,8 @@ class AgentManager:
             "user_id": agent.user_id,
             "created_at": agent.created_at,
             "updated_at": agent.updated_at,
+            "knowledge_template": config.get("knowledge_template", ""),
+            "config": config,
         }
 
         # Add live metrics from Redis

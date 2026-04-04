@@ -28,6 +28,15 @@ class SettingsUpdate(BaseModel):
     # Microsoft Foundry
     foundry_api_key: str | None = None
     foundry_resource: str | None = None
+    # OAuth integration credentials
+    oauth_google_client_id: str | None = None
+    oauth_google_client_secret: str | None = None
+    oauth_microsoft_client_id: str | None = None
+    oauth_microsoft_client_secret: str | None = None
+    oauth_apple_client_id: str | None = None
+    oauth_apple_team_id: str | None = None
+    oauth_apple_key_id: str | None = None
+    oauth_apple_private_key: str | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -48,3 +57,7 @@ class SettingsResponse(BaseModel):
     aws_region: str
     vertex_region: str
     foundry_resource: str
+    # OAuth integrations
+    has_google_oauth: bool = False
+    has_microsoft_oauth: bool = False
+    has_apple_oauth: bool = False

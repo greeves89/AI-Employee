@@ -542,7 +542,7 @@ async def lifespan(app: FastAPI):
     # Start scheduler service for recurring tasks
     from app.services.scheduler_service import SchedulerService
 
-    scheduler = SchedulerService(app.state.redis)
+    scheduler = SchedulerService(app.state.redis, docker_service=app.state.docker)
     scheduler_task = asyncio.create_task(scheduler.run())
 
     # Start skill catalog crawler (daily GitHub crawl)
@@ -564,6 +564,14 @@ async def lifespan(app: FastAPI):
     self_test = SelfTestService()
     self_test_task = asyncio.create_task(self_test.run())
     app.state.self_test = self_test
+
+    # Start user lifecycle service (auto-stop agents of inactive users)
+    from app.services.user_lifecycle import UserLifecycleService
+    from app.db.session import async_session_factory as _sf_lc
+
+    user_lifecycle = UserLifecycleService(_sf_lc, app.state.docker, app.state.redis)
+    user_lifecycle_task = asyncio.create_task(user_lifecycle.run())
+    app.state.user_lifecycle = user_lifecycle
 
     # Start global Telegram bot if configured (for notifications)
     telegram_task = None
@@ -594,6 +602,8 @@ async def lifespan(app: FastAPI):
     skill_crawler_task.cancel()
     improvement_task.cancel()
     self_test_task.cancel()
+    user_lifecycle.stop()
+    user_lifecycle_task.cancel()
     if telegram_task:
         telegram_task.cancel()
         if hasattr(app.state, "telegram_bot"):
@@ -651,6 +661,7 @@ else:
 app.include_router(api_router, prefix="/api/v1")
 
 
+@app.get("/healthz")
 @app.get("/health")
 async def health_check(request: Request):
     """
@@ -688,7 +699,7 @@ async def health_check(request: Request):
     # Docker check
     try:
         docker: DockerService = request.app.state.docker
-        containers = await docker.list_agent_containers()
+        containers = docker.list_agent_containers()
         checks["docker"] = {"status": "healthy", "agent_containers": len(containers)}
     except Exception as e:
         # Docker being unavailable is non-critical for the API itself
