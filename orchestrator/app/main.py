@@ -139,6 +139,7 @@ async def _refresh_claude_token() -> None:
     - Reads token from host-auth/token.json (synced from macOS Keychain by launchd)
     - Only refreshes via Anthropic OAuth when token is actually expired
     - Checks file for changes every 2 min, but only calls Anthropic when needed
+    - FORCED refresh daily at 01:00 UTC (03:00 German time) to prevent auth failures
     """
     from app.services.claude_token_service import ClaudeTokenService
 
@@ -146,6 +147,8 @@ async def _refresh_claude_token() -> None:
 
     # Load initial token from Keychain file (or fallback to env/DB)
     service.write_initial_token()
+
+    last_forced_refresh_date: str = ""
 
     while True:
         try:
@@ -155,6 +158,45 @@ async def _refresh_claude_token() -> None:
                     "No token file found at /host-auth/token.json — "
                     "ensure launchd sync job is running on host."
                 )
+
+            # Forced OAuth refresh at 01:00 UTC (= 03:00 German CEST / 02:00 CET)
+            now = datetime.now(timezone.utc)
+            today_str = now.strftime("%Y-%m-%d")
+            if now.hour == 1 and now.minute < 5 and today_str != last_forced_refresh_date:
+                logger.info("[Token] Starting scheduled forced token refresh (03:00 DE)")
+                last_forced_refresh_date = today_str
+                try:
+                    from app.db.session import async_session_factory
+                    from app.services.oauth_service import OAuthService
+                    from app.services.redis_service import RedisService as RS
+
+                    redis = RS(settings.redis_url)
+                    await redis.connect()
+                    async with async_session_factory() as db:
+                        oauth_svc = OAuthService(db, redis)
+                        await oauth_svc.refresh_expiring_tokens()
+                        # Also force-refresh Anthropic even if not "expiring"
+                        try:
+                            from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+                            from sqlalchemy import select as sel
+                            result = await db.execute(
+                                sel(OAuthIntegration).where(
+                                    OAuthIntegration.provider == OAuthProvider.ANTHROPIC
+                                )
+                            )
+                            integration = result.scalar_one_or_none()
+                            if integration and integration.refresh_token_encrypted:
+                                await oauth_svc._refresh_token(integration)
+                                await db.commit()
+                                # Re-sync to shared volume
+                                await service.refresh_access_token()
+                                logger.info("[Token] Forced Anthropic token refresh completed")
+                        except Exception as e:
+                            logger.warning(f"[Token] Forced Anthropic refresh failed: {e}")
+                    await redis.disconnect()
+                except Exception as e:
+                    logger.error(f"[Token] Scheduled refresh error: {e}")
+
         except Exception as e:
             logger.error(f"Token sync task error: {e}")
 
