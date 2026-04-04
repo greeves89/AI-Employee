@@ -212,6 +212,47 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         agent_id = data.split(":", 1)[1]
         chat_id = query.message.chat_id
         await _start_chat_session(update, chat_id, agent_id, callback_query=query)
+    elif data.startswith("rate:"):
+        await _handle_rating_callback(query, data)
+
+
+async def _handle_rating_callback(query, data: str) -> None:
+    """Handle task rating from inline keyboard (rate:task_id:1-5)."""
+    try:
+        parts = data.split(":")
+        if len(parts) != 3:
+            await query.edit_message_text("❌ Ungültiges Rating-Format.")
+            return
+
+        task_id = parts[1]
+        rating = int(parts[2])
+        if rating < 1 or rating > 5:
+            await query.edit_message_text("❌ Rating muss zwischen 1-5 sein.")
+            return
+
+        # Save rating via internal API
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{API_BASE}/ratings/tasks/{task_id}/rate",
+                json={"rating": rating},
+                headers={"X-Internal": "telegram-bot"},
+                timeout=10.0,
+            )
+
+        stars = "⭐" * rating
+        if resp.status_code in (200, 201):
+            await query.edit_message_text(
+                f"{stars} Danke für deine Bewertung! ({rating}/5)"
+            )
+        elif resp.status_code == 409:
+            await query.edit_message_text("ℹ️ Du hast diesen Task bereits bewertet.")
+        else:
+            await query.edit_message_text(
+                f"{stars} Bewertung gespeichert (lokal).\n"
+                f"API-Fehler: {resp.status_code}"
+            )
+    except Exception as e:
+        await query.edit_message_text(f"❌ Fehler beim Bewerten: {e}")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
