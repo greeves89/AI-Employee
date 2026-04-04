@@ -510,6 +510,12 @@ async def lifespan(app: FastAPI):
     app.state.skill_crawler = skill_crawler
     skill_crawler_task = asyncio.create_task(skill_crawler.run())
 
+    # Start improvement engine (periodic rating analysis)
+    from app.services.improvement_engine import ImprovementEngine
+
+    improvement_engine = ImprovementEngine()
+    improvement_task = asyncio.create_task(improvement_engine.run())
+
     # Start global Telegram bot if configured (for notifications)
     telegram_task = None
     if settings.telegram_bot_token:
@@ -537,6 +543,7 @@ async def lifespan(app: FastAPI):
     claude_token_task.cancel()
     scheduler_task.cancel()
     skill_crawler_task.cancel()
+    improvement_task.cancel()
     if telegram_task:
         telegram_task.cancel()
         if hasattr(app.state, "telegram_bot"):
