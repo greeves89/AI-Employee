@@ -191,6 +191,10 @@ class TaskRouter:
 
         await self.db.commit()
 
+        # Request user rating via notification + Telegram inline keyboard
+        if task.status == TaskStatus.COMPLETED:
+            await self._request_task_rating(task, agent_id)
+
     async def _update_agent_metrics(self, agent_id: str, result_data: dict) -> None:
         """Track agent performance metrics for learning insights."""
         from app.models.agent import Agent
@@ -388,3 +392,53 @@ class TaskRouter:
             self.db.add(notif)
         except Exception as e:
             logger.warning(f"Could not create budget notification: {e}")
+
+    async def _request_task_rating(self, task: Task, agent_id: str | None) -> None:
+        """Send a rating request via Telegram inline keyboard after task completion."""
+        try:
+            from app.models.notification import Notification
+
+            # Create UI notification with rating action
+            notif = Notification(
+                agent_id=agent_id or "system",
+                type="info",
+                title="Task abgeschlossen — Bewertung?",
+                message=f"Task \"{task.title}\" ist fertig. Wie war das Ergebnis?",
+                priority="normal",
+                action_url=f"/tasks/{task.id}",
+                meta={"type": "rating_request", "task_id": task.id},
+            )
+            self.db.add(notif)
+
+            # Send Telegram inline keyboard with star ratings
+            await self._send_rating_keyboard(task)
+        except Exception as e:
+            logger.warning(f"Could not send rating request for task {task.id}: {e}")
+
+    async def _send_rating_keyboard(self, task: Task) -> None:
+        """Send Telegram inline keyboard with ⭐1-5 rating buttons."""
+        try:
+            import json
+            title = (task.title or "Task")[:50]
+            cost_info = f" (${task.cost_usd:.3f})" if task.cost_usd else ""
+            text = f"✅ Task erledigt: {title}{cost_info}\nWie bewertest du das Ergebnis?"
+            keyboard = {
+                "inline_keyboard": [[
+                    {"text": "⭐1", "callback_data": f"rate:{task.id}:1"},
+                    {"text": "⭐2", "callback_data": f"rate:{task.id}:2"},
+                    {"text": "⭐3", "callback_data": f"rate:{task.id}:3"},
+                    {"text": "⭐4", "callback_data": f"rate:{task.id}:4"},
+                    {"text": "⭐5", "callback_data": f"rate:{task.id}:5"},
+                ]]
+            }
+            # Publish rating request to Redis for Telegram bot to pick up
+            await self.redis.client.publish(
+                "telegram:rating_request",
+                json.dumps({
+                    "text": text,
+                    "reply_markup": keyboard,
+                    "task_id": task.id,
+                }),
+            )
+        except Exception as e:
+            logger.warning(f"Could not send rating keyboard: {e}")
