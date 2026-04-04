@@ -516,6 +516,13 @@ async def lifespan(app: FastAPI):
     improvement_engine = ImprovementEngine()
     improvement_task = asyncio.create_task(improvement_engine.run())
 
+    # Start self-test service (daily health checks + self-improvement)
+    from app.services.self_test_service import SelfTestService
+
+    self_test = SelfTestService()
+    self_test_task = asyncio.create_task(self_test.run())
+    app.state.self_test = self_test
+
     # Start global Telegram bot if configured (for notifications)
     telegram_task = None
     if settings.telegram_bot_token:
@@ -544,6 +551,7 @@ async def lifespan(app: FastAPI):
     scheduler_task.cancel()
     skill_crawler_task.cancel()
     improvement_task.cancel()
+    self_test_task.cancel()
     if telegram_task:
         telegram_task.cancel()
         if hasattr(app.state, "telegram_bot"):
