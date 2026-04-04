@@ -201,16 +201,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           meta: { options: args.options },
         }),
       });
-      return {
-        content: [
-          {
+
+      // Poll for user response — up to 5 minutes
+      const startTime = Date.now();
+      const maxWait = 5 * 60 * 1000; // 5 minutes
+      let userChoice = null;
+      while (Date.now() - startTime < maxWait) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const poll = await apiCall(`/notifications/${result.id}/result`);
+          if (poll.status === "responded" && poll.choice) {
+            userChoice = poll.choice;
+            break;
+          }
+        } catch (e) {
+          // continue polling
+        }
+      }
+
+      if (userChoice) {
+        return {
+          content: [{
             type: "text",
-            text:
-              `Approval request sent (id: ${result.id}). Waiting for user to choose from: ` +
-              `[${args.options.join(", ")}]. The request is visible in the Web UI and Telegram.`,
-          },
-        ],
-      };
+            text: `User approved with choice: "${userChoice}". Proceed according to this decision.`,
+          }],
+        };
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `User did not respond within 5 minutes. Do NOT proceed with the action. Ask again later or abort the task.`,
+          }],
+        };
+      }
     }
 
     default:

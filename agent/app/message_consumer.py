@@ -179,8 +179,8 @@ class MessageConsumer:
                 history_text = await self._get_conversation_history(from_agent_id)
 
                 # Approval rules (user-defined triggers for request_approval)
-                from app.agent_runner import _get_approval_rules_prefix
-                rules_prefix = _get_approval_rules_prefix()
+                from app.runner_hooks import get_approval_rules_prefix
+                rules_prefix = get_approval_rules_prefix()
 
                 # Knowledge/Memory context prefix (MUST be included in every message)
                 context_prefix = rules_prefix + (

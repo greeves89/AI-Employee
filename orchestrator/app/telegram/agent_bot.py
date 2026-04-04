@@ -343,6 +343,37 @@ class TelegramAgentBot:
             await query.answer("Nicht autorisiert")
             return
 
+        # Special handling for approval responses (format: "approval:{notif_id}:{choice}")
+        if query.data and query.data.startswith("approval:"):
+            try:
+                parts = query.data.split(":", 2)
+                notif_id = int(parts[1])
+                choice = parts[2]
+                # Write directly to DB + Redis (no chat loop needed)
+                from app.db.session import async_session_factory
+                from app.models.notification import Notification
+                from sqlalchemy import select
+                from datetime import datetime, timezone
+                async with async_session_factory() as db:
+                    notif = await db.scalar(select(Notification).where(Notification.id == notif_id))
+                    if notif:
+                        meta = dict(notif.meta or {})
+                        meta["response"] = choice
+                        meta["responded_at"] = datetime.now(timezone.utc).isoformat()
+                        meta["responded_via"] = "telegram"
+                        notif.meta = meta
+                        notif.read = True
+                        await db.commit()
+                redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+                await redis.set(f"approval:result:{notif_id}", choice, ex=3600)
+                await redis.aclose()
+                await query.answer(f"✓ {choice}")
+                await query.edit_message_reply_markup(reply_markup=None)
+                await query.message.reply_text(f"✓ Deine Wahl: *{choice}*", parse_mode="Markdown")
+            except Exception as e:
+                await query.answer(f"Fehler: {e}")
+            return
+
         user = query.from_user
         self._start_listener(chat_id)
 
@@ -386,8 +417,11 @@ class TelegramAgentBot:
             self._listen_responses(chat_id)
         )
 
-    async def send_to_all_authorized(self, text: str) -> None:
-        """Send a message to ALL authorized Telegram users of this agent."""
+    async def send_to_all_authorized(self, text: str, reply_markup=None) -> None:
+        """Send a message to ALL authorized Telegram users of this agent.
+
+        If reply_markup is provided, the message is sent with inline keyboard (not chunked).
+        """
         if not self.app or not self._started:
             return
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -395,7 +429,15 @@ class TelegramAgentBot:
             chat_ids = await redis.smembers(f"agent:{self.agent_id}:tg_auth")
             for cid in chat_ids:
                 try:
-                    await self._send_chunked(int(cid), text)
+                    if reply_markup is not None:
+                        await self.app.bot.send_message(
+                            chat_id=int(cid),
+                            text=text,
+                            reply_markup=reply_markup,
+                            parse_mode="Markdown",
+                        )
+                    else:
+                        await self._send_chunked(int(cid), text)
                 except Exception:
                     pass
         finally:

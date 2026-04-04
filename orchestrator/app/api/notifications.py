@@ -1,6 +1,8 @@
 """Notification API - agents send notifications, UI reads/marks them."""
 
 import json
+import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -11,6 +13,8 @@ from app.db.session import get_db
 from app.dependencies import get_redis_service, require_auth, verify_agent_token
 from app.models.notification import Notification
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -57,7 +61,7 @@ async def create_notification(
 
     # Send Telegram for high/urgent priority
     if body.priority in ("high", "urgent"):
-        await _send_telegram(body, redis)
+        await _send_telegram(body, redis, notif_id=notif.id)
 
     return _to_response(notif)
 
@@ -89,6 +93,70 @@ async def unread_count(user=Depends(require_auth), db: AsyncSession = Depends(ge
     )
     count = result.scalar() or 0
     return {"unread": count}
+
+
+class ApprovalResponse(BaseModel):
+    choice: str
+
+
+@router.post("/{notification_id}/respond")
+async def respond_to_approval(
+    notification_id: int,
+    body: ApprovalResponse,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """User responds to an approval notification by picking one of the options."""
+    result = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if notif.type != "approval":
+        raise HTTPException(status_code=400, detail="Not an approval notification")
+
+    meta = dict(notif.meta or {})
+    options = meta.get("options", [])
+    if options and body.choice not in options:
+        raise HTTPException(status_code=400, detail=f"Choice must be one of: {options}")
+
+    meta["response"] = body.choice
+    meta["responded_at"] = datetime.now(timezone.utc).isoformat()
+    meta["responded_by"] = user.id if user.id != "__anonymous__" else None
+    notif.meta = meta
+    notif.read = True
+    await db.commit()
+
+    # Store result in Redis so waiting agent MCP call can pick it up
+    try:
+        if redis.client:
+            await redis.client.set(f"approval:result:{notification_id}", body.choice, ex=3600)
+            await redis.client.publish(
+                f"approval:response:{notification_id}",
+                json.dumps({"choice": body.choice, "notification_id": notification_id}),
+            )
+    except Exception as e:
+        logger.warning(f"Could not publish approval response: {e}")
+
+    return {"status": "ok", "choice": body.choice}
+
+
+@router.get("/{notification_id}/result")
+async def get_approval_result(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Poll for an approval response (used by agents — no user auth required)."""
+    result = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notif = result.scalar_one_or_none()
+    if not notif or notif.type != "approval":
+        raise HTTPException(status_code=404, detail="Approval not found")
+    meta = notif.meta or {}
+    return {
+        "notification_id": notification_id,
+        "choice": meta.get("response"),
+        "status": "responded" if meta.get("response") else "pending",
+    }
 
 
 @router.post("/{notification_id}/read")
@@ -131,13 +199,28 @@ async def delete_notification(notification_id: int, user=Depends(require_auth), 
     return {"deleted": notification_id}
 
 
-async def _send_telegram(body: NotificationCreate, redis: RedisService) -> None:
+async def _send_telegram(body: NotificationCreate, redis: RedisService, notif_id: int | None = None) -> None:
     """Send high-priority notifications via Telegram.
 
     Routes to:
     1. Per-agent Telegram bot (if configured) -> all authorized users
     2. Global Telegram bot (fallback) -> admin chat
+    For approval notifications: sends with inline keyboard for the options.
     """
+    # Build inline keyboard for approval notifications
+    reply_markup = None
+    if body.type == "approval" and notif_id and body.meta and isinstance(body.meta.get("options"), list):
+        try:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            options = body.meta["options"]
+            buttons = [
+                [InlineKeyboardButton(opt, callback_data=f"approval:{notif_id}:{opt}")]
+                for opt in options[:5]
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
+        except Exception:
+            reply_markup = None
+
     # 1. Try per-agent bot first
     try:
         import app.main as main_mod
@@ -145,11 +228,11 @@ async def _send_telegram(body: NotificationCreate, redis: RedisService) -> None:
         if tg_manager and body.agent_id:
             bot = tg_manager.get_bot(body.agent_id)
             if bot and bot._started:
-                emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "success": "✅"}.get(body.type, "📢")
+                emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "success": "✅", "approval": "❓"}.get(body.type, "📢")
                 text = f"{emoji} *{body.title}*"
                 if body.message:
                     text += f"\n\n{body.message}"
-                await bot.send_to_all_authorized(text)
+                await bot.send_to_all_authorized(text, reply_markup=reply_markup)
                 return  # Sent via agent bot, no need for global bot
     except Exception:
         pass
