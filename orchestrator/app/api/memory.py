@@ -73,7 +73,114 @@ async def save_memory(
 
     await db.commit()
     await db.refresh(memory)
+
+    # Generate embedding asynchronously (fire-and-forget, don't block the response)
+    try:
+        from app.services.embedding_service import get_embedding_service
+        svc = get_embedding_service()
+        if svc.enabled:
+            # Embed the full content including context (key + content)
+            text_to_embed = f"{body.key}: {body.content}"
+            embedding = await svc.embed(text_to_embed)
+            if embedding is not None:
+                # pgvector accepts string representation of array
+                await db.execute(
+                    update(AgentMemory)
+                    .where(AgentMemory.id == memory.id)
+                    .values(embedding=str(embedding))
+                )
+                await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to generate embedding: {e}")
+
     return _to_response(memory)
+
+
+@router.get("/semantic-search")
+async def semantic_search_memories(
+    agent_id: str = Query(...),
+    q: str = Query(..., min_length=1, description="Natural-language query"),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Semantic vector search over an agent's memories.
+
+    Falls back to keyword search if embeddings are not available.
+    Requires agent auth — agent can only search its own memories.
+    """
+    if agent_id != auth["agent_id"]:
+        raise HTTPException(status_code=403, detail="Cannot search another agent's memory")
+
+    from app.services.embedding_service import get_embedding_service
+    from sqlalchemy import text as sa_text
+
+    svc = get_embedding_service()
+    if not svc.enabled:
+        # Fall back to keyword search
+        result = await db.execute(
+            select(AgentMemory)
+            .where(AgentMemory.agent_id == agent_id)
+            .where(
+                or_(
+                    AgentMemory.content.ilike(f"%{q}%"),
+                    AgentMemory.key.ilike(f"%{q}%"),
+                )
+            )
+            .limit(limit)
+        )
+        memories = result.scalars().all()
+        return {
+            "memories": [_to_response(m) for m in memories],
+            "mode": "keyword_fallback",
+            "reason": "No OpenAI API key configured — set OPENAI_API_KEY for semantic search",
+        }
+
+    # Generate query embedding
+    query_embedding = await svc.embed(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=503, detail="Embedding generation failed")
+
+    # Cosine-distance search using pgvector (<-> is cosine distance)
+    # Lower distance = more similar
+    sql = sa_text(
+        """
+        SELECT id, agent_id, category, key, content, importance, access_count,
+               created_at, updated_at,
+               1 - (embedding <=> :query_vec::vector) as similarity
+        FROM agent_memories
+        WHERE agent_id = :agent_id
+          AND embedding IS NOT NULL
+        ORDER BY embedding <=> :query_vec::vector
+        LIMIT :limit
+        """
+    )
+    result = await db.execute(
+        sql,
+        {"query_vec": str(query_embedding), "agent_id": agent_id, "limit": limit},
+    )
+    rows = result.mappings().all()
+
+    return {
+        "memories": [
+            {
+                "id": r["id"],
+                "agent_id": r["agent_id"],
+                "category": r["category"],
+                "key": r["key"],
+                "content": r["content"],
+                "importance": r["importance"],
+                "access_count": r["access_count"],
+                "similarity": round(float(r["similarity"]), 4),
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+            }
+            for r in rows
+        ],
+        "mode": "semantic",
+        "query": q,
+    }
 
 
 @router.get("/search")

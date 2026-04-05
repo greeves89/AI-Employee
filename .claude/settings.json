@@ -53,7 +53,7 @@
       "Bash(docker compose logs orchestrator --since 2m)",
       "Bash(docker compose exec orchestrator python -c \":*)",
       "Bash(docker compose logs orchestrator --since 30s)",
-      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ODY2ZDhhYjE0ZDUiLCJyb2xlIjoiYWRtaW4iLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzcyODg4MjE2LCJleHAiOjE3NzI4OTAwMTYsImp0aSI6IjUxN2MzMWEwZDY4MSJ9.yG8x-ove72OzP1_X6WVadJdAgxqkroUgZ0NqZX7l8WE\")",
+      "Bash(TOKEN=\"<redacted>\")",
       "Bash(docker compose logs orchestrator --since 15s)",
       "Read(//Volumes/AI_Base/GIT Repos/future-app-landingpage/**)",
       "Bash(rm -rf \"Neuer Ordner\")",

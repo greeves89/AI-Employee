@@ -1,0 +1,156 @@
+# AI-Employee Community Edition — Docker Compose for End Users
+#
+# Quick start:
+#   1. Download this file + .env.example: curl -LO ai-employee.dev/install/docker-compose.yml
+#   2. Copy .env.example to .env and fill in your secrets
+#   3. Run:  docker compose up -d
+#   4. Open: http://localhost:3000
+#
+# Updates:  docker compose pull && docker compose up -d
+# Logs:     docker compose logs -f
+# Stop:     docker compose down
+#
+# Documentation: https://github.com/greeves89/AI-Employee
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-employee-postgres
+    environment:
+      POSTGRES_DB: ai_employee
+      POSTGRES_USER: ai_employee
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_employee"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-employee-redis
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required in .env}"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    networks:
+      - internal
+      - agent-network
+
+  orchestrator:
+    image: ghcr.io/greeves89/ai-employee-orchestrator:${AI_EMPLOYEE_VERSION:-latest}
+    container_name: ai-employee-orchestrator
+    pull_policy: always
+    ports:
+      - "${ORCHESTRATOR_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://ai_employee:${DB_PASSWORD}@postgres:5432/ai_employee"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      REDIS_URL_INTERNAL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      # LLM Provider (set ONE of these)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
+      MAX_TURNS: ${MAX_TURNS:-100}
+      MAX_AGENTS: ${MAX_AGENTS:-10}
+      # Security (REQUIRED — must be unique per installation!)
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required in .env (32+ random chars)}
+      API_SECRET_KEY: ${API_SECRET_KEY:?API_SECRET_KEY is required in .env (32+ random chars)}
+      # Optional
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
+      OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
+      # Agent image this orchestrator spawns
+      AGENT_IMAGE: "ghcr.io/greeves89/ai-employee-agent:${AI_EMPLOYEE_VERSION:-latest}"
+      AGENT_NETWORK: ai-employee-network
+    volumes:
+      # Docker socket is required so the orchestrator can spawn agent containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Shared volume accessible by all agents for cross-agent file exchange
+      - ai-employee-shared:/shared
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - internal
+      - agent-network
+
+  frontend:
+    image: ghcr.io/greeves89/ai-employee-frontend:${AI_EMPLOYEE_VERSION:-latest}
+    container_name: ai-employee-frontend
+    pull_policy: always
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "1.0"
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+    name: ai-employee-postgres-data
+  redis_data:
+    name: ai-employee-redis-data
+  ai-employee-shared:
+    name: ai-employee-shared
+
+networks:
+  internal:
+    driver: bridge
+    name: ai-employee-internal
+  agent-network:
+    name: ai-employee-network
+    driver: bridge

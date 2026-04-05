@@ -44,6 +44,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # OAuth non-secret fields
     "oauth_apple_team_id",
     "oauth_apple_key_id",
+    # License
+    "license_key",
+    # Lifecycle configuration
+    "agent_idle_timeout_minutes",
 }
 
 
