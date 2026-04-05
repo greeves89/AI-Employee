@@ -16,9 +16,9 @@ from app.services.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 50
+BATCH_SIZE = 16  # Keep small so each chunk stays under 60s on CPU
 # Wait this long after orchestrator startup before starting the backfill
-INITIAL_DELAY_SECONDS = 60
+INITIAL_DELAY_SECONDS = 30
 
 
 async def backfill_memory_embeddings(db: AsyncSession, limit: int = BATCH_SIZE) -> int:
@@ -27,8 +27,6 @@ async def backfill_memory_embeddings(db: AsyncSession, limit: int = BATCH_SIZE) 
     Returns the number of embeddings generated.
     """
     svc = get_embedding_service()
-    if not svc.enabled:
-        return 0
 
     # Find memories missing an embedding
     result = await db.execute(
@@ -52,7 +50,7 @@ async def backfill_memory_embeddings(db: AsyncSession, limit: int = BATCH_SIZE) 
         if emb is None:
             continue
         await db.execute(
-            sa_text("UPDATE agent_memories SET embedding = :emb::vector WHERE id = :id"),
+            sa_text("UPDATE agent_memories SET embedding = CAST(:emb AS vector) WHERE id = :id"),
             {"emb": str(emb), "id": row["id"]},
         )
         count += 1
@@ -63,8 +61,6 @@ async def backfill_memory_embeddings(db: AsyncSession, limit: int = BATCH_SIZE) 
 async def backfill_knowledge_embeddings(db: AsyncSession, limit: int = BATCH_SIZE) -> int:
     """Same as above but for knowledge_entries."""
     svc = get_embedding_service()
-    if not svc.enabled:
-        return 0
 
     result = await db.execute(
         sa_text(
@@ -85,7 +81,7 @@ async def backfill_knowledge_embeddings(db: AsyncSession, limit: int = BATCH_SIZ
         if emb is None:
             continue
         await db.execute(
-            sa_text("UPDATE knowledge_entries SET embedding = :emb::vector WHERE id = :id"),
+            sa_text("UPDATE knowledge_entries SET embedding = CAST(:emb AS vector) WHERE id = :id"),
             {"emb": str(emb), "id": row["id"]},
         )
         count += 1
@@ -99,9 +95,15 @@ async def run_backfill_loop(db_factory) -> None:
     logger.info("[EmbeddingBackfill] Starting...")
 
     svc = get_embedding_service()
-    if not svc.enabled:
-        logger.info("[EmbeddingBackfill] OpenAI API key not set — semantic search disabled")
-        return
+    # Verify the local embedding service is actually reachable
+    if not await svc._check_local_available():
+        logger.info("[EmbeddingBackfill] Local embedding service not yet reachable — will retry later")
+        # Keep the loop alive in case the service starts up later
+        while True:
+            await asyncio.sleep(60)
+            if await svc._check_local_available():
+                logger.info("[EmbeddingBackfill] Local embedding service now reachable, starting backfill")
+                break
 
     total_memories = 0
     total_knowledge = 0

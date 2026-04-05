@@ -289,6 +289,25 @@ async def agent_write(
 
     await db.commit()
     await db.refresh(entry)
+
+    # Auto-embed for semantic search
+    try:
+        from app.services.embedding_service import get_embedding_service
+        from sqlalchemy import text as sa_text
+        svc = get_embedding_service()
+        if svc.enabled:
+            text_to_embed = f"{body.title}: {body.content}"
+            emb = await svc.embed(text_to_embed)
+            if emb is not None:
+                await db.execute(
+                    sa_text("UPDATE knowledge_entries SET embedding = CAST(:emb AS vector) WHERE id = :id"),
+                    {"emb": str(emb), "id": entry.id},
+                )
+                await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to embed knowledge entry: {e}")
+
     return _to_response(entry)
 
 
@@ -300,9 +319,69 @@ async def agent_search(
     db: AsyncSession = Depends(get_db),
     auth: dict = Depends(verify_agent_token),
 ):
-    """Search knowledge base (agent-facing)."""
-    query = select(KnowledgeEntry)
+    """Search knowledge base (agent-facing).
 
+    If OpenAI embeddings are available AND no tag filter is set, uses semantic
+    vector search. Otherwise falls back to keyword matching.
+    """
+    # Try semantic search first
+    if q and not tag:
+        try:
+            from app.services.embedding_service import get_embedding_service
+            from sqlalchemy import text as sa_text
+
+            svc = get_embedding_service()
+            if svc.enabled:
+                qvec = await svc.embed(q)
+                if qvec is not None:
+                    rows = (await db.execute(
+                        sa_text(
+                            """
+                            SELECT id, title, content, tags, created_by, updated_by,
+                                   access_count, created_at, updated_at,
+                                   1 - (embedding <=> CAST(:qvec AS vector)) AS similarity
+                            FROM knowledge_entries
+                            WHERE embedding IS NOT NULL
+                            ORDER BY embedding <=> CAST(:qvec AS vector)
+                            LIMIT :limit
+                            """
+                        ),
+                        {"qvec": str(qvec), "limit": limit},
+                    )).mappings().all()
+
+                    if rows:
+                        # Bump access count
+                        ids = [r["id"] for r in rows]
+                        await db.execute(
+                            update(KnowledgeEntry)
+                            .where(KnowledgeEntry.id.in_(ids))
+                            .values(access_count=KnowledgeEntry.access_count + 1)
+                        )
+                        await db.commit()
+                        return {
+                            "entries": [
+                                {
+                                    "id": r["id"],
+                                    "title": r["title"],
+                                    "content": r["content"],
+                                    "tags": r["tags"] or [],
+                                    "created_by": r["created_by"],
+                                    "updated_by": r["updated_by"],
+                                    "access_count": r["access_count"] + 1,
+                                    "similarity": round(float(r["similarity"]), 4),
+                                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                                    "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+                                }
+                                for r in rows
+                            ],
+                            "total": len(rows),
+                            "mode": "semantic",
+                        }
+        except Exception:
+            pass  # Fall through to keyword search
+
+    # Keyword search fallback
+    query = select(KnowledgeEntry)
     if q:
         pattern = f"%{q}%"
         query = query.where(
@@ -318,7 +397,6 @@ async def agent_search(
     result = await db.execute(query)
     entries = result.scalars().all()
 
-    # Bump access count
     if entries:
         ids = [e.id for e in entries]
         await db.execute(
@@ -331,6 +409,7 @@ async def agent_search(
     return {
         "entries": [_to_response(e) for e in entries],
         "total": len(entries),
+        "mode": "keyword",
     }
 
 

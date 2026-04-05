@@ -87,19 +87,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "knowledge_search",
       description:
-        "Search the shared knowledge base by keyword and/or tag. " +
-        "Use this to find existing company knowledge before creating new entries. " +
-        "Returns matching entries with their content, tags, and backlinks.",
+        "Search the shared knowledge base using SEMANTIC search (vector embeddings) with " +
+        "automatic keyword fallback. " +
+        "\n\n" +
+        "**Write queries in natural language** — the system understands meaning, not just " +
+        "keywords. Examples: 'what is our API authentication approach?', " +
+        "'what decisions did we make about pricing?', 'who handles legal questions?'. " +
+        "\n\n" +
+        "Use this BEFORE creating new entries to avoid duplicates. The shared knowledge " +
+        "base is visible to all agents in your team + the user.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Search term to find in titles and content. Leave empty to list recent entries.",
+            description:
+              "Natural-language question or topic. The system understands meaning, so " +
+              "'how do we handle customer refunds?' works better than just 'refund'. " +
+              "Leave empty to list recent entries.",
           },
           tag: {
             type: "string",
-            description: "Filter by tag (e.g. 'project', 'decision', 'contact').",
+            description:
+              "Optional: filter by tag (e.g. 'project', 'decision', 'contact'). " +
+              "NOTE: providing a tag forces keyword-only search (no semantic ranking).",
           },
         },
       },
@@ -161,19 +172,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const result = await apiCall(`/knowledge/agent/search${qs}`);
       if (!result.entries || result.entries.length === 0) {
         return {
-          content: [{ type: "text", text: "No knowledge entries found." }],
+          content: [{
+            type: "text",
+            text: `No knowledge entries found for "${args.query || "(empty)"}"${args.tag ? ` with tag ${args.tag}` : ""}.`,
+          }],
         };
       }
-      const lines = result.entries.map(
-        (e) =>
-          `**${e.title}** (id:${e.id}, tags:[${(e.tags || []).join(",")}], updated:${e.updated_at})\n` +
-          `${e.content.substring(0, 300)}${e.content.length > 300 ? "..." : ""}`
-      );
+      const mode = result.mode === "semantic"
+        ? "🧠 semantic (vector-based, understanding meaning)"
+        : "🔤 keyword (exact substring match)";
+      const lines = result.entries.map((e) => {
+        const sim = e.similarity != null ? ` [${(e.similarity * 100).toFixed(0)}% match]` : "";
+        return `**${e.title}**${sim} (id:${e.id}, tags:[${(e.tags || []).join(",")}])\n` +
+          `${e.content.substring(0, 300)}${e.content.length > 300 ? "..." : ""}`;
+      });
       return {
         content: [
           {
             type: "text",
-            text: `Found ${result.total} entries:\n\n${lines.join("\n\n---\n\n")}`,
+            text: `Found ${result.total} entries via ${mode}:\n\n${lines.join("\n\n---\n\n")}`,
           },
         ],
       };
