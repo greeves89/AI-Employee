@@ -261,7 +261,7 @@ def require_feature(feature: str) -> None:
                 "message": (
                     f"The feature '{feature}' requires a higher license tier. "
                     f"You are on '{lic.tier}'. "
-                    f"Visit https://ai-employee.dev/pricing for upgrade options."
+                    f"See https://github.com/greeves89/AI-Employee for upgrade options."
                 ),
             },
         )
