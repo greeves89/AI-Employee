@@ -874,6 +874,36 @@ export async function deleteApprovalRule(id: number): Promise<{ status: string }
   return fetchJSON(`${getBase()}/approval-rules/${id}`, { method: "DELETE" });
 }
 
+// --- License ---
+
+export interface License {
+  tier: string;
+  issued_to: string;
+  issued_at: string | null;
+  expires_at: string | null;
+  license_id: string | null;
+  instance_limit: number;
+  valid: boolean;
+  is_expired: boolean;
+  error: string | null;
+  features: string[];
+}
+
+export async function getLicenseStatus(): Promise<License> {
+  return fetchJSON(`${getBase()}/license/`);
+}
+
+export async function applyLicense(licenseKey: string): Promise<{ status: string; license: License }> {
+  return fetchJSON(`${getBase()}/license/apply`, {
+    method: "POST",
+    body: JSON.stringify({ license_key: licenseKey }),
+  });
+}
+
+export async function removeLicense(): Promise<{ status: string; tier: string }> {
+  return fetchJSON(`${getBase()}/license/`, { method: "DELETE" });
+}
+
 // --- Command Approvals ---
 
 export async function getPendingApprovals(): Promise<{ approvals: ApprovalRequest[]; count: number }> {

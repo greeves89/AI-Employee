@@ -1,306 +1,335 @@
-# AI Employee Platform
+<div align="center">
 
-Eine Self-Hosted Plattform, die Claude Code CLI als autonomen AI-Agenten in Docker-Containern betreibt. Steuerbar per Web-UI und Telegram Bot.
+<!-- Logo placeholder -->
+<img src="docs/assets/logo.png" alt="AI-Employee" width="160" onerror="this.style.display='none'" />
 
-## Features
+# AI-Employee
 
-- **Multi-Agent**: Mehrere Claude-Agenten parallel in isolierten Docker-Containern
-- **Web UI**: Dashboard mit Live-Chat, Task-Verwaltung, Log-Streaming
-- **Chat Sessions**: Mehrere Chat-Sitzungen pro Agent mit History
-- **Telegram Bot**: Aufgaben direkt per Telegram an Agenten senden
-- **Load Balancing**: Automatische Verteilung von Tasks auf verfuegbare Agenten
-- **File Management**: Workspace-Dateien direkt im Browser anzeigen/hochladen/herunterladen
-- **Knowledge Base**: Persistentes `knowledge.md` pro Agent (Rolle, Skills, Learnings)
-- **Agent Updates**: Versionserkennung mit One-Click Update (Daten bleiben erhalten)
-- **OAuth Integrations**: Google, Microsoft, Apple Accounts verbinden (verschluesselte Token-Speicherung)
-- **Team Collaboration**: Agents koennen untereinander kommunizieren via Shared Volume
+**The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
-## Tech Stack
+[![License: Fair-Code](https://img.shields.io/badge/license-Fair--Code-blue.svg)](LICENSE.md)
+[![Version](https://img.shields.io/badge/version-1.20.0-green.svg)](VERSION)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
+[![DSGVO](https://img.shields.io/badge/DSGVO-compliant-success.svg)](#governance--compliance)
+[![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
 
-| Komponente | Technologie |
-|------------|-------------|
-| Backend | Python 3.12 + FastAPI + SQLAlchemy (async) |
-| Frontend | Next.js 14 + TypeScript + Tailwind CSS |
-| Agent Runtime | Claude Code CLI (headless, `--output-format stream-json`) |
-| Datenbank | PostgreSQL 16 |
-| Queue/PubSub | Redis 7 |
-| Container | Docker + Docker SDK for Python |
-| Telegram | python-telegram-bot v21 |
+[Quick Start](#-quick-start) ·
+[Features](#-features) ·
+[Comparison](COMPARISON.md) ·
+[Templates](#-agent-templates) ·
+[Use Cases](#-use-cases) ·
+[Contributing](CONTRIBUTING.md)
+
+</div>
+
+---
+
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform), und Governance-Regeln wie "Frage nach, bevor du mehr als 50 EUR ausgibst" sind von Haus aus eingebaut. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten.
+
+---
+
+## What is AI-Employee?
+
+Modern businesses need more than a single AI chatbot — they need **teams of specialized agents** that remember context, follow company rules, and collaborate on real work. But most AI platforms today force an uncomfortable trade-off: you either run everything in somebody else's cloud (losing control over your data) or you stitch together frameworks, vector DBs, and prompt templates by hand.
+
+**AI-Employee is a self-hosted platform that gives each agent its own isolated Docker container, semantic memory, knowledge base, and governance rules — out of the box.** You can spin up a Fullstack Developer, a Legal Assistant, a Marketing Manager, and a Tax Preparer in minutes, each with their own role, workspace, and Telegram bot. Agents can hold meetings with each other, ask you for approval before spending money, deploy their own Docker apps, and reflect on their work to improve over time.
+
+It is built for **KMU (small and medium-sized businesses) and regulated industries in the DACH region** — lawyers, tax advisors, medical practices, agencies, and dev teams who need multi-user support, audit logs, DSGVO compliance, and data sovereignty. It is not trying to win the single-user hobbyist market. It is trying to be the boring, reliable, compliant AI backbone your team runs for the next decade.
+
+## Why AI-Employee?
+
+Here is how AI-Employee compares to the platforms people usually evaluate alongside it:
+
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI GPTs |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Self-hosted | Yes | Yes | Yes (BYO) | No | No |
+| Multi-agent (isolated containers) | Yes | No (shared FS) | No | No | No |
+| Multi-user with RLS isolation | Yes | No | No | Yes | Yes |
+| Local semantic memory (no OpenAI) | Yes (bge-m3) | Partial | BYO | No | No |
+| Approval rules & governance | Yes | No | No | Partial | No |
+| Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
+| DSGVO-compliant by default | Yes | Partial | BYO | No | No |
+| Telegram + Voice (STT/TTS) | Yes | Yes | BYO | No | No |
+| Agents deploy Docker apps | Yes | No | No | No | No |
+| 25 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
+| LLM-agnostic (Claude / GPT-4o / Gemini / local) | Yes | Yes | Yes | No | No |
+
+For a detailed, honest comparison including scenarios where competitors are a better fit, see **[COMPARISON.md](COMPARISON.md)**.
+
+## Screenshots
+
+> *Placeholders — replace with real screenshots in `docs/assets/`*
+
+<div align="center">
+
+| Dashboard | Agent Chat |
+|---|---|
+| ![Dashboard](docs/assets/screenshot-dashboard.png) | ![Chat](docs/assets/screenshot-chat.png) |
+| *Live dashboard with agent status, task queue, and system health* | *Multi-session chat with semantic memory recall* |
+
+| Approvals | Health & Monitoring |
+|---|---|
+| ![Approvals](docs/assets/screenshot-approvals.png) | ![Health](docs/assets/screenshot-health.png) |
+| *Governance rules trigger inline approval requests in Telegram and UI* | *Prometheus + Grafana metrics for every agent container* |
+
+</div>
 
 ## Quick Start
 
-### Voraussetzungen
+Get a working platform in under 5 minutes.
 
-- **Docker Desktop** installiert und gestartet
-- **Claude Code CLI** installiert (`npm install -g @anthropic-ai/claude-code`)
-- **Authentifizierung** (eine der folgenden Optionen):
-  - **Option A**: Claude Pro/Team Abo (OAuth Token - keine Extrakosten)
-  - **Option B**: Anthropic API Key (Bezahlung per Token via console.anthropic.com)
+### Prerequisites
 
-### 1. Repository klonen
+- Docker Desktop (or Docker Engine 24+ on Linux)
+- 8 GB RAM minimum, 16 GB recommended
+- One of:
+  - **Claude Pro/Team subscription** (no per-token costs, OAuth login)
+  - **Anthropic API key** (pay-per-token)
+  - **OpenAI / Gemini / local Ollama** (via the custom-LLM adapter)
 
-```bash
-git clone https://github.com/MSQKI/ms_ai_employee.git
-cd ms_ai_employee
-```
-
-### 2. Authentifizierung einrichten
-
-**Option A: Claude OAuth Token (empfohlen bei Claude Pro/Team)**
+### Install
 
 ```bash
-# Claude einloggen
-claude login
+# 1. Clone
+git clone https://github.com/greeves89/AI-Employee.git
+cd AI-Employee
 
-# Token aus macOS Keychain extrahieren
-# Keychain Access App > "claude" suchen > Passwort anzeigen
-# Oder:
-./scripts/extract-token.sh
+# 2. Copy the community env template
+cp .env.community.example .env
+
+# 3. Generate required secrets
+python -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> .env
+echo "JWT_SECRET=$(openssl rand -base64 32)" >> .env
+echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)" >> .env
+
+# 4. Add your Claude token (OAuth or API key) to .env
+#    CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...   OR
+#    ANTHROPIC_API_KEY=sk-ant-api-...
+
+# 5. Start the stack
+docker compose -f docker-compose.community.yml up -d
+
+# 6. Open the UI
+open http://localhost:3000
 ```
 
-Der Token sieht so aus: `sk-ant-oat01-...`
+First login will walk you through creating an admin user, picking an agent template, and running your first task.
 
-**Option B: Anthropic API Key**
-
-API Key von https://console.anthropic.com erstellen.
-
-### 3. Environment konfigurieren
+### Updating
 
 ```bash
-cp .env.example .env
+git pull
+docker compose -f docker-compose.community.yml pull
+docker compose -f docker-compose.community.yml up -d
 ```
 
-Dann `.env` bearbeiten:
+Database migrations run automatically on startup. Your data is persisted in named Docker volumes.
 
-```env
-# PFLICHT - Authentifizierung (eine Option waehlen)
-# Option A: OAuth Token (Claude Pro/Team)
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-DEIN-TOKEN-HIER
-# Option B: API Key (Bezahlung per Token)
-ANTHROPIC_API_KEY=sk-ant-api-DEIN-KEY-HIER
+## Features
 
-# PFLICHT - Encryption Key fuer sichere Token-Speicherung generieren
-# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-ENCRYPTION_KEY=dein-generierter-key
+### Core
 
-# OPTIONAL - Telegram Bot
-TELEGRAM_BOT_TOKEN=      # von @BotFather
-TELEGRAM_CHAT_ID=        # deine Chat-ID
+- **Docker-isolated agents** — Every agent runs in its own container with its own workspace, filesystem, and resource limits. True isolation, not shared scratch dirs.
+- **Claude Code CLI runtime** — Battle-tested headless Claude with native tool use, file editing, and shell access.
+- **LLM-agnostic** — Swap in GPT-4o, Gemini 2.0, Mistral Large, or local Ollama models via the custom-LLM adapter.
+- **Auto-scaling** — Load balancer distributes tasks across available agent containers.
+- **Live log streaming** — WebSocket-powered log viewer, no polling.
 
-# OPTIONAL - OAuth Integrations (Google, Microsoft, Apple)
-# Siehe Abschnitt "OAuth Integrations" weiter unten
-```
+### Multi-Agent Collaboration
 
-### 4. Setup ausfuehren
+- **Meeting Rooms** — Put 3-4 agents in a room and they will round-robin on a topic until they reach a decision. Useful for design reviews, legal-vs-marketing tradeoffs, or architecture debates.
+- **Shared team volume** — Agents can drop files for each other, hand off work, or collaborate on a document.
+- **Orchestrator MCP** — Any agent can spawn or query sibling agents via a standard tool interface.
 
-```bash
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-```
+### Memory & Knowledge
 
-Das Script baut das Agent-Image und richtet die Datenbank ein.
+- **Semantic memory** — Each agent has its own vector memory powered by **BAAI/bge-m3 embeddings** (1024-dim, multilingual, runs locally — no OpenAI embedding fees, no data leaving your server).
+- **Obsidian-style knowledge base** — Per-user knowledge graph with `[[backlinks]]`, `#tags`, and markdown. Agents can read and write to it as a first-class tool.
+- **Self-improvement loop** — After every task, agents reflect on what worked, extract lessons, and save them to memory. The `ImprovementEngine` periodically analyzes ratings and distils patterns.
+- **Task ratings** — Users rate completed tasks via Telegram inline keyboards; poor ratings feed the improvement loop.
 
-### 5. Starten
+### Governance & Compliance
 
-```bash
-docker compose up --build
-```
+- **Approval rules** — Define natural-language rules like *"ask before spending more than 50 EUR"*, *"get sign-off before emailing external clients"*, or *"always confirm before deleting files"*. Agents call the `request_approval` MCP tool automatically.
+- **Inline Telegram approvals** — Approve or reject with a single button tap.
+- **Audit logging** — Every agent action, tool call, and user interaction is logged with full context.
+- **Multi-tenant RLS** — PostgreSQL Row-Level Security on 9 user-scoped tables. Users only ever see their own data, enforced at the database layer.
+- **DSGVO-ready** — All embeddings generated locally, all data stays on your infrastructure, data export and deletion endpoints included.
 
-### 6. Oeffnen
+### Integrations
 
-- **Web UI**: http://localhost:3000
-- **API Docs**: http://localhost:8000/docs
+- **Per-agent Telegram bots** — Each agent can have its own Telegram bot with voice STT/TTS.
+- **OAuth integrations** — Google, Microsoft, Apple accounts with encrypted token storage. Gmail, Calendar, Outlook, Drive, OneDrive, iCloud.
+- **MCP servers** — Memory, Knowledge, Notifications, Orchestrator, Skills. Plug in any third-party MCP server too.
+- **Skills system** — Reusable capability modules (e.g. `invoice-parser`, `pdf-signer`, `contract-diff`) that any agent can pick up.
+- **Docker-deploy capability** — Agents can write and deploy their own docker-compose apps. Your marketing agent can literally ship its own tool.
 
-## Benutzung
+### Self-Host & Operations
 
-### Agent erstellen
+- **Idle-timeout lifecycle** — Configurable per-user idle timeout (0 = always-on, 30 min default). Agents auto-start on login, incoming chat, or scheduled tasks.
+- **Prometheus metrics** — Every service exports metrics; Grafana dashboards included.
+- **Health dashboard** — Self-test suite validates Redis, Postgres, Docker, embedding service, and each agent on demand.
+- **Backup scripts** — Scheduled `pg_dump` + volume tar + SHA256 manifest. Systemd timer examples included.
+- **Traefik / Caddy** — Reverse-proxy configs with automatic TLS via Let's Encrypt.
+- **High-availability** — Optional `docker-compose.ha.yml` for multi-node setups.
 
-1. Web UI oeffnen (http://localhost:3000)
-2. "Agents" > "Create Agent"
-3. Name vergeben, optional Model und Rolle waehlen
-4. Agent startet automatisch und fuehrt ein Onboarding-Interview durch
-
-### Chat mit Agent
-
-1. Agent-Seite oeffnen (auf Agent-Card klicken)
-2. Tab "Chat" ist vorausgewaehlt
-3. Nachricht eingeben und Enter druecken
-4. Neue Chat-Session mit "+" erstellen, zwischen Sessions wechseln
-
-### Tasks & Schedules
-
-- **Einmalige Tasks**: "Tasks" > "New Task" - wird in die Queue gestellt
-- **Wiederkehrende Tasks**: "Schedules" > Intervall und Prompt definieren
-
-### Agent Updates
-
-Wenn eine neue Version des Agent-Images verfuegbar ist:
-1. Ein "Update"-Badge erscheint auf der Agent-Card
-2. Auf der Agent-Detail-Seite wird ein Update-Banner angezeigt
-3. Klick auf "Update Now" erstellt den Container mit dem neuen Image neu
-4. Alle Daten (Workspace, Chat-History, Knowledge) bleiben erhalten
-
-```bash
-# Neues Agent-Image bauen (nach Code-Aenderungen in ./agent/)
-docker build -t ai-employee-agent:latest ./agent
-
-# AGENT_VERSION in orchestrator/app/config.py hochsetzen
-# Dann Orchestrator neustarten
-docker compose restart orchestrator
-```
-
-### Knowledge Base
-
-Jeder Agent hat eine `knowledge.md` im Workspace:
-- Wird beim Onboarding mit Rolle, Skills und Regeln gefuellt
-- Agent liest und aktualisiert sie selbststaendig
-- Ueber Tab "Knowledge" im Web UI einsehbar und editierbar
-
-## OAuth Integrations
-
-Verbinde Google, Microsoft oder Apple Accounts, damit Agents auf diese zugreifen koennen.
-
-### Einrichtung
-
-1. **Google**: https://console.cloud.google.com/apis/credentials - OAuth Client erstellen
-2. **Microsoft**: https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps - App registrieren
-3. **Apple**: https://developer.apple.com/account/resources/identifiers - Service ID erstellen
-
-Redirect-URL fuer alle Provider: `http://localhost:8000/api/v1/integrations/{provider}/callback`
-
-### Konfiguration in `.env`
-
-```env
-OAUTH_GOOGLE_CLIENT_ID=deine-client-id
-OAUTH_GOOGLE_CLIENT_SECRET=dein-client-secret
-OAUTH_MICROSOFT_CLIENT_ID=deine-client-id
-OAUTH_MICROSOFT_CLIENT_SECRET=dein-client-secret
-```
-
-### Nutzung
-
-1. Web UI > "Integrations" - Account verbinden
-2. Agent-Detail > Tab "Integrations" - Pro Agent aktivieren/deaktivieren
-
-## Architektur
+## Architecture
 
 ```
-                    +------------------+
-                    |   Web UI (:3000) |
-                    |   Next.js 14     |
-                    +--------+---------+
-                             |
-                             | REST + WebSocket
-                             v
-                    +------------------+
-                    | Orchestrator     |
-                    | FastAPI (:8000)  |
-                    +---+----+----+---+
-                        |    |    |
-              +---------+    |    +---------+
-              v              v              v
-        +-----------+  +-----------+  +-----------+
-        | Agent #1  |  | Agent #2  |  | Agent #N  |
-        | Docker    |  | Docker    |  | Docker    |
-        | Claude CLI|  | Claude CLI|  | Claude CLI|
-        +-----------+  +-----------+  +-----------+
-              |              |              |
-              v              v              v
-        +----------------------------------------+
-        |          Redis (PubSub + Queue)        |
-        +----------------------------------------+
-        |          PostgreSQL (Daten)             |
-        +----------------------------------------+
++----------------------------------------------------------------+
+|                        Browser / Mobile                        |
+|         Next.js 14 UI  +  Telegram Clients  +  API users       |
++-------------------------------+--------------------------------+
+                                |
+                         Caddy / Traefik (TLS)
+                                |
++-------------------------------+--------------------------------+
+|                         Orchestrator                           |
+|     FastAPI  +  SQLAlchemy async  +  Docker SDK  +  WebSocket  |
+|            Load balancer  |  Agent manager  |  MCP routes      |
++----+-----------+----------------+--------------+---------------+
+     |           |                |              |
+     |           |                |              |
+     v           v                v              v
++--------+  +---------+      +----------+   +------------+
+| Redis  |  | Postgres|      | Embedding|   | Agent Pool |
+| PubSub |  |    16   |      |  Service |   |  (Docker)  |
+|  Queue |  | pgvector|      | bge-m3   |   |  Claude    |
++--------+  +----+----+      +----------+   |  Code CLI  |
+                 |                          +------+-----+
+                 |  RLS: 9 user-scoped             |
+                 |      tables                     |  Workspaces,
+                 |                                 |  Memory, KB,
+                 |                                 |  Skills, MCP
+                 +---------------------------------+
 ```
 
-## Entwicklung
+## Agent Templates
 
-### Einzelne Services starten
+25 pre-configured roles, ready to launch with one click:
 
-```bash
-# Nur Infrastruktur (DB + Redis)
-docker compose up -d postgres redis
+| # | Template | Description |
+|---|---|---|
+| 1 | **Fullstack Developer** | TypeScript + Python, writes tests, deploys with Docker |
+| 2 | **Frontend Specialist** | React/Next.js, Tailwind, accessibility, Figma-to-code |
+| 3 | **Backend Engineer** | APIs, databases, message queues, observability |
+| 4 | **DevOps Engineer** | Docker, Kubernetes, CI/CD, Terraform |
+| 5 | **Data Engineer** | ETL, SQL, Airflow, dbt, warehousing |
+| 6 | **Data Scientist** | Python, pandas, scikit-learn, notebook reports |
+| 7 | **QA Engineer** | Test strategy, Playwright, load testing |
+| 8 | **Code Reviewer** | Security, performance, idiomatic code, PR feedback |
+| 9 | **Technical Writer** | API docs, tutorials, changelogs |
+| 10 | **Marketing Manager** | Campaign planning, copy, analytics |
+| 11 | **Content Creator** | Blog posts, social, SEO-aware |
+| 12 | **SEO Specialist** | Keyword research, on-page, competitor analysis |
+| 13 | **Sales Assistant** | Lead research, outreach drafts, CRM hygiene |
+| 14 | **Customer Support** | Tier-1 triage, knowledge-base lookups |
+| 15 | **Project Manager** | Planning, status reports, risk tracking |
+| 16 | **HR Assistant** | Job descriptions, interview plans, onboarding |
+| 17 | **Legal Assistant** | Contract review, clause extraction, redlines |
+| 18 | **Tax Advisor** | Document sorting, deduction hints, DATEV export |
+| 19 | **Accountant** | Invoice processing, reconciliation, reporting |
+| 20 | **Financial Analyst** | P&L, cash flow, scenario modeling |
+| 21 | **Researcher** | Literature review, source triangulation, citations |
+| 22 | **Translator** | DE/EN/FR/ES/IT with tone and terminology control |
+| 23 | **Medical Assistant** | Triage notes, documentation, appointment prep |
+| 24 | **Personal Assistant** | Calendar, email triage, reminders |
+| 25 | **Executive Assistant** | Briefings, travel, meeting prep, minutes |
 
-# Agent-Image bauen
-docker build -t ai-employee-agent:latest ./agent
+Each template ships with a role prompt, recommended skills, default approval rules, and example tasks.
 
-# Frontend (lokal, ohne Docker)
-cd frontend && npm install && npm run dev
+## Use Cases
 
-# Orchestrator (lokal, ohne Docker)
-cd orchestrator && pip install -e . && uvicorn app.main:app --reload
-```
+Real scenarios AI-Employee is already used for:
 
-### DB Migrations
+- **Tax prep automation** — Tax Advisor agent sorts invoices, extracts line items, flags deductibles, exports DATEV CSV. Triggers approval before changing historical entries.
+- **Customer support tier-1** — Customer Support agent answers from the KB, escalates to a human via Telegram when confidence is low.
+- **Content calendar** — Marketing Manager + Content Creator + SEO Specialist meet weekly in a Meeting Room, produce a 4-week content plan.
+- **Code review bot** — Code Reviewer agent watches GitHub webhooks, leaves PR comments, blocks risky merges until a human approves.
+- **Legal contract triage** — Legal Assistant agent reads incoming contracts, summarizes, flags unusual clauses, drafts redlines for the lawyer.
+- **Medical practice intake** — Medical Assistant agent reviews patient intake forms and prepares a briefing for the doctor before the appointment.
+- **Multi-language translation workflow** — Translator agent handles DE→EN website translation with glossary enforcement.
+- **Internal docs assistant** — Researcher agent indexes company wiki, answers questions with citations, writes onboarding guides.
+- **Agency client reporting** — Project Manager agent compiles weekly client reports from Jira, Slack, and Google Analytics.
+- **Personal CEO assistant** — Executive Assistant agent prepares morning briefings, summarizes overnight email, suggests agenda for meetings.
 
-```bash
-cd orchestrator
-alembic revision --autogenerate -m "beschreibung"
-alembic upgrade head
-```
+## Configuration
 
-## Projektstruktur
+Key environment variables (see `.env.community.example` for the full list):
 
-```
-AI-Employee/
-├── agent/                     # Docker Container Image
-│   ├── app/
-│   │   ├── agent_runner.py       # Claude CLI Wrapper
-│   │   ├── chat_handler.py       # Interaktiver Chat
-│   │   ├── task_consumer.py      # Redis Queue Consumer
-│   │   └── config.py
-│   ├── scripts/
-│   │   └── ai-team               # CLI fuer Inter-Agent Kommunikation
-│   └── Dockerfile
-├── orchestrator/              # FastAPI Backend
-│   ├── app/
-│   │   ├── api/                  # REST + WebSocket Endpoints
-│   │   ├── core/                 # Agent Manager, Load Balancer, OAuth, Encryption
-│   │   ├── models/               # SQLAlchemy Models (Agent, Task, OAuth, Chat)
-│   │   ├── schemas/              # Pydantic Schemas
-│   │   └── services/             # Docker, Redis, OAuth Services
-│   ├── alembic/                  # DB Migrations
-│   └── Dockerfile
-├── frontend/                  # Next.js Web UI
-│   └── src/
-│       ├── app/                  # Pages (Dashboard, Agents, Tasks, Integrations, ...)
-│       ├── components/           # React Components
-│       ├── hooks/                # Custom Hooks (useWebSocket, usePolling)
-│       └── lib/                  # API Client, Types, Utils
-├── scripts/
-│   ├── setup.sh                  # Automatisches Setup
-│   └── extract-token.sh          # Token-Extraktion Helper
-├── docker-compose.yml
-├── .env.example
-└── CLAUDE.md
-```
+| Variable | Purpose | Default |
+|---|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Pro/Team OAuth token | — |
+| `ANTHROPIC_API_KEY` | Alternative to OAuth | — |
+| `ENCRYPTION_KEY` | Fernet key for secrets at rest | **required** |
+| `JWT_SECRET` | JWT signing key | **required** |
+| `POSTGRES_PASSWORD` | Database password | **required** |
+| `AGENT_IDLE_TIMEOUT_MIN` | Auto-stop idle agents after N minutes | `30` |
+| `AGENT_MAX_CONCURRENT` | Max agents running simultaneously | `10` |
+| `EMBEDDING_MODEL` | Local embedding model | `BAAI/bge-m3` |
+| `TELEGRAM_BOT_TOKEN` | Optional — master bot token | — |
+| `DEFAULT_LLM_PROVIDER` | `claude` / `openai` / `gemini` / `ollama` | `claude` |
+| `DSGVO_MODE` | Enforce strict data locality | `true` |
 
-## Troubleshooting
+## License
 
-### "Agent is not reachable"
-- Ist Docker Desktop gestartet?
-- `docker ps` - laeuft der Agent-Container?
-- Logs pruefen: `docker logs ai-agent-<name>-<id>`
+AI-Employee is **Fair-Code** licensed under the **Sustainable Use License**, inspired by [n8n.io](https://n8n.io).
 
-### "Could not connect to agent"
-- Ist der Orchestrator gestartet? `docker compose ps`
-- WebSocket-URL pruefen (Standard: `ws://localhost:8000`)
+**Free for:**
+- Internal business use (including commercial organizations)
+- Personal projects, education, research
+- Client work where you deliver the service directly
+- Integrating AI-Employee as a component into your own products
 
-### Agents funktionieren nicht
-- Ist `CLAUDE_CODE_OAUTH_TOKEN` oder `ANTHROPIC_API_KEY` in `.env` gesetzt?
-- Token noch gueltig? Claude Tokens laufen nach einiger Zeit ab
-- Neu einloggen: `claude login` und Token aktualisieren
-- Agent-Logs: `docker logs ai-agent-<name>-<id> --tail 50`
+**Requires a commercial license:**
+- Hosting AI-Employee as a SaaS offering where third parties pay to use it
+- Reselling AI-Employee as your own branded product
+- White-label commercial distribution
 
-### OAuth Token abgelaufen
-- Platform refresht Tokens automatisch im Hintergrund (alle 5 Minuten)
-- Falls Token trotzdem ungueltig: Account unter "Integrations" trennen und neu verbinden
+See **[LICENSE.md](LICENSE.md)** for the complete terms.
 
-### ENCRYPTION_KEY verloren/geaendert
-- **Alle verschluesselten OAuth-Tokens werden ungueltig!**
-- Accounts unter "Integrations" trennen und neu verbinden
-- ENCRYPTION_KEY **niemals** committen oder teilen
+## Commercial License
 
-## Lizenz
+If you want to build a SaaS on top of AI-Employee, white-label it, or embed it commercially, contact **licensing@ai-employee.dev**. Pricing is transparent and based on your usage tier — we are friendly and fast to respond.
 
-Privates Projekt.
+## Contributing
+
+We welcome contributions of all kinds — bug reports, features, docs, translations, templates. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for dev setup, conventions, and workflow.
+
+## Security
+
+Found a vulnerability? Please **do not** open a public issue. Email **security@ai-employee.dev** and see **[SECURITY.md](SECURITY.md)** for our disclosure policy and response SLAs.
+
+## Community
+
+- **GitHub Discussions**: https://github.com/greeves89/AI-Employee/discussions
+- **Discord**: https://discord.gg/ai-employee (placeholder)
+- **Twitter/X**: [@ai_employee_dev](https://twitter.com/ai_employee_dev) (placeholder)
+
+## Credits
+
+AI-Employee stands on the shoulders of outstanding open-source projects:
+
+- **Claude Code** (Anthropic) — the agent runtime
+- **FastAPI** (Sebastián Ramírez) — the backend framework
+- **Next.js** (Vercel) — the frontend framework
+- **SQLAlchemy** — the ORM
+- **PostgreSQL** + **pgvector** — the database
+- **Redis** — pub/sub and queue
+- **BAAI/bge-m3** (BAAI) — local multilingual embeddings
+- **python-telegram-bot** — Telegram integration
+- **Radix UI** — accessible UI primitives
+- **Tailwind CSS** — styling
+- **Framer Motion** — animations
+- **Docker** — container runtime
+- **Traefik** / **Caddy** — reverse proxy
+- **Prometheus** / **Grafana** — observability
+- **n8n** — inspiration for the Fair-Code license
+
+Built with care by **Daniel Alisch** in the DACH region.
+
+---
+
+<div align="center">
+  <sub>If AI-Employee saves you hours, please star the repo. If it saves your business, please consider sponsoring.</sub>
+</div>

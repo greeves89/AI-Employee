@@ -146,9 +146,53 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
+  // License state
+  const [license, setLicense] = useState<import("@/lib/api").License | null>(null);
+  const [licenseKeyInput, setLicenseKeyInput] = useState("");
+  const [licenseBusy, setLicenseBusy] = useState(false);
+  const [licenseError, setLicenseError] = useState("");
 
   // Available models for current provider
   const modelOptions = useMemo(() => MODEL_OPTIONS[provider] || MODEL_OPTIONS.anthropic, [provider]);
+
+  const loadLicense = async () => {
+    try {
+      const lic = await api.getLicenseStatus();
+      setLicense(lic);
+    } catch {
+      // ignore — fallback community tier displayed
+    }
+  };
+
+  const handleApplyLicense = async () => {
+    if (!licenseKeyInput.trim()) return;
+    setLicenseBusy(true);
+    setLicenseError("");
+    try {
+      await api.applyLicense(licenseKeyInput.trim());
+      setLicenseKeyInput("");
+      await loadLicense();
+    } catch (e) {
+      setLicenseError(e instanceof Error ? e.message : "Invalid license");
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  const handleRemoveLicense = async () => {
+    if (!confirm("License wirklich entfernen? Enterprise-Features werden deaktiviert.")) return;
+    setLicenseBusy(true);
+    try {
+      await api.removeLicense();
+      await loadLicense();
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLicense();
+  }, []);
 
   useEffect(() => {
     api.getSettings().then((s) => {
@@ -672,6 +716,110 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* ─── License ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Lock className="h-4 w-4 text-muted-foreground/60" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                License
+              </h2>
+            </div>
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+              {license && (
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
+                        license.tier === "enterprise" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                        license.tier === "business" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                        license.tier === "team" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                        "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                      )}>
+                        {license.tier}
+                      </span>
+                      {license.valid && !license.is_expired && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Active
+                        </span>
+                      )}
+                      {license.is_expired && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-red-400">
+                          <AlertCircle className="h-3 w-3" />
+                          Expired
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {license.tier === "community"
+                        ? "Community Edition — all core features included, free for internal business use"
+                        : `Licensed to ${license.issued_to}`}
+                    </p>
+                    {license.expires_at && (
+                      <p className="text-[11px] text-muted-foreground/60 mt-1">
+                        Expires: {new Date(license.expires_at).toLocaleDateString("de-DE")}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground/50 mt-1.5">
+                      {license.features.length} features enabled
+                    </p>
+                  </div>
+                  {license.tier !== "community" && license.license_id !== "community-default" && (
+                    <button
+                      onClick={handleRemoveLicense}
+                      disabled={licenseBusy}
+                      className="text-[11px] text-red-400 hover:text-red-300 underline underline-offset-2"
+                    >
+                      Remove license
+                    </button>
+                  )}
+                </div>
+              )}
+              {(license?.tier === "community" || license?.is_expired || !license?.valid) && (
+                <div className="space-y-3 border-t border-foreground/[0.04] pt-4">
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                      License Key
+                    </label>
+                    <textarea
+                      value={licenseKeyInput}
+                      onChange={(e) => setLicenseKeyInput(e.target.value)}
+                      placeholder="Paste your license key here (format: base64url.signature)"
+                      rows={3}
+                      className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 resize-none"
+                    />
+                  </div>
+                  {licenseError && (
+                    <p className="text-[11px] text-red-400 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {licenseError}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-muted-foreground/60">
+                      Don't have a license? The Community Edition includes all core features.
+                      Upgrade at{" "}
+                      <a href="https://ai-employee.dev/pricing" target="_blank" rel="noopener" className="text-primary hover:underline">
+                        ai-employee.dev/pricing
+                      </a>
+                    </p>
+                    <button
+                      onClick={handleApplyLicense}
+                      disabled={licenseBusy || !licenseKeyInput.trim()}
+                      className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {licenseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Apply License
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* ─── Section 5: OAuth Integrations ─── */}
         {isAdmin && (
