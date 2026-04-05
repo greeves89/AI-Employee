@@ -37,6 +37,8 @@ class SettingsUpdate(BaseModel):
     oauth_apple_team_id: str | None = None
     oauth_apple_key_id: str | None = None
     oauth_apple_private_key: str | None = None
+    # Lifecycle config
+    agent_idle_timeout_minutes: int | None = None  # 0 = never auto-stop
 
 
 class SettingsResponse(BaseModel):
@@ -61,3 +63,5 @@ class SettingsResponse(BaseModel):
     has_google_oauth: bool = False
     has_microsoft_oauth: bool = False
     has_apple_oauth: bool = False
+    # Lifecycle
+    agent_idle_timeout_minutes: int = 30

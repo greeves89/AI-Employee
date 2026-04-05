@@ -449,6 +449,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not load persisted settings: {e}")
 
+    # Load license from DB (falls back to community tier if not present or invalid)
+    try:
+        from app.core.license import load_license_from_string
+        from app.db.session import async_session_factory as _sf_lic_load
+        from app.services.settings_service import SettingsService as _SS_lic
+
+        async with _sf_lic_load() as db:
+            svc = _SS_lic(db)
+            license_key = await svc.get("license_key")
+            load_license_from_string(license_key or "")
+    except Exception as e:
+        logger.warning(f"Could not load license: {e}")
+
     # Auto-detect Claude token from environment if not configured in DB
     try:
         from app.db.session import async_session_factory as _sf2
@@ -573,6 +586,12 @@ async def lifespan(app: FastAPI):
     user_lifecycle_task = asyncio.create_task(user_lifecycle.run())
     app.state.user_lifecycle = user_lifecycle
 
+    # Start embedding backfill (for semantic memory search)
+    from app.services.embedding_backfill import run_backfill_loop
+    from app.db.session import async_session_factory as _sf_emb
+
+    embedding_backfill_task = asyncio.create_task(run_backfill_loop(_sf_emb))
+
     # Start global Telegram bot if configured (for notifications)
     telegram_task = None
     if settings.telegram_bot_token:
@@ -604,6 +623,7 @@ async def lifespan(app: FastAPI):
     self_test_task.cancel()
     user_lifecycle.stop()
     user_lifecycle_task.cancel()
+    embedding_backfill_task.cancel()
     if telegram_task:
         telegram_task.cancel()
         if hasattr(app.state, "telegram_bot"):

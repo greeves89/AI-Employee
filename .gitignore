@@ -48,3 +48,6 @@ create_pptx.py
 AI_Employee_Feature_Overview.pptx
 frontend/tsconfig.tsbuildinfo
 host-auth/
+license-keys/
+backup-*.sql.gz
+konkurrenzanalyse-*.pdf

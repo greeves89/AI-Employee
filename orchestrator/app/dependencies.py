@@ -79,6 +79,15 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
+    # Row-Level Security: restrict this session to rows owned by this user.
+    # Admins bypass RLS so they can manage all tenants.
+    from app.db.session import set_rls_user
+    from app.models.user import UserRole
+    if user.role == UserRole.ADMIN:
+        await set_rls_user(db, None)  # bypass RLS
+    else:
+        await set_rls_user(db, user.id)
+
     # Update activity timestamp (for lifecycle manager) — throttle to once per minute
     from datetime import datetime, timedelta, timezone
     now = datetime.now(timezone.utc)

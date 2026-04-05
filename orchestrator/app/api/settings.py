@@ -52,6 +52,8 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         has_google_oauth=bool(settings.oauth_google_client_id),
         has_microsoft_oauth=bool(settings.oauth_microsoft_client_id),
         has_apple_oauth=bool(settings.oauth_apple_client_id),
+        # Lifecycle
+        agent_idle_timeout_minutes=int(await SettingsService(db).get("agent_idle_timeout_minutes") or "30"),
     )
 
 
@@ -118,6 +120,12 @@ async def update_settings(
         settings.telegram_chat_id = data.telegram.chat_id
         await svc.set("telegram_bot_token", data.telegram.bot_token)
         await svc.set("telegram_chat_id", data.telegram.chat_id)
+
+    # Lifecycle: agent idle timeout (0 = never stop)
+    if data.agent_idle_timeout_minutes is not None:
+        if data.agent_idle_timeout_minutes < 0:
+            data.agent_idle_timeout_minutes = 0
+        await svc.set("agent_idle_timeout_minutes", str(data.agent_idle_timeout_minutes))
 
     await db.commit()
     return {"status": "updated"}

@@ -20,10 +20,27 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# Default: stop a user's agents after 30 minutes of inactivity
-INACTIVITY_MINUTES = 30
+# Default: stop a user's agents after 30 minutes of inactivity.
+# Overridable via platform_settings key "agent_idle_timeout_minutes":
+#   0   = never stop (persistent mode, like OpenClaw)
+#   30  = stop after 30 min (resource-friendly, default)
+#   1440 = stop after 24 h
+DEFAULT_INACTIVITY_MINUTES = 30
 # How often the background loop runs
 CHECK_INTERVAL_SECONDS = 60
+
+
+async def _get_timeout_minutes(db: AsyncSession) -> int:
+    """Read the configured idle-timeout from platform_settings (cached)."""
+    try:
+        from app.services.settings_service import SettingsService
+        svc = SettingsService(db)
+        value = await svc.get("agent_idle_timeout_minutes")
+        if value is not None and value != "":
+            return int(value)
+    except Exception:
+        pass
+    return DEFAULT_INACTIVITY_MINUTES
 
 
 class UserLifecycleService:
@@ -38,7 +55,7 @@ class UserLifecycleService:
     async def run(self) -> None:
         """Main loop: every minute, check for inactive users and stop their agents."""
         self._running = True
-        logger.info(f"[UserLifecycle] Started (inactivity_threshold={INACTIVITY_MINUTES}min)")
+        logger.info("[UserLifecycle] Started")
         while self._running:
             try:
                 await self._sweep()
@@ -51,8 +68,12 @@ class UserLifecycleService:
 
     async def _sweep(self) -> None:
         """One sweep: find inactive users and stop their idle agents."""
-        threshold = datetime.now(timezone.utc) - timedelta(minutes=INACTIVITY_MINUTES)
         async with self.db_factory() as db:
+            timeout_minutes = await _get_timeout_minutes(db)
+            if timeout_minutes <= 0:
+                # Persistent mode: never auto-stop (user opted out)
+                return
+            threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
             # Find all users with last_active_at < threshold (or null)
             result = await db.execute(
                 select(User).where(

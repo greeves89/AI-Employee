@@ -171,6 +171,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "memory_search": {
+      // Prefer semantic search (if query is non-empty and no specific category filter)
+      if (args.query && !args.category) {
+        try {
+          const semParams = new URLSearchParams({
+            agent_id: AGENT_ID,
+            q: args.query,
+            limit: "10",
+          });
+          const semResult = await apiCall(`/memory/semantic-search?${semParams}`);
+          if (semResult.memories && semResult.memories.length > 0) {
+            const mode = semResult.mode === "semantic" ? "semantic" : "keyword";
+            const lines = semResult.memories.map(
+              (m) => {
+                const sim = m.similarity ? ` [${(m.similarity * 100).toFixed(0)}% match]` : "";
+                return `[${m.category}] ${m.key}${sim} (id:${m.id}, importance:${m.importance})\n  ${m.content}`;
+              }
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Found ${semResult.memories.length} memories via ${mode} search:\n\n${lines.join("\n\n")}`,
+                },
+              ],
+            };
+          }
+        } catch (e) {
+          // Fall through to keyword search
+        }
+      }
+
+      // Keyword fallback / category-filtered search
       const params = new URLSearchParams({ agent_id: AGENT_ID });
       if (args.query) params.set("q", args.query);
       if (args.category) params.set("category", args.category);
