@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 LABEL ai-employee.component="embedding-service"
 LABEL ai-employee.version="1.0.0"
