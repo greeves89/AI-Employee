@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.14-slim AS base
 
 # Version label - change this to trigger update detection for running agents
 LABEL ai-employee.version="1.20.0"
