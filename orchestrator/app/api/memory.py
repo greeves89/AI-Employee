@@ -83,11 +83,10 @@ async def save_memory(
             text_to_embed = f"{body.key}: {body.content}"
             embedding = await svc.embed(text_to_embed)
             if embedding is not None:
-                # pgvector accepts string representation of array
+                from sqlalchemy import text as sa_text
                 await db.execute(
-                    update(AgentMemory)
-                    .where(AgentMemory.id == memory.id)
-                    .values(embedding=str(embedding))
+                    sa_text("UPDATE agent_memories SET embedding = CAST(:emb AS vector) WHERE id = :id"),
+                    {"emb": str(embedding), "id": memory.id},
                 )
                 await db.commit()
     except Exception as e:
@@ -148,11 +147,11 @@ async def semantic_search_memories(
         """
         SELECT id, agent_id, category, key, content, importance, access_count,
                created_at, updated_at,
-               1 - (embedding <=> :query_vec::vector) as similarity
+               1 - (embedding <=> CAST(:query_vec AS vector)) as similarity
         FROM agent_memories
         WHERE agent_id = :agent_id
           AND embedding IS NOT NULL
-        ORDER BY embedding <=> :query_vec::vector
+        ORDER BY embedding <=> CAST(:query_vec AS vector)
         LIMIT :limit
         """
     )

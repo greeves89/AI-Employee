@@ -97,6 +97,28 @@ services:
       - internal
       - agent-network
 
+  embedding-service:
+    build:
+      context: ./embedding-service
+      dockerfile: Dockerfile
+    container_name: ai-employee-embedding
+    # No port binding - only accessible via internal network
+    volumes:
+      - embedding_models:/models
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - internal
+
   frontend:
     build:
       context: ./frontend
@@ -178,6 +200,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  embedding_models:
   ai-employee-shared:
     external: true
 

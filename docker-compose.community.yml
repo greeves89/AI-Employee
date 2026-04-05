@@ -118,6 +118,26 @@ services:
       - internal
       - agent-network
 
+  embedding-service:
+    image: ghcr.io/greeves89/ai-employee-embedding:${AI_EMPLOYEE_VERSION:-latest}
+    container_name: ai-employee-embedding
+    pull_policy: always
+    volumes:
+      - embedding_models:/models
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - internal
+
   frontend:
     image: ghcr.io/greeves89/ai-employee-frontend:${AI_EMPLOYEE_VERSION:-latest}
     container_name: ai-employee-frontend
@@ -144,6 +164,8 @@ volumes:
     name: ai-employee-postgres-data
   redis_data:
     name: ai-employee-redis-data
+  embedding_models:
+    name: ai-employee-embedding-models
   ai-employee-shared:
     name: ai-employee-shared
 

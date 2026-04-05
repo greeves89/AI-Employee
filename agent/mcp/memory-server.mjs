@@ -94,20 +94,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "memory_search",
       description:
-        "Search long-term memory for relevant information. Use this at the start of " +
-        "conversations and before tasks to recall context. Searches both keys and content.",
+        "Search long-term memory using SEMANTIC search (vector embeddings) with automatic " +
+        "keyword fallback. Use this at the start of conversations and before tasks to recall context. " +
+        "\n\n" +
+        "**Write queries in natural language** — the system understands meaning, not just keywords. " +
+        "Examples: 'what does the user prefer for emails?', 'did we discuss tax deadlines?', " +
+        "'any previous decisions about the API design?'. " +
+        "\n\n" +
+        "Results are ranked by semantic similarity (each result shows match score %). " +
+        "If semantic search is unavailable (no OpenAI API key), automatically falls back to " +
+        "keyword search — the response will tell you which mode was used.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
             description:
-              "Search term to find in memory keys and content. Leave empty to list recent memories.",
+              "Natural-language question or topic to search for. Be descriptive — the system " +
+              "understands meaning, not just exact words. E.g. 'how should I format emails to the user?' " +
+              "works better than just 'email'. Leave empty to list recent memories.",
           },
           category: {
             type: "string",
             enum: ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
-            description: "Optional: filter by category.",
+            description:
+              "Optional: filter by category. NOTE: providing a category forces keyword-only search " +
+              "(no semantic ranking). Omit for best semantic results.",
           },
         },
       },
@@ -182,9 +194,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const semResult = await apiCall(`/memory/semantic-search?${semParams}`);
           if (semResult.memories && semResult.memories.length > 0) {
             const mode = semResult.mode === "semantic" ? "semantic" : "keyword";
+            const modeLabel = mode === "semantic"
+              ? "🧠 semantic (vector-based, understanding meaning)"
+              : "🔤 keyword (exact substring match — semantic unavailable)";
             const lines = semResult.memories.map(
               (m) => {
-                const sim = m.similarity ? ` [${(m.similarity * 100).toFixed(0)}% match]` : "";
+                const sim = m.similarity != null
+                  ? ` [${(m.similarity * 100).toFixed(0)}% match]`
+                  : "";
                 return `[${m.category}] ${m.key}${sim} (id:${m.id}, importance:${m.importance})\n  ${m.content}`;
               }
             );
@@ -192,11 +209,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               content: [
                 {
                   type: "text",
-                  text: `Found ${semResult.memories.length} memories via ${mode} search:\n\n${lines.join("\n\n")}`,
+                  text: `Found ${semResult.memories.length} memories via ${modeLabel}:\n\n${lines.join("\n\n")}`,
                 },
               ],
             };
           }
+          // semResult returned 0 results — fall through to keyword search below
         } catch (e) {
           // Fall through to keyword search
         }
@@ -210,18 +228,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const result = await apiCall(`/memory/search?${params}`);
       if (result.memories.length === 0) {
         return {
-          content: [{ type: "text", text: "No memories found matching your search." }],
+          content: [{
+            type: "text",
+            text: `No memories found for query "${args.query || "(empty)"}"${args.category ? ` in category ${args.category}` : ""}.`,
+          }],
         };
       }
       const lines = result.memories.map(
         (m) =>
           `[${m.category}] ${m.key} (id:${m.id}, importance:${m.importance})\n  ${m.content}`
       );
+      const modeLabel = args.category
+        ? "🔤 keyword (category-filtered)"
+        : "🔤 keyword (exact substring match)";
       return {
         content: [
           {
             type: "text",
-            text: `Found ${result.total} memories:\n\n${lines.join("\n\n")}`,
+            text: `Found ${result.total} memories via ${modeLabel}:\n\n${lines.join("\n\n")}`,
           },
         ],
       };
