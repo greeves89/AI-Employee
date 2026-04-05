@@ -802,8 +802,8 @@ export default function SettingsPage() {
                     <p className="text-[10px] text-muted-foreground/60">
                       Don't have a license? The Community Edition includes all core features.
                       Upgrade at{" "}
-                      <a href="https://ai-employee.dev/pricing" target="_blank" rel="noopener" className="text-primary hover:underline">
-                        ai-employee.dev/pricing
+                      <a href="https://github.com/greeves89/AI-Employee#pricing" target="_blank" rel="noopener" className="text-primary hover:underline">
+                        github.com/greeves89/AI-Employee
                       </a>
                     </p>
                     <button
