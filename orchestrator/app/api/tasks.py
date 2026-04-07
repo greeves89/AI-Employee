@@ -8,7 +8,7 @@ from app.core.load_balancer import LoadBalancer
 from app.core.pricing import estimate_prompt_cost
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_auth
+from app.dependencies import get_redis_service, require_auth, require_auth_or_agent
 from app.models.task import TaskStatus
 from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse
 from app.services.redis_service import RedisService
@@ -30,7 +30,7 @@ def _get_task_router(
 async def list_tasks(
     status: TaskStatus | None = None,
     agent_id: str | None = None,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     router_: TaskRouter = Depends(_get_task_router),
 ):
     tasks = await router_.list_tasks(status=status, agent_id=agent_id)
@@ -43,11 +43,11 @@ async def list_tasks(
 @router.post("/", response_model=TaskResponse, status_code=201)
 async def create_task(
     data: TaskCreate,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     router_: TaskRouter = Depends(_get_task_router),
 ):
     from app.models.user import UserRole
-    if user.role == UserRole.VIEWER:
+    if hasattr(user, "role") and user.role == UserRole.VIEWER:
         raise HTTPException(status_code=403, detail="Viewers cannot create tasks")
     task = await router_.create_and_route_task(
         title=data.title,
@@ -111,7 +111,7 @@ async def estimate_task_cost(
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     router_: TaskRouter = Depends(_get_task_router),
 ):
     task = await router_.get_task(task_id)

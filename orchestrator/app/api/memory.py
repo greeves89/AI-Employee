@@ -6,7 +6,7 @@ from sqlalchemy import select, or_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth, verify_agent_token
+from app.dependencies import require_auth, require_auth_or_agent, verify_agent_token
 from app.models.memory import AgentMemory
 
 router = APIRouter(prefix="/memory", tags=["memory"])
@@ -298,10 +298,10 @@ async def list_agent_memories(
     agent_id: str,
     category: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all memories for an agent (for the frontend Memory tab)."""
+    """List all memories for an agent (for the frontend Memory tab + agent API)."""
     query = select(AgentMemory).where(AgentMemory.agent_id == agent_id)
     if category:
         query = query.where(AgentMemory.category == category)

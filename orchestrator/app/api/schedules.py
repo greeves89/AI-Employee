@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, require_auth_or_agent
 from app.models.schedule import Schedule
 from app.schemas.schedule import (
     ScheduleCreate,
@@ -28,7 +28,7 @@ async def _get_schedule(db: AsyncSession, schedule_id: str) -> Schedule:
 
 
 @router.get("/", response_model=ScheduleListResponse)
-async def list_schedules(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def list_schedules(user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Schedule).order_by(Schedule.created_at.desc()))
     schedules = list(result.scalars().all())
     return ScheduleListResponse(
@@ -38,7 +38,7 @@ async def list_schedules(user=Depends(require_auth), db: AsyncSession = Depends(
 
 
 @router.post("/", response_model=ScheduleResponse, status_code=201)
-async def create_schedule(data: ScheduleCreate, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule_id = uuid.uuid4().hex[:8]
     now = datetime.now(timezone.utc)
 
@@ -63,14 +63,14 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth), db: 
 
 
 @router.get("/{schedule_id}", response_model=ScheduleResponse)
-async def get_schedule(schedule_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def get_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
     return ScheduleResponse.from_schedule(schedule)
 
 
 @router.put("/{schedule_id}", response_model=ScheduleResponse)
 async def update_schedule(
-    schedule_id: str, data: ScheduleUpdate, user=Depends(require_auth), db: AsyncSession = Depends(get_db),
+    schedule_id: str, data: ScheduleUpdate, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db),
 ):
     schedule = await _get_schedule(db, schedule_id)
 
@@ -88,7 +88,7 @@ async def update_schedule(
 
 
 @router.delete("/{schedule_id}")
-async def delete_schedule(schedule_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def delete_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
     await db.delete(schedule)
     await db.commit()
@@ -96,7 +96,7 @@ async def delete_schedule(schedule_id: str, user=Depends(require_auth), db: Asyn
 
 
 @router.post("/{schedule_id}/trigger")
-async def trigger_schedule(schedule_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     """Manually trigger a schedule to run immediately."""
     from app.core.agent_manager import PROACTIVE_PROMPT
     from app.core.load_balancer import LoadBalancer
@@ -133,7 +133,7 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth), db: Asy
 
 
 @router.post("/{schedule_id}/pause")
-async def pause_schedule(schedule_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def pause_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
     schedule.enabled = False
     await db.commit()
@@ -141,7 +141,7 @@ async def pause_schedule(schedule_id: str, user=Depends(require_auth), db: Async
 
 
 @router.post("/{schedule_id}/resume")
-async def resume_schedule(schedule_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def resume_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
     schedule.enabled = True
     # Reset next_run to now + interval

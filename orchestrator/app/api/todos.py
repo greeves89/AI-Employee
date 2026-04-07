@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth, verify_agent_token
+from app.dependencies import require_auth, require_auth_or_agent, verify_agent_token
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.schemas.todo import (
     TodoCreate,
@@ -56,7 +56,7 @@ async def list_todos_ui(
     status: str | None = Query(None),
     task_id: str | None = Query(None),
     project: str | None = Query(None),
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """List TODOs for an agent (frontend Todo tab)."""
@@ -85,7 +85,7 @@ async def list_todos_ui(
 async def create_todo_ui(
     agent_id: str,
     body: TodoCreate,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a TODO from the UI."""
@@ -109,7 +109,7 @@ async def create_todo_ui(
 async def update_todo(
     todo_id: int,
     body: TodoUpdate,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a single TODO (from UI)."""
@@ -145,7 +145,7 @@ async def update_todo(
 @router.delete("/{todo_id}")
 async def delete_todo(
     todo_id: int,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a TODO."""
