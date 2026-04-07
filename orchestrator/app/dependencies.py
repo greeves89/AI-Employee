@@ -239,22 +239,23 @@ async def verify_agent_token(request: Request) -> dict:
     return {"agent_id": agent_id}
 
 
-async def require_auth_or_agent(request: Request) -> dict:
+async def require_auth_or_agent(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Accept either a User JWT or an Agent HMAC token.
 
-    Returns a user-like dict so endpoints can work with both.
-    Agent tokens produce a pseudo-user with role='agent'.
+    Returns a User object or a pseudo-user SimpleNamespace for agents.
     """
     # Try user JWT first
     try:
-        return await require_auth(request)
+        return await get_current_user(request, db)
     except HTTPException:
         pass
 
     # Fall back to agent token
     try:
         agent_info = await verify_agent_token(request)
-        # Return a pseudo-user object compatible with require_auth responses
         from types import SimpleNamespace
         return SimpleNamespace(
             id=agent_info["agent_id"],
