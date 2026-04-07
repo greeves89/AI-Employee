@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import admin, agents, approval_rules, approvals, audit, auth, docker_apps, feedback, health, integrations, knowledge, license as license_api, meeting_rooms, memory, mcp_servers, notifications, ratings, schedules, skills_catalog, tasks, telegram_actions, templates, todos, version, webhooks, ws, settings
+from app.api import admin, agents, approval_rules, approvals, audit, auth, docker_apps, features, feedback, health, integrations, knowledge, license as license_api, meeting_rooms, memory, mcp_servers, notifications, ratings, schedules, skills_catalog, tasks, telegram_actions, templates, todos, version, webhooks, ws, settings
 
 api_router = APIRouter()
 api_router.include_router(admin.router)
@@ -9,6 +9,7 @@ api_router.include_router(audit.router)
 api_router.include_router(auth.router)
 api_router.include_router(agents.router)
 api_router.include_router(docker_apps.router)
+api_router.include_router(features.router)
 api_router.include_router(feedback.router)
 api_router.include_router(health.router)
 api_router.include_router(integrations.router)

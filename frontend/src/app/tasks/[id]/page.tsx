@@ -55,10 +55,25 @@ export default function TaskDetailPage() {
   }, [taskId]);
 
   // Connect WebSocket for live logs
-  const connectWs = useCallback((agentId: string) => {
-    const token = useAuthStore.getState().wsToken;
-    const tokenParam = token ? `?token=${token}` : "";
-    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/logs${tokenParam}`);
+  const connectWs = useCallback(async (agentId: string) => {
+    // Fetch one-time ticket for WebSocket auth
+    let authParam = "";
+    try {
+      const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (resp.ok) {
+        const { ticket } = await resp.json();
+        authParam = `?ticket=${ticket}`;
+      }
+    } catch {
+      // Fallback to legacy token auth
+      const token = useAuthStore.getState().wsToken;
+      authParam = token ? `?token=${token}` : "";
+    }
+
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/logs${authParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => setIsConnected(true);

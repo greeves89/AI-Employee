@@ -317,7 +317,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
     loadHistory();
   }, [agentId, activeSessionId]);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
       setConnectionFailed(true);
       setMessages((prev) => [
@@ -332,9 +332,24 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       return;
     }
 
-    const token = useAuthStore.getState().wsToken;
-    const tokenParam = token ? `?token=${token}` : "";
-    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat${tokenParam}`);
+    // Fetch one-time ticket for WebSocket auth
+    let authParam = "";
+    try {
+      const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (resp.ok) {
+        const { ticket } = await resp.json();
+        authParam = `?ticket=${ticket}`;
+      }
+    } catch {
+      // Fallback to legacy token auth
+      const token = useAuthStore.getState().wsToken;
+      authParam = token ? `?token=${token}` : "";
+    }
+
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat${authParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => {

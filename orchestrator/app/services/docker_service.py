@@ -1,12 +1,50 @@
+import json
+import logging
+import os
+
 import docker
 from docker.errors import NotFound, APIError
 
+logger = logging.getLogger(__name__)
+
+# Load seccomp profile once at import time.  The orchestrator container
+# mounts the project root at /app, so the profile lives at
+# /app/seccomp-profile.json.  In local development without Docker the
+# file may also sit next to the orchestrator package.
+_SECCOMP_PROFILE: str | None = None
+for _candidate in (
+    "/app/seccomp-profile.json",
+    os.path.join(os.path.dirname(__file__), "..", "..", "seccomp-profile.json"),
+):
+    _candidate = os.path.normpath(_candidate)
+    if os.path.isfile(_candidate):
+        with open(_candidate) as _f:
+            # Validate that it's legal JSON, then keep the compact string
+            # representation – the Docker SDK passes it verbatim.
+            _SECCOMP_PROFILE = json.dumps(json.load(_f), separators=(",", ":"))
+        logger.info("Loaded seccomp profile from %s", _candidate)
+        break
+
+if _SECCOMP_PROFILE is None:
+    logger.warning(
+        "seccomp-profile.json not found – agent containers will run without a custom seccomp profile"
+    )
+
 
 class DockerService:
-    """Wraps Docker SDK for container management."""
+    """Wraps Docker SDK for container management.
+
+    Connects to a docker-socket-proxy when DOCKER_HOST is set (production),
+    otherwise falls back to the local Docker socket (development).
+    """
 
     def __init__(self):
-        self.client = docker.from_env()
+        import os
+        docker_host = os.environ.get("DOCKER_HOST")
+        if docker_host:
+            self.client = docker.DockerClient(base_url=docker_host)
+        else:
+            self.client = docker.from_env()
 
     def create_container(
         self,
@@ -39,6 +77,12 @@ class DockerService:
         # no sudo permissions are configured. The container sandbox is
         # the primary isolation layer regardless.
         security_opts = [] if needs_sudo else ["no-new-privileges:true"]
+
+        # Apply seccomp profile to restrict dangerous syscalls (mount,
+        # reboot, module loading, etc.) while still allowing everything
+        # the agent toolchain needs (bash, git, npm, python, networking).
+        if _SECCOMP_PROFILE is not None:
+            security_opts.append(f"seccomp={_SECCOMP_PROFILE}")
 
         container = self.client.containers.run(
             image=image,

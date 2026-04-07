@@ -1,0 +1,41 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": [
+    "SCMP_ARCH_X86_64",
+    "SCMP_ARCH_X86",
+    "SCMP_ARCH_AARCH64"
+  ],
+  "syscalls": [
+    {
+      "names": [
+        "mount",
+        "umount2",
+        "reboot",
+        "swapon",
+        "swapoff",
+        "pivot_root",
+        "kexec_load",
+        "kexec_file_load",
+        "init_module",
+        "finit_module",
+        "delete_module",
+        "acct",
+        "settimeofday",
+        "clock_settime",
+        "sethostname",
+        "setdomainname",
+        "iopl",
+        "ioperm",
+        "create_module",
+        "query_module",
+        "nfsservctl",
+        "add_key",
+        "request_key",
+        "keyctl"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "args": [],
+      "comment": "Block dangerous syscalls: filesystem mount/unmount, system reboot, swap management, kernel module loading, host identity changes, hardware I/O port access, kernel keyring access"
+    }
+  ]
+}

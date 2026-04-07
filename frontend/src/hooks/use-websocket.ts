@@ -15,7 +15,7 @@ export function useWebSocket(path: string) {
   const failCountRef = useRef(0);
   const wsToken = useAuthStore((s) => s.wsToken);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     // Don't connect if unmounted (prevents StrictMode double-connection)
     if (!mountedRef.current) return;
 
@@ -28,8 +28,26 @@ export function useWebSocket(path: string) {
       wsRef.current.close();
     }
 
-    const tokenParam = wsToken ? `${path.includes("?") ? "&" : "?"}token=${wsToken}` : "";
-    const ws = new WebSocket(`${getWsUrl()}/api/v1${path}${tokenParam}`);
+    // Fetch one-time ticket for WebSocket auth
+    let authParam = "";
+    try {
+      const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (resp.ok) {
+        const { ticket } = await resp.json();
+        authParam = `${path.includes("?") ? "&" : "?"}ticket=${ticket}`;
+      }
+    } catch {
+      // Fallback to legacy token auth
+      authParam = wsToken ? `${path.includes("?") ? "&" : "?"}token=${wsToken}` : "";
+    }
+
+    // Bail out if unmounted while awaiting ticket
+    if (!mountedRef.current) return;
+
+    const ws = new WebSocket(`${getWsUrl()}/api/v1${path}${authParam}`);
     wsRef.current = ws;
     let wasOpen = false;
 

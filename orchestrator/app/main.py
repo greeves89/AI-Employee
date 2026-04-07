@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,20 +46,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class APIRateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-user / per-IP rate limiting for API endpoints."""
+    """Per-user / per-IP rate limiting backed by Redis.
+
+    Uses Redis INCR + EXPIRE for distributed, restart-safe counters.
+    Falls back to in-memory tracking if Redis is unavailable.
+    """
 
     def __init__(self, app, max_requests: int = 120, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window = window_seconds
-        self._requests: dict[str, list[float]] = {}
+        # In-memory fallback (only used if Redis is unreachable)
+        self._fallback: dict[str, list[float]] = {}
 
     async def dispatch(self, request: Request, call_next):
         import time
 
         # Skip rate limiting for health checks and WebSocket upgrades
         path = request.url.path
-        if path == "/health" or request.headers.get("upgrade", "").lower() == "websocket":
+        if path in ("/health", "/healthz") or request.headers.get("upgrade", "").lower() == "websocket":
             return await call_next(request)
 
         # Identify caller: user_id from JWT cookie, fallback to IP
@@ -72,14 +78,38 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
             except Exception:
                 pass  # Use IP if token is invalid
 
-        now = time.time()
-        # Clean old entries
-        if key not in self._requests:
-            self._requests[key] = []
-        self._requests[key] = [t for t in self._requests[key] if now - t < self.window]
+        redis_key = f"ratelimit:{key}"
 
-        if len(self._requests[key]) >= self.max_requests:
-            logger.warning(f"Rate limit exceeded for {key}")
+        # Try Redis-backed rate limiting (distributed, survives restarts)
+        redis_svc = getattr(request.app.state, "redis", None)
+        redis_client = getattr(redis_svc, "client", None) if redis_svc else None
+
+        if redis_client:
+            try:
+                current = await redis_client.incr(redis_key)
+                if current == 1:
+                    await redis_client.expire(redis_key, self.window)
+                if current > self.max_requests:
+                    ttl = await redis_client.ttl(redis_key)
+                    logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
+                    return Response(
+                        content='{"detail":"Rate limit exceeded. Try again later."}',
+                        status_code=429,
+                        media_type="application/json",
+                        headers={"Retry-After": str(max(ttl, 1))},
+                    )
+                return await call_next(request)
+            except Exception:
+                pass  # Redis unavailable — fall through to in-memory
+
+        # In-memory fallback
+        now = time.time()
+        if key not in self._fallback:
+            self._fallback[key] = []
+        self._fallback[key] = [t for t in self._fallback[key] if now - t < self.window]
+
+        if len(self._fallback[key]) >= self.max_requests:
+            logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
             return Response(
                 content='{"detail":"Rate limit exceeded. Try again later."}',
                 status_code=429,
@@ -87,7 +117,7 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(self.window)},
             )
 
-        self._requests[key].append(now)
+        self._fallback[key].append(now)
         return await call_next(request)
 
 

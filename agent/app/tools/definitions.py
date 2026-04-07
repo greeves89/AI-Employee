@@ -311,6 +311,10 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "description": "Priority 0-10 (higher = more urgent)",
                         "default": 0,
                     },
+                    "parent_task_id": {
+                        "type": "string",
+                        "description": "Link this as a subtask of a parent task. The parent agent will be notified when this subtask completes.",
+                    },
                 },
                 "required": ["prompt", "title"],
             },

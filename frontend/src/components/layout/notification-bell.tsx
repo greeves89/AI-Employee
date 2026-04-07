@@ -66,11 +66,28 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
     intentionalClose.current = false;
     let failCount = 0;
 
-    const connect = () => {
+    const connect = async () => {
       if (failCount >= 5) return; // Stop retrying after repeated auth failures
 
-      const tokenParam = wsToken ? `?token=${wsToken}` : "";
-      const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/notifications${tokenParam}`);
+      // Fetch one-time ticket for WebSocket auth
+      let authParam = "";
+      try {
+        const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (resp.ok) {
+          const { ticket } = await resp.json();
+          authParam = `?ticket=${ticket}`;
+        }
+      } catch {
+        // Fallback to legacy token auth
+        authParam = wsToken ? `?token=${wsToken}` : "";
+      }
+
+      if (intentionalClose.current) return; // Bail if unmounted while awaiting ticket
+
+      const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/notifications${authParam}`);
       wsRef.current = ws;
       let wasOpen = false;
 

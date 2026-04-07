@@ -7,6 +7,13 @@ services:
       POSTGRES_USER: ai_employee
       POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
     # No host port binding - only accessible via internal network
+    # Raise max_connections for 100 concurrent users (default 100 is too low)
+    command: >
+      postgres
+      -c max_connections=250
+      -c shared_buffers=256MB
+      -c work_mem=8MB
+      -c effective_cache_size=512MB
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +25,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
     networks:
       - internal
 
@@ -28,7 +35,7 @@ services:
     # No host port binding - only accessible via internal network
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme-redis-password}
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy volatile-lru --requirepass ${REDIS_PASSWORD:-changeme-redis-password}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -38,10 +45,47 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
     networks:
       - internal
       - agent-network
+
+  # Docker Socket Proxy — restricts Docker API surface for orchestrator.
+  # Only allows container management operations; blocks privileged escalation.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: ai-employee-docker-proxy
+    environment:
+      # Allow container management (required for agent lifecycle)
+      CONTAINERS: 1
+      IMAGES: 1
+      VOLUMES: 1
+      NETWORKS: 1
+      EXEC: 1
+      # Block dangerous operations
+      POST: 1          # Allow container create/start/stop
+      AUTH: 0
+      SECRETS: 0
+      SWARM: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      SESSION: 0
+      SYSTEM: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    networks:
+      - internal
 
   orchestrator:
     build:
@@ -54,7 +98,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://ai_employee:${DB_PASSWORD:-devpassword}@postgres:5432/ai_employee
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@redis:6379
-      REDIS_URL_INTERNAL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@redis:6379
+      # INTERNAL uses the container_name (ai-employee-redis) so agent containers
+      # on the agent-network can resolve it. The compose service name "redis"
+      # only works on the internal network.
+      REDIS_URL_INTERNAL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@ai-employee-redis:6379
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
@@ -79,7 +127,6 @@ services:
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
       AGENT_IMAGE: ai-employee-agent:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./orchestrator:/app
       - ai-employee-shared:/shared
       - ${HOME}/.ai-employee:/host-auth:ro
@@ -92,6 +139,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
     restart: unless-stopped
     networks:
       - internal

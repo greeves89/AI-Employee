@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Send, ArrowLeft, Sparkles, Cpu, Gauge, Loader2 } from "lucide-react";
+import { Send, ArrowLeft, Sparkles, Cpu, Gauge, Loader2, DollarSign } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,33 @@ export default function NewTaskPage() {
   const [priority, setPriority] = useState(1);
   const [agentId, setAgentId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const [costEstimate, setCostEstimate] = useState<{
+    min_usd: number;
+    avg_usd: number;
+    max_usd: number;
+    agent_avg_usd: number | null;
+  } | null>(null);
+  const [estimating, setEstimating] = useState(false);
+
+  // Fetch cost estimate when prompt changes (debounced)
+  const estimateCost = async () => {
+    if (!prompt.trim() || prompt.length < 20) {
+      setCostEstimate(null);
+      return;
+    }
+    setEstimating(true);
+    try {
+      const est = await api.estimateTaskCost({
+        prompt: prompt.trim(),
+        agent_id: agentId || undefined,
+      });
+      setCostEstimate(est);
+    } catch {
+      setCostEstimate(null);
+    } finally {
+      setEstimating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,6 +175,50 @@ export default function NewTaskPage() {
                   ))}
               </select>
             </div>
+          </div>
+
+          {/* Cost Estimate */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <DollarSign className="h-3 w-3" />
+                Cost Estimate
+              </label>
+              <button
+                type="button"
+                onClick={estimateCost}
+                disabled={estimating || !prompt.trim() || prompt.length < 20}
+                className="text-[11px] text-primary hover:text-primary/80 disabled:text-muted-foreground/40 transition-colors"
+              >
+                {estimating ? "Calculating..." : "Estimate cost"}
+              </button>
+            </div>
+            {costEstimate && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3 text-xs font-mono space-y-1"
+              >
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Min</span>
+                  <span>${costEstimate.min_usd.toFixed(4)}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span className="text-muted-foreground">Avg</span>
+                  <span>${costEstimate.avg_usd.toFixed(4)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Max</span>
+                  <span>${costEstimate.max_usd.toFixed(4)}</span>
+                </div>
+                {costEstimate.agent_avg_usd !== null && (
+                  <div className="flex justify-between border-t border-foreground/[0.06] pt-1 mt-1">
+                    <span className="text-muted-foreground">Agent avg</span>
+                    <span>${costEstimate.agent_avg_usd.toFixed(4)}</span>
+                  </div>
+                )}
+              </motion.div>
+            )}
           </div>
 
           {/* Actions */}

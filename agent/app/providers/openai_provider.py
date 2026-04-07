@@ -66,7 +66,7 @@ class OpenAIProvider(BaseLLMProvider):
     # Main streaming entry point
     # ------------------------------------------------------------------ #
 
-    async def stream_completion(
+    async def _stream_completion_impl(
         self,
         messages: list[ChatMessage],
         tools: list[dict] | None = None,

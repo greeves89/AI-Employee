@@ -2,10 +2,13 @@
 
 import asyncio
 import glob as _glob
+import hashlib
+import json
 import logging
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 from app.config import settings
@@ -16,6 +19,61 @@ logger = logging.getLogger(__name__)
 # Safety limit for bash output
 MAX_OUTPUT_CHARS = 30000
 
+# Tools safe to cache (read-only, no side effects)
+_CACHEABLE_TOOLS = frozenset({
+    "read_file", "list_files", "glob", "grep",
+    "memory_search", "knowledge_search", "list_team",
+    "list_tasks", "list_todos", "list_schedules",
+})
+_CACHE_TTL_SECONDS = 120  # 2 minutes
+
+
+class _ToolCache:
+    """In-memory TTL cache for read-only tool results.
+
+    Avoids re-running identical tool calls within a short window.
+    Only caches tools that are safe to cache (no side effects).
+    """
+
+    def __init__(self, ttl: int = _CACHE_TTL_SECONDS):
+        self._store: dict[str, tuple[str, float]] = {}  # key → (result, expires_at)
+        self._ttl = ttl
+        self.hits = 0
+        self.misses = 0
+
+    @staticmethod
+    def _key(tool_name: str, tool_input: dict) -> str:
+        raw = f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def get(self, tool_name: str, tool_input: dict) -> str | None:
+        if tool_name not in _CACHEABLE_TOOLS:
+            return None
+        key = self._key(tool_name, tool_input)
+        entry = self._store.get(key)
+        if entry and entry[1] > time.time():
+            self.hits += 1
+            return entry[0]
+        if entry:
+            del self._store[key]  # Expired
+        self.misses += 1
+        return None
+
+    def put(self, tool_name: str, tool_input: dict, result: str) -> None:
+        if tool_name not in _CACHEABLE_TOOLS:
+            return
+        key = self._key(tool_name, tool_input)
+        self._store[key] = (result, time.time() + self._ttl)
+        # Evict expired entries periodically (every 50 puts)
+        if len(self._store) > 200:
+            now = time.time()
+            self._store = {k: v for k, v in self._store.items() if v[1] > now}
+
+    def invalidate(self) -> None:
+        """Clear cache after write operations (edit_file, write_file, bash, etc)."""
+        if self._store:
+            self._store.clear()
+
 
 class ToolExecutor:
     """Executes tool calls locally or routes them to the orchestrator API."""
@@ -24,6 +82,7 @@ class ToolExecutor:
         self.workspace_dir = workspace_dir or settings.workspace_dir
         self._api_client = None  # Lazy init
         self._mcp_client = None  # Lazy init for custom MCP servers
+        self._cache = _ToolCache()
 
     def _get_api_client(self):
         """Lazy-initialize the orchestrator API client."""
@@ -40,10 +99,21 @@ class ToolExecutor:
         return self._mcp_client
 
     async def execute(self, tool_name: str, tool_input: dict) -> str:
-        """Execute a tool and return the result as a string."""
+        """Execute a tool and return the result as a string.
+
+        Read-only tools are cached for 2 minutes to avoid redundant work.
+        Write operations invalidate the cache automatically.
+        """
+        # Check cache for read-only tools
+        cached = self._cache.get(tool_name, tool_input)
+        if cached is not None:
+            return cached
+
         # Route orchestrator API tools to the API client
         if tool_name in ORCHESTRATOR_TOOL_NAMES:
-            return await self._execute_api_tool(tool_name, tool_input)
+            result = await self._execute_api_tool(tool_name, tool_input)
+            self._cache.put(tool_name, tool_input, result)
+            return result
 
         # Route custom MCP tools (prefixed with "mcp_")
         if tool_name.startswith("mcp_"):
@@ -54,7 +124,13 @@ class ToolExecutor:
         if not handler:
             return f"Error: Unknown tool '{tool_name}'"
         try:
-            return await handler(tool_input)
+            result = await handler(tool_input)
+            # Cache read-only results; invalidate cache on write operations
+            if tool_name in _CACHEABLE_TOOLS:
+                self._cache.put(tool_name, tool_input, result)
+            elif tool_name in ("write_file", "edit_file", "multi_edit", "bash"):
+                self._cache.invalidate()
+            return result
         except Exception as e:
             return f"Error executing {tool_name}: {e}"
 
