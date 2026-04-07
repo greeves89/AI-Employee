@@ -42,6 +42,9 @@ class Task(Base, TimestampMixin):
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     num_turns: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parent_task_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("tasks.id"), nullable=True, index=True
+    )
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -51,3 +54,9 @@ class Task(Base, TimestampMixin):
     )
 
     agent: Mapped["Agent | None"] = relationship(back_populates="tasks")  # noqa: F821
+    parent_task: Mapped["Task | None"] = relationship(
+        "Task", remote_side="Task.id", foreign_keys=[parent_task_id]
+    )
+    subtasks: Mapped[list["Task"]] = relationship(
+        "Task", foreign_keys=[parent_task_id], viewonly=True
+    )

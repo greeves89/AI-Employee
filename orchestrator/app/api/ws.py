@@ -1,17 +1,20 @@
 import asyncio
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, Request
 
 from app.core.stream_manager import StreamManager
 from app.db.session import async_session_factory
-from app.dependencies import get_current_user_ws
+from app.dependencies import get_current_user_ws, require_auth
 from app.models.chat_message import ChatMessage
 from app.security.agent_guard import chat_rate_limiter, check_chat_message, notify_security_block
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -29,12 +32,43 @@ def init_stream_manager(redis: RedisService, docker: DockerService | None = None
     return stream_manager
 
 
-async def _authenticate_ws(websocket: WebSocket, token: str | None) -> bool:
-    """Authenticate a WebSocket connection via JWT token query param.
+@router.post("/ticket")
+async def create_ws_ticket(request: Request, user=Depends(require_auth)):
+    """Create a short-lived one-time ticket for WebSocket authentication.
+
+    The ticket is stored in Redis with a 30-second TTL and can only be used once.
+    This avoids putting long-lived JWTs in WebSocket URL query parameters.
+    """
+    redis = _redis
+    if not redis or not redis.client:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Redis not available")
+    ticket_id = uuid.uuid4().hex
+    await redis.client.setex(f"ws:ticket:{ticket_id}", 30, str(user.id))
+    return {"ticket": ticket_id}
+
+
+async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticket: str | None = None) -> bool:
+    """Authenticate a WebSocket connection.
+
+    Preferred: ticket= (one-time, from POST /ws/ticket, 30s TTL)
+    Legacy: token= (JWT in URL -- deprecated, logged as warning)
 
     Returns True if authenticated, False if connection was rejected.
     In setup mode (no users), always returns True.
     """
+    # Try ticket-based auth first (preferred)
+    if ticket and _redis and _redis.client:
+        user_id = await _redis.client.getdel(f"ws:ticket:{ticket}")
+        if user_id:
+            return True
+        await websocket.close(code=4001, reason="Invalid or expired ticket")
+        return False
+
+    # Legacy: JWT token in URL (deprecated)
+    if token:
+        logger.warning("WebSocket using legacy token= param — migrate to ticket-based auth")
+
     try:
         async with async_session_factory() as db:
             user = await get_current_user_ws(token, db)
@@ -49,12 +83,12 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None) -> bool:
 
 
 @router.websocket("/agents/{agent_id}/logs")
-async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None = Query(None)):
+async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None)):
     if not stream_manager:
         await websocket.close(code=1011, reason="Stream manager not initialized")
         return
 
-    if not await _authenticate_ws(websocket, token):
+    if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
     try:
@@ -64,7 +98,7 @@ async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None =
 
 
 @router.websocket("/agents/{agent_id}/chat")
-async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None)):
+async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None)):
     """Bidirectional WebSocket for chatting with an agent.
 
     Client sends: {"text": "Hello"} or {"text": "/reset"}
@@ -75,8 +109,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         await websocket.close(code=1011, reason="Redis not initialized")
         return
 
-    # Authenticate via JWT token
-    if not await _authenticate_ws(websocket, token):
+    # Authenticate via ticket (preferred) or legacy JWT token
+    if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
     # Check if agent container is alive before accepting
@@ -419,13 +453,13 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
 
 @router.websocket("/notifications")
-async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)):
-    """WebSocket for live notification push to the frontend. Requires ?token=<jwt>."""
+async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
+    """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
     if not _redis or not _redis.client:
         await websocket.close(code=1011, reason="Redis not initialized")
         return
 
-    if not await _authenticate_ws(websocket, token):
+    if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
     await websocket.accept()
@@ -452,12 +486,12 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
 
 
 @router.websocket("/logs")
-async def ws_all_logs(websocket: WebSocket, token: str | None = Query(None)):
+async def ws_all_logs(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     if not stream_manager:
         await websocket.close(code=1011, reason="Stream manager not initialized")
         return
 
-    if not await _authenticate_ws(websocket, token):
+    if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
     try:

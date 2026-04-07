@@ -11,6 +11,7 @@ class TaskCreate(BaseModel):
     priority: int = TaskPriority.NORMAL
     agent_id: str | None = None  # None = auto-assign
     model: str | None = None
+    parent_task_id: str | None = None  # For subtask hierarchies
 
 
 class TaskResponse(BaseModel):
@@ -26,6 +27,7 @@ class TaskResponse(BaseModel):
     cost_usd: float | None
     duration_ms: int | None
     num_turns: int | None
+    parent_task_id: str | None = None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None

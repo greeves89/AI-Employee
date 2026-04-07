@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.services.redis_service import RedisService
 
@@ -11,26 +11,47 @@ class AgentMetrics:
     cpu_percent: float
     memory_percent: float
     healthy: bool
+    category: str = ""  # Agent template category (dev, data, devops, etc.)
+    role: str = ""      # Agent role/specialization
 
 
 class LoadBalancer:
-    """Capacity-aware load balancer for distributing tasks across agents.
+    """Capacity- and capability-aware load balancer for distributing tasks.
 
     Score formula (lower is better):
         score = (queue_depth * 3) + (cpu_percent * 0.02) + (memory_percent * 0.01)
 
-    For urgent tasks, idle agents are preferred.
+    Routing priority:
+    1. If required_capability is set, filter agents by matching category/role
+    2. For urgent tasks (priority >= 3), prefer idle agents
+    3. Pick the agent with the lowest load score
     """
 
     def __init__(self, redis: RedisService):
         self.redis = redis
 
-    async def select_agent(self, priority: int = 1) -> str | None:
+    async def select_agent(
+        self, priority: int = 1, required_capability: str | None = None
+    ) -> str | None:
         metrics = await self._collect_metrics()
-        available = [m for m in metrics if m.healthy and m.state not in ("stopped", "error", "unknown")]
+        available = [
+            m for m in metrics
+            if m.healthy and m.state not in ("stopped", "error", "unknown")
+        ]
 
         if not available:
             return None
+
+        # Capability matching: filter by category or role keyword
+        if required_capability:
+            cap = required_capability.lower()
+            matched = [
+                m for m in available
+                if cap in m.category.lower() or cap in m.role.lower()
+            ]
+            if matched:
+                available = matched
+            # If no match, fall through to all available (best-effort)
 
         # For urgent tasks (priority >= 3), prefer idle agents
         if priority >= 3:
@@ -66,6 +87,8 @@ class LoadBalancer:
                         cpu_percent=float(data.get("cpu_percent", "0")),
                         memory_percent=float(data.get("memory_percent", "0")),
                         healthy=data.get("healthy", "true") == "true",
+                        category=data.get("category", ""),
+                        role=data.get("role", ""),
                     )
                 )
             if cursor == "0" or cursor == 0:

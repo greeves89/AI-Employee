@@ -68,8 +68,12 @@ class TaskRouter:
         priority: int = 1,
         agent_id: str | None = None,
         model: str | None = None,
+        parent_task_id: str | None = None,
     ) -> Task:
         task_id = uuid.uuid4().hex[:12]
+
+        # Platform-wide budget check
+        await self._check_platform_budget()
 
         # Budget check: if task targets a specific agent, verify budget
         if agent_id:
@@ -87,6 +91,7 @@ class TaskRouter:
                     status=TaskStatus.PENDING,
                     priority=priority,
                     model=model,
+                    parent_task_id=parent_task_id,
                 )
                 self.db.add(task)
                 await self.db.commit()
@@ -102,6 +107,7 @@ class TaskRouter:
             priority=priority,
             agent_id=agent_id,
             model=model,
+            parent_task_id=parent_task_id,
             started_at=datetime.now(timezone.utc),
         )
         self.db.add(task)
@@ -242,6 +248,10 @@ class TaskRouter:
             await self._update_schedule_stats(schedule_id, data)
 
         await self.db.commit()
+
+        # Subtask completion callback: notify the parent task's agent
+        if task.parent_task_id:
+            await self._notify_parent_agent(task)
 
         # Request user rating via notification + Telegram inline keyboard
         if task.status == TaskStatus.COMPLETED:
@@ -466,6 +476,69 @@ class TaskRouter:
             await self._send_rating_keyboard(task)
         except Exception as e:
             logger.warning(f"Could not send rating request for task {task.id}: {e}")
+
+    async def _check_platform_budget(self) -> None:
+        """Raise ValueError if the platform-wide spending limit is exceeded."""
+        from app.config import settings
+
+        cap = settings.platform_budget_usd
+        if not cap or cap <= 0:
+            return  # No platform budget configured
+
+        from app.models.task import Task as TaskModel
+        from sqlalchemy import func
+
+        result = await self.db.execute(
+            select(func.coalesce(func.sum(TaskModel.cost_usd), 0)).where(
+                TaskModel.cost_usd.isnot(None),
+                TaskModel.created_at >= datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0),
+            )
+        )
+        monthly_spend = float(result.scalar() or 0)
+        if monthly_spend >= cap:
+            raise ValueError(
+                f"Platform monthly budget exceeded (${monthly_spend:.2f}/${cap:.2f}). "
+                f"Increase PLATFORM_BUDGET_USD or wait for next month."
+            )
+
+    async def _notify_parent_agent(self, subtask: Task) -> None:
+        """When a subtask completes, notify the parent task's agent via message queue.
+
+        The parent agent receives a structured message with the subtask result
+        so it can aggregate results without polling.
+        """
+        try:
+            parent = await self.db.execute(
+                select(Task).where(Task.id == subtask.parent_task_id)
+            )
+            parent_task = parent.scalar_one_or_none()
+            if not parent_task or not parent_task.agent_id:
+                return
+
+            status = "completed" if subtask.status == TaskStatus.COMPLETED else "failed"
+            result_preview = (subtask.result or subtask.error or "")[:500]
+
+            message = json.dumps({
+                "type": "subtask_completed",
+                "subtask_id": subtask.id,
+                "subtask_title": subtask.title,
+                "status": status,
+                "result_preview": result_preview,
+                "cost_usd": subtask.cost_usd,
+                "parent_task_id": subtask.parent_task_id,
+            })
+
+            # Push to the parent agent's message queue
+            if self.redis.client:
+                await self.redis.client.lpush(
+                    f"agent:{parent_task.agent_id}:messages", message
+                )
+                logger.info(
+                    f"Subtask {subtask.id} ({status}) → notified parent agent "
+                    f"{parent_task.agent_id} (parent task {parent_task.id})"
+                )
+        except Exception as e:
+            logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
 
     async def _send_rating_keyboard(self, task: Task) -> None:
         """Send Telegram inline keyboard with ⭐1-5 rating buttons."""

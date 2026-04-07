@@ -15,13 +15,65 @@ from app.tools.mcp_client import MCPHTTPClient
 logger = logging.getLogger(__name__)
 
 MAX_TURNS_PER_MESSAGE = 20  # Max tool-use loops per chat message
+LOOP_DETECTION_WINDOW = 6   # Consecutive identical tool calls to detect as loop
+COMPACTION_THRESHOLD = 0.75  # Trigger compaction at 75% of context window
+
+# Context window sizes per model (tokens).
+# Claude Code CLI handles its own compaction — this is for custom LLM mode only.
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    # OpenAI
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8_192,
+    "gpt-3.5-turbo": 16_385,
+    "gpt-5": 1_000_000,
+    "o1": 200_000,
+    "o1-mini": 128_000,
+    "o3-mini": 200_000,
+    # Anthropic
+    "claude-opus-4-6": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-haiku-4-5": 200_000,
+    # Google
+    "gemini-2.5-pro": 1_000_000,
+    "gemini-2.5-flash": 1_000_000,
+    "gemini-1.5-pro": 2_000_000,
+    "gemini-1.5-flash": 1_000_000,
+    # Local / open models (conservative defaults)
+    "llama": 8_192,
+    "mistral": 32_768,
+    "codestral": 32_768,
+    "deepseek": 128_000,
+    "qwen": 128_000,
+}
+
+DEFAULT_CONTEXT_WINDOW = 128_000  # Fallback if model not in table
+
+COMPACTION_PROMPT = (
+    "You are a conversation compactor. Summarize the ENTIRE conversation so far "
+    "into a concise but complete status report. Include:\n"
+    "1. What the user originally asked for\n"
+    "2. What has been accomplished so far (files changed, commands run, decisions made)\n"
+    "3. What is still pending or in progress\n"
+    "4. Any errors encountered and how they were resolved\n"
+    "5. Key context the assistant needs to continue seamlessly\n\n"
+    "Write the summary as a briefing for the assistant to continue the work. "
+    "Be specific — include file paths, function names, and concrete details. "
+    "Do NOT lose any actionable information."
+)
 
 
 class LLMChatHandler:
     """Handles interactive chat sessions using custom LLM providers.
 
-    Same interface as ChatHandler - publishes identical events via
+    Same interface as ChatHandler — publishes identical events via
     LogPublisher.publish_chat() so the frontend sees no difference.
+
+    Context management: tracks token usage vs model context window.
+    When usage exceeds COMPACTION_THRESHOLD (75%), triggers an LLM-based
+    summarization of the conversation, replaces history with the summary,
+    and continues seamlessly.
     """
 
     def __init__(self, log_publisher: LogPublisher):
@@ -33,6 +85,145 @@ class LLMChatHandler:
         self._all_tools: list[dict] | None = None
         # Conversation history (in-memory, replaces --resume)
         self._history: list[ChatMessage] = []
+        # Loop detection: track recent tool call signatures
+        self._recent_tool_sigs: list[str] = []
+        # Context tracking
+        self._last_input_tokens: int = 0
+        self._context_window: int = 0  # Resolved on first call
+
+    def _get_context_window(self) -> int:
+        """Resolve the context window size for the current model."""
+        if self._context_window > 0:
+            return self._context_window
+
+        model = (settings.llm_model_name or "").lower()
+
+        # Exact match
+        for key, size in MODEL_CONTEXT_WINDOWS.items():
+            if key in model:
+                self._context_window = size
+                logger.info(f"[Context] Model '{model}' → context window {size:,} tokens")
+                return size
+
+        self._context_window = DEFAULT_CONTEXT_WINDOW
+        logger.info(
+            f"[Context] Model '{model}' not in table, "
+            f"using default {DEFAULT_CONTEXT_WINDOW:,} tokens"
+        )
+        return self._context_window
+
+    def _estimate_tokens(self) -> int:
+        """Estimate current context size in tokens.
+
+        Uses the last API-reported input_tokens if available (most accurate).
+        Falls back to character-based estimation (~4 chars per token).
+        """
+        if self._last_input_tokens > 0:
+            return self._last_input_tokens
+
+        # Rough estimate: sum all message content lengths / 4
+        total_chars = 0
+        for msg in self._history:
+            if isinstance(msg.content, str) and msg.content:
+                total_chars += len(msg.content)
+            elif isinstance(msg.content, list):
+                total_chars += sum(len(str(c)) for c in msg.content)
+            if msg.tool_calls:
+                total_chars += len(json.dumps(msg.tool_calls))
+        return total_chars // 4
+
+    def _needs_compaction(self) -> bool:
+        """Check if the conversation needs compaction."""
+        if len(self._history) < 6:
+            return False  # Too short to compact
+        estimated = self._estimate_tokens()
+        window = self._get_context_window()
+        usage_pct = estimated / window
+        if usage_pct >= COMPACTION_THRESHOLD:
+            logger.info(
+                f"[Context] {usage_pct:.0%} used "
+                f"({estimated:,}/{window:,} tokens) — compaction needed"
+            )
+            return True
+        return False
+
+    async def _compact_history(self, message_id: str) -> None:
+        """Ask the LLM to summarize the conversation, then replace history.
+
+        Flow:
+        1. Send full history + compaction prompt to LLM
+        2. LLM returns a summary of everything so far
+        3. Replace history with: [system_prompt, summary, last_user_message]
+        """
+        provider = self._get_provider()
+
+        # Notify user that compaction is happening
+        await self.log_publisher.publish_chat(
+            message_id, "text",
+            {"text": "\n\n`[Kontext wird komprimiert...]`\n\n"},
+        )
+
+        # Build compaction request: full history + summary instruction
+        compact_messages = list(self._history) + [
+            ChatMessage(role="user", content=COMPACTION_PROMPT)
+        ]
+
+        # Call LLM without tools (pure text summary)
+        summary_text = ""
+        try:
+            async for event in provider.stream_completion(compact_messages, tools=None):
+                if event.type == "text_delta":
+                    summary_text += event.text
+                elif event.type == "done":
+                    # Update token tracking from compaction call
+                    if event.input_tokens:
+                        self._last_input_tokens = 0  # Reset — new context is tiny
+                elif event.type == "error":
+                    logger.error(f"[Context] Compaction LLM call failed: {event.text}")
+                    return  # Keep old history if compaction fails
+        except Exception as e:
+            logger.error(f"[Context] Compaction failed: {e}")
+            return  # Keep old history on error
+
+        if not summary_text.strip():
+            logger.warning("[Context] Compaction returned empty summary, skipping")
+            return
+
+        # Rebuild history: system prompt + summary + keep last user message
+        system_msg = None
+        if self._history and self._history[0].role == "system":
+            system_msg = self._history[0]
+
+        last_user = None
+        for msg in reversed(self._history):
+            if msg.role == "user":
+                last_user = msg
+                break
+
+        new_history: list[ChatMessage] = []
+        if system_msg:
+            new_history.append(system_msg)
+
+        # Insert summary as an assistant message so the LLM knows the context
+        new_history.append(ChatMessage(
+            role="assistant",
+            content=(
+                f"[Conversation Summary — compacted to save context]\n\n"
+                f"{summary_text}"
+            ),
+        ))
+
+        if last_user:
+            new_history.append(last_user)
+
+        old_count = len(self._history)
+        self._history = new_history
+        self._last_input_tokens = 0  # Reset — will be re-measured on next call
+
+        logger.info(
+            f"[Context] Compacted {old_count} messages → {len(self._history)} messages. "
+            f"Summary: {len(summary_text)} chars"
+        )
 
     async def _get_tools(self) -> list[dict] | None:
         """Get combined built-in + MCP tool definitions."""
@@ -81,6 +272,13 @@ class LLMChatHandler:
         # Add user message to history
         self._history.append(ChatMessage(role="user", content=text))
 
+        # Context compaction: if approaching context limit, summarize first
+        if self._needs_compaction():
+            await self._compact_history(message_id)
+
+        # Reset loop detector for this message
+        self._recent_tool_sigs.clear()
+
         tools = await self._get_tools()
         full_text = ""
         accumulated_tool_calls: list[dict] = []
@@ -121,6 +319,11 @@ class LLMChatHandler:
                             },
                         )
 
+                    elif event.type == "done":
+                        # Track actual token usage from API for context monitoring
+                        if event.input_tokens:
+                            self._last_input_tokens = event.input_tokens
+
                     elif event.type == "error":
                         await self.log_publisher.publish_chat(
                             message_id, "error", {"message": event.text}
@@ -148,6 +351,22 @@ class LLMChatHandler:
                 if not has_tool_calls:
                     break
 
+                # Loop detection: check for repetitive tool call patterns
+                for tc in turn_tool_calls:
+                    sig = f"{tc['name']}:{json.dumps(tc['input'], sort_keys=True)}"
+                    self._recent_tool_sigs.append(sig)
+                if self._detect_loop():
+                    loop_msg = (
+                        "Loop detected: the same tool calls are repeating. "
+                        "Stopping to prevent runaway execution."
+                    )
+                    logger.warning(f"[Chat] {loop_msg}")
+                    full_text += f"\n\n[System: {loop_msg}]"
+                    await self.log_publisher.publish_chat(
+                        message_id, "text", {"text": f"\n\n[System: {loop_msg}]"}
+                    )
+                    break
+
                 # Execute tool calls and add results
                 for tc in turn_tool_calls:
                     result_text = await self._tool_executor.execute(tc["name"], tc["input"])
@@ -161,6 +380,10 @@ class LLMChatHandler:
                         tool_call_id=tc["id"],
                         name=tc["name"],
                     ))
+
+                # Mid-turn compaction: if a tool-heavy turn filled the context
+                if self._needs_compaction():
+                    await self._compact_history(message_id)
 
         except Exception as e:
             logger.exception(f"LLM Chat error: {e}")
@@ -193,9 +416,22 @@ class LLMChatHandler:
             await self._provider.close()
             self._provider = None
 
+    def _detect_loop(self) -> bool:
+        """Detect repetitive tool call patterns.
+
+        Returns True if the last LOOP_DETECTION_WINDOW tool calls all have
+        the same signature (same tool name + same arguments).
+        """
+        if len(self._recent_tool_sigs) < LOOP_DETECTION_WINDOW:
+            return False
+        window = self._recent_tool_sigs[-LOOP_DETECTION_WINDOW:]
+        return len(set(window)) == 1
+
     async def reset_session(self) -> None:
         """Reset conversation history."""
         self._history.clear()
+        self._recent_tool_sigs.clear()
+        self._last_input_tokens = 0
         await self.log_publisher.publish_chat(
             "", "system", {"message": "Chat session reset"}
         )

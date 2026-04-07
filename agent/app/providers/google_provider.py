@@ -18,7 +18,7 @@ class GoogleProvider(BaseLLMProvider):
         super().__init__(**kwargs)
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
-    async def stream_completion(
+    async def _stream_completion_impl(
         self,
         messages: list[ChatMessage],
         tools: list[dict] | None = None,
@@ -71,6 +71,9 @@ class GoogleProvider(BaseLLMProvider):
 
         headers = {"Content-Type": "application/json"}
 
+        input_tokens = 0
+        output_tokens = 0
+
         try:
             async with self._client.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code != 200:
@@ -104,11 +107,11 @@ class GoogleProvider(BaseLLMProvider):
                                 tool_input=fc.get("args", {}),
                             )
 
-                    # Check usage metadata
+                    # Track usage metadata (Gemini reports this per chunk)
                     usage = chunk.get("usageMetadata", {})
                     if usage:
-                        input_tokens = usage.get("promptTokenCount", 0)
-                        output_tokens = usage.get("candidatesTokenCount", 0)
+                        input_tokens = usage.get("promptTokenCount", input_tokens)
+                        output_tokens = usage.get("candidatesTokenCount", output_tokens)
 
         except httpx.ConnectError as e:
             yield LLMEvent(type="error", text=f"Connection failed: {e}")
@@ -120,7 +123,7 @@ class GoogleProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text=f"Unexpected error: {e}")
             return
 
-        yield LLMEvent(type="done")
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
 
     async def close(self) -> None:
         await self._client.aclose()

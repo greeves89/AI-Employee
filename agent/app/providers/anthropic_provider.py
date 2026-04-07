@@ -18,7 +18,7 @@ class AnthropicProvider(BaseLLMProvider):
         super().__init__(**kwargs)
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
-    async def stream_completion(
+    async def _stream_completion_impl(
         self,
         messages: list[ChatMessage],
         tools: list[dict] | None = None,

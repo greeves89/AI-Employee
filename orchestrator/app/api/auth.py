@@ -108,11 +108,29 @@ def _set_auth_cookies(response: Response, user: User) -> dict:
 # --- Public Endpoints ---
 
 
+class SetupRegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    setup_token: str | None = None
+
+
 @router.post("/register")
-async def register(body: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def register(body: SetupRegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
     # Check if this is the first user (auto-admin)
     count = await db.scalar(select(func.count()).select_from(User))
     is_first = count == 0
+
+    # Setup-Mode protection: first admin registration requires SETUP_TOKEN
+    # if one is configured. This prevents anyone who finds the URL from
+    # becoming admin on an uninitialized instance.
+    if is_first and settings.setup_token:
+        if body.setup_token != settings.setup_token:
+            raise HTTPException(
+                status_code=403,
+                detail="Setup token required for first admin registration. "
+                "Provide the SETUP_TOKEN from your .env file.",
+            )
 
     # If not first user, check if registration is open
     if not is_first and not settings.registration_open:
@@ -219,6 +237,7 @@ async def registration_status(db: AsyncSession = Depends(get_db)):
     return {
         "registration_open": settings.registration_open or count == 0,
         "needs_setup": count == 0,
+        "setup_token_required": count == 0 and bool(settings.setup_token),
     }
 
 

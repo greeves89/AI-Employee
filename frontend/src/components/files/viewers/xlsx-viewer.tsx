@@ -9,38 +9,48 @@ interface XlsxViewerProps {
 }
 
 export default function XlsxViewer({ fileData }: XlsxViewerProps) {
-  const [html, setHtml] = useState("");
+  const [rows, setRows] = useState<string[][]>([]);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [activeSheet, setActiveSheet] = useState("");
   const [loading, setLoading] = useState(true);
-  const [workbookRef, setWorkbookRef] = useState<unknown>(null);
+  const [workbookRef, setWorkbookRef] = useState<any>(null);
+
+  const loadSheet = async (workbook: any, name: string) => {
+    const worksheet = workbook.getWorksheet(name);
+    if (!worksheet) return;
+    const data: string[][] = [];
+    worksheet.eachRow({ includeEmpty: true }, (row: any) => {
+      const cells: string[] = [];
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cells.push(cell.text ?? String(cell.value ?? ""));
+      });
+      data.push(cells);
+    });
+    setRows(data);
+    setActiveSheet(name);
+  };
 
   useEffect(() => {
     if (!fileData) return;
     setLoading(true);
 
-    import("xlsx").then((XLSX) => {
-      const workbook = XLSX.read(fileData, { type: "array" });
+    import("exceljs").then(async (ExcelJS) => {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(fileData);
       setWorkbookRef(workbook);
-      setSheetNames(workbook.SheetNames);
 
-      const firstSheet = workbook.SheetNames[0];
-      setActiveSheet(firstSheet);
+      const names = workbook.worksheets.map((ws: any) => ws.name);
+      setSheetNames(names);
 
-      const worksheet = workbook.Sheets[firstSheet];
-      setHtml(XLSX.utils.sheet_to_html(worksheet, { editable: false }));
+      if (names.length > 0) {
+        await loadSheet(workbook, names[0]);
+      }
       setLoading(false);
     });
   }, [fileData]);
 
   const switchSheet = (name: string) => {
-    if (!workbookRef) return;
-    import("xlsx").then((XLSX) => {
-      const wb = workbookRef as ReturnType<typeof XLSX.read>;
-      const worksheet = wb.Sheets[name];
-      setHtml(XLSX.utils.sheet_to_html(worksheet, { editable: false }));
-      setActiveSheet(name);
-    });
+    if (workbookRef) loadSheet(workbookRef, name);
   };
 
   if (loading) {
@@ -53,7 +63,6 @@ export default function XlsxViewer({ fileData }: XlsxViewerProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Sheet tabs */}
       {sheetNames.length > 1 && (
         <div className="flex items-center gap-1 px-3 py-2 border-b border-foreground/[0.06] shrink-0 overflow-x-auto">
           {sheetNames.map((name) => (
@@ -73,14 +82,30 @@ export default function XlsxViewer({ fileData }: XlsxViewerProps) {
         </div>
       )}
 
-      {/* Table content */}
-      <div
-        className="flex-1 overflow-auto p-2
-          [&_table]:w-full [&_table]:border-collapse
-          [&_td]:border [&_td]:border-foreground/[0.08] [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:text-[12px] [&_td]:font-mono
-          [&_th]:border [&_th]:border-foreground/[0.08] [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-[11px] [&_th]:font-medium [&_th]:bg-foreground/[0.04]"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className="flex-1 overflow-auto p-2">
+        <table className="w-full border-collapse">
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri}>
+                {row.map((cell, ci) => {
+                  const Tag = ri === 0 ? "th" : "td";
+                  return (
+                    <Tag
+                      key={ci}
+                      className={cn(
+                        "border border-foreground/[0.08] px-2.5 py-1.5 text-[12px] font-mono text-left",
+                        ri === 0 && "text-[11px] font-medium bg-foreground/[0.04]"
+                      )}
+                    >
+                      {cell}
+                    </Tag>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

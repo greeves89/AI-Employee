@@ -161,6 +161,24 @@ export async function createTask(data: {
   });
 }
 
+export async function estimateTaskCost(data: {
+  prompt: string;
+  model?: string;
+  agent_id?: string;
+}): Promise<{
+  estimated_input_tokens: number;
+  model: string;
+  min_usd: number;
+  avg_usd: number;
+  max_usd: number;
+  agent_avg_usd: number | null;
+}> {
+  return fetchJSON(`${getBase()}/tasks/estimate`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deleteTask(id: string): Promise<void> {
   await fetchJSON(`${getBase()}/tasks/${id}`, { method: "DELETE" });
 }

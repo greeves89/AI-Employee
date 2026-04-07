@@ -31,7 +31,7 @@
     "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.6.0",
-    "xlsx": "^0.18.5",
+    "exceljs": "^4.4.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

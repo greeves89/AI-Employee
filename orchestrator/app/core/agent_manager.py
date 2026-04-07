@@ -529,7 +529,7 @@ class AgentManager:
             "AGENT_ROLE": role or "",
             "AGENT_TOKEN": make_agent_token(agent_id),
             "REDIS_URL": settings.redis_url_internal,
-            "ORCHESTRATOR_URL": "http://orchestrator:8000",
+            "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
         }
@@ -766,7 +766,7 @@ class AgentManager:
             "AGENT_ROLE": role,
             "AGENT_TOKEN": make_agent_token(agent_id),
             "REDIS_URL": settings.redis_url_internal,
-            "ORCHESTRATOR_URL": "http://orchestrator:8000",
+            "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
         }
@@ -901,7 +901,7 @@ class AgentManager:
             "AGENT_ROLE": role,
             "AGENT_TOKEN": make_agent_token(agent_id),
             "REDIS_URL": settings.redis_url_internal,
-            "ORCHESTRATOR_URL": "http://orchestrator:8000",
+            "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
         }

@@ -8,10 +8,14 @@ from app.config import settings
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=300,
-    pool_pre_ping=True,
+    # Auto-scaling pool: small warm pool + unlimited overflow.
+    # Connections are created on demand and returned when done.
+    # PostgreSQL's max_connections (set in docker-compose) is the real cap.
+    pool_size=5,        # Keep 5 warm connections (background tasks)
+    max_overflow=-1,    # Unlimited: scale to whatever is needed, PG is the limit
+    pool_recycle=300,   # Recycle connections every 5 min (prevents stale)
+    pool_pre_ping=True, # Verify connection is alive before using
+    pool_timeout=10,    # Fail fast if PG itself is overloaded (seconds)
 )
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

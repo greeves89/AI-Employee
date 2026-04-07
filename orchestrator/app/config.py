@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     foundry_api_key: str = ""
     foundry_resource: str = ""
 
+    # Platform-wide spending cap (0 = unlimited)
+    platform_budget_usd: float = 0.0
+
     # Docker
     agent_image: str = "ai-employee-agent:latest"
     agent_network: str = "ai-employee-network"
@@ -55,6 +58,7 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
     registration_open: bool = True  # Allow new user registration
+    setup_token: str = ""  # Required for first admin registration (if set)
 
     # OAuth Integrations
     oauth_google_client_id: str = ""
