@@ -206,9 +206,11 @@ async def list_agents(
             a for a in agents
             if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
         ]
-    metrics_list = await asyncio.gather(
-        *(manager.get_agent_with_metrics(agent.id, include_stats=False) for agent in agents)
-    )
+    # Run sequentially — AsyncSession does not support concurrent queries
+    # on the same connection (asyncpg: "another operation is in progress").
+    metrics_list = []
+    for agent in agents:
+        metrics_list.append(await manager.get_agent_with_metrics(agent.id, include_stats=False))
     agent_responses = [AgentResponse(**m) for m in metrics_list]
     return AgentListResponse(agents=agent_responses, total=len(agent_responses))
 

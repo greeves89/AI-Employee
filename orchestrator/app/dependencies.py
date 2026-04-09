@@ -3,7 +3,7 @@ import hmac
 import logging
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -88,12 +88,25 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
     else:
         await set_rls_user(db, user.id)
 
-    # Update activity timestamp (for lifecycle manager) — throttle to once per minute
+    # Update activity timestamp (for lifecycle manager) — throttle to once per minute.
+    # IMPORTANT: we must NOT call db.commit() on the request session because
+    # it ends the transaction and destroys SET LOCAL RLS settings, causing
+    # all subsequent queries in the endpoint to return empty results.
+    # Use a separate short-lived session instead.
     from datetime import datetime, timedelta, timezone
     now = datetime.now(timezone.utc)
     if not user.last_active_at or user.last_active_at < now - timedelta(minutes=1):
+        from app.db.session import async_session_factory
+        async with async_session_factory() as activity_session:
+            await activity_session.execute(
+                sa_text(
+                    f"UPDATE users SET last_active_at = NOW() "
+                    f"WHERE id = '{str(user.id).replace(chr(39), chr(39)*2)}'"
+                )
+            )
+            await activity_session.commit()
+        # Update the in-memory object so we don't re-trigger within the same minute
         user.last_active_at = now
-        await db.commit()
 
     return user
 

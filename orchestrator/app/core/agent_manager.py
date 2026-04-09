@@ -1054,22 +1054,34 @@ class AgentManager:
     async def get_agent_with_metrics(self, agent_id: str, include_stats: bool = True) -> dict:
         agent = await self._get_agent(agent_id)
 
-        # Sync DB state with actual Docker container status (lightweight check)
+        # Sync DB state with actual Docker container status (lightweight check).
+        # Use a separate session for state updates because this method is called
+        # concurrently via asyncio.gather() and the shared request session is not
+        # safe for parallel commits (causes IllegalStateChangeError + destroys
+        # SET LOCAL RLS settings).
         if agent.container_id:
             container_status = self.docker.get_container_status(agent.container_id)
+            new_state = None
             if container_status == "running" and agent.state in (AgentState.ERROR, AgentState.STOPPED):
-                # Container recovered or was restarted - update state
-                agent.state = AgentState.IDLE
-                await self.db.commit()
-                logger.info(f"Agent {agent_id} container is running again, marked as IDLE")
+                new_state = AgentState.IDLE
             elif container_status == "unknown" and agent.state not in (AgentState.STOPPED, AgentState.ERROR):
-                agent.state = AgentState.ERROR
-                await self.db.commit()
-                logger.warning(f"Agent {agent_id} container is gone, marked as ERROR")
+                new_state = AgentState.ERROR
             elif container_status == "exited" and agent.state not in (AgentState.STOPPED,):
-                agent.state = AgentState.STOPPED
-                await self.db.commit()
-                logger.info(f"Agent {agent_id} container exited, marked as STOPPED")
+                new_state = AgentState.STOPPED
+
+            if new_state is not None:
+                from app.db.session import async_session_factory
+                from sqlalchemy import text as sa_text
+                async with async_session_factory() as sync_session:
+                    await sync_session.execute(
+                        sa_text(
+                            f"UPDATE agents SET state = '{new_state.name}' "
+                            f"WHERE id = '{agent_id}'"
+                        )
+                    )
+                    await sync_session.commit()
+                agent.state = new_state
+                logger.info(f"Agent {agent_id} container status={container_status}, state→{new_state.name}")
 
         config = agent.config or {}
 
