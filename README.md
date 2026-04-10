@@ -56,23 +56,6 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 
 For a detailed, honest comparison including scenarios where competitors are a better fit, see **[COMPARISON.md](COMPARISON.md)**.
 
-## Screenshots
-
-> *Placeholders — replace with real screenshots in `docs/assets/`*
-
-<div align="center">
-
-| Dashboard | Agent Chat |
-|---|---|
-| ![Dashboard](docs/assets/screenshot-dashboard.png) | ![Chat](docs/assets/screenshot-chat.png) |
-| *Live dashboard with agent status, task queue, and system health* | *Multi-session chat with semantic memory recall* |
-
-| Approvals | Health & Monitoring |
-|---|---|
-| ![Approvals](docs/assets/screenshot-approvals.png) | ![Health](docs/assets/screenshot-health.png) |
-| *Governance rules trigger inline approval requests in Telegram and UI* | *Prometheus + Grafana metrics for every agent container* |
-
-</div>
 
 ## Quick Start
 
