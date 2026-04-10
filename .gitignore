@@ -51,3 +51,8 @@ host-auth/
 license-keys/
 backup-*.sql.gz
 konkurrenzanalyse-*.pdf
+
+# Internal files
+SECURITY-TODO.md
+todo.md
+CLAUDE.md
