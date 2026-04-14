@@ -107,7 +107,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   security: "bg-red-500/10 text-red-400",
 };
 
-const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[] }> = {
+const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noKey?: boolean }> = {
   openai: {
     endpoint: "https://api.openai.com/v1",
     models: ["gpt-4o", "gpt-4o-mini", "o3-mini", "codex-mini-latest"],
@@ -119,6 +119,16 @@ const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[] }> =
   google: {
     endpoint: "https://generativelanguage.googleapis.com/v1beta",
     models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  },
+  ollama: {
+    endpoint: "http://localhost:11434/v1",
+    models: ["llama3.2", "llama3.1", "mistral", "codellama", "gemma2", "phi4", "qwen2.5-coder"],
+    noKey: true,
+  },
+  "lm-studio": {
+    endpoint: "http://localhost:1234/v1",
+    models: ["local-model"],
+    noKey: true,
   },
 };
 
@@ -242,7 +252,8 @@ export function CreateAgentModal({
 
     // Validate custom LLM fields
     if (mode === "custom_llm") {
-      if (!llmApiKey.trim()) {
+      const noKeyRequired = PROVIDER_PRESETS[llmProvider]?.noKey;
+      if (!noKeyRequired && !llmApiKey.trim()) {
         setError("API Key ist erforderlich");
         return;
       }
@@ -532,7 +543,7 @@ export function CreateAgentModal({
                               Provider
                             </label>
                             <div className="grid grid-cols-3 gap-2">
-                              {(["openai", "anthropic", "google"] as LLMProviderType[]).map((p) => (
+                              {(["openai", "anthropic", "google", "ollama", "lm-studio"] as LLMProviderType[]).map((p) => (
                                 <button
                                   key={p}
                                   type="button"
@@ -544,7 +555,7 @@ export function CreateAgentModal({
                                       : "border-foreground/[0.08] text-muted-foreground hover:border-foreground/[0.15]"
                                   )}
                                 >
-                                  {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : "Google"}
+                                  {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : p === "google" ? "Google" : p === "ollama" ? "Ollama" : "LM Studio"}
                                 </button>
                               ))}
                             </div>
@@ -570,14 +581,19 @@ export function CreateAgentModal({
                           {/* API Key */}
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              API Key <span className="text-red-400">*</span>
+                              API Key{" "}
+                              {PROVIDER_PRESETS[llmProvider]?.noKey ? (
+                                <span className="text-emerald-400">(nicht erforderlich)</span>
+                              ) : (
+                                <span className="text-red-400">*</span>
+                              )}
                             </label>
                             <div className="relative">
                               <input
                                 type={showApiKey ? "text" : "password"}
                                 value={llmApiKey}
                                 onChange={(e) => setLlmApiKey(e.target.value)}
-                                placeholder="sk-..."
+                                placeholder={PROVIDER_PRESETS[llmProvider]?.noKey ? "optional" : "sk-..."}
                                 className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 pr-10 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                               />
                               <button

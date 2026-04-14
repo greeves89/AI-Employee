@@ -37,6 +37,14 @@ def create_provider(
             model_name=model_name,
             **kwargs,
         )
+    elif provider_type in ("ollama", "lm-studio", "lmstudio"):
+        # Ollama and LM Studio expose an OpenAI-compatible API — no API key required
+        return OpenAIProvider(
+            api_endpoint=api_endpoint,
+            api_key=api_key or "not-required",
+            model_name=model_name,
+            **kwargs,
+        )
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
 

@@ -15,7 +15,7 @@ export type TaskStatus =
   | "cancelled";
 
 export type AgentMode = "claude_code" | "custom_llm";
-export type LLMProviderType = "openai" | "anthropic" | "google";
+export type LLMProviderType = "openai" | "anthropic" | "google" | "ollama" | "lm-studio";
 
 export interface LLMConfig {
   provider_type: LLMProviderType;
