@@ -233,7 +233,9 @@ class MessageConsumer:
                     f"MANDATORY FIRST STEPS — do these BEFORE processing the message:\n"
                     f"1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
                     f"2. Use knowledge_search (query relevant to this message) to check shared knowledge\n"
-                    f"3. Use memory_search (query: '') for recent memories and preferences\n\n"
+                    f"3. Use memory_search with a focused query AND room=\"agent:{from_name}\" (to find\n"
+                    f"   previous context with this agent) OR a project room if this is about a specific\n"
+                    f"   project. Room filters improve retrieval precision.\n\n"
                 )
 
                 # Build prompt with full conversation context
@@ -250,7 +252,9 @@ class MessageConsumer:
                         f"- NICHT antworten — dein Output wird NICHT zurückgesendet.\n"
                         f"- Wenn du weitere Infos von einem Agent brauchst: nutze send_message.\n"
                         f"- Wenn alles erledigt: nur 'Erledigt.' ausgeben.\n"
-                        f"- NACH ABSCHLUSS: Speichere was du gelernt hast mit memory_save (category: 'learning')."
+                        f"- NACH ABSCHLUSS: Speichere was du gelernt hast mit memory_save "
+                        f"(category: 'learning', room: 'agent:{from_name}' oder ein passendes "
+                        f"Projekt-Room, tag_type: 'permanent')."
                     )
                 else:
                     prompt = (
@@ -263,7 +267,9 @@ class MessageConsumer:
                         f"- Dein Output wird automatisch an {from_name} zurückgesendet.\n"
                         f"- Halte die Antwort kurz — verweise auf Dateien statt langer Texte.\n"
                         f"- Wenn du nichts beitragen kannst: 'Keine Informationen vorhanden.'\n"
-                        f"- NACH ABSCHLUSS: Speichere was du gelernt hast mit memory_save (category: 'learning')."
+                        f"- NACH ABSCHLUSS: Speichere was du gelernt hast mit memory_save "
+                        f"(category: 'learning', room: 'agent:{from_name}' oder ein passendes "
+                        f"Projekt-Room, tag_type: 'permanent')."
                     )
 
                 # Execute via CLI

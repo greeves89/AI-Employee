@@ -40,15 +40,23 @@ def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) ->
 FIRST STEPS (do these BEFORE responding to the user):
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
 2. Use knowledge_search (query relevant to this message) to check the shared knowledge base
-3. Use memory_search (query: "") to check for recent memories and user preferences
+3. Use memory_search with a focused query and room="chat:telegram" (or the project-room
+   if the user is asking about a specific project). Room filters improve precision massively.
 4. Use list_todos to check for pending work items
 Then respond to the user's message below with full context.
 
 """
     else:
         startup_block = """
-BEFORE responding: use knowledge_search and memory_search to check for relevant context.
-AFTER responding: if you learned something new, use memory_save (category: 'learning').
+BEFORE responding: use knowledge_search and memory_search (with a room filter if you know
+the project/area — e.g. room="chat:telegram" or "project:<name>/<area>") to check for
+relevant context.
+AFTER responding: if you learned something new, use memory_save with:
+  - category: 'learning'
+  - room: "chat:telegram" (or a project room if the insight is project-specific)
+  - tag_type: 'permanent' for lessons, 'transient' for in-progress state
+  - tags: pick from task/code/decision/learning/error/correction/pattern/architecture/
+          performance/security/user_preference/meta
 
 """
 
@@ -206,10 +214,15 @@ class ChatConsumer:
                 "MANDATORY FIRST STEPS (do these BEFORE responding):\n"
                 "1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
                 "2. Use knowledge_search (query relevant to this message) for shared knowledge\n"
-                "3. Use memory_search (query: '') for recent memories and user preferences\n"
+                "3. Use memory_search with a focused query AND a room filter\n"
+                "   (room=\"chat:webui\" for UI chats, or \"project:<name>/<area>\" if the user\n"
+                "   is asking about a specific project). Rooms improve retrieval precision massively.\n"
                 "4. Use list_todos to check for pending work items\n"
                 "AFTER responding: if you learned something new or the user corrected you,\n"
-                "use memory_save (category: 'learning') to remember it for next time.\n"
+                "use memory_save with category='learning', room=\"chat:webui\" (or project room),\n"
+                "tag_type='permanent' (or 'transient' for task state), and tags=['learning', ...].\n"
+                "If the server returns a 409 contradiction warning, re-call with override=true\n"
+                "only if you're confident the new content should replace the existing one.\n"
                 "Then respond to:\n\n" + text
             )
         # Resumed session — MUST check knowledge/memory for context

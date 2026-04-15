@@ -517,18 +517,32 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "memory_save",
-            "description": "Save information to long-term memory. Persists across conversations and restarts. Use for important facts, preferences, and learnings.",
+            "description": (
+                "Save information to long-term memory. Persists across conversations and restarts.\n\n"
+                "IMPORTANT — use room + tag_type for good retrieval later:\n"
+                "  • room:     hierarchical path like 'project:ai-employee/backend/auth'.\n"
+                "              Same project+area → same room.\n"
+                "  • tag_type: 'transient' for current task state (decays in ~30d),\n"
+                "              'permanent'  for learned patterns and decisions (long-lived).\n\n"
+                "If the system returns a 409 contradiction warning, it means a very similar\n"
+                "memory already exists. Review it and re-call with override=true to replace it."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "category": {
                         "type": "string",
-                        "description": "Memory category",
+                        "description": "Memory category (broad bucket)",
                         "enum": ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
                     },
                     "key": {
                         "type": "string",
-                        "description": "Short identifier/title for this memory",
+                        "description": (
+                            "Short identifier/title. Preferred canonical keys: "
+                            "current_goal, current_task (single-value — new replaces old); "
+                            "code_pattern, approach_used, lesson_learned, touched_file, "
+                            "referenced_url (multi-value — coexist)."
+                        ),
                     },
                     "content": {
                         "type": "string",
@@ -539,6 +553,51 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "description": "Importance 1-5 (higher = returned first in searches)",
                         "default": 3,
                     },
+                    "room": {
+                        "type": "string",
+                        "description": (
+                            "Hierarchical room path, e.g. 'project:ai-employee/backend/auth'. "
+                            "Use a consistent prefix per project so retrieval can filter by area. "
+                            "Leave empty only for truly cross-project memories."
+                        ),
+                    },
+                    "tag_type": {
+                        "type": "string",
+                        "enum": ["transient", "permanent"],
+                        "description": (
+                            "'transient' = short-lived task state (current todo, recent error, "
+                            "work-in-progress). Decays within ~30 days.  "
+                            "'permanent' = learned patterns, architecture decisions, user "
+                            "preferences. Decays very slowly. Default: permanent."
+                        ),
+                        "default": "permanent",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Canonical tags for the memory. Choose from: task, code, decision, "
+                            "learning, error, correction, pattern, architecture, performance, "
+                            "security, user_preference, meta."
+                        ),
+                    },
+                    "override": {
+                        "type": "boolean",
+                        "description": (
+                            "Only set to true after you got a 409 contradiction warning AND you "
+                            "confirmed the new content should replace the existing one. The "
+                            "old memory is kept as an audit trail via superseded_by."
+                        ),
+                        "default": False,
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": (
+                            "1.0 = directly observed/confirmed, 0.5 = inferred from context, "
+                            "1.5 = user-corrected (never auto-decay)."
+                        ),
+                        "default": 1.0,
+                    },
                 },
                 "required": ["category", "key", "content"],
             },
@@ -548,18 +607,31 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "memory_search",
-            "description": "Search your long-term memories by keyword. Use to recall previously saved information.",
+            "description": (
+                "Search long-term memories with semantic re-ranking.\n\n"
+                "IMPORTANT: always pass `room` if you know which project/area you're working "
+                "in — it dramatically improves precision (33% fewer irrelevant hits). "
+                "Superseded memories are automatically excluded."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query",
+                        "description": "Natural-language query. Semantic search, not keyword.",
                     },
                     "category": {
                         "type": "string",
                         "description": "Optional category filter",
                         "enum": ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
+                    },
+                    "room": {
+                        "type": "string",
+                        "description": (
+                            "Hierarchical room filter. Exact matches get 1.0 structural score, "
+                            "sub-rooms 0.7, parent-rooms 0.5, cousins 0.3. Leave empty to search "
+                            "across all rooms."
+                        ),
                     },
                 },
                 "required": ["query"],

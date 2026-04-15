@@ -233,6 +233,11 @@ async def save_memory(
                 to_supersede = similar
 
     # --- Step 2: insert the new memory ----------------------------------------
+    # The DB has a partial UNIQUE index on (agent_id, room, key, value_hash)
+    # where superseded_by IS NULL. If we hit it, it means the exact same
+    # (content-hash) memory already exists in this bucket — which is a
+    # no-op from the caller's perspective. Return the existing row.
+    from sqlalchemy.exc import IntegrityError
     new_mem = AgentMemory(
         agent_id=body.agent_id,
         category=body.category,
@@ -244,15 +249,62 @@ async def save_memory(
         tag_type=body.tag_type if body.tag_type in ("transient", "permanent") else TAG_TYPE_PERMANENT,
     )
     db.add(new_mem)
-    await db.flush()  # get new_mem.id
+    try:
+        await db.flush()  # get new_mem.id
+    except IntegrityError:
+        await db.rollback()
+        # Find the existing memory with the same key/content and return it.
+        existing = await db.scalar(
+            select(AgentMemory)
+            .where(
+                and_(
+                    AgentMemory.agent_id == body.agent_id,
+                    AgentMemory.key == body.key,
+                    AgentMemory.content == body.content,
+                    AgentMemory.superseded_by.is_(None),
+                )
+            )
+            .order_by(AgentMemory.created_at.desc())
+            .limit(1)
+        )
+        if existing:
+            # Touch the access tracking so the caller sees their "save" had effect
+            existing.appeared_count = (existing.appeared_count or 0) + 1
+            existing.last_appeared_at = now
+            await db.commit()
+            await db.refresh(existing)
+            return _to_response(existing)
+        # No existing row found (weird edge case) — re-raise
+        raise HTTPException(status_code=409, detail="memory already exists but could not be retrieved")
 
     # --- Step 3: mark old as superseded --------------------------------------
     if to_supersede and to_supersede.id != new_mem.id:
         to_supersede.superseded_by = new_mem.id
         to_supersede.superseded_at = now
 
-    await db.commit()
-    await db.refresh(new_mem)
+    try:
+        await db.commit()
+        await db.refresh(new_mem)
+    except IntegrityError:
+        # Race between our flush and another writer — roll back and return
+        # the row that won the race.
+        await db.rollback()
+        winner = await db.scalar(
+            select(AgentMemory)
+            .where(
+                and_(
+                    AgentMemory.agent_id == body.agent_id,
+                    AgentMemory.key == body.key,
+                    AgentMemory.content == body.content,
+                    AgentMemory.superseded_by.is_(None),
+                )
+            )
+            .order_by(AgentMemory.created_at.desc())
+            .limit(1)
+        )
+        if winner:
+            return _to_response(winner)
+        raise HTTPException(status_code=409, detail="concurrent write conflict")
 
     # --- Step 4: tags + links (best-effort, don't fail on duplicates) --------
     try:

@@ -50,9 +50,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "memory_save",
       description:
-        "Save something to long-term memory. Use this to remember important information " +
-        "across conversations: user preferences, contacts, project details, procedures, " +
-        "decisions, facts, and learnings. If a memory with the same key exists, it will be updated.",
+        "Save something to long-term memory (issue #24 memory system upgrade).\n\n" +
+        "**Use the new fields for precise retrieval later:**\n" +
+        "  • `room`: hierarchical path like 'project:<name>/<area>'. Memories in the same\n" +
+        "    room retrieve together and beat cousin-room noise by ~33%. USE A ROOM unless\n" +
+        "    the memory is truly cross-project.\n" +
+        "  • `tag_type`: 'transient' for task state (decays in 30d), 'permanent' for\n" +
+        "    learned patterns (lives for months). Default: permanent.\n" +
+        "  • `override`: only set to true after you got a 409 contradiction warning AND\n" +
+        "    you confirmed the new content should replace the existing one.",
       inputSchema: {
         type: "object",
         properties: {
@@ -72,8 +78,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           key: {
             type: "string",
             description:
-              "Short identifier for this memory (e.g. 'email_style', 'max_mueller', 'project_alpha'). " +
-              "Use snake_case. If a memory with this key already exists, it will be updated.",
+              "Short identifier. Prefer canonical keys: " +
+              "current_goal, current_task (single-value — new replaces old); " +
+              "code_pattern, approach_used, lesson_learned, touched_file, " +
+              "referenced_url, decision_rationale (multi-value — coexist). " +
+              "Use snake_case.",
           },
           content: {
             type: "string",
@@ -85,7 +94,39 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             maximum: 5,
             description:
               "How important is this memory? 1=trivial, 3=normal, 5=critical. " +
-              "Higher importance memories are returned first in searches. Default: 3.",
+              "Higher importance memories score higher in semantic search. Default: 3.",
+          },
+          room: {
+            type: "string",
+            description:
+              "Hierarchical room path like 'project:ai-employee/backend/auth' or " +
+              "'chat:telegram'. Use a consistent prefix per project+area. Rooms " +
+              "dramatically improve retrieval precision — PASS THIS whenever you know " +
+              "which project/area the memory belongs to.",
+          },
+          tag_type: {
+            type: "string",
+            enum: ["transient", "permanent"],
+            description:
+              "'transient' = short-lived task state (current_task, today's error notes, " +
+              "work-in-progress). Decays in ~30 days via exponential decay. " +
+              "'permanent' = learned patterns, architecture decisions, user preferences. " +
+              "Decays slowly via logarithmic decay. Default: permanent.",
+          },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Canonical tags (auto-normalized server-side). Choose from: task, code, " +
+              "decision, learning, error, correction, pattern, architecture, performance, " +
+              "security, user_preference, meta.",
+          },
+          override: {
+            type: "boolean",
+            description:
+              "Only set to true AFTER you got a 409 contradiction warning and you " +
+              "confirmed the new content should replace the existing one. The old memory " +
+              "is kept as an audit trail via superseded_by.",
           },
         },
         required: ["category", "key", "content"],
@@ -94,32 +135,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "memory_search",
       description:
-        "Search long-term memory using SEMANTIC search (vector embeddings) with automatic " +
-        "keyword fallback. Use this at the start of conversations and before tasks to recall context. " +
+        "Search long-term memory using SEMANTIC search with multi-strategy re-ranking " +
+        "(semantic 50% + room 30% + recency 15% + importance 5%) and automatic keyword " +
+        "fallback. Use this at the start of conversations and before tasks to recall context. " +
         "\n\n" +
-        "**Write queries in natural language** — the system understands meaning, not just keywords. " +
-        "Examples: 'what does the user prefer for emails?', 'did we discuss tax deadlines?', " +
-        "'any previous decisions about the API design?'. " +
+        "**CRITICAL**: pass `room` whenever you know which project/area you're working in — " +
+        "it eliminates cousin-room noise and boosts precision by ~33%. Superseded memories " +
+        "are automatically excluded from results. " +
         "\n\n" +
-        "Results are ranked by semantic similarity (each result shows match score %). " +
-        "If semantic search is unavailable (no OpenAI API key), automatically falls back to " +
-        "keyword search — the response will tell you which mode was used.",
+        "**Write queries in natural language** — the system understands meaning, not just keywords.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
             description:
-              "Natural-language question or topic to search for. Be descriptive — the system " +
-              "understands meaning, not just exact words. E.g. 'how should I format emails to the user?' " +
-              "works better than just 'email'. Leave empty to list recent memories.",
+              "Natural-language question or topic. Be descriptive. E.g. 'how should I format " +
+              "emails to the user?' works better than just 'email'. Leave empty to list recent memories.",
           },
           category: {
             type: "string",
             enum: ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
             description:
-              "Optional: filter by category. NOTE: providing a category forces keyword-only search " +
+              "Optional category filter. NOTE: providing a category forces keyword search " +
               "(no semantic ranking). Omit for best semantic results.",
+          },
+          room: {
+            type: "string",
+            description:
+              "Optional room filter like 'project:ai-employee/backend/auth'. Exact matches " +
+              "get 1.0 structural score, sub-rooms 0.7, parent-rooms 0.5, cousins 0.3. " +
+              "Omit to search across all rooms.",
           },
         },
       },
@@ -162,24 +208,62 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   switch (name) {
     case "memory_save": {
-      const result = await apiCall("/memory/save", {
-        method: "POST",
-        body: JSON.stringify({
-          agent_id: AGENT_ID,
-          category: args.category,
-          key: args.key,
-          content: args.content,
-          importance: args.importance || 3,
-        }),
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Saved memory [${result.category}] "${result.key}" (id: ${result.id}, importance: ${result.importance})`,
-          },
-        ],
+      // Forward the upgrade fields only when explicitly provided so we
+      // stay backwards-compatible with older callers.
+      const body = {
+        agent_id: AGENT_ID,
+        category: args.category,
+        key: args.key,
+        content: args.content,
+        importance: args.importance || 3,
       };
+      if (args.room) body.room = args.room;
+      if (args.tag_type === "transient" || args.tag_type === "permanent") {
+        body.tag_type = args.tag_type;
+      }
+      if (Array.isArray(args.tags) && args.tags.length > 0) body.tags = args.tags;
+      if (args.override === true) body.override = true;
+      if (typeof args.confidence === "number") body.confidence = args.confidence;
+
+      try {
+        const result = await apiCall("/memory/save", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        const extras = [];
+        if (result.room) extras.push(`room=${result.room}`);
+        if (result.tag_type && result.tag_type !== "permanent") {
+          extras.push(`tag_type=${result.tag_type}`);
+        }
+        const extrasStr = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Saved memory [${result.category}] "${result.key}" (id: ${result.id}, importance: ${result.importance})${extrasStr}`,
+            },
+          ],
+        };
+      } catch (e) {
+        // Detect 409 contradiction warning — surface the hint to the agent
+        // so it can decide whether to re-call with override=true.
+        const msg = String(e.message || e);
+        if (msg.includes("409") || msg.toLowerCase().includes("contradiction")) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `⚠️ Contradiction warning: a very similar memory already exists in this ` +
+                  `(agent, room, key) bucket. Review it via memory_search first. ` +
+                  `If you're sure the new content should replace it, re-call memory_save ` +
+                  `with the exact same fields PLUS override=true.\n\nDetail: ${msg}`,
+              },
+            ],
+          };
+        }
+        throw e;
+      }
     }
 
     case "memory_search": {
@@ -191,6 +275,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             q: args.query,
             limit: "10",
           });
+          if (args.room) semParams.set("room", args.room);
           const semResult = await apiCall(`/memory/semantic-search?${semParams}`);
           if (semResult.memories && semResult.memories.length > 0) {
             const mode = semResult.mode === "semantic" ? "semantic" : "keyword";

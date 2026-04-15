@@ -18,8 +18,10 @@ TASK_STARTUP_PREFIX = """
 FIRST STEPS (do these BEFORE starting the actual task):
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
 2. Use knowledge_search (query relevant to this task) to check the shared knowledge base
-3. Use memory_search (query: "") to check for recent memories and user preferences
+3. Use memory_search with a focused query AND pass `room` to narrow to the current project/area
+   (e.g. room="project:<repo-name>/<area>"). Rooms dramatically improve retrieval precision.
 4. Use list_todos to check for pending work items
+
 If you encounter ANY problem during the task, ALWAYS search knowledge_search and memory_search
 for solutions BEFORE reporting errors or asking the user.
 
@@ -44,13 +46,33 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    - What did I do that I should NOT do next time?
    - What did I do right that I should keep doing?
 
-4. **SAVE the learnings (MANDATORY)**: For EACH thing you learned, call `memory_save` with:
+4. **SAVE the learnings (MANDATORY)**: For EACH thing you learned, call `memory_save` with these fields:
    - category: "learning"
    - importance: 4 or 5 (for critical lessons)
-   - key: snake_case name (e.g. "npm_build_before_commit", "avoid_rm_rf_home")
+   - key: snake_case name from the canonical set — prefer:
+     * "code_pattern" for reusable coding patterns (multi-value, many can coexist)
+     * "lesson_learned" for things to remember (multi-value)
+     * "anti_pattern" for things to NEVER do again (multi-value)
+     * "decision_rationale" for why an architectural choice was made (multi-value)
+     * "current_task" for in-progress work (single-value — auto-supersedes the old one)
    - content: the full lesson with WHY it matters
-   If this task had ZERO learnings, save one memory saying "task_clean_run: completed without issues"
-   so we know you reflected.
+   - **room**: "project:<repo-name>/<area>" — USE A ROOM. Example: "project:ai-employee/backend/auth".
+     This is critical for retrieval precision. Without a room, your future-self can't
+     filter to the right area and gets polluted results.
+   - **tag_type**:
+     * "transient"  — for current_task, today's debugging notes, task state. Decays in ~30d.
+     * "permanent"  — for code_pattern, lesson_learned, decision_rationale. Lives forever.
+     When in doubt, use permanent (default).
+   - **tags**: pick from: task, code, decision, learning, error, correction, pattern,
+     architecture, performance, security, user_preference, meta.
+
+   If the server returns a 409 contradiction warning, it means a very similar memory already
+   exists in the same room. Review it via memory_search, then re-call memory_save with
+   override=true if the new content should replace the old one. The old memory is kept as
+   an audit trail via superseded_by.
+
+   If this task had ZERO learnings, save one memory with key="current_task", tag_type="transient",
+   content="task_clean_run: completed without issues" so we know you reflected.
 
 5. **Update knowledge.md**: Append to these sections in `/workspace/knowledge.md`:
    - "## Learned Patterns" — new patterns that worked
@@ -60,10 +82,11 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
 
 6. **Create a skill if there's a repeatable pattern**: If this task revealed a workflow
    you'll need again, create `/workspace/.claude/skills/<skill-name>/SKILL.md` with
-   frontmatter (name, description) + instructions. Makes you permanently better.
+   frontmatter (name, description, optional `paths:` list for path-based activation)
+   + instructions. Makes you permanently better.
 
 This reflection is NOT optional. You MUST perform it. Short tasks get short reflections,
-long tasks get detailed ones — but ALL tasks end with memory_save calls.
+long tasks get detailed ones — but ALL tasks end with memory_save calls (with room + tag_type).
 """
 
 

@@ -207,36 +207,97 @@ class OrchestratorAPIClient:
     # ── Memory Management (memory-server.mjs) ──
 
     async def memory_save(self, params: dict) -> str:
-        """Save a memory."""
-        body = {
+        """Save a memory.
+
+        Supports the issue #24 upgrade fields:
+          - room:     hierarchical path for retrieval grouping
+          - tag_type: 'transient' (fast decay) | 'permanent' (slow decay)
+          - tags:     canonical tags (auto-normalized server-side)
+          - override: confirm supersede on 409 contradiction warning
+          - confidence: 1.0 = observed, 0.5 = inferred, 1.5 = user-corrected
+        """
+        body: dict[str, Any] = {
             "agent_id": self.agent_id,
             "category": params.get("category", "fact"),
             "key": params.get("key", ""),
             "content": params.get("content", ""),
             "importance": params.get("importance", 3),
         }
+        # Only include upgrade fields when explicitly provided so we stay
+        # backwards-compatible with older-shape tool calls.
+        if params.get("room"):
+            body["room"] = params["room"]
+        if params.get("tag_type") in ("transient", "permanent"):
+            body["tag_type"] = params["tag_type"]
+        if params.get("tags"):
+            body["tags"] = params["tags"]
+        if params.get("override") is True:
+            body["override"] = True
+        if "confidence" in params:
+            body["confidence"] = params["confidence"]
+
         result = await self._request("POST", "/memory/save", json=body)
         if isinstance(result, str):
+            # _request returns a string on HTTP errors. A 409 contradiction
+            # will come back here as "Error 409: ..." — surface it cleanly.
+            if "409" in result or "contradiction" in result.lower():
+                return (
+                    f"⚠️ Contradiction warning: a similar memory already exists. "
+                    f"Review it with memory_search, then re-call memory_save with "
+                    f"override=true if you want to replace it.\n\nDetail: {result}"
+                )
             return result
-        return f"Memory saved: [{result.get('category')}] {result.get('key')} (id: {result.get('id')})"
+
+        extras = []
+        if result.get("room"):
+            extras.append(f"room={result['room']}")
+        if result.get("tag_type") and result["tag_type"] != "permanent":
+            extras.append(f"tag_type={result['tag_type']}")
+        extras_str = f" ({', '.join(extras)})" if extras else ""
+        return (
+            f"Memory saved: [{result.get('category')}] "
+            f"{result.get('key')} (id: {result.get('id')}){extras_str}"
+        )
 
     async def memory_search(self, params: dict) -> str:
-        """Search memories."""
+        """Search memories.
+
+        For best precision, pass `room` to narrow retrieval to a specific
+        project/area. The server applies multi-strategy re-ranking
+        (semantic + structural + recency + importance).
+        """
         query: dict[str, Any] = {
             "agent_id": self.agent_id,
             "q": params.get("query", ""),
         }
         if params.get("category"):
             query["category"] = params["category"]
-        result = await self._request("GET", "/memory/search", params=query)
+        if params.get("room"):
+            query["room"] = params["room"]
+
+        # Prefer semantic-search when available — it's the upgraded path.
+        endpoint = "/memory/semantic-search" if params.get("query") else "/memory/search"
+        result = await self._request("GET", endpoint, params=query)
         if isinstance(result, str):
-            return result
+            # Fall back to the plain search endpoint if semantic-search fails
+            result = await self._request("GET", "/memory/search", params=query)
+            if isinstance(result, str):
+                return result
         memories = result.get("memories", [])
         if not memories:
             return "No memories found."
-        lines = [f"Found {result.get('total', 0)} memories:", ""]
+        header = f"Found {len(memories)} memories"
+        if result.get("mode") == "semantic_reranked":
+            header += " (re-ranked: semantic + room + recency + importance)"
+        lines = [header, ""]
         for m in memories:
-            lines.append(f"- [{m.get('category')}] {m.get('key')}: {m.get('content', '')[:200]}")
+            score = m.get("score")
+            score_str = f" (score={score:.3f})" if score is not None else ""
+            room_str = f" [{m.get('room')}]" if m.get("room") else ""
+            lines.append(
+                f"- [{m.get('category')}] {m.get('key')}{room_str}{score_str}: "
+                f"{m.get('content', '')[:200]}"
+            )
         return "\n".join(lines)
 
     async def memory_list(self, params: dict) -> str:
