@@ -23,6 +23,7 @@ from app.models.task_rating import TaskRating
 from app.models.test_run import TestRun
 from app.models.meeting_room import MeetingRoom
 from app.models.approval_rule import ApprovalRule
+from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -39,4 +40,5 @@ __all__ = [
     "TestRun",
     "MeetingRoom",
     "ApprovalRule",
+    "KnowledgeFeed", "KnowledgeFeedItem",
 ]

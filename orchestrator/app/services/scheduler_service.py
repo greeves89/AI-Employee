@@ -26,10 +26,15 @@ class SchedulerService:
         self.redis = redis
         self.docker = docker_service
         self._gc_counter = 0
+        self._feeds_counter = 0
 
     async def run(self) -> None:
-        """Main loop - checks every 30 seconds for due schedules + runs GC every 60s."""
+        """Main loop - checks every 30s. Runs schedules always, GC every 60s,
+        knowledge-feeds every 5 minutes (feeds decide per-feed whether due)."""
         print("[Scheduler] Service started")
+        from app.services.knowledge_feed_service import KnowledgeFeedService
+        feed_service = KnowledgeFeedService(self.redis)
+
         while True:
             try:
                 await self._check_due_schedules()
@@ -37,6 +42,18 @@ class SchedulerService:
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
                     await self._gc_expired_tasks()
+                self._feeds_counter += 30
+                if self._feeds_counter >= 300:  # every 5 min
+                    self._feeds_counter = 0
+                    try:
+                        summary = await feed_service.tick()
+                        if summary.get("ran", 0) > 0:
+                            print(
+                                f"[Scheduler] KnowledgeFeeds: ran={summary['ran']} "
+                                f"new={summary['new_items']} err={summary['errors']}"
+                            )
+                    except Exception as e:
+                        print(f"[Scheduler] KnowledgeFeeds error: {e}")
             except Exception as e:
                 print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)
