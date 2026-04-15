@@ -5,7 +5,7 @@ from app.models.task_log import TaskLog
 from app.models.schedule import Schedule
 from app.models.chat_message import ChatMessage
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
-from app.models.memory import AgentMemory
+from app.models.memory import AgentMemory, AgentMemoryTag, AgentMemoryLink
 from app.models.notification import Notification
 from app.models.webhook import WebhookEvent
 from app.models.mcp_server import McpServer
@@ -28,7 +28,7 @@ from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
     "TaskLog", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
-    "AgentMemory", "Notification", "WebhookEvent", "McpServer",
+    "AgentMemory", "AgentMemoryTag", "AgentMemoryLink", "Notification", "WebhookEvent", "McpServer",
     "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
     "AgentTodo", "TodoStatus",
     "Feedback", "FeedbackStatus", "FeedbackCategory",

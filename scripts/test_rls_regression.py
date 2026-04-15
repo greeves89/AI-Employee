@@ -215,6 +215,138 @@ asyncio.run(mint())
         assert all(c == counts[0] for c in counts), f"inconsistent agent counts: {counts}"
         return f"10/10 concurrent calls succeeded, each returned {counts[0]} agents"
 
+    async def test_memory_system_upgrade(self) -> str:
+        """
+        End-to-end test of issue #24 memory system upgrade:
+          * save with room + single-key → supersede old
+          * save with multi-key → new memory
+          * semantic-search with room filter returns multi-strategy scored results
+          * /room-summary endpoint returns a summary
+        """
+        import subprocess
+
+        # Use the first admin-owned agent and mint an agent HMAC token
+        agent_id = subprocess.run(
+            ["docker", "exec", "ai-employee-postgres", "psql", "-U", "ai_employee",
+             "-d", "ai_employee", "-tAc",
+             "SELECT id FROM agents LIMIT 1;"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        assert agent_id, "no agent to test with"
+
+        agent_token = subprocess.run(
+            ["docker", "exec", "ai-employee-orchestrator", "python", "-c",
+             f"from app.dependencies import make_agent_token; print(make_agent_token('{agent_id}'))"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        assert agent_token, "could not mint agent token"
+
+        headers = {
+            "Authorization": f"Bearer {agent_token}",
+            "X-Agent-ID": agent_id,
+            "Content-Type": "application/json",
+        }
+
+        test_room = "project:test/memory-regression"
+
+        async with aiohttp.ClientSession() as s:
+            # 1. Save a single-key memory
+            async with s.post(
+                f"{BASE_URL}/api/v1/memory/save",
+                headers=headers,
+                json={
+                    "agent_id": agent_id,
+                    "category": "state",
+                    "key": "current_goal",
+                    "content": "Write integration tests for memory upgrade",
+                    "room": test_room,
+                    "importance": 4,
+                },
+            ) as r:
+                assert r.status == 200, f"save#1: expected 200, got {r.status}: {await r.text()}"
+                body1 = await r.json()
+                assert body1["room"] == test_room
+                assert body1["superseded_by"] is None
+                first_id = body1["id"]
+
+            # 2. Save the same single-key → should supersede #1
+            async with s.post(
+                f"{BASE_URL}/api/v1/memory/save",
+                headers=headers,
+                json={
+                    "agent_id": agent_id,
+                    "category": "state",
+                    "key": "current_goal",
+                    "content": "Tests are done",
+                    "room": test_room,
+                    "importance": 5,
+                },
+            ) as r:
+                assert r.status == 200, f"save#2: expected 200, got {r.status}"
+                body2 = await r.json()
+                second_id = body2["id"]
+                assert second_id != first_id
+
+            # 3. Verify old memory was marked superseded in DB
+            check = subprocess.run(
+                ["docker", "exec", "ai-employee-postgres", "psql", "-U", "ai_employee",
+                 "-d", "ai_employee", "-tAc",
+                 f"SELECT superseded_by FROM agent_memories WHERE id = {first_id};"],
+                capture_output=True, text=True, timeout=10,
+            ).stdout.strip()
+            assert check == str(second_id), f"superseded_by not set: got '{check}', expected {second_id}"
+
+            # 4. Save a multi-key pattern memory (different key → just add)
+            async with s.post(
+                f"{BASE_URL}/api/v1/memory/save",
+                headers=headers,
+                json={
+                    "agent_id": agent_id,
+                    "category": "learning",
+                    "key": "code_pattern",
+                    "content": "Use separate AsyncSession outside of SET LOCAL transactions",
+                    "room": test_room,
+                    "importance": 4,
+                    "tags": ["code", "pattern"],
+                },
+            ) as r:
+                assert r.status == 200, f"save#3 multi-key: expected 200, got {r.status}"
+
+            # 5. Semantic search with room filter (must return multi-strategy scored results)
+            async with s.get(
+                f"{BASE_URL}/api/v1/memory/semantic-search?agent_id={agent_id}&q=memory+test+goals&limit=5&room={test_room}",
+                headers=headers,
+            ) as r:
+                assert r.status == 200, f"search: expected 200, got {r.status}"
+                body = await r.json()
+                assert body["mode"] == "semantic_reranked", f"expected re-ranked mode, got {body.get('mode')}"
+                # Returned memories must have a `score` field from the re-ranker
+                if body["memories"]:
+                    assert "score" in body["memories"][0], "re-ranker score field missing"
+                    # Superseded memory must NOT appear
+                    returned_ids = {m["id"] for m in body["memories"]}
+                    assert first_id not in returned_ids, "superseded memory leaked into results"
+
+            # 6. Room summary endpoint
+            async with s.get(
+                f"{BASE_URL}/api/v1/memory/room-summary/{agent_id}?room={test_room}",
+                headers=headers,
+            ) as r:
+                assert r.status == 200, f"room-summary: expected 200, got {r.status}"
+                body = await r.json()
+                assert "summary" in body
+                assert body["item_count"] >= 1 or body["summary"]
+
+        # Cleanup test memories
+        subprocess.run(
+            ["docker", "exec", "ai-employee-postgres", "psql", "-U", "ai_employee",
+             "-d", "ai_employee", "-c",
+             f"DELETE FROM agent_memories WHERE room = '{test_room}';"],
+            capture_output=True, timeout=10,
+        )
+
+        return f"save+supersede+search+summary all OK (ids {first_id}, {second_id})"
+
     async def test_webhook_rotate_and_trigger(self) -> str:
         """
         End-to-end test of the agent webhook feature:
@@ -339,6 +471,12 @@ asyncio.run(mint())
         await self._record(
             "rotate + trigger (Bearer + query) + reject bad token",
             self.test_webhook_rotate_and_trigger,
+        )
+
+        print("\n── Memory System Upgrade Tests (#24) ───────────────────────────")
+        await self._record(
+            "save/supersede/search/room-summary end-to-end",
+            self.test_memory_system_upgrade,
         )
 
         # Summary
