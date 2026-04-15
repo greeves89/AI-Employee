@@ -13,6 +13,10 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -162,7 +166,7 @@ async function executeBashWithApproval(command, description, timeout) {
 }
 
 // Register Bash tool
-server.setRequestHandler("tools/list", async () => {
+server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
@@ -191,7 +195,7 @@ server.setRequestHandler("tools/list", async () => {
   };
 });
 
-server.setRequestHandler("tools/call", async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === "Bash") {
     const { command, description, timeout } = request.params.arguments;
     

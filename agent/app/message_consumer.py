@@ -194,6 +194,44 @@ class MessageConsumer:
 
                 msg = json.loads(msg_json)
 
+                # ── Meeting-room message handler ────────────────────────────
+                # The orchestrator's meeting_rooms._run_meeting engine pushes
+                # messages with shape {"type": "meeting", "room_id": ...,
+                # "prompt": ...}. These aren't inter-agent replies — they
+                # need their own flow: execute the prompt via the CLI and
+                # write the response into meeting:{room_id}:response:{agent_id}
+                # so the round-robin engine can collect it.
+                if msg.get("type") == "meeting":
+                    room_id = msg.get("room_id")
+                    prompt = msg.get("prompt", "")
+                    if not room_id or not prompt:
+                        logger.warning("[Meeting] Got meeting message without room_id/prompt, skipping")
+                        continue
+
+                    logger.info(f"[Meeting] Room {room_id}: executing turn ({len(prompt)} char prompt)")
+                    await log_publisher.publish_status("meeting", f"room:{room_id}")
+
+                    try:
+                        response = await self._execute_cli(prompt)
+                    except Exception as e:
+                        logger.error(f"[Meeting] CLI execution failed: {e}")
+                        response = f"[{self.agent_id} encountered an error: {e}]"
+
+                    if not response or not response.strip():
+                        response = f"[{self.agent_id} had nothing to add this turn]"
+
+                    # Write response to the queue the orchestrator is polling
+                    response_key = f"meeting:{room_id}:response:{self.agent_id}"
+                    try:
+                        await self.redis.lpush(response_key, response)
+                        logger.info(f"[Meeting] Room {room_id} response pushed ({len(response)} chars)")
+                    except Exception as e:
+                        logger.error(f"[Meeting] Failed to push response to {response_key}: {e}")
+
+                    await log_publisher.publish_status("idle", f"room:{room_id}")
+                    continue
+                # ────────────────────────────────────────────────────────────
+
                 from_agent_id = msg.get("from_agent_id", "unknown")
                 from_name = msg.get("from_name", "Unknown Agent")
                 text = msg.get("text", "")
