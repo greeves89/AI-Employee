@@ -3,6 +3,11 @@
 Listens on a dedicated Redis queue (agent:{id}:messages) for messages from
 other agents. Processes each message via Claude CLI and automatically sends
 the response back to the sender via the orchestrator API.
+
+pendingMessages Inbox (Claude Code ch10):
+If the agent is currently busy running a task, incoming messages are moved to a
+pending inbox (`agent:{id}:pending_messages`) and drained once the agent is idle.
+This prevents spawning a competing Claude CLI process mid-task.
 """
 
 import asyncio
@@ -27,10 +32,34 @@ class MessageConsumer:
         self.agent_id = agent_id
         self.redis: aioredis.Redis | None = None
         self.queue_name = f"agent:{agent_id}:messages"
+        self.pending_queue = f"agent:{agent_id}:pending_messages"  # inbox for deferred messages
         self.running = True
         self._process: asyncio.subprocess.Process | None = None
         self._reply_counts: dict[str, int] = {}  # agent_id -> count this hour
         self._reply_reset_at: float = 0
+
+    async def _is_agent_busy_with_task(self) -> bool:
+        """Return True if the agent is currently executing a task (not just a chat/message).
+
+        We read the agent's status hash from Redis. If state='working' and the
+        current_task doesn't look like a chat or message ID, we treat the agent as busy.
+        """
+        if not self.redis:
+            return False
+        try:
+            status = await self.redis.hgetall(f"agent:{self.agent_id}:status")
+            if not status:
+                return False
+            state = status.get(b"state", b"").decode("utf-8", errors="replace")
+            current_task = status.get(b"current_task", b"").decode("utf-8", errors="replace")
+            if state != "working":
+                return False
+            # Chat and message sessions don't block inter-agent message processing
+            if not current_task or current_task.startswith("chat:") or current_task.startswith("msg:"):
+                return False
+            return True
+        except Exception:
+            return False
 
     async def _get_conversation_history(self, other_agent_id: str) -> str:
         """Load recent conversation history with another agent from orchestrator API."""
@@ -140,12 +169,29 @@ class MessageConsumer:
 
         while self.running:
             try:
-                # BRPOP blocks until a message is available (timeout 5s)
-                result = await self.redis.brpop(self.queue_name, timeout=5)
-                if result is None:
+                # --- pendingMessages Inbox drain (Claude Code ch10) ---
+                # When agent becomes idle again, process any deferred messages first
+                if not await self._is_agent_busy_with_task():
+                    pending = await self.redis.rpop(self.pending_queue)
+                    if pending:
+                        msg_json = pending
+                        logger.info("[Message] Draining pending inbox...")
+                    else:
+                        # Normal path: BRPOP blocks until a message is available (timeout 5s)
+                        result = await self.redis.brpop(self.queue_name, timeout=5)
+                        if result is None:
+                            continue
+                        _, msg_json = result
+                else:
+                    # Agent is busy — move incoming message to pending inbox without processing
+                    result = await self.redis.brpop(self.queue_name, timeout=5)
+                    if result is None:
+                        continue
+                    _, msg_json = result
+                    await self.redis.lpush(self.pending_queue, msg_json)
+                    logger.info("[Message] Agent busy with task — message deferred to pending inbox")
                     continue
 
-                _, msg_json = result
                 msg = json.loads(msg_json)
 
                 from_agent_id = msg.get("from_agent_id", "unknown")

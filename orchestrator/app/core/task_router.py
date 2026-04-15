@@ -1,5 +1,7 @@
 import json
 import logging
+import random
+import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -8,8 +10,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
 from app.models.approval_rule import ApprovalRule
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.services.redis_service import RedisService
+
+# Eviction grace period for completed tasks (seconds)
+TASK_EVICT_GRACE_SECONDS = int(300)
+
+_ID_ALPHABET = string.digits + string.ascii_lowercase
+
+
+def _make_task_id() -> str:
+    """Generate a prefixed task ID: t{8 random alphanum chars}.
+
+    Prefix 't' makes tasks instantly recognizable in logs.
+    ~2.8 trillion combinations resist brute-force enumeration.
+    """
+    suffix = "".join(random.choices(_ID_ALPHABET, k=8))
+    return f"t{suffix}"
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +87,7 @@ class TaskRouter:
         model: str | None = None,
         parent_task_id: str | None = None,
     ) -> Task:
-        task_id = uuid.uuid4().hex[:12]
+        task_id = _make_task_id()
 
         # Platform-wide budget check
         await self._check_platform_budget()
@@ -235,6 +252,10 @@ class TaskRouter:
         task.duration_ms = data.get("duration_ms")
         task.num_turns = data.get("num_turns")
         task.completed_at = datetime.now(timezone.utc)
+        # Mark as notified → schedule eviction (unless UI is retaining it)
+        task.notified = True
+        if not task.retain:
+            task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)
 
         # Update agent metrics for self-improvement tracking
         if agent_id:

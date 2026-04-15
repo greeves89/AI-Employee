@@ -116,7 +116,14 @@ def get_memory_preload() -> str:
 
 
 def get_approval_rules_prefix() -> str:
-    """Fetch active approval rules from the orchestrator and format for the prompt."""
+    """Fetch active approval rules and embed as a frozen snapshot in the prompt.
+
+    Hook Config Snapshot (Claude Code ch12):
+    Rules are fetched ONCE at task/message start and embedded in the prompt. Any
+    changes to rules during execution are ignored for this session — preventing
+    runtime injection attacks that modify hook config mid-task to bypass safety
+    checks (e.g. a prompt that tells the agent to disable hooks then act freely).
+    """
     try:
         url = f"{settings.orchestrator_url}/api/v1/approval-rules/for-agent/{settings.agent_id}"
         req = urllib.request.Request(url, headers={"X-Agent-Token": settings.agent_token})

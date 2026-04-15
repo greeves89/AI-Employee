@@ -9,7 +9,7 @@ from app.core.pricing import estimate_prompt_cost
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
 from app.dependencies import get_redis_service, require_auth, require_auth_or_agent
-from app.models.task import TaskStatus
+from app.models.task import Task, TaskStatus
 from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse
 from app.services.redis_service import RedisService
 
@@ -148,3 +148,42 @@ async def cancel_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return TaskResponse.model_validate(task)
+
+
+@router.post("/{task_id}/retain")
+async def retain_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth),
+):
+    """Pin a task so the GC never auto-evicts it (UI is viewing it)."""
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.retain = True
+    task.evict_after = None  # Cancel any scheduled eviction
+    await db.commit()
+    return {"ok": True, "task_id": task_id, "retain": True}
+
+
+@router.post("/{task_id}/release")
+async def release_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_auth),
+):
+    """Release a task so the GC can evict it after the grace period."""
+    from datetime import datetime, timedelta, timezone
+    from app.core.task_router import TASK_EVICT_GRACE_SECONDS
+    from app.models.task import is_terminal_task_status
+
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.retain = False
+    if is_terminal_task_status(task.status) and task.notified:
+        task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)
+    await db.commit()
+    return {"ok": True, "task_id": task_id, "retain": False}

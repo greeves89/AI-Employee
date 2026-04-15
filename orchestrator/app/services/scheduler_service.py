@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_manager import PROACTIVE_PROMPT
@@ -10,9 +10,13 @@ from app.core.load_balancer import LoadBalancer
 from app.core.task_router import TaskRouter
 from app.db.session import async_session_factory
 from app.models.schedule import Schedule
+from app.models.task import Task
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
+
+# GC runs every 60 seconds
+_GC_INTERVAL_SECONDS = 60
 
 
 class SchedulerService:
@@ -21,16 +25,52 @@ class SchedulerService:
     def __init__(self, redis: RedisService, docker_service=None):
         self.redis = redis
         self.docker = docker_service
+        self._gc_counter = 0
 
     async def run(self) -> None:
-        """Main loop - checks every 30 seconds for due schedules."""
+        """Main loop - checks every 30 seconds for due schedules + runs GC every 60s."""
         print("[Scheduler] Service started")
         while True:
             try:
                 await self._check_due_schedules()
+                self._gc_counter += 30
+                if self._gc_counter >= _GC_INTERVAL_SECONDS:
+                    self._gc_counter = 0
+                    await self._gc_expired_tasks()
             except Exception as e:
                 print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)
+
+    async def _gc_expired_tasks(self) -> None:
+        """Garbage-collect tasks whose evict_after timestamp has passed.
+
+        Only tasks with:
+          - evict_after <= now  (grace period expired)
+          - retain == False     (UI is not holding them)
+          - notified == True    (parent was informed)
+        are eligible for deletion.
+        """
+        now = datetime.now(timezone.utc)
+        async with async_session_factory() as db:
+            try:
+                result = await db.execute(
+                    select(Task).where(
+                        and_(
+                            Task.evict_after <= now,
+                            Task.retain.is_(False),
+                            Task.notified.is_(True),
+                        )
+                    )
+                )
+                expired = list(result.scalars().all())
+                if not expired:
+                    return
+                for task in expired:
+                    await db.delete(task)
+                await db.commit()
+                print(f"[Scheduler] GC: evicted {len(expired)} expired task(s)")
+            except Exception as e:
+                print(f"[Scheduler] GC error: {e}")
 
     async def _check_due_schedules(self) -> None:
         now = datetime.now(timezone.utc)

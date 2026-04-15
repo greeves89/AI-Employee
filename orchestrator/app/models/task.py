@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -14,6 +14,11 @@ class TaskStatus(str, enum.Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+def is_terminal_task_status(status: "TaskStatus") -> bool:
+    """Returns True if the task is in a terminal (non-resumable) state."""
+    return status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
 
 
 class TaskPriority(int, enum.Enum):
@@ -50,6 +55,15 @@ class Task(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # --- Task Lifecycle GC fields (inspired by Claude Code ch10) ---
+    # notified: parent/orchestrator was informed of completion → safe to schedule eviction
+    notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # retain: UI is actively viewing this task → never auto-evict while True
+    retain: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # evict_after: unix timestamp after which the task can be purged from memory/listings
+    evict_after: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
