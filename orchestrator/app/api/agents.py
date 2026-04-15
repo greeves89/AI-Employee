@@ -1465,3 +1465,179 @@ async def delete_skill(
 
 
     # Old team routes removed — moved to top of file (before /{agent_id} routes)
+
+
+# ---------------------------------------------------------------------------
+# Webhook triggers — external systems can trigger agent tasks via a
+# per-agent bearer token. Think "Zapier / n8n / Discord / Slack / your own
+# app posts to this URL, agent picks it up as a task."
+# ---------------------------------------------------------------------------
+
+import hashlib
+import secrets
+
+from fastapi import Request
+from pydantic import Field
+
+
+class WebhookTriggerRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=20000, description="The instruction for the agent to execute.")
+    title: str | None = Field(None, max_length=200, description="Optional short title for the task. Defaults to a truncated prompt.")
+    metadata: dict | None = Field(None, description="Arbitrary JSON metadata forwarded from the caller (Zapier/n8n payload, Discord message context, etc.).")
+
+
+class WebhookTriggerResponse(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+class WebhookRotateResponse(BaseModel):
+    agent_id: str
+    webhook_url: str
+    token: str
+    warning: str = "Store this token now. It will NEVER be shown again. Use it as `Authorization: Bearer <token>` on POST requests to webhook_url."
+
+
+def _hash_token(plaintext: str) -> str:
+    return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+
+
+def _extract_bearer_token(request: Request) -> str | None:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip() or None
+    # Fallback: allow `?token=` query param for systems that can't set headers
+    qt = request.query_params.get("token")
+    return qt.strip() if qt else None
+
+
+@router.post(
+    "/{agent_id}/webhook/rotate",
+    response_model=WebhookRotateResponse,
+    status_code=201,
+)
+async def rotate_agent_webhook_token(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate (or rotate) the webhook token for an agent.
+
+    Returns the plaintext token ONCE. The caller must store it — the server
+    only keeps a SHA-256 hash of it. Calling this endpoint again invalidates
+    the previous token.
+    """
+    await _check_owner(agent_id, user, db)
+
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    plaintext = secrets.token_urlsafe(32)  # ~43 chars, cryptographically random
+    agent.webhook_token_hash = _hash_token(plaintext)
+    await db.commit()
+
+    base = settings.oauth_redirect_base_url.rstrip("/") if settings.oauth_redirect_base_url else ""
+    webhook_url = f"{base}/api/v1/agents/{agent_id}/webhook" if base else f"/api/v1/agents/{agent_id}/webhook"
+
+    return WebhookRotateResponse(
+        agent_id=agent_id,
+        webhook_url=webhook_url,
+        token=plaintext,
+    )
+
+
+@router.delete("/{agent_id}/webhook")
+async def revoke_agent_webhook_token(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Invalidate the current webhook token without creating a new one."""
+    await _check_owner(agent_id, user, db)
+
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.webhook_token_hash = None
+    await db.commit()
+    return {"status": "revoked", "agent_id": agent_id}
+
+
+@router.post(
+    "/{agent_id}/webhook",
+    response_model=WebhookTriggerResponse,
+    status_code=202,
+)
+async def trigger_agent_via_webhook(
+    agent_id: str,
+    data: WebhookTriggerRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Fire a task at an agent from an external system.
+
+    Authentication is via the per-agent webhook token created by
+    POST /agents/{id}/webhook/rotate. Supply it either as:
+      - `Authorization: Bearer <token>` header  (preferred)
+      - `?token=<token>` query param            (fallback for limited clients)
+
+    Body: {"prompt": "...", "title"?: "...", "metadata"?: {...}}
+
+    Returns 202 Accepted with the created task_id. Poll
+    GET /api/v1/tasks/{task_id} to watch progress.
+    """
+    token = _extract_bearer_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing webhook token (Authorization: Bearer <token> or ?token=)")
+
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        # Don't leak existence: return 401 when agent is unknown OR token is wrong.
+        raise HTTPException(status_code=401, detail="Invalid webhook credentials")
+
+    if not agent.webhook_token_hash:
+        raise HTTPException(
+            status_code=401,
+            detail="Webhook not configured for this agent. Call POST /agents/{id}/webhook/rotate first.",
+        )
+
+    presented = _hash_token(token)
+    # Constant-time compare to avoid timing attacks
+    import hmac as _hmac
+    if not _hmac.compare_digest(presented, agent.webhook_token_hash):
+        raise HTTPException(status_code=401, detail="Invalid webhook credentials")
+
+    # Build the task via the standard TaskRouter so it shows up in the UI
+    # and goes through normal routing/approval logic.
+    from app.core.load_balancer import LoadBalancer
+    from app.core.task_router import TaskRouter
+    from app.services.redis_service import RedisService
+
+    redis: RedisService = request.app.state.redis
+    docker_svc: DockerService = request.app.state.docker
+    lb = LoadBalancer(redis)
+    router_ = TaskRouter(db, redis, lb, docker_service=docker_svc)
+
+    title = data.title or (data.prompt[:80] + ("..." if len(data.prompt) > 80 else ""))
+
+    try:
+        task = await router_.create_and_route_task(
+            title=title,
+            prompt=data.prompt,
+            priority=5,
+            agent_id=agent_id,
+            model=None,
+            parent_task_id=None,
+            created_by_agent=None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not create task: {e}")
+
+    return WebhookTriggerResponse(
+        task_id=task.id,
+        status=task.status.value if hasattr(task.status, "value") else str(task.status),
+        message=f"Task queued. Poll GET /api/v1/tasks/{task.id} for progress.",
+    )

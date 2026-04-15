@@ -215,6 +215,65 @@ asyncio.run(mint())
         assert all(c == counts[0] for c in counts), f"inconsistent agent counts: {counts}"
         return f"10/10 concurrent calls succeeded, each returned {counts[0]} agents"
 
+    async def test_webhook_rotate_and_trigger(self) -> str:
+        """
+        End-to-end test of the agent webhook feature:
+        1. Rotate token for an agent (authed as admin) -> get plaintext
+        2. Trigger with Bearer header -> task created
+        3. Trigger with ?token= query param -> task created
+        4. Trigger with wrong token -> 401
+        """
+        # Pick any existing agent
+        async with await self._authed_session() as s:
+            async with s.get(f"{BASE_URL}/api/v1/agents/") as r:
+                assert r.status == 200
+                data = await r.json()
+                agents = data.get("agents", [])
+                assert agents, "no agents available to test webhook"
+                agent_id = agents[0]["id"]
+
+        # Step 1: rotate
+        async with await self._authed_session() as s:
+            async with s.post(f"{BASE_URL}/api/v1/agents/{agent_id}/webhook/rotate") as r:
+                assert r.status == 201, f"rotate: expected 201, got {r.status}"
+                rotate_body = await r.json()
+                assert "token" in rotate_body and len(rotate_body["token"]) > 20
+                webhook_token = rotate_body["token"]
+
+        # Step 2: trigger with Bearer
+        async with aiohttp.ClientSession() as s:
+            async with s.post(
+                f"{BASE_URL}/api/v1/agents/{agent_id}/webhook",
+                headers={"Authorization": f"Bearer {webhook_token}"},
+                json={"prompt": "smoke test via webhook", "title": "webhook-test"},
+            ) as r:
+                assert r.status == 202, f"trigger (Bearer): expected 202, got {r.status} — {await r.text()}"
+                body = await r.json()
+                assert "task_id" in body
+                task_id_bearer = body["task_id"]
+
+        # Step 3: trigger with query param
+        async with aiohttp.ClientSession() as s:
+            async with s.post(
+                f"{BASE_URL}/api/v1/agents/{agent_id}/webhook?token={webhook_token}",
+                json={"prompt": "smoke test via query token"},
+            ) as r:
+                assert r.status == 202, f"trigger (query): expected 202, got {r.status}"
+                body = await r.json()
+                assert "task_id" in body
+                task_id_query = body["task_id"]
+
+        # Step 4: wrong token must fail
+        async with aiohttp.ClientSession() as s:
+            async with s.post(
+                f"{BASE_URL}/api/v1/agents/{agent_id}/webhook",
+                headers={"Authorization": "Bearer definitely-not-the-right-token"},
+                json={"prompt": "should 401"},
+            ) as r:
+                assert r.status == 401, f"wrong-token: expected 401, got {r.status}"
+
+        return f"rotate+bearer+query OK (tasks {task_id_bearer}, {task_id_query}), bad-token→401"
+
     async def test_repeated_activity_update_stable(self) -> str:
         """Repeatedly force activity update + list agents — must never return empty."""
         import subprocess
@@ -274,6 +333,12 @@ asyncio.run(mint())
         await self._record(
             "10 concurrent /agents/ requests all succeed",
             self.test_concurrent_agent_list,
+        )
+
+        print("\n── Webhook Feature Tests ────────────────────────────────────────")
+        await self._record(
+            "rotate + trigger (Bearer + query) + reject bad token",
+            self.test_webhook_rotate_and_trigger,
         )
 
         # Summary

@@ -40,6 +40,11 @@ class Agent(Base, TimestampMixin):
     )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
+    # SHA-256 hex of the plaintext webhook token. Set by
+    # /agents/{id}/webhook/rotate; plaintext is shown once and never stored.
+    webhook_token_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="agent")  # noqa: F821
     owner: Mapped["User | None"] = relationship("User")  # noqa: F821
