@@ -1,278 +1,362 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Sparkles, Search, Download, Loader2, RefreshCw,
-  Package, Code2, Palette, Megaphone, FileText, Wrench,
-  CheckCircle2, Bot, ChevronDown,
+  Sparkles, Search, Loader2, Plus, X, Trash2, Star, Check,
+  CheckCircle2, XCircle, Eye, BookOpen, Workflow, Lightbulb,
+  FileText, Wrench, ChevronDown, Users,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
+import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { CatalogSkill, AgentSkill } from "@/lib/api";
-import type { Agent } from "@/lib/types";
 
-const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
-  dev: { label: "Development", icon: Code2, color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-  design: { label: "Design", icon: Palette, color: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
-  marketing: { label: "Marketing", icon: Megaphone, color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
-  docs: { label: "Documents", icon: FileText, color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
-  tools: { label: "Tools", icon: Wrench, color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  core: { label: "Core", icon: Sparkles, color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Sparkles; color: string }> = {
+  routine: { label: "Routine", icon: Workflow, color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  template: { label: "Template", icon: FileText, color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
+  workflow: { label: "Workflow", icon: Workflow, color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  pattern: { label: "Pattern", icon: Lightbulb, color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  recipe: { label: "Rezept", icon: BookOpen, color: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
+  tool: { label: "Tool", icon: Wrench, color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
 };
 
-export default function SkillsPage() {
-  const [catalog, setCatalog] = useState<CatalogSkill[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [agentSkills, setAgentSkills] = useState<AgentSkill[]>([]);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<string | null>(null);
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.04 } },
+};
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as const } },
+};
+
+type TabKey = "active" | "drafts" | "all";
+
+export default function SkillsMarketplace() {
+  const [skills, setSkills] = useState<api.MarketplaceSkill[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [installing, setInstalling] = useState<string | null>(null);
-  const [showAgentPicker, setShowAgentPicker] = useState(false);
+  const [tab, setTab] = useState<TabKey>("active");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [assignAgent, setAssignAgent] = useState<number | null>(null); // skill id being assigned
+  const { agents } = useAgents();
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [catalogData, agentsData] = await Promise.all([
-          api.getSkillCatalog(),
-          api.getAgents(),
-        ]);
-        setCatalog(catalogData.skills || []);
-        const online = agentsData.agents.filter((a) =>
-          ["running", "idle", "working"].includes(a.state)
-        );
-        setAgents(online);
-        if (online.length > 0) setSelectedAgent(online[0]);
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // Create form
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [newCategory, setNewCategory] = useState("routine");
 
-  // Load agent skills when agent changes
-  useEffect(() => {
-    if (!selectedAgent) return;
-    api.getAgentSkills(selectedAgent.id).then(setAgentSkills).catch(() => setAgentSkills([]));
-  }, [selectedAgent]);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
+  const refresh = useCallback(async () => {
     try {
-      await api.refreshSkillCatalog();
-      const data = await api.getSkillCatalog();
-      setCatalog(data.skills || []);
-    } catch {
-      // ignore
+      const status = tab === "drafts" ? "draft" : tab === "active" ? "active" : undefined;
+      const data = await api.getMarketplaceSkills({
+        status, q: search || undefined, category: categoryFilter || undefined,
+      });
+      setSkills(data.skills);
+    } catch (e) {
+      console.error("Failed to load skills:", e);
     } finally {
-      setRefreshing(false);
+      setLoading(false);
     }
+  }, [tab, search, categoryFilter]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleCreate = async () => {
+    if (!newName.trim() || !newContent.trim()) return;
+    setCreating(true);
+    try {
+      await api.createMarketplaceSkill({
+        name: newName.trim().toLowerCase().replace(/\s+/g, "-"),
+        description: newDesc.trim(),
+        content: newContent.trim(),
+        category: newCategory,
+      });
+      setNewName(""); setNewDesc(""); setNewContent(""); setNewCategory("routine");
+      setShowCreate(false);
+      await refresh();
+    } finally { setCreating(false); }
   };
 
-  const handleInstall = async (skill: CatalogSkill) => {
-    if (!selectedAgent || installing) return;
-    setInstalling(skill.name);
-    try {
-      await api.installSkill(selectedAgent.id, skill.repo, skill.name);
-      // Refresh agent skills
-      const updated = await api.getAgentSkills(selectedAgent.id);
-      setAgentSkills(updated);
-    } catch {
-      // ignore
-    } finally {
-      setInstalling(null);
-    }
+  const handleDelete = async (id: number) => {
+    await api.deleteMarketplaceSkill(id);
+    await refresh();
   };
 
-  const isInstalled = (name: string) => agentSkills.some((s) => s.name === name);
+  const handleApprove = async (id: number) => {
+    await api.approveSkill(id);
+    await refresh();
+  };
 
-  const filtered = catalog.filter((s) => {
-    const matchSearch = !search ||
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.description.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = !category || s.category === category;
-    return matchSearch && matchCategory;
-  });
+  const handleReject = async (id: number) => {
+    await api.rejectSkill(id);
+    await refresh();
+  };
 
-  const categories = Array.from(new Set(catalog.map((s) => s.category)));
+  const handleAssign = async (skillId: number, agentId: string) => {
+    await api.assignSkill(skillId, agentId);
+    setAssignAgent(null);
+    await refresh();
+  };
+
+  const handleUnassign = async (skillId: number, agentId: string) => {
+    await api.unassignSkill(skillId, agentId);
+    await refresh();
+  };
+
+  const draftCount = skills.filter((s) => s.status === "draft").length;
+
+  const stars = (rating: number | null) => {
+    if (!rating) return null;
+    const full = Math.round(rating);
+    return (
+      <span className="inline-flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Star key={i} className={cn("h-3 w-3", i <= full ? "text-amber-400 fill-amber-400" : "text-zinc-600")} />
+        ))}
+      </span>
+    );
+  };
 
   return (
-    <div className="min-h-screen">
-      <Header title="Skills" subtitle="Browse and install skills for your agents" />
+    <div className="px-8 py-8 max-w-6xl mx-auto">
+      <Header title="Skill Marketplace" subtitle="Routinen, Templates und Workflows f\u00fcr deine Agents" />
 
-      <div className="p-6 space-y-6">
-        {/* Top bar: Agent selector + Search + Refresh */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Agent Selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowAgentPicker(!showAgentPicker)}
-              className="flex items-center gap-2 rounded-xl border border-foreground/[0.08] bg-card/80 px-3 py-2 text-sm hover:bg-accent/50 transition-all"
-            >
-              <Bot className="h-4 w-4 text-violet-400" />
-              <span className="font-medium">{selectedAgent?.name || "Agent waehlen"}</span>
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-            </button>
-            {showAgentPicker && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowAgentPicker(false)} />
-                <div className="absolute top-full left-0 mt-1 z-50 w-56 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
-                  <div className="p-1.5">
-                    {agents.map((agent) => (
-                      <button
-                        key={agent.id}
-                        onClick={() => { setSelectedAgent(agent); setShowAgentPicker(false); }}
-                        className={cn(
-                          "w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left transition-all",
-                          selectedAgent?.id === agent.id
-                            ? "bg-primary/10 text-foreground"
-                            : "text-muted-foreground hover:bg-accent/50"
-                        )}
-                      >
-                        <Bot className="h-3.5 w-3.5 text-violet-400" />
-                        {agent.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+      <div className="space-y-6 mt-6">
+        {/* Top bar */}
+        <div className="flex items-center gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Skills durchsuchen..."
-              className="w-full rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] pl-10 pr-4 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/30"
+              className="w-full rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] pl-10 pr-4 py-2.5 text-sm"
             />
           </div>
-
-          {/* Refresh */}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] flex items-center gap-2"
+          <select
+            value={categoryFilter || ""}
+            onChange={(e) => setCategoryFilter(e.target.value || null)}
+            className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-4 py-2.5 text-sm"
           >
-            <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
-            Aktualisieren
+            <option value="">Alle Kategorien</option>
+            {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
+          >
+            {showCreate ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {showCreate ? "Abbrechen" : "Neuer Skill"}
           </button>
-
-          {/* Installed count */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
-            <Package className="h-3.5 w-3.5" />
-            {agentSkills.length} installiert
-          </div>
         </div>
 
-        {/* Category filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setCategory(null)}
-            className={cn(
-              "rounded-full border px-3 py-1 text-[11px] font-medium transition-all",
-              !category
-                ? "bg-foreground/[0.08] text-foreground border-foreground/[0.12]"
-                : "text-muted-foreground/60 border-foreground/[0.06] hover:text-foreground"
-            )}
-          >
-            Alle ({catalog.length})
-          </button>
-          {categories.map((cat) => {
-            const cfg = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.tools;
-            const Icon = cfg.icon;
-            const count = catalog.filter((s) => s.category === cat).length;
-            return (
-              <button
-                key={cat}
-                onClick={() => setCategory(category === cat ? null : cat)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-all",
-                  category === cat ? cfg.color : "text-muted-foreground/60 border-foreground/[0.06] hover:text-foreground"
-                )}
-              >
-                <Icon className="h-3 w-3" />
-                {cfg.label} ({count})
-              </button>
-            );
-          })}
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit">
+          {([
+            { key: "active" as TabKey, label: "Aktiv" },
+            { key: "drafts" as TabKey, label: `Vorschl\u00e4ge${draftCount > 0 ? ` (${draftCount})` : ""}` },
+            { key: "all" as TabKey, label: "Alle" },
+          ]).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={cn(
+                "rounded-lg px-4 py-2 text-xs font-medium transition-all",
+                tab === t.key
+                  ? "bg-foreground/[0.08] text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        {/* Skills Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Sparkles className="h-8 w-8 mb-3" />
-            <p className="text-sm">Keine Skills gefunden</p>
-            <p className="text-xs mt-1 text-muted-foreground/60">
-              {catalog.length === 0
-                ? "Skill-Katalog wird noch geladen..."
-                : "Versuche einen anderen Suchbegriff"}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filtered.map((skill) => {
-              const installed = isInstalled(skill.name);
-              const isInstalling = installing === skill.name;
-              const cfg = CATEGORY_CONFIG[skill.category] || CATEGORY_CONFIG.tools;
-              const Icon = cfg.icon;
-              return (
-                <div
-                  key={`${skill.repo}-${skill.name}`}
-                  className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex flex-col gap-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg border", cfg.color)}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold">{skill.name}</p>
-                        <p className="text-[10px] text-muted-foreground/50">{skill.repo}</p>
-                      </div>
-                    </div>
-                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", cfg.color)}>
-                      {cfg.label}
-                    </span>
+        {/* Create form */}
+        <AnimatePresence>
+          {showCreate && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground/70">Name</label>
+                    <input value={newName} onChange={(e) => setNewName(e.target.value)}
+                      placeholder="z.B. pr-review-workflow"
+                      className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm" />
                   </div>
-
-                  <p className="text-xs text-muted-foreground leading-relaxed flex-1">
-                    {skill.description || "No description available"}
-                  </p>
-
-                  <button
-                    onClick={() => handleInstall(skill)}
-                    disabled={installed || isInstalling || !selectedAgent}
-                    className={cn(
-                      "w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all",
-                      installed
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        : "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
-                    )}
-                  >
-                    {isInstalling ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Installiere...</>
-                    ) : installed ? (
-                      <><CheckCircle2 className="h-3.5 w-3.5" /> Installiert</>
-                    ) : (
-                      <><Download className="h-3.5 w-3.5" /> Installieren</>
-                    )}
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground/70">Kategorie</label>
+                    <select value={newCategory} onChange={(e) => setNewCategory(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm">
+                      {Object.entries(CATEGORY_CONFIG).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground/70">Beschreibung</label>
+                  <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)}
+                    placeholder="Eine Zeile: was macht der Skill?"
+                    className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground/70">Anweisungen (Markdown)</label>
+                  <textarea value={newContent} onChange={(e) => setNewContent(e.target.value)}
+                    rows={6}
+                    placeholder={"## Schritte\n\n1. ...\n2. ...\n\n## Beispiel\n\n..."}
+                    className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono" />
+                </div>
+                <div className="flex justify-end">
+                  <button onClick={handleCreate}
+                    disabled={creating || !newName.trim() || !newContent.trim()}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-40">
+                    {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Skill erstellen
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Skill list */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : skills.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <Sparkles className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Keine Skills gefunden</p>
+          </div>
+        ) : (
+          <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-3">
+            {skills.map((skill) => {
+              const cat = CATEGORY_CONFIG[skill.category] || CATEGORY_CONFIG.tool;
+              const CatIcon = cat.icon;
+              const isDraft = skill.status === "draft";
+              const isExpanded = expandedId === skill.id;
+              const isAssigning = assignAgent === skill.id;
+
+              return (
+                <motion.div key={skill.id} variants={itemVariants}
+                  className={cn(
+                    "rounded-xl border bg-card/80 backdrop-blur-sm p-5 transition-all",
+                    isDraft ? "border-amber-500/20" : "border-foreground/[0.06]"
+                  )}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-medium">{skill.name}</h3>
+                        <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", cat.color)}>
+                          <CatIcon className="h-3 w-3 mr-1" />{cat.label}
+                        </span>
+                        {isDraft && (
+                          <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                            Vorschlag
+                          </span>
+                        )}
+                        {stars(skill.avg_rating)}
+                      </div>
+                      <p className="text-xs text-muted-foreground/70 mt-1">{skill.description}</p>
+                      <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground/50">
+                        <span>{skill.usage_count}x genutzt</span>
+                        <span>von: {skill.created_by}</span>
+                        {skill.assigned_agents.length > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />{skill.assigned_agents.length} Agents
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isDraft && (
+                        <>
+                          <button onClick={() => handleApprove(skill.id)}
+                            className="rounded-lg p-2 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                            title="Freigeben">
+                            <CheckCircle2 className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleReject(skill.id)}
+                            className="rounded-lg p-2 text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Ablehnen">
+                            <XCircle className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => setAssignAgent(isAssigning ? null : skill.id)}
+                        className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                        title="Agent zuweisen">
+                        <Users className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setExpandedId(isExpanded ? null : skill.id)}
+                        className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                        title="Details">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => handleDelete(skill.id)}
+                        className="rounded-lg p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Assign panel */}
+                  <AnimatePresence>
+                    {isAssigning && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                        <div className="mt-3 pt-3 border-t border-foreground/[0.06] flex flex-wrap gap-2">
+                          {agents.map((a) => {
+                            const isAssigned = skill.assigned_agents.includes(a.id);
+                            return (
+                              <button key={a.id}
+                                onClick={() => isAssigned ? handleUnassign(skill.id, a.id) : handleAssign(skill.id, a.id)}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                                  isAssigned
+                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                    : "border-foreground/[0.08] text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                                )}>
+                                {isAssigned && <Check className="h-3 w-3" />}
+                                {a.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Content preview */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                        <div className="mt-3 pt-3 border-t border-foreground/[0.06]">
+                          <pre className="text-xs text-muted-foreground/80 font-mono whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
+                            {skill.content}
+                          </pre>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         )}
       </div>
     </div>

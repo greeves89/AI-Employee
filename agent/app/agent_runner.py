@@ -12,6 +12,7 @@ from app.runner_hooks import (
     TASK_STARTUP_PREFIX,
     get_improvement_context,
     get_memory_preload,
+    get_skill_preload,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,12 +37,14 @@ class AgentRunner:
         model = model or settings.default_model
         self.is_running = True
 
-        # Enhance prompt with startup context + memory preload + performance feedback + self-improvement
+        # Enhance prompt with startup context + memory + skills + performance + self-improvement
         memory_preload = get_memory_preload()
+        skill_preload = get_skill_preload()
         improvement_ctx = get_improvement_context()
         enhanced_prompt = (
             TASK_STARTUP_PREFIX
             + memory_preload
+            + skill_preload
             + improvement_ctx
             + prompt
             + SELF_IMPROVEMENT_SUFFIX

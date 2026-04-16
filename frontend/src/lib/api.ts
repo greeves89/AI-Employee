@@ -963,6 +963,82 @@ export async function testEventTrigger(id: number, payload: Record<string, unkno
   });
 }
 
+// --- Skill Marketplace ---
+
+export interface MarketplaceSkill {
+  id: number;
+  name: string;
+  description: string;
+  content: string;
+  category: string;
+  status: string;
+  created_by: string;
+  source_url: string | null;
+  source_repo: string | null;
+  paths: string[] | null;
+  roles: string[] | null;
+  usage_count: number;
+  avg_rating: number | null;
+  is_public: boolean;
+  assigned_agents: string[];
+  assigned_to_agent?: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function getMarketplaceSkills(params?: {
+  category?: string; status?: string; q?: string; agent_id?: string;
+}): Promise<{ skills: MarketplaceSkill[]; total: number }> {
+  const sp = new URLSearchParams();
+  if (params?.category) sp.set("category", params.category);
+  if (params?.status) sp.set("status", params.status);
+  if (params?.q) sp.set("q", params.q);
+  if (params?.agent_id) sp.set("agent_id", params.agent_id);
+  const qs = sp.toString() ? `?${sp}` : "";
+  return fetchJSON(`${getBase()}/skills/marketplace${qs}`);
+}
+
+export async function getMarketplaceSkill(id: number): Promise<MarketplaceSkill> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}`);
+}
+
+export async function createMarketplaceSkill(data: {
+  name: string; description?: string; content?: string; category?: string;
+  paths?: string[] | null; roles?: string[] | null;
+}): Promise<MarketplaceSkill> {
+  return fetchJSON(`${getBase()}/skills/marketplace`, {
+    method: "POST", body: JSON.stringify(data),
+  });
+}
+
+export async function updateMarketplaceSkill(id: number, data: Record<string, unknown>): Promise<MarketplaceSkill> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}`, {
+    method: "PUT", body: JSON.stringify(data),
+  });
+}
+
+export async function deleteMarketplaceSkill(id: number): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}`, { method: "DELETE" });
+}
+
+export async function assignSkill(skillId: number, agentId: string): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/assign`, {
+    method: "POST", body: JSON.stringify({ agent_id: agentId, skill_id: skillId }),
+  });
+}
+
+export async function unassignSkill(skillId: number, agentId: string): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/unassign/${agentId}`, { method: "DELETE" });
+}
+
+export async function approveSkill(id: number): Promise<MarketplaceSkill> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}/approve`, { method: "POST" });
+}
+
+export async function rejectSkill(id: number): Promise<MarketplaceSkill> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}/reject`, { method: "POST" });
+}
+
 // --- License ---
 
 export interface License {

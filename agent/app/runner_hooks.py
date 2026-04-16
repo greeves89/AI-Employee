@@ -176,6 +176,46 @@ def get_approval_rules_prefix() -> str:
         return ""
 
 
+def get_skill_preload() -> str:
+    """Fetch assigned skills from the marketplace for prompt injection.
+
+    Skills are loaded from the central DB (not filesystem) and injected
+    into the agent's prompt so it knows its available routines/templates.
+    """
+    try:
+        url = f"{settings.orchestrator_url}/api/v1/skills/agent/available"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = _json.loads(response.read())
+
+        skills = data.get("skills", [])
+        if not skills:
+            return ""
+
+        lines = [
+            "",
+            "=== YOUR SKILLS (use these when relevant) ===",
+        ]
+        for s in skills:
+            lines.append(f"\n### Skill: {s['name']}")
+            if s.get("description"):
+                lines.append(f"_{s['description']}_")
+            lines.append(s.get("content", "")[:2000])
+        lines.extend([
+            "",
+            "Apply the above skills when the task matches. If you discover a new "
+            "reusable pattern, propose it with skill_propose.",
+            "=== END SKILLS ===",
+            "",
+        ])
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def get_improvement_context() -> str:
     """Read improvement data from knowledge.md Performance Metrics section."""
     try:

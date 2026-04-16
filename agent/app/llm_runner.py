@@ -15,6 +15,7 @@ from app.runner_hooks import (
     get_approval_rules_prefix,
     get_improvement_context,
     get_memory_preload,
+    get_skill_preload,
 )
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolExecutor

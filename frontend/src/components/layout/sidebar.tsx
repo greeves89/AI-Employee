@@ -37,7 +37,7 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
   { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen, simpleVisible: true },
-  { href: "/skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+  { href: "/skills", label: "Marketplace", icon: Sparkles, simpleVisible: false },
   { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
   { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
