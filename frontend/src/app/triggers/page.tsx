@@ -140,9 +140,9 @@ export default function TriggersPage() {
   const eventPresets = EVENT_PRESETS[sourceFilter] || [];
 
   return (
-    <>
+    <div className="px-8 py-8 max-w-6xl mx-auto">
       <Header title="Event Triggers" subtitle="Webhook-to-task routing rules" />
-      <div className="space-y-6">
+      <div className="space-y-6 mt-6">
         {/* Header row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -470,6 +470,6 @@ export default function TriggersPage() {
           </motion.div>
         )}
       </div>
-    </>
+    </div>
   );
 }
