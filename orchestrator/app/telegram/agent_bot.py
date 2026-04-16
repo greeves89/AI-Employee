@@ -457,8 +457,21 @@ class TelegramAgentBot:
 
             response_buffer = ""
             last_flush = asyncio.get_event_loop().time()
-            FLUSH_INTERVAL = 3.0  # Send buffered text every 3 seconds
-            MIN_CHUNK_SIZE = 100  # Don't send tiny fragments
+
+            # Detect agent mode: custom_llm streams slower → flush per sentence
+            _is_local_llm = False
+            try:
+                from app.db.session import async_session_factory
+                from app.models.agent import Agent
+                from sqlalchemy import select
+                async with async_session_factory() as _db:
+                    _agent = (await _db.execute(select(Agent).where(Agent.id == self.agent_id))).scalar_one_or_none()
+                    _is_local_llm = _agent and _agent.mode == "custom_llm"
+            except Exception:
+                pass
+
+            FLUSH_INTERVAL = 1.0 if _is_local_llm else 3.0
+            MIN_CHUNK_SIZE = 20 if _is_local_llm else 100
             _typing_sent = False
 
             while True:
@@ -520,9 +533,17 @@ class TelegramAgentBot:
                                 chat_id=chat_id, text=meta
                             )
 
-                # Periodic flush: send buffered text every FLUSH_INTERVAL seconds
+                # Periodic flush
                 if response_buffer.strip() and (now - last_flush) >= FLUSH_INTERVAL:
-                    if len(response_buffer.strip()) >= MIN_CHUNK_SIZE:
+                    # For local LLMs: flush at sentence boundaries for cleaner output
+                    if _is_local_llm:
+                        import re
+                        # Check if buffer ends with a sentence (. ! ? followed by space/newline/end)
+                        if re.search(r'[.!?]\s*$', response_buffer) or len(response_buffer.strip()) >= 500:
+                            await self._send_chunked(chat_id, response_buffer.strip())
+                            response_buffer = ""
+                            last_flush = now
+                    elif len(response_buffer.strip()) >= MIN_CHUNK_SIZE:
                         await self._send_chunked(chat_id, response_buffer.strip())
                         response_buffer = ""
                         last_flush = now
