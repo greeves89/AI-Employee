@@ -214,6 +214,28 @@ LOCAL_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "web_search",
+            "description": "Search the web for information. Use this when you need current data (weather, news, prices, facts) or don't know which URL to visit. Returns top search results with titles, URLs, and snippets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (e.g. 'weather Berlin today', 'Python FastAPI tutorial', 'latest AI news')",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Number of results to return (default: 5, max: 10)",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_fetch",
             "description": "Fetch a URL and return its content as text/markdown. Use for reading documentation, API specs, GitHub README files, etc. HTML is stripped to readable text.",
             "parameters": {
