@@ -1111,7 +1111,11 @@ class AgentManager:
             "container_id": agent.container_id,
             "state": agent.state,
             "model": agent.model,
-            "model_provider": config.get("model_provider", settings.model_provider),
+            "model_provider": (
+                llm_config_response.get("provider_type", config.get("model_provider", settings.model_provider))
+                if llm_config_response
+                else config.get("model_provider", settings.model_provider)
+            ),
             "mode": agent.mode or "claude_code",
             "llm_config": llm_config_response,
             "role": config.get("role", ""),
