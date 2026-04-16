@@ -189,6 +189,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "send_message_and_wait",
+      description:
+        "Send a message to another agent AND wait for their reply (up to 45 seconds). " +
+        "Use this instead of send_message when you need the answer in the current conversation. " +
+        "The other agent must be online and processing messages for this to work.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agent_id: {
+            type: "string",
+            description: "ID of the agent to message. Use list_team to find IDs.",
+          },
+          message: {
+            type: "string",
+            description: "The message to send. Be specific about what you need.",
+          },
+          message_type: {
+            type: "string",
+            enum: ["question", "message"],
+            description: "Type of message. Default: question.",
+          },
+        },
+        required: ["agent_id", "message"],
+      },
+    },
+    {
       name: "create_schedule",
       description:
         "Create a recurring schedule that automatically runs a task at regular intervals. " +
@@ -480,6 +506,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Message sent to agent ${args.agent_id}${typeLabel}${replyLabel}. message_id: ${sendResult.message_id}`,
           },
         ],
+      };
+    }
+
+    case "send_message_and_wait": {
+      // Step 1: Get current max message ID (so we know what's "new")
+      const beforeMsgs = await apiCall(
+        `/agents/team/poll-reply?from_agent_id=${args.agent_id}&to_agent_id=${AGENT_ID}&since_id=0&timeout=1`
+      );
+      const sinceId = beforeMsgs.message ? beforeMsgs.message.id : 0;
+
+      // Step 2: Send the message
+      await apiCall(`/agents/${args.agent_id}/message`, {
+        method: "POST",
+        body: JSON.stringify({
+          from_agent_id: AGENT_ID,
+          from_name: AGENT_NAME,
+          text: args.message,
+          message_type: args.message_type || "question",
+        }),
+      });
+
+      // Step 3: Poll for reply (up to 45s)
+      const pollResult = await apiCall(
+        `/agents/team/poll-reply?from_agent_id=${args.agent_id}&to_agent_id=${AGENT_ID}&since_id=${sinceId}&timeout=45`
+      );
+
+      if (pollResult.found && pollResult.message) {
+        return {
+          content: [{
+            type: "text",
+            text:
+              `Reply from ${pollResult.message.from_name}:\n\n${pollResult.message.text}`,
+          }],
+        };
+      }
+      return {
+        content: [{
+          type: "text",
+          text:
+            `Message sent to ${args.agent_id}, but no reply received within 45 seconds. ` +
+            `The agent may be busy or offline. The reply will arrive in your message queue later.`,
+        }],
       };
     }
 

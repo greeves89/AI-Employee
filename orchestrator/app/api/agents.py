@@ -189,6 +189,61 @@ async def get_agent_conversation(
     }
 
 
+@router.get("/team/poll-reply")
+async def poll_reply(
+    from_agent_id: str = "",
+    to_agent_id: str = "",
+    since_id: int = 0,
+    timeout: int = 45,
+    db: AsyncSession = Depends(get_db),
+):
+    """Poll for a new message from a specific agent. Long-polls up to timeout seconds.
+
+    Used by agents waiting for a reply after send_message. Open endpoint
+    (no user auth) so agents can call it directly.
+    """
+    import asyncio
+    from sqlalchemy import select, and_
+    from app.models.agent_message import AgentMessage as AgentMessageModel
+
+    timeout = min(timeout, 60)  # cap at 60s
+    poll_interval = 2  # check every 2 seconds
+    elapsed = 0
+
+    while elapsed < timeout:
+        query = (
+            select(AgentMessageModel)
+            .where(and_(
+                AgentMessageModel.from_agent_id == from_agent_id,
+                AgentMessageModel.to_agent_id == to_agent_id,
+                AgentMessageModel.id > since_id,
+            ))
+            .order_by(AgentMessageModel.id.desc())
+            .limit(1)
+        )
+        result = await db.execute(query)
+        msg = result.scalar_one_or_none()
+
+        if msg:
+            return {
+                "found": True,
+                "message": {
+                    "id": msg.id,
+                    "message_id": msg.message_id,
+                    "from_agent_id": msg.from_agent_id,
+                    "from_name": msg.from_agent_name,
+                    "text": msg.text,
+                    "message_type": msg.message_type,
+                    "timestamp": msg.timestamp.isoformat(),
+                },
+            }
+
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+
+    return {"found": False, "message": None}
+
+
 # --- End team routes ---
 
 
