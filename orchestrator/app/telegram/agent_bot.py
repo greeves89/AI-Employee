@@ -470,8 +470,10 @@ class TelegramAgentBot:
             except Exception:
                 pass
 
-            FLUSH_INTERVAL = 1.0 if _is_local_llm else 3.0
-            MIN_CHUNK_SIZE = 20 if _is_local_llm else 100
+            # Local LLMs: collect everything, send once at the end (cleaner output)
+            # Cloud LLMs: stream with periodic flush (faster perceived response)
+            FLUSH_INTERVAL = 999.0 if _is_local_llm else 3.0
+            MIN_CHUNK_SIZE = 99999 if _is_local_llm else 100
             _typing_sent = False
 
             while True:
@@ -494,9 +496,9 @@ class TelegramAgentBot:
                         response_buffer += str(event_data.get("text", ""))
 
                     elif event_type == "tool_call":
-                        # Flush buffered text before tool runs so user sees
-                        # intermediate messages like "Lass mich nachschauen..."
-                        if response_buffer.strip():
+                        # For cloud LLMs: flush text before tool runs ("Lass mich nachschauen...")
+                        # For local LLMs: keep collecting, only show typing indicator
+                        if not _is_local_llm and response_buffer.strip():
                             await self._send_chunked(chat_id, response_buffer.strip())
                             response_buffer = ""
                             last_flush = now
