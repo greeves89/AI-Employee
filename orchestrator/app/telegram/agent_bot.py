@@ -521,6 +521,20 @@ class TelegramAgentBot:
 
                     elif event_type == "done":
                         _typing_sent = False
+                        # For local LLMs: small delay to catch any trailing text events
+                        if _is_local_llm:
+                            await asyncio.sleep(0.5)
+                            # Drain any remaining text events from pubsub
+                            for _ in range(50):
+                                trailing = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.05)
+                                if not trailing or trailing["type"] != "message":
+                                    break
+                                try:
+                                    td = json.loads(trailing["data"])
+                                    if td.get("type") == "text":
+                                        response_buffer += str(td.get("data", {}).get("text", ""))
+                                except Exception:
+                                    pass
                         # Flush remaining buffer
                         if response_buffer.strip():
                             await self._send_chunked(chat_id, response_buffer.strip())
