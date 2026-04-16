@@ -61,11 +61,13 @@ class TaskConsumer:
                     "message": f"Task started: {prompt_preview} (model: {model})"
                 })
 
-                # Execute the task
+                # Execute the task (lightweight mode for telegram/webhook tasks)
+                is_lightweight = task.get("lightweight", False)
                 result_data = await self._runner.execute_task(
                     task_id=task_id,
                     prompt=task["prompt"],
                     model=task.get("model"),
+                    lightweight=is_lightweight,
                 )
 
                 # Log completion

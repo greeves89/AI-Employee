@@ -28,6 +28,15 @@ for solutions BEFORE reporting errors or asking the user.
 ---
 """
 
+# Lightweight prefix for chat/telegram — skip knowledge.md, todos, memory preload
+CHAT_STARTUP_PREFIX = """
+You have access to tools: web_search, web_fetch, bash, read_file, write_file, memory_search,
+knowledge_search, and more. USE THEM when the user asks for current information or tasks.
+Do NOT just describe what you would do — actually call the tools and deliver results.
+
+---
+"""
+
 
 SELF_IMPROVEMENT_SUFFIX = """
 

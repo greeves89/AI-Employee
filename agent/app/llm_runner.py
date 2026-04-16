@@ -124,32 +124,42 @@ class LLMRunner:
         return self._provider
 
     async def execute_task(
-        self, task_id: str, prompt: str, model: str | None = None
+        self, task_id: str, prompt: str, model: str | None = None,
+        lightweight: bool = False,
     ) -> dict:
-        """Execute a task with the custom LLM provider."""
+        """Execute a task with the custom LLM provider.
+
+        Args:
+            lightweight: If True, skip startup checks and self-improvement.
+                        Use for chat/telegram messages where speed matters.
+        """
         self.is_running = True
         start_time = time.time()
         provider = self._get_provider()
 
-        # Build system prompt: user-provided + tool rules + optional memory preload
+        # Build system prompt
         base_system = settings.llm_system_prompt or (
             "You are a helpful AI coding assistant running in a Docker container. "
             "Your workspace is at /workspace. Use the available tools to complete tasks."
         )
-        memory_preload = get_memory_preload()
-        approval_rules = get_approval_rules_prefix()
-        improvement_ctx = get_improvement_context()
-        system_prompt = (
-            base_system
-            + "\n\n"
-            + TOOL_USAGE_RULES
-            + approval_rules
-            + memory_preload
-            + improvement_ctx
-        )
 
-        # Wrap user prompt with startup steps + reflection suffix (same as AgentRunner)
-        enhanced_prompt = TASK_STARTUP_PREFIX + prompt + SELF_IMPROVEMENT_SUFFIX
+        if lightweight:
+            from app.runner_hooks import CHAT_STARTUP_PREFIX
+            system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES
+            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
+        else:
+            memory_preload = get_memory_preload()
+            approval_rules = get_approval_rules_prefix()
+            improvement_ctx = get_improvement_context()
+            system_prompt = (
+                base_system
+                + "\n\n"
+                + TOOL_USAGE_RULES
+                + approval_rules
+                + memory_preload
+                + improvement_ctx
+            )
+            enhanced_prompt = TASK_STARTUP_PREFIX + prompt + SELF_IMPROVEMENT_SUFFIX
 
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=system_prompt),

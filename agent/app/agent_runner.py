@@ -31,24 +31,35 @@ class AgentRunner:
         self.is_running = False
 
     async def execute_task(
-        self, task_id: str, prompt: str, model: str | None = None
+        self, task_id: str, prompt: str, model: str | None = None,
+        lightweight: bool = False,
     ) -> dict:
-        """Execute a task using Claude Code CLI in headless mode."""
+        """Execute a task using Claude Code CLI in headless mode.
+
+        Args:
+            lightweight: If True, skip startup checks and self-improvement
+                        reflection. Use for chat/telegram messages where
+                        speed matters more than knowledge preloading.
+        """
         model = model or settings.default_model
         self.is_running = True
 
-        # Enhance prompt with startup context + memory + skills + performance + self-improvement
-        memory_preload = get_memory_preload()
-        skill_preload = get_skill_preload()
-        improvement_ctx = get_improvement_context()
-        enhanced_prompt = (
-            TASK_STARTUP_PREFIX
-            + memory_preload
-            + skill_preload
-            + improvement_ctx
-            + prompt
-            + SELF_IMPROVEMENT_SUFFIX
-        )
+        if lightweight:
+            from app.runner_hooks import CHAT_STARTUP_PREFIX
+            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
+        else:
+            # Full mode: startup context + memory + skills + performance + self-improvement
+            memory_preload = get_memory_preload()
+            skill_preload = get_skill_preload()
+            improvement_ctx = get_improvement_context()
+            enhanced_prompt = (
+                TASK_STARTUP_PREFIX
+                + memory_preload
+                + skill_preload
+                + improvement_ctx
+                + prompt
+                + SELF_IMPROVEMENT_SUFFIX
+            )
 
         cmd = [
             "claude",
