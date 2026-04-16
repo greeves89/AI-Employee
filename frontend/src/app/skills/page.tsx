@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, Search, Loader2, Plus, X, Trash2, Star, Check,
   CheckCircle2, XCircle, Eye, BookOpen, Workflow, Lightbulb,
-  FileText, Wrench, ChevronDown, Users,
+  FileText, Wrench, ChevronDown, Users, Download,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { useAgents } from "@/hooks/use-agents";
@@ -42,6 +42,7 @@ export default function SkillsMarketplace() {
   const [creating, setCreating] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [assignAgent, setAssignAgent] = useState<number | null>(null); // skill id being assigned
+  const [seeding, setSeeding] = useState(false);
   const { agents } = useAgents();
 
   // Create form
@@ -124,7 +125,7 @@ export default function SkillsMarketplace() {
 
   return (
     <div className="px-8 py-8 max-w-6xl mx-auto">
-      <Header title="Skill Marketplace" subtitle="Routinen, Templates und Workflows f\u00fcr deine Agents" />
+      <Header title="Skill Marketplace" subtitle="Routinen, Templates und Workflows für deine Agents" />
 
       <div className="space-y-6 mt-6">
         {/* Top bar */}
@@ -148,6 +149,21 @@ export default function SkillsMarketplace() {
               <option key={k} value={k}>{v.label}</option>
             ))}
           </select>
+          <button
+            onClick={async () => {
+              setSeeding(true);
+              try {
+                const result = await api.seedSkillsFromCrawler();
+                await refresh();
+              } catch (e) { console.error(e); }
+              finally { setSeeding(false); }
+            }}
+            disabled={seeding}
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors disabled:opacity-40"
+          >
+            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            GitHub Import
+          </button>
           <button
             onClick={() => setShowCreate(!showCreate)}
             className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"

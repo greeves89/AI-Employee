@@ -1039,6 +1039,10 @@ export async function rejectSkill(id: number): Promise<MarketplaceSkill> {
   return fetchJSON(`${getBase()}/skills/marketplace/${id}/reject`, { method: "POST" });
 }
 
+export async function seedSkillsFromCrawler(): Promise<{ status: string; imported: number }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/seed`, { method: "POST" });
+}
+
 // --- License ---
 
 export interface License {

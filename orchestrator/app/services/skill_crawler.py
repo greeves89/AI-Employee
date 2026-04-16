@@ -124,6 +124,9 @@ class SkillCrawlerService:
                 ex=REDIS_TTL,
             )
 
+        # Sync to DB (skill marketplace)
+        await self._sync_to_db(unique)
+
         logger.info(
             "Skill crawler: found %d skills across %d repos",
             len(unique),
@@ -196,12 +199,55 @@ class SkillCrawlerService:
 
         category = _guess_category(name, description)
 
+        # Extract body (everything after frontmatter)
+        body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL).strip()
+
         return {
             "name": name,
             "repo": repo,
             "description": description,
             "category": category,
+            "content": body,
         }
+
+    async def _sync_to_db(self, skills: list[dict]) -> None:
+        """Sync crawled skills to the DB marketplace (upsert by name)."""
+        try:
+            from app.db.session import async_session_factory
+            from app.models.skill import Skill, SkillStatus
+            from sqlalchemy import select
+
+            async with async_session_factory() as db:
+                imported = 0
+                for s in skills:
+                    existing = (await db.execute(
+                        select(Skill).where(Skill.name == s["name"])
+                    )).scalar_one_or_none()
+
+                    if existing:
+                        # Update description/content if changed
+                        if s.get("content") and s["content"] != existing.content:
+                            existing.content = s["content"]
+                            existing.description = s.get("description", existing.description)
+                    else:
+                        skill = Skill(
+                            name=s["name"],
+                            description=s.get("description", ""),
+                            content=s.get("content", ""),
+                            category=s.get("category", "tool"),
+                            status=SkillStatus.ACTIVE,
+                            created_by=f"import:github",
+                            source_repo=s.get("repo"),
+                            source_url=f"https://github.com/{s['repo']}" if s.get("repo") else None,
+                        )
+                        db.add(skill)
+                        imported += 1
+
+                await db.commit()
+                if imported:
+                    logger.info(f"Skill crawler: imported {imported} new skills to DB")
+        except Exception as e:
+            logger.warning(f"Skill crawler: DB sync failed: {e}")
 
     async def get_catalog(self) -> dict | None:
         """Get cached catalog from Redis."""

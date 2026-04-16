@@ -482,3 +482,28 @@ async def agent_search_skills(
         "skills": [_to_response(s) for s in skills],
         "total": len(skills),
     }
+
+
+@router.post("/marketplace/seed")
+async def seed_from_crawler(
+    user=Depends(require_auth),
+):
+    """Trigger the skill crawler to import external skills into the DB marketplace."""
+    try:
+        from app.dependencies import get_redis_service
+        from app.services.skill_crawler import SkillCrawlerService
+        from app.services.redis_service import RedisService
+        import redis.asyncio as aioredis
+        from app.config import settings
+
+        # Create a temporary redis service for the crawler
+        client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        redis_svc = RedisService()
+        redis_svc.client = client
+
+        crawler = SkillCrawlerService(redis_svc)
+        skills = await crawler.crawl()
+        await client.aclose()
+        return {"status": "ok", "imported": len(skills)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Crawl failed: {e}")
