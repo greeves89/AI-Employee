@@ -128,6 +128,9 @@ async def get_agent_messages(
             "text": msg.text[:60] + ("..." if len(msg.text) > 60 else ""),
             "from_name": msg.from_agent_name,
             "timestamp": msg.timestamp.isoformat(),
+            "message_id": msg.message_id,
+            "message_type": msg.message_type,
+            "reply_to": msg.reply_to,
         })
 
     return {
@@ -176,6 +179,9 @@ async def get_agent_conversation(
                 "to_id": msg.to_agent_id,
                 "text": msg.text,
                 "timestamp": msg.timestamp.isoformat(),
+                "message_id": msg.message_id,
+                "message_type": msg.message_type,
+                "reply_to": msg.reply_to,
             }
             for msg in messages
         ],
@@ -546,6 +552,8 @@ class AgentMessage(BaseModel):
     from_agent_id: str | None = None
     from_name: str | None = None
     text: str
+    message_type: str | None = "message"  # message, question, response, handoff, notification, status_update
+    reply_to: str | None = None  # message_id of message being replied to
 
 
 @router.post("/{agent_id}/message")
@@ -592,16 +600,21 @@ async def send_message_to_agent(
             "from_name": sender,
             "text": body.text,
             "to_agent_id": agent_id,
+            "message_type": body.message_type or "message",
+            "reply_to": body.reply_to,
         })
         await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
 
         # Persist in DB for history/visualization
         from app.models.agent_message import AgentMessage as AgentMessageModel
         db_msg = AgentMessageModel(
+            message_id=message_id,
             from_agent_id=from_id,
             from_agent_name=sender,
             to_agent_id=agent_id,
             text=body.text,
+            message_type=body.message_type or "message",
+            reply_to=body.reply_to,
         )
         db.add(db_msg)
         await db.commit()

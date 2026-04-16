@@ -892,6 +892,77 @@ export async function deleteApprovalRule(id: number): Promise<{ status: string }
   return fetchJSON(`${getBase()}/approval-rules/${id}`, { method: "DELETE" });
 }
 
+// --- Event Triggers ---
+
+export interface EventTrigger {
+  id: number;
+  name: string;
+  agent_id: string;
+  source_filter: string | null;
+  event_type_filter: string | null;
+  payload_conditions: Record<string, unknown> | null;
+  prompt_template: string;
+  priority: number;
+  model: string | null;
+  enabled: boolean;
+  fire_count: number;
+  last_fired_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function getEventTriggers(agentId?: string): Promise<{ triggers: EventTrigger[]; total: number }> {
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const qs = params.toString() ? `?${params}` : "";
+  return fetchJSON(`${getBase()}/event-triggers${qs}`);
+}
+
+export async function createEventTrigger(data: {
+  name: string;
+  agent_id: string;
+  source_filter?: string | null;
+  event_type_filter?: string | null;
+  payload_conditions?: Record<string, unknown> | null;
+  prompt_template: string;
+  priority?: number;
+  model?: string | null;
+}): Promise<EventTrigger> {
+  return fetchJSON(`${getBase()}/event-triggers`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateEventTrigger(
+  id: number,
+  data: Partial<Omit<EventTrigger, "id" | "created_at" | "updated_at" | "fire_count" | "last_fired_at">>,
+): Promise<EventTrigger> {
+  return fetchJSON(`${getBase()}/event-triggers/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteEventTrigger(id: number): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/event-triggers/${id}`, { method: "DELETE" });
+}
+
+export async function toggleEventTrigger(id: number): Promise<EventTrigger> {
+  return fetchJSON(`${getBase()}/event-triggers/${id}/toggle`, { method: "POST" });
+}
+
+export async function testEventTrigger(id: number, payload: Record<string, unknown>): Promise<{
+  trigger_id: number;
+  would_fire: boolean;
+  interpolated_prompt: string;
+}> {
+  return fetchJSON(`${getBase()}/event-triggers/${id}/test`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // --- License ---
 
 export interface License {

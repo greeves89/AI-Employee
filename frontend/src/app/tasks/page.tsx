@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import {
   Plus, CheckCircle2, XCircle, Clock, Loader2, RotateCcw, Timer,
   Hash, Cpu, Trash2, Ban, Pause, Play, PlayCircle, CalendarClock, Sparkles,
+  GitBranch,
 } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
 import { useAgents } from "@/hooks/use-agents";
@@ -280,6 +281,9 @@ function SingleTasksView() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
+                      {task.parent_task_id && (
+                        <GitBranch className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                      )}
                       <h4 className="font-medium text-sm truncate">{task.title}</h4>
                       <span className={cn(
                         "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
@@ -287,6 +291,11 @@ function SingleTasksView() {
                       )}>
                         {task.status}
                       </span>
+                      {task.parent_task_id && (
+                        <span className="shrink-0 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+                          Subtask
+                        </span>
+                      )}
                     </div>
                     <p className="text-[12px] text-muted-foreground/70 mt-0.5 line-clamp-1">
                       {task.prompt}
@@ -332,6 +341,11 @@ function SingleTasksView() {
                   <span className="flex items-center gap-1 font-mono">
                     <Hash className="h-3 w-3" />{task.id.slice(0, 8)}
                   </span>
+                  {task.parent_task_id && (
+                    <span className="flex items-center gap-1 text-blue-400/60">
+                      <GitBranch className="h-3 w-3" />parent: {task.parent_task_id.slice(0, 8)}
+                    </span>
+                  )}
                   {task.agent_id && (
                     <span className="flex items-center gap-1">
                       <Cpu className="h-3 w-3" />{task.agent_id}

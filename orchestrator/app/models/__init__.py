@@ -24,6 +24,7 @@ from app.models.test_run import TestRun
 from app.models.meeting_room import MeetingRoom
 from app.models.approval_rule import ApprovalRule
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
+from app.models.event_trigger import EventTrigger
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -41,4 +42,5 @@ __all__ = [
     "MeetingRoom",
     "ApprovalRule",
     "KnowledgeFeed", "KnowledgeFeedItem",
+    "EventTrigger",
 ]

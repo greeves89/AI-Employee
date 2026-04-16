@@ -86,6 +86,7 @@ class TaskRouter:
         agent_id: str | None = None,
         model: str | None = None,
         parent_task_id: str | None = None,
+        created_by_agent: str | None = None,
     ) -> Task:
         task_id = _make_task_id()
 
@@ -101,6 +102,9 @@ class TaskRouter:
             agent_id = await self.load_balancer.select_agent(priority=priority)
             if not agent_id:
                 # No agents available - create task as pending
+                metadata = {}
+                if created_by_agent:
+                    metadata["created_by_agent"] = created_by_agent
                 task = Task(
                     id=task_id,
                     title=title,
@@ -109,6 +113,7 @@ class TaskRouter:
                     priority=priority,
                     model=model,
                     parent_task_id=parent_task_id,
+                    metadata_=metadata or None,
                 )
                 self.db.add(task)
                 await self.db.commit()
@@ -116,6 +121,9 @@ class TaskRouter:
                 return task
 
         # Create task in DB
+        metadata = {}
+        if created_by_agent:
+            metadata["created_by_agent"] = created_by_agent
         task = Task(
             id=task_id,
             title=title,
@@ -125,6 +133,7 @@ class TaskRouter:
             agent_id=agent_id,
             model=model,
             parent_task_id=parent_task_id,
+            metadata_=metadata or None,
             started_at=datetime.now(timezone.utc),
         )
         self.db.add(task)
@@ -273,6 +282,13 @@ class TaskRouter:
         # Subtask completion callback: notify the parent task's agent
         if task.parent_task_id:
             await self._notify_parent_agent(task)
+
+        # Delegation callback: notify the agent that created/delegated this task
+        delegator_id = (task.metadata_ or {}).get("created_by_agent")
+        print(f"[TaskCompletion] Task {task.id}: metadata={task.metadata_}, delegator={delegator_id}, agent={agent_id}")
+        if delegator_id and delegator_id != agent_id:
+            print(f"[TaskCompletion] Firing delegation callback for task {task.id} → delegator {delegator_id}")
+            await self._notify_delegating_agent(task, delegator_id)
 
         # Request user rating via notification + Telegram inline keyboard
         if task.status == TaskStatus.COMPLETED:
@@ -525,8 +541,9 @@ class TaskRouter:
     async def _notify_parent_agent(self, subtask: Task) -> None:
         """When a subtask completes, notify the parent task's agent via message queue.
 
-        The parent agent receives a structured message with the subtask result
-        so it can aggregate results without polling.
+        Sends two types of notifications:
+        1. Per-subtask: immediate notification with this subtask's result
+        2. Batch-complete: when ALL sibling subtasks are done, sends an aggregated summary
         """
         try:
             parent = await self.db.execute(
@@ -539,6 +556,7 @@ class TaskRouter:
             status = "completed" if subtask.status == TaskStatus.COMPLETED else "failed"
             result_preview = (subtask.result or subtask.error or "")[:500]
 
+            # 1. Per-subtask notification
             message = json.dumps({
                 "type": "subtask_completed",
                 "subtask_id": subtask.id,
@@ -549,7 +567,6 @@ class TaskRouter:
                 "parent_task_id": subtask.parent_task_id,
             })
 
-            # Push to the parent agent's message queue
             if self.redis.client:
                 await self.redis.client.lpush(
                     f"agent:{parent_task.agent_id}:messages", message
@@ -558,8 +575,126 @@ class TaskRouter:
                     f"Subtask {subtask.id} ({status}) → notified parent agent "
                     f"{parent_task.agent_id} (parent task {parent_task.id})"
                 )
+
+            # 2. Check if ALL sibling subtasks are now done → send aggregated summary
+            from sqlalchemy import func as sa_func
+            siblings = await self.db.execute(
+                select(Task).where(Task.parent_task_id == subtask.parent_task_id)
+            )
+            all_siblings = list(siblings.scalars().all())
+            terminal = [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
+            all_done = all(s.status in terminal for s in all_siblings)
+
+            if all_done and len(all_siblings) > 1:
+                completed = sum(1 for s in all_siblings if s.status == TaskStatus.COMPLETED)
+                failed = sum(1 for s in all_siblings if s.status == TaskStatus.FAILED)
+                total_cost = sum(s.cost_usd or 0 for s in all_siblings)
+
+                summaries = []
+                for s in all_siblings:
+                    s_status = "completed" if s.status == TaskStatus.COMPLETED else "failed"
+                    s_preview = (s.result or s.error or "")[:200]
+                    summaries.append({
+                        "id": s.id, "title": s.title,
+                        "status": s_status, "result_preview": s_preview,
+                    })
+
+                batch_message = json.dumps({
+                    "type": "all_subtasks_completed",
+                    "parent_task_id": subtask.parent_task_id,
+                    "total": len(all_siblings),
+                    "completed": completed,
+                    "failed": failed,
+                    "total_cost_usd": round(total_cost, 4),
+                    "subtasks": summaries,
+                })
+
+                if self.redis.client:
+                    await self.redis.client.lpush(
+                        f"agent:{parent_task.agent_id}:messages", batch_message
+                    )
+                    logger.info(
+                        f"ALL {len(all_siblings)} subtasks done for parent {parent_task.id} "
+                        f"→ sent aggregated summary to agent {parent_task.agent_id} "
+                        f"({completed} OK, {failed} failed)"
+                    )
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
+
+    async def _notify_delegating_agent(self, task: Task, delegator_agent_id: str) -> None:
+        """When a delegated task completes, notify the agent that created it.
+
+        Pushes a structured message to the delegating agent's chat queue so it
+        sees the result in its next chat session or proactive run. Also sends
+        a Telegram notification to the user for immediate visibility.
+        """
+        try:
+            status = "completed" if task.status == TaskStatus.COMPLETED else "failed"
+            result_preview = (task.result or task.error or "No output")[:800]
+
+            # Push structured message to delegating agent's message queue
+            message = json.dumps({
+                "type": "delegated_task_completed",
+                "task_id": task.id,
+                "task_title": task.title,
+                "status": status,
+                "assigned_agent_id": task.agent_id,
+                "result_preview": result_preview,
+                "cost_usd": task.cost_usd,
+                "duration_ms": task.duration_ms,
+            })
+
+            if self.redis.client:
+                print(f"[DelegationCallback] Pushing to agent:{delegator_agent_id}:messages")
+                await self.redis.client.lpush(
+                    f"agent:{delegator_agent_id}:messages", message
+                )
+                print(f"[DelegationCallback] Message pushed OK")
+
+                # Also push to the delegating agent's chat queue so it
+                # picks up the result in the next chat interaction.
+                # Format must match what the agent runner expects: {id, text}
+                callback_id = uuid.uuid4().hex[:12]
+                status_emoji = "✅" if status == "completed" else "❌"
+                chat_notification = json.dumps({
+                    "id": callback_id,
+                    "text": (
+                        f"{status_emoji} [Delegation Result] Task '{task.title}' "
+                        f"(#{task.id}) has {status}.\n"
+                        f"Result: {result_preview[:300]}"
+                    ),
+                    "session_id": "delegation-callback",
+                })
+                await self.redis.client.lpush(
+                    f"agent:{delegator_agent_id}:chat", chat_notification
+                )
+
+                logger.info(
+                    f"Delegated task {task.id} ({status}) → notified delegating "
+                    f"agent {delegator_agent_id}"
+                )
+
+            # Send Telegram notification to the user for immediate visibility
+            try:
+                status_emoji = "✅" if status == "completed" else "❌"
+                title = (task.title or "Task")[:60]
+                cost_info = f" (${task.cost_usd:.3f})" if task.cost_usd else ""
+                telegram_text = (
+                    f"{status_emoji} Delegierter Task {status}: {title}{cost_info}"
+                )
+                if self.redis.client:
+                    await self.redis.client.publish(
+                        "telegram:send",
+                        json.dumps({"text": telegram_text}),
+                    )
+            except Exception:
+                pass  # Telegram is best-effort
+
+        except Exception as e:
+            logger.warning(
+                f"Could not notify delegating agent {delegator_agent_id} "
+                f"for task {task.id}: {e}"
+            )
 
     async def _send_rating_keyboard(self, task: Task) -> None:
         """Send Telegram inline keyboard with ⭐1-5 rating buttons."""

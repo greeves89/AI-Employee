@@ -123,27 +123,48 @@ async def receive_webhook(
     await db.commit()
     await db.refresh(event)
 
-    # Build prompt with structural wrapping (defence in depth)
-    prompt = sanitize_webhook_payload(payload, str(source), str(event_type))
+    # --- Check EventTriggers for conditional routing ---
+    from app.services.trigger_evaluator import find_matching_triggers, fire_trigger
 
-    # Create task via Redis queue
-    task_id = uuid.uuid4().hex[:12]
-    task_payload = json.dumps({
-        "id": task_id,
-        "prompt": prompt,
-        "title": f"Webhook: {source}/{event_type}",
-        "model": None,
-    })
-    await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
+    triggers = await find_matching_triggers(db, agent_id, str(source), str(event_type), payload)
 
-    # Update webhook event with task link
-    event.task_id = task_id
+    tasks_created = []
+
+    if triggers:
+        # Fire each matching trigger
+        for trigger in triggers:
+            prompt = await fire_trigger(trigger, payload, str(source), str(event_type), db)
+            task_id = uuid.uuid4().hex[:12]
+            task_payload = json.dumps({
+                "id": task_id,
+                "prompt": prompt,
+                "title": f"Trigger: {trigger.name} ({source}/{event_type})",
+                "model": trigger.model,
+                "priority": trigger.priority,
+            })
+            await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
+            tasks_created.append({"task_id": task_id, "trigger_id": trigger.id, "trigger_name": trigger.name})
+    else:
+        # No triggers defined — fall back to default behavior (create task with raw payload)
+        prompt = sanitize_webhook_payload(payload, str(source), str(event_type))
+        task_id = uuid.uuid4().hex[:12]
+        task_payload = json.dumps({
+            "id": task_id,
+            "prompt": prompt,
+            "title": f"Webhook: {source}/{event_type}",
+            "model": None,
+        })
+        await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
+        tasks_created.append({"task_id": task_id, "trigger_id": None, "trigger_name": None})
+
+    # Update webhook event with first task link
+    event.task_id = tasks_created[0]["task_id"]
     await db.commit()
 
     return {
         "status": "accepted",
         "webhook_event_id": event.id,
-        "task_id": task_id,
+        "tasks": tasks_created,
         "agent_id": agent_id,
     }
 

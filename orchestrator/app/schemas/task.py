@@ -12,6 +12,7 @@ class TaskCreate(BaseModel):
     agent_id: str | None = None  # None = auto-assign
     model: str | None = None
     parent_task_id: str | None = None  # For subtask hierarchies
+    created_by_agent: str | None = None  # Agent that delegated this task
 
 
 class TaskResponse(BaseModel):
@@ -33,6 +34,19 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class TaskBatchCreate(BaseModel):
+    """Create multiple tasks in a single call (parallel sub-agent spawning)."""
+    tasks: list[TaskCreate]
+    parent_task_id: str | None = None  # All tasks become subtasks of this parent
+    created_by_agent: str | None = None  # Agent that spawned this batch
+
+
+class TaskBatchResponse(BaseModel):
+    tasks: list[TaskResponse]
+    total: int
+    parent_task_id: str | None = None
 
 
 class TaskListResponse(BaseModel):

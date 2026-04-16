@@ -1,5 +1,6 @@
 """LLM Chat Handler - interactive chat sessions using custom LLM providers."""
 
+import asyncio
 import json
 import logging
 import time
@@ -367,9 +368,28 @@ class LLMChatHandler:
                     )
                     break
 
-                # Execute tool calls and add results
+                # Execute tool calls — parallelize read-only, serialize writes
+                from app.tools.executor import _CACHEABLE_TOOLS
+                _WRITE_TOOLS = {"write_file", "edit_file", "multi_edit", "bash"}
+
+                read_only = [tc for tc in turn_tool_calls if tc["name"] in _CACHEABLE_TOOLS]
+                write_ops = [tc for tc in turn_tool_calls if tc["name"] in _WRITE_TOOLS]
+                other_ops = [tc for tc in turn_tool_calls if tc not in read_only and tc not in write_ops]
+
+                results_map: dict[str, str] = {}
+                if read_only:
+                    parallel_results = await asyncio.gather(
+                        *[self._tool_executor.execute(tc["name"], tc["input"]) for tc in read_only],
+                        return_exceptions=True,
+                    )
+                    for tc, res in zip(read_only, parallel_results):
+                        results_map[tc["id"]] = str(res) if isinstance(res, Exception) else res
+
+                for tc in other_ops + write_ops:
+                    results_map[tc["id"]] = await self._tool_executor.execute(tc["name"], tc["input"])
+
                 for tc in turn_tool_calls:
-                    result_text = await self._tool_executor.execute(tc["name"], tc["input"])
+                    result_text = results_map[tc["id"]]
                     await self.log_publisher.publish_chat(
                         message_id, "tool_result",
                         {"tool_use_id": tc["id"], "content": result_text[:2000]},

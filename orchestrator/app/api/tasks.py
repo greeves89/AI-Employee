@@ -10,7 +10,7 @@ from app.core.task_router import TaskRouter
 from app.db.session import get_db
 from app.dependencies import get_redis_service, require_auth, require_auth_or_agent
 from app.models.task import Task, TaskStatus
-from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse
+from app.schemas.task import TaskBatchCreate, TaskBatchResponse, TaskCreate, TaskListResponse, TaskResponse
 from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -56,8 +56,51 @@ async def create_task(
         agent_id=data.agent_id,
         model=data.model,
         parent_task_id=data.parent_task_id,
+        created_by_agent=data.created_by_agent,
     )
     return TaskResponse.model_validate(task)
+
+
+@router.post("/batch", response_model=TaskBatchResponse, status_code=201)
+async def create_task_batch(
+    data: TaskBatchCreate,
+    user=Depends(require_auth_or_agent),
+    router_: TaskRouter = Depends(_get_task_router),
+):
+    """Create multiple tasks in a single call for parallel sub-agent execution.
+
+    All tasks are created independently and can run on different agents
+    simultaneously. If parent_task_id is set, all tasks become subtasks
+    of that parent. The parent agent is notified individually as each
+    subtask completes (not aggregated).
+    """
+    from app.models.user import UserRole
+    if hasattr(user, "role") and user.role == UserRole.VIEWER:
+        raise HTTPException(status_code=403, detail="Viewers cannot create tasks")
+
+    if not data.tasks:
+        raise HTTPException(status_code=400, detail="At least one task is required")
+    if len(data.tasks) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 tasks per batch")
+
+    created = []
+    for task_data in data.tasks:
+        task = await router_.create_and_route_task(
+            title=task_data.title,
+            prompt=task_data.prompt,
+            priority=task_data.priority,
+            agent_id=task_data.agent_id,
+            model=task_data.model,
+            parent_task_id=data.parent_task_id or task_data.parent_task_id,
+            created_by_agent=data.created_by_agent or task_data.created_by_agent,
+        )
+        created.append(TaskResponse.model_validate(task))
+
+    return TaskBatchResponse(
+        tasks=created,
+        total=len(created),
+        parent_task_id=data.parent_task_id,
+    )
 
 
 class TaskEstimateRequest(BaseModel):

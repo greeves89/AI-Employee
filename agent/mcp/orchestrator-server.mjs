@@ -87,10 +87,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "create_task_batch",
+      description:
+        "Create multiple tasks in parallel for different agents. All tasks run simultaneously. " +
+        "Use this to split complex work into parallel sub-tasks: e.g. 'research + code + test' " +
+        "running on 3 agents at once. You will be notified when each subtask completes. " +
+        "Maximum 20 tasks per batch.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short task title." },
+                prompt: { type: "string", description: "Detailed instructions for this sub-task." },
+                priority: {
+                  type: "number", minimum: 1, maximum: 10,
+                  description: "Task priority (1=highest). Default: 5.",
+                },
+                agent_id: {
+                  type: "string",
+                  description: "Agent to assign to. Use list_team to find agents. Leave empty for auto-assign.",
+                },
+              },
+              required: ["title", "prompt"],
+            },
+            description: "List of tasks to create in parallel (max 20).",
+          },
+        },
+        required: ["tasks"],
+      },
+    },
+    {
       name: "list_tasks",
       description:
-        "List tasks assigned to you, optionally filtered by status. " +
-        "Use this to check your work queue and track progress.",
+        "List tasks, optionally filtered by status and/or agent. " +
+        "By default shows YOUR tasks. Set agent_id to see another agent's tasks " +
+        "(useful for checking delegated work).",
       inputSchema: {
         type: "object",
         properties: {
@@ -98,6 +133,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             enum: ["pending", "running", "completed", "failed"],
             description: "Filter by task status. Omit to show all tasks.",
+          },
+          agent_id: {
+            type: "string",
+            description:
+              "Agent ID to check tasks for. Defaults to yourself. " +
+              "Use another agent's ID to check tasks you delegated to them.",
           },
         },
       },
@@ -115,9 +156,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "send_message",
       description:
-        "Send a text message to another agent. The message will appear in their conversation " +
+        "Send a structured message to another agent. The message will appear in their conversation " +
         "context the next time they run a task. Use this for coordination, sharing results, " +
-        "or requesting help.",
+        "asking questions, or handing off work. Set message_type to help the receiver understand " +
+        "the intent. Use reply_to to link responses to previous messages.",
       inputSchema: {
         type: "object",
         properties: {
@@ -128,6 +170,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           message: {
             type: "string",
             description: "The message text to send.",
+          },
+          message_type: {
+            type: "string",
+            enum: ["message", "question", "response", "handoff", "notification", "status_update"],
+            description:
+              "Type of message. 'question' expects a reply, 'response' answers a previous question, " +
+              "'handoff' transfers ownership of work, 'notification' is FYI only. Default: 'message'.",
+          },
+          reply_to: {
+            type: "string",
+            description:
+              "message_id of a previous message you are replying to. " +
+              "This links your response to the original message for conversation threading.",
           },
         },
         required: ["agent_id", "message"],
@@ -304,15 +359,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   switch (name) {
     case "create_task": {
+      const targetAgent = args.agent_id || AGENT_ID;
+      const body = {
+        title: args.title,
+        prompt: args.prompt,
+        priority: args.priority || 5,
+        agent_id: targetAgent,
+        model: DEFAULT_MODEL,
+      };
+      // Track delegation: if creating task for another agent, record who delegated
+      if (targetAgent !== AGENT_ID) {
+        body.created_by_agent = AGENT_ID;
+      }
       const result = await apiCall("/tasks/", {
         method: "POST",
-        body: JSON.stringify({
-          title: args.title,
-          prompt: args.prompt,
-          priority: args.priority || 5,
-          agent_id: args.agent_id || AGENT_ID,
-          model: DEFAULT_MODEL,
-        }),
+        body: JSON.stringify(body),
       });
       return {
         content: [
@@ -324,8 +385,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    case "create_task_batch": {
+      const batchTasks = (args.tasks || []).map((t) => ({
+        title: t.title,
+        prompt: t.prompt,
+        priority: t.priority || 5,
+        agent_id: t.agent_id || null,
+        model: DEFAULT_MODEL,
+      }));
+      const result = await apiCall("/tasks/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          tasks: batchTasks,
+          created_by_agent: AGENT_ID,
+        }),
+      });
+      const lines = result.tasks.map(
+        (t) => `  - #${t.id}: "${t.title}" → ${t.agent_id || "auto"} [${t.status}]`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Batch created: ${result.total} tasks running in parallel:\n${lines.join("\n")}\n\n` +
+              `You will be notified as each task completes.`,
+          },
+        ],
+      };
+    }
+
     case "list_tasks": {
-      const params = new URLSearchParams({ agent_id: AGENT_ID });
+      const params = new URLSearchParams({ agent_id: args.agent_id || AGENT_ID });
       if (args.status) params.set("status", args.status);
 
       const result = await apiCall(`/tasks/?${params}`);
@@ -370,19 +461,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "send_message": {
-      await apiCall(`/agents/${args.agent_id}/message`, {
+      const sendResult = await apiCall(`/agents/${args.agent_id}/message`, {
         method: "POST",
         body: JSON.stringify({
           from_agent_id: AGENT_ID,
           from_name: AGENT_NAME,
           text: args.message,
+          message_type: args.message_type || "message",
+          reply_to: args.reply_to || null,
         }),
       });
+      const typeLabel = args.message_type ? ` [${args.message_type}]` : "";
+      const replyLabel = args.reply_to ? ` (reply to: ${args.reply_to})` : "";
       return {
         content: [
           {
             type: "text",
-            text: `Message sent to agent ${args.agent_id}.`,
+            text: `Message sent to agent ${args.agent_id}${typeLabel}${replyLabel}. message_id: ${sendResult.message_id}`,
           },
         ],
       };

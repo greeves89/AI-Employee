@@ -119,7 +119,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   // Conversation modal
   const [convoOpen, setConvoOpen] = useState(false);
   const [convoAgents, setConvoAgents] = useState<{ a: string; b: string; aName: string; bName: string } | null>(null);
-  const [convoMessages, setConvoMessages] = useState<{ from_id: string; from_name: string; to_id: string; text: string; timestamp: string }[]>([]);
+  const [convoMessages, setConvoMessages] = useState<{ from_id: string; from_name: string; to_id: string; text: string; timestamp: string; message_id?: string; message_type?: string; reply_to?: string }[]>([]);
   const [convoLoading, setConvoLoading] = useState(false);
 
   const openConversation = async (agentA: string, agentB: string) => {
@@ -655,10 +655,27 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                           <span className={cn("text-[10px] font-semibold", isFromA ? "text-indigo-400" : "text-violet-400")}>
                             {msg.from_name}
                           </span>
+                          {msg.message_type && msg.message_type !== "message" && (
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium",
+                              msg.message_type === "question" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                              msg.message_type === "response" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                              msg.message_type === "handoff" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" :
+                              msg.message_type === "notification" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" :
+                              "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
+                            )}>
+                              {msg.message_type}
+                            </span>
+                          )}
                           <span className="text-[9px] text-muted-foreground/40">
                             {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </span>
                         </div>
+                        {msg.reply_to && (
+                          <div className="mb-1 text-[9px] text-muted-foreground/40 italic">
+                            reply to {msg.reply_to}
+                          </div>
+                        )}
                         <p className="text-xs text-foreground/80 whitespace-pre-wrap break-words leading-relaxed">{msg.text}</p>
                       </div>
                     </motion.div>

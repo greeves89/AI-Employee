@@ -99,6 +99,7 @@ export interface Task {
   cost_usd: number | null;
   duration_ms: number | null;
   num_turns: number | null;
+  parent_task_id: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;

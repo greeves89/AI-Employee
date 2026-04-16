@@ -23,6 +23,7 @@ import {
   ToggleRight,
   HeartPulse,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/skills", label: "Skills", icon: Sparkles, simpleVisible: false },
   { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
+  { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
   { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
   { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
   { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },
