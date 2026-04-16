@@ -877,13 +877,17 @@ class AgentManager:
         config = agent.config or {}
 
         # 1. Stop and remove old container (volumes stay!)
-        if agent.container_id:
+        container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
+        # Try by container_id first, then by name (handles stale IDs)
+        for ref in [agent.container_id, container_name]:
+            if not ref:
+                continue
             try:
-                self.docker.stop_container(agent.container_id)
+                self.docker.stop_container(ref)
             except (NotFound, APIError):
                 pass
             try:
-                self.docker.remove_container(agent.container_id)
+                self.docker.remove_container(ref)
             except (NotFound, APIError):
                 pass
 
@@ -892,7 +896,6 @@ class AgentManager:
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
         role = config.get("role", "")
         model = agent.model or settings.default_model
-        container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
         mode = agent.mode or "claude_code"
 
         env_vars: dict[str, str] = {
