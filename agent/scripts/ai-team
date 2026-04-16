@@ -25,7 +25,7 @@ API="${ORCHESTRATOR_URL:-http://orchestrator:8000}/api/v1"
 AGENT_ID="${AGENT_ID:-unknown}"
 AGENT_NAME="${AGENT_NAME:-unknown}"
 AGENT_TOKEN="${AGENT_TOKEN:-}"
-MODEL="${DEFAULT_MODEL:-claude-sonnet-4-5-20250929}"
+MODEL="${DEFAULT_MODEL:-claude-sonnet-4-6}"
 
 # Auth headers for all API calls
 AUTH_HEADERS=(-H "Authorization: Bearer $AGENT_TOKEN" -H "X-Agent-ID: $AGENT_ID")

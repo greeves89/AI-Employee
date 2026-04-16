@@ -132,7 +132,7 @@ export default function SettingsPage() {
   const [telegramToken, setTelegramToken] = useState("");
   const [telegramChatId, setTelegramChatId] = useState("");
   // Agent defaults
-  const [defaultModel, setDefaultModel] = useState("claude-sonnet-4-5-20250929");
+  const [defaultModel, setDefaultModel] = useState("claude-sonnet-4-6");
   const [maxTurns, setMaxTurns] = useState(100);
   const [maxAgents, setMaxAgents] = useState(10);
   const [registrationOpen, setRegistrationOpen] = useState(true);
