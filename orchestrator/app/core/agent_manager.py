@@ -857,15 +857,15 @@ class AgentManager:
     async def start_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent starting...")
         agent = await self._get_agent(agent_id)
-        if agent.container_id:
-            try:
-                self.docker.start_container(agent.container_id)
-            except NotFound:
-                logger.warning(f"Container {agent.container_id} not found for agent {agent_id}")
-                agent.state = AgentState.ERROR
-                await self.db.commit()
-                await self._publish_event(agent_id, "error", "Agent container not found - delete and recreate")
-                raise ValueError(f"Agent container no longer exists. Delete and recreate the agent.")
+        if not agent.container_id:
+            # No container exists — recreate it (keeps volumes/data)
+            logger.info(f"Agent {agent_id} has no container — recreating via update_agent")
+            return await self.update_agent(agent_id)
+        try:
+            self.docker.start_container(agent.container_id)
+        except NotFound:
+            logger.warning(f"Container {agent.container_id} not found for agent {agent_id} — recreating")
+            return await self.update_agent(agent_id)
         agent.state = AgentState.RUNNING
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent started")
