@@ -954,28 +954,36 @@ function AgentSettings({
 
   const CLAUDE_MODELS: Record<string, { value: string; label: string; tier: string }[]> = {
     anthropic: [
+      { value: "claude-opus-4-7", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-sonnet-4-5-20250929", label: "Sonnet 4.5", tier: "Balanced" },
-      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-haiku-4-6", label: "Haiku 4.6", tier: "Fast" },
       { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
+      { value: "claude-sonnet-4-5-20250929", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", tier: "Legacy" },
     ],
     bedrock: [
+      { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
       { value: "us.anthropic.claude-sonnet-4-6-v1:0", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Balanced" },
-      { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Fast" },
-      { value: "us.anthropic.claude-opus-4-20250514-v1:0", label: "Opus 4", tier: "Powerful" },
+      { value: "us.anthropic.claude-haiku-4-6-v1:0", label: "Haiku 4.6", tier: "Fast" },
+      { value: "us.anthropic.claude-opus-4-6-v1:0", label: "Opus 4.6", tier: "Powerful" },
+      { value: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Legacy" },
     ],
     vertex: [
+      { value: "claude-opus-4-7@latest", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
       { value: "claude-sonnet-4-6@latest", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Balanced" },
-      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Fast" },
-      { value: "claude-opus-4@20250514", label: "Opus 4", tier: "Powerful" },
+      { value: "claude-haiku-4-6@latest", label: "Haiku 4.6", tier: "Fast" },
+      { value: "claude-opus-4-6@latest", label: "Opus 4.6", tier: "Powerful" },
+      { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Legacy" },
     ],
     foundry: [
+      { value: "claude-opus-4-7", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Balanced" },
-      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-haiku-4-6", label: "Haiku 4.6", tier: "Fast" },
       { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
+      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Legacy" },
     ],
   };
 
