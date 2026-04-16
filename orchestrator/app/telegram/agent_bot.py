@@ -496,30 +496,20 @@ class TelegramAgentBot:
                         response_buffer += str(event_data.get("text", ""))
 
                     elif event_type == "tool_call":
-                        tool_name = event_data.get("tool", "")
-                        # Send intermediate text + tool status
-                        status_text = response_buffer.strip()
-                        if not status_text:
-                            # Generate a short status message based on tool
-                            tool_labels = {
-                                "web_search": "🔍 Suche im Internet...",
-                                "WebSearch": "🔍 Suche im Internet...",
-                                "web_fetch": "📄 Lade Seite...",
-                                "WebFetch": "📄 Lade Seite...",
-                                "Bash": "⚙️ Führe Befehl aus...",
-                                "bash": "⚙️ Führe Befehl aus...",
-                                "read_file": "📖 Lese Datei...",
-                                "memory_search": "🧠 Durchsuche Erinnerungen...",
-                            }
-                            status_text = tool_labels.get(tool_name, f"⏳ {tool_name}...")
-                        if not _typing_sent:
+                        # Send whatever the agent wrote before the tool call
+                        # (e.g. "Moment, ich schaue nach..." — the agent decides the wording)
+                        if response_buffer.strip():
                             try:
-                                await self.app.bot.send_message(chat_id=chat_id, text=status_text)
-                                _typing_sent = True
+                                await self._send_chunked(chat_id, response_buffer.strip())
                             except Exception:
                                 pass
-                        response_buffer = ""
-                        last_flush = now
+                            response_buffer = ""
+                            last_flush = now
+                        # Show typing indicator while tool runs
+                        try:
+                            await self.app.bot.send_chat_action(chat_id=chat_id, action="typing")
+                        except Exception:
+                            pass
 
                     elif event_type == "error":
                         error_msg = str(event_data.get("message", "Unknown error"))
