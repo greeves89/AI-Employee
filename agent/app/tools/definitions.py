@@ -773,6 +773,151 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
+    # ── Knowledge Base (knowledge-server.mjs parity) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "knowledge_write",
+            "description": "Write to the shared knowledge base. Creates or updates an entry by title. ALL agents share this — use for company-wide info, project docs, decisions, processes. Use [[Title]] for backlinks, #tags for categorization.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Title of the knowledge entry (link target for [[backlinks]])"},
+                    "content": {"type": "string", "description": "Markdown content. Use [[Title]] for links, #tags for categorization."},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
+                },
+                "required": ["title", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "knowledge_search",
+            "description": "Search the shared knowledge base using semantic search (understands meaning, not just keywords). Use BEFORE creating new entries to avoid duplicates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Natural-language question or topic"},
+                    "tag": {"type": "string", "description": "Optional tag filter"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "knowledge_read",
+            "description": "Read a specific knowledge entry by its exact title.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Exact title of the entry"},
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    # ── Batch Tasks (orchestrator-server.mjs parity) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "create_task_batch",
+            "description": "Create multiple tasks in parallel for different agents. All run simultaneously. Use to split complex work: e.g. research + code + test on 3 agents at once. Max 20 tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tasks": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "prompt": {"type": "string"},
+                                "priority": {"type": "number", "minimum": 1, "maximum": 10},
+                                "agent_id": {"type": "string"},
+                            },
+                            "required": ["title", "prompt"],
+                        },
+                    },
+                },
+                "required": ["tasks"],
+            },
+        },
+    },
+    # ── Synchronous messaging (orchestrator-server.mjs parity) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "send_message_and_wait",
+            "description": "Send a message to another agent AND wait for their reply (up to 45s). Use when you need the answer in the current conversation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string", "description": "Agent to message"},
+                    "message": {"type": "string", "description": "The message to send"},
+                    "message_type": {"type": "string", "enum": ["question", "message"], "description": "Default: question"},
+                },
+                "required": ["agent_id", "message"],
+            },
+        },
+    },
+    # ── Telegram (notification-server.mjs parity) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "send_telegram",
+            "description": "Send a message or file to the user via Telegram. Use for notifications, status updates, or delivering files (PDFs, images, etc.).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "Text message to send"},
+                    "file_path": {"type": "string", "description": "Optional: path to a file to send as attachment"},
+                },
+                "required": ["message"],
+            },
+        },
+    },
+    # ── Skill Marketplace (skill-server.mjs parity) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_search",
+            "description": "Search the skill marketplace for reusable routines, templates, workflows, patterns. Use before inventing your own solution.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "category": {"type": "string", "enum": ["routine", "template", "workflow", "pattern", "recipe", "tool"]},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_propose",
+            "description": "Propose a new skill for the marketplace. Submitted as draft for user review. Use when you discover a reusable pattern.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "lowercase-hyphenated name"},
+                    "description": {"type": "string", "description": "One-line description"},
+                    "content": {"type": "string", "description": "Full instructions in markdown"},
+                    "category": {"type": "string", "enum": ["routine", "template", "workflow", "pattern", "recipe", "tool"]},
+                },
+                "required": ["name", "description", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_get_my_skills",
+            "description": "Get all skills assigned to you. Check at start of complex tasks for relevant skills.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 # ── Combined Tool List ──

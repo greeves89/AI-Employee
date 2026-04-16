@@ -378,6 +378,186 @@ class OrchestratorAPIClient:
             return f"Approval {approval_id}: DENIED. Reason: {reason}"
         return f"Approval {approval_id}: Status is '{status}'."
 
+    # ── Knowledge Base (knowledge-server.mjs parity) ──
+
+    async def knowledge_write(self, params: dict) -> str:
+        """Write to the shared knowledge base (upsert by title)."""
+        body = {
+            "title": params.get("title", ""),
+            "content": params.get("content", ""),
+            "tags": params.get("tags", []),
+        }
+        result = await self._request("POST", "/knowledge/agent/write", json=body)
+        if isinstance(result, str):
+            return result
+        backlinks = result.get("backlinks", [])
+        bl = f", links to: [{', '.join(backlinks)}]" if backlinks else ""
+        return f"Knowledge saved: \"{result.get('title')}\" (id: {result.get('id')}, tags: [{', '.join(result.get('tags', []))}]{bl})"
+
+    async def knowledge_search(self, params: dict) -> str:
+        """Search the shared knowledge base (semantic + keyword fallback)."""
+        query: dict[str, Any] = {}
+        if params.get("query"):
+            query["q"] = params["query"]
+        if params.get("tag"):
+            query["tag"] = params["tag"]
+        result = await self._request("GET", "/knowledge/agent/search", params=query)
+        if isinstance(result, str):
+            return result
+        entries = result.get("entries", [])
+        if not entries:
+            return f"No knowledge entries found for \"{params.get('query', '')}\"."
+        mode = result.get("mode", "keyword")
+        lines = [f"Found {result.get('total', 0)} entries via {mode}:", ""]
+        for e in entries:
+            sim = f" [{e['similarity']*100:.0f}% match]" if e.get("similarity") else ""
+            lines.append(f"**{e['title']}**{sim} (tags: [{', '.join(e.get('tags', []))}])")
+            lines.append(e.get("content", "")[:300])
+            lines.append("---")
+        return "\n".join(lines)
+
+    async def knowledge_read(self, params: dict) -> str:
+        """Read a specific knowledge entry by title."""
+        title = params.get("title", "")
+        if not title:
+            return "Error: title is required"
+        result = await self._request("GET", f"/knowledge/agent/read/{title}")
+        if isinstance(result, str):
+            return result
+        return f"# {result.get('title')}\nTags: [{', '.join(result.get('tags', []))}]\n\n{result.get('content', '')}"
+
+    # ── Batch Tasks ──
+
+    async def create_task_batch(self, params: dict) -> str:
+        """Create multiple tasks in parallel."""
+        tasks = params.get("tasks", [])
+        if not tasks:
+            return "Error: tasks list is required"
+        body = {
+            "tasks": [
+                {
+                    "title": t.get("title", "Task"),
+                    "prompt": t.get("prompt", ""),
+                    "priority": t.get("priority", 5),
+                    "agent_id": t.get("agent_id"),
+                }
+                for t in tasks
+            ],
+            "created_by_agent": self.agent_id,
+        }
+        result = await self._request("POST", "/tasks/batch", json=body)
+        if isinstance(result, str):
+            return result
+        created = result.get("tasks", [])
+        lines = [f"Batch created: {len(created)} tasks running in parallel:"]
+        for t in created:
+            lines.append(f"  - #{t.get('id')}: \"{t.get('title')}\" → {t.get('agent_id', 'auto')} [{t.get('status')}]")
+        return "\n".join(lines)
+
+    # ── Synchronous messaging ──
+
+    async def send_message_and_wait(self, params: dict) -> str:
+        """Send a message and wait for reply (up to 45s)."""
+        target_id = params.get("agent_id", "")
+        if not target_id:
+            return "Error: agent_id is required"
+
+        # Get current max message ID
+        before = await self._request("GET", "/agents/team/poll-reply", params={
+            "from_agent_id": target_id, "to_agent_id": self.agent_id, "since_id": "0", "timeout": "1",
+        })
+        since_id = before.get("message", {}).get("id", 0) if isinstance(before, dict) and before.get("message") else 0
+
+        # Send the message
+        body = {
+            "from_agent_id": self.agent_id,
+            "from_name": self.agent_name,
+            "text": params.get("message", ""),
+            "message_type": params.get("message_type", "question"),
+        }
+        await self._request("POST", f"/agents/{target_id}/message", json=body)
+
+        # Poll for reply
+        poll = await self._request("GET", "/agents/team/poll-reply", params={
+            "from_agent_id": target_id, "to_agent_id": self.agent_id, "since_id": str(since_id), "timeout": "45",
+        })
+        if isinstance(poll, dict) and poll.get("found") and poll.get("message"):
+            msg = poll["message"]
+            return f"Reply from {msg.get('from_name', target_id)}:\n\n{msg.get('text', '')}"
+        return f"Message sent to {target_id}, but no reply within 45s. The reply will arrive later."
+
+    # ── Telegram ──
+
+    async def send_telegram(self, params: dict) -> str:
+        """Send a message or file to the user via Telegram."""
+        import json as _json
+        message = params.get("message", "")
+        file_path = params.get("file_path")
+
+        # Send text via Redis pub/sub (same as notification system)
+        import redis.asyncio as aioredis
+        try:
+            r = aioredis.from_url(settings.redis_url, decode_responses=True)
+            payload = {"text": message, "agent_id": self.agent_id}
+            if file_path:
+                payload["file_path"] = file_path
+            await r.publish("telegram:send", _json.dumps(payload))
+            await r.aclose()
+            return f"Telegram message sent" + (f" with file: {file_path}" if file_path else "")
+        except Exception as e:
+            return f"Error sending Telegram message: {e}"
+
+    # ── Skill Marketplace ──
+
+    async def skill_search(self, params: dict) -> str:
+        """Search the skill marketplace."""
+        query: dict[str, Any] = {}
+        if params.get("query"):
+            query["q"] = params["query"]
+        if params.get("category"):
+            query["category"] = params["category"]
+        result = await self._request("GET", "/skills/agent/search", params=query)
+        if isinstance(result, str):
+            return result
+        skills = result.get("skills", [])
+        if not skills:
+            return "No skills found. Consider proposing one with skill_propose."
+        lines = [f"Found {len(skills)} skills:", ""]
+        for s in skills:
+            rating = f" [{'★' * round(s.get('avg_rating', 0))}{'☆' * (5 - round(s.get('avg_rating', 0)))}]" if s.get("avg_rating") else ""
+            lines.append(f"**{s.get('name')}** ({s.get('category')}){rating} — {s.get('description', '')}")
+            lines.append(s.get("content", "")[:200])
+            lines.append("---")
+        return "\n".join(lines)
+
+    async def skill_propose(self, params: dict) -> str:
+        """Propose a new skill (draft, needs user review)."""
+        body = {
+            "name": params.get("name", ""),
+            "description": params.get("description", ""),
+            "content": params.get("content", ""),
+            "category": params.get("category", "pattern"),
+        }
+        result = await self._request("POST", "/skills/agent/propose", json=body)
+        if isinstance(result, str):
+            return result
+        return f"Skill proposed: \"{result.get('name')}\" (id: {result.get('id')}, status: draft). User will be notified."
+
+    async def skill_get_my_skills(self, params: dict) -> str:
+        """Get all skills assigned to this agent."""
+        result = await self._request("GET", "/skills/agent/available")
+        if isinstance(result, str):
+            return result
+        skills = result.get("skills", [])
+        if not skills:
+            return "No skills assigned. Search with skill_search to find useful ones."
+        lines = [f"You have {len(skills)} skills:", ""]
+        for s in skills:
+            lines.append(f"**{s.get('name')}** — {s.get('description', '')}")
+            lines.append(s.get("content", "")[:300])
+            lines.append("---")
+        return "\n".join(lines)
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
