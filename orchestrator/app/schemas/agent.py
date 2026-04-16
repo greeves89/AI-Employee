@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.models.agent import AgentState
 
 AgentMode = Literal["claude_code", "custom_llm"]
-LLMProviderType = Literal["openai", "anthropic", "google"]
+LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
 
 
 class LLMConfig(BaseModel):
