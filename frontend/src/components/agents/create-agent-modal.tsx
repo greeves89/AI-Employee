@@ -110,23 +110,23 @@ const CATEGORY_COLORS: Record<string, string> = {
 const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noKey?: boolean }> = {
   openai: {
     endpoint: "https://api.openai.com/v1",
-    models: ["gpt-4o", "gpt-4o-mini", "o3-mini", "codex-mini-latest"],
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3-mini", "codex-mini-latest"],
   },
   anthropic: {
     endpoint: "https://api.anthropic.com/v1",
-    models: ["claude-sonnet-4-20250514", "claude-haiku-4-20250414"],
+    models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-6", "claude-opus-4-6", "claude-sonnet-4-5-20250929"],
   },
   google: {
     endpoint: "https://generativelanguage.googleapis.com/v1beta",
-    models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+    models: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
   },
   ollama: {
-    endpoint: "http://localhost:11434/v1",
-    models: ["llama3.2", "llama3.1", "mistral", "codellama", "gemma2", "phi4", "qwen2.5-coder"],
+    endpoint: "http://host.docker.internal:11434/v1",
+    models: ["llama3.2", "llama3.1", "qwen3", "qwen2.5-coder", "mistral", "codellama", "gemma2", "phi4", "deepseek-coder-v2"],
     noKey: true,
   },
   "lm-studio": {
-    endpoint: "http://localhost:1234/v1",
+    endpoint: "http://host.docker.internal:1234/v1",
     models: ["local-model"],
     noKey: true,
   },

@@ -23,7 +23,7 @@ const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v
 const AGENT_ID = process.env.AGENT_ID || "unknown";
 const AGENT_NAME = process.env.AGENT_NAME || "unknown";
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-5-20250929";
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-6";
 
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
