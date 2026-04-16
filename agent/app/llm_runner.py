@@ -120,6 +120,7 @@ class LLMRunner:
                 model_name=settings.llm_model_name,
                 max_tokens=settings.llm_max_tokens,
                 temperature=settings.llm_temperature,
+                thinking_mode=settings.llm_thinking_mode,
             )
         return self._provider
 

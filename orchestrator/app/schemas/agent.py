@@ -9,6 +9,9 @@ AgentMode = Literal["claude_code", "custom_llm"]
 LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
 
 
+ThinkingMode = Literal["off", "auto", "on"]
+
+
 class LLMConfig(BaseModel):
     """Configuration for a custom LLM provider."""
     provider_type: LLMProviderType
@@ -19,6 +22,7 @@ class LLMConfig(BaseModel):
     temperature: float = 0.7
     system_prompt: str = ""
     tools_enabled: bool = True
+    thinking_mode: ThinkingMode = "auto"  # "off"=never, "auto"=model decides, "on"=always
 
 
 class LLMConfigUpdate(BaseModel):
@@ -41,6 +45,7 @@ class LLMConfigResponse(BaseModel):
     temperature: float
     system_prompt: str
     tools_enabled: bool
+    thinking_mode: str = "auto"
 
 
 class AgentCreate(BaseModel):

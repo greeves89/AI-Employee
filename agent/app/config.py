@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     llm_system_prompt: str = ""
     llm_tools_enabled: bool = True
+    llm_thinking_mode: str = "auto"  # "off", "auto", "on"
 
     # Custom MCP servers (JSON: {"name": "http://url"}) - used by both modes
     custom_mcp_servers: str = ""

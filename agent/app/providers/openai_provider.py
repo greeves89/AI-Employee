@@ -31,6 +31,7 @@ class OpenAIProvider(BaseLLMProvider):
     """Provider for OpenAI-compatible APIs with streaming."""
 
     def __init__(self, **kwargs):
+        self.thinking_mode = kwargs.pop("thinking_mode", "auto")  # "off", "auto", "on"
         super().__init__(**kwargs)
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
@@ -401,6 +402,15 @@ class OpenAIProvider(BaseLLMProvider):
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
+
+        # Thinking/reasoning mode (Qwen 3.5, DeepSeek R1, etc.)
+        # Modes: "off" = never think, "auto" = model decides, "on" = always think
+        thinking_mode = getattr(self, "thinking_mode", "auto")
+        if thinking_mode == "off":
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        elif thinking_mode == "on":
+            body["chat_template_kwargs"] = {"enable_thinking": True}
+        # "auto" = don't send the flag, let the model decide (hybrid)
 
         return body
 
