@@ -57,12 +57,23 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
 
 4. **SAVE the learnings (MANDATORY)**: For EACH thing you learned, call `memory_save` with these fields:
    - category: "learning"
-   - importance: 4 or 5 (for critical lessons)
+   - importance: USE THIS SCALE CAREFULLY:
+     * **5** = MUST NEVER FORGET: credentials, user preferences, working pipelines/workflows,
+       tools you installed, capabilities you gained, API keys, critical decisions.
+       Rule: "Would I be useless without this?" → 5
+     * **4** = IMPORTANT: code patterns, error fixes, project architecture decisions,
+       things that took > 10 min to figure out.
+       Rule: "Would I waste time rediscovering this?" → 4
+     * **3** = NICE TO KNOW: minor observations, one-time fixes, routine task notes.
+       Rule: "Could I easily re-derive this?" → 3
+     When in doubt, use 4. Losing knowledge is worse than storing too much.
    - key: snake_case name from the canonical set — prefer:
      * "code_pattern" for reusable coding patterns (multi-value, many can coexist)
      * "lesson_learned" for things to remember (multi-value)
      * "anti_pattern" for things to NEVER do again (multi-value)
      * "decision_rationale" for why an architectural choice was made (multi-value)
+     * "capability_gained" for new tools/workflows you can now do (multi-value, importance=5!)
+     * "working_pipeline" for end-to-end workflows that work (multi-value, importance=5!)
      * "current_task" for in-progress work (single-value — auto-supersedes the old one)
    - content: the full lesson with WHY it matters
    - **room**: "project:<repo-name>/<area>" — USE A ROOM. Example: "project:ai-employee/backend/auth".
@@ -223,6 +234,54 @@ def get_skill_preload() -> str:
         return "\n".join(lines)
     except Exception:
         return ""
+
+
+def get_skills_context() -> str:
+    """Scan installed skills from the workspace and inject as context.
+
+    Skills on the filesystem survive restarts (persistent volume).
+    This ensures the agent knows its capabilities immediately without
+    needing to rediscover them via memory_search.
+    """
+    import os
+    skills_dirs = [
+        os.path.join(settings.workspace_dir, ".claude", "skills"),
+        os.path.join(settings.workspace_dir, "skills"),
+    ]
+    found_skills = []
+    for skills_dir in skills_dirs:
+        if not os.path.isdir(skills_dir):
+            continue
+        for entry in os.listdir(skills_dir):
+            skill_path = os.path.join(skills_dir, entry, "SKILL.md")
+            if os.path.isfile(skill_path):
+                try:
+                    with open(skill_path) as f:
+                        content = f.read()
+                    # Extract name from frontmatter or directory name
+                    name = entry
+                    found_skills.append((name, content[:500]))
+                except Exception:
+                    pass
+
+    if not found_skills:
+        return ""
+
+    lines = [
+        "",
+        "=== YOUR INSTALLED SKILLS (from /workspace — these survive restarts!) ===",
+    ]
+    for name, content in found_skills[:15]:  # Cap at 15 to avoid context bloat
+        lines.append(f"\n### {name}")
+        lines.append(content)
+    lines.extend([
+        "",
+        "You HAVE these capabilities. Use them when relevant. Do NOT say you can't do something",
+        "if you have a skill for it.",
+        "=== END SKILLS ===",
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def get_improvement_context() -> str:

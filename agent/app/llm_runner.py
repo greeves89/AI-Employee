@@ -16,6 +16,7 @@ from app.runner_hooks import (
     get_improvement_context,
     get_memory_preload,
     get_skill_preload,
+    get_skills_context,
 )
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolExecutor
@@ -146,8 +147,9 @@ class LLMRunner:
 
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
+            skills_ctx = get_skills_context()
             system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES
-            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
+            enhanced_prompt = CHAT_STARTUP_PREFIX + skills_ctx + prompt
         else:
             memory_preload = get_memory_preload()
             approval_rules = get_approval_rules_prefix()

@@ -13,6 +13,7 @@ from app.runner_hooks import (
     get_improvement_context,
     get_memory_preload,
     get_skill_preload,
+    get_skills_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,16 +47,19 @@ class AgentRunner:
 
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
-            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
+            skills_ctx = get_skills_context()
+            enhanced_prompt = CHAT_STARTUP_PREFIX + skills_ctx + prompt
         else:
             # Full mode: startup context + memory + skills + performance + self-improvement
             memory_preload = get_memory_preload()
             skill_preload = get_skill_preload()
+            skills_ctx = get_skills_context()
             improvement_ctx = get_improvement_context()
             enhanced_prompt = (
                 TASK_STARTUP_PREFIX
                 + memory_preload
                 + skill_preload
+                + skills_ctx
                 + improvement_ctx
                 + prompt
                 + SELF_IMPROVEMENT_SUFFIX

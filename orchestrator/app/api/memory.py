@@ -548,15 +548,25 @@ async def preload_critical_memories(
 
     Open endpoint (no auth) — agents fetch their own preload on every task start.
     """
-    # High-importance memories (importance >= 4)
-    high_imp_result = await db.execute(
+    # Critical memories (importance = 5) — ALWAYS preloaded, no limit compromise
+    critical_result = await db.execute(
         select(AgentMemory)
         .where(AgentMemory.agent_id == agent_id)
-        .where(AgentMemory.importance >= 4)
-        .order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc())
+        .where(AgentMemory.importance >= 5)
+        .order_by(AgentMemory.updated_at.desc())
+        .limit(50)
+    )
+    high_imp = list(critical_result.scalars().all())
+
+    # Important memories (importance = 4) — top 20 by recency
+    important_result = await db.execute(
+        select(AgentMemory)
+        .where(AgentMemory.agent_id == agent_id)
+        .where(AgentMemory.importance == 4)
+        .order_by(AgentMemory.updated_at.desc())
         .limit(20)
     )
-    high_imp = list(high_imp_result.scalars().all())
+    high_imp.extend(important_result.scalars().all())
 
     # All credentials/keys (always relevant)
     creds_result = await db.execute(
@@ -568,13 +578,13 @@ async def preload_critical_memories(
     )
     creds = list(creds_result.scalars().all())
 
-    # Recent learnings (last 10)
+    # Recent learnings (last 15)
     learnings_result = await db.execute(
         select(AgentMemory)
         .where(AgentMemory.agent_id == agent_id)
         .where(AgentMemory.category == "learning")
         .order_by(AgentMemory.updated_at.desc())
-        .limit(10)
+        .limit(15)
     )
     learnings = list(learnings_result.scalars().all())
 
