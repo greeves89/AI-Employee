@@ -95,6 +95,8 @@ class DockerService:
             cpu_quota=cpu_quota,
             restart_policy={"Name": "unless-stopped"},
             labels={"ai-employee.type": "agent"},
+            # Zombie reaping: tini as PID 1 cleans up defunct child processes
+            init=True,
             # Security hardening
             security_opt=security_opts,
             cap_drop=["ALL"],
