@@ -244,11 +244,18 @@ def get_skills_context() -> str:
     needing to rediscover them via memory_search.
     """
     import os
+    # Scan all known skill directories (different AI tools use different paths)
     skills_dirs = [
         os.path.join(settings.workspace_dir, ".claude", "skills"),
+        os.path.join(settings.workspace_dir, ".agents", "skills"),
         os.path.join(settings.workspace_dir, "skills"),
     ]
-    found_skills = []
+    # Also auto-discover any other */skills/ dirs in workspace root
+    for entry in os.listdir(settings.workspace_dir):
+        candidate = os.path.join(settings.workspace_dir, entry, "skills")
+        if entry.startswith(".") and os.path.isdir(candidate) and candidate not in skills_dirs:
+            skills_dirs.append(candidate)
+    found_skills: dict[str, str] = {}  # name → content (deduped)
     for skills_dir in skills_dirs:
         if not os.path.isdir(skills_dir):
             continue
@@ -258,11 +265,20 @@ def get_skills_context() -> str:
                 try:
                     with open(skill_path) as f:
                         content = f.read()
-                    # Extract name from frontmatter or directory name
                     name = entry
-                    found_skills.append((name, content[:500]))
+                    if name not in found_skills:  # first occurrence wins
+                        found_skills[name] = content[:500]
                 except Exception:
                     pass
+    # Also check for standalone SKILL.md in subdirs (e.g. /workspace/pdf_generator/SKILL.md)
+    for entry in os.listdir(settings.workspace_dir):
+        skill_path = os.path.join(settings.workspace_dir, entry, "SKILL.md")
+        if os.path.isfile(skill_path) and entry not in found_skills:
+            try:
+                with open(skill_path) as f:
+                    found_skills[entry] = f.read()[:500]
+            except Exception:
+                pass
 
     if not found_skills:
         return ""
@@ -271,7 +287,7 @@ def get_skills_context() -> str:
         "",
         "=== YOUR INSTALLED SKILLS (from /workspace — these survive restarts!) ===",
     ]
-    for name, content in found_skills[:15]:  # Cap at 15 to avoid context bloat
+    for name, content in list(found_skills.items())[:15]:  # Cap at 15
         lines.append(f"\n### {name}")
         lines.append(content)
     lines.extend([
