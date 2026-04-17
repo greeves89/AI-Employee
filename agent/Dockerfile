@@ -6,6 +6,7 @@ LABEL ai-employee.version="1.20.0"
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    tini \
     curl \
     git \
     build-essential \
@@ -62,4 +63,5 @@ ENV PYTHONUNBUFFERED=1
 # Run as non-root user
 USER agent
 
+ENTRYPOINT ["tini", "--"]
 CMD ["python", "-m", "app.main"]
