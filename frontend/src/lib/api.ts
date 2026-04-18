@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -212,7 +212,8 @@ export async function getSchedules(): Promise<{ schedules: Schedule[]; total: nu
 export async function createSchedule(data: {
   name: string;
   prompt: string;
-  interval_seconds: number;
+  interval_seconds?: number;
+  cron_expression?: string;
   priority?: number;
   agent_id?: string;
   model?: string;
@@ -1294,4 +1295,28 @@ export async function getKnowledgeTags(): Promise<{ tags: KnowledgeTag[] }> {
 
 export async function getKnowledgeGraph(): Promise<{ nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }> {
   return fetchJSON(`${getBase()}/knowledge/graph`);
+}
+
+// Audit Logs
+export async function getAuditLogs(params?: {
+  agent_id?: string;
+  event_type?: string;
+  outcome?: string;
+  since?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ logs: AuditLog[]; total: number }> {
+  const q = new URLSearchParams();
+  if (params?.agent_id) q.set("agent_id", params.agent_id);
+  if (params?.event_type) q.set("event_type", params.event_type);
+  if (params?.outcome) q.set("outcome", params.outcome);
+  if (params?.since) q.set("since", params.since);
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  if (params?.offset != null) q.set("offset", String(params.offset));
+  const qs = q.toString();
+  return fetchJSON(`${getBase()}/audit/logs${qs ? `?${qs}` : ""}`);
+}
+
+export async function getAuditSummary(): Promise<AuditSummary> {
+  return fetchJSON(`${getBase()}/audit/logs/summary`);
 }

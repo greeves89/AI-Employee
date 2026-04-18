@@ -24,6 +24,7 @@ import {
   HeartPulse,
   Sparkles,
   Zap,
+  ScrollText,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
@@ -41,6 +42,7 @@ const navItems = [
   { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
   { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
+  { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
   { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
   { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
   { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },

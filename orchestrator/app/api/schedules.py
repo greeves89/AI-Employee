@@ -2,6 +2,8 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from app.services.scheduler_service import _calc_next_run
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,11 +49,12 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
         name=data.name,
         prompt=data.prompt,
         interval_seconds=data.interval_seconds,
+        cron_expression=data.cron_expression,
         priority=data.priority,
         agent_id=data.agent_id,
         model=data.model,
         enabled=True,
-        next_run_at=now + timedelta(seconds=data.interval_seconds),
+        next_run_at=_calc_next_run(data, now),  # type: ignore[arg-type]
         total_runs=0,
         success_count=0,
         fail_count=0,
@@ -77,10 +80,10 @@ async def update_schedule(
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)
 
-    # Recalculate next_run if interval changed
-    if data.interval_seconds is not None:
+    # Recalculate next_run if timing changed
+    if data.interval_seconds is not None or data.cron_expression is not None:
         now = datetime.now(timezone.utc)
-        schedule.next_run_at = now + timedelta(seconds=data.interval_seconds)
+        schedule.next_run_at = _calc_next_run(schedule, now)
 
     await db.commit()
     await db.refresh(schedule)
@@ -144,8 +147,7 @@ async def pause_schedule(schedule_id: str, user=Depends(require_auth_or_agent), 
 async def resume_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
     schedule.enabled = True
-    # Reset next_run to now + interval
     now = datetime.now(timezone.utc)
-    schedule.next_run_at = now + timedelta(seconds=schedule.interval_seconds)
+    schedule.next_run_at = _calc_next_run(schedule, now)
     await db.commit()
     return {"status": "resumed", "schedule_id": schedule_id}

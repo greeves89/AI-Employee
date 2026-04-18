@@ -126,6 +126,7 @@ export interface Schedule {
   name: string;
   prompt: string;
   interval_seconds: number;
+  cron_expression: string | null;
   priority: number;
   agent_id: string | null;
   model: string | null;
@@ -141,6 +142,26 @@ export interface Schedule {
 }
 
 export type ModelProvider = "anthropic" | "bedrock" | "vertex" | "foundry";
+
+export interface AuditLog {
+  id: number;
+  agent_id: string;
+  task_id: string | null;
+  approval_id: string | null;
+  event_type: string;
+  command: string | null;
+  outcome: "success" | "failure" | "blocked";
+  exit_code: number | null;
+  user_id: string | null;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AuditSummary {
+  by_event_type: Record<string, number>;
+  by_outcome: Record<string, number>;
+  total: number;
+}
 
 export interface Settings {
   has_api_key: boolean;

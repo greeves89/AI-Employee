@@ -2,6 +2,12 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+try:
+    from croniter import croniter
+    _CRONITER_AVAILABLE = True
+except ImportError:
+    _CRONITER_AVAILABLE = False
+
 from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,6 +130,7 @@ class SchedulerService:
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
         # Skip proactive schedules if the agent is busy with a TASK (not chat)
+        is_cron = bool(schedule.cron_expression and _CRONITER_AVAILABLE)
         if schedule.name.startswith("[Proactive]") and schedule.agent_id:
             queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
             status = await self.redis.get_agent_status(schedule.agent_id)
@@ -134,7 +141,7 @@ class SchedulerService:
                 current_task and not current_task.startswith("chat:")
             )
             if is_busy_with_task:
-                schedule.next_run_at = now + timedelta(seconds=schedule.interval_seconds)
+                schedule.next_run_at = _calc_next_run(schedule, now)
                 print(
                     f"[Scheduler] Proactive {schedule.name} skipped - "
                     f"agent busy (queue={queue_depth}, task={current_task!r})"
@@ -160,9 +167,24 @@ class SchedulerService:
         # Advance schedule
         schedule.last_run_at = now
         schedule.total_runs += 1
-        schedule.next_run_at = now + timedelta(seconds=schedule.interval_seconds)
+        schedule.next_run_at = _calc_next_run(schedule, now)
 
         print(
             f"[Scheduler] {schedule.name} triggered task {task.id}, "
             f"next run at {schedule.next_run_at.isoformat()}"
         )
+
+
+def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
+    """Return the next fire time for a schedule.
+
+    If cron_expression is set and croniter is available, use it.
+    Otherwise fall back to interval_seconds.
+    """
+    if schedule.cron_expression and _CRONITER_AVAILABLE:
+        try:
+            cron = croniter(schedule.cron_expression, now)
+            return cron.get_next(datetime).replace(tzinfo=timezone.utc)
+        except Exception as e:
+            print(f"[Scheduler] Invalid cron expression '{schedule.cron_expression}': {e} — falling back to interval")
+    return now + timedelta(seconds=max(schedule.interval_seconds, 60))

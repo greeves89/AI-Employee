@@ -30,7 +30,9 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] as const } },
 };
 
-function formatInterval(seconds: number): string {
+function formatInterval(schedule: Schedule): string {
+  if (schedule.cron_expression) return `Cron: ${schedule.cron_expression}`;
+  const seconds = schedule.interval_seconds;
   if (seconds < 3600) return `Every ${Math.round(seconds / 60)} min`;
   if (seconds < 86400) {
     const h = Math.round(seconds / 3600);
@@ -39,6 +41,16 @@ function formatInterval(seconds: number): string {
   const d = Math.round(seconds / 86400);
   return `Every ${d} day${d > 1 ? "s" : ""}`;
 }
+
+const CRON_PRESETS = [
+  { label: "Every day at midnight", value: "0 0 * * *" },
+  { label: "Every day at 9am", value: "0 9 * * *" },
+  { label: "Every Monday 9am", value: "0 9 * * 1" },
+  { label: "Every weekday 8am", value: "0 8 * * 1-5" },
+  { label: "Every hour", value: "0 * * * *" },
+  { label: "Every Sunday midnight", value: "0 0 * * 0" },
+  { label: "1st of month", value: "0 9 1 * *" },
+];
 
 function formatRelative(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -80,7 +92,9 @@ export default function SchedulesPage() {
   // Create form state
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [timingMode, setTimingMode] = useState<"interval" | "cron">("interval");
   const [intervalSeconds, setIntervalSeconds] = useState(3600);
+  const [cronExpression, setCronExpression] = useState("");
   const [priority, setPriority] = useState(1);
   const [agentId, setAgentId] = useState("");
 
@@ -108,13 +122,16 @@ export default function SchedulesPage() {
       await api.createSchedule({
         name: name.trim(),
         prompt: prompt.trim(),
-        interval_seconds: intervalSeconds,
+        interval_seconds: timingMode === "interval" ? intervalSeconds : 0,
+        cron_expression: timingMode === "cron" ? cronExpression.trim() : undefined,
         priority,
         agent_id: agentId || undefined,
       });
       setName("");
       setPrompt("");
+      setTimingMode("interval");
       setIntervalSeconds(3600);
+      setCronExpression("");
       setPriority(1);
       setAgentId("");
       setShowCreate(false);
@@ -204,26 +221,71 @@ export default function SchedulesPage() {
               />
             </div>
 
-            {/* Interval Picker */}
+            {/* Timing Mode Toggle */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Interval
+                Schedule Type
               </label>
-              <div className="flex flex-wrap gap-2">
-                {INTERVAL_PRESETS.map((preset) => (
+              <div className="flex gap-2 mb-3">
+                {(["interval", "cron"] as const).map((mode) => (
                   <button
-                    key={preset.seconds}
-                    onClick={() => setIntervalSeconds(preset.seconds)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                      intervalSeconds === preset.seconds
+                    key={mode}
+                    onClick={() => setTimingMode(mode)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all capitalize ${
+                      timingMode === mode
                         ? "bg-primary/20 text-primary border border-primary/30"
                         : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06] hover:bg-foreground/[0.08]"
                     }`}
                   >
-                    {preset.label}
+                    {mode === "interval" ? "Every X minutes/hours" : "Cron expression"}
                   </button>
                 ))}
               </div>
+
+              {timingMode === "interval" ? (
+                <div className="flex flex-wrap gap-2">
+                  {INTERVAL_PRESETS.map((preset) => (
+                    <button
+                      key={preset.seconds}
+                      onClick={() => setIntervalSeconds(preset.seconds)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                        intervalSeconds === preset.seconds
+                          ? "bg-primary/20 text-primary border border-primary/30"
+                          : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06] hover:bg-foreground/[0.08]"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {CRON_PRESETS.map((p) => (
+                      <button
+                        key={p.value}
+                        onClick={() => setCronExpression(p.value)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                          cronExpression === p.value
+                            ? "bg-primary/20 text-primary border border-primary/30"
+                            : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06] hover:bg-foreground/[0.08]"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    value={cronExpression}
+                    onChange={(e) => setCronExpression(e.target.value)}
+                    placeholder="Custom: 0 9 * * 1  (minute hour day month weekday)"
+                    className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm font-mono placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25"
+                  />
+                  <p className="text-[10px] text-muted-foreground/50">
+                    Standard 5-field cron: minute hour day-of-month month day-of-week · Presets: @daily @weekly @monthly @hourly
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Priority + Agent */}
@@ -283,7 +345,7 @@ export default function SchedulesPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!name.trim() || !prompt.trim() || creating}
+                disabled={!name.trim() || !prompt.trim() || creating || (timingMode === "cron" && !cronExpression.trim())}
                 className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50"
               >
                 {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -396,7 +458,7 @@ export default function SchedulesPage() {
               <div className="mt-4 flex items-center gap-6 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5" />
-                  <span>{formatInterval(schedule.interval_seconds)}</span>
+                  <span>{formatInterval(schedule)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Timer className="h-3.5 w-3.5" />

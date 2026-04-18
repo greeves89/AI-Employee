@@ -13,7 +13,8 @@ class Schedule(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cron_expression: Mapped[str | None] = mapped_column(String, nullable=True)  # e.g. "0 9 * * 1" = every Monday 9am
     priority: Mapped[int] = mapped_column(Integer, default=1)
     agent_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("agents.id"), nullable=True
