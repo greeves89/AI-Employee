@@ -1,0 +1,16 @@
+# Native Mac requirements (MPS/Metal GPU support)
+# Install with: pip install -r requirements_mac.txt
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+transformers==4.46.0
+# torch with MPS (Apple Silicon) — install separately via:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# or just: pip install torch torchaudio  (auto-detects MPS on Apple Silicon)
+torch>=2.3.0
+torchaudio>=2.3.0
+numpy==1.26.4
+soundfile==0.12.1
+scipy==1.13.1
+huggingface_hub==0.25.0
+httpx==0.27.2
+edge-tts==6.1.12

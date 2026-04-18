@@ -41,11 +41,24 @@ def _load_model() -> bool:
     global _tts_pipeline, _model_loaded, _provider
     try:
         logger.info(f"Loading TTS model: {MODEL_NAME}")
+        import torch
         from transformers import pipeline as hf_pipeline
+
+        # Prefer Apple Metal (MPS) → CUDA → CPU
+        if torch.backends.mps.is_available():
+            device = "mps"
+            logger.info("Using Apple Metal (MPS) GPU acceleration")
+        elif torch.cuda.is_available():
+            device = "cuda"
+            logger.info("Using CUDA GPU acceleration")
+        else:
+            device = "cpu"
+            logger.info("Using CPU (no GPU available)")
+
         _tts_pipeline = hf_pipeline(
             "text-to-speech",
             model=MODEL_NAME,
-            device="cpu",
+            device=device,
         )
         _model_loaded = True
         _provider = "vibevoice"

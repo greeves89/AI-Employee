@@ -54,8 +54,9 @@ class Settings(BaseSettings):
     # OpenAI (for Whisper voice transcription)
     openai_api_key: str = ""
 
-    # Local TTS service (VibeVoice container)
-    tts_service_url: str = "http://tts-service:8002"
+    # Local TTS service (VibeVoice, runs natively on Mac host with Metal GPU)
+    # Docker containers reach Mac host via host.docker.internal
+    tts_service_url: str = "http://host.docker.internal:8002"
 
     # Security
     encryption_key: str = ""
