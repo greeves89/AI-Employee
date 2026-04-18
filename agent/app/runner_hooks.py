@@ -100,13 +100,16 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    Format: `- <situation>: <what to do> (<why>)`
    Keep concise. This file is what you read at the START of every task.
 
-6. **Create a skill if there's a repeatable pattern**: If this task revealed a workflow
-   you'll need again, create `/workspace/.claude/skills/<skill-name>/SKILL.md` with
-   frontmatter (name, description, optional `paths:` list for path-based activation)
-   + instructions. Makes you permanently better.
+6. **Rate this task (MANDATORY)**: Call `rate_task` with:
+   - rating: 1-5 (be honest — 3 means OK, 5 means truly excellent)
+   - reflection: ONE sentence about what went well or what to do differently next time
+
+7. **Create a skill if there's a repeatable pattern**: If this task revealed a workflow
+   you'll need again, call `create_skill` with a title, description, and the solution.
+   This saves it to the shared marketplace for all agents.
 
 This reflection is NOT optional. You MUST perform it. Short tasks get short reflections,
-long tasks get detailed ones — but ALL tasks end with memory_save calls (with room + tag_type).
+long tasks get detailed ones — but ALL tasks end with memory_save + rate_task calls.
 """
 
 

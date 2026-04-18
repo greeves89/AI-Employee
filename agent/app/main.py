@@ -109,6 +109,15 @@ def register_mcp_servers() -> None:
                 "AGENT_TOKEN": settings.agent_token,
             },
         },
+        "skills": {
+            "command": "node",
+            "args": ["/opt/mcp/skill-server.mjs"],
+            "env": {
+                "ORCHESTRATOR_URL": settings.orchestrator_url,
+                "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
+            },
+        },
     }
 
     for name, cfg in builtin_servers.items():
@@ -151,6 +160,7 @@ def _write_mcp_json_fallback() -> None:
         ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
         ("knowledge", "/opt/mcp/knowledge-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+        ("skills", "/opt/mcp/skill-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
     ]:
         mcp_config["mcpServers"][name] = {"command": "node", "args": [cmd], "env": envs}
 

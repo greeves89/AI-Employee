@@ -88,6 +88,9 @@ class SchedulerService:
                 expired = list(result.scalars().all())
                 if not expired:
                     return
+                from app.models.task_rating import TaskRating
+                expired_ids = [t.id for t in expired]
+                await db.execute(delete(TaskRating).where(TaskRating.task_id.in_(expired_ids)))
                 for task in expired:
                     await db.delete(task)
                 await db.commit()

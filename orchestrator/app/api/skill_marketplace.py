@@ -465,17 +465,20 @@ async def agent_propose_skill(
     await db.commit()
     await db.refresh(skill)
 
-    # Notify user about the proposal
+    # Notify user about the proposal (use separate session to avoid polluting the skill tx)
     try:
+        from app.db.session import async_session_factory
         from app.models.notification import Notification
-        notif = Notification(
-            type="skill_proposed",
-            title=f"Neuer Skill vorgeschlagen: {body.name}",
-            message=f"Agent {agent_id} hat den Skill '{body.name}' vorgeschlagen: {body.description}",
-            priority="medium",
-        )
-        db.add(notif)
-        await db.commit()
+        async with async_session_factory() as notif_db:
+            notif = Notification(
+                type="skill_proposed",
+                title=f"Neuer Skill vorgeschlagen: {body.name}",
+                message=f"Agent {agent_id} hat den Skill '{body.name}' vorgeschlagen: {body.description}",
+                priority="medium",
+                agent_id=agent_id,
+            )
+            notif_db.add(notif)
+            await notif_db.commit()
     except Exception:
         pass
 

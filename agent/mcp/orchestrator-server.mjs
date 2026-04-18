@@ -376,6 +376,66 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["todo_id"],
       },
     },
+    {
+      name: "rate_task",
+      description:
+        "Rate your own task performance after completion. ALWAYS call this at the end of every task. " +
+        "Give an honest 1-5 star rating and a one-sentence reflection on what went well or could be improved.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          rating: {
+            type: "integer",
+            description: "1-5 stars (1=poor, 3=ok, 5=excellent)",
+            minimum: 1,
+            maximum: 5,
+          },
+          reflection: {
+            type: "string",
+            description: "One sentence: what went well or what could be improved next time",
+          },
+          ask_feedback: {
+            type: "boolean",
+            description: "Whether to ask the user for feedback (default: true)",
+          },
+        },
+        required: ["rating", "reflection"],
+      },
+    },
+    {
+      name: "create_skill",
+      description:
+        "Save a reusable skill/solution to the marketplace after completing a task. " +
+        "Call this when you've built something that could be reused in future tasks by you or other agents.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "Short skill name (e.g. 'PDF Report Generator', 'GitHub PR Workflow')",
+          },
+          description: {
+            type: "string",
+            description: "What this skill does (1-2 sentences)",
+          },
+          solution: {
+            type: "string",
+            description: "The actual approach, code snippet, or workflow used",
+          },
+          category: {
+            type: "string",
+            description: "Category: routine, template, workflow, pattern, recipe, tool (default: pattern)",
+            enum: ["routine", "template", "workflow", "pattern", "recipe", "tool"],
+          },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Keywords for search (e.g. ['pdf', 'report', 'python'])",
+          },
+        },
+        required: ["title", "description", "solution"],
+      },
+    },
   ],
 }));
 
@@ -680,6 +740,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `TODO #${result.id} "${result.title}" marked as completed.`,
           },
         ],
+      };
+    }
+
+    case "rate_task": {
+      const body = {
+        rating: args.rating,
+        reflection: args.reflection,
+        ask_feedback: args.ask_feedback !== undefined ? args.ask_feedback : true,
+      };
+      const result = await apiCall("/ratings/task-self-rate", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Task rated: ${"★".repeat(args.rating)}${"☆".repeat(5 - args.rating)} (${args.rating}/5). Reflection saved. ${result.ask_feedback ? "User will be asked for feedback." : ""}`,
+        }],
+      };
+    }
+
+    case "create_skill": {
+      // Map free-form category to valid DB enum values
+      const VALID_CATEGORIES = ["routine", "template", "workflow", "pattern", "recipe", "tool"];
+      const rawCategory = (args.category || "pattern").toLowerCase();
+      const categoryMap = {
+        coding: "pattern", code: "pattern", programming: "pattern", dev: "pattern",
+        web: "pattern", data: "routine", communication: "routine",
+        research: "workflow", other: "pattern",
+      };
+      const category = VALID_CATEGORIES.includes(rawCategory)
+        ? rawCategory
+        : (categoryMap[rawCategory] || "pattern");
+
+      const result = await apiCall("/skills/agent/propose", {
+        method: "POST",
+        body: JSON.stringify({
+          name: args.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+          description: args.description,
+          content: args.solution,
+          category,
+        }),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Skill created: "${result.name}" (id: ${result.id}). It's now in the marketplace for all agents to use.`,
+        }],
       };
     }
 
