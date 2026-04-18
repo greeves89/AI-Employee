@@ -207,11 +207,15 @@ class ChatHandler:
                             if errors
                             else event.get("result", "Unknown error")
                         )
-                        result_data = {"status": "error", "error": error_msg}
-                        stream_had_error = True
-                        await self.log_publisher.publish_chat(
-                            message_id, "error", {"message": error_msg}
-                        )
+                        # Internal CLI diagnostics (e.g. ede_diagnostic) are not user errors
+                        if error_msg.startswith("[ede_diagnostic]") or error_msg.startswith("[diagnostic]"):
+                            logger.debug(f"Suppressed CLI diagnostic: {error_msg}")
+                        else:
+                            result_data = {"status": "error", "error": error_msg}
+                            stream_had_error = True
+                            await self.log_publisher.publish_chat(
+                                message_id, "error", {"message": error_msg}
+                            )
                     else:
                         # Use accumulated text, fallback to result field
                         final_text = full_text or event.get("result", "")
