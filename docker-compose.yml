@@ -146,6 +146,30 @@ services:
       - internal
       - agent-network
 
+  tts-service:
+    build:
+      context: ./tts-service
+      dockerfile: Dockerfile
+    container_name: ai-employee-tts
+    volumes:
+      - tts_models:/models
+    restart: unless-stopped
+    environment:
+      TTS_MODEL: ${TTS_MODEL:-microsoft/VibeVoice-1.5B}
+      EDGE_TTS_VOICE: ${EDGE_TTS_VOICE:-de-DE-ConradNeural}
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    networks:
+      - internal
+
   embedding-service:
     build:
       context: ./embedding-service
@@ -250,6 +274,7 @@ volumes:
   postgres_data:
   redis_data:
   embedding_models:
+  tts_models:
   ai-employee-shared:
     external: true
 

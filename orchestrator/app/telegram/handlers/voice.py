@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import tempfile
 
 import httpx
@@ -9,6 +10,8 @@ from telegram.ext import ContextTypes
 
 from app.config import settings
 from app.telegram.handlers.commands import _active_chats
+
+logger = logging.getLogger(__name__)
 
 
 def _get_openai_key() -> str:
@@ -32,22 +35,32 @@ async def _transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> s
         return resp.json()["text"]
 
 
-async def _text_to_speech(text: str) -> bytes:
-    """Convert text to speech via OpenAI TTS API. Returns OGG Opus bytes."""
+async def _text_to_speech(text: str, language: str = "de") -> bytes:
+    """Convert text to speech via local TTS service (VibeVoice / edge-tts fallback).
+
+    Falls back to OpenAI TTS if the local service is unreachable.
+    """
+    tts_url = settings.tts_service_url
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{tts_url}/synthesize",
+                json={"text": text, "language": language},
+            )
+            resp.raise_for_status()
+            return resp.content
+    except Exception as e:
+        logger.warning(f"Local TTS service unavailable ({e}), falling back to OpenAI TTS")
+
+    # Fallback: OpenAI TTS (requires API key)
     api_key = _get_openai_key()
+    if not api_key:
+        raise RuntimeError("TTS service unreachable and OPENAI_API_KEY not set")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             "https://api.openai.com/v1/audio/speech",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "tts-1",
-                "input": text,
-                "voice": "nova",
-                "response_format": "opus",
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": "tts-1", "input": text, "voice": "nova", "response_format": "opus"},
         )
         resp.raise_for_status()
         return resp.content

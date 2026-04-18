@@ -1,0 +1,12 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+transformers==4.46.0
+torch==2.4.1
+torchaudio==2.4.1
+numpy==1.26.4
+soundfile==0.12.1
+scipy==1.13.1
+pydub==0.25.1
+huggingface_hub==0.25.0
+httpx==0.27.2
+edge-tts==6.1.12

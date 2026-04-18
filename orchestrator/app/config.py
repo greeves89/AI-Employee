@@ -51,8 +51,11 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
-    # OpenAI (for Whisper voice transcription + TTS)
+    # OpenAI (for Whisper voice transcription)
     openai_api_key: str = ""
+
+    # Local TTS service (VibeVoice container)
+    tts_service_url: str = "http://tts-service:8002"
 
     # Security
     encryption_key: str = ""
