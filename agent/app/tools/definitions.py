@@ -904,6 +904,41 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
+    # ── Skill Marketplace — agent-facing create & rate ──
+    {
+        "type": "function",
+        "function": {
+            "name": "create_skill",
+            "description": "Save a reusable skill/solution to the marketplace after completing a task. Call this when you've built something that could be reused in future tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short skill name"},
+                    "description": {"type": "string", "description": "What this skill does (1-2 sentences)"},
+                    "solution": {"type": "string", "description": "The actual approach, code, or prompt used"},
+                    "category": {"type": "string", "description": "Category: web, data, communication, coding, research, other"},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Keywords"},
+                },
+                "required": ["title", "description", "solution"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rate_task",
+            "description": "Rate your own task performance after completion. Always call this at the end of every task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rating": {"type": "integer", "description": "1-5 stars"},
+                    "reflection": {"type": "string", "description": "One sentence: what went well or could be improved"},
+                    "ask_feedback": {"type": "boolean", "description": "Whether to ask the user for feedback (default true)"},
+                },
+                "required": ["rating", "reflection"],
+            },
+        },
+    },
     # ── Skill Marketplace (skill-server.mjs parity) ──
     {
         "type": "function",

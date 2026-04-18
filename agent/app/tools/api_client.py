@@ -542,6 +542,47 @@ class OrchestratorAPIClient:
 
     # ── Skill Marketplace ──
 
+    async def create_skill(self, params: dict) -> str:
+        """Save a reusable skill to the marketplace."""
+        body = {
+            "name": params.get("title", "untitled-skill").lower().replace(" ", "-"),
+            "description": params.get("description", ""),
+            "content": params.get("solution", ""),
+            "category": params.get("category", "pattern"),
+        }
+        result = await self._request("POST", "/skills/agent/propose", json=body)
+        if isinstance(result, str):
+            return result
+        return (
+            f"Skill '{params.get('title')}' saved to marketplace "
+            f"(id: {result.get('id', '')}, status: draft — pending user review)"
+        )
+
+    async def rate_task(self, params: dict) -> str:
+        """Rate own task performance and optionally ask for user feedback."""
+        rating = max(1, min(5, int(params.get("rating", 3))))
+        reflection = params.get("reflection", "")
+        ask_feedback = params.get("ask_feedback", True)
+
+        # Record self-rating via dedicated endpoint
+        result = await self._request(
+            "POST",
+            "/ratings/task-self-rate",
+            json={"rating": rating, "reflection": reflection},
+        )
+
+        stars = "⭐" * rating
+        msg = f"Task self-rated {stars} ({rating}/5): {reflection}"
+        if isinstance(result, dict) and result.get("id"):
+            msg += f" (rating id: {result['id']})"
+
+        if ask_feedback:
+            msg += (
+                "\n\n💬 **Feedback gewünscht:** War das hilfreich? "
+                "Was kann ich beim nächsten Mal besser machen?"
+            )
+        return msg
+
     async def skill_search(self, params: dict) -> str:
         """Search the skill marketplace."""
         query: dict[str, Any] = {}

@@ -267,7 +267,11 @@ _PLATFORM_SECTION = (
     "   - Append to '## Learned Patterns' (things that worked)\n"
     "   - Append to '## Errors & Fixes' (things that went wrong + how you fixed them)\n"
     "4. If you did a task you'll likely do again: create a Skill under `/workspace/.claude/skills/`\n"
-    "Agents that don't learn get stuck making the same mistakes. You get smarter with every task.\n"
+    "Agents that don't learn get stuck making the same mistakes. You get smarter with every task.\n\n"
+    "## Nach jeder Aufgabe (PFLICHT)\n"
+    "1. Bewerte dich selbst mit `rate_task` (1-5⭐ + eine Reflexions-Satz)\n"
+    "2. Wenn du etwas Wiederverwendbares gebaut hast → `create_skill` aufrufen\n"
+    "3. Frage den Nutzer nach Feedback: \"War das hilfreich? Was kann ich verbessern?\"\n"
 )
 
 
