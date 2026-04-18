@@ -50,6 +50,14 @@ class SkillPropose(BaseModel):
     description: str
     content: str
     category: str = "pattern"
+    task_id: str | None = None  # task that produced this skill
+
+
+class SkillUpdate(BaseModel):
+    """Agent updates an existing skill it created."""
+    description: str | None = None
+    content: str | None = None
+    feedback: str | None = None  # human-readable changelog for this update
 
 
 class SkillAssign(BaseModel):
@@ -460,6 +468,7 @@ async def agent_propose_skill(
         category=body.category,
         status=SkillStatus.DRAFT,
         created_by=f"agent:{agent_id}",
+        source_task_id=body.task_id,
     )
     db.add(skill)
     await db.commit()
@@ -482,6 +491,36 @@ async def agent_propose_skill(
     except Exception:
         pass
 
+    return _to_response(skill)
+
+
+@router.patch("/agent/{skill_id}", status_code=200)
+async def agent_update_skill(
+    skill_id: int,
+    body: SkillUpdate,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent refines a skill it created (e.g. after user feedback)."""
+    agent_id = auth["agent_id"]
+
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if skill.created_by != f"agent:{agent_id}":
+        raise HTTPException(status_code=403, detail="You can only update skills you created")
+
+    if body.description is not None:
+        skill.description = body.description
+    if body.content is not None:
+        old_content = skill.content
+        changelog = f"\n\n---\n*Updated by agent:{agent_id}*"
+        if body.feedback:
+            changelog += f" based on feedback: {body.feedback}"
+        skill.content = body.content + changelog
+
+    await db.commit()
+    await db.refresh(skill)
     return _to_response(skill)
 
 

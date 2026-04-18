@@ -45,6 +45,7 @@ class Skill(Base, TimestampMixin):
     created_by: Mapped[str] = mapped_column(String, default="user")  # "user", "agent:<agent_id>", "import:github"
     source_url: Mapped[str | None] = mapped_column(String, nullable=True)  # GitHub repo URL if imported
     source_repo: Mapped[str | None] = mapped_column(String, nullable=True)  # e.g. "vercel-labs/skills"
+    source_task_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)  # task that produced this skill
 
     # Auto-activation (optional glob patterns — skill activates when task touches matching files)
     paths: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ["**/alembic/**", "**/models/*.py"]

@@ -46,10 +46,12 @@ class AgentRunner:
         model = model or settings.default_model
         self.is_running = True
 
+        task_id_line = f"CURRENT_TASK_ID: {task_id}\n\n"
+
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
             skills_ctx = get_skills_context()
-            enhanced_prompt = CHAT_STARTUP_PREFIX + skills_ctx + prompt
+            enhanced_prompt = task_id_line + CHAT_STARTUP_PREFIX + skills_ctx + prompt
         else:
             # Full mode: startup context + memory + skills + user feedback + performance + self-improvement
             memory_preload = get_memory_preload()
@@ -58,7 +60,8 @@ class AgentRunner:
             user_feedback = get_user_feedback()
             improvement_ctx = get_improvement_context()
             enhanced_prompt = (
-                TASK_STARTUP_PREFIX
+                task_id_line
+                + TASK_STARTUP_PREFIX
                 + memory_preload
                 + user_feedback
                 + skill_preload

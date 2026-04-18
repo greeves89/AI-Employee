@@ -169,6 +169,42 @@ async def rate_task(
         except Exception as e:
             logger.warning(f"Could not save feedback memory: {e}")
 
+        # If this task produced a skill, queue a follow-up task to update it
+        try:
+            from app.models.skill import Skill
+            from app.core.task_router import TaskRouter
+            from app.core.load_balancer import LoadBalancer
+            from app.services.redis_service import RedisService
+            from app.config import settings as app_settings
+
+            skill_result = await db.execute(
+                select(Skill).where(Skill.source_task_id == task_id)
+            )
+            skill = skill_result.scalar_one_or_none()
+            if skill:
+                stars = "★" * body.rating + "☆" * (5 - body.rating)
+                followup_prompt = (
+                    f"Der Nutzer hat deinen Task '{task.title or task_id}' mit {stars} bewertet.\n\n"
+                    f"Feedback: \"{body.comment}\"\n\n"
+                    f"Du hast in diesem Task den Skill **'{skill.name}'** (ID: {skill.id}) erstellt.\n"
+                    f"Überarbeite diesen Skill jetzt mit `skill_update` basierend auf dem Feedback.\n"
+                    f"Rufe danach `rate_task` mit 5★ auf (diese Korrektur-Aufgabe)."
+                )
+                redis = RedisService(redis_url=app_settings.redis_url)
+                await redis.connect()
+                lb = LoadBalancer(redis)
+                router = TaskRouter(db, redis, lb)
+                await router.create_and_route_task(
+                    title=f"Skill Update: {skill.name}",
+                    prompt=followup_prompt,
+                    agent_id=task.agent_id,
+                    priority=8,
+                )
+                await redis.disconnect()
+                logger.info(f"Queued skill-update follow-up for skill {skill.id} after {body.rating}★ feedback")
+        except Exception as e:
+            logger.warning(f"Could not queue skill-update follow-up: {e}")
+
     return _to_response(rating)
 
 

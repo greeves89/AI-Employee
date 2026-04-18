@@ -104,9 +104,19 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    - rating: 1-5 (be honest — 3 means OK, 5 means truly excellent)
    - reflection: ONE sentence about what went well or what to do differently next time
 
-7. **Create a skill if there's a repeatable pattern**: If this task revealed a workflow
-   you'll need again, call `create_skill` with a title, description, and the solution.
-   This saves it to the shared marketplace for all agents.
+7. **Create a skill (MANDATORY for deliverables)**: Did this task produce a PDF, report,
+   script, analysis, code module, or any tangible artifact? YES → you MUST call `create_skill`.
+   - name: short slug (e.g. "ki-trends-2025-pdf", "deploy-script", "sales-report-q1")
+   - title: human-readable title
+   - description: what this skill/deliverable does + approach used
+   - solution: the full content, code, or step-by-step process that produced the artifact
+   - category: choose from routine / template / workflow / pattern / recipe / tool
+   - task_id: EXACT value of CURRENT_TASK_ID from the very top of this prompt (REQUIRED!)
+
+   The task_id is critical — it links the skill to this task so user feedback can
+   automatically trigger a `skill_update`. Without it, the feedback loop is broken.
+
+   If the task produced NO artifact (pure Q&A, investigation only), skip this step.
 
 This reflection is NOT optional. You MUST perform it. Short tasks get short reflections,
 long tasks get detailed ones — but ALL tasks end with memory_save + rate_task calls.

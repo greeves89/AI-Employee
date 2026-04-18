@@ -432,8 +432,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             items: { type: "string" },
             description: "Keywords for search (e.g. ['pdf', 'report', 'python'])",
           },
+          task_id: {
+            type: "string",
+            description: "ID of the current task (from CURRENT_TASK_ID in your prompt) — links skill to task for feedback loop",
+          },
         },
         required: ["title", "description", "solution"],
+      },
+    },
+    {
+      name: "skill_update",
+      description:
+        "Update a skill you previously created, e.g. after receiving user feedback. " +
+        "Pass the skill_id from the create_skill response. Updates the skill content in the marketplace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          skill_id: {
+            type: "integer",
+            description: "ID of the skill to update (from the create_skill response)",
+          },
+          description: {
+            type: "string",
+            description: "Updated description (optional)",
+          },
+          solution: {
+            type: "string",
+            description: "Updated skill content/approach",
+          },
+          feedback: {
+            type: "string",
+            description: "What changed and why (e.g. 'User wanted landscape orientation, not portrait')",
+          },
+        },
+        required: ["skill_id", "solution", "feedback"],
       },
     },
   ],
@@ -781,12 +813,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           description: args.description,
           content: args.solution,
           category,
+          task_id: args.task_id || null,
         }),
       });
       return {
         content: [{
           type: "text",
-          text: `Skill created: "${result.name}" (id: ${result.id}). It's now in the marketplace for all agents to use.`,
+          text: `Skill created: "${result.name}" (id: ${result.id}). It's now in the marketplace. If you get feedback on this task, the skill will be updated automatically.`,
+        }],
+      };
+    }
+
+    case "skill_update": {
+      const result = await apiCall(`/skills/agent/${args.skill_id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          description: args.description || null,
+          content: args.solution,
+          feedback: args.feedback,
+        }),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Skill "${result.name}" (id: ${result.id}) updated. Changelog: ${args.feedback}`,
         }],
       };
     }
