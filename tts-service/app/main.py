@@ -1,4 +1,4 @@
-"""TTS Service — macOS native voices (say) with Kokoro local model option.
+"""TTS Service — edge-tts (Conrad/Neural voices) with macOS say fallback.
 
 POST /synthesize   { text, language?, speaker? }  → audio/ogg
 GET  /voices       → list available voices
@@ -25,40 +25,37 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="AI-Employee TTS Service", version="1.0.0")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-# macOS voice per language (all built-in, offline, free)
-MACOS_VOICES: dict[str, str] = {
-    "de": os.getenv("TTS_VOICE_DE", "Anna"),       # German
-    "en": os.getenv("TTS_VOICE_EN", "Samantha"),   # English
-    "fr": os.getenv("TTS_VOICE_FR", "Thomas"),     # French
-    "es": os.getenv("TTS_VOICE_ES", "Juan"),       # Spanish
-    "it": os.getenv("TTS_VOICE_IT", "Alice"),      # Italian
-    "nl": os.getenv("TTS_VOICE_NL", "Xander"),    # Dutch
-    "pt": os.getenv("TTS_VOICE_PT", "Joana"),      # Portuguese
-    "ja": os.getenv("TTS_VOICE_JA", "Kyoko"),      # Japanese
-    "zh": os.getenv("TTS_VOICE_ZH", "Tingting"),   # Chinese
-    "ru": os.getenv("TTS_VOICE_RU", "Milena"),     # Russian
-    "pl": os.getenv("TTS_VOICE_PL", "Zosia"),      # Polish
+# edge-tts voices per language (Microsoft Neural — free, no API key)
+EDGE_TTS_VOICES: dict[str, str] = {
+    "de": os.getenv("TTS_VOICE_DE", "de-DE-ConradNeural"),
+    "en": os.getenv("TTS_VOICE_EN", "en-US-GuyNeural"),
+    "fr": os.getenv("TTS_VOICE_FR", "fr-FR-HenriNeural"),
+    "es": os.getenv("TTS_VOICE_ES", "es-ES-AlvaroNeural"),
+    "it": os.getenv("TTS_VOICE_IT", "it-IT-DiegoNeural"),
+    "nl": os.getenv("TTS_VOICE_NL", "nl-NL-MaartenNeural"),
+    "pt": os.getenv("TTS_VOICE_PT", "pt-BR-AntonioNeural"),
+    "ru": os.getenv("TTS_VOICE_RU", "ru-RU-DmitryNeural"),
+    "ja": os.getenv("TTS_VOICE_JA", "ja-JP-KeitaNeural"),
+    "zh": os.getenv("TTS_VOICE_ZH", "zh-CN-YunxiNeural"),
+    "pl": os.getenv("TTS_VOICE_PL", "pl-PL-MarekNeural"),
 }
+
+# macOS fallback voices per language
+MACOS_VOICES: dict[str, str] = {
+    "de": "Anna", "en": "Samantha", "fr": "Thomas",
+    "es": "Juan", "it": "Alice", "ja": "Kyoko",
+    "zh": "Tingting", "ru": "Milena", "pt": "Joana",
+}
+
 DEFAULT_LANG = os.getenv("TTS_DEFAULT_LANG", "de")
 
-_provider = "macos-say"
-_model_loaded = True  # say is always available on macOS
+_provider = "edge-tts"
+_model_loaded = True
 
 
 @app.on_event("startup")
 async def startup():
-    # Verify `say` is available and AIFF→OGG conversion works
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as f:
-            aiff_path = f.name
-        subprocess.run(
-            ["say", "-v", MACOS_VOICES.get("de", "Anna"), "-o", aiff_path, "Test"],
-            check=True, capture_output=True,
-        )
-        os.unlink(aiff_path)
-        logger.info(f"macOS TTS ready — default voice: {MACOS_VOICES.get(DEFAULT_LANG)}")
-    except Exception as e:
-        logger.warning(f"macOS say check failed: {e}")
+    logger.info(f"TTS Service ready — primary: edge-tts ({EDGE_TTS_VOICES.get('de')}), fallback: macOS say")
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -70,37 +67,43 @@ class SynthesizeRequest(BaseModel):
     speed: float = 1.0
 
 
-# ── Audio helpers ─────────────────────────────────────────────────────────────
+# ── Synthesis ─────────────────────────────────────────────────────────────────
+
+async def _synthesize_edge_tts(text: str, language: str, speaker: Optional[str]) -> bytes:
+    """edge-tts — Microsoft Neural voices, free, no API key."""
+    import edge_tts
+
+    voice = speaker or EDGE_TTS_VOICES.get(language[:2], EDGE_TTS_VOICES["de"])
+    communicate = edge_tts.Communicate(text, voice)
+    buf = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            buf.write(chunk["data"])
+    buf.seek(0)
+    data = buf.read()
+    if not data:
+        raise RuntimeError("edge-tts returned empty audio")
+    return data
+
 
 def _aiff_to_ogg(aiff_path: str) -> bytes:
-    """Convert AIFF file to OGG Opus using ffmpeg."""
     result = subprocess.run(
-        [
-            "ffmpeg", "-y", "-i", aiff_path,
-            "-c:a", "libopus", "-b:a", "64k",
-            "-f", "ogg", "pipe:1",
-        ],
-        capture_output=True,
-        check=True,
+        ["ffmpeg", "-y", "-i", aiff_path, "-c:a", "libopus", "-b:a", "64k", "-f", "ogg", "pipe:1"],
+        capture_output=True, check=True,
     )
     return result.stdout
 
 
-async def _synthesize_macos(text: str, language: str, speaker: Optional[str], speed: float) -> bytes:
-    """Use macOS built-in `say` command — offline, free, high quality Neural voices."""
-    voice = speaker or MACOS_VOICES.get(language[:2], MACOS_VOICES.get(DEFAULT_LANG, "Anna"))
-
+async def _synthesize_macos(text: str, language: str, speaker: Optional[str]) -> bytes:
+    """macOS built-in say — offline fallback."""
+    voice = speaker or MACOS_VOICES.get(language[:2], "Anna")
     loop = asyncio.get_event_loop()
 
     def _run() -> bytes:
         with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as f:
             aiff_path = f.name
         try:
-            rate_arg = str(int(190 * speed))  # default words/min ≈ 190
-            subprocess.run(
-                ["say", "-v", voice, "-r", rate_arg, "-o", aiff_path, text],
-                check=True, capture_output=True,
-            )
+            subprocess.run(["say", "-v", voice, "-o", aiff_path, text], check=True, capture_output=True)
             return _aiff_to_ogg(aiff_path)
         finally:
             if os.path.exists(aiff_path):
@@ -113,21 +116,12 @@ async def _synthesize_macos(text: str, language: str, speaker: Optional[str], sp
 
 @app.get("/healthz")
 async def healthz():
-    return {
-        "status": "ok",
-        "provider": _provider,
-        "model": "macos-say",
-        "model_loaded": _model_loaded,
-    }
+    return {"status": "ok", "provider": _provider, "model": "edge-tts", "model_loaded": _model_loaded}
 
 
 @app.get("/voices")
 async def list_voices():
-    return {
-        "provider": "macos-say",
-        "voices": MACOS_VOICES,
-        "note": "macOS built-in Neural TTS — offline, no API key needed",
-    }
+    return {"provider": "edge-tts", "voices": EDGE_TTS_VOICES, "fallback": MACOS_VOICES}
 
 
 @app.post("/synthesize")
@@ -139,24 +133,23 @@ async def synthesize(req: SynthesizeRequest):
 
     import time
     t0 = time.time()
+    used = "edge-tts"
+
     try:
-        audio_bytes = await _synthesize_macos(req.text, req.language, req.speaker, req.speed)
-    except subprocess.CalledProcessError as e:
-        stderr = e.stderr.decode() if e.stderr else ""
-        logger.error(f"TTS error: {stderr}")
-        raise HTTPException(status_code=500, detail=f"TTS failed: {stderr[:200]}")
+        audio_bytes = await _synthesize_edge_tts(req.text, req.language, req.speaker)
     except Exception as e:
-        logger.error(f"TTS error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"edge-tts failed ({e}), falling back to macOS say")
+        try:
+            audio_bytes = await _synthesize_macos(req.text, req.language, req.speaker)
+            used = "macos-say"
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"TTS failed: {e2}")
 
     elapsed = round(time.time() - t0, 2)
-    logger.info(f"TTS [macos-say] {len(req.text)} chars → {len(audio_bytes)} bytes in {elapsed}s")
+    logger.info(f"TTS [{used}] {len(req.text)} chars → {len(audio_bytes)} bytes in {elapsed}s")
 
     return Response(
         content=audio_bytes,
         media_type="audio/ogg",
-        headers={
-            "X-TTS-Provider": _provider,
-            "X-TTS-Duration": str(elapsed),
-        },
+        headers={"X-TTS-Provider": used, "X-TTS-Duration": str(elapsed)},
     )
