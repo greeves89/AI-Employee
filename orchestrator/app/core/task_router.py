@@ -58,67 +58,52 @@ def _compute_formula_rating(task: "Task") -> int:  # noqa: F821
 
 
 async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
-    """Ask the LLM to self-reflect on a completed task and return (rating, reflection).
+    """Ask Claude CLI to self-reflect on a completed task and return (rating, reflection).
 
-    Uses the Anthropic Messages API via httpx (anthropic SDK not required).
-    Falls back to formula rating if the LLM call fails.
-
-    Returns:
-        (rating: int 1-5, reflection: str one-sentence explanation)
+    Uses `claude -p` subprocess so it works with both API key and OAuth token.
+    Falls back to formula rating if the call fails.
     """
+    import asyncio, os, shutil
     from app.config import settings
 
-    api_key = settings.anthropic_api_key
-    oauth_token = settings.claude_code_oauth_token
-    if not api_key and not oauth_token:
-        return _compute_formula_rating(task), "auto-rated (no API key)"
+    if not shutil.which("claude"):
+        return _compute_formula_rating(task), "auto-rated (claude CLI not found)"
 
     duration_s = round((task.duration_ms or 0) / 1000, 1)
-    cost_usd = task.cost_usd or 0.0
-    num_turns = task.num_turns or 0
-    error_text = task.error or "none"
-
     prompt = (
-        "You are evaluating an AI agent task. Rate it 1-5 stars and give a one-sentence reflection.\n\n"
+        "Rate this AI agent task 1-5 stars and give a one-sentence reflection.\n\n"
         f"Task: {task.title or 'Untitled'}\n"
         f"Status: {task.status.value}\n"
-        f"Duration: {duration_s}s\n"
-        f"Turns: {num_turns}\n"
-        f"Cost: ${cost_usd:.4f}\n"
-        f"Error: {error_text}\n\n"
+        f"Duration: {duration_s}s | Turns: {task.num_turns or 0} | Cost: ${task.cost_usd or 0:.4f}\n"
+        f"Error: {task.error or 'none'}\n\n"
         'Respond with JSON only: {"rating": <1-5>, "reflection": "<one sentence>"}'
     )
 
     try:
-        auth_headers = (
-            {"x-api-key": api_key}
-            if api_key
-            else {"authorization": f"Bearer {oauth_token}"}
+        env = os.environ.copy()
+        if settings.anthropic_api_key:
+            env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
+        elif settings.claude_code_oauth_token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
+
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt,
+            "--output-format", "json",
+            "--model", _REFLECTION_MODEL,
+            "--max-turns", "1",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            env=env,
         )
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    **auth_headers,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": _REFLECTION_MODEL,
-                    "max_tokens": 128,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-        resp.raise_for_status()
-        content = resp.json()["content"][0]["text"].strip()
-        # Strip markdown code fences if present
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        parsed = json.loads(content)
-        rating = int(parsed["rating"])
-        rating = max(1, min(5, rating))
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=20.0)
+        output = json.loads(stdout.decode())
+        text = output.get("result", "")
+        # Strip markdown fences
+        text = text.strip()
+        if text.startswith("```"):
+            text = "\n".join(text.split("\n")[1:]).split("```")[0]
+        parsed = json.loads(text)
+        rating = max(1, min(5, int(parsed["rating"])))
         reflection = str(parsed.get("reflection", ""))[:500]
         return rating, reflection
     except Exception as exc:
