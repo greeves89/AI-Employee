@@ -31,6 +31,7 @@ class TemplateCreate(BaseModel):
     integrations: list[str] = []
     mcp_server_ids: list[int] = []
     knowledge_template: str = ""
+    claude_md: str = ""
 
 
 class TemplateUpdate(BaseModel):
@@ -44,6 +45,7 @@ class TemplateUpdate(BaseModel):
     integrations: list[str] | None = None
     mcp_server_ids: list[int] | None = None
     knowledge_template: str | None = None
+    claude_md: str | None = None
 
 
 class CreateFromTemplate(BaseModel):
@@ -64,6 +66,7 @@ def _template_to_dict(t: AgentTemplate) -> dict:
         "integrations": t.integrations or [],
         "mcp_server_ids": t.mcp_server_ids or [],
         "knowledge_template": t.knowledge_template,
+        "claude_md": t.claude_md or "",
         "is_builtin": t.is_builtin,
         "created_by": t.created_by,
         "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -127,6 +130,7 @@ async def create_template(
         integrations=body.integrations,
         mcp_server_ids=body.mcp_server_ids,
         knowledge_template=body.knowledge_template,
+        claude_md=body.claude_md,
         is_builtin=False,
         created_by=user.id if user.id != "__anonymous__" else None,
     )
@@ -221,6 +225,18 @@ async def create_agent_from_template(
             permissions=template.permissions or [],
             user_id=uid,
         )
+
+        # Write template-specific CLAUDE.md if the template has one
+        if template.claude_md and agent.container_id:
+            try:
+                docker.write_file_in_container(
+                    agent.container_id,
+                    "/workspace/CLAUDE.md",
+                    template.claude_md,
+                )
+                logger.info(f"Wrote template-specific CLAUDE.md for agent {agent.id}")
+            except Exception as e:
+                logger.warning(f"Failed to write template CLAUDE.md: {e}")
 
         # Write knowledge template INSTEAD of the generic default
         if template.knowledge_template and agent.container_id:

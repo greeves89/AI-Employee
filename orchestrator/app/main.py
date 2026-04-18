@@ -235,10 +235,16 @@ async def _refresh_claude_token() -> None:
 
 async def _listen_task_events(redis: RedisService) -> None:
     """Background task that listens for task start + completion events from agents."""
-    pubsub = await redis.subscribe("task:completions")
-    # Also subscribe to task:started channel
-    if redis.client:
-        await pubsub.subscribe("task:started")
+    try:
+        pubsub = await redis.subscribe("task:completions")
+        # Also subscribe to task:started channel
+        if redis.client:
+            await pubsub.subscribe("task:started")
+        logger.info("[TaskListener] Started listening on task:completions + task:started")
+        print("[TaskListener] Started listening on task:completions + task:started")
+    except Exception as e:
+        logger.error(f"[TaskListener] Failed to start: {e}", exc_info=True)
+        return
 
     while True:
         try:
@@ -246,6 +252,7 @@ async def _listen_task_events(redis: RedisService) -> None:
                 ignore_subscribe_messages=True, timeout=1.0
             )
             if message and message["type"] == "message":
+                print(f"[TaskListener] Received event on {message.get('channel')}")
                 channel = message.get("channel", b"")
                 if isinstance(channel, bytes):
                     channel = channel.decode("utf-8")
@@ -268,7 +275,8 @@ async def _listen_task_events(redis: RedisService) -> None:
                         await router.handle_task_start(data)
                     else:
                         await router.handle_task_completion(data)
-        except Exception:
+        except Exception as e:
+            logger.error(f"[TaskListener] Error processing task event: {e}", exc_info=True)
             await asyncio.sleep(1)
 
 
@@ -458,7 +466,8 @@ async def lifespan(app: FastAPI):
                     # Update builtin templates if source has changed
                     for field in (
                         "display_name", "description", "role", "permissions",
-                        "integrations", "knowledge_template", "icon", "category", "model",
+                        "integrations", "knowledge_template", "claude_md",
+                        "icon", "category", "model",
                     ):
                         source_val = tmpl_data.get(field)
                         if source_val is not None and getattr(existing, field) != source_val:

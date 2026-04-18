@@ -23,6 +23,7 @@ class AgentTemplate(Base, TimestampMixin):
     integrations: Mapped[list] = mapped_column(JSON, default=list)
     mcp_server_ids: Mapped[list] = mapped_column(JSON, default=list)
     knowledge_template: Mapped[str] = mapped_column(Text, default="")
+    claude_md: Mapped[str] = mapped_column(Text, default="")
 
     # Meta
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
