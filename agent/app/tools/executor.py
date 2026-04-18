@@ -501,6 +501,193 @@ class ToolExecutor:
             args.append(file)
         return await _run_git(args, repo)
 
+    # ── Skill: Spreadsheet Analysis (#65) ──────────────────────────────────
+    async def _tool_analyze_spreadsheet(self, params: dict) -> str:
+        """Read and analyse a spreadsheet/CSV file using pandas."""
+        try:
+            import pandas as pd  # noqa: PLC0415
+        except ImportError:
+            return "Error: pandas is not installed. Run `pip install pandas openpyxl` first."
+
+        path = self._resolve_path(params["path"])
+        sheet = params.get("sheet")
+        preview_rows = int(params.get("preview_rows", 10))
+
+        try:
+            ext = Path(path).suffix.lower()
+            if ext == ".csv":
+                df = pd.read_csv(path)
+            elif ext in (".xls", ".xlsx", ".xlsm", ".xlsb"):
+                df = pd.read_excel(path, sheet_name=sheet or 0)
+            elif ext == ".ods":
+                df = pd.read_excel(path, sheet_name=sheet or 0, engine="odf")
+            else:
+                return f"Error: Unsupported file type '{ext}'. Supported: csv, xlsx, xls, ods."
+        except FileNotFoundError:
+            return f"Error: File not found: {path}"
+        except Exception as exc:
+            return f"Error reading file: {exc}"
+
+        lines: list[str] = [
+            f"## Spreadsheet Analysis: {Path(path).name}",
+            f"- **Rows:** {len(df):,}",
+            f"- **Columns:** {len(df.columns)}",
+            f"- **Columns:** {', '.join(str(c) for c in df.columns)}",
+            "",
+            "### Data Types",
+        ]
+        for col, dtype in df.dtypes.items():
+            null_count = int(df[col].isna().sum())
+            lines.append(f"- `{col}`: {dtype} ({null_count} nulls)")
+
+        # Numeric statistics
+        num_cols = df.select_dtypes(include="number")
+        if not num_cols.empty:
+            lines += ["", "### Numeric Statistics"]
+            desc = num_cols.describe().round(2)
+            lines.append(desc.to_string())
+
+        # Preview
+        lines += ["", f"### Preview (first {preview_rows} rows)"]
+        lines.append(df.head(preview_rows).to_string(index=False))
+
+        result = "\n".join(lines)
+        if len(result) > MAX_OUTPUT_CHARS:
+            result = result[:MAX_OUTPUT_CHARS] + "\n... (truncated)"
+        return result
+
+    # ── Skill: Document Analysis (#66) ─────────────────────────────────────
+    async def _tool_analyze_document(self, params: dict) -> str:
+        """Extract text from PDF, DOCX, or plain-text documents."""
+        path = self._resolve_path(params["path"])
+        max_chars = int(params.get("max_chars", 50000))
+        ext = Path(path).suffix.lower()
+
+        if not Path(path).exists():
+            return f"Error: File not found: {path}"
+
+        text = ""
+        meta: dict = {}
+
+        try:
+            if ext == ".pdf":
+                try:
+                    import fitz  # PyMuPDF  # noqa: PLC0415
+                    doc = fitz.open(path)
+                    meta["pages"] = doc.page_count
+                    text = "\n\n".join(page.get_text() for page in doc)
+                except ImportError:
+                    # Fallback: pdfminer
+                    from pdfminer.high_level import extract_text as _pdf_extract  # noqa: PLC0415
+                    text = _pdf_extract(path)
+
+            elif ext in (".docx", ".doc"):
+                try:
+                    import docx  # python-docx  # noqa: PLC0415
+                    document = docx.Document(path)
+                    text = "\n".join(p.text for p in document.paragraphs)
+                except ImportError:
+                    return "Error: python-docx not installed. Run `pip install python-docx`."
+
+            elif ext in (".txt", ".md", ".rst", ".csv", ".log"):
+                text = Path(path).read_text(encoding="utf-8", errors="replace")
+
+            else:
+                return f"Error: Unsupported format '{ext}'. Supported: pdf, docx, txt, md, rst, csv, log."
+
+        except Exception as exc:
+            return f"Error extracting text: {exc}"
+
+        word_count = len(text.split())
+        char_count = len(text)
+        meta.update({"word_count": word_count, "char_count": char_count})
+
+        header_lines = [
+            f"## Document: {Path(path).name}",
+            f"- **Words:** {word_count:,}",
+            f"- **Characters:** {char_count:,}",
+        ]
+        if "pages" in meta:
+            header_lines.append(f"- **Pages:** {meta['pages']}")
+        header_lines += ["", "---", ""]
+
+        header = "\n".join(header_lines)
+        full = header + text
+
+        if max_chars and len(full) > max_chars:
+            full = full[:max_chars] + f"\n\n... (truncated — {char_count:,} chars total)"
+        return full
+
+    # ── Skill: Finance / Budget Report (#67) ───────────────────────────────
+    async def _tool_generate_finance_report(self, params: dict) -> str:
+        """Generate a Markdown finance report from a CSV/Excel file."""
+        try:
+            import pandas as pd  # noqa: PLC0415
+        except ImportError:
+            return "Error: pandas is not installed. Run `pip install pandas openpyxl` first."
+
+        path = self._resolve_path(params["path"])
+        currency = params.get("currency", "€")
+        amount_col: str | None = params.get("amount_column")
+        category_col: str | None = params.get("category_column")
+
+        try:
+            ext = Path(path).suffix.lower()
+            df = pd.read_csv(path) if ext == ".csv" else pd.read_excel(path)
+        except FileNotFoundError:
+            return f"Error: File not found: {path}"
+        except Exception as exc:
+            return f"Error reading file: {exc}"
+
+        # Auto-detect amount column
+        if not amount_col:
+            num_cols = df.select_dtypes(include="number").columns.tolist()
+            candidates = [c for c in num_cols if any(k in c.lower() for k in ("amount", "betrag", "wert", "summe", "cost", "price", "total", "kosten"))]
+            amount_col = candidates[0] if candidates else (num_cols[0] if num_cols else None)
+        if not amount_col or amount_col not in df.columns:
+            return f"Error: Could not find an amount column. Available columns: {', '.join(df.columns)}. Specify 'amount_column'."
+
+        # Auto-detect category column
+        if not category_col:
+            str_cols = df.select_dtypes(include="object").columns.tolist()
+            candidates = [c for c in str_cols if any(k in c.lower() for k in ("category", "kategorie", "type", "typ", "art", "group", "konto", "bereich"))]
+            category_col = candidates[0] if candidates else (str_cols[0] if str_cols else None)
+
+        total = df[amount_col].sum()
+        lines = [
+            f"# Finance Report: {Path(path).name}",
+            f"**Total:** {currency} {total:,.2f}  |  **Rows:** {len(df):,}",
+            "",
+        ]
+
+        if category_col and category_col in df.columns:
+            grouped = (
+                df.groupby(category_col)[amount_col]
+                .agg(["sum", "count"])
+                .sort_values("sum", ascending=False)
+                .rename(columns={"sum": "Total", "count": "Entries"})
+            )
+            lines += ["## By Category", ""]
+            lines.append(f"{'Category':<30} {'Total':>14} {'Entries':>8} {'Share':>7}")
+            lines.append("-" * 62)
+            for cat, row in grouped.iterrows():
+                share = row["Total"] / total * 100 if total else 0
+                lines.append(f"{str(cat):<30} {currency} {row['Total']:>11,.2f} {int(row['Entries']):>8} {share:>6.1f}%")
+            lines.append("")
+
+        # Top 10 expenses
+        top = df.nlargest(10, amount_col)
+        lines += ["## Top 10 Largest Items", ""]
+        for _, row in top.iterrows():
+            desc = ""
+            for col in df.columns:
+                if col != amount_col and df[col].dtype == object:
+                    desc = str(row[col])[:40]
+                    break
+            lines.append(f"- {currency} {row[amount_col]:,.2f}  — {desc}")
+
+        return "\n".join(lines)
+
     async def close(self) -> None:
         """Clean up resources."""
         if self._api_client:
