@@ -3,9 +3,38 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
-from app.core.task_router import TaskRouter
+from app.core.task_router import TaskRouter, _compute_auto_rating
 from app.models.task import Task, TaskStatus
 from app.services.redis_service import RedisService
+
+
+async def auto_rate_task(task: Task, db: AsyncSession) -> int:
+    """Compute and persist an automatic rating for a completed/failed task.
+
+    Returns the computed rating (1-5).  Raises if the task has no agent_id
+    or is not in a terminal status.
+    """
+    from app.models.task_rating import TaskRating
+
+    if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+        raise ValueError(f"Cannot auto-rate task {task.id} with status '{task.status.value}'")
+    if not task.agent_id:
+        raise ValueError(f"Cannot auto-rate task {task.id}: no agent_id")
+
+    rating = _compute_auto_rating(task)
+    task_rating = TaskRating(
+        task_id=task.id,
+        agent_id=task.agent_id,
+        user_id=None,
+        rating=rating,
+        comment="auto-rated",
+        task_cost_usd=task.cost_usd,
+        task_duration_ms=task.duration_ms,
+        task_num_turns=task.num_turns,
+    )
+    db.add(task_rating)
+    await db.commit()
+    return rating
 
 
 class TaskService:

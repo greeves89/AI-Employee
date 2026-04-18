@@ -31,6 +31,28 @@ def _make_task_id() -> str:
 logger = logging.getLogger(__name__)
 
 
+def _compute_auto_rating(task: "Task") -> int:  # noqa: F821
+    """Compute an automatic 1-5 star rating from task outcome metrics.
+
+    Formula:
+      - Base score: 5 for completed, 2 for failed
+      - duration_ms > 120_000 → -1
+      - num_turns > 20        → -1
+      - cost_usd > 0.10       → -1
+      - Clamped to [1, 5]
+    """
+    from app.models.task import TaskStatus as _TaskStatus
+
+    score = 5 if task.status == _TaskStatus.COMPLETED else 2
+    if task.duration_ms is not None and task.duration_ms > 120_000:
+        score -= 1
+    if task.num_turns is not None and task.num_turns > 20:
+        score -= 1
+    if task.cost_usd is not None and task.cost_usd > 0.10:
+        score -= 1
+    return max(1, min(5, score))
+
+
 async def _build_approval_rules_prefix(db: AsyncSession, agent_id: str) -> str:
     """Build a prompt prefix that lists all active approval rules for the agent.
 
@@ -279,6 +301,9 @@ class TaskRouter:
 
         await self.db.commit()
 
+        # Auto-rate the task based on outcome metrics
+        await self._auto_rate_task(task)
+
         # Subtask completion callback: notify the parent task's agent
         if task.parent_task_id:
             await self._notify_parent_agent(task)
@@ -429,6 +454,44 @@ class TaskRouter:
             logger.info(f"Recovered {recovered} stale tasks total")
 
         return recovered
+
+    async def _auto_rate_task(self, task: Task) -> None:
+        """Automatically compute and persist a rating for a completed/failed task.
+
+        Rating formula (1-5 stars):
+          - Base: 5 for completed, 2 for failed
+          - duration_ms > 120_000 (>2 min) → -1
+          - num_turns > 20 → -1
+          - cost_usd > 0.10 → -1
+          - Result clamped to [1, 5]
+        """
+        if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            return
+        if not task.agent_id:
+            return
+        try:
+            from app.models.task_rating import TaskRating
+
+            rating = _compute_auto_rating(task)
+            task_rating = TaskRating(
+                task_id=task.id,
+                agent_id=task.agent_id,
+                user_id=None,  # system-generated
+                rating=rating,
+                comment="auto-rated",
+                task_cost_usd=task.cost_usd,
+                task_duration_ms=task.duration_ms,
+                task_num_turns=task.num_turns,
+            )
+            self.db.add(task_rating)
+            await self.db.commit()
+            logger.info(
+                f"Auto-rated task {task.id} → {rating}/5 "
+                f"(status={task.status.value}, duration_ms={task.duration_ms}, "
+                f"num_turns={task.num_turns}, cost_usd={task.cost_usd})"
+            )
+        except Exception as e:
+            logger.warning(f"Could not auto-rate task {task.id}: {e}")
 
     async def _check_agent_budget(self, agent_id: str) -> None:
         """Raise ValueError if the agent has exceeded its budget."""
