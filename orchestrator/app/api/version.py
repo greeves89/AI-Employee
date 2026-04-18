@@ -143,9 +143,36 @@ async def check_version():
     }
 
 
+GITHUB_CHANGELOG_URL = (
+    "https://raw.githubusercontent.com/greeves89/AI-Employee/main/CHANGELOG.md"
+)
+
+
+async def _fetch_changelog_md(gh_token: str) -> str | None:
+    """Fetch CHANGELOG.md from GitHub."""
+    headers = {"Accept": "text/plain"}
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(GITHUB_CHANGELOG_URL, headers=headers)
+            if resp.status_code == 200:
+                return resp.text
+    except Exception as e:
+        logger.debug(f"CHANGELOG.md fetch failed: {e}")
+    return None
+
+
 @router.get("/changelog")
 async def get_changelog():
-    """Return recent commits as changelog."""
+    """Return CHANGELOG.md content (preferred) or recent git commits as fallback."""
     gh_token = await _get_github_token()
+
+    # Try structured CHANGELOG.md first
+    changelog_md = await _fetch_changelog_md(gh_token)
+    if changelog_md:
+        return {"format": "markdown", "content": changelog_md, "commits": []}
+
+    # Fallback: raw commits
     commits = await _fetch_changelog(gh_token)
-    return {"commits": commits}
+    return {"format": "commits", "content": None, "commits": commits}

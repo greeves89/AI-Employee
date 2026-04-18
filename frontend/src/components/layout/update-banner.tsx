@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ArrowUpCircle, X, GitCommit, Clock, Loader2 } from "lucide-react";
+import { ArrowUpCircle, X, GitCommit, Clock, Loader2, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { getBase } from "@/lib/config";
@@ -26,6 +26,7 @@ export function UpdateBanner() {
   const [dismissed, setDismissed] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [commits, setCommits] = useState<Commit[]>([]);
+  const [changelogMd, setChangelogMd] = useState<string | null>(null);
   const [loadingChangelog, setLoadingChangelog] = useState(false);
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export function UpdateBanner() {
   }, []);
 
   const fetchChangelog = useCallback(async () => {
-    if (commits.length > 0) return; // already fetched
+    if (commits.length > 0 || changelogMd) return; // already fetched
     setLoadingChangelog(true);
     try {
       const res = await fetch(`${getBase()}/version/changelog`, {
@@ -57,14 +58,18 @@ export function UpdateBanner() {
       });
       if (res.ok) {
         const data = await res.json();
-        setCommits(data.commits || []);
+        if (data.format === "markdown" && data.content) {
+          setChangelogMd(data.content);
+        } else {
+          setCommits(data.commits || []);
+        }
       }
     } catch {
       // ignore
     } finally {
       setLoadingChangelog(false);
     }
-  }, [commits.length]);
+  }, [commits.length, changelogMd]);
 
   const handleBannerClick = () => {
     setModalOpen(true);
@@ -186,6 +191,8 @@ export function UpdateBanner() {
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
+                ) : changelogMd ? (
+                  <MarkdownChangelog content={changelogMd} />
                 ) : commits.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     Keine Änderungen gefunden.
@@ -243,4 +250,45 @@ export function UpdateBanner() {
       </Dialog.Root>
     </>
   );
+}
+
+/** Minimal markdown renderer for CHANGELOG.md — no external deps needed. */
+function MarkdownChangelog({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let key = 0;
+
+  for (const line of lines) {
+    if (line.startsWith("## ")) {
+      elements.push(
+        <h2 key={key++} className="mt-5 mb-2 flex items-center gap-2 text-sm font-semibold text-foreground/90">
+          <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />
+          {line.slice(3)}
+        </h2>
+      );
+    } else if (line.startsWith("### ")) {
+      elements.push(
+        <h3 key={key++} className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          {line.slice(4)}
+        </h3>
+      );
+    } else if (line.startsWith("- ")) {
+      // Bold inline: **text**
+      const parts = line.slice(2).split(/\*\*(.+?)\*\*/g);
+      elements.push(
+        <div key={key++} className="flex items-start gap-1.5 py-0.5">
+          <span className="mt-1.5 h-1 w-1 rounded-full bg-muted-foreground/40 shrink-0" />
+          <p className="text-[12px] text-foreground/80 leading-snug">
+            {parts.map((p, i) => i % 2 === 1 ? <strong key={i} className="font-semibold text-foreground/90">{p}</strong> : p)}
+          </p>
+        </div>
+      );
+    } else if (line.startsWith("---")) {
+      elements.push(<hr key={key++} className="my-3 border-foreground/[0.06]" />);
+    } else if (line.trim() === "" || line.startsWith("# ") || line.startsWith("*")) {
+      // skip blank lines, main title, footnotes
+    }
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
 }
