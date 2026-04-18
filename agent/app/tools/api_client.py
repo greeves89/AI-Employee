@@ -488,6 +488,39 @@ class OrchestratorAPIClient:
 
     # ── Telegram ──
 
+    async def send_voice(self, params: dict) -> str:
+        """Convert text to speech via VibeVoice and send as Telegram voice message."""
+        import base64
+        text = params.get("text", "").strip()
+        language = params.get("language", "de")
+        if not text:
+            return "Error: text is required"
+
+        # 1. TTS — call local VibeVoice service
+        tts_url = settings.tts_service_url if hasattr(settings, "tts_service_url") else "http://host.docker.internal:8002"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.post(
+                    f"{tts_url}/synthesize",
+                    json={"text": text, "language": language},
+                )
+                resp.raise_for_status()
+                audio_bytes = resp.content
+                provider = resp.headers.get("x-tts-provider", "tts")
+        except Exception as e:
+            return f"TTS service unavailable: {e}. Is tts-service running? (./tts-service/start_mac.sh)"
+
+        # 2. Send audio via orchestrator → Telegram
+        voice_b64 = base64.b64encode(audio_bytes).decode()
+        result = await self._request(
+            "POST", "/telegram/send-voice",
+            json={"voice_base64": voice_b64},
+        )
+        if isinstance(result, str):
+            return result
+        return f"Voice message sent via {provider} ({len(audio_bytes):,} bytes)"
+
     async def send_telegram(self, params: dict) -> str:
         """Send a message or file to the user via Telegram."""
         import json as _json

@@ -877,6 +877,21 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "send_voice",
+            "description": "Send a voice message to the user via Telegram. Converts text to speech using VibeVoice (free, local AI). Use for summaries, completed task announcements, or when the user prefers audio.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The text to convert to speech and send as voice message"},
+                    "language": {"type": "string", "description": "Language code: de, en, fr, es, it, ... (default: de)"},
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "send_telegram",
             "description": "Send a message or file to the user via Telegram. Use for notifications, status updates, or delivering files (PDFs, images, etc.).",
             "parameters": {
