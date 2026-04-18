@@ -1386,6 +1386,31 @@ async def update_skill(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.delete("/{agent_id}/skills/{skill_name}", status_code=204)
+async def delete_skill(
+    agent_id: str,
+    skill_name: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Delete a Claude Code skill from an agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        if not agent.container_id:
+            raise HTTPException(status_code=400, detail="Agent has no container")
+        safe_name = skill_name.replace("'", "").replace(";", "").replace("&", "").replace("/", "")
+        docker.exec_in_container(
+            agent.container_id,
+            f"rm -rf '/workspace/.claude/skills/{safe_name}'",
+        )
+        return None
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 class SkillInstall(BaseModel):
     repo: str  # GitHub URL or shorthand (e.g. "vercel-labs/skills")
     skill: str  # Skill name within the repo

@@ -985,6 +985,33 @@ export async function installSkill(
   });
 }
 
+export async function createAgentSkill(
+  agentId: string,
+  skill: { name: string; description: string; content: string },
+): Promise<AgentSkill> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/skills`, {
+    method: "POST",
+    body: JSON.stringify(skill),
+  });
+}
+
+export async function updateAgentSkill(
+  agentId: string,
+  skillName: string,
+  skill: { name: string; description: string; content: string },
+): Promise<AgentSkill> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/skills/${encodeURIComponent(skillName)}`, {
+    method: "PUT",
+    body: JSON.stringify(skill),
+  });
+}
+
+export async function deleteAgentSkill(agentId: string, skillName: string): Promise<void> {
+  await fetchJSON(`${getBase()}/agents/${agentId}/skills/${encodeURIComponent(skillName)}`, {
+    method: "DELETE",
+  });
+}
+
 // --- Docker Apps ---
 
 import type { DockerApp, DockerAppContainer, DockerAppLog } from "./types";
