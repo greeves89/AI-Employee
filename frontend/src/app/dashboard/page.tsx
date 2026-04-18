@@ -9,6 +9,7 @@ import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
 import { StatsOverview } from "@/components/dashboard/stats-overview";
 import { RecentTasks } from "@/components/dashboard/recent-tasks";
+import { SystemStatusBar } from "@/components/dashboard/system-status-bar";
 
 const containerVariants = {
   hidden: {},
@@ -50,6 +51,9 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
+        {/* System Status */}
+        <SystemStatusBar />
+
         {/* Stats */}
         <StatsOverview agents={agents} tasks={tasks} />
 
