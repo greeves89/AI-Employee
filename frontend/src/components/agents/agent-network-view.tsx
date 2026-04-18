@@ -121,6 +121,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [convoAgents, setConvoAgents] = useState<{ a: string; b: string; aName: string; bName: string } | null>(null);
   const [convoMessages, setConvoMessages] = useState<{ from_id: string; from_name: string; to_id: string; text: string; timestamp: string; message_id?: string; message_type?: string; reply_to?: string }[]>([]);
   const [convoLoading, setConvoLoading] = useState(false);
+  const [convoError, setConvoError] = useState<string | null>(null);
 
   const openConversation = async (agentA: string, agentB: string) => {
     const nameA = agents.find((a) => a.id === agentA)?.name || agentA;
@@ -128,10 +129,13 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     setConvoAgents({ a: agentA, b: agentB, aName: nameA, bName: nameB });
     setConvoOpen(true);
     setConvoLoading(true);
+    setConvoError(null);
     try {
       const data = await api.getAgentConversation(agentA, agentB);
       setConvoMessages(data.messages);
-    } catch {
+    } catch (err) {
+      console.error("[NetworkView] getAgentConversation failed:", err);
+      setConvoError(err instanceof Error ? err.message : "Fehler beim Laden");
       setConvoMessages([]);
     } finally {
       setConvoLoading(false);
@@ -242,6 +246,8 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     { value: 60, label: "1h" },
     { value: 360, label: "6h" },
     { value: 1440, label: "24h" },
+    { value: 10080, label: "7d" },
+    { value: 43200, label: "30d" },
   ];
 
   return (
@@ -632,6 +638,8 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                 <div className="flex items-center justify-center py-12">
                   <div className="h-6 w-6 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
                 </div>
+              ) : convoError ? (
+                <p className="text-sm text-red-400/70 text-center py-12">{convoError}</p>
               ) : convoMessages.length === 0 ? (
                 <p className="text-sm text-muted-foreground/50 text-center py-12">Keine Nachrichten</p>
               ) : (

@@ -98,11 +98,14 @@ async def get_agent_messages(
 
     since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
 
+    # Higher limit for longer time windows to get accurate connection counts
+    fetch_limit = 2000 if minutes > 1440 else 500 if minutes > 360 else 100
+
     result = await db.execute(
         select(AgentMessageModel)
         .where(AgentMessageModel.timestamp >= since)
         .order_by(AgentMessageModel.timestamp.desc())
-        .limit(100)
+        .limit(fetch_limit)
     )
     messages = result.scalars().all()
 
@@ -643,6 +646,18 @@ async def send_message_to_agent(
                 status_code=403,
                 detail=f"Blocked by AgentGuard: {verdict.reason}",
             )
+
+        # Rate-limit agent-to-agent messages: 20/min per (from, to) pair
+        if getattr(user, "role", "") == "agent" and body.from_agent_id:
+            rate_key = f"rate:msg:{body.from_agent_id}:{agent_id}"
+            current = await redis.client.incr(rate_key)
+            if current == 1:
+                await redis.client.expire(rate_key, 60)
+            if current > 20:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Rate limit exceeded: max 20 messages/min from {body.from_agent_id} to {agent_id}",
+                )
 
         # Push to dedicated inter-agent message queue
         sender = body.from_name or body.from_agent_id or "System"
