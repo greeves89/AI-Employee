@@ -266,6 +266,66 @@ async def unassign_skill(
     return {"status": "unassigned"}
 
 
+@router.get("/agent/available")
+async def agent_available_skills(
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Get all active skills assigned to this agent (for task-start injection)."""
+    agent_id = auth["agent_id"]
+
+    # Explicitly assigned skills
+    assigned = await db.execute(
+        select(Skill)
+        .join(AgentSkillAssignment, AgentSkillAssignment.skill_id == Skill.id)
+        .where(AgentSkillAssignment.agent_id == agent_id)
+        .where(Skill.status == SkillStatus.ACTIVE)
+    )
+    skills = list(assigned.scalars().all())
+
+    # Also include role-matched skills (auto-assign by role)
+    # Get agent's role from config
+    from app.models.agent import Agent
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if agent:
+        agent_role = agent.config.get("role", "") if agent.config else ""
+        if agent_role:
+            role_skills = await db.execute(
+                select(Skill)
+                .where(Skill.status == SkillStatus.ACTIVE)
+                .where(Skill.roles.isnot(None))
+            )
+            for s in role_skills.scalars().all():
+                if s.roles and agent_role in s.roles and s.id not in {sk.id for sk in skills}:
+                    skills.append(s)
+
+    return {
+        "skills": [{"name": s.name, "content": s.content, "description": s.description} for s in skills],
+        "total": len(skills),
+    }
+
+
+@router.get("/agent/search")
+async def agent_search_skills(
+    q: str = Query(""),
+    category: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent searches the skill marketplace."""
+    query = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
+    if q:
+        query = query.where(
+            Skill.name.ilike(f"%{q}%") | Skill.description.ilike(f"%{q}%")
+        )
+    if category:
+        query = query.where(Skill.category == category)
+    query = query.order_by(Skill.usage_count.desc()).limit(limit)
+    skills = list((await db.execute(query)).scalars().all())
+    return {"skills": [_to_response(s) for s in skills], "total": len(skills)}
+
+
 @router.get("/agent/{agent_id}")
 async def get_agent_skills(
     agent_id: str,
@@ -420,68 +480,6 @@ async def agent_propose_skill(
         pass
 
     return _to_response(skill)
-
-
-@router.get("/agent/available")
-async def agent_available_skills(
-    db: AsyncSession = Depends(get_db),
-    auth: dict = Depends(verify_agent_token),
-):
-    """Get all active skills assigned to this agent (for task-start injection)."""
-    agent_id = auth["agent_id"]
-
-    # Explicitly assigned skills
-    assigned = await db.execute(
-        select(Skill)
-        .join(AgentSkillAssignment, AgentSkillAssignment.skill_id == Skill.id)
-        .where(AgentSkillAssignment.agent_id == agent_id)
-        .where(Skill.status == SkillStatus.ACTIVE)
-    )
-    skills = list(assigned.scalars().all())
-
-    # Also include role-matched skills (auto-assign by role)
-    # Get agent's role from config
-    from app.models.agent import Agent
-    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
-    if agent:
-        agent_role = agent.config.get("role", "") if agent.config else ""
-        if agent_role:
-            role_skills = await db.execute(
-                select(Skill)
-                .where(Skill.status == SkillStatus.ACTIVE)
-                .where(Skill.roles.isnot(None))
-            )
-            for s in role_skills.scalars().all():
-                if s.roles and agent_role in s.roles and s.id not in {sk.id for sk in skills}:
-                    skills.append(s)
-
-    return {
-        "skills": [{"name": s.name, "content": s.content, "description": s.description} for s in skills],
-        "total": len(skills),
-    }
-
-
-@router.get("/agent/search")
-async def agent_search_skills(
-    q: str = Query(""),
-    category: str | None = Query(None),
-    limit: int = Query(10, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
-    auth: dict = Depends(verify_agent_token),
-):
-    """Agent searches the skill marketplace."""
-    query = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
-    if q:
-        pattern = f"%{q}%"
-        query = query.where(Skill.name.ilike(pattern) | Skill.description.ilike(pattern))
-    if category:
-        query = query.where(Skill.category == category)
-    query = query.order_by(Skill.usage_count.desc()).limit(limit)
-    skills = list((await db.execute(query)).scalars().all())
-    return {
-        "skills": [_to_response(s) for s in skills],
-        "total": len(skills),
-    }
 
 
 @router.post("/marketplace/seed")

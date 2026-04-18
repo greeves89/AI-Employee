@@ -1532,29 +1532,6 @@ async def install_skill_from_repo(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
-@router.delete("/{agent_id}/skills/{skill_name}")
-async def delete_skill(
-    agent_id: str,
-    skill_name: str,
-    user=Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-    manager: AgentManager = Depends(_get_agent_manager),
-    docker: DockerService = Depends(get_docker_service),
-):
-    """Delete a Claude Code skill from an agent."""
-    await _check_owner(agent_id, user, db)
-    try:
-        agent = await manager._get_agent(agent_id)
-        if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
-
-        docker.exec_in_container(
-            agent.container_id,
-            f"rm -rf '/workspace/.claude/skills/{skill_name}'",
-        )
-        return {"status": "deleted", "skill": skill_name}
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
 
 
     # Old team routes removed — moved to top of file (before /{agent_id} routes)
