@@ -1,0 +1,11 @@
+{
+  "id": "spreadsheet",
+  "name": "Spreadsheet Analysis",
+  "version": "1.0.0",
+  "description": "Read and analyse spreadsheet and CSV files using pandas. Returns row/column counts, data types, statistics, and a row preview.",
+  "author": "ai-employee",
+  "tags": ["data", "excel", "csv", "analysis"],
+  "dependencies": ["pandas", "openpyxl", "odfpy"],
+  "tools": ["analyze_spreadsheet"],
+  "enabled": true
+}

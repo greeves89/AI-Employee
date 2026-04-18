@@ -3,7 +3,15 @@
 Contains both local tools (bash, file I/O) and orchestrator API tools
 (memory, notifications, tasks, todos, schedules) that replicate the
 MCP server functionality for custom LLM agents.
+
+Skill tools are loaded dynamically from the skills/ marketplace directory
+via app.skills_loader and merged into LOCAL_TOOLS at module load time.
 """
+
+from app.skills_loader import get_skill_tool_definitions, load_all_skills
+
+# Auto-discover and register all skills on import
+load_all_skills()
 
 # ── Local Tools (always available) ──
 
@@ -280,103 +288,10 @@ LOCAL_TOOLS: list[dict] = [
             },
         },
     },
-    # ── Skill: Spreadsheet Analysis (#65) ──
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_spreadsheet",
-            "description": (
-                "Read and analyze spreadsheet or CSV files (xlsx, xls, csv, ods). "
-                "Returns a structured summary with row/column counts, data types, "
-                "basic statistics, and the first rows as a preview. "
-                "Optionally filter to a specific sheet."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute or workspace-relative path to the spreadsheet file",
-                    },
-                    "sheet": {
-                        "type": "string",
-                        "description": "Sheet name to analyse (default: first sheet)",
-                    },
-                    "preview_rows": {
-                        "type": "integer",
-                        "description": "Number of preview rows to include (default: 10)",
-                        "default": 10,
-                    },
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    # ── Skill: Document Analysis (#66) ──
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_document",
-            "description": (
-                "Extract and analyse text from documents (PDF, DOCX, TXT, MD). "
-                "Returns the full extracted text plus metadata (page count, word count). "
-                "Use this to read contracts, reports, or any document before asking the LLM "
-                "to summarise, review, or answer questions about it."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute or workspace-relative path to the document",
-                    },
-                    "max_chars": {
-                        "type": "integer",
-                        "description": "Maximum characters to return (default: 50000). Use 0 for unlimited.",
-                        "default": 50000,
-                    },
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    # ── Skill: Finance / Budget Report (#67) ──
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_finance_report",
-            "description": (
-                "Generate a structured finance / budget report from a CSV or Excel file. "
-                "Detects amount columns automatically, groups by category, computes totals, "
-                "finds top-10 largest expenses, and returns a Markdown report. "
-                "Ideal for expense lists, bank exports, or any tabular cost data."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to the CSV or Excel file with financial data",
-                    },
-                    "amount_column": {
-                        "type": "string",
-                        "description": "Name of the column containing amounts (auto-detected if omitted)",
-                    },
-                    "category_column": {
-                        "type": "string",
-                        "description": "Name of the column to group by (auto-detected if omitted)",
-                    },
-                    "currency": {
-                        "type": "string",
-                        "description": "Currency symbol to use in the report (default: €)",
-                        "default": "€",
-                    },
-                },
-                "required": ["path"],
-            },
-        },
-    },
 ]
+
+# Merge marketplace skill tools into LOCAL_TOOLS
+LOCAL_TOOLS.extend(get_skill_tool_definitions())
 
 # ── Orchestrator API Tools (replicate MCP server functionality) ──
 

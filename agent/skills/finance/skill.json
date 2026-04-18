@@ -1,0 +1,11 @@
+{
+  "id": "finance",
+  "name": "Finance Reports",
+  "version": "1.0.0",
+  "description": "Generate structured Markdown finance and budget reports from CSV or Excel files. Auto-detects amount and category columns, groups by category, and highlights top-10 expenses.",
+  "author": "ai-employee",
+  "tags": ["finance", "budget", "reporting", "csv", "excel"],
+  "dependencies": ["pandas", "openpyxl"],
+  "tools": ["generate_finance_report"],
+  "enabled": true
+}
