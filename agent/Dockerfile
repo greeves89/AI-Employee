@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.20.0"
+LABEL ai-employee.version="1.21.0"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI globally (pin version for reproducibility)
-RUN npm install -g @anthropic-ai/claude-code@2.1.78
+RUN npm install -g @anthropic-ai/claude-code@2.1.114
 
 # Create non-root user with sudo installed (permissions configured dynamically by orchestrator)
 # Container isolation is the real sandbox - sudo rules are set per-agent via permission packages
