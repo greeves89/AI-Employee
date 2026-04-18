@@ -4,11 +4,12 @@ import logging
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, verify_agent_token
 from app.models.agent import Agent
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
@@ -37,6 +38,66 @@ def _to_response(r: TaskRating) -> dict:
         "task_num_turns": r.task_num_turns,
         "created_at": r.created_at,
     }
+
+
+class TaskSelfRateBody(BaseModel):
+    rating: int  # 1-5
+    reflection: str = ""
+
+
+@router.post("/task-self-rate")
+async def task_self_rate(
+    body: TaskSelfRateBody,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent self-rates its most recently completed/running task.
+
+    The agent identifies itself via its Bearer token. We look up the
+    most recent task for that agent and attach a self-rating to it.
+    """
+    agent_id = auth["agent_id"]
+
+    if not 1 <= body.rating <= 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+
+    # Find the most recent completed or running task for this agent
+    task_result = await db.execute(
+        select(Task)
+        .where(Task.agent_id == agent_id)
+        .where(Task.status.in_([TaskStatus.COMPLETED, TaskStatus.RUNNING, TaskStatus.FAILED]))
+        .order_by(Task.created_at.desc())
+        .limit(1)
+    )
+    task = task_result.scalar_one_or_none()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="No recent task found for this agent to rate")
+
+    # Check for duplicate self-rating (one per task per agent)
+    existing = await db.execute(
+        select(TaskRating).where(
+            TaskRating.task_id == task.id,
+            TaskRating.user_id == f"agent:{agent_id}",
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="This task has already been self-rated")
+
+    rating = TaskRating(
+        task_id=task.id,
+        agent_id=agent_id,
+        user_id=f"agent:{agent_id}",
+        rating=body.rating,
+        comment=body.reflection,
+        task_cost_usd=task.cost_usd,
+        task_duration_ms=task.duration_ms,
+        task_num_turns=task.num_turns,
+    )
+    db.add(rating)
+    await db.commit()
+    await db.refresh(rating)
+    return _to_response(rating)
 
 
 @router.post("/tasks/{task_id}/rate", response_model=TaskRatingResponse)
