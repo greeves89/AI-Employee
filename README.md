@@ -1,8 +1,5 @@
 <div align="center">
 
-<!-- Logo placeholder -->
-<img src="docs/assets/logo.png" alt="AI-Employee" width="160" onerror="this.style.display='none'" />
-
 # AI-Employee
 
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
@@ -20,6 +17,19 @@
 [Use Cases](#-use-cases) ·
 [Contributing](CONTRIBUTING.md)
 
+</div>
+
+---
+
+<div align="center">
+  <img src="docs/assets/dashboard.png" alt="AI-Employee Dashboard" width="100%" />
+  <p><em>Dashboard — live agent status, system health, task queue at a glance</em></p>
+</div>
+
+<div align="center">
+  <img src="docs/assets/agents.png" alt="AI-Employee Agent Grid" width="49%" />
+  <img src="docs/assets/tasks.png" alt="AI-Employee Task History" width="49%" />
+  <p><em>Left: Agent grid with CPU/Memory monitoring &nbsp;·&nbsp; Right: Task history across all agents</em></p>
 </div>
 
 ---
