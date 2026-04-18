@@ -1,0 +1,11 @@
+{
+  "id": "document",
+  "name": "Document Analysis",
+  "version": "1.0.0",
+  "description": "Extract and analyse text from documents (PDF, DOCX, TXT, MD). Returns full text plus metadata such as page count and word count.",
+  "author": "ai-employee",
+  "tags": ["pdf", "docx", "contracts", "text-extraction"],
+  "dependencies": ["pymupdf", "python-docx"],
+  "tools": ["analyze_document"],
+  "enabled": true
+}

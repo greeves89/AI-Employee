@@ -3,7 +3,15 @@
 Contains both local tools (bash, file I/O) and orchestrator API tools
 (memory, notifications, tasks, todos, schedules) that replicate the
 MCP server functionality for custom LLM agents.
+
+Skill tools are loaded dynamically from the skills/ marketplace directory
+via app.skills_loader and merged into LOCAL_TOOLS at module load time.
 """
+
+from app.skills_loader import get_skill_tool_definitions, load_all_skills
+
+# Auto-discover and register all skills on import
+load_all_skills()
 
 # ── Local Tools (always available) ──
 
@@ -303,6 +311,9 @@ LOCAL_TOOLS: list[dict] = [
         },
     },
 ]
+
+# Merge marketplace skill tools into LOCAL_TOOLS
+LOCAL_TOOLS.extend(get_skill_tool_definitions())
 
 # ── Orchestrator API Tools (replicate MCP server functionality) ──
 

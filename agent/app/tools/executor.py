@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from app.config import settings
+from app.skills_loader import execute_skill_tool, get_skill_tool_names
 from app.tools.definitions import ORCHESTRATOR_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,10 @@ class ToolExecutor:
         # Route custom MCP tools (prefixed with "mcp_")
         if tool_name.startswith("mcp_"):
             return await self._execute_mcp_tool(tool_name, tool_input)
+
+        # Route marketplace skill tools
+        if tool_name in get_skill_tool_names():
+            return await execute_skill_tool(tool_name, tool_input)
 
         # Local tool execution
         handler = getattr(self, f"_tool_{tool_name}", None)
