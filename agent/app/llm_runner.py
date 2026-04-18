@@ -5,6 +5,7 @@ import json
 import logging
 import time
 
+from app import context_compressor
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
@@ -26,6 +27,35 @@ logger = logging.getLogger(__name__)
 
 # Safety upper-bound; actual cap comes from settings.max_turns
 MAX_TURNS_HARD_CAP = 200
+
+# Trigger context compression at this fraction of the model's context window
+COMPACTION_THRESHOLD = 0.75
+
+# Context window sizes per model (tokens) — mirrors LLMChatHandler
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8_192,
+    "gpt-3.5-turbo": 16_385,
+    "gpt-5": 1_000_000,
+    "o1": 200_000,
+    "o1-mini": 128_000,
+    "o3-mini": 200_000,
+    "claude-opus-4-6": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-haiku-4-5": 200_000,
+    "gemini-2.5-pro": 1_000_000,
+    "gemini-2.5-flash": 1_000_000,
+    "gemini-1.5-pro": 2_000_000,
+    "gemini-1.5-flash": 1_000_000,
+    "llama": 8_192,
+    "mistral": 32_768,
+    "codestral": 32_768,
+    "deepseek": 128_000,
+    "qwen": 128_000,
+}
+DEFAULT_CONTEXT_WINDOW = 128_000
 
 TOOL_USAGE_RULES = """
 TOOL USAGE RULES (follow strictly):
@@ -95,6 +125,19 @@ class LLMRunner:
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
         self._all_tools: list[dict] | None = None
+        self._context_window: int = 0
+
+    def _get_context_window(self) -> int:
+        """Resolve the context window size for the current model."""
+        if self._context_window > 0:
+            return self._context_window
+        model = (settings.llm_model_name or "").lower()
+        for key, size in MODEL_CONTEXT_WINDOWS.items():
+            if key in model:
+                self._context_window = size
+                return size
+        self._context_window = DEFAULT_CONTEXT_WINDOW
+        return self._context_window
 
     async def _get_tools(self) -> list[dict] | None:
         """Get combined built-in + MCP tool definitions."""
@@ -294,6 +337,40 @@ class LLMRunner:
                         tool_call_id=tc["id"],
                         name=tc["name"],
                     ))
+
+                # Context compression: check after each tool round
+                window = self._get_context_window()
+                if total_input_tokens > 0:
+                    usage_pct = total_input_tokens / window
+                else:
+                    usage_pct = context_compressor.estimate_tokens(messages) / window
+
+                if usage_pct >= COMPACTION_THRESHOLD:
+                    await self.log_publisher.publish(
+                        task_id, "system", {"message": "[Context compressing...]"}
+                    )
+                    # Layers 1–3: deterministic, fast
+                    compressed, applied = context_compressor.compress_messages(
+                        messages, window, target_pct=0.55
+                    )
+                    if applied:
+                        messages = compressed
+                        logger.info(f"[Context] Runner layers {applied} applied")
+                        total_input_tokens = 0  # Re-measure on next API call
+
+                    # Layer 4: LLM summarization if still over threshold
+                    estimated = context_compressor.estimate_tokens(messages)
+                    if estimated > int(window * COMPACTION_THRESHOLD):
+                        new_msgs = await context_compressor.summarize_messages(
+                            messages, provider
+                        )
+                        if new_msgs:
+                            logger.info(
+                                f"[Context] Runner L4 summarized "
+                                f"{len(messages)} → {len(new_msgs)} msgs"
+                            )
+                            messages = new_msgs
+                            total_input_tokens = 0
 
         except Exception as e:
             logger.exception(f"LLM Runner error: {e}")

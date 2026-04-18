@@ -447,6 +447,29 @@ async def update_agent_model(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+class AgentBudgetUpdate(BaseModel):
+    budget_usd: float | None  # None = unlimited
+
+
+@router.patch("/{agent_id}/budget")
+async def update_agent_budget(
+    agent_id: str,
+    body: AgentBudgetUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set or clear the monthly budget cap for an agent (admin or owner)."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        agent.budget_usd = body.budget_usd
+        await db.commit()
+        return {"agent_id": agent_id, "budget_usd": agent.budget_usd, "status": "updated"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.delete("/{agent_id}")
 async def remove_agent(
     agent_id: str,

@@ -609,6 +609,16 @@ export async function getAdminOverview(): Promise<AdminOverview> {
   return fetchJSON(`${getBase()}/admin/overview`);
 }
 
+export async function updateAgentBudget(
+  agentId: string,
+  budgetUsd: number | null,
+): Promise<{ agent_id: string; budget_usd: number | null; status: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/budget`, {
+    method: "PATCH",
+    body: JSON.stringify({ budget_usd: budgetUsd }),
+  });
+}
+
 // Agent Templates
 export async function getTemplates(): Promise<{ templates: AgentTemplate[] }> {
   return fetchJSON(`${getBase()}/templates`);

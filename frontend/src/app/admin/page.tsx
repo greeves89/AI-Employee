@@ -26,15 +26,20 @@ import {
   Lightbulb,
   TrendingUp,
   ChevronDown,
+  DollarSign,
+  AlertTriangle,
+  CheckCircle2,
+  Edit3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
+import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
-type Tab = "users" | "agents" | "assignments" | "feedback";
+type Tab = "users" | "agents" | "assignments" | "feedback" | "budget";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -61,6 +66,9 @@ export default function AdminPage() {
   // Feedback
   const [feedbackItems, setFeedbackItems] = useState<Feedback[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  // Budget
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
 
   // Redirect non-admins
   useEffect(() => {
@@ -106,7 +114,14 @@ export default function AdminPage() {
       setFeedbackLoading(true);
       fetchFeedback().finally(() => setFeedbackLoading(false));
     }
-  }, [tab, fetchFeedback]);
+    if (tab === "budget") {
+      setBudgetLoading(true);
+      Promise.all([
+        api.getAdminOverview().then(setOverview).catch(() => {}),
+        fetchAgents(),
+      ]).finally(() => setBudgetLoading(false));
+    }
+  }, [tab, fetchFeedback, fetchAgents]);
 
   const ROLE_CYCLE = ["viewer", "member", "manager", "admin"] as const;
 
@@ -262,6 +277,7 @@ export default function AdminPage() {
     { id: "agents", label: "All Agents", icon: Cpu, count: agents.length },
     { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
     { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
+    { id: "budget", label: "Budget", icon: DollarSign },
   ];
 
   return (
@@ -699,6 +715,19 @@ export default function AdminPage() {
                 }}
               />
             )}
+
+            {tab === "budget" && (
+              <BudgetTab
+                overview={overview}
+                agents={agents}
+                loading={budgetLoading}
+                onBudgetChange={(agentId, newBudget) =>
+                  setAgents((prev) =>
+                    prev.map((a) => a.id === agentId ? { ...a, budget_usd: newBudget } : a)
+                  )
+                }
+              />
+            )}
           </>
         )}
       </motion.div>
@@ -808,6 +837,244 @@ export default function AdminPage() {
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Budget Tab Component ---
+
+function BudgetTab({
+  overview,
+  agents,
+  loading,
+  onBudgetChange,
+}: {
+  overview: AdminOverview | null;
+  agents: Agent[];
+  loading: boolean;
+  onBudgetChange: (agentId: string, budget: number | null) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const totalCost = overview?.cost.total_usd ?? 0;
+
+  // Sort: over-budget first, then by spend desc
+  const sorted = [...agents].sort((a, b) => {
+    const aOver = a.budget_usd != null && a.total_cost_usd >= a.budget_usd;
+    const bOver = b.budget_usd != null && b.total_cost_usd >= b.budget_usd;
+    if (aOver !== bOver) return aOver ? -1 : 1;
+    return b.total_cost_usd - a.total_cost_usd;
+  });
+
+  const handleEdit = (agent: Agent) => {
+    setEditingId(agent.id);
+    setEditValue(agent.budget_usd != null ? String(agent.budget_usd) : "");
+  };
+
+  const handleSave = async (agentId: string) => {
+    setSavingId(agentId);
+    try {
+      const parsed = editValue.trim() === "" ? null : parseFloat(editValue);
+      if (editValue.trim() !== "" && (isNaN(parsed!) || parsed! < 0)) return;
+      await api.updateAgentBudget(agentId, parsed);
+      onBudgetChange(agentId, parsed);
+      setEditingId(null);
+    } catch {
+      // ignore
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const agentsWithBudget = agents.filter((a) => a.budget_usd != null);
+  const agentsOverBudget = agents.filter(
+    (a) => a.budget_usd != null && a.total_cost_usd >= a.budget_usd
+  );
+  const agentsNearBudget = agents.filter(
+    (a) =>
+      a.budget_usd != null &&
+      a.total_cost_usd < a.budget_usd &&
+      a.total_cost_usd / a.budget_usd >= 0.75
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Platform summary cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Gesamtkosten</p>
+          <p className="text-2xl font-bold text-foreground">${totalCost.toFixed(4)}</p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">alle Agenten</p>
+        </div>
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Mit Budget-Limit</p>
+          <p className="text-2xl font-bold text-foreground">{agentsWithBudget.length}</p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">von {agents.length} Agenten</p>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-4",
+          agentsOverBudget.length > 0
+            ? "border-red-500/30 bg-red-500/5"
+            : "border-foreground/[0.06] bg-card/80"
+        )}>
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Budget überschritten</p>
+          <p className={cn("text-2xl font-bold", agentsOverBudget.length > 0 ? "text-red-400" : "text-foreground")}>
+            {agentsOverBudget.length}
+          </p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">Agenten</p>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-4",
+          agentsNearBudget.length > 0
+            ? "border-amber-500/30 bg-amber-500/5"
+            : "border-foreground/[0.06] bg-card/80"
+        )}>
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Nahe am Limit</p>
+          <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-400" : "text-foreground")}>
+            {agentsNearBudget.length}
+          </p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">&gt;75% verbraucht</p>
+        </div>
+      </div>
+
+      {/* Per-agent budget table */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 overflow-hidden">
+        <div className="px-5 py-3 border-b border-foreground/[0.06] flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Agenten Budget-Übersicht</h3>
+          <p className="text-[11px] text-muted-foreground/50">Klick auf Stift-Icon zum Bearbeiten</p>
+        </div>
+        <div className="divide-y divide-foreground/[0.04]">
+          {sorted.map((agent) => {
+            const spent = agent.total_cost_usd || 0;
+            const limit = agent.budget_usd;
+            const pct = limit != null && limit > 0 ? Math.min(spent / limit, 1) : null;
+            const isOver = limit != null && spent >= limit;
+            const isNear = pct != null && pct >= 0.75 && !isOver;
+            const isEditing = editingId === agent.id;
+
+            return (
+              <div key={agent.id} className={cn(
+                "px-5 py-3.5 flex items-center gap-4",
+                isOver && "bg-red-500/[0.03]",
+                isNear && !isOver && "bg-amber-500/[0.03]"
+              )}>
+                {/* Status icon */}
+                <div className="shrink-0">
+                  {isOver ? (
+                    <AlertTriangle className="h-4 w-4 text-red-400" />
+                  ) : isNear ? (
+                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                  ) : limit != null ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border border-muted-foreground/20" />
+                  )}
+                </div>
+
+                {/* Agent name + state */}
+                <div className="w-[180px] shrink-0">
+                  <p className="text-sm font-medium truncate">{agent.name}</p>
+                  <p className="text-[10px] text-muted-foreground/50">{agent.state}</p>
+                </div>
+
+                {/* Spent */}
+                <div className="w-[90px] shrink-0 text-right">
+                  <p className="text-sm font-mono font-semibold">${spent.toFixed(4)}</p>
+                  <p className="text-[10px] text-muted-foreground/50">verbraucht</p>
+                </div>
+
+                {/* Budget bar */}
+                <div className="flex-1 min-w-0">
+                  {limit != null && pct != null ? (
+                    <div>
+                      <div className="h-1.5 w-full rounded-full bg-foreground/[0.06] overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            isOver ? "bg-red-500" : isNear ? "bg-amber-500" : "bg-emerald-500"
+                          )}
+                          style={{ width: `${pct * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                        {(pct * 100).toFixed(1)}% von ${limit.toFixed(2)}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground/40 italic">kein Limit</p>
+                  )}
+                </div>
+
+                {/* Budget inline editor */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {isEditing ? (
+                    <>
+                      <div className="flex items-center gap-1 rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1">
+                        <span className="text-[11px] text-muted-foreground">$</span>
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          placeholder="unbegrenzt"
+                          className="w-20 bg-transparent text-sm outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSave(agent.id);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          autoFocus
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleSave(agent.id)}
+                        disabled={savingId === agent.id}
+                        className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      >
+                        {savingId === agent.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "OK"
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleEdit(agent)}
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                      title="Budget bearbeiten"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      {limit != null ? `$${limit.toFixed(2)}` : "Setzen"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {agents.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">Keine Agenten gefunden</p>
         </div>
       )}
     </div>

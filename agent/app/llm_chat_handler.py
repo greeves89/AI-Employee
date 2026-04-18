@@ -5,6 +5,7 @@ import json
 import logging
 import time
 
+from app import context_compressor
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
@@ -50,19 +51,6 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 }
 
 DEFAULT_CONTEXT_WINDOW = 128_000  # Fallback if model not in table
-
-COMPACTION_PROMPT = (
-    "You are a conversation compactor. Summarize the ENTIRE conversation so far "
-    "into a concise but complete status report. Include:\n"
-    "1. What the user originally asked for\n"
-    "2. What has been accomplished so far (files changed, commands run, decisions made)\n"
-    "3. What is still pending or in progress\n"
-    "4. Any errors encountered and how they were resolved\n"
-    "5. Key context the assistant needs to continue seamlessly\n\n"
-    "Write the summary as a briefing for the assistant to continue the work. "
-    "Be specific — include file paths, function names, and concrete details. "
-    "Do NOT lose any actionable information."
-)
 
 
 class LLMChatHandler:
@@ -149,82 +137,46 @@ class LLMChatHandler:
         return False
 
     async def _compact_history(self, message_id: str) -> None:
-        """Ask the LLM to summarize the conversation, then replace history.
+        """4-layer context compression pipeline.
 
-        Flow:
-        1. Send full history + compaction prompt to LLM
-        2. LLM returns a summary of everything so far
-        3. Replace history with: [system_prompt, summary, last_user_message]
+        Layer 1–3 are deterministic and run first (fast, no LLM call).
+        Layer 4 (LLM summarization) is only invoked if still over threshold.
         """
         provider = self._get_provider()
+        window = self._get_context_window()
 
-        # Notify user that compaction is happening
         await self.log_publisher.publish_chat(
             message_id, "text",
             {"text": "\n\n`[Kontext wird komprimiert...]`\n\n"},
         )
 
-        # Build compaction request: full history + summary instruction
-        compact_messages = list(self._history) + [
-            ChatMessage(role="user", content=COMPACTION_PROMPT)
-        ]
+        # Layers 1–3: Snip → Microcompact → Collapse (deterministic)
+        compressed, applied = context_compressor.compress_messages(
+            self._history, window, target_pct=0.55
+        )
+        if applied:
+            self._history = compressed
+            logger.info(f"[Context] Deterministic layers {applied} applied")
 
-        # Call LLM without tools (pure text summary)
-        summary_text = ""
-        try:
-            async for event in provider.stream_completion(compact_messages, tools=None):
-                if event.type == "text_delta":
-                    summary_text += event.text
-                elif event.type == "done":
-                    # Update token tracking from compaction call
-                    if event.input_tokens:
-                        self._last_input_tokens = 0  # Reset — new context is tiny
-                elif event.type == "error":
-                    logger.error(f"[Context] Compaction LLM call failed: {event.text}")
-                    return  # Keep old history if compaction fails
-        except Exception as e:
-            logger.error(f"[Context] Compaction failed: {e}")
-            return  # Keep old history on error
+        # Check if still over threshold after deterministic layers
+        estimated = context_compressor.estimate_tokens(self._history)
+        still_over = estimated > int(window * COMPACTION_THRESHOLD)
 
-        if not summary_text.strip():
-            logger.warning("[Context] Compaction returned empty summary, skipping")
+        if not still_over:
+            self._last_input_tokens = 0
             return
 
-        # Rebuild history: system prompt + summary + keep last user message
-        system_msg = None
-        if self._history and self._history[0].role == "system":
-            system_msg = self._history[0]
-
-        last_user = None
-        for msg in reversed(self._history):
-            if msg.role == "user":
-                last_user = msg
-                break
-
-        new_history: list[ChatMessage] = []
-        if system_msg:
-            new_history.append(system_msg)
-
-        # Insert summary as an assistant message so the LLM knows the context
-        new_history.append(ChatMessage(
-            role="assistant",
-            content=(
-                f"[Conversation Summary — compacted to save context]\n\n"
-                f"{summary_text}"
-            ),
-        ))
-
-        if last_user:
-            new_history.append(last_user)
-
+        # Layer 4: LLM-based abstractive summarization (last resort)
         old_count = len(self._history)
-        self._history = new_history
-        self._last_input_tokens = 0  # Reset — will be re-measured on next call
-
-        logger.info(
-            f"[Context] Compacted {old_count} messages → {len(self._history)} messages. "
-            f"Summary: {len(summary_text)} chars"
-        )
+        new_history = await context_compressor.summarize_messages(self._history, provider)
+        if new_history:
+            self._history = new_history
+            self._last_input_tokens = 0
+            logger.info(
+                f"[Context] Layer 4 summarized {old_count} → {len(self._history)} msgs"
+            )
+        else:
+            logger.warning("[Context] Layer 4 summarization failed; keeping current history")
 
     async def _get_tools(self) -> list[dict] | None:
         """Get combined built-in + MCP tool definitions."""
