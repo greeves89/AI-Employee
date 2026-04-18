@@ -5,6 +5,7 @@ import string
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,9 @@ from app.services.redis_service import RedisService
 
 # Eviction grace period for completed tasks (seconds)
 TASK_EVICT_GRACE_SECONDS = int(300)
+
+# Model used for self-reflection rating + improvement suggestions
+_REFLECTION_MODEL = "claude-haiku-4-5-20251001"
 
 _ID_ALPHABET = string.digits + string.ascii_lowercase
 
@@ -29,6 +33,91 @@ def _make_task_id() -> str:
     return f"t{suffix}"
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_formula_rating(task: "Task") -> int:  # noqa: F821
+    """Fallback: compute a mechanical 1-5 star rating from task outcome metrics.
+
+    Formula:
+      - Base score: 5 for completed, 2 for failed
+      - duration_ms > 120_000 → -1
+      - num_turns > 20        → -1
+      - cost_usd > 0.10       → -1
+      - Clamped to [1, 5]
+    """
+    from app.models.task import TaskStatus as _TaskStatus
+
+    score = 5 if task.status == _TaskStatus.COMPLETED else 2
+    if task.duration_ms is not None and task.duration_ms > 120_000:
+        score -= 1
+    if task.num_turns is not None and task.num_turns > 20:
+        score -= 1
+    if task.cost_usd is not None and task.cost_usd > 0.10:
+        score -= 1
+    return max(1, min(5, score))
+
+
+async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
+    """Ask the LLM to self-reflect on a completed task and return (rating, reflection).
+
+    Uses the Anthropic Messages API via httpx (anthropic SDK not required).
+    Falls back to formula rating if the LLM call fails.
+
+    Returns:
+        (rating: int 1-5, reflection: str one-sentence explanation)
+    """
+    from app.config import settings
+
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        return _compute_formula_rating(task), "auto-rated (no API key)"
+
+    duration_s = round((task.duration_ms or 0) / 1000, 1)
+    cost_usd = task.cost_usd or 0.0
+    num_turns = task.num_turns or 0
+    error_text = task.error or "none"
+
+    prompt = (
+        "You are evaluating an AI agent task. Rate it 1-5 stars and give a one-sentence reflection.\n\n"
+        f"Task: {task.title or 'Untitled'}\n"
+        f"Status: {task.status.value}\n"
+        f"Duration: {duration_s}s\n"
+        f"Turns: {num_turns}\n"
+        f"Cost: ${cost_usd:.4f}\n"
+        f"Error: {error_text}\n\n"
+        'Respond with JSON only: {"rating": <1-5>, "reflection": "<one sentence>"}'
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": _REFLECTION_MODEL,
+                    "max_tokens": 128,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        resp.raise_for_status()
+        content = resp.json()["content"][0]["text"].strip()
+        # Strip markdown code fences if present
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        parsed = json.loads(content)
+        rating = int(parsed["rating"])
+        rating = max(1, min(5, rating))
+        reflection = str(parsed.get("reflection", ""))[:500]
+        return rating, reflection
+    except Exception as exc:
+        logger.warning(f"LLM self-reflection failed for task {task.id}, falling back to formula: {exc}")
+        return _compute_formula_rating(task), "auto-rated (formula fallback)"
 
 
 async def _build_approval_rules_prefix(db: AsyncSession, agent_id: str) -> str:
@@ -279,6 +368,9 @@ class TaskRouter:
 
         await self.db.commit()
 
+        # Auto-rate the task based on outcome metrics
+        await self._auto_rate_task(task)
+
         # Subtask completion callback: notify the parent task's agent
         if task.parent_task_id:
             await self._notify_parent_agent(task)
@@ -429,6 +521,60 @@ class TaskRouter:
             logger.info(f"Recovered {recovered} stale tasks total")
 
         return recovered
+
+    async def _auto_rate_task(self, task: Task) -> None:
+        """Self-reflect on a completed/failed task via LLM and persist the rating.
+
+        Sends task metadata to claude-haiku for a 1-5 star rating + one-sentence
+        reflection. Falls back to the formula-based rating if the LLM call fails.
+        """
+        if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            return
+        if not task.agent_id:
+            return
+        try:
+            from app.models.task_rating import TaskRating
+
+            rating, reflection = await _llm_reflect_on_task(task)
+            task_rating = TaskRating(
+                task_id=task.id,
+                agent_id=task.agent_id,
+                user_id=None,  # system-generated
+                rating=rating,
+                comment=reflection,
+                task_cost_usd=task.cost_usd,
+                task_duration_ms=task.duration_ms,
+                task_num_turns=task.num_turns,
+            )
+            self.db.add(task_rating)
+            await self.db.commit()
+            logger.info(
+                f"Self-reflected task {task.id} → {rating}/5: {reflection!r} "
+                f"(status={task.status.value}, duration_ms={task.duration_ms}, "
+                f"num_turns={task.num_turns}, cost_usd={task.cost_usd})"
+            )
+
+            # Trigger improvement engine every 10th completed task per agent
+            await self._maybe_trigger_improvement(task.agent_id)
+        except Exception as e:
+            logger.warning(f"Could not auto-rate task {task.id}: {e}")
+
+    async def _maybe_trigger_improvement(self, agent_id: str) -> None:
+        """Trigger the improvement engine every 10th rated task for an agent."""
+        try:
+            from app.models.task_rating import TaskRating
+            from sqlalchemy import func as sa_func
+
+            result = await self.db.execute(
+                select(sa_func.count()).select_from(TaskRating).where(TaskRating.agent_id == agent_id)
+            )
+            count = result.scalar() or 0
+            if count > 0 and count % 10 == 0:
+                from app.services.improvement_engine import ImprovementEngine
+                engine = ImprovementEngine()
+                await engine.analyze(agent_id, self.db)
+        except Exception as e:
+            logger.warning(f"Could not trigger improvement engine for agent {agent_id}: {e}")
 
     async def _check_agent_budget(self, agent_id: str) -> None:
         """Raise ValueError if the agent has exceeded its budget."""
