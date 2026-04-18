@@ -69,7 +69,8 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
     from app.config import settings
 
     api_key = settings.anthropic_api_key
-    if not api_key:
+    oauth_token = settings.claude_code_oauth_token
+    if not api_key and not oauth_token:
         return _compute_formula_rating(task), "auto-rated (no API key)"
 
     duration_s = round((task.duration_ms or 0) / 1000, 1)
@@ -89,11 +90,16 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
     )
 
     try:
+        auth_headers = (
+            {"x-api-key": api_key}
+            if api_key
+            else {"authorization": f"Bearer {oauth_token}"}
+        )
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
-                    "x-api-key": api_key,
+                    **auth_headers,
                     "anthropic-version": "2023-06-01",
                     "content-type": "application/json",
                 },
