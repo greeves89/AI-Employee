@@ -102,7 +102,7 @@ async def create_audit_log(
 # USER ENDPOINTS (Read)
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.get("/logs", response_model=list[AuditLogResponse])
+@router.get("/logs")
 async def list_audit_logs(
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
     task_id: Optional[str] = Query(None, description="Filter by task ID"),
@@ -115,24 +115,41 @@ async def list_audit_logs(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Query audit log entries. Supports filtering by agent, task, event type, outcome, and time range.
+    Query audit log entries. Returns {logs: [...], total: N} for pagination.
     """
-    stmt = select(AuditLog).order_by(desc(AuditLog.created_at))
+    base = select(AuditLog)
 
     if agent_id:
-        stmt = stmt.where(AuditLog.agent_id == agent_id)
+        base = base.where(AuditLog.agent_id == agent_id)
     if task_id:
-        stmt = stmt.where(AuditLog.task_id == task_id)
+        base = base.where(AuditLog.task_id == task_id)
     if event_type:
-        stmt = stmt.where(AuditLog.event_type == event_type)
+        base = base.where(AuditLog.event_type == event_type)
     if outcome:
-        stmt = stmt.where(AuditLog.outcome == outcome)
+        base = base.where(AuditLog.outcome == outcome)
     if since:
-        stmt = stmt.where(AuditLog.created_at >= since)
+        base = base.where(AuditLog.created_at >= since)
 
-    stmt = stmt.offset(offset).limit(limit)
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    result = await db.execute(base.order_by(desc(AuditLog.created_at)).offset(offset).limit(limit))
+    logs = result.scalars().all()
+
+    return {
+        "logs": [
+            {
+                "id": e.id,
+                "agent_id": e.agent_id,
+                "task_id": e.task_id,
+                "event_type": e.event_type,
+                "outcome": e.outcome,
+                "command": e.command,
+                "details": e.details,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in logs
+        ],
+        "total": total or 0,
+    }
 
 
 @router.get("/logs/summary")
@@ -164,11 +181,24 @@ async def audit_summary(
     result = await db.execute(stmt)
     rows = result.all()
 
+    # Aggregate into frontend-friendly shape
+    total = sum(r.count for r in rows)
+    by_outcome: dict[str, int] = {"success": 0, "failure": 0, "blocked": 0}
+    by_event_type: dict[str, int] = {}
+    for r in rows:
+        if r.outcome and r.outcome in by_outcome:
+            by_outcome[r.outcome] += r.count
+        et = r.event_type or "UNKNOWN"
+        by_event_type[et] = by_event_type.get(et, 0) + r.count
+
     return {
-        "summary": [
+        "total": total,
+        "by_outcome": by_outcome,
+        "by_event_type": by_event_type,
+        "detail": [
             {"event_type": r.event_type, "outcome": r.outcome, "count": r.count}
             for r in rows
-        ]
+        ],
     }
 
 

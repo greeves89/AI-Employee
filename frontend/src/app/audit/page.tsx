@@ -192,7 +192,7 @@ export default function AuditPage() {
         )}
 
         {/* Event Type Breakdown */}
-        {summary && Object.keys(summary.by_event_type).length > 0 && (
+        {summary && summary.by_event_type && Object.keys(summary.by_event_type).length > 0 && (
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-4">
               <ShieldCheck className="h-4 w-4 text-primary" />
