@@ -14,6 +14,7 @@ from app.runner_hooks import (
     get_memory_preload,
     get_skill_preload,
     get_skills_context,
+    get_user_feedback,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,14 +51,16 @@ class AgentRunner:
             skills_ctx = get_skills_context()
             enhanced_prompt = CHAT_STARTUP_PREFIX + skills_ctx + prompt
         else:
-            # Full mode: startup context + memory + skills + performance + self-improvement
+            # Full mode: startup context + memory + skills + user feedback + performance + self-improvement
             memory_preload = get_memory_preload()
             skill_preload = get_skill_preload()
             skills_ctx = get_skills_context()
+            user_feedback = get_user_feedback()
             improvement_ctx = get_improvement_context()
             enhanced_prompt = (
                 TASK_STARTUP_PREFIX
                 + memory_preload
+                + user_feedback
                 + skill_preload
                 + skills_ctx
                 + improvement_ctx

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth, verify_agent_token
+from app.dependencies import require_auth, require_auth_or_agent, verify_agent_token
 from app.models.agent import Agent
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
@@ -148,6 +148,27 @@ async def rate_task(
     db.add(rating)
     await db.commit()
     await db.refresh(rating)
+
+    # Persist negative feedback (< 4★ with comment) as agent memory so it survives task GC
+    if body.rating < 4 and body.comment:
+        try:
+            from app.db.session import async_session_factory
+            from app.models.memory import AgentMemory
+            async with async_session_factory() as mem_db:
+                stars = "★" * body.rating + "☆" * (5 - body.rating)
+                mem = AgentMemory(
+                    agent_id=task.agent_id,
+                    category="correction",
+                    key="user_feedback",
+                    content=f"{stars} User-Feedback zu Task '{task.title or task_id}': {body.comment}",
+                    importance=5,
+                    confidence=1.5,  # user-corrected → never auto-decay
+                )
+                mem_db.add(mem)
+                await mem_db.commit()
+        except Exception as e:
+            logger.warning(f"Could not save feedback memory: {e}")
+
     return _to_response(rating)
 
 
@@ -156,7 +177,7 @@ async def get_agent_ratings(
     agent_id: str,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """List all ratings for an agent, newest first."""

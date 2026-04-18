@@ -303,6 +303,40 @@ def get_skills_context() -> str:
     return "\n".join(lines)
 
 
+def get_user_feedback() -> str:
+    """Fetch recent user corrections (category=correction, importance=5) from memory.
+
+    Negative user ratings (< 4★) are persisted as memories with confidence=1.5
+    so they survive task GC. This injects them prominently before every task.
+    """
+    try:
+        url = f"{settings.orchestrator_url}/api/v1/memory/preload/{settings.agent_id}"
+        with urllib.request.urlopen(url, timeout=5) as response:
+            data = _json.loads(response.read())
+
+        # Extract correction-category memories from the critical bucket
+        critical = data.get("critical", [])
+        corrections = [m for m in critical if m.get("category") == "correction"]
+        if not corrections:
+            return ""
+
+        lines = [
+            "",
+            "=== USER CORRECTIONS — APPLY TO THIS TASK ===",
+        ]
+        for m in corrections[:3]:
+            lines.append(f"  • {m['content']}")
+        lines.extend([
+            "",
+            "Change your approach based on this feedback.",
+            "=== END USER CORRECTIONS ===",
+            "",
+        ])
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def get_improvement_context() -> str:
     """Read improvement data from knowledge.md Performance Metrics section."""
     try:
