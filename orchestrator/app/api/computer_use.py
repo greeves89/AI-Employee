@@ -33,7 +33,6 @@ _redis: RedisService | None = None
 
 SESSION_TIMEOUT_SECS = 30 * 60   # 30 minutes
 MAX_ACTIONS_PER_SESSION = 50
-MAX_COST_PER_SESSION_USD = 0.50
 
 
 def init_computer_use(redis: RedisService) -> None:
@@ -59,7 +58,6 @@ async def create_session(user=Depends(require_auth)):
         "bridge_connected": False,
         "bridge_ws": None,
         "action_count": 0,
-        "cost_usd": 0.0,
         "audit_log": [],
     }
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
@@ -125,7 +123,6 @@ async def get_audit_log(session_id: str, user=Depends(require_auth)):
     return {
         "session_id": session_id,
         "action_count": session["action_count"],
-        "cost_usd": round(session["cost_usd"], 4),
         "audit_log": session["audit_log"],
     }
 
@@ -146,10 +143,6 @@ async def send_command(session_id: str, req: CommandRequest, user=Depends(requir
     if session["action_count"] >= MAX_ACTIONS_PER_SESSION:
         raise HTTPException(status_code=429, detail=f"Session action limit reached ({MAX_ACTIONS_PER_SESSION} actions max).")
 
-    # Security gate: cost guard
-    if session["cost_usd"] >= MAX_COST_PER_SESSION_USD:
-        raise HTTPException(status_code=429, detail=f"Session cost limit reached (${MAX_COST_PER_SESSION_USD:.2f} max).")
-
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")
 
@@ -168,9 +161,6 @@ async def send_command(session_id: str, req: CommandRequest, user=Depends(requir
         "params": req.params,
         "ts": time.time(),
     })
-    # Cost estimate: screenshot=0.002, vision actions=0.005, other=0.001
-    action_cost = 0.005 if req.action == "screenshot" else 0.002
-    session["cost_usd"] += action_cost
 
     # Register result waiter
     result_future: asyncio.Future = asyncio.get_event_loop().create_future()
@@ -179,7 +169,7 @@ async def send_command(session_id: str, req: CommandRequest, user=Depends(requir
     try:
         await session["bridge_ws"].send_text(command_msg)
         result = await asyncio.wait_for(result_future, timeout=req.timeout)
-        logger.info(f"[computer-use] session={session_id} action={req.action} #{session['action_count']} cost=${session['cost_usd']:.3f}")
+        logger.info(f"[computer-use] session={session_id} action={req.action} #{session['action_count']}")
         return {"result": result}
     except asyncio.TimeoutError:
         session.get("pending_results", {}).pop(cmd_id, None)
@@ -216,7 +206,6 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             "bridge_connected": False,
             "bridge_ws": None,
             "action_count": 0,
-            "cost_usd": 0.0,
             "audit_log": [],
         }
 
