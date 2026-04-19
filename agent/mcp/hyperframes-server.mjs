@@ -196,8 +196,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const htmlTarget = path.join(tmpDir, "index.html");
       await fs.writeFile(htmlTarget, html_content, "utf8");
 
-      // Render to MP4
-      await runHyperframes(tmpDir, ["render", "--output", outPath]);
+      // Render to MP4 — limit to 1 worker to stay within container memory limits
+      await runHyperframes(tmpDir, ["render", "--output", outPath, "--workers", "1"]);
 
       return {
         content: [

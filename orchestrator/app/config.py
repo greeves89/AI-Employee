@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     agent_image: str = "ai-employee-agent:latest"
     agent_network: str = "ai-employee-network"
     max_agents: int = 10
-    agent_memory_limit: str = "2g"
-    agent_cpu_quota: int = 100000  # 1 CPU
+    agent_memory_limit: str = "4g"
+    agent_cpu_quota: int = 200000  # 2 CPUs
 
     # Telegram
     telegram_bot_token: str = ""
