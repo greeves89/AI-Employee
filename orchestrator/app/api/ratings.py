@@ -149,27 +149,29 @@ async def rate_task(
     await db.commit()
     await db.refresh(rating)
 
-    # Persist negative feedback (< 4★ with comment) as agent memory so it survives task GC
-    if body.rating < 4 and body.comment:
+    # Persist feedback as agent memory — always for negative, also for positive with comment
+    if body.comment and (body.rating < 4 or body.rating >= 4):
         try:
             from app.db.session import async_session_factory
             from app.models.memory import AgentMemory
             async with async_session_factory() as mem_db:
                 stars = "★" * body.rating + "☆" * (5 - body.rating)
+                category = "correction" if body.rating < 4 else "reinforcement"
                 mem = AgentMemory(
                     agent_id=task.agent_id,
-                    category="correction",
+                    category=category,
                     key="user_feedback",
                     content=f"{stars} User-Feedback zu Task '{task.title or task_id}': {body.comment}",
-                    importance=5,
-                    confidence=1.5,  # user-corrected → never auto-decay
+                    importance=5 if body.rating < 4 else 4,
+                    confidence=1.5,
                 )
                 mem_db.add(mem)
                 await mem_db.commit()
         except Exception as e:
             logger.warning(f"Could not save feedback memory: {e}")
 
-        # If this task produced a skill, queue a follow-up task to update it
+    # If this task produced a skill, queue a follow-up to update it — for ANY feedback with text
+    if body.comment:
         try:
             from app.models.skill import Skill
             from app.core.task_router import TaskRouter
@@ -183,11 +185,22 @@ async def rate_task(
             skill = skill_result.scalar_one_or_none()
             if skill:
                 stars = "★" * body.rating + "☆" * (5 - body.rating)
+                if body.rating >= 4:
+                    instruction = (
+                        f"Der Nutzer hat deinen Task positiv bewertet ({stars}) mit dem Hinweis:\n"
+                        f"\"{body.comment}\"\n\n"
+                        f"Überarbeite den Skill **'{skill.name}'** (ID: {skill.id}) mit `skill_update`, "
+                        f"um diesen positiven Ansatz zu festigen und die Beschreibung zu verbessern."
+                    )
+                else:
+                    instruction = (
+                        f"Der Nutzer hat deinen Task mit {stars} bewertet.\n\n"
+                        f"Feedback: \"{body.comment}\"\n\n"
+                        f"Überarbeite den Skill **'{skill.name}'** (ID: {skill.id}) mit `skill_update` "
+                        f"basierend auf diesem Feedback."
+                    )
                 followup_prompt = (
-                    f"Der Nutzer hat deinen Task '{task.title or task_id}' mit {stars} bewertet.\n\n"
-                    f"Feedback: \"{body.comment}\"\n\n"
-                    f"Du hast in diesem Task den Skill **'{skill.name}'** (ID: {skill.id}) erstellt.\n"
-                    f"Überarbeite diesen Skill jetzt mit `skill_update` basierend auf dem Feedback.\n"
+                    f"{instruction}\n\n"
                     f"Rufe danach `rate_task` mit 5★ auf (diese Korrektur-Aufgabe)."
                 )
                 redis = RedisService(redis_url=app_settings.redis_url)
@@ -198,7 +211,7 @@ async def rate_task(
                     title=f"Skill Update: {skill.name}",
                     prompt=followup_prompt,
                     agent_id=task.agent_id,
-                    priority=8,
+                    priority=8 if body.rating < 4 else 3,
                 )
                 await redis.disconnect()
                 logger.info(f"Queued skill-update follow-up for skill {skill.id} after {body.rating}★ feedback")

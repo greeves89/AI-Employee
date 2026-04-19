@@ -109,6 +109,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {},
       },
     },
+    {
+      name: "skill_update",
+      description:
+        "Update a skill you previously created — use this when user feedback shows the skill " +
+        "needs improvement, or when you discover a better approach. Only works on skills you created.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          skill_id: {
+            type: "number",
+            description: "The numeric ID of the skill to update.",
+          },
+          description: {
+            type: "string",
+            description: "Updated one-line description (optional).",
+          },
+          content: {
+            type: "string",
+            description: "Updated full skill content in markdown (optional).",
+          },
+          feedback: {
+            type: "string",
+            description: "What user feedback or insight triggered this update — logged as changelog entry.",
+          },
+        },
+        required: ["skill_id"],
+      },
+    },
   ],
 }));
 
@@ -178,6 +206,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{
           type: "text",
           text: `You have ${result.total} skills:\n\n${lines.join("\n\n---\n\n")}`,
+        }],
+      };
+    }
+
+    case "skill_update": {
+      const body = {};
+      if (args.description !== undefined) body.description = args.description;
+      if (args.content !== undefined) body.content = args.content;
+      if (args.feedback !== undefined) body.feedback = args.feedback;
+      const result = await apiCall(`/skills/agent/${args.skill_id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Skill "${result.name}" (id: ${result.id}) updated successfully.${args.feedback ? ` Changelog: "${args.feedback}"` : ""}`,
         }],
       };
     }

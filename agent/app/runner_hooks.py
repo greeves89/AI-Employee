@@ -21,6 +21,13 @@ FIRST STEPS (do these BEFORE starting the actual task):
 3. Use memory_search with a focused query AND pass `room` to narrow to the current project/area
    (e.g. room="project:<repo-name>/<area>"). Rooms dramatically improve retrieval precision.
 4. Use list_todos to check for pending work items
+5. **Search the skill marketplace** with skill_search (query = short summary of what the task needs).
+   - If a relevant skill is found: tell the user which skill you found and that you will use it.
+     Example: "📚 Ich habe den Skill **video-rendering** gefunden und wende ihn an."
+     Then follow the skill instructions. If the user replies "anderen verwenden" or "nicht nutzen",
+     adapt the skill or create a better one and propose it with skill_propose.
+   - If no skill is found: proceed normally. At the end, if you produced something reusable,
+     save it as a skill with skill_propose so the next agent can find it.
 
 If you encounter ANY problem during the task, ALWAYS search knowledge_search and memory_search
 for solutions BEFORE reporting errors or asking the user.
