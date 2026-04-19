@@ -195,7 +195,10 @@ async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool
     logger.info(f"[UserLifecycle] Container gone for {agent_id}, recreating via AgentManager")
     try:
         from app.core.agent_manager import AgentManager
-        manager = AgentManager(db, docker_service)
+        from app.services.redis_service import RedisService
+        from app.config import settings
+        redis_service = RedisService(settings.redis_url)
+        manager = AgentManager(db, docker_service, redis_service)
         await manager.restart_agent(agent_id)
         if wait:
             for _ in range(timeout):
