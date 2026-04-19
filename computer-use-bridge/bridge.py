@@ -232,6 +232,114 @@ class CommandDispatcher:
                                params.get("duration", 0.3))
                 return {"ok": True}
 
+            elif action == "open_app":
+                app = params["app"]
+                import subprocess
+                subprocess.Popen(["open", "-a", app])
+                return {"ok": True, "app": app}
+
+            elif action == "get_clipboard":
+                if IS_MAC:
+                    import subprocess
+                    result = subprocess.run(["pbpaste"], capture_output=True, text=True)
+                    return {"text": result.stdout}
+                elif IS_WIN:
+                    import subprocess
+                    result = subprocess.run(["powershell", "-command", "Get-Clipboard"], capture_output=True, text=True)
+                    return {"text": result.stdout.strip()}
+                return {"error": "Clipboard read not supported on this platform"}
+
+            elif action == "set_clipboard":
+                text = params["text"]
+                if IS_MAC:
+                    import subprocess
+                    subprocess.run(["pbcopy"], input=text.encode(), check=True)
+                    return {"ok": True}
+                elif IS_WIN:
+                    import subprocess
+                    subprocess.run(["powershell", "-command", f"Set-Clipboard '{text}'"], check=True)
+                    return {"ok": True}
+                return {"error": "Clipboard write not supported on this platform"}
+
+            elif action == "find_element":
+                # Search AX tree for element matching role/title/label, return center coords
+                query = params.get("query", "")
+                role = params.get("role", "")
+                app = params.get("app")
+                tree = get_ax_tree(app, max_depth=8)
+
+                def _search(node: dict) -> dict | None:
+                    if not node:
+                        return None
+                    node_title = node.get("title", "").lower()
+                    node_label = node.get("label", "").lower()
+                    node_value = node.get("value", "").lower()
+                    node_role = node.get("role", "").lower()
+                    q = query.lower()
+                    role_match = (not role) or node_role == role.lower()
+                    text_match = (not q) or q in node_title or q in node_label or q in node_value
+                    if role_match and text_match and node.get("bbox"):
+                        bbox = node["bbox"]
+                        return {
+                            "found": True,
+                            "role": node.get("role"),
+                            "title": node.get("title", ""),
+                            "label": node.get("label", ""),
+                            "bbox": bbox,
+                            "center": {
+                                "x": int(bbox["x"] + bbox["w"] / 2),
+                                "y": int(bbox["y"] + bbox["h"] / 2),
+                            },
+                        }
+                    for child in node.get("children", []):
+                        found = _search(child)
+                        if found:
+                            return found
+                    return None
+
+                result = _search(tree)
+                return result or {"found": False, "query": query, "role": role}
+
+            elif action == "wait_for_element":
+                # Poll AX tree until element appears (or timeout)
+                query = params.get("query", "")
+                role = params.get("role", "")
+                app = params.get("app")
+                timeout = min(params.get("timeout", 10), 30)  # max 30s
+                interval = params.get("interval", 0.5)
+
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    tree = get_ax_tree(app, max_depth=8)
+
+                    def _find(node: dict) -> dict | None:
+                        if not node:
+                            return None
+                        q = query.lower()
+                        role_match = (not role) or node.get("role", "").lower() == role.lower()
+                        text_match = (not q) or q in node.get("title", "").lower() or q in node.get("label", "").lower()
+                        if role_match and text_match and node.get("bbox"):
+                            bbox = node["bbox"]
+                            return {
+                                "found": True,
+                                "role": node.get("role"),
+                                "title": node.get("title", ""),
+                                "bbox": bbox,
+                                "center": {"x": int(bbox["x"] + bbox["w"] / 2), "y": int(bbox["y"] + bbox["h"] / 2)},
+                            }
+                        for child in node.get("children", []):
+                            r = _find(child)
+                            if r:
+                                return r
+                        return None
+
+                    found = _find(tree)
+                    if found:
+                        return found
+                    time.sleep(interval)
+
+                return {"found": False, "timeout": True, "query": query}
+
             elif action == "ping":
                 return {"pong": True, "ts": time.time()}
 
@@ -269,7 +377,8 @@ class Bridge:
                 caps = {
                     "type": "hello",
                     "platform": platform.system(),
-                    "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag"],
+                    "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
+                                     "open_app", "get_clipboard", "set_clipboard", "find_element", "wait_for_element"],
                     "ax_tree_available": IS_MAC,
                 }
                 await ws.send(json.dumps(caps))

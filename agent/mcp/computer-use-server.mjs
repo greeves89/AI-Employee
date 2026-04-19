@@ -200,6 +200,63 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "computer_open_app",
+      description: "Open an application by name (macOS only). E.g. 'Safari', 'Finder', 'Terminal'.",
+      inputSchema: {
+        type: "object",
+        required: ["app"],
+        properties: {
+          app: { type: "string", description: "Application name (e.g. 'Safari', 'Calculator')." },
+        },
+      },
+    },
+    {
+      name: "computer_get_clipboard",
+      description: "Read the current clipboard contents as text.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "computer_set_clipboard",
+      description: "Write text to the clipboard.",
+      inputSchema: {
+        type: "object",
+        required: ["text"],
+        properties: {
+          text: { type: "string", description: "Text to copy to clipboard." },
+        },
+      },
+    },
+    {
+      name: "computer_find_element",
+      description:
+        "Search the AX tree for a UI element by text and/or role. Returns the element's " +
+        "bounding box and center coordinates — ready to pass to computer_click. " +
+        "Faster than reading the full AX tree manually.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Text to search for in title/label/value." },
+          role: { type: "string", description: "AX role to match (e.g. 'AXButton', 'AXTextField')." },
+          app: { type: "string", description: "App name to search in (omit for full desktop)." },
+        },
+      },
+    },
+    {
+      name: "computer_wait_for_element",
+      description:
+        "Wait until a UI element matching the query appears on screen. " +
+        "Polls the AX tree every 0.5s up to the timeout. Returns element coords when found.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Text to wait for." },
+          role: { type: "string", description: "AX role filter (optional)." },
+          app: { type: "string", description: "App name to watch (optional)." },
+          timeout: { type: "number", description: "Max wait in seconds (default 10, max 30).", default: 10 },
+        },
+      },
+    },
+    {
       name: "computer_list_sessions",
       description: "List all active computer-use bridge sessions. Shows which are connected.",
       inputSchema: { type: "object", properties: {} },
@@ -276,6 +333,53 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           duration: args?.duration ?? 0.3,
         });
         return { content: [{ type: "text", text: result.ok ? "Dragged." : `Error: ${result.error}` }] };
+
+      case "computer_open_app":
+        result = await sendCommand("open_app", { app: args.app });
+        return { content: [{ type: "text", text: result.ok ? `Opened "${args.app}".` : `Error: ${result.error}` }] };
+
+      case "computer_get_clipboard":
+        result = await sendCommand("get_clipboard", {});
+        return { content: [{ type: "text", text: result.text ?? `Error: ${result.error}` }] };
+
+      case "computer_set_clipboard":
+        result = await sendCommand("set_clipboard", { text: args.text });
+        return { content: [{ type: "text", text: result.ok ? "Clipboard set." : `Error: ${result.error}` }] };
+
+      case "computer_find_element":
+        result = await sendCommand("find_element", {
+          query: args?.query ?? "",
+          role: args?.role ?? "",
+          app: args?.app,
+        }, 15);
+        if (result.found) {
+          return {
+            content: [{
+              type: "text",
+              text: `Found: ${result.role} "${result.title || result.label}"\n` +
+                    `Center: (${result.center.x}, ${result.center.y})\n` +
+                    `Bbox: x=${result.bbox.x} y=${result.bbox.y} w=${result.bbox.w} h=${result.bbox.h}`,
+            }],
+          };
+        }
+        return { content: [{ type: "text", text: `Not found: "${args?.query}" (role: ${args?.role || "any"})` }] };
+
+      case "computer_wait_for_element":
+        result = await sendCommand("wait_for_element", {
+          query: args?.query ?? "",
+          role: args?.role ?? "",
+          app: args?.app,
+          timeout: args?.timeout ?? 10,
+        }, (args?.timeout ?? 10) + 5);
+        if (result.found) {
+          return {
+            content: [{
+              type: "text",
+              text: `Element appeared: ${result.role} "${result.title}"\nCenter: (${result.center.x}, ${result.center.y})`,
+            }],
+          };
+        }
+        return { content: [{ type: "text", text: `Timed out waiting for "${args?.query}"` }], isError: true };
 
       case "computer_list_sessions": {
         const data = await apiCall("/computer-use/sessions");
