@@ -485,5 +485,18 @@ def main() -> None:
         print("\nBridge stopped.")
 
 
+async def run(url: str, token: str, session_id: str, stop_event: threading.Event | None = None) -> None:
+    """Async entry point for use as a library (e.g. from tray_app)."""
+    ws_url = url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
+    bridge = Bridge(ws_url, token, session_id)
+    if stop_event:
+        async def _watch_stop():
+            while not stop_event.is_set():
+                await asyncio.sleep(0.5)
+            bridge.running = False
+        asyncio.create_task(_watch_stop())
+    await bridge.connect()
+
+
 if __name__ == "__main__":
     main()

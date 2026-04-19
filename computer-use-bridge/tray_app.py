@@ -9,7 +9,6 @@ Config saved to ~/.ai_employee_bridge.json (no passwords stored — only token).
 import json
 import os
 import platform
-import subprocess
 import sys
 import threading
 import ssl
@@ -82,72 +81,58 @@ def login_and_prepare(base_url: str, email: str, password: str) -> tuple[str, st
     return token, session_id
 
 
-# ── Bridge process ────────────────────────────────────────────────────────────
+# ── Bridge thread ─────────────────────────────────────────────────────────────
 
-_bridge_proc: subprocess.Popen | None = None
+_bridge_thread: threading.Thread | None = None
+_bridge_stop = threading.Event()
 _bridge_lock = threading.Lock()
 _status = "disconnected"
 
 
-def get_bridge_script() -> str:
-    if getattr(sys, "frozen", False):
-        base = Path(sys.executable).parent
-    else:
-        base = Path(__file__).parent
-    return str(base / "bridge.py")
-
-
 def start_bridge(cfg: dict) -> bool:
-    global _bridge_proc, _status
+    global _bridge_thread, _status
     with _bridge_lock:
-        if _bridge_proc and _bridge_proc.poll() is None:
+        if _bridge_thread and _bridge_thread.is_alive():
             return True
         if not cfg.get("token") or not cfg.get("session"):
             _status = "error: not configured"
             return False
-        cmd = [
-            sys.executable, get_bridge_script(),
-            "--url", cfg["url"],
-            "--token", cfg["token"],
-            "--session", cfg["session"],
-        ]
-        try:
-            _bridge_proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            )
-            _status = "connecting"
-            threading.Thread(target=_watch_output, daemon=True).start()
-            return True
-        except Exception as e:
-            _status = f"error: {e}"
-            return False
+        _bridge_stop.clear()
+        _bridge_thread = threading.Thread(
+            target=_run_bridge_thread,
+            args=(cfg["url"], cfg["token"], cfg["session"]),
+            daemon=True,
+        )
+        _bridge_thread.start()
+        _status = "connecting"
+        return True
 
 
 def stop_bridge() -> None:
-    global _bridge_proc, _status
-    with _bridge_lock:
-        if _bridge_proc and _bridge_proc.poll() is None:
-            _bridge_proc.terminate()
-            _bridge_proc = None
-        _status = "disconnected"
+    global _status
+    _bridge_stop.set()
+    _status = "disconnected"
 
 
 def is_running() -> bool:
-    return _bridge_proc is not None and _bridge_proc.poll() is None
+    return _bridge_thread is not None and _bridge_thread.is_alive()
 
 
-def _watch_output() -> None:
+def _run_bridge_thread(url: str, token: str, session_id: str) -> None:
     global _status
-    if not _bridge_proc:
-        return
-    for line in _bridge_proc.stdout:
-        line = line.strip()
-        if "Connected" in line:
-            _status = "connected"
-        elif "Reconnecting" in line or "closed" in line.lower():
-            _status = "reconnecting"
-        elif "Error" in line:
-            _status = "error"
+    import asyncio
+    try:
+        # Add bridge directory to path so bridge.py can be imported
+        bridge_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+        if str(bridge_dir) not in sys.path:
+            sys.path.insert(0, str(bridge_dir))
+        import bridge as bridge_module
+        _status = "connected"
+        asyncio.run(bridge_module.run(url=url, token=token, session_id=session_id, stop_event=_bridge_stop))
+    except Exception as e:
+        _status = f"error: {e}"
+    finally:
+        _status = "disconnected"
 
 
 # ── Setup dialog ──────────────────────────────────────────────────────────────
