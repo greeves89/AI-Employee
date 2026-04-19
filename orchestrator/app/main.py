@@ -417,6 +417,74 @@ async def _init_db_from_models() -> None:
         logger.warning(f"Alembic stamp failed: {result.stderr.strip()[:200]}")
 
 
+async def _import_container_skills(docker_service) -> None:
+    """Scan all running agent containers for SKILL.md files and persist to DB."""
+    import re
+    import logging
+    logger = logging.getLogger(__name__)
+    await asyncio.sleep(5)  # wait for DB to be ready
+    try:
+        from app.db.session import async_session_factory
+        from app.models.skill import Skill, SkillStatus
+        from sqlalchemy import select
+
+        containers = docker_service.list_agent_containers()
+        imported = 0
+        async with async_session_factory() as db:
+            for container in containers:
+                name = container.get("name", "")
+                if "agent" not in name.lower():
+                    continue
+                container_id = container.get("id", "")
+                if not container_id:
+                    continue
+                try:
+                    _, output = docker_service.exec_in_container(
+                        container_id,
+                        "find /workspace -name SKILL.md 2>/dev/null || true",
+                    )
+                    paths = [p.strip() for p in output.strip().splitlines() if p.strip()]
+                    for path in paths:
+                        try:
+                            _, raw = docker_service.exec_in_container(container_id, f"cat '{path}'")
+                            # Parse frontmatter
+                            fm_match = re.match(r"^---\s*\n(.*?)\n---", raw, re.DOTALL)
+                            fm = {}
+                            if fm_match:
+                                for line in fm_match.group(1).strip().split("\n"):
+                                    if ":" in line:
+                                        k, _, v = line.partition(":")
+                                        fm[k.strip()] = v.strip().strip('"').strip("'")
+                            parts = path.replace("SKILL.md", "").strip("/").split("/")
+                            skill_name = fm.get("name") or (parts[-1] if parts[-1] else parts[-2])
+                            if not skill_name:
+                                continue
+                            existing = (await db.execute(
+                                select(Skill).where(Skill.name == skill_name)
+                            )).scalar_one_or_none()
+                            if not existing:
+                                body = re.sub(r"^---.*?---\s*", "", raw, flags=re.DOTALL).strip()
+                                skill = Skill(
+                                    name=skill_name,
+                                    description=fm.get("description", ""),
+                                    content=body,
+                                    category=fm.get("category", "tools"),
+                                    status=SkillStatus.ACTIVE,
+                                    created_by="import:container",
+                                )
+                                db.add(skill)
+                                imported += 1
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+            if imported:
+                await db.commit()
+                logger.info(f"Imported {imported} skills from agent containers into DB")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Container skill import failed: {e}")
+
+
 # --- Lifespan ---
 
 
@@ -601,12 +669,15 @@ async def lifespan(app: FastAPI):
     scheduler = SchedulerService(app.state.redis, docker_service=app.state.docker)
     scheduler_task = asyncio.create_task(scheduler.run())
 
-    # Start skill catalog crawler (daily GitHub crawl)
+    # Start skill catalog crawler (weekly GitHub crawl)
     from app.services.skill_crawler import SkillCrawlerService
 
     skill_crawler = SkillCrawlerService(app.state.redis)
     app.state.skill_crawler = skill_crawler
     skill_crawler_task = asyncio.create_task(skill_crawler.run())
+
+    # On startup: import skills from all running agent containers into DB
+    asyncio.create_task(_import_container_skills(app.state.docker))
 
     # Start improvement engine (periodic rating analysis)
     from app.services.improvement_engine import ImprovementEngine

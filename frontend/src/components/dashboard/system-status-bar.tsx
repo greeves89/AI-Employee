@@ -88,8 +88,11 @@ export function SystemStatusBar() {
         credentials: "include",
         signal: AbortSignal.timeout(5000),
       });
-      const data: HealthData = await res.json();
-      setHealth(data);
+      if (!res.ok) { setHealth(null); return; }
+      const data = await res.json();
+      // Validate shape — ignore error responses like {"detail": "Not Found"}
+      if (!data?.checks?.database) { setHealth(null); return; }
+      setHealth(data as HealthData);
       setLastUpdated(new Date());
     } catch {
       setHealth(null);

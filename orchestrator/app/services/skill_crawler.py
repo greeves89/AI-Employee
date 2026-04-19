@@ -41,8 +41,8 @@ CATEGORY_KEYWORDS = {
 }
 
 REDIS_KEY = "skill_catalog"
-REDIS_TTL = 86400  # 24 hours
-CRAWL_INTERVAL = 86400  # 24 hours
+REDIS_TTL = 604800  # 7 days — DB is primary store, Redis just a performance cache
+CRAWL_INTERVAL = 604800  # crawl weekly, not daily (DB persists skills permanently)
 
 
 def _guess_category(name: str, description: str) -> str:
