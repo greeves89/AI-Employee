@@ -111,6 +111,13 @@ export async function updateAgentPermissions(agentId: string, permissions: strin
   });
 }
 
+export async function updateAgentBrowserMode(agentId: string, browserMode: boolean): Promise<{ browser_mode: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/browser-mode`, {
+    method: "PATCH",
+    body: JSON.stringify({ browser_mode: browserMode }),
+  });
+}
+
 export async function stopAgent(id: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${id}/stop`, { method: "POST" });
 }

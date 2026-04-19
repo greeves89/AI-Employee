@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Monitor,
+  Globe,
   Plus,
   Trash2,
   RefreshCw,
@@ -21,20 +22,24 @@ import {
   listComputerUseSessions,
   createComputerUseSession,
   deleteComputerUseSession,
+  updateAgentBrowserMode,
   type ComputerUseSession,
 } from "@/lib/api";
 import { getApiUrl } from "@/lib/config";
 
 interface Props {
   agentId: string;
+  browserMode?: boolean;
 }
 
-export function ComputerUseTab({ agentId }: Props) {
+export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = false }: Props) {
   const [sessions, setSessions] = useState<ComputerUseSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
+  const [browserMode, setBrowserMode] = useState(initialBrowserMode);
+  const [togglingBrowser, setTogglingBrowser] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -78,15 +83,73 @@ export function ComputerUseTab({ agentId }: Props) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleToggleBrowser = async () => {
+    setTogglingBrowser(true);
+    try {
+      await updateAgentBrowserMode(agentId, !browserMode);
+      setBrowserMode((prev) => !prev);
+    } catch {
+      // ignore
+    } finally {
+      setTogglingBrowser(false);
+    }
+  };
+
   const baseUrl = getApiUrl().replace(/\/$/, "");
   const wsBase = baseUrl.replace(/^http/, "ws");
 
   return (
     <div className="h-full overflow-y-auto space-y-4 pr-1">
-      {/* Header */}
+
+      {/* Phase 1: Playwright Browser Control toggle */}
+      <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-lg shrink-0",
+              browserMode ? "bg-blue-500/10" : "bg-foreground/[0.06]"
+            )}>
+              <Globe className={cn("h-4.5 w-4.5", browserMode ? "text-blue-400" : "text-muted-foreground")} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">Browser Automation (Playwright)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Enables <code className="text-blue-400">browser_navigate</code>, <code className="text-blue-400">browser_click</code>,{" "}
+                <code className="text-blue-400">browser_screenshot</code> and more — no screen-share required.
+                Runs headlessly inside the agent container.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleBrowser}
+            disabled={togglingBrowser}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50",
+              browserMode ? "bg-blue-500" : "bg-foreground/[0.15]"
+            )}
+            role="switch"
+            aria-checked={browserMode}
+          >
+            <span className={cn(
+              "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200",
+              browserMode ? "translate-x-5" : "translate-x-0"
+            )} />
+          </button>
+        </div>
+        {browserMode && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-500/5 border border-blue-500/20 px-3 py-2">
+            <AlertCircle className="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-400/80">
+              Browser mode is <strong>enabled</strong>. Restart the agent to activate Playwright MCP.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Phase 2/3: Desktop bridge header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Computer-Use Bridge</h3>
+          <h3 className="text-sm font-semibold text-foreground">Desktop Bridge</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             Connect your Mac or Windows machine so agents can control your desktop.
           </p>

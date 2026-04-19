@@ -28,6 +28,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Claude Code CLI globally (pin version for reproducibility)
 RUN npm install -g @anthropic-ai/claude-code@2.1.114
 
+# Pre-install Playwright + Chromium for browser automation (Computer-Use Phase 1)
+# Only activated when COMPUTER_USE_BROWSER=true — pre-installing avoids runtime download delays
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    libglib2.0-0 \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && npx -y @playwright/mcp@latest --version 2>/dev/null || true \
+    && npx -y playwright install chromium --with-deps 2>/dev/null || true
+
 # Create non-root user with sudo installed (permissions configured dynamically by orchestrator)
 # Container isolation is the real sandbox - sudo rules are set per-agent via permission packages
 RUN useradd -m -s /bin/bash agent

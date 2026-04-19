@@ -257,7 +257,7 @@ export default function AgentDetailPage() {
           {activeTab === "memory" && <MemoryTab agentId={agentId} />}
           {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
           {activeTab === "skills" && <SkillsTab agentId={agentId} />}
-          {activeTab === "computer-use" && <ComputerUseTab agentId={agentId} />}
+          {activeTab === "computer-use" && <ComputerUseTab agentId={agentId} browserMode={agent.browser_mode} />}
           {activeTab === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>
