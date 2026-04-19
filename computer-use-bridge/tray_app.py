@@ -49,7 +49,10 @@ def api_login(base_url: str, email: str, password: str) -> str:
     """POST /api/v1/auth/login → returns access_token."""
     url = base_url.rstrip("/") + "/api/v1/auth/login"
     data = json.dumps({"email": email, "password": password}).encode()
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(url, data=data, headers={
+        "Content-Type": "application/json",
+        "User-Agent": "AI-Employee-Bridge/1.0",
+    })
     with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
         body = json.loads(resp.read())
         return body["access_token"]
@@ -60,7 +63,11 @@ def api_create_session(base_url: str, token: str) -> str:
     url = base_url.rstrip("/") + "/api/v1/computer-use/sessions"
     req = urllib.request.Request(
         url, data=b"{}",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "AI-Employee-Bridge/1.0",
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
