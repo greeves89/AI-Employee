@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     default_model: str = "claude-sonnet-4-6"
     max_turns: int = 100
     extended_thinking: bool = False  # Not a CLI flag - thinking is model-controlled
+    tool_max_concurrency: int = 10  # Max parallel concurrent-safe tool calls (TOOL_MAX_CONCURRENCY)
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""
     workspace_dir: str = "/workspace"

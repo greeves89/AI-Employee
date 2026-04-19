@@ -125,6 +125,53 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "delegate_and_wait",
+      description:
+        "Create parallel sub-tasks and wait for ALL of them to complete, then return aggregated results. " +
+        "Use this when you need the results before continuing (e.g. research + analysis in parallel). " +
+        "For fire-and-forget delegation, use create_task_batch instead. Max 20 tasks, max 10 min wait.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short task title." },
+                prompt: { type: "string", description: "Detailed instructions for this sub-task." },
+                agent_id: { type: "string", description: "Agent to assign to. Leave empty for auto-assign." },
+              },
+              required: ["title", "prompt"],
+            },
+            description: "Sub-tasks to run in parallel (max 20).",
+          },
+          timeout_seconds: {
+            type: "number",
+            description: "Max wait time in seconds. Default: 300 (5 min). Max: 600.",
+          },
+        },
+        required: ["tasks"],
+      },
+    },
+    {
+      name: "get_tasks_status",
+      description:
+        "Check the status and result of specific tasks by their IDs. " +
+        "Use after create_task or create_task_batch to poll for completion.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          task_ids: {
+            type: "array",
+            items: { type: "number" },
+            description: "List of task IDs to check.",
+          },
+        },
+        required: ["task_ids"],
+      },
+    },
+    {
       name: "list_tasks",
       description:
         "List tasks, optionally filtered by status and/or agent. " +
@@ -504,6 +551,73 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Task created (id: ${result.id}, status: ${result.status}, assigned to: ${result.agent_id || AGENT_ID}).`,
           },
         ],
+      };
+    }
+
+    case "delegate_and_wait": {
+      const timeout = Math.min(args.timeout_seconds || 300, 600) * 1000;
+      const batchTasks = (args.tasks || []).slice(0, 20).map((t) => ({
+        title: t.title,
+        prompt: t.prompt,
+        priority: t.priority || 5,
+        agent_id: t.agent_id || null,
+        model: DEFAULT_MODEL,
+      }));
+      const batch = await apiCall("/tasks/batch", {
+        method: "POST",
+        body: JSON.stringify({ tasks: batchTasks, created_by_agent: AGENT_ID }),
+      });
+      const taskIds = batch.tasks.map((t) => t.id);
+
+      // Poll until all tasks are done or timeout
+      const deadline = Date.now() + timeout;
+      const results = {};
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const statuses = await Promise.all(
+          taskIds.map((id) => apiCall(`/tasks/${id}`).catch(() => null))
+        );
+        for (const t of statuses) {
+          if (t && (t.status === "completed" || t.status === "failed")) {
+            results[t.id] = { title: t.title, status: t.status, result: t.result || "(no output)" };
+          }
+        }
+        if (Object.keys(results).length === taskIds.length) break;
+      }
+
+      const pending = taskIds.filter((id) => !results[id]);
+      const lines = taskIds.map((id) => {
+        const r = results[id];
+        if (!r) return `  #${id}: ⏳ still running (timed out)`;
+        const icon = r.status === "completed" ? "✅" : "❌";
+        return `${icon} #${id} "${r.title}"\n${r.result}`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text:
+            `Delegated ${taskIds.length} tasks. ` +
+            `${Object.keys(results).length} finished, ${pending.length} timed out.\n\n` +
+            wrapData("subtask-results", lines.join("\n\n---\n\n")),
+        }],
+      };
+    }
+
+    case "get_tasks_status": {
+      const ids = (args.task_ids || []).slice(0, 50);
+      const statuses = await Promise.all(
+        ids.map((id) => apiCall(`/tasks/${id}`).catch(() => ({ id, status: "error", result: "not found" })))
+      );
+      const lines = statuses.map((t) => {
+        const icon = t.status === "completed" ? "✅" : t.status === "failed" ? "❌" : t.status === "running" ? "🔄" : "⏳";
+        const cost = t.cost_usd ? ` ($${t.cost_usd.toFixed(4)})` : "";
+        return `${icon} #${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  → ${t.result.substring(0, 300)}` : ""}`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `${statuses.length} tasks:\n\n${lines.join("\n\n")}`,
+        }],
       };
     }
 

@@ -20,7 +20,16 @@ logger = logging.getLogger(__name__)
 # Safety limit for bash output
 MAX_OUTPUT_CHARS = 30000
 
-# Tools safe to cache (read-only, no side effects)
+# Tools safe to execute concurrently (read-only, no side effects)
+CONCURRENT_SAFE_TOOLS = frozenset({
+    "read_file", "list_files", "glob", "grep",
+    "git_status", "git_diff",
+    "web_search", "web_fetch",
+    "memory_search", "knowledge_search", "list_team",
+    "list_tasks", "list_todos", "list_schedules",
+})
+
+# Subset of concurrent-safe tools whose results are worth caching
 _CACHEABLE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
     "memory_search", "knowledge_search", "list_team",
@@ -84,6 +93,7 @@ class ToolExecutor:
         self._api_client = None  # Lazy init
         self._mcp_client = None  # Lazy init for custom MCP servers
         self._cache = _ToolCache()
+        self._semaphore = asyncio.Semaphore(settings.tool_max_concurrency)
 
     def _get_api_client(self):
         """Lazy-initialize the orchestrator API client."""
@@ -102,9 +112,16 @@ class ToolExecutor:
     async def execute(self, tool_name: str, tool_input: dict) -> str:
         """Execute a tool and return the result as a string.
 
+        Concurrent-safe tools are guarded by a semaphore (TOOL_MAX_CONCURRENCY).
         Read-only tools are cached for 2 minutes to avoid redundant work.
         Write operations invalidate the cache automatically.
         """
+        if tool_name in CONCURRENT_SAFE_TOOLS:
+            async with self._semaphore:
+                return await self._execute_inner(tool_name, tool_input)
+        return await self._execute_inner(tool_name, tool_input)
+
+    async def _execute_inner(self, tool_name: str, tool_input: dict) -> str:
         # Check cache for read-only tools
         cached = self._cache.get(tool_name, tool_input)
         if cached is not None:

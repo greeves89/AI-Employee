@@ -302,22 +302,22 @@ class LLMRunner:
                     # No tool calls = response is complete
                     break
 
-                # Execute tool calls — parallelize read-only, serialize writes
-                from app.tools.executor import _CACHEABLE_TOOLS
+                # Execute tool calls — parallelize concurrent-safe, serialize writes
+                from app.tools.executor import CONCURRENT_SAFE_TOOLS
                 _WRITE_TOOLS = {"write_file", "edit_file", "multi_edit", "bash"}
 
-                read_only = [tc for tc in turn_tool_calls if tc["name"] in _CACHEABLE_TOOLS]
+                concurrent = [tc for tc in turn_tool_calls if tc["name"] in CONCURRENT_SAFE_TOOLS]
                 write_ops = [tc for tc in turn_tool_calls if tc["name"] in _WRITE_TOOLS]
-                other_ops = [tc for tc in turn_tool_calls if tc not in read_only and tc not in write_ops]
+                other_ops = [tc for tc in turn_tool_calls if tc not in concurrent and tc not in write_ops]
 
-                # Run read-only tools in parallel
+                # Run concurrent-safe tools in parallel (semaphore-capped inside executor)
                 results_map: dict[str, str] = {}
-                if read_only:
+                if concurrent:
                     parallel_results = await asyncio.gather(
-                        *[self._tool_executor.execute(tc["name"], tc["input"]) for tc in read_only],
+                        *[self._tool_executor.execute(tc["name"], tc["input"]) for tc in concurrent],
                         return_exceptions=True,
                     )
-                    for tc, res in zip(read_only, parallel_results):
+                    for tc, res in zip(concurrent, parallel_results):
                         results_map[tc["id"]] = str(res) if isinstance(res, Exception) else res
 
                 # Run other/write tools sequentially
