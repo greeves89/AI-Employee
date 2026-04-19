@@ -46,7 +46,7 @@ async function ensureVideoDir() {
 async function runHyperframes(projectDir, args) {
   return execFileAsync("hyperframes", args, {
     cwd: projectDir,
-    timeout: 120_000,
+    timeout: 180_000,
     env: { ...process.env, HOME: os.homedir() },
   });
 }
@@ -115,9 +115,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     try {
       await ensureVideoDir();
 
-      // Init hyperframes project
-      await runHyperframes(tmpDir, ["init", "--yes"]).catch(() => {
-        // Some versions don't need init — continue anyway
+      // Init hyperframes project in-place (dot = current dir, no subdirectory created)
+      await runHyperframes(tmpDir, ["init", "."]).catch(() => {
+        // Continue even if init fails — some versions skip this step
       });
 
       // Write the HTML composition (overwrite scaffold if present)

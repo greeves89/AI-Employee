@@ -30,12 +30,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @anthropic-ai/claude-code@2.1.114
 
 # Install Hyperframes CLI for agent video rendering
-RUN npm install -g @hyperframes/cli
+RUN npm install -g hyperframes
 
 # Pre-install Playwright + Chromium for browser automation (Computer-Use Phase 1)
 # Only activated when COMPUTER_USE_BROWSER=true — pre-installing avoids runtime download delays
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
+    chromium \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -56,6 +57,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && npx -y @playwright/mcp@latest --version 2>/dev/null || true \
     && npx -y playwright install chromium --with-deps 2>/dev/null || true
+
+# Point Puppeteer/hyperframes to the system Chromium (avoids x86_64 download on ARM)
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Create non-root user with sudo installed (permissions configured dynamically by orchestrator)
 # Container isolation is the real sandbox - sudo rules are set per-agent via permission packages
