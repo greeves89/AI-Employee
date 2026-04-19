@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     sudo \
     ripgrep \
+    ffmpeg \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -27,6 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Claude Code CLI globally (pin version for reproducibility)
 RUN npm install -g @anthropic-ai/claude-code@2.1.114
+
+# Install Hyperframes CLI for agent video rendering
+RUN npm install -g @hyperframes/cli
 
 # Pre-install Playwright + Chromium for browser automation (Computer-Use Phase 1)
 # Only activated when COMPUTER_USE_BROWSER=true — pre-installing avoids runtime download delays

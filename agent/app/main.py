@@ -127,6 +127,14 @@ def register_mcp_servers() -> None:
                 "AGENT_TOKEN": settings.agent_token,
             },
         },
+        "hyperframes": {
+            "command": "node",
+            "args": ["/opt/mcp/hyperframes-server.mjs"],
+            "env": {
+                "COMPUTER_USE_USER_ID": os.environ.get("COMPUTER_USE_USER_ID", ""),
+                "WORKSPACE_DIR": settings.workspace_dir,
+            },
+        },
     }
 
     for name, cfg in builtin_servers.items():
