@@ -22,12 +22,10 @@ FIRST STEPS (do these BEFORE starting the actual task):
    (e.g. room="project:<repo-name>/<area>"). Rooms dramatically improve retrieval precision.
 4. Use list_todos to check for pending work items
 5. **Search the skill marketplace** with skill_search (query = short summary of what the task needs).
-   - If a relevant skill is found: tell the user which skill you found and that you will use it.
-     Example: "📚 Ich habe den Skill **video-rendering** gefunden und wende ihn an."
-     Then follow the skill instructions. If the user replies "anderen verwenden" or "nicht nutzen",
-     adapt the skill or create a better one and propose it with skill_propose.
-   - If no skill is found: proceed normally. At the end, if you produced something reusable,
-     save it as a skill with skill_propose so the next agent can find it.
+   - Read the description of matching skills and decide yourself if one fits.
+   - If a relevant skill fits: use it. Note the skill ID — you must rate it with skill_rate after.
+   - If no skill fits or none found: proceed with your own approach. At the end you MUST
+     create a new skill with skill_propose so the next agent can benefit from your approach.
 
 If you encounter ANY problem during the task, ALWAYS search knowledge_search and memory_search
 for solutions BEFORE reporting errors or asking the user.
@@ -111,8 +109,14 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    - rating: 1-5 (be honest — 3 means OK, 5 means truly excellent)
    - reflection: ONE sentence about what went well or what to do differently next time
 
-7. **Create a skill (MANDATORY for deliverables)**: Did this task produce a PDF, report,
+7. **Rate any skill you used (MANDATORY)**: If you used a skill from the marketplace (step 5
+   of FIRST STEPS), call `skill_rate` now with an honest 1-5 rating and a short comment on
+   what worked or what could be improved. This is how skills get better over time.
+
+8. **Create a skill (MANDATORY for deliverables)**: Did this task produce a PDF, report,
    script, analysis, code module, or any tangible artifact? YES → you MUST call `create_skill`.
+   Did you use a novel approach that wasn't in any marketplace skill? YES → call `skill_propose`
+   so the next agent can find it.
    - name: short slug (e.g. "ki-trends-2025-pdf", "deploy-script", "sales-report-q1")
    - title: human-readable title
    - description: what this skill/deliverable does + approach used

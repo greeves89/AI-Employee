@@ -110,6 +110,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "skill_rate",
+      description:
+        "Rate a skill after using it. Call this at the end of every task where you used a skill. " +
+        "Your rating improves skill quality over time and helps other agents find the best skills.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          skill_id: {
+            type: "number",
+            description: "The numeric ID of the skill you used.",
+          },
+          rating: {
+            type: "number",
+            description: "Rating from 1 (poor) to 5 (excellent).",
+          },
+          comment: {
+            type: "string",
+            description: "Optional: what worked well or what could be improved.",
+          },
+        },
+        required: ["skill_id", "rating"],
+      },
+    },
+    {
       name: "skill_update",
       description:
         "Update a skill you previously created — use this when user feedback shows the skill " +
@@ -206,6 +230,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{
           type: "text",
           text: `You have ${result.total} skills:\n\n${lines.join("\n\n---\n\n")}`,
+        }],
+      };
+    }
+
+    case "skill_rate": {
+      const result = await apiCall(`/skills/marketplace/${args.skill_id}/rate`, {
+        method: "POST",
+        body: JSON.stringify({ rating: args.rating, comment: args.comment || "" }),
+      });
+      const stars = "★".repeat(args.rating) + "☆".repeat(5 - args.rating);
+      return {
+        content: [{
+          type: "text",
+          text: `Skill rated ${stars}. New avg: ${result.avg_rating?.toFixed(1) ?? "n/a"} (${result.usage_count} uses).`,
         }],
       };
     }
