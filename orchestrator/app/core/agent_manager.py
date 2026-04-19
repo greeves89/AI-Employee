@@ -566,6 +566,7 @@ class AgentManager:
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
                 "COMPUTER_USE_BROWSER": "true" if browser_mode else "false",
+                "COMPUTER_USE_USER_ID": str(user_id) if user_id else "",
             })
 
         # Create Docker container with workspace + session + shared volumes

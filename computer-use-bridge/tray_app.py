@@ -34,7 +34,7 @@ def load_config() -> dict:
             return json.loads(CONFIG_FILE.read_text())
         except Exception:
             pass
-    return {"url": "", "token": "", "auto_connect": True}
+    return {"url": "", "token": "", "session": "", "auto_connect": True}
 
 
 def save_config(cfg: dict) -> None:
@@ -62,9 +62,17 @@ def start_bridge(cfg: dict) -> bool:
     with _bridge_lock:
         if _bridge_proc and _bridge_proc.poll() is None:
             return True  # already running
+        if not cfg.get("session"):
+            _status = "error: session_id missing — open Settings to enter it"
+            return False
         script = get_bridge_script()
         python = sys.executable
-        cmd = [python, script, "--url", cfg["url"], "--token", cfg["token"]]
+        cmd = [
+            python, script,
+            "--url", cfg["url"],
+            "--token", cfg["token"],
+            "--session", cfg["session"],
+        ]
         try:
             _bridge_proc = subprocess.Popen(
                 cmd,
@@ -111,7 +119,7 @@ def _watch_output() -> None:
 # ── Setup dialog (Tkinter — built-in) ─────────────────────────────────────────
 
 def show_setup_dialog(cfg: dict) -> dict | None:
-    """Simple URL + token input dialog. Returns updated config or None if cancelled."""
+    """URL + token + session_id input dialog. Returns updated config or None if cancelled."""
     try:
         import tkinter as tk
         from tkinter import ttk
@@ -124,7 +132,7 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     root = tk.Tk()
     root.title("AI-Employee Bridge Setup")
     root.resizable(False, False)
-    root.geometry("480x260")
+    root.geometry("480x320")
 
     frame = ttk.Frame(root, padding=20)
     frame.pack(fill="both", expand=True)
@@ -143,17 +151,29 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     token_entry = ttk.Entry(frame, textvariable=token_var, width=40, show="*")
     token_entry.grid(row=2, column=1, padx=(8, 0), pady=4)
 
+    ttk.Label(frame, text="Session ID:").grid(row=3, column=0, sticky="w", pady=4)
+    session_var = tk.StringVar(value=cfg.get("session", ""))
+    session_entry = ttk.Entry(frame, textvariable=session_var, width=40)
+    session_entry.grid(row=3, column=1, padx=(8, 0), pady=4)
+
+    ttk.Label(
+        frame,
+        text="Session ID: web UI → Agent → Computer Use tab → New Session",
+        foreground="gray",
+    ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
     auto_var = tk.BooleanVar(value=cfg.get("auto_connect", True))
     ttk.Checkbutton(frame, text="Connect automatically on startup", variable=auto_var).grid(
-        row=3, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        row=5, column=0, columnspan=2, sticky="w", pady=(4, 0)
     )
 
-    ttk.Label(frame, text="Get your token: open AI-Employee → Profile → API Token",
-              foreground="gray").grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 16))
+    ttk.Label(frame, text="Get your token: AI-Employee → Profile → API Token",
+              foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", pady=(4, 16))
 
     def on_save():
         result["url"] = url_var.get().strip()
         result["token"] = token_var.get().strip()
+        result["session"] = session_var.get().strip()
         result["auto_connect"] = auto_var.get()
         root.destroy()
 
@@ -161,7 +181,7 @@ def show_setup_dialog(cfg: dict) -> dict | None:
         root.destroy()
 
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=5, column=0, columnspan=2, sticky="e")
+    btn_frame.grid(row=7, column=0, columnspan=2, sticky="e")
     ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side="right", padx=(4, 0))
     ttk.Button(btn_frame, text="Save & Connect", command=on_save).pack(side="right")
 
@@ -184,7 +204,7 @@ def run_macos(cfg: dict) -> None:
             super().__init__("⬡", quit_button=None)
             self.cfg = load_config()
             self._update_icon()
-            if self.cfg.get("auto_connect") and self.cfg.get("url") and self.cfg.get("token"):
+            if self.cfg.get("auto_connect") and self.cfg.get("url") and self.cfg.get("token") and self.cfg.get("session"):
                 threading.Thread(target=self._connect, daemon=True).start()
 
         def _update_icon(self):
@@ -297,7 +317,7 @@ def run_tray(cfg: dict) -> None:
     )
     threading.Thread(target=refresh, args=(icon,), daemon=True).start()
 
-    if cfg.get("auto_connect") and cfg.get("url") and cfg.get("token"):
+    if cfg.get("auto_connect") and cfg.get("url") and cfg.get("token") and cfg.get("session"):
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
 
     icon.run()
@@ -308,8 +328,8 @@ def run_tray(cfg: dict) -> None:
 def main():
     cfg = load_config()
 
-    # First launch: show setup
-    if not cfg.get("url") or not cfg.get("token"):
+    # First launch or missing session: show setup
+    if not cfg.get("url") or not cfg.get("token") or not cfg.get("session"):
         updated = show_setup_dialog(cfg)
         if not updated:
             sys.exit(0)

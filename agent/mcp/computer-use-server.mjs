@@ -7,8 +7,12 @@
  *
  * Environment:
  *   ORCHESTRATOR_URL          - Base URL of the orchestrator
- *   AGENT_TOKEN               - JWT token for auth
- *   COMPUTER_USE_SESSION_ID   - Optional: pin to a specific session
+ *   AGENT_TOKEN               - HMAC token for agent auth
+ *   COMPUTER_USE_USER_ID      - User ID this agent belongs to (set by orchestrator)
+ *   COMPUTER_USE_SESSION_ID   - Optional: pin to a specific session at startup
+ *
+ * Security: the orchestrator enforces user-scoped session access — agents can
+ * only send commands to sessions owned by their user (agent.user_id).
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -20,6 +24,7 @@ import {
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
+const AGENT_USER_ID = process.env.COMPUTER_USE_USER_ID || "";
 let pinnedSessionId = process.env.COMPUTER_USE_SESSION_ID || "";
 
 async function apiCall(path, options = {}) {
@@ -41,17 +46,27 @@ async function apiCall(path, options = {}) {
 
 async function resolveSession() {
   if (pinnedSessionId) return pinnedSessionId;
-  // Auto-discover: use first connected session
+  // List sessions scoped to this agent's user (orchestrator enforces ownership)
   const data = await apiCall("/computer-use/sessions");
-  const connected = (data.sessions || []).find((s) => s.status === "connected");
+  const sessions = data.sessions || [];
+  const connected = sessions.find((s) => s.status === "connected");
   if (!connected) {
+    const waiting = sessions.filter((s) => s.status === "waiting_for_bridge").length;
+    if (waiting > 0) {
+      throw new Error(
+        `Bridge not connected yet (${waiting} session(s) waiting). ` +
+        "Open the AI-Employee Bridge app on your computer — it will connect automatically."
+      );
+    }
     throw new Error(
-      "No connected bridge session found. " +
-      "Start the bridge app on your Mac/Windows machine first, then run: " +
-      "computer_list_sessions to see available sessions."
+      "No bridge session found. " +
+      "Go to the agent's Computer Use tab in the web UI, create a session, " +
+      "then start the Bridge app on your computer."
     );
   }
-  return connected.session_id;
+  // Pin for this process lifetime to avoid switching mid-task
+  pinnedSessionId = connected.session_id;
+  return pinnedSessionId;
 }
 
 async function sendCommand(action, params = {}, timeout = 15) {

@@ -363,10 +363,14 @@ class Bridge:
         self._running = False
 
     async def connect(self) -> None:
-        url = f"{self.ws_url}/ws/computer-use/bridge"
-        if self.session_id:
-            url += f"?session_id={self.session_id}"
+        if not self.session_id:
+            raise ValueError(
+                "session_id is required.\n"
+                "Go to the web UI → agent → Computer Use tab → create a session first,\n"
+                "then pass the session ID with --session <id>."
+            )
 
+        url = f"{self.ws_url}/ws/computer-use/bridge?session_id={self.session_id}"
         headers = {"Authorization": f"Bearer {self.token}"}
         log.info(f"Connecting to {url}")
 
@@ -440,6 +444,11 @@ def main() -> None:
         sys.exit(1)
     if not args.token:
         print("ERROR: --token or AI_EMPLOYEE_TOKEN required")
+        sys.exit(1)
+    if not args.session:
+        print("ERROR: --session or AI_EMPLOYEE_SESSION required")
+        print("  Create a session first: web UI → agent → Computer Use tab → New Session")
+        print("  Then copy the session ID and pass it here.")
         sys.exit(1)
 
     # Check dependencies
