@@ -1,6 +1,7 @@
 """API endpoints for agent templates."""
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -68,6 +69,8 @@ def _template_to_dict(t: AgentTemplate) -> dict:
         "knowledge_template": t.knowledge_template,
         "claude_md": t.claude_md or "",
         "is_builtin": t.is_builtin,
+        "is_published": t.is_published,
+        "published_at": t.published_at.isoformat() if t.published_at else None,
         "created_by": t.created_by,
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
@@ -78,14 +81,24 @@ async def list_templates(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all agent templates (builtin + custom)."""
-    result = await db.execute(
-        select(AgentTemplate).order_by(
-            AgentTemplate.is_builtin.desc(),
-            AgentTemplate.category,
-            AgentTemplate.display_name,
-        )
+    """
+    List templates.
+    - Admins see ALL templates (published + unpublished drafts).
+    - Regular users see only published templates.
+    """
+    from app.models.user import UserRole
+
+    query = select(AgentTemplate).order_by(
+        AgentTemplate.is_builtin.desc(),
+        AgentTemplate.category,
+        AgentTemplate.display_name,
     )
+
+    # Non-admins only see published templates
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        query = query.where(AgentTemplate.is_published == True)  # noqa: E712
+
+    result = await db.execute(query)
     templates = result.scalars().all()
     return {"templates": [_template_to_dict(t) for t in templates]}
 
@@ -96,12 +109,18 @@ async def get_template(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a single template by ID."""
+    """Get a single template by ID. Non-admins can only see published templates."""
+    from app.models.user import UserRole
+
     template = await db.scalar(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
+        raise HTTPException(status_code=404, detail="Template not found")
+
     return _template_to_dict(template)
 
 
@@ -111,7 +130,11 @@ async def create_template(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a custom template."""
+    """Create a custom template (admin/manager only — drafts are not visible to users yet)."""
+    from app.models.user import UserRole
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        raise HTTPException(status_code=403, detail="Only admins and managers can create templates")
+
     existing = await db.scalar(
         select(AgentTemplate).where(AgentTemplate.name == body.name)
     )
@@ -132,6 +155,7 @@ async def create_template(
         knowledge_template=body.knowledge_template,
         claude_md=body.claude_md,
         is_builtin=False,
+        is_published=False,
         created_by=user.id if user.id != "__anonymous__" else None,
     )
     db.add(template)
@@ -147,7 +171,7 @@ async def update_template(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a template (builtin templates can only be updated by admin)."""
+    """Update a template (builtin templates: admin only; custom templates: owner or admin)."""
     from app.models.user import UserRole
 
     template = await db.scalar(
@@ -156,7 +180,6 @@ async def update_template(
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Permission check: builtin = admin only, custom = owner or admin
     if template.is_builtin and user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Only admins can modify builtin templates")
     if not template.is_builtin and template.created_by != user.id and user.role != UserRole.ADMIN:
@@ -166,6 +189,54 @@ async def update_template(
         setattr(template, field, getattr(body, field))
 
     await db.commit()
+    return _template_to_dict(template)
+
+
+@router.post("/{template_id}/publish")
+async def publish_template(
+    template_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Publish a template so users can see and start agents from it (admin only)."""
+    from app.models.user import UserRole
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Only admins can publish templates")
+
+    template = await db.scalar(
+        select(AgentTemplate).where(AgentTemplate.id == template_id)
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    template.is_published = True
+    template.published_at = datetime.now(timezone.utc)
+    await db.commit()
+    logger.info(f"Template {template_id} published by {user.id}")
+    return _template_to_dict(template)
+
+
+@router.post("/{template_id}/unpublish")
+async def unpublish_template(
+    template_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unpublish a template — hides it from users (admin only)."""
+    from app.models.user import UserRole
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Only admins can unpublish templates")
+
+    template = await db.scalar(
+        select(AgentTemplate).where(AgentTemplate.id == template_id)
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    template.is_published = False
+    template.published_at = None
+    await db.commit()
+    logger.info(f"Template {template_id} unpublished by {user.id}")
     return _template_to_dict(template)
 
 
@@ -204,12 +275,18 @@ async def create_agent_from_template(
     docker: DockerService = Depends(get_docker_service),
     redis: RedisService = Depends(get_redis_service),
 ):
-    """Create an agent from a template with pre-configured settings."""
+    """Create an agent from a template. Users can only start from published templates."""
+    from app.models.user import UserRole
+
     template = await db.scalar(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+
+    # Users can only start from published templates
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
+        raise HTTPException(status_code=403, detail="This template is not published yet")
 
     agent_name = body.name or template.display_name
     uid = user.id if user.id != "__anonymous__" else None
@@ -226,28 +303,19 @@ async def create_agent_from_template(
             user_id=uid,
         )
 
-        # Write template-specific CLAUDE.md if the template has one
         if template.claude_md and agent.container_id:
             try:
                 docker.write_file_in_container(
-                    agent.container_id,
-                    "/workspace/CLAUDE.md",
-                    template.claude_md,
+                    agent.container_id, "/workspace/CLAUDE.md", template.claude_md
                 )
-                logger.info(f"Wrote template-specific CLAUDE.md for agent {agent.id}")
             except Exception as e:
                 logger.warning(f"Failed to write template CLAUDE.md: {e}")
 
-        # Write knowledge template INSTEAD of the generic default
         if template.knowledge_template and agent.container_id:
             try:
-                # Overwrite (not append) — template already has complete role definition
                 docker.write_file_in_container(
-                    agent.container_id,
-                    "/workspace/knowledge.md",
-                    template.knowledge_template,
+                    agent.container_id, "/workspace/knowledge.md", template.knowledge_template
                 )
-                # Mark onboarding as complete since template provides the role
                 agent.config = {
                     **agent.config,
                     "onboarding_complete": True,
@@ -257,11 +325,15 @@ async def create_agent_from_template(
             except Exception as e:
                 logger.warning(f"Failed to write knowledge template: {e}")
 
+        # Store template origin on agent
+        from app.models.agent import Agent
+        from sqlalchemy import update
+        await db.execute(
+            update(Agent).where(Agent.id == agent.id).values(template_id=template.id)
+        )
+        await db.commit()
+
         metrics = await manager.get_agent_with_metrics(agent.id)
-        return {
-            **metrics,
-            "template_id": template.id,
-            "template_name": template.name,
-        }
+        return {**metrics, "template_id": template.id, "template_name": template.name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

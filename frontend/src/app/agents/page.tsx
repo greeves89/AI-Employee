@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle, Sparkles } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
@@ -10,14 +10,47 @@ import { CreateAgentModal } from "@/components/agents/create-agent-modal";
 import { AgentNetworkView } from "@/components/agents/agent-network-view";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import type { AgentTemplate } from "@/lib/types";
 
 type ViewMode = "grid" | "network";
+
+const TEMPLATE_CATEGORY_COLORS: Record<string, string> = {
+  dev: "from-blue-500/10 to-blue-500/5 border-blue-500/20",
+  data: "from-emerald-500/10 to-emerald-500/5 border-emerald-500/20",
+  writing: "from-purple-500/10 to-purple-500/5 border-purple-500/20",
+  ops: "from-amber-500/10 to-amber-500/5 border-amber-500/20",
+  creative: "from-pink-500/10 to-pink-500/5 border-pink-500/20",
+  general: "from-foreground/[0.06] to-foreground/[0.03] border-foreground/[0.08]",
+  marketing: "from-orange-500/10 to-orange-500/5 border-orange-500/20",
+  support: "from-cyan-500/10 to-cyan-500/5 border-cyan-500/20",
+  sales: "from-rose-500/10 to-rose-500/5 border-rose-500/20",
+  management: "from-indigo-500/10 to-indigo-500/5 border-indigo-500/20",
+  security: "from-red-500/10 to-red-500/5 border-red-500/20",
+};
 
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [startingTemplate, setStartingTemplate] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.getTemplates().then(d => setTemplates(d.templates.filter(t => t.is_published))).catch(() => {});
+  }, []);
+
+  const handleStartTemplate = async (template: AgentTemplate) => {
+    setStartingTemplate(template.id);
+    try {
+      await api.createAgentFromTemplate(template.id);
+      await refresh();
+    } catch (e) {
+      alert(`Fehler: ${e}`);
+    } finally {
+      setStartingTemplate(null);
+    }
+  };
 
   const [stoppingAll, setStoppingAll] = useState(false);
 
@@ -124,6 +157,50 @@ export default function AgentsPage() {
         onOpenChange={setShowCreate}
         onCreated={refresh}
       />
+
+      {/* Published templates — shown when templates are available */}
+      {templates.length > 0 && (
+        <motion.div
+          className="px-8 pt-6"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-primary/70" />
+            <h2 className="text-sm font-medium text-muted-foreground">Verfügbare Vorlagen</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {templates.map(t => (
+              <div
+                key={t.id}
+                className={cn(
+                  "rounded-xl border bg-gradient-to-br p-4 flex items-start gap-3",
+                  TEMPLATE_CATEGORY_COLORS[t.category] || TEMPLATE_CATEGORY_COLORS.general,
+                )}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{t.display_name}</p>
+                  {t.description && (
+                    <p className="text-xs text-muted-foreground/60 mt-0.5 line-clamp-2">{t.description}</p>
+                  )}
+                  <p className="text-[10px] text-muted-foreground/40 mt-1">{t.model}</p>
+                </div>
+                <button
+                  onClick={() => handleStartTemplate(t)}
+                  disabled={startingTemplate === t.id}
+                  className="shrink-0 flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
+                >
+                  {startingTemplate === t.id
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <Play className="h-3 w-3" />}
+                  Starten
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       <motion.div
         className="px-8 py-8"

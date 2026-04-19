@@ -7,7 +7,7 @@ import {
   ShieldAlert, GitPullRequest, TestTube2, Share2, Scale, UserPlus,
   Languages, Kanban, Database, Palette, PenTool, Globe, Zap, Plug,
   Pencil, Trash2, Save, X, Plus, Lock, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2, AlertCircle, Copy,
+  Loader2, CheckCircle2, AlertCircle, Copy, Eye, EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -169,6 +169,18 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
     }
   };
 
+  const handlePublish = async (t: AgentTemplate) => {
+    try {
+      const updated = t.is_published
+        ? await api.unpublishTemplate(t.id)
+        : await api.publishTemplate(t.id);
+      setTemplates(prev => prev.map(x => x.id === t.id ? updated : x));
+      setMessage({ type: "success", text: t.is_published ? "Template zurückgezogen" : "Template freigegeben ✓" });
+    } catch (e) {
+      setMessage({ type: "error", text: `Fehler: ${e}` });
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm("Template wirklich loeschen?")) return;
     try {
@@ -257,9 +269,32 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                   )}>
                     {CATEGORY_LABELS[t.category] || t.category}
                   </span>
+                  {t.is_published ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                      <Eye className="h-2.5 w-2.5" /> Freigegeben
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border bg-foreground/[0.04] text-muted-foreground/40 border-foreground/[0.06]">
+                      <EyeOff className="h-2.5 w-2.5" /> Entwurf
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground/60 truncate">{t.description}</p>
               </div>
+              {isAdmin && (
+                <button
+                  onClick={e => { e.stopPropagation(); handlePublish(t); }}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors mr-2",
+                    t.is_published
+                      ? "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                      : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20",
+                  )}
+                >
+                  {t.is_published ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  {t.is_published ? "Zurückziehen" : "Freigeben"}
+                </button>
+              )}
               {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground/40" /> : <ChevronDown className="h-4 w-4 text-muted-foreground/40" />}
             </button>
 

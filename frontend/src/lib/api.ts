@@ -673,6 +673,14 @@ export async function deleteTemplate(templateId: number): Promise<void> {
   await fetchJSON(`${getBase()}/templates/${templateId}`, { method: "DELETE" });
 }
 
+export async function publishTemplate(templateId: number): Promise<AgentTemplate> {
+  return fetchJSON(`${getBase()}/templates/${templateId}/publish`, { method: "POST" });
+}
+
+export async function unpublishTemplate(templateId: number): Promise<AgentTemplate> {
+  return fetchJSON(`${getBase()}/templates/${templateId}/unpublish`, { method: "POST" });
+}
+
 export async function createAgentFromTemplate(
   templateId: number,
   name?: string,

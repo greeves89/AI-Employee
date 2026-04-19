@@ -316,6 +316,8 @@ export interface AgentTemplate {
   mcp_server_ids: number[];
   knowledge_template: string;
   is_builtin: boolean;
+  is_published: boolean;
+  published_at: string | null;
   created_by: string | null;
   created_at: string | null;
 }

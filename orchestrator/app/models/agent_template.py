@@ -1,6 +1,8 @@
 """Agent template model for pre-configured agent blueprints."""
 
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -30,3 +32,9 @@ class AgentTemplate(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(
         String, ForeignKey("users.id"), nullable=True
     )
+
+    # Publication — only published templates are visible to non-admin users
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", index=True
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
