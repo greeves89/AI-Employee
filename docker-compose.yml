@@ -185,7 +185,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
     networks:
       - internal
       - agent-network

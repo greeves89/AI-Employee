@@ -411,7 +411,7 @@ function ScheduledTasksView() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 10000);
+    const interval = setInterval(refresh, 20000);
     return () => clearInterval(interval);
   }, [refresh]);
 
