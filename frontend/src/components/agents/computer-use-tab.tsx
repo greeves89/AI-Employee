@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Monitor,
   Globe,
+  Download,
+  Apple,
   Plus,
   Trash2,
   RefreshCw,
@@ -144,6 +146,52 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
             </p>
           </div>
         )}
+      </div>
+
+      {/* Download Bridge App */}
+      <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground/[0.06] shrink-0">
+            <Download className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">Download Bridge App</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Runs in your menu bar / system tray. Connects this server to your desktop.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <a
+            href="https://github.com/greeves89/AI-Employee/releases/latest/download/AI-Employee-Bridge.dmg"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg bg-foreground/[0.06] border border-foreground/[0.08] px-3.5 py-2 text-xs font-medium text-foreground hover:bg-foreground/[0.1] transition-all"
+          >
+            <Apple className="h-3.5 w-3.5" />
+            macOS (.dmg)
+          </a>
+          <a
+            href="https://github.com/greeves89/AI-Employee/releases/latest/download/AI-Employee-Bridge-Windows.zip"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg bg-foreground/[0.06] border border-foreground/[0.08] px-3.5 py-2 text-xs font-medium text-foreground hover:bg-foreground/[0.1] transition-all"
+          >
+            <Monitor className="h-3.5 w-3.5" />
+            Windows (.exe)
+          </a>
+          <a
+            href="https://github.com/greeves89/AI-Employee/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs text-muted-foreground hover:text-foreground transition-all"
+          >
+            All releases ↗
+          </a>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-2.5">
+          Builds are generated automatically from the latest source via GitHub Actions.
+        </p>
       </div>
 
       {/* Phase 2/3: Desktop bridge header */}
