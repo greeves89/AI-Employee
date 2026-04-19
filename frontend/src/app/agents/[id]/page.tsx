@@ -66,7 +66,7 @@ const tabs = [
   { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
   { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
   { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
-  { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: false },
+  { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: true },
   { key: "settings", label: "Settings", icon: Settings, simpleVisible: false },
 ] as const;
 

@@ -61,10 +61,13 @@ jobs:
           path: AI-Employee-Bridge.dmg
           retention-days: 30
 
-      - name: Attach to release
-        if: github.event_name == 'release'
+      - name: Publish to bridge-latest release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: bridge-latest
+          name: "Bridge — Latest Build"
+          prerelease: true
+          make_latest: false
           files: AI-Employee-Bridge.dmg
 
   build-windows:
@@ -102,8 +105,11 @@ jobs:
           path: AI-Employee-Bridge-Windows.zip
           retention-days: 30
 
-      - name: Attach to release
-        if: github.event_name == 'release'
+      - name: Publish to bridge-latest release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: bridge-latest
+          name: "Bridge — Latest Build"
+          prerelease: true
+          make_latest: false
           files: AI-Employee-Bridge-Windows.zip
