@@ -153,25 +153,59 @@ async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> li
 
 
 async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool = False, timeout: int = 30) -> bool:
-    """Ensure a single agent is running. Returns True if the agent is ready."""
+    """Ensure a single agent is running. Returns True if the agent is ready.
+
+    If the stored container_id no longer exists (e.g. removed by docker rm),
+    falls back to a full agent restart via AgentManager to recreate the container.
+    """
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
-    if not agent or not agent.container_id:
+    if not agent:
         return False
-    if agent.state == AgentState.RUNNING or agent.state == AgentState.WORKING or agent.state == AgentState.IDLE:
-        return True
+
+    if agent.state in (AgentState.RUNNING, AgentState.WORKING, AgentState.IDLE):
+        # Double-check the container actually exists
+        if agent.container_id:
+            status = docker_service.get_container_status(agent.container_id)
+            if status in ("running", "created"):
+                return True
+
+    # Try to start the existing container
+    if agent.container_id:
+        status = docker_service.get_container_status(agent.container_id)
+        if status == "running":
+            agent.state = AgentState.RUNNING
+            await db.commit()
+            return True
+        if status in ("exited", "created", "paused"):
+            try:
+                docker_service.start_container(agent.container_id)
+                agent.state = AgentState.RUNNING
+                await db.commit()
+                logger.info(f"[UserLifecycle] Woke agent {agent.name} ({agent.id})")
+                if wait:
+                    for _ in range(timeout):
+                        await asyncio.sleep(1)
+                        if docker_service.get_container_status(agent.container_id) == "running":
+                            return True
+                return True
+            except Exception as e:
+                logger.warning(f"[UserLifecycle] start_container failed for {agent_id}: {e}")
+
+    # Container missing or start failed — recreate via AgentManager
+    logger.info(f"[UserLifecycle] Container gone for {agent_id}, recreating via AgentManager")
     try:
-        docker_service.start_container(agent.container_id)
-        agent.state = AgentState.RUNNING
-        await db.commit()
-        logger.info(f"[UserLifecycle] Woke agent {agent.name} ({agent.id})")
+        from app.core.agent_manager import AgentManager
+        manager = AgentManager(db, docker_service)
+        await manager.restart_agent(agent_id)
         if wait:
-            # Simple readiness wait — poll Docker status
             for _ in range(timeout):
                 await asyncio.sleep(1)
-                status = docker_service.get_container_status(agent.container_id)
-                if status == "running":
-                    return True
+                agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+                if agent and agent.container_id:
+                    status = docker_service.get_container_status(agent.container_id)
+                    if status == "running":
+                        return True
         return True
     except Exception as e:
-        logger.warning(f"[UserLifecycle] Could not wake agent {agent_id}: {e}")
+        logger.warning(f"[UserLifecycle] Could not recreate agent {agent_id}: {e}")
         return False
