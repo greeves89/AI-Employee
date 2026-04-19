@@ -189,17 +189,21 @@ def show_setup_dialog(cfg: dict) -> dict | None:
             return
         status_var.set("Verbinde…")
         root.update()
-        try:
-            token, session_id = login_and_prepare(url, email, pw)
-            result["url"] = url
-            result["token"] = token
-            result["session"] = session_id
-            result["auto_connect"] = auto_var.get()
-            root.destroy()
-        except urllib.error.HTTPError as e:
-            status_var.set(f"Fehler: {e.code} — Zugangsdaten prüfen")
-        except Exception as e:
-            status_var.set(f"Fehler: {e}")
+
+        def _do_login():
+            try:
+                token, session_id = login_and_prepare(url, email, pw)
+                result["url"] = url
+                result["token"] = token
+                result["session"] = session_id
+                result["auto_connect"] = auto_var.get()
+                root.after(0, root.destroy)
+            except urllib.error.HTTPError as e:
+                root.after(0, lambda: status_var.set(f"Fehler: {e.code} — Zugangsdaten prüfen"))
+            except Exception as e:
+                root.after(0, lambda: status_var.set(f"Fehler: {e}"))
+
+        threading.Thread(target=_do_login, daemon=True).start()
 
     def on_cancel():
         root.destroy()
