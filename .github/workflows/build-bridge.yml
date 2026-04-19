@@ -1,0 +1,109 @@
+name: Build Computer-Use Bridge
+
+on:
+  push:
+    branches:
+      - main
+      - feat/issue-70-computer-use
+    paths:
+      - "computer-use-bridge/**"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: macOS (.dmg)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: computer-use-bridge
+        run: |
+          pip install pyinstaller rumps pystray \
+            pyautogui Pillow websockets \
+            pyobjc-framework-ApplicationServices \
+            pyobjc-framework-Cocoa
+
+      - name: Build .app with PyInstaller
+        working-directory: computer-use-bridge
+        run: |
+          pyinstaller bridge_macos.spec --noconfirm --clean
+
+      - name: Create .dmg
+        working-directory: computer-use-bridge
+        run: |
+          # Create a temp folder with the .app
+          mkdir -p dmg_stage
+          cp -r "dist/AI-Employee Bridge.app" dmg_stage/
+
+          # Create a symlink to /Applications for drag-install UX
+          ln -s /Applications dmg_stage/Applications
+
+          # Build the .dmg using hdiutil (built-in macOS tool)
+          hdiutil create \
+            -volname "AI-Employee Bridge" \
+            -srcfolder dmg_stage \
+            -ov \
+            -format UDZO \
+            "../AI-Employee-Bridge.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Employee-Bridge-macOS
+          path: AI-Employee-Bridge.dmg
+          retention-days: 30
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AI-Employee-Bridge.dmg
+
+  build-windows:
+    name: Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: computer-use-bridge
+        run: |
+          pip install pyinstaller pystray pyautogui Pillow websockets
+
+      - name: Build .exe with PyInstaller
+        working-directory: computer-use-bridge
+        run: |
+          pyinstaller bridge_windows.spec --noconfirm --clean
+
+      - name: Zip the executable
+        working-directory: computer-use-bridge
+        run: |
+          Compress-Archive -Path dist\AI-Employee-Bridge.exe `
+            -DestinationPath ..\AI-Employee-Bridge-Windows.zip
+        shell: pwsh
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Employee-Bridge-Windows
+          path: AI-Employee-Bridge-Windows.zip
+          retention-days: 30
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AI-Employee-Bridge-Windows.zip
