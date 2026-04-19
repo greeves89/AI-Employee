@@ -61,6 +61,12 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
 
     token = request.cookies.get("access_token")
 
+    # Also accept Bearer token in Authorization header (for API clients / bridge)
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.removeprefix("Bearer ").strip()
+
     # Setup mode: no users registered yet -> allow anonymous access
     if not token:
         if not await _check_users_exist(db):
