@@ -200,7 +200,11 @@ export default function SkillsPage() {
     if (!selectedAgent || installing) return;
     setInstalling(skill.name);
     try {
-      await api.installSkill(selectedAgent.id, skill.repo, skill.name);
+      if (skill.type === "db" && skill.id) {
+        await api.assignDbSkill(skill.id, selectedAgent.id);
+      } else {
+        await api.installSkill(selectedAgent.id, skill.repo, skill.name);
+      }
       await refreshAgentSkills(selectedAgent);
     } catch {
       // ignore

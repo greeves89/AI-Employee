@@ -1126,6 +1126,8 @@ export interface CatalogSkill {
   repo: string;
   category: string;
   install_cmd: string;
+  id?: number;
+  type?: "db" | "github";
 }
 
 export interface AgentSkill {
@@ -1159,6 +1161,16 @@ export async function installSkill(
   return fetchJSON(`${getBase()}/agents/${agentId}/skills/install`, {
     method: "POST",
     body: JSON.stringify({ repo, skill }),
+  });
+}
+
+export async function assignDbSkill(
+  skillId: number,
+  agentId: string,
+): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/assign`, {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId }),
   });
 }
 

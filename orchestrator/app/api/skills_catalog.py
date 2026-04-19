@@ -29,6 +29,7 @@ async def get_skill_catalog(request: Request, db: AsyncSession = Depends(get_db)
             "avg_rating": s.avg_rating,
             "usage_count": s.usage_count,
             "id": s.id,
+            "type": "db",  # signals frontend to use assignment flow, not GitHub clone
         }
         for s in db_skills
     ]
