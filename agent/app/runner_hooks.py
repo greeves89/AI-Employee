@@ -113,10 +113,11 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    of FIRST STEPS), call `skill_rate` now with an honest 1-5 rating and a short comment on
    what worked or what could be improved. This is how skills get better over time.
 
-8. **Create a skill (MANDATORY for deliverables)**: Did this task produce a PDF, report,
-   script, analysis, code module, or any tangible artifact? YES → you MUST call `create_skill`.
-   Did you use a novel approach that wasn't in any marketplace skill? YES → call `skill_propose`
-   so the next agent can find it.
+8. **Propose a skill (MANDATORY for reusable work)**: Did this task produce something reusable —
+   a workflow, a code pattern, a report template, a process, or any repeatable approach?
+   YES → call `skill_propose` (MCP tool) with name, description, content, and category.
+   NEVER write a SKILL.md file to disk — only `skill_propose` registers a skill in the marketplace.
+   Skills written to disk are invisible to other agents and to the user.
    - name: short slug (e.g. "ki-trends-2025-pdf", "deploy-script", "sales-report-q1")
    - title: human-readable title
    - description: what this skill/deliverable does + approach used
