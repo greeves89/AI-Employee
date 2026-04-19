@@ -12,7 +12,7 @@ import {
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, Package, ShieldOff, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
-  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles,
+  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import {
@@ -29,6 +29,7 @@ import { McpInfo } from "@/components/agents/mcp-info";
 import { ProactiveToggle } from "@/components/agents/proactive-toggle";
 import { DockerAppsTab } from "@/components/agents/docker-apps-tab";
 import { SkillsTab } from "@/components/agents/skills-tab";
+import { ComputerUseTab } from "@/components/agents/computer-use-tab";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -65,6 +66,7 @@ const tabs = [
   { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
   { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
   { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+  { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: false },
   { key: "settings", label: "Settings", icon: Settings, simpleVisible: false },
 ] as const;
 
@@ -255,6 +257,7 @@ export default function AgentDetailPage() {
           {activeTab === "memory" && <MemoryTab agentId={agentId} />}
           {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
           {activeTab === "skills" && <SkillsTab agentId={agentId} />}
+          {activeTab === "computer-use" && <ComputerUseTab agentId={agentId} />}
           {activeTab === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>

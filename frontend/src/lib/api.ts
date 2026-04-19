@@ -1295,3 +1295,26 @@ export async function getKnowledgeTags(): Promise<{ tags: KnowledgeTag[] }> {
 export async function getKnowledgeGraph(): Promise<{ nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }> {
   return fetchJSON(`${getBase()}/knowledge/graph`);
 }
+
+// Computer-Use Bridge Sessions
+export interface ComputerUseSession {
+  session_id: string;
+  status: "connected" | "waiting_for_bridge" | "waiting";
+  created_at: number;
+}
+
+export async function listComputerUseSessions(): Promise<{ sessions: ComputerUseSession[] }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions`);
+}
+
+export async function createComputerUseSession(): Promise<{ session_id: string; status: string; ws_url: string }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions`, { method: "POST" });
+}
+
+export async function deleteComputerUseSession(sessionId: string): Promise<void> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export async function getComputerUseSession(sessionId: string): Promise<ComputerUseSession & { session_id: string }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`);
+}

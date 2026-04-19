@@ -109,6 +109,15 @@ def register_mcp_servers() -> None:
                 "AGENT_TOKEN": settings.agent_token,
             },
         },
+        "computer-use": {
+            "command": "node",
+            "args": ["/opt/mcp/computer-use-server.mjs"],
+            "env": {
+                "ORCHESTRATOR_URL": settings.orchestrator_url,
+                "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
+            },
+        },
     }
 
     for name, cfg in builtin_servers.items():
@@ -120,6 +129,22 @@ def register_mcp_servers() -> None:
             print(f"[Agent] Registered MCP server: {name} (stdio)")
         else:
             print(f"[Agent] WARN: Failed to register MCP server: {name}")
+
+    # Playwright MCP — browser automation (enabled via COMPUTER_USE_BROWSER=true)
+    if os.environ.get("COMPUTER_USE_BROWSER", "").lower() == "true":
+        if _run_mcp_add(["playwright", "npx", "@playwright/mcp@latest"]):
+            print("[Agent] Registered Playwright MCP server (browser control enabled)")
+        else:
+            print("[Agent] WARN: Failed to register Playwright MCP server")
+
+    # Computer-Use Desktop Bridge MCP — local desktop control via bridge app
+    bridge_url = os.environ.get("COMPUTER_USE_BRIDGE_MCP_URL", "")
+    if bridge_url:
+        safe = _sanitize_mcp_name("computer-use-bridge")
+        if _run_mcp_add(["--transport", "http", safe, bridge_url]):
+            print(f"[Agent] Registered Computer-Use Bridge MCP: {bridge_url}")
+        else:
+            print("[Agent] WARN: Failed to register Computer-Use Bridge MCP")
 
     # Custom HTTP servers from env (passed by orchestrator)
     custom_mcp = os.environ.get("CUSTOM_MCP_SERVERS", "")
@@ -151,6 +176,7 @@ def _write_mcp_json_fallback() -> None:
         ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
         ("knowledge", "/opt/mcp/knowledge-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+        ("computer-use", "/opt/mcp/computer-use-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
     ]:
         mcp_config["mcpServers"][name] = {"command": "node", "args": [cmd], "env": envs}
 
