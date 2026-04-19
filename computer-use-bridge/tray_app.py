@@ -2,20 +2,19 @@
 """
 AI-Employee Computer-Use Bridge — System Tray App
 
-Wraps bridge.py in a menubar/tray icon so it runs as a background app.
-- macOS: menu bar icon (top-right)
-- Windows: system tray icon (bottom-right)
-
-First launch: shows a setup dialog to enter server URL + token.
-Config is saved to ~/.ai_employee_bridge.json
+First launch: shows setup dialog (URL + email + password).
+Bridge logs in automatically and fetches a session.
+Config saved to ~/.ai_employee_bridge.json (no passwords stored — only token).
 """
-import asyncio
 import json
 import os
 import platform
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 import webbrowser
 from pathlib import Path
 
@@ -23,8 +22,6 @@ IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
 CONFIG_FILE = Path.home() / ".ai_employee_bridge.json"
-ICON_CONNECTED = None
-ICON_IDLE = None
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +38,39 @@ def save_config(cfg: dict) -> None:
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
 
 
-# ── Bridge process management ─────────────────────────────────────────────────
+# ── Login + session helpers ───────────────────────────────────────────────────
+
+def api_login(base_url: str, email: str, password: str) -> str:
+    """POST /api/v1/auth/login → returns access_token."""
+    url = base_url.rstrip("/") + "/api/v1/auth/login"
+    data = json.dumps({"email": email, "password": password}).encode()
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        body = json.loads(resp.read())
+        return body["access_token"]
+
+
+def api_create_session(base_url: str, token: str) -> str:
+    """POST /api/v1/computer-use/sessions → returns session_id."""
+    url = base_url.rstrip("/") + "/api/v1/computer-use/sessions"
+    req = urllib.request.Request(
+        url, data=b"{}",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        body = json.loads(resp.read())
+        return body["session_id"]
+
+
+def login_and_prepare(base_url: str, email: str, password: str) -> tuple[str, str]:
+    """Login + create session. Returns (token, session_id)."""
+    token = api_login(base_url, email, password)
+    session_id = api_create_session(base_url, token)
+    return token, session_id
+
+
+# ── Bridge process ────────────────────────────────────────────────────────────
 
 _bridge_proc: subprocess.Popen | None = None
 _bridge_lock = threading.Lock()
@@ -49,7 +78,6 @@ _status = "disconnected"
 
 
 def get_bridge_script() -> str:
-    """Find bridge.py next to this executable."""
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).parent
     else:
@@ -61,27 +89,21 @@ def start_bridge(cfg: dict) -> bool:
     global _bridge_proc, _status
     with _bridge_lock:
         if _bridge_proc and _bridge_proc.poll() is None:
-            return True  # already running
-        if not cfg.get("session"):
-            _status = "error: session_id missing — open Settings to enter it"
+            return True
+        if not cfg.get("token") or not cfg.get("session"):
+            _status = "error: not configured"
             return False
-        script = get_bridge_script()
-        python = sys.executable
         cmd = [
-            python, script,
+            sys.executable, get_bridge_script(),
             "--url", cfg["url"],
             "--token", cfg["token"],
             "--session", cfg["session"],
         ]
         try:
             _bridge_proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
             _status = "connecting"
-            # Watch stdout in background thread
             threading.Thread(target=_watch_output, daemon=True).start()
             return True
         except Exception as e:
@@ -113,26 +135,25 @@ def _watch_output() -> None:
         elif "Reconnecting" in line or "closed" in line.lower():
             _status = "reconnecting"
         elif "Error" in line:
-            _status = f"error"
+            _status = "error"
 
 
-# ── Setup dialog (Tkinter — built-in) ─────────────────────────────────────────
+# ── Setup dialog ──────────────────────────────────────────────────────────────
 
 def show_setup_dialog(cfg: dict) -> dict | None:
-    """URL + token + session_id input dialog. Returns updated config or None if cancelled."""
+    """URL + Email + Password dialog. Logs in and creates session automatically."""
     try:
         import tkinter as tk
-        from tkinter import ttk
+        from tkinter import ttk, messagebox
     except ImportError:
-        print("tkinter not available — edit ~/.ai_employee_bridge.json manually")
+        print("tkinter not available")
         return None
 
     result = {}
-
     root = tk.Tk()
     root.title("AI-Employee Bridge Setup")
     root.resizable(False, False)
-    root.geometry("480x320")
+    root.geometry("460x280")
 
     frame = ttk.Frame(root, padding=20)
     frame.pack(fill="both", expand=True)
@@ -143,54 +164,59 @@ def show_setup_dialog(cfg: dict) -> dict | None:
 
     ttk.Label(frame, text="Server URL:").grid(row=1, column=0, sticky="w", pady=4)
     url_var = tk.StringVar(value=cfg.get("url", ""))
-    url_entry = ttk.Entry(frame, textvariable=url_var, width=40)
-    url_entry.grid(row=1, column=1, padx=(8, 0), pady=4)
+    ttk.Entry(frame, textvariable=url_var, width=38).grid(row=1, column=1, padx=(8, 0), pady=4)
 
-    ttk.Label(frame, text="Auth Token:").grid(row=2, column=0, sticky="w", pady=4)
-    token_var = tk.StringVar(value=cfg.get("token", ""))
-    token_entry = ttk.Entry(frame, textvariable=token_var, width=40, show="*")
-    token_entry.grid(row=2, column=1, padx=(8, 0), pady=4)
+    ttk.Label(frame, text="E-Mail:").grid(row=2, column=0, sticky="w", pady=4)
+    email_var = tk.StringVar()
+    ttk.Entry(frame, textvariable=email_var, width=38).grid(row=2, column=1, padx=(8, 0), pady=4)
 
-    ttk.Label(frame, text="Session ID:").grid(row=3, column=0, sticky="w", pady=4)
-    session_var = tk.StringVar(value=cfg.get("session", ""))
-    session_entry = ttk.Entry(frame, textvariable=session_var, width=40)
-    session_entry.grid(row=3, column=1, padx=(8, 0), pady=4)
-
-    ttk.Label(
-        frame,
-        text="Session ID: web UI → Agent → Computer Use tab → New Session",
-        foreground="gray",
-    ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 4))
+    ttk.Label(frame, text="Passwort:").grid(row=3, column=0, sticky="w", pady=4)
+    pw_var = tk.StringVar()
+    ttk.Entry(frame, textvariable=pw_var, width=38, show="*").grid(row=3, column=1, padx=(8, 0), pady=4)
 
     auto_var = tk.BooleanVar(value=cfg.get("auto_connect", True))
-    ttk.Checkbutton(frame, text="Connect automatically on startup", variable=auto_var).grid(
-        row=5, column=0, columnspan=2, sticky="w", pady=(4, 0)
+    ttk.Checkbutton(frame, text="Automatisch verbinden beim Start", variable=auto_var).grid(
+        row=4, column=0, columnspan=2, sticky="w", pady=(8, 0)
     )
 
-    ttk.Label(frame, text="Get your token: AI-Employee → Profile → API Token",
-              foreground="gray").grid(row=6, column=0, columnspan=2, sticky="w", pady=(4, 16))
+    status_var = tk.StringVar(value="")
+    status_label = ttk.Label(frame, textvariable=status_var, foreground="gray")
+    status_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
     def on_save():
-        result["url"] = url_var.get().strip()
-        result["token"] = token_var.get().strip()
-        result["session"] = session_var.get().strip()
-        result["auto_connect"] = auto_var.get()
-        root.destroy()
+        url = url_var.get().strip().rstrip("/")
+        email = email_var.get().strip()
+        pw = pw_var.get()
+        if not url or not email or not pw:
+            messagebox.showerror("Fehler", "Bitte alle Felder ausfüllen.")
+            return
+        status_var.set("Verbinde…")
+        root.update()
+        try:
+            token, session_id = login_and_prepare(url, email, pw)
+            result["url"] = url
+            result["token"] = token
+            result["session"] = session_id
+            result["auto_connect"] = auto_var.get()
+            root.destroy()
+        except urllib.error.HTTPError as e:
+            status_var.set(f"Fehler: {e.code} — Zugangsdaten prüfen")
+        except Exception as e:
+            status_var.set(f"Fehler: {e}")
 
     def on_cancel():
         root.destroy()
 
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=7, column=0, columnspan=2, sticky="e")
-    ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side="right", padx=(4, 0))
-    ttk.Button(btn_frame, text="Save & Connect", command=on_save).pack(side="right")
+    btn_frame.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
+    ttk.Button(btn_frame, text="Abbrechen", command=on_cancel).pack(side="right", padx=(4, 0))
+    ttk.Button(btn_frame, text="Anmelden & Verbinden", command=on_save).pack(side="right")
 
-    url_entry.focus()
     root.mainloop()
     return result if result else None
 
 
-# ── macOS menu bar app (rumps) ────────────────────────────────────────────────
+# ── macOS menu bar (rumps) ────────────────────────────────────────────────────
 
 def run_macos(cfg: dict) -> None:
     try:
@@ -204,7 +230,7 @@ def run_macos(cfg: dict) -> None:
             super().__init__("⬡", quit_button=None)
             self.cfg = load_config()
             self._update_icon()
-            if self.cfg.get("auto_connect") and self.cfg.get("url") and self.cfg.get("token") and self.cfg.get("session"):
+            if self.cfg.get("auto_connect") and self.cfg.get("token") and self.cfg.get("session"):
                 threading.Thread(target=self._connect, daemon=True).start()
 
         def _update_icon(self):
@@ -216,7 +242,7 @@ def run_macos(cfg: dict) -> None:
 
         @rumps.clicked("Connect")
         def on_connect(self, _):
-            if not self.cfg.get("url") or not self.cfg.get("token"):
+            if not self.cfg.get("token"):
                 self.on_settings(None)
                 return
             threading.Thread(target=self._connect, daemon=True).start()
@@ -235,13 +261,13 @@ def run_macos(cfg: dict) -> None:
 
         @rumps.clicked("Open AI-Employee")
         def on_open(self, _):
-            url = self.cfg.get("url", "").replace("ws://", "http://").replace("wss://", "https://")
+            url = self.cfg.get("url", "")
             if url:
                 webbrowser.open(url)
 
         @rumps.clicked("Status")
         def on_status(self, _):
-            rumps.alert(f"Bridge status: {_status}\nServer: {self.cfg.get('url', '—')}")
+            rumps.alert(f"Status: {_status}\nServer: {self.cfg.get('url', '—')}")
 
         @rumps.clicked("Quit")
         def on_quit(self, _):
@@ -255,33 +281,30 @@ def run_macos(cfg: dict) -> None:
     BridgeApp().run()
 
 
-# ── Windows / Linux system tray (pystray) ────────────────────────────────────
+# ── Windows / Linux tray (pystray) ───────────────────────────────────────────
 
 def run_tray(cfg: dict) -> None:
     try:
         import pystray
         from PIL import Image, ImageDraw
     except ImportError:
-        print("Install pystray + Pillow: pip install pystray Pillow")
         sys.exit(1)
 
-    def make_icon(connected: bool) -> "Image.Image":
+    def make_icon(connected: bool):
         size = 64
         img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        color = (34, 197, 94) if connected else (156, 163, 175)
-        draw.ellipse([8, 8, size - 8, size - 8], fill=color)
+        draw.ellipse([8, 8, size - 8, size - 8], fill=(34, 197, 94) if connected else (156, 163, 175))
         return img
 
     def on_connect(icon, item):
-        if not cfg.get("url") or not cfg.get("token"):
+        if not cfg.get("token"):
             on_settings(icon, item)
             return
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
 
     def on_disconnect(icon, item):
         stop_bridge()
-        icon.icon = make_icon(False)
 
     def on_settings(icon, item):
         updated = show_setup_dialog(cfg)
@@ -290,7 +313,7 @@ def run_tray(cfg: dict) -> None:
             save_config(cfg)
 
     def on_open(icon, item):
-        url = cfg.get("url", "").replace("ws://", "http://").replace("wss://", "https://")
+        url = cfg.get("url", "")
         if url:
             webbrowser.open(url)
 
@@ -299,13 +322,13 @@ def run_tray(cfg: dict) -> None:
         icon.stop()
 
     def refresh(icon):
+        import time
         while True:
             icon.icon = make_icon(is_running())
-            import time; time.sleep(3)
+            time.sleep(3)
 
     icon = pystray.Icon(
-        "AI-Employee Bridge",
-        make_icon(False),
+        "AI-Employee Bridge", make_icon(False),
         menu=pystray.Menu(
             pystray.MenuItem("Connect", on_connect),
             pystray.MenuItem("Disconnect", on_disconnect),
@@ -316,10 +339,8 @@ def run_tray(cfg: dict) -> None:
         ),
     )
     threading.Thread(target=refresh, args=(icon,), daemon=True).start()
-
-    if cfg.get("auto_connect") and cfg.get("url") and cfg.get("token") and cfg.get("session"):
+    if cfg.get("auto_connect") and cfg.get("token") and cfg.get("session"):
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
-
     icon.run()
 
 
@@ -327,8 +348,6 @@ def run_tray(cfg: dict) -> None:
 
 def main():
     cfg = load_config()
-
-    # First launch or missing session: show setup
     if not cfg.get("url") or not cfg.get("token") or not cfg.get("session"):
         updated = show_setup_dialog(cfg)
         if not updated:
