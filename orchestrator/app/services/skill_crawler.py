@@ -89,7 +89,12 @@ class SkillCrawlerService:
         logger.info("Skill crawler: starting crawl of %d repos", len(self._repos))
         all_skills = []
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        from app.config import settings
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        if settings.github_token:
+            headers["Authorization"] = f"Bearer {settings.github_token}"
+
+        async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
             tasks = [self._crawl_repo(client, repo) for repo in self._repos]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -137,16 +142,15 @@ class SkillCrawlerService:
     async def _crawl_repo(self, client: httpx.AsyncClient, repo: str) -> list[dict]:
         """Crawl a single GitHub repo for SKILL.md files."""
         skills = []
-        headers = {"Accept": "application/vnd.github.v3+json"}
 
         # Get the full file tree
         tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-        resp = await client.get(tree_url, headers=headers)
+        resp = await client.get(tree_url)
 
         # Try 'master' branch if 'main' returns 404
         if resp.status_code == 404:
             tree_url = f"https://api.github.com/repos/{repo}/git/trees/master?recursive=1"
-            resp = await client.get(tree_url, headers=headers)
+            resp = await client.get(tree_url)
 
         if resp.status_code != 200:
             logger.debug(f"Skipping {repo}: HTTP {resp.status_code}")
@@ -163,7 +167,7 @@ class SkillCrawlerService:
 
         for path in skill_paths:
             try:
-                skill = await self._fetch_skill(client, repo, path, headers)
+                skill = await self._fetch_skill(client, repo, path)
                 if skill:
                     skills.append(skill)
             except Exception as e:
@@ -172,7 +176,7 @@ class SkillCrawlerService:
         return skills
 
     async def _fetch_skill(
-        self, client: httpx.AsyncClient, repo: str, path: str, headers: dict
+        self, client: httpx.AsyncClient, repo: str, path: str, headers: dict = None
     ) -> dict | None:
         """Fetch and parse a single SKILL.md file."""
         raw_url = f"https://raw.githubusercontent.com/{repo}/main/{path}"

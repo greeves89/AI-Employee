@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures
 
+    # GitHub API token for skill crawler (avoids 60 req/h rate limit → 5000 req/h)
+    github_token: str = ""
+
     model_config = {"env_prefix": "", "case_sensitive": False}
 
 
