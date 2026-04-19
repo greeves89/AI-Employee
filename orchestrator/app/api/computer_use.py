@@ -78,7 +78,7 @@ async def get_session(session_id: str, user=Depends(require_auth)):
 @router.get("/sessions")
 async def list_sessions(user=Depends(require_auth)):
     user_sessions = [
-        {"session_id": sid, "status": "connected" if s["bridge_connected"] else "waiting",
+        {"session_id": sid, "status": "connected" if s["bridge_connected"] else "waiting_for_bridge",
          "created_at": s["created_at"]}
         for sid, s in _sessions.items()
         if s["user_id"] == str(user.id)
@@ -231,8 +231,8 @@ async def _authenticate_ws(websocket: WebSocket, token: str) -> str | None:
     if not token:
         return None
     try:
-        from app.security.auth import decode_access_token
-        payload = decode_access_token(token)
+        from app.core.auth import decode_token
+        payload = decode_token(token)
         return str(payload.get("sub") or payload.get("user_id") or "")
     except Exception:
         return None
