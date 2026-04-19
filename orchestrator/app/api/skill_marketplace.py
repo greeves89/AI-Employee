@@ -466,7 +466,7 @@ async def agent_propose_skill(
         description=body.description,
         content=body.content,
         category=body.category,
-        status=SkillStatus.DRAFT,
+        status=SkillStatus.ACTIVE,
         created_by=f"agent:{agent_id}",
         source_task_id=body.task_id,
     )
@@ -481,8 +481,8 @@ async def agent_propose_skill(
         async with async_session_factory() as notif_db:
             notif = Notification(
                 type="skill_proposed",
-                title=f"Neuer Skill vorgeschlagen: {body.name}",
-                message=f"Agent {agent_id} hat den Skill '{body.name}' vorgeschlagen: {body.description}",
+                title=f"Neuer Skill erstellt: {body.name}",
+                message=f"Agent {agent_id} hat den Skill '{body.name}' zum Katalog hinzugefügt: {body.description}",
                 priority="medium",
                 agent_id=agent_id,
             )
