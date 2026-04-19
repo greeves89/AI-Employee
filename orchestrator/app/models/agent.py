@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import JSON, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -40,6 +40,7 @@ class Agent(Base, TimestampMixin):
     )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
+    browser_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # SHA-256 hex of the plaintext webhook token. Set by
     # /agents/{id}/webhook/rotate; plaintext is shown once and never stored.
     webhook_token_hash: Mapped[str | None] = mapped_column(

@@ -53,6 +53,7 @@ export interface Agent {
   permissions: string[];
   update_available: boolean;
   budget_usd: number | null;
+  browser_mode: boolean;
   total_cost_usd: number;
   user_id: string | null;
   created_at: string;

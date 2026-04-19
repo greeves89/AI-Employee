@@ -503,7 +503,7 @@ class AgentManager:
                 env["GH_TOKEN"] = token  # gh CLI uses GH_TOKEN
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None) -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
@@ -565,6 +565,7 @@ class AgentManager:
                 **integration_env,
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
+                "COMPUTER_USE_BROWSER": "true" if browser_mode else "false",
             })
 
         # Create Docker container with workspace + session + shared volumes
@@ -633,6 +634,7 @@ class AgentManager:
             mode=mode,
             llm_config=encrypted_llm_config,
             budget_usd=budget_usd,
+            browser_mode=browser_mode,
             config={
                 "session_volume": session_volume,
                 "role": role or "",
@@ -1130,6 +1132,7 @@ class AgentManager:
             "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,
             "budget_usd": agent.budget_usd,
+            "browser_mode": agent.browser_mode,
             "total_cost_usd": config.get("total_cost_usd", 0.0),
             "user_id": agent.user_id,
             "created_at": agent.created_at,

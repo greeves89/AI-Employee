@@ -561,6 +561,10 @@ async def lifespan(app: FastAPI):
     # Initialize stream manager for WebSocket
     init_stream_manager(app.state.redis, app.state.docker)
 
+    # Initialize computer-use bridge session registry
+    from app.api.computer_use import init_computer_use
+    init_computer_use(app.state.redis)
+
     # Recover stale tasks from previous shutdown
     try:
         from app.core.load_balancer import LoadBalancer
@@ -718,6 +722,11 @@ else:
     )
 
 app.include_router(api_router, prefix="/api/v1")
+
+# Computer-Use bridge WebSocket — mounted at root (not under /api/v1) so
+# the bridge client can connect at ws://host/ws/computer-use/bridge
+from app.api.computer_use import ws_router as cu_ws_router
+app.include_router(cu_ws_router)
 
 
 @app.get("/healthz")

@@ -111,6 +111,13 @@ export async function updateAgentPermissions(agentId: string, permissions: strin
   });
 }
 
+export async function updateAgentBrowserMode(agentId: string, browserMode: boolean): Promise<{ browser_mode: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/browser-mode`, {
+    method: "PATCH",
+    body: JSON.stringify({ browser_mode: browserMode }),
+  });
+}
+
 export async function stopAgent(id: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${id}/stop`, { method: "POST" });
 }
@@ -1329,4 +1336,27 @@ export async function getAuditLogs(params?: {
 
 export async function getAuditSummary(): Promise<AuditSummary> {
   return fetchJSON(`${getBase()}/audit/logs/summary`);
+}
+
+// Computer-Use Bridge Sessions
+export interface ComputerUseSession {
+  session_id: string;
+  status: "connected" | "waiting_for_bridge" | "waiting";
+  created_at: number;
+}
+
+export async function listComputerUseSessions(): Promise<{ sessions: ComputerUseSession[] }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions`);
+}
+
+export async function createComputerUseSession(): Promise<{ session_id: string; status: string; ws_url: string }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions`, { method: "POST" });
+}
+
+export async function deleteComputerUseSession(sessionId: string): Promise<void> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export async function getComputerUseSession(sessionId: string): Promise<ComputerUseSession & { session_id: string }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`);
 }

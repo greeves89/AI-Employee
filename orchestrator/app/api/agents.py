@@ -301,6 +301,7 @@ async def create_agent(
             user_id=uid, budget_usd=data.budget_usd,
             mode=data.mode,
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
+            browser_mode=data.browser_mode,
         )
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
@@ -886,6 +887,30 @@ async def update_agent_permissions(
                 }
 
         return {"agent_id": agent_id, "permissions": body.permissions}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+class BrowserModeUpdate(BaseModel):
+    browser_mode: bool
+
+
+@router.patch("/{agent_id}/browser-mode")
+async def update_agent_browser_mode(
+    agent_id: str,
+    body: BrowserModeUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Enable or disable Playwright browser control for an agent. Takes effect on next restart."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        agent.browser_mode = body.browser_mode
+        await db.commit()
+        note = " Restart the agent for the change to take effect." if agent.container_id else ""
+        return {"browser_mode": body.browser_mode, "note": note.strip()}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
