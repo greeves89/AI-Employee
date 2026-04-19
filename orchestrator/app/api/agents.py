@@ -1448,6 +1448,22 @@ async def list_skills(
             except Exception:
                 continue
 
+        # Also include DB marketplace skills assigned to this agent
+        from app.models.skill import Skill, SkillStatus, AgentSkillAssignment
+        from sqlalchemy import select as sa_select
+        existing_names = {s.name for s in skills}
+        assignments = await db.execute(
+            sa_select(Skill).join(
+                AgentSkillAssignment, AgentSkillAssignment.skill_id == Skill.id
+            ).where(
+                AgentSkillAssignment.agent_id == agent_id,
+                Skill.status == SkillStatus.ACTIVE,
+            )
+        )
+        for s in assignments.scalars().all():
+            if s.name not in existing_names:
+                skills.append(SkillResponse(name=s.name, description=s.description or "", content=s.content or ""))
+
         return skills
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
