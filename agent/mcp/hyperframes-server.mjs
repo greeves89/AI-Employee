@@ -197,13 +197,29 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       await fs.writeFile(htmlTarget, html_content, "utf8");
 
       // Render to MP4 — limit to 1 worker to stay within container memory limits
-      await runHyperframes(tmpDir, ["render", "--output", outPath, "--workers", "1"]);
+      try {
+        await runHyperframes(tmpDir, ["render", "--output", outPath, "--workers", "1"]);
+      } catch (renderErr) {
+        // hyperframes exits non-zero on some warnings but still produces the file.
+        // Check if the output file was actually created before treating as failure.
+        try {
+          await fs.access(outPath);
+          // File exists — render succeeded despite non-zero exit
+        } catch {
+          // File missing — real failure
+          const msg = (renderErr.stderr || renderErr.message || "").replace(
+            /\[BrowserManager\].*?falling back to screenshot mode\.\n?/g, ""
+          ).trim();
+          throw new Error(msg || renderErr.message);
+        }
+      }
 
+      const stat = await fs.stat(outPath);
       return {
         content: [
           {
             type: "text",
-            text: `Video rendered successfully.\nPath: ${outPath}`,
+            text: `Video rendered successfully.\nPath: ${outPath}\nSize: ${(stat.size / 1024).toFixed(1)} KB`,
           },
         ],
       };
@@ -212,7 +228,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         content: [
           {
             type: "text",
-            text: `Render failed: ${err.stderr || err.message}`,
+            text: `Render failed: ${err.message}`,
           },
         ],
         isError: true,
