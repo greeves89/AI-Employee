@@ -151,7 +151,7 @@ async function executeBashWithApproval(command, description, timeout) {
   const decision = await waitForApproval(approvalId);
 
   if (!decision.approved) {
-    throw new Error(`❌ Command denied by user.\n\nReason: ${decision.reason || "No reason provided"}`);
+    throw new Error(`❌ Command denied by user.\n\n[EXTERNAL-DATA source="denial-reason"]\n${decision.reason || "No reason provided"}\n[/EXTERNAL-DATA]`);
   }
 
   console.error(`✅ Command approved by user. Executing...`);

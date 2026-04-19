@@ -13,6 +13,10 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+function wrapData(source, content) {
+  return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
+}
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -200,16 +204,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       try {
         const result = await apiCall(`/knowledge/agent/read/${encodeURIComponent(args.title)}`);
         const backlinks = result.backlinks || [];
+        const meta =
+          `Title: ${result.title} | Tags: [${(result.tags || []).join(", ")}] | ` +
+          `Created by: ${result.created_by} | Updated: ${result.updated_at}` +
+          (backlinks.length > 0 ? ` | Links to: [${backlinks.join(", ")}]` : "");
         return {
           content: [
             {
               type: "text",
-              text:
-                `# ${result.title}\n` +
-                `Tags: [${(result.tags || []).join(", ")}] | ` +
-                `Created by: ${result.created_by} | Updated: ${result.updated_at}\n` +
-                (backlinks.length > 0 ? `Links to: [${backlinks.join(", ")}]\n` : "") +
-                `\n${result.content}`,
+              text: `${meta}\n\n${wrapData("knowledge", result.content)}`,
             },
           ],
         };

@@ -21,6 +21,10 @@ const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v
 const AGENT_ID = process.env.AGENT_ID || "unknown";
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 
+function wrapData(source, content) {
+  return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
+}
+
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
   const res = await fetch(url, {
@@ -223,7 +227,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return {
           content: [{
             type: "text",
-            text: `User approved with choice: "${userChoice}". Proceed according to this decision.`,
+            text: `User responded. ${wrapData("user-approval", `choice: "${userChoice}"`)} Proceed according to the user's choice above.`,
           }],
         };
       } else {

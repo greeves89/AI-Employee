@@ -23,6 +23,10 @@ const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v
 const AGENT_ID = process.env.AGENT_ID || "unknown";
 const AGENT_NAME = process.env.AGENT_NAME || "unknown";
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
+
+function wrapData(source, content) {
+  return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
+}
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-6";
 
 async function apiCall(path, options = {}) {
@@ -572,7 +576,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Team (${result.agents.length} agents):\n\n${lines.join("\n")}`,
+            text: `Team (${result.agents.length} agents):\n\n${wrapData("agent-directory", lines.join("\n"))}`,
           },
         ],
       };
@@ -629,7 +633,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{
             type: "text",
             text:
-              `Reply from ${pollResult.message.from_name}:\n\n${pollResult.message.text}`,
+              `Reply from ${pollResult.message.from_name}:\n\n` +
+              wrapData("agent-message", pollResult.message.text),
           }],
         };
       }

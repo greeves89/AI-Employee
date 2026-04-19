@@ -18,6 +18,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
+
+// Wraps externally-sourced content so Claude can distinguish data from instructions.
+function wrapData(source, content) {
+  return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
+}
 const AGENT_ID = process.env.AGENT_ID || "unknown";
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 
@@ -294,7 +299,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               content: [
                 {
                   type: "text",
-                  text: `Found ${semResult.memories.length} memories via ${modeLabel}:\n\n${lines.join("\n\n")}`,
+                  text: `Found ${semResult.memories.length} memories via ${modeLabel}:\n\n${wrapData("memory", lines.join("\n\n"))}`,
                 },
               ],
             };
@@ -330,7 +335,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `Found ${result.total} memories via ${modeLabel}:\n\n${lines.join("\n\n")}`,
+            text: `Found ${result.total} memories via ${modeLabel}:\n\n${wrapData("memory", lines.join("\n\n"))}`,
           },
         ],
       };
@@ -356,7 +361,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `${result.total} memories (${catSummary}):\n\n${lines.join("\n\n")}`,
+            text: `${result.total} memories (${catSummary}):\n\n${wrapData("memory", lines.join("\n\n"))}`,
           },
         ],
       };

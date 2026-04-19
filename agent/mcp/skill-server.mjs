@@ -21,6 +21,10 @@ const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v
 const AGENT_ID = process.env.AGENT_ID || "unknown";
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 
+function wrapData(source, content) {
+  return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
+}
+
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
   const res = await fetch(url, {
@@ -190,7 +194,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [{
           type: "text",
-          text: `Found ${result.total} skills:\n\n${lines.join("\n\n---\n\n")}`,
+          text: `Found ${result.total} skills:\n\n${wrapData("skill-marketplace", lines.join("\n\n---\n\n"))}`,
         }],
       };
     }
@@ -229,7 +233,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [{
           type: "text",
-          text: `You have ${result.total} skills:\n\n${lines.join("\n\n---\n\n")}`,
+          text: `You have ${result.total} skills:\n\n${wrapData("skill-marketplace", lines.join("\n\n---\n\n"))}`,
         }],
       };
     }
