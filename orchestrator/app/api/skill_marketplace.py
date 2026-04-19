@@ -471,6 +471,15 @@ async def agent_propose_skill(
         source_task_id=body.task_id,
     )
     db.add(skill)
+    await db.flush()  # get skill.id before commit
+
+    # Auto-assign to the proposing agent so it appears in "Meine Skills"
+    assignment = AgentSkillAssignment(
+        agent_id=agent_id,
+        skill_id=skill.id,
+        assigned_by="agent",
+    )
+    db.add(assignment)
     await db.commit()
     await db.refresh(skill)
 
