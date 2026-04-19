@@ -12,10 +12,15 @@ import platform
 import subprocess
 import sys
 import threading
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
 from pathlib import Path
 
 IS_MAC = platform.system() == "Darwin"
@@ -45,7 +50,7 @@ def api_login(base_url: str, email: str, password: str) -> str:
     url = base_url.rstrip("/") + "/api/v1/auth/login"
     data = json.dumps({"email": email, "password": password}).encode()
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
         body = json.loads(resp.read())
         return body["access_token"]
 
@@ -58,7 +63,7 @@ def api_create_session(base_url: str, token: str) -> str:
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
         body = json.loads(resp.read())
         return body["session_id"]
 
