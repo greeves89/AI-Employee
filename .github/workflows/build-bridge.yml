@@ -64,7 +64,7 @@ jobs:
           retention-days: 30
 
       - name: Publish to bridge-latest release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: bridge-latest
           name: "Bridge — Latest Build"
@@ -110,7 +110,7 @@ jobs:
           retention-days: 30
 
       - name: Publish to bridge-latest release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: bridge-latest
           name: "Bridge — Latest Build"
