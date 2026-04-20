@@ -10,7 +10,7 @@ import {
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { CatalogSkill, AgentSkill } from "@/lib/api";
+import type { CatalogSkill, AgentSkill, MarketplaceSkill } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
@@ -146,7 +146,7 @@ export default function SkillsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"catalog" | "mine" | "pending">("catalog");
-  const [pendingSkills, setPendingSkills] = useState<AgentSkill[]>([]);
+  const [pendingSkills, setPendingSkills] = useState<MarketplaceSkill[]>([]);
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -493,7 +493,14 @@ export default function SkillsPage() {
                       <p className="text-sm font-semibold truncate">{skill.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{skill.description}</p>
                       {skill.source_repo && (
-                        <p className="text-[10px] text-amber-400/70 mt-1">📦 {skill.source_repo}</p>
+                        <a
+                          href={skill.source_url || `https://github.com/${skill.source_repo}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-amber-400/70 hover:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
+                        >
+                          📦 {skill.source_repo} ↗
+                        </a>
                       )}
                     </div>
                     <span className="shrink-0 text-[10px] rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 px-2 py-0.5">

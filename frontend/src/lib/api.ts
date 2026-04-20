@@ -1001,7 +1001,6 @@ export interface MarketplaceSkill {
   created_by: string;
   source_url: string | null;
   source_repo: string | null;
-  source_repo: string | null;
   paths: string[] | null;
   roles: string[] | null;
   usage_count: number;

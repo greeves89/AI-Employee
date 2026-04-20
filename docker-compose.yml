@@ -104,6 +104,7 @@ services:
       REDIS_URL_INTERNAL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@ai-employee-redis:6379
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
