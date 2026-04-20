@@ -34,7 +34,7 @@
 
 ---
 
-> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform), und Governance-Regeln wie "Frage nach, bevor du mehr als 50 EUR ausgibst" sind von Haus aus eingebaut. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten.
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform), und Governance-Regeln wie "Frage nach, bevor du mehr als 50 EUR ausgibst" sind von Haus aus eingebaut. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
 
 ---
 
@@ -279,11 +279,7 @@ AI-Employee is **Fair-Code** licensed under the **Sustainable Use License**, ins
 - Reselling AI-Employee as your own branded product
 - White-label commercial distribution
 
-See **[LICENSE.md](LICENSE.md)** for the complete terms.
-
-## Commercial License
-
-If you want to build a SaaS on top of AI-Employee, white-label it, or embed it commercially, contact **licensing@ai-employee.dev**. Pricing is transparent and based on your usage tier — we are friendly and fast to respond.
+See **[LICENSE.md](LICENSE.md)** for the complete terms. For commercial licensing inquiries contact **daniel.alisch@me.com**.
 
 ## Contributing
 
@@ -291,7 +287,7 @@ We welcome contributions of all kinds — bug reports, features, docs, translati
 
 ## Security
 
-Found a vulnerability? Please **do not** open a public issue. Email **security@ai-employee.dev** and see **[SECURITY.md](SECURITY.md)** for our disclosure policy and response SLAs.
+Found a vulnerability? Please **do not** open a public issue. See **[SECURITY.md](SECURITY.md)** for our disclosure policy.
 
 ## Community
 
