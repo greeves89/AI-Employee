@@ -30,14 +30,17 @@ SKILL_REPOS = [
     "squirrelscan/skills",
 ]
 
-# Category heuristics based on skill name / description keywords
+# Category heuristics — values MUST match SkillCategory enum (uppercase)
 CATEGORY_KEYWORDS = {
-    "design": ["design", "ui", "ux", "css", "style", "visual", "interface", "web-design", "frontend-design"],
-    "dev": ["react", "next", "typescript", "debug", "test", "tdd", "postgres", "supabase", "best-practices", "development"],
-    "marketing": ["seo", "marketing", "copywriting", "psychology", "brand"],
-    "docs": ["pdf", "pptx", "docx", "xlsx", "document", "word", "excel", "powerpoint"],
-    "tools": ["browser", "audit", "brainstorm", "plan", "writing-plans"],
-    "core": ["find-skills", "skill-creator"],
+    "WORKFLOW": ["design", "ui", "ux", "css", "style", "visual", "interface", "web-design",
+                 "react", "next", "typescript", "debug", "test", "tdd", "postgres", "supabase",
+                 "best-practices", "development", "seo", "marketing", "copywriting", "brand"],
+    "TEMPLATE": ["pdf", "pptx", "docx", "xlsx", "document", "word", "excel", "powerpoint",
+                 "template", "report", "format"],
+    "TOOL":     ["browser", "audit", "brainstorm", "plan", "writing-plans",
+                 "find-skills", "skill-creator", "tool", "grep", "search"],
+    "PATTERN":  ["pattern", "architecture", "code", "refactor", "structure"],
+    "RECIPE":   ["recipe", "setup", "install", "configure", "deploy", "monitoring"],
 }
 
 REDIS_KEY = "skill_catalog"
@@ -46,13 +49,13 @@ CRAWL_INTERVAL = 604800  # crawl weekly, not daily (DB persists skills permanent
 
 
 def _guess_category(name: str, description: str) -> str:
-    """Guess a skill category from its name and description."""
+    """Return a valid SkillCategory value (uppercase) based on name/description."""
     text = f"{name} {description}".lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         for kw in keywords:
             if kw in text:
                 return category
-    return "tools"
+    return "ROUTINE"
 
 
 def _parse_frontmatter(content: str) -> dict:
@@ -234,13 +237,19 @@ class SkillCrawlerService:
                             existing.content = s["content"]
                             existing.description = s.get("description", existing.description)
                     else:
+                        from app.models.skill import SkillCategory
+                        raw_cat = s.get("category", "ROUTINE").upper()
+                        try:
+                            cat = SkillCategory(raw_cat)
+                        except ValueError:
+                            cat = SkillCategory.ROUTINE
                         skill = Skill(
                             name=s["name"],
                             description=s.get("description", ""),
                             content=s.get("content", ""),
-                            category=s.get("category", "tool"),
+                            category=cat,
                             status=SkillStatus.ACTIVE,
-                            created_by=f"import:github",
+                            created_by="import:github",
                             source_repo=s.get("repo"),
                             source_url=f"https://github.com/{s['repo']}" if s.get("repo") else None,
                         )

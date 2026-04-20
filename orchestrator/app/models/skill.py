@@ -23,12 +23,12 @@ class SkillStatus(str, enum.Enum):
 
 
 class SkillCategory(str, enum.Enum):
-    ROUTINE = "routine"       # Repeatable process ("how to deploy")
-    TEMPLATE = "template"     # Document template ("meeting notes format")
-    WORKFLOW = "workflow"      # Multi-step workflow ("PR review process")
-    PATTERN = "pattern"       # Code/architecture pattern ("error handling")
-    RECIPE = "recipe"         # Step-by-step guide ("set up monitoring")
-    TOOL = "tool"             # Tool-specific skill ("use grep effectively")
+    ROUTINE = "ROUTINE"       # Repeatable process ("how to deploy")
+    TEMPLATE = "TEMPLATE"     # Document template ("meeting notes format")
+    WORKFLOW = "WORKFLOW"     # Multi-step workflow ("PR review process")
+    PATTERN = "PATTERN"       # Code/architecture pattern ("error handling")
+    RECIPE = "RECIPE"         # Step-by-step guide ("set up monitoring")
+    TOOL = "TOOL"             # Tool-specific skill ("use grep effectively")
 
 
 class Skill(Base, TimestampMixin):

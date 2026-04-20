@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Sparkles, Search, Download, Loader2, RefreshCw,
   Package, Code2, Palette, Megaphone, FileText, Wrench,
+  GitBranch, Layers, BookOpen, Repeat, ChefHat,
   CheckCircle2, Bot, ChevronDown, Plus, Pencil, Trash2, X, Save,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
@@ -13,12 +14,16 @@ import type { CatalogSkill, AgentSkill } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
-  dev: { label: "Development", icon: Code2, color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-  design: { label: "Design", icon: Palette, color: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
-  marketing: { label: "Marketing", icon: Megaphone, color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
-  docs: { label: "Documents", icon: FileText, color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
-  tools: { label: "Tools", icon: Wrench, color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  core: { label: "Core", icon: Sparkles, color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  // DB enum values (uppercase)
+  TOOL:     { label: "Tools",      icon: Wrench,    color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  WORKFLOW: { label: "Workflows",  icon: GitBranch, color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  TEMPLATE: { label: "Templates",  icon: FileText,  color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
+  PATTERN:  { label: "Patterns",   icon: Layers,    color: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
+  ROUTINE:  { label: "Routinen",   icon: Repeat,    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  RECIPE:   { label: "Rezepte",    icon: ChefHat,   color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+  // Legacy lowercase keys (from older crawled skills)
+  tools:    { label: "Tools",      icon: Wrench,    color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  dev:      { label: "Dev",        icon: Code2,     color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
 };
 
 const EMPTY_SKILL = { name: "", description: "", content: "" };
