@@ -1211,6 +1211,60 @@ export async function deleteAgentSkill(agentId: string, skillName: string): Prom
   });
 }
 
+// --- Skill File Attachments ---
+
+export interface SkillFileAttachment {
+  id: number;
+  skill_id: number;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string | null;
+}
+
+export async function getSkillFiles(skillId: number): Promise<{ files: SkillFileAttachment[] }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/files`);
+}
+
+export async function uploadSkillFile(skillId: number, file: File): Promise<SkillFileAttachment> {
+  const base = getBase();
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${base}/skills/marketplace/${skillId}/files`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Upload failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function downloadSkillFile(skillId: number, filename: string): Promise<void> {
+  const base = getBase();
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const res = await fetch(`${base}/skills/marketplace/${skillId}/files/${encodeURIComponent(filename)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function deleteSkillFile(skillId: number, filename: string): Promise<{ deleted: string }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/files/${encodeURIComponent(filename)}`, {
+    method: "DELETE",
+  });
+}
+
 // --- Docker Apps ---
 
 import type { DockerApp, DockerAppContainer, DockerAppLog } from "./types";
@@ -1389,6 +1443,10 @@ export async function deleteComputerUseSession(sessionId: string): Promise<void>
 
 export async function getComputerUseSession(sessionId: string): Promise<ComputerUseSession & { session_id: string }> {
   return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`);
+}
+
+export async function getComputerUseScreenshot(sessionId: string): Promise<{ screenshot_b64: string; ts: number }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/screenshot`);
 }
 
 // --- Meeting Rooms ---

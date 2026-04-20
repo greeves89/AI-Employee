@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, verify_agent_token
 from app.models.event_trigger import EventTrigger
 
 router = APIRouter(prefix="/event-triggers", tags=["event-triggers"])
@@ -171,6 +171,90 @@ async def toggle_trigger(
     trigger = result.scalar_one_or_none()
     if not trigger:
         raise HTTPException(status_code=404, detail="Event trigger not found")
+    trigger.enabled = not trigger.enabled
+    await db.commit()
+    await db.refresh(trigger)
+    return _to_response(trigger)
+
+
+# --- Agent-accessible endpoints (HMAC auth) ---
+
+
+@router.get("/for-agent")
+async def list_triggers_for_agent(
+    agent_info=Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """List triggers owned by this agent (HMAC auth)."""
+    agent_id = agent_info["agent_id"]
+    query = select(EventTrigger).where(EventTrigger.agent_id == agent_id)
+    query = query.order_by(EventTrigger.priority.desc(), EventTrigger.created_at.desc())
+    result = await db.execute(query)
+    triggers = result.scalars().all()
+    return {"triggers": [_to_response(t) for t in triggers], "total": len(triggers)}
+
+
+@router.post("/for-agent", status_code=201)
+async def create_trigger_for_agent(
+    body: EventTriggerCreate,
+    agent_info=Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a trigger for this agent (HMAC auth). agent_id is forced to caller's ID."""
+    trigger = EventTrigger(
+        name=body.name,
+        agent_id=agent_info["agent_id"],
+        source_filter=body.source_filter,
+        event_type_filter=body.event_type_filter,
+        payload_conditions=body.payload_conditions,
+        prompt_template=body.prompt_template,
+        priority=body.priority,
+        model=body.model,
+        enabled=body.enabled,
+    )
+    db.add(trigger)
+    await db.commit()
+    await db.refresh(trigger)
+    return _to_response(trigger)
+
+
+@router.delete("/for-agent/{trigger_id}")
+async def delete_trigger_for_agent(
+    trigger_id: int,
+    agent_info=Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a trigger owned by this agent (HMAC auth)."""
+    result = await db.execute(
+        select(EventTrigger).where(
+            EventTrigger.id == trigger_id,
+            EventTrigger.agent_id == agent_info["agent_id"],
+        )
+    )
+    trigger = result.scalar_one_or_none()
+    if not trigger:
+        raise HTTPException(status_code=404, detail="Trigger not found or not owned by this agent")
+    await db.delete(trigger)
+    await db.commit()
+    return {"deleted": trigger_id}
+
+
+@router.patch("/for-agent/{trigger_id}/toggle")
+async def toggle_trigger_for_agent(
+    trigger_id: int,
+    agent_info=Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle a trigger's enabled state (HMAC auth)."""
+    result = await db.execute(
+        select(EventTrigger).where(
+            EventTrigger.id == trigger_id,
+            EventTrigger.agent_id == agent_info["agent_id"],
+        )
+    )
+    trigger = result.scalar_one_or_none()
+    if not trigger:
+        raise HTTPException(status_code=404, detail="Trigger not found or not owned by this agent")
     trigger.enabled = not trigger.enabled
     await db.commit()
     await db.refresh(trigger)

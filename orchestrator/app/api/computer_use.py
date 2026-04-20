@@ -232,6 +232,52 @@ async def send_command(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Screenshot endpoint (frontend live view) ──────────────────────────────────
+
+@router.get("/sessions/{session_id}/screenshot")
+async def get_screenshot(
+    session_id: str,
+    user=Depends(require_auth),
+):
+    """Request a screenshot from the bridge and return base64 PNG. Caches 3s."""
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(user.id) != session["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Return cached screenshot if still fresh
+    cached = session.get("last_screenshot")
+    if cached and time.time() - cached["ts"] < 3:
+        return {"screenshot_b64": cached["data"], "ts": cached["ts"]}
+
+    if not session["bridge_connected"] or not session["bridge_ws"]:
+        raise HTTPException(status_code=503, detail="Bridge not connected")
+
+    cmd_id = uuid.uuid4().hex[:8]
+    command_msg = json.dumps({
+        "type": "command",
+        "id": cmd_id,
+        "command": {"action": "screenshot", "params": {"scale": 0.5}},
+    })
+    result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+    session["pending_results"][cmd_id] = result_future
+
+    try:
+        await session["bridge_ws"].send_text(command_msg)
+        result = await asyncio.wait_for(result_future, timeout=15.0)
+        screenshot_b64 = result.get("screenshot_b64", "")
+        ts = time.time()
+        session["last_screenshot"] = {"data": screenshot_b64, "ts": ts}
+        return {"screenshot_b64": screenshot_b64, "ts": ts}
+    except asyncio.TimeoutError:
+        session["pending_results"].pop(cmd_id, None)
+        raise HTTPException(status_code=504, detail="Bridge timed out")
+    except Exception as e:
+        session["pending_results"].pop(cmd_id, None)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Bridge WebSocket ──────────────────────────────────────────────────────────
 
 ws_router = APIRouter(prefix="/ws/computer-use", tags=["computer-use-ws"])

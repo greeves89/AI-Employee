@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_admin, require_auth
+from app.dependencies import get_redis_service, require_admin, require_auth, verify_agent_token
 from app.schemas.integration import (
     AgentIntegrationsResponse,
     AgentIntegrationsUpdate,
@@ -115,6 +115,24 @@ async def get_token(
         return {"token": token, "provider": provider}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{provider}/for-agent")
+async def get_token_for_agent(
+    provider: str,
+    agent_info=Depends(verify_agent_token),
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Get a fresh OAuth token for an authenticated agent (HMAC auth).
+
+    Used by MCP servers running inside agent containers to call
+    external APIs (Gmail, Outlook, etc.) on behalf of the user.
+    """
+    try:
+        token = await service.get_valid_token(provider)
+        return {"token": token, "provider": provider}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=f"No {provider} integration connected: {e}")
 
 
 # --- Manual code exchange (Anthropic OAuth — user copies code from platform page) ---

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Monitor,
@@ -18,6 +18,9 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +28,7 @@ import {
   createComputerUseSession,
   deleteComputerUseSession,
   updateAgentBrowserMode,
+  getComputerUseScreenshot,
   type ComputerUseSession,
 } from "@/lib/api";
 import { getApiUrl } from "@/lib/config";
@@ -341,6 +345,37 @@ function SessionCard({
   const wsUrl = `${wsBase}/ws/computer-use/bridge?session_id=${session.session_id}`;
   const copyKey = `ws-${session.session_id}`;
 
+  const [liveView, setLiveView] = useState(false);
+  const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const liveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchScreenshot = useCallback(async () => {
+    if (screenshotLoading) return;
+    setScreenshotLoading(true);
+    try {
+      const data = await getComputerUseScreenshot(session.session_id);
+      if (data.screenshot_b64) {
+        setScreenshotSrc(`data:image/png;base64,${data.screenshot_b64}`);
+      }
+    } catch {
+      // ignore — bridge may not be connected
+    } finally {
+      setScreenshotLoading(false);
+    }
+  }, [session.session_id, screenshotLoading]);
+
+  useEffect(() => {
+    if (liveView && isConnected) {
+      fetchScreenshot();
+      liveRef.current = setInterval(fetchScreenshot, 4000);
+    } else {
+      if (liveRef.current) clearInterval(liveRef.current);
+    }
+    return () => { if (liveRef.current) clearInterval(liveRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveView, isConnected]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -4 }}
@@ -392,6 +427,67 @@ function SessionCard({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      {/* Live screen view */}
+      {isConnected && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Live Screen</p>
+            <div className="flex items-center gap-1.5">
+              {liveView && screenshotLoading && (
+                <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
+              )}
+              {liveView && screenshotSrc && (
+                <button
+                  onClick={fetchScreenshot}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                  title="Refresh"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
+              )}
+              <button
+                onClick={() => setLiveView((v) => !v)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all",
+                  liveView
+                    ? "bg-violet-500/10 border border-violet-500/20 text-violet-400"
+                    : "bg-foreground/[0.04] border border-foreground/[0.08] text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {liveView ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                {liveView ? "Live" : "Watch"}
+              </button>
+            </div>
+          </div>
+          <AnimatePresence>
+            {liveView && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                {screenshotSrc ? (
+                  <img
+                    src={screenshotSrc}
+                    alt="Desktop screenshot"
+                    className="w-full rounded-lg border border-foreground/[0.08] object-contain bg-black"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-32 rounded-lg border border-dashed border-foreground/[0.1] text-xs text-muted-foreground gap-2">
+                    {screenshotLoading ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Capturing screen…</>
+                    ) : (
+                      "No screenshot yet"
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* WS URL to give to bridge app */}
       <div className="space-y-1">
