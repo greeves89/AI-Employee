@@ -60,7 +60,7 @@ async def _text_to_speech(text: str, language: str = "de") -> bytes:
         resp = await client.post(
             "https://api.openai.com/v1/audio/speech",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "tts-1", "input": text, "voice": "nova", "response_format": "opus"},
+            json={"model": "gpt-4o-mini-tts", "input": text, "voice": "marin", "response_format": "opus"},
         )
         resp.raise_for_status()
         return resp.content
