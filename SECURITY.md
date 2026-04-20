@@ -15,7 +15,7 @@ Only the latest minor release receives security updates. We recommend running th
 
 **Please do not file a public GitHub issue for security vulnerabilities.**
 
-Instead, email **security@ai-employee.dev** with:
+Instead, email **daniel.alisch@me.com** with:
 
 - A clear description of the vulnerability
 - Steps to reproduce (or a proof-of-concept)

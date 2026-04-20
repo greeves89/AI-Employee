@@ -42,7 +42,7 @@ You may **not** use the Software to:
 ### 3. Commercial License Available
 
 If your intended use falls outside the Permitted Use above, a commercial
-license is available. Contact: licensing@ai-employee.dev
+license is available. Contact: daniel.alisch@me.com
 
 Commercial licenses are typically granted for:
 
@@ -90,7 +90,7 @@ IN THE SOFTWARE.
 - Rebrand it and resell it as your own product
 - Create a SaaS where AI-Employee is the primary value
 
-**When in doubt:** contact licensing@ai-employee.dev
+**When in doubt:** contact daniel.alisch@me.com
 
 This license is inspired by the "Sustainable Use License" pioneered by
 [n8n](https://github.com/n8n-io/n8n/blob/master/LICENSE.md) and the
