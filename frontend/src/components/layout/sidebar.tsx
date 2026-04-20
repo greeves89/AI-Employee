@@ -25,6 +25,7 @@ import {
   Sparkles,
   Zap,
   ScrollText,
+  Users,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
@@ -38,6 +39,7 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
   { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen, simpleVisible: true },
+  { href: "/meeting-rooms", label: "Meeting Rooms", icon: Users, simpleVisible: false },
   { href: "/skills", label: "Skill Marketplace", icon: Sparkles, simpleVisible: false },
   { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },

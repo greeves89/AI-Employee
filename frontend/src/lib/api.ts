@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -1379,4 +1379,44 @@ export async function deleteComputerUseSession(sessionId: string): Promise<void>
 
 export async function getComputerUseSession(sessionId: string): Promise<ComputerUseSession & { session_id: string }> {
   return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`);
+}
+
+// --- Meeting Rooms ---
+
+export async function getMeetingRooms(): Promise<{ rooms: MeetingRoom[] }> {
+  return fetchJSON(`${getBase()}/meeting-rooms/`);
+}
+
+export async function getMeetingRoom(id: string): Promise<MeetingRoom> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${id}`);
+}
+
+export async function createMeetingRoom(data: {
+  name: string;
+  topic?: string;
+  agent_ids: string[];
+  max_rounds?: number;
+}): Promise<MeetingRoom> {
+  return fetchJSON(`${getBase()}/meeting-rooms/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteMeetingRoom(id: string): Promise<void> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${id}`, { method: "DELETE" });
+}
+
+export async function startMeetingRoom(
+  id: string,
+  initialMessage?: string,
+): Promise<{ status: string; room_id: string }> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${id}/start`, {
+    method: "POST",
+    body: JSON.stringify({ initial_message: initialMessage || "" }),
+  });
+}
+
+export async function stopMeetingRoom(id: string): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${id}/stop`, { method: "POST" });
 }
