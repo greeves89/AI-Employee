@@ -98,6 +98,8 @@ export interface Task {
   result: string | null;
   error: string | null;
   cost_usd: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   duration_ms: number | null;
   num_turns: number | null;
   parent_task_id: string | null;

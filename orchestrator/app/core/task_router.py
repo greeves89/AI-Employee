@@ -338,6 +338,8 @@ class TaskRouter:
         task.result = data.get("result")
         task.error = data.get("error")
         task.cost_usd = data.get("cost_usd")
+        task.input_tokens = data.get("input_tokens")
+        task.output_tokens = data.get("output_tokens")
         task.duration_ms = data.get("duration_ms")
         task.num_turns = data.get("num_turns")
         task.completed_at = datetime.now(timezone.utc)
@@ -399,10 +401,14 @@ class TaskRouter:
             metrics["success"] / max(metrics["total"], 1), 2
         )
 
-        # Track cost and duration averages
+        # Track cost, tokens, and duration averages
         if result_data.get("cost_usd"):
             total_cost = config.get("total_cost_usd", 0) + result_data["cost_usd"]
             config["total_cost_usd"] = round(total_cost, 4)
+        if result_data.get("input_tokens"):
+            config["total_input_tokens"] = config.get("total_input_tokens", 0) + result_data["input_tokens"]
+        if result_data.get("output_tokens"):
+            config["total_output_tokens"] = config.get("total_output_tokens", 0) + result_data["output_tokens"]
         if result_data.get("duration_ms"):
             durations = config.get("task_durations", [])
             durations.append(result_data["duration_ms"])

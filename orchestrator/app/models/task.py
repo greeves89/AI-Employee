@@ -45,6 +45,8 @@ class Task(Base, TimestampMixin):
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     num_turns: Mapped[int | None] = mapped_column(Integer, nullable=True)
     parent_task_id: Mapped[str | None] = mapped_column(

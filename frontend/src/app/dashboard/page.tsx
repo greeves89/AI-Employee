@@ -9,6 +9,7 @@ import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
 import { StatsOverview } from "@/components/dashboard/stats-overview";
 import { RecentTasks } from "@/components/dashboard/recent-tasks";
+import { CostAttribution } from "@/components/dashboard/cost-attribution";
 import { SystemStatusBar } from "@/components/dashboard/system-status-bar";
 
 const containerVariants = {
@@ -110,8 +111,15 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Recent Tasks */}
-        <RecentTasks tasks={tasks} />
+        {/* Cost Attribution + Recent Tasks */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <RecentTasks tasks={tasks} />
+          </div>
+          <div>
+            <CostAttribution />
+          </div>
+        </div>
       </motion.div>
     </div>
   );

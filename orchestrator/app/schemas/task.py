@@ -26,6 +26,8 @@ class TaskResponse(BaseModel):
     result: str | None
     error: str | None
     cost_usd: float | None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
     duration_ms: int | None
     num_turns: int | None
     parent_task_id: str | None = None

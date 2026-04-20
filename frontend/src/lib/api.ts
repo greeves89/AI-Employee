@@ -1420,3 +1420,25 @@ export async function startMeetingRoom(
 export async function stopMeetingRoom(id: string): Promise<{ status: string }> {
   return fetchJSON(`${getBase()}/meeting-rooms/${id}/stop`, { method: "POST" });
 }
+
+// --- Cost Attribution ---
+
+export interface AgentCostEntry {
+  agent_id: string;
+  agent_name: string;
+  total_cost_usd: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  task_count: number;
+}
+
+export interface CostAttribution {
+  top_agents: AgentCostEntry[];
+  platform_total_usd: number;
+  platform_total_input_tokens: number;
+  platform_total_output_tokens: number;
+}
+
+export async function getCostAttribution(limit = 5): Promise<CostAttribution> {
+  return fetchJSON(`${getBase()}/tasks/cost-attribution?limit=${limit}`);
+}

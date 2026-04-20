@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -230,3 +230,76 @@ async def release_task(
         task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)
     await db.commit()
     return {"ok": True, "task_id": task_id, "retain": False}
+
+
+class AgentCostEntry(BaseModel):
+    agent_id: str
+    agent_name: str
+    total_cost_usd: float
+    total_input_tokens: int
+    total_output_tokens: int
+    task_count: int
+
+
+class CostAttributionResponse(BaseModel):
+    top_agents: list[AgentCostEntry]
+    platform_total_usd: float
+    platform_total_input_tokens: int
+    platform_total_output_tokens: int
+
+
+@router.get("/cost-attribution", response_model=CostAttributionResponse)
+async def get_cost_attribution(
+    limit: int = 5,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Top N agents by total cost with token breakdowns."""
+    from app.models.agent import Agent
+
+    result = await db.execute(
+        select(
+            Task.agent_id,
+            func.sum(Task.cost_usd).label("total_cost"),
+            func.sum(Task.input_tokens).label("total_input"),
+            func.sum(Task.output_tokens).label("total_output"),
+            func.count(Task.id).label("task_count"),
+        )
+        .where(Task.agent_id.isnot(None), Task.cost_usd.isnot(None))
+        .group_by(Task.agent_id)
+        .order_by(func.sum(Task.cost_usd).desc())
+        .limit(limit)
+    )
+    rows = result.all()
+
+    agent_ids = [r.agent_id for r in rows]
+    agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+    agents_map = {a.id: a.name for a in agents_result.scalars().all()}
+
+    top_agents = [
+        AgentCostEntry(
+            agent_id=r.agent_id,
+            agent_name=agents_map.get(r.agent_id, "Unknown"),
+            total_cost_usd=round(r.total_cost or 0, 4),
+            total_input_tokens=r.total_input or 0,
+            total_output_tokens=r.total_output or 0,
+            task_count=r.task_count,
+        )
+        for r in rows
+    ]
+
+    totals = await db.execute(
+        select(
+            func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
+            func.coalesce(func.sum(Task.input_tokens), 0).label("total_input"),
+            func.coalesce(func.sum(Task.output_tokens), 0).label("total_output"),
+        ).where(Task.cost_usd.isnot(None))
+    )
+    t = totals.one()
+
+    return CostAttributionResponse(
+        top_agents=top_agents,
+        platform_total_usd=round(float(t.total_cost), 4),
+        platform_total_input_tokens=int(t.total_input),
+        platform_total_output_tokens=int(t.total_output),
+    )
