@@ -593,7 +593,7 @@ export default function MeetingRoomsPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-2xl max-h-[80vh] flex flex-col rounded-2xl border border-border bg-card shadow-xl"
+            className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-2xl border border-border bg-card shadow-xl"
           >
             {/* Header */}
             <div className="flex items-start justify-between p-5 border-b border-border shrink-0">
