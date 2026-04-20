@@ -419,11 +419,17 @@ export interface KnowledgeGraphEdge {
 export type MeetingRoomState = "idle" | "running" | "paused" | "completed";
 
 export interface MeetingMessage {
-  role: "agent" | "system";
+  role: "agent" | "system" | "summary" | "moderator" | "reaction";
   agent_id: string | null;
   content: string;
   timestamp: string;
   round?: number;
+}
+
+export interface MeetingStage {
+  name: string;
+  rounds: number;
+  focus: "intro" | "research" | "synthesis";
 }
 
 export interface MeetingRoom {
@@ -436,6 +442,8 @@ export interface MeetingRoom {
   current_turn: number;
   rounds_completed: number;
   max_rounds: number;
+  stages_config?: MeetingStage[] | null;
+  use_moderator?: boolean;
   messages?: MeetingMessage[];
   message_count?: number;
   created_at: string | null;

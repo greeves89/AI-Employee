@@ -293,6 +293,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "schedule_meeting",
+      description:
+        "Schedule a meeting room between agents — either once at a specific time or recurring via cron. " +
+        "Use this after a meeting or task to create follow-up meetings automatically. " +
+        "Example: schedule a review meeting in 3 days, or a weekly sync every Monday.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Meeting room name (e.g. 'Follow-up: Q2 Strategie').",
+          },
+          topic: {
+            type: "string",
+            description: "The agenda / topic the agents should discuss. Be specific.",
+          },
+          agent_ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of agent IDs to invite (minimum 2). Use list_agents to find IDs.",
+          },
+          run_at: {
+            type: "string",
+            description:
+              "ISO 8601 datetime for a one-shot meeting (e.g. '2025-04-25T09:00:00Z'). " +
+              "Omit for recurring meetings or to start immediately.",
+          },
+          cron_expression: {
+            type: "string",
+            description:
+              "Cron expression for recurring meetings (e.g. '0 9 * * 1' = every Monday 9am). " +
+              "Omit for one-shot meetings.",
+          },
+          initial_message: {
+            type: "string",
+            description: "Opening message for the meeting. Optional.",
+          },
+          use_moderator: {
+            type: "boolean",
+            description: "Whether to use a virtual moderator. Default true.",
+          },
+        },
+        required: ["name", "topic", "agent_ids"],
+      },
+    },
+    {
       name: "list_schedules",
       description: "List all recurring schedules with their status, interval, and next run time.",
       inputSchema: {
@@ -780,6 +826,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Schedule created: "${result.name}" (id: ${result.id}, interval: ${result.interval_seconds}s).`,
           },
         ],
+      };
+    }
+
+    case "schedule_meeting": {
+      const { name, topic, agent_ids, run_at, cron_expression, initial_message, use_moderator } = args;
+      const body = {
+        name,
+        topic,
+        agent_ids,
+        use_moderator: use_moderator !== false,
+        ...(run_at && { run_at }),
+        ...(cron_expression && { cron_expression }),
+        ...(initial_message && { initial_message }),
+      };
+      const result = await apiCall("/meeting-rooms/schedule", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const when = cron_expression
+        ? `recurring (${cron_expression})`
+        : run_at
+        ? `once at ${run_at}`
+        : "immediately";
+      return {
+        content: [{
+          type: "text",
+          text: `Meeting scheduled (${when}): "${name}" — schedule ID: ${result.schedule_id}, next run: ${result.next_run_at}`,
+        }],
       };
     }
 

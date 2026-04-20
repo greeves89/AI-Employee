@@ -84,7 +84,7 @@ export function SystemStatusBar() {
 
   const fetchHealth = async () => {
     try {
-      const res = await fetch(`${getApiUrl()}/health`, {
+      const res = await fetch(`${getApiUrl()}/api/v1/health`, {
         credentials: "include",
         signal: AbortSignal.timeout(5000),
       });

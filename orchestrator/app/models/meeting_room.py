@@ -23,6 +23,11 @@ class MeetingRoom(Base, TimestampMixin):
     rounds_completed: Mapped[int] = mapped_column(Integer, default=0)
     # Max rounds before auto-stop (0 = unlimited)
     max_rounds: Mapped[int] = mapped_column(Integer, default=10)
+    # Optional stage config: [{"name": "Eröffnung", "rounds": 1, "focus": "intro"}, ...]
+    # None = legacy flat round-robin mode
+    stages_config: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
+    # Whether a virtual moderator directs each turn
+    use_moderator: Mapped[bool] = mapped_column(Boolean, default=False)
     # Message history stored as JSONB array
     messages: Mapped[list] = mapped_column(JSONB, default=list)
     # Creator

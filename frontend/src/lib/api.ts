@@ -1396,6 +1396,8 @@ export async function createMeetingRoom(data: {
   topic?: string;
   agent_ids: string[];
   max_rounds?: number;
+  stages_config?: { name: string; rounds: number; focus: string }[] | null;
+  use_moderator?: boolean;
 }): Promise<MeetingRoom> {
   return fetchJSON(`${getBase()}/meeting-rooms/`, {
     method: "POST",

@@ -151,6 +151,20 @@ class SchedulerService:
                 )
                 return
 
+        # Meeting schedules: prompt starts with __meeting__:{json}
+        if schedule.prompt.startswith("__meeting__:"):
+            await self._execute_meeting_schedule(db, schedule)
+            schedule.last_run_at = now
+            schedule.total_runs += 1
+            # One-shot: disable after firing (interval_seconds == 0)
+            if not schedule.cron_expression and schedule.interval_seconds == 0:
+                schedule.enabled = False
+                schedule.next_run_at = now  # won't fire again since disabled
+            else:
+                schedule.next_run_at = _calc_next_run(schedule, now)
+            print(f"[Scheduler] Meeting schedule {schedule.name} executed")
+            return
+
         # For proactive schedules: always use the latest PROACTIVE_PROMPT from code
         # so prompt improvements apply immediately to all agents without DB migration
         is_proactive = schedule.name.startswith("[Proactive]")
@@ -176,6 +190,52 @@ class SchedulerService:
             f"[Scheduler] {schedule.name} triggered task {task.id}, "
             f"next run at {schedule.next_run_at.isoformat()}"
         )
+
+
+    async def _execute_meeting_schedule(self, db: AsyncSession, schedule: Schedule) -> None:
+        """Create and start a scheduled meeting room."""
+        import json as _json
+        import uuid as _uuid
+        from app.models.meeting_room import MeetingRoom
+
+        try:
+            config = _json.loads(schedule.prompt[len("__meeting__:"):])
+        except Exception as e:
+            print(f"[Scheduler] Bad meeting config for {schedule.id}: {e}")
+            return
+
+        room = MeetingRoom(
+            id=_uuid.uuid4().hex[:12],
+            name=config.get("name", schedule.name),
+            topic=config.get("topic", ""),
+            agent_ids=config.get("agent_ids", []),
+            max_rounds=config.get("max_rounds", 5),
+            stages_config=config.get("stages_config"),
+            use_moderator=config.get("use_moderator", True),
+            created_by=config.get("created_by", "schedule"),
+            messages=[{
+                "role": "system",
+                "agent_id": None,
+                "content": config.get("initial_message", "Geplantes Meeting startet."),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }],
+        )
+        db.add(room)
+        await db.flush()  # get room.id before starting
+
+        # Start the meeting loop
+        from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
+        room.state = "running"
+
+        mod_agent_id = None
+        if room.use_moderator and self.docker:
+            from app.config import settings as _settings
+            mod_agent_id = await _start_moderator_container(room.id, self.docker, _settings.redis_url_internal)
+
+        import asyncio
+        task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
+        _running_rooms[room.id] = task
+        print(f"[Scheduler] Started scheduled meeting {room.id}: {room.name}")
 
 
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:

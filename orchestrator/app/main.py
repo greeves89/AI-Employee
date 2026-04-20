@@ -679,6 +679,10 @@ async def lifespan(app: FastAPI):
     # On startup: import skills from all running agent containers into DB
     asyncio.create_task(_import_container_skills(app.state.docker))
 
+    # Resume any meeting rooms that were running before restart
+    from app.api.meeting_rooms import resume_running_rooms
+    asyncio.create_task(resume_running_rooms(app.state.redis, docker=app.state.docker))
+
     # Start improvement engine (periodic rating analysis)
     from app.services.improvement_engine import ImprovementEngine
 
@@ -802,6 +806,7 @@ app.include_router(cu_ws_router)
 
 @app.get("/healthz")
 @app.get("/health")
+@app.get("/api/v1/health")
 async def health_check(request: Request):
     """
     Enhanced health check that verifies database, Redis, and Docker connectivity.

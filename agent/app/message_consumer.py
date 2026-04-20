@@ -211,6 +211,15 @@ class MessageConsumer:
                     logger.info(f"[Meeting] Room {room_id}: executing turn ({len(prompt)} char prompt)")
                     await log_publisher.publish_status("meeting", f"room:{room_id}")
 
+                    # Prepend context prefix so the agent reads its identity + knowledge before speaking
+                    from app.runner_hooks import get_approval_rules_prefix
+                    meeting_prefix = get_approval_rules_prefix() + (
+                        f"MANDATORY FIRST STEP — do this BEFORE responding:\n"
+                        f"1. Read /workspace/knowledge.md to recall who you are, what you've built, "
+                        f"and what you know. Use this to speak as yourself, not a generic agent.\n\n"
+                    )
+                    prompt = meeting_prefix + prompt
+
                     try:
                         response = await self._execute_cli(prompt)
                     except Exception as e:
