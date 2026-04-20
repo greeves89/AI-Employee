@@ -638,7 +638,7 @@ export default function MeetingRoomsPage() {
                           <FileText className="h-4 w-4 text-blue-400" />
                           <span className="text-sm font-medium text-blue-300">Meeting-Zusammenfassung</span>
                         </div>
-                        <div className="prose prose-sm prose-invert max-w-none text-sm text-foreground/90">
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-sm text-foreground/90">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary.content}</ReactMarkdown>
                         </div>
                       </div>
