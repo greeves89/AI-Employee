@@ -12,6 +12,14 @@ from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssign
 router = APIRouter(prefix="/skills", tags=["skills-marketplace"])
 
 
+def _normalize_category(raw: str) -> SkillCategory:
+    """Accept any case variant and map to valid SkillCategory, default ROUTINE."""
+    try:
+        return SkillCategory(raw.upper())
+    except (ValueError, AttributeError):
+        return SkillCategory.ROUTINE
+
+
 # --- Schemas ---
 
 class SkillCreate(BaseModel):
@@ -176,7 +184,7 @@ async def create_skill(
         name=body.name,
         description=body.description,
         content=body.content,
-        category=body.category,
+        category=_normalize_category(body.category),
         status=SkillStatus.ACTIVE,
         created_by="user",
         paths=body.paths,
@@ -223,6 +231,39 @@ async def delete_skill(
     await db.delete(skill)
     await db.commit()
     return {"deleted": skill_id}
+
+
+# --- Trend skill review ---
+
+@router.post("/marketplace/{skill_id}/approve")
+async def approve_skill(
+    skill_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve a DRAFT skill — makes it active in the marketplace."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    skill.status = SkillStatus.ACTIVE
+    skill.is_public = True
+    await db.commit()
+    return {"id": skill_id, "status": "active"}
+
+
+@router.post("/marketplace/{skill_id}/reject")
+async def reject_skill(
+    skill_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject a DRAFT skill — archives it."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    skill.status = SkillStatus.ARCHIVED
+    await db.commit()
+    return {"id": skill_id, "status": "archived"}
 
 
 # --- Assignment ---
@@ -465,7 +506,7 @@ async def agent_propose_skill(
         name=body.name,
         description=body.description,
         content=body.content,
-        category=body.category,
+        category=_normalize_category(body.category),
         status=SkillStatus.ACTIVE,
         created_by=f"agent:{agent_id}",
         source_task_id=body.task_id,

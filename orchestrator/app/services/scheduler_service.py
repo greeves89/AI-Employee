@@ -36,10 +36,13 @@ class SchedulerService:
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
-        knowledge-feeds every 5 minutes (feeds decide per-feed whether due)."""
+        knowledge-feeds every 5 minutes, trend scan every 24h."""
         print("[Scheduler] Service started")
         from app.services.knowledge_feed_service import KnowledgeFeedService
+        from app.services.trend_service import TrendService
+        from app.config import settings as _settings
         feed_service = KnowledgeFeedService(self.redis)
+        trend_service = TrendService(self.redis, github_token=_settings.github_token)
 
         while True:
             try:
@@ -60,6 +63,16 @@ class SchedulerService:
                             )
                     except Exception as e:
                         print(f"[Scheduler] KnowledgeFeeds error: {e}")
+                # Trend scan: runs daily (TrendService.tick() self-throttles)
+                try:
+                    result = await trend_service.tick()
+                    if not result.get("skipped") and result.get("generated", 0) > 0:
+                        print(
+                            f"[Scheduler] TrendScan: scanned={result['scanned']} "
+                            f"new={result['new']} generated={result['generated']} err={result['errors']}"
+                        )
+                except Exception as e:
+                    print(f"[Scheduler] TrendScan error: {e}")
             except Exception as e:
                 print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)

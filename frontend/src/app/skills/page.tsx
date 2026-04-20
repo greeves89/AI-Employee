@@ -140,7 +140,9 @@ export default function SkillsPage() {
   const [agentSkills, setAgentSkills] = useState<AgentSkill[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"catalog" | "mine">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "mine" | "pending">("catalog");
+  const [pendingSkills, setPendingSkills] = useState<AgentSkill[]>([]);
+  const [reviewing, setReviewing] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
@@ -157,11 +159,13 @@ export default function SkillsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [catalogData, agentsData] = await Promise.all([
+        const [catalogData, agentsData, pendingData] = await Promise.all([
           api.getSkillCatalog(),
           api.getAgents(),
+          api.getMarketplaceSkills({ status: "draft" }),
         ]);
         setCatalog(catalogData.skills || []);
+        setPendingSkills(pendingData.skills || []);
         const online = agentsData.agents.filter((a) =>
           ["running", "idle", "working"].includes(a.state)
         );
@@ -343,6 +347,7 @@ export default function SkillsPage() {
           {[
             { id: "catalog" as const, label: `Katalog (${catalog.length})` },
             { id: "mine" as const, label: `Meine Skills (${agentSkills.length})` },
+            { id: "pending" as const, label: pendingSkills.length > 0 ? `✨ Ausstehend (${pendingSkills.length})` : "Ausstehend" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -463,6 +468,68 @@ export default function SkillsPage() {
                   </div>
                 );
               })}
+            </div>
+          )
+        ) : activeTab === "pending" ? (
+          /* Pending (auto-generated) Skills */
+          pendingSkills.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <p className="text-sm">Keine ausstehenden Skills</p>
+              <p className="text-xs mt-1 text-muted-foreground/60">
+                Der Trend-Scanner läuft täglich und sucht neue Tools automatisch.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingSkills.map((skill) => (
+                <div key={skill.id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{skill.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{skill.description}</p>
+                      {skill.source_repo && (
+                        <p className="text-[10px] text-amber-400/70 mt-1">📦 {skill.source_repo}</p>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-[10px] rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 px-2 py-0.5">
+                      Auto-generiert
+                    </span>
+                  </div>
+                  <div className="text-xs text-foreground/70 bg-foreground/[0.03] rounded-lg p-3 font-mono whitespace-pre-wrap line-clamp-6 border border-foreground/[0.05]">
+                    {skill.content?.slice(0, 400)}
+                    {(skill.content?.length ?? 0) > 400 && "…"}
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={async () => {
+                        setReviewing(skill.id);
+                        try {
+                          await api.rejectSkill(skill.id);
+                          setPendingSkills(p => p.filter(s => s.id !== skill.id));
+                        } finally { setReviewing(null); }
+                      }}
+                      disabled={reviewing === skill.id}
+                      className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+                    >
+                      {reviewing === skill.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "✕"} Ablehnen
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setReviewing(skill.id);
+                        try {
+                          await api.approveSkill(skill.id);
+                          setPendingSkills(p => p.filter(s => s.id !== skill.id));
+                          setCatalog(c => [...c, { ...skill, status: "active" } as any]);
+                        } finally { setReviewing(null); }
+                      }}
+                      disabled={reviewing === skill.id}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                    >
+                      {reviewing === skill.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "✓"} Freigeben
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )
         ) : (
