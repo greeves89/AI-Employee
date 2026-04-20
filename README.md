@@ -296,8 +296,6 @@ Found a vulnerability? Please **do not** open a public issue. Email **security@a
 ## Community
 
 - **GitHub Discussions**: https://github.com/greeves89/AI-Employee/discussions
-- **Discord**: https://discord.gg/ai-employee (placeholder)
-- **Twitter/X**: [@ai_employee_dev](https://twitter.com/ai_employee_dev) (placeholder)
 
 ## Credits
 
