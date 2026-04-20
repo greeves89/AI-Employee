@@ -790,10 +790,20 @@ export async function createGithubIssueFromFeedback(
 // --- Health & Performance ---
 
 export interface HealthDashboard {
-  status: string;
-  agents: { id: string; name: string; state: string; health: string }[];
-  recent_tests: { id: string; status: string; passed: number; failed: number; created_at: string }[];
-  improvements: { agent_id: string; suggestion: string; priority: string }[];
+  status?: string;
+  overall_status?: string;
+  uptime_pct?: number;
+  agents?: { id: string; name: string; state: string; health: string }[];
+  agent_ratings?: Record<string, unknown>;
+  recent_tests?: { id: string; status: string; passed: number; failed: number; created_at: string }[];
+  improvements?: { agent_id: string; suggestion: string; priority: string }[];
+  latest_run?: Record<string, unknown>;
+  pass_rate_trend?: unknown[];
+  response_time_trend?: unknown[];
+  failure_categories?: Record<string, number>;
+  open_auto_issues?: number;
+  total_cost_7d?: number;
+  total_tasks_7d?: number;
 }
 
 export interface TestRun {

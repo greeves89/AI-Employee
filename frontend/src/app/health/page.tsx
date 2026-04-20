@@ -164,7 +164,7 @@ export default function HealthPage() {
     }
   }
 
-  const overallStatus = dashboard?.status || "unknown";
+  const overallStatus = dashboard?.overall_status || dashboard?.status || "unknown";
 
   // Aggregate rating data for combined chart
   const combinedRatingData = reports.length > 0
@@ -219,7 +219,7 @@ export default function HealthPage() {
                    loading ? "Laden..." : "Probleme erkannt"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {dashboard?.agents?.length || 0} Agents registriert
+                  {dashboard?.agent_ratings ? Object.keys(dashboard.agent_ratings).length : 0} Agents registriert
                 </p>
               </div>
             </div>
