@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 import io
+import re
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
@@ -180,9 +181,21 @@ async def create_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new skill (user-created, immediately active)."""
+    # Exact match
     existing = (await db.execute(select(Skill).where(Skill.name == body.name))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail=f"Skill '{body.name}' already exists")
+    # Fuzzy: strip date suffixes (-YYYY-MM-DD or -YYYY-MM) and check base name
+    base_name = re.sub(r"[-_]\d{4}[-_]\d{2}([-_]\d{2})?$", "", body.name).strip()
+    if base_name != body.name:
+        similar = (await db.execute(
+            select(Skill).where(Skill.name.ilike(f"{base_name}%"))
+        )).scalars().first()
+        if similar:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Similar skill already exists: '{similar.name}'. Update it instead of creating a new version."
+            )
 
     skill = Skill(
         name=body.name,
