@@ -216,11 +216,20 @@ services:
     command: tunnel --protocol http2 --edge-ip-version auto --retries 10 --grace-period 60s run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      NO_AUTOUPDATE: "true"
     depends_on:
       - caddy
     restart: unless-stopped
-    # No healthcheck — cloudflared has its own retry logic (--retries 10)
-    # and the minimal image has no curl/sh for external checks.
+    # Restart every 24h to prevent connection-state degradation (known cloudflared long-run issue)
+    stop_grace_period: 10s
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "info"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "autoheal=true"
     profiles:
       - tunnel
     deploy:
