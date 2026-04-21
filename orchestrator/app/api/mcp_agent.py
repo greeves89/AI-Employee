@@ -244,7 +244,7 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
             f"status: {task.status.value if hasattr(task.status, 'value') else task.status}",
         ]
         if task.result:
-            lines.append(f"result: {task.result[:500]}")
+            lines.append(f"result: {task.result[:2000]}")
         return _tool_result("\n".join(lines))
 
     if name == "get_agent_status":

@@ -95,6 +95,7 @@ class AgentRunner:
 
         result_data: dict = {"status": "completed"}
         stderr_lines: list[str] = []
+        text_output: list[str] = []
 
         async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
             """Read stderr concurrently so it's not lost when process exits."""
@@ -124,13 +125,20 @@ class AgentRunner:
             async for event in self._stream_output(self._process):
                 await self._process_event(task_id, event)
 
+                # Collect assistant text output
+                if event.get("type") == "assistant":
+                    for block in event.get("message", {}).get("content", []):
+                        if block.get("type") == "text" and block.get("text"):
+                            text_output.append(block["text"])
+
                 if event.get("type") == "result":
+                    result_text = event.get("result", "") or "\n".join(text_output)
                     result_data = {
                         "status": "completed",
                         "duration_ms": event.get("duration_ms"),
                         "num_turns": event.get("num_turns"),
                         "cost_usd": event.get("cost_usd", 0),
-                        "result": event.get("result", ""),
+                        "result": result_text,
                     }
 
             returncode = await self._process.wait()
