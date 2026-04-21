@@ -18,6 +18,9 @@ class AuditEventType(str, Enum):
     AGENT_STOPPED = "agent_stopped"           # agent container stopped
     FILE_WRITTEN = "file_written"             # file write operation
     NETWORK_REQUEST = "network_request"       # outbound network call
+    SKILL_FILE_UPLOADED = "skill_file_uploaded"   # file attached to a skill
+    SKILL_FILE_DOWNLOADED = "skill_file_downloaded"  # agent or user downloaded a skill file
+    SKILL_FILE_DELETED = "skill_file_deleted"     # file removed from a skill
 
 
 class AuditLog(Base):

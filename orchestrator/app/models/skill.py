@@ -9,8 +9,9 @@ Agent-proposed skills start as drafts and require user review.
 """
 
 import enum
+from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Enum, Float, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -66,3 +67,20 @@ class AgentSkillAssignment(Base, TimestampMixin):
     agent_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     skill_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     assigned_by: Mapped[str] = mapped_column(String, default="user")  # "user", "auto:role", "auto:path", "agent"
+
+
+class SkillFile(Base):
+    """File attachment for a skill — pushed into agent workspace on skill install."""
+    __tablename__ = "skill_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), index=True, nullable=False)
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    content_type: Mapped[str] = mapped_column(String, default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    storage_path: Mapped[str] = mapped_column(String, nullable=False)  # absolute path on shared volume
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )

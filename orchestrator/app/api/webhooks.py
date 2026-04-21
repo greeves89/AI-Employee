@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -31,6 +32,67 @@ class WebhookTrigger(BaseModel):
     event_type: str = "generic"
 
 
+# --- Per-agent webhook settings ---
+
+@router.get("/agents/{agent_id}/settings")
+async def get_webhook_settings(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get webhook settings for an agent."""
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return {
+        "webhook_enabled": agent.webhook_enabled,
+        "webhook_token": agent.webhook_token if agent.webhook_enabled else None,
+    }
+
+
+@router.patch("/agents/{agent_id}/settings")
+async def update_webhook_settings(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enable or disable webhook access for an agent. Generates a token on first enable."""
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    enabled = body.get("webhook_enabled")
+    if enabled is not None:
+        agent.webhook_enabled = bool(enabled)
+        if enabled and not agent.webhook_token:
+            agent.webhook_token = secrets.token_urlsafe(32)
+
+    await db.commit()
+    return {
+        "webhook_enabled": agent.webhook_enabled,
+        "webhook_token": agent.webhook_token if agent.webhook_enabled else None,
+    }
+
+
+@router.post("/agents/{agent_id}/regenerate-token")
+async def regenerate_webhook_token(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a new webhook token for an agent."""
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not agent.webhook_enabled:
+        raise HTTPException(status_code=400, detail="Webhook is not enabled for this agent")
+
+    agent.webhook_token = secrets.token_urlsafe(32)
+    await db.commit()
+    return {"webhook_token": agent.webhook_token}
+
+
 @router.post("/agents/{agent_id}")
 async def receive_webhook(
     agent_id: str,
@@ -42,21 +104,8 @@ async def receive_webhook(
 
     The full request body is passed as context to the agent.
     Supports JSON, form data, or raw text.
-    Requires HMAC signature in X-Webhook-Signature header (HMAC-SHA256 of body
-    using the API_SECRET_KEY). Skip validation only if webhook secret is not configured.
+    Auth: Authorization: Bearer <webhook_token> (per-agent token from settings).
     """
-    # --- HMAC Signature Verification ---
-    from app.config import settings as app_settings
-
-    body_bytes = await request.body()
-    if app_settings.api_secret_key and app_settings.api_secret_key != "change-me-in-production":
-        sig_header = request.headers.get("x-webhook-signature", "")
-        expected = hmac.new(
-            app_settings.api_secret_key.encode(), body_bytes, hashlib.sha256
-        ).hexdigest()
-        if not hmac.compare_digest(sig_header, expected):
-            raise HTTPException(status_code=401, detail="Invalid or missing webhook signature")
-
     # --- AgentGuard: Rate limiting ---
     if not webhook_rate_limiter.check(agent_id):
         raise HTTPException(status_code=429, detail="Rate limit exceeded for this agent")
@@ -67,12 +116,23 @@ async def receive_webhook(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Parse payload (body_bytes already read above for HMAC)
+    # --- Per-agent token auth ---
+    if not agent.webhook_enabled:
+        raise HTTPException(status_code=403, detail="Webhook access is not enabled for this agent")
+
+    if agent.webhook_token:
+        auth_header = request.headers.get("Authorization", "")
+        provided_token = auth_header.removeprefix("Bearer ").strip()
+        if not provided_token or not hmac.compare_digest(provided_token, agent.webhook_token):
+            raise HTTPException(status_code=401, detail="Invalid or missing webhook token")
+
+    body_bytes = await request.body()
+
+    # Parse payload
     content_type = request.headers.get("content-type", "")
     if "json" in content_type:
         try:
-            import json as _json
-            payload = _json.loads(body_bytes)
+            payload = json.loads(body_bytes)
         except Exception:
             payload = {"raw": body_bytes.decode("utf-8", errors="replace")}
     else:

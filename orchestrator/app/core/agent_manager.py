@@ -1134,6 +1134,8 @@ class AgentManager:
             "update_available": update_available,
             "budget_usd": agent.budget_usd,
             "browser_mode": agent.browser_mode,
+            "webhook_enabled": agent.webhook_enabled,
+            "webhook_token": agent.webhook_token,
             "total_cost_usd": config.get("total_cost_usd", 0.0),
             "user_id": agent.user_id,
             "created_at": agent.created_at,

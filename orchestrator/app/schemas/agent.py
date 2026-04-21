@@ -76,6 +76,8 @@ class AgentResponse(BaseModel):
     update_available: bool = False
     budget_usd: float | None = None
     browser_mode: bool = False
+    webhook_enabled: bool = False
+    webhook_token: str | None = None
     total_cost_usd: float = 0.0
     user_id: str | None = None
     created_at: datetime

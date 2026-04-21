@@ -246,7 +246,7 @@ export default function AgentDetailPage() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 h-full">
           {activeTab === "chat" && <AgentChat agentId={agentId} />}
           {activeTab === "terminal" && <LiveTerminal agentId={agentId} />}
           {activeTab === "todos" && <TodoTab agentId={agentId} />}
@@ -1024,8 +1024,69 @@ function AgentSettings({
 
   const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
 
+  // Webhook state
+  const [webhookEnabled, setWebhookEnabled] = useState(agent.webhook_enabled ?? false);
+  const [webhookToken, setWebhookToken] = useState<string | null>(agent.webhook_token ?? null);
+  const [webhookLoading, setWebhookLoading] = useState(false);
+  const [webhookTokenVisible, setWebhookTokenVisible] = useState(false);
+  const [webhookCopied, setWebhookCopied] = useState(false);
+  const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
+  const [mcpUrlCopied, setMcpUrlCopied] = useState(false);
+
+  const apiBase = typeof window !== "undefined"
+    ? window.location.origin.replace(":3000", ":8000")
+    : "";
+  const webhookUrl = `${apiBase}/api/v1/webhooks/agents/${agentId}`;
+  const mcpUrl = `${apiBase}/api/v1/mcp/agents/${agentId}`;
+
+  const handleWebhookToggle = async (enabled: boolean) => {
+    setWebhookLoading(true);
+    try {
+      const result = await api.updateWebhookSettings(agentId, enabled);
+      setWebhookEnabled(result.webhook_enabled);
+      setWebhookToken(result.webhook_token);
+    } catch {
+      setMessage({ type: "error", text: "Fehler beim Aktualisieren des Webhook-Status" });
+    } finally {
+      setWebhookLoading(false);
+    }
+  };
+
+  const handleRegenerateToken = async () => {
+    setWebhookLoading(true);
+    try {
+      const result = await api.regenerateWebhookToken(agentId);
+      setWebhookToken(result.webhook_token);
+      setWebhookTokenVisible(true);
+    } catch {
+      setMessage({ type: "error", text: "Fehler beim Generieren des Tokens" });
+    } finally {
+      setWebhookLoading(false);
+    }
+  };
+
+  const copyWebhookToken = () => {
+    if (webhookToken) {
+      navigator.clipboard.writeText(webhookToken);
+      setWebhookCopied(true);
+      setTimeout(() => setWebhookCopied(false), 2000);
+    }
+  };
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setWebhookUrlCopied(true);
+    setTimeout(() => setWebhookUrlCopied(false), 2000);
+  };
+
+  const copyMcpUrl = () => {
+    navigator.clipboard.writeText(mcpUrl);
+    setMcpUrlCopied(true);
+    setTimeout(() => setMcpUrlCopied(false), 2000);
+  };
+
   return (
-    <div className="space-y-6 overflow-auto max-h-[calc(100vh-22rem)] pb-4">
+    <div className="space-y-6 overflow-auto h-full pb-4">
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
 
@@ -1300,6 +1361,163 @@ function AgentSettings({
 
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
+
+      {/* External Webhook Access */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Plug className="h-4 w-4 text-sky-400" />
+            <span className="text-sm font-medium">Externer Zugriff (Webhook)</span>
+          </div>
+          <button
+            onClick={() => handleWebhookToggle(!webhookEnabled)}
+            disabled={webhookLoading}
+            className={cn(
+              "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-40",
+              webhookEnabled ? "bg-sky-500" : "bg-foreground/10"
+            )}
+          >
+            <span className={cn(
+              "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transition-transform",
+              webhookEnabled ? "translate-x-4" : "translate-x-0"
+            )} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {!webhookEnabled ? (
+            <p className="text-[12px] text-muted-foreground/60">
+              Aktiviere den externen Zugriff, damit dieser Agent via Webhook aus n8n, Zapier oder anderen Tools erreichbar ist.
+            </p>
+          ) : (
+            <>
+              {/* Webhook URL */}
+              <div>
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Webhook URL</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                    {webhookUrl}
+                  </code>
+                  <button
+                    onClick={copyWebhookUrl}
+                    className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                  >
+                    {webhookUrlCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Bearer Token */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground/70">Bearer Token</label>
+                  <button
+                    onClick={handleRegenerateToken}
+                    disabled={webhookLoading}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                  >
+                    <RefreshCcw className="h-3 w-3" />
+                    Neu generieren
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                    {webhookToken
+                      ? webhookTokenVisible ? webhookToken : "•".repeat(32)
+                      : "—"}
+                  </code>
+                  <button
+                    onClick={() => setWebhookTokenVisible((v) => !v)}
+                    className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                  >
+                    {webhookTokenVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    onClick={copyWebhookToken}
+                    disabled={!webhookToken}
+                    className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors disabled:opacity-40"
+                  >
+                    {webhookCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* n8n hint */}
+              <div className="rounded-lg border border-sky-500/10 bg-sky-500/5 px-3.5 py-2.5">
+                <p className="text-[11px] text-sky-400/80 font-mono">
+                  <span className="font-semibold">n8n HTTP Request Node:</span><br />
+                  Method: POST &nbsp;·&nbsp; URL: (oben)<br />
+                  Header: <span className="text-sky-300">Authorization: Bearer &lt;token&gt;</span>
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* MCP Endpoint */}
+      {webhookEnabled && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
+            <svg className="h-4 w-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            <span className="text-sm font-medium">MCP Endpoint</span>
+            <span className="ml-auto inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+              2025-06-18
+            </span>
+          </div>
+
+          <div className="p-5 space-y-3">
+            {/* MCP URL */}
+            <div>
+              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">MCP URL</label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                  {mcpUrl}
+                </code>
+                <button onClick={copyMcpUrl} className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors">
+                  {mcpUrlCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Bearer Token */}
+            <div>
+              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Bearer Token <span className="text-muted-foreground/40 font-normal">(gleicher wie Webhook)</span></label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                  {webhookToken ? (webhookTokenVisible ? webhookToken : "•".repeat(32)) : "—"}
+                </code>
+                <button onClick={() => setWebhookTokenVisible((v) => !v)} className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors">
+                  {webhookTokenVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+                <button onClick={copyWebhookToken} disabled={!webhookToken} className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors disabled:opacity-40">
+                  {webhookCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Tools + hint in one row */}
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Tools</label>
+                <div className="flex flex-wrap gap-1">
+                  {["send_task", "get_task_status", "get_agent_status", "list_recent_tasks"].map((tool) => (
+                    <code key={tool} className="rounded-md border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[10px] font-mono text-violet-400">{tool}</code>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-violet-500/10 bg-violet-500/5 px-3 py-2">
+              <p className="text-[11px] text-violet-400/70 font-mono">
+                n8n: HTTP Streamable · Bearer Token · URL oben
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Permissions */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">

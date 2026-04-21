@@ -46,6 +46,9 @@ class Agent(Base, TimestampMixin):
     webhook_token_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
+    # Per-agent webhook access (enable/disable + bearer token for external tools like n8n/Zapier)
+    webhook_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    webhook_token: Mapped[str | None] = mapped_column(String, nullable=True)
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="agent")  # noqa: F821
     owner: Mapped["User | None"] = relationship("User")  # noqa: F821

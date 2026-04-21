@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     # GitHub API token for skill crawler (avoids 60 req/h rate limit → 5000 req/h)
     github_token: str = ""
 
+    # Skill file attachments — stored on shared Docker volume
+    skill_files_root: str = "/shared/skill-files"
+
     model_config = {"env_prefix": "", "case_sensitive": False}
 
 

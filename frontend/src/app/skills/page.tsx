@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Sparkles, Search, Download, Loader2, RefreshCw,
-  Package, Code2, Palette, Megaphone, FileText, Wrench,
-  GitBranch, Layers, BookOpen, Repeat, ChefHat,
+  Package, Code2, FileText, Wrench,
+  GitBranch, Layers, Repeat, ChefHat,
   CheckCircle2, Bot, ChevronDown, Plus, Pencil, Trash2, X, Save,
+  Paperclip, Upload, File as FileIcon,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { CatalogSkill, AgentSkill, MarketplaceSkill } from "@/lib/api";
+import type { CatalogSkill, AgentSkill, MarketplaceSkill, SkillFileAttachment } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
@@ -27,6 +28,241 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color
 };
 
 const EMPTY_SKILL = { name: "", description: "", content: "" };
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+interface SkillDetailModalProps {
+  skill: MarketplaceSkill;
+  onClose: () => void;
+}
+
+function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
+  const [files, setFiles] = useState<SkillFileAttachment[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadFiles = useCallback(async () => {
+    if (!skill.id) return;
+    setLoadingFiles(true);
+    try {
+      const res = await api.getSkillFiles(skill.id);
+      setFiles(res.files || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, [skill.id]);
+
+  useEffect(() => { loadFiles(); }, [loadFiles]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !skill.id) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      await api.uploadSkillFile(skill.id, file);
+      await loadFiles();
+    } catch (err: any) {
+      setUploadError(err?.message || "Upload fehlgeschlagen");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDownload = async (filename: string) => {
+    if (!skill.id) return;
+    setDownloadingFile(filename);
+    try {
+      await api.downloadSkillFile(skill.id, filename);
+    } catch {
+      // ignore
+    } finally {
+      setDownloadingFile(null);
+    }
+  };
+
+  const handleDeleteFile = async (filename: string) => {
+    if (!skill.id) return;
+    setDeletingFile(filename);
+    try {
+      await api.deleteSkillFile(skill.id, filename);
+      setFiles(f => f.filter(x => x.filename !== filename));
+    } catch {
+      // ignore
+    } finally {
+      setDeletingFile(null);
+    }
+  };
+
+  const cfg = CATEGORY_CONFIG[skill.category?.toUpperCase()] || CATEGORY_CONFIG.ROUTINE;
+  const Icon = cfg.icon;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-3xl rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-foreground/[0.06] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg border", cfg.color)}>
+              <Icon className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold">{skill.name}</h2>
+              <p className="text-[10px] text-muted-foreground/60">{skill.description}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-foreground/[0.06] text-muted-foreground hover:text-foreground transition-all">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Metadata */}
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
+              <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Kategorie</p>
+              <p className="font-medium">{cfg.label}</p>
+            </div>
+            <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
+              <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Nutzung</p>
+              <p className="font-medium">{skill.usage_count ?? 0}× verwendet</p>
+            </div>
+            {skill.source_repo && (
+              <div className="col-span-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
+                <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Quelle</p>
+                <a
+                  href={skill.source_url || `https://github.com/${skill.source_repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary hover:underline"
+                >
+                  {skill.source_repo} ↗
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Instructions preview */}
+          {skill.content && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide">Instruktionen</p>
+              <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 font-mono text-xs text-foreground/70 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                {skill.content}
+              </div>
+            </div>
+          )}
+
+          {/* File Attachments */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Paperclip className="h-3.5 w-3.5 text-muted-foreground/60" />
+                <p className="text-xs font-semibold">Datei-Anhänge</p>
+                <span className="text-[10px] text-muted-foreground/50">({files.length})</span>
+              </div>
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleUpload}
+                  accept=".py,.js,.ts,.sh,.bash,.yaml,.yml,.json,.toml,.txt,.md,.csv,.xml,.html,.css,.conf,.cfg,.ini"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 border border-violet-500/20 px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-50"
+                >
+                  {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                  {uploading ? "Hochladen..." : "Datei hinzufügen"}
+                </button>
+              </div>
+            </div>
+
+            {uploadError && (
+              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{uploadError}</p>
+            )}
+
+            <p className="text-[10px] text-muted-foreground/50">
+              Dateien werden beim Installieren dieses Skills automatisch in den Agenten-Workspace kopiert
+              (<code className="font-mono">/workspace/skills/{skill.name}/</code>).
+            </p>
+
+            {loadingFiles ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : files.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-foreground/[0.08] bg-foreground/[0.01] p-6 flex flex-col items-center gap-2 text-muted-foreground/50">
+                <FileIcon className="h-6 w-6" />
+                <p className="text-xs">Noch keine Dateien angehängt</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {files.map((f) => (
+                  <div
+                    key={f.filename}
+                    className="flex items-center gap-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2"
+                  >
+                    <FileIcon className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{f.filename}</p>
+                      <p className="text-[10px] text-muted-foreground/50">{formatBytes(f.size_bytes)} · {f.content_type}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => handleDownload(f.filename)}
+                        disabled={downloadingFile === f.filename}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all disabled:opacity-50"
+                        title="Herunterladen"
+                      >
+                        {downloadingFile === f.filename
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Download className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFile(f.filename)}
+                        disabled={deletingFile === f.filename}
+                        className="rounded-lg p-1.5 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50"
+                        title="Löschen"
+                      >
+                        {deletingFile === f.filename
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end px-6 py-4 border-t border-foreground/[0.06] shrink-0">
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+          >
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface SkillModalProps {
   initial?: AgentSkill | null;
@@ -155,6 +391,7 @@ export default function SkillsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editSkill, setEditSkill] = useState<AgentSkill | null>(null);
   const [deletingSkill, setDeletingSkill] = useState<string | null>(null);
+  const [detailSkill, setDetailSkill] = useState<MarketplaceSkill | null>(null);
 
   const refreshAgentSkills = useCallback(async (agent: Agent) => {
     const skills = await api.getAgentSkills(agent.id).catch(() => []);
@@ -431,7 +668,12 @@ export default function SkillsPage() {
                 return (
                   <div
                     key={`${skill.repo}-${skill.name}`}
-                    className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex flex-col gap-3"
+                    className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex flex-col gap-3 cursor-pointer hover:border-foreground/[0.12] transition-all group"
+                    onClick={() => {
+                      if (skill.type === "db" && skill.id) {
+                        setDetailSkill(skill as unknown as MarketplaceSkill);
+                      }
+                    }}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2.5">
@@ -443,9 +685,14 @@ export default function SkillsPage() {
                           <p className="text-[10px] text-muted-foreground/50">{skill.repo}</p>
                         </div>
                       </div>
-                      <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", cfg.color)}>
-                        {cfg.label}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {skill.type === "db" && skill.id && (
+                          <span className="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">Details →</span>
+                        )}
+                        <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", cfg.color)}>
+                          {cfg.label}
+                        </span>
+                      </div>
                     </div>
 
                     <p className="text-xs text-muted-foreground leading-relaxed flex-1">
@@ -453,7 +700,7 @@ export default function SkillsPage() {
                     </p>
 
                     <button
-                      onClick={() => handleInstall(skill)}
+                      onClick={(e) => { e.stopPropagation(); handleInstall(skill); }}
                       disabled={installed || isInstalling || !selectedAgent}
                       className={cn(
                         "w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all",
@@ -487,7 +734,11 @@ export default function SkillsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingSkills.map((skill) => (
-                <div key={skill.id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col gap-3">
+                <div
+                key={skill.id}
+                className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col gap-3 cursor-pointer hover:border-amber-500/30 transition-all"
+                onClick={() => setDetailSkill(skill)}
+              >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{skill.name}</p>
@@ -511,7 +762,7 @@ export default function SkillsPage() {
                     {skill.content?.slice(0, 400)}
                     {(skill.content?.length ?? 0) > 400 && "…"}
                   </div>
-                  <div className="flex gap-2 justify-end">
+                  <div className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={async () => {
                         setReviewing(skill.id);
@@ -596,6 +847,13 @@ export default function SkillsPage() {
                       Bearbeiten
                     </button>
                     <button
+                      onClick={() => setDetailSkill(skill as unknown as MarketplaceSkill)}
+                      className="flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium bg-foreground/[0.04] hover:bg-foreground/[0.08] text-muted-foreground hover:text-foreground border border-foreground/[0.06] transition-all"
+                      title="Dateien & Details"
+                    >
+                      <Paperclip className="h-3 w-3" />
+                    </button>
+                    <button
                       onClick={() => handleDelete(skill.name)}
                       disabled={deletingSkill === skill.name}
                       className="flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all disabled:opacity-50"
@@ -618,6 +876,14 @@ export default function SkillsPage() {
           initial={editSkill}
           onClose={() => { setShowModal(false); setEditSkill(null); }}
           onSave={editSkill ? handleUpdate : handleCreate}
+        />
+      )}
+
+      {/* Skill Detail + File Attachments Modal */}
+      {detailSkill && (
+        <SkillDetailModal
+          skill={detailSkill}
+          onClose={() => setDetailSkill(null)}
         />
       )}
     </div>

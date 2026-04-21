@@ -1,13 +1,17 @@
-"""Skill Marketplace API — CRUD, assign/unassign, import, propose, rate."""
+"""Skill Marketplace API — CRUD, assign/unassign, import, propose, rate, file attachments."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+import io
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
-from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment
+from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile
+from app.models.audit_log import AuditLog, AuditEventType
+from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
 
 router = APIRouter(prefix="/skills", tags=["skills-marketplace"])
 
@@ -272,10 +276,11 @@ async def reject_skill(
 async def assign_skill(
     skill_id: int,
     body: SkillAssign,
+    request: Request,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Assign a skill to an agent."""
+    """Assign a skill to an agent and push any file attachments into the agent workspace."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -286,6 +291,8 @@ async def assign_skill(
         .where(AgentSkillAssignment.skill_id == skill_id)
     )).scalar_one_or_none()
     if existing:
+        # Still push files in case they changed since last assignment
+        await _push_skill_files_to_agent(request, db, skill_id, skill.name, body.agent_id)
         return {"status": "already_assigned"}
 
     assignment = AgentSkillAssignment(
@@ -295,7 +302,32 @@ async def assign_skill(
     )
     db.add(assignment)
     await db.commit()
+
+    await _push_skill_files_to_agent(request, db, skill_id, skill.name, body.agent_id)
     return {"status": "assigned", "agent_id": body.agent_id, "skill_id": skill_id}
+
+
+async def _push_skill_files_to_agent(request, db: AsyncSession, skill_id: int, skill_name: str, agent_id: str) -> None:
+    """Push all skill file attachments into the agent's container workspace."""
+    files = get_all_files_for_agent(skill_id)
+    if not files:
+        return
+    try:
+        from app.models.agent import Agent
+        from app.dependencies import get_docker_service
+        agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+        if not agent or not agent.container_id:
+            return
+        docker = get_docker_service(request)
+        target_dir = f"/workspace/skills/{skill_name}"
+        docker.write_files_in_container(agent.container_id, target_dir, files)
+        import logging
+        logging.getLogger(__name__).info(
+            f"Pushed {len(files)} file(s) for skill '{skill_name}' to agent {agent_id}"
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not push skill files to agent {agent_id}: {e}")
 
 
 @router.delete("/marketplace/{skill_id}/unassign/{agent_id}")
@@ -393,6 +425,53 @@ async def get_agent_skills(
     return {"skills": [_to_response(s) for s in skills], "total": len(skills)}
 
 
+@router.get("/agent/files/{skill_id}/{filename}")
+async def agent_download_skill_file(
+    skill_id: int,
+    filename: str,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent downloads a file attachment for a skill it has assigned."""
+    agent_id = auth["agent_id"]
+
+    # Verify the agent has this skill assigned
+    assignment = (await db.execute(
+        select(AgentSkillAssignment)
+        .where(AgentSkillAssignment.agent_id == agent_id)
+        .where(AgentSkillAssignment.skill_id == skill_id)
+    )).scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(status_code=403, detail="Skill not assigned to this agent")
+
+    skill_file = (await db.execute(
+        select(SkillFile).where(SkillFile.skill_id == skill_id, SkillFile.filename == filename)
+    )).scalar_one_or_none()
+    if not skill_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        data = read_file(skill_id, filename)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    audit = AuditLog(
+        agent_id=agent_id,
+        event_type=AuditEventType.SKILL_FILE_DOWNLOADED.value,
+        command=filename,
+        outcome="success",
+        meta={"skill_id": skill_id, "source": "agent"},
+    )
+    db.add(audit)
+    await db.commit()
+
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=skill_file.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # --- Rating ---
 
 @router.post("/marketplace/{skill_id}/rate")
@@ -410,11 +489,9 @@ async def rate_skill(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
 
-    # Running average
     if skill.avg_rating is None:
         skill.avg_rating = body.rating
     else:
-        # Weighted: old average counts for usage_count, new rating counts for 1
         total = skill.usage_count or 1
         skill.avg_rating = round((skill.avg_rating * total + body.rating) / (total + 1), 2)
 
@@ -424,38 +501,155 @@ async def rate_skill(
     return _to_response(skill)
 
 
-# --- Review (approve/reject agent-proposed skills) ---
+# --- File Attachments ---
 
-@router.post("/marketplace/{skill_id}/approve")
-async def approve_skill(
+@router.post("/marketplace/{skill_id}/files", status_code=201)
+async def upload_skill_file(
+    skill_id: int,
+    file: UploadFile = File(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a file attachment to a skill."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    try:
+        safe_name = validate_filename(file.filename or "upload.bin")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Check for duplicate filename
+    existing = (await db.execute(
+        select(SkillFile).where(SkillFile.skill_id == skill_id, SkillFile.filename == safe_name)
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"File '{safe_name}' already exists for this skill. Delete it first.")
+
+    data = await file.read()
+    try:
+        path = save_file(skill_id, safe_name, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    skill_file = SkillFile(
+        skill_id=skill_id,
+        filename=safe_name,
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(data),
+        storage_path=str(path),
+    )
+    db.add(skill_file)
+
+    audit = AuditLog(
+        agent_id="user",
+        event_type=AuditEventType.SKILL_FILE_UPLOADED.value,
+        command=safe_name,
+        outcome="success",
+        user_id=str(getattr(user, "id", "unknown")),
+        meta={"skill_id": skill_id, "size_bytes": len(data)},
+    )
+    db.add(audit)
+    await db.commit()
+    await db.refresh(skill_file)
+    return _file_to_response(skill_file)
+
+
+@router.get("/marketplace/{skill_id}/files")
+async def list_skill_files(
     skill_id: int,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Approve a draft skill (make it active)."""
+    """List all file attachments for a skill."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
-    if skill.status != SkillStatus.DRAFT:
-        raise HTTPException(status_code=400, detail="Only draft skills can be approved")
-    skill.status = SkillStatus.ACTIVE
-    await db.commit()
-    return _to_response(skill)
+
+    result = await db.execute(
+        select(SkillFile).where(SkillFile.skill_id == skill_id).order_by(SkillFile.filename)
+    )
+    files = result.scalars().all()
+    return {"files": [_file_to_response(f) for f in files]}
 
 
-@router.post("/marketplace/{skill_id}/reject")
-async def reject_skill(
+@router.get("/marketplace/{skill_id}/files/{filename}")
+async def download_skill_file(
     skill_id: int,
+    filename: str,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reject/archive a draft skill."""
-    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    skill.status = SkillStatus.ARCHIVED
+    """Download a skill file attachment."""
+    skill_file = (await db.execute(
+        select(SkillFile).where(SkillFile.skill_id == skill_id, SkillFile.filename == filename)
+    )).scalar_one_or_none()
+    if not skill_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        data = read_file(skill_id, filename)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    audit = AuditLog(
+        agent_id="user",
+        event_type=AuditEventType.SKILL_FILE_DOWNLOADED.value,
+        command=filename,
+        outcome="success",
+        user_id=str(getattr(user, "id", "unknown")),
+        meta={"skill_id": skill_id},
+    )
+    db.add(audit)
     await db.commit()
-    return _to_response(skill)
+
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=skill_file.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.delete("/marketplace/{skill_id}/files/{filename}")
+async def delete_skill_file(
+    skill_id: int,
+    filename: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a skill file attachment."""
+    skill_file = (await db.execute(
+        select(SkillFile).where(SkillFile.skill_id == skill_id, SkillFile.filename == filename)
+    )).scalar_one_or_none()
+    if not skill_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    delete_file(skill_id, filename)
+    await db.delete(skill_file)
+
+    audit = AuditLog(
+        agent_id="user",
+        event_type=AuditEventType.SKILL_FILE_DELETED.value,
+        command=filename,
+        outcome="success",
+        user_id=str(getattr(user, "id", "unknown")),
+        meta={"skill_id": skill_id},
+    )
+    db.add(audit)
+    await db.commit()
+    return {"deleted": filename}
+
+
+def _file_to_response(f: SkillFile) -> dict:
+    return {
+        "id": f.id,
+        "skill_id": f.skill_id,
+        "filename": f.filename,
+        "content_type": f.content_type,
+        "size_bytes": f.size_bytes,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
 
 
 # --- Import (bulk from crawler or manual) ---

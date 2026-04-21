@@ -54,6 +54,8 @@ export interface Agent {
   update_available: boolean;
   budget_usd: number | null;
   browser_mode: boolean;
+  webhook_enabled?: boolean;
+  webhook_token?: string | null;
   total_cost_usd: number;
   user_id: string | null;
   created_at: string;

@@ -1265,6 +1265,28 @@ export async function deleteSkillFile(skillId: number, filename: string): Promis
   });
 }
 
+// --- Agent Webhooks ---
+
+export interface WebhookSettings {
+  webhook_enabled: boolean;
+  webhook_token: string | null;
+}
+
+export async function getWebhookSettings(agentId: string): Promise<WebhookSettings> {
+  return fetchJSON(`${getBase()}/webhooks/agents/${agentId}/settings`);
+}
+
+export async function updateWebhookSettings(agentId: string, enabled: boolean): Promise<WebhookSettings> {
+  return fetchJSON(`${getBase()}/webhooks/agents/${agentId}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify({ webhook_enabled: enabled }),
+  });
+}
+
+export async function regenerateWebhookToken(agentId: string): Promise<{ webhook_token: string }> {
+  return fetchJSON(`${getBase()}/webhooks/agents/${agentId}/regenerate-token`, { method: "POST" });
+}
+
 // --- Docker Apps ---
 
 import type { DockerApp, DockerAppContainer, DockerAppLog } from "./types";
