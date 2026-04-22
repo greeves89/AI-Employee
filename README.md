@@ -73,7 +73,7 @@ Get a working platform in under 5 minutes.
 
 ### Prerequisites
 
-- Docker Desktop (or Docker Engine 24+ on Linux)
+- Docker Desktop **4.x+** (or Docker Engine 24+ on Linux) — **Docker Compose v2** is required (`docker compose`, not `docker-compose`). Update Docker Desktop if `docker compose version` fails.
 - 8 GB RAM minimum, 16 GB recommended
 - One of:
   - **Claude Pro/Team subscription** (no per-token costs, OAuth login)

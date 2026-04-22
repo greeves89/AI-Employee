@@ -26,7 +26,7 @@ info "Checking prerequisites..."
 command -v docker &>/dev/null         || die "Docker not installed. Get it at https://docs.docker.com/get-docker/"
 docker info &>/dev/null 2>&1          || die "Docker is not running. Please start Docker Desktop."
 command -v python3 &>/dev/null        || die "python3 not found."
-docker compose version &>/dev/null 2>&1 || die "docker compose plugin not found."
+docker compose version &>/dev/null 2>&1 || die "docker compose plugin not found. You may have the legacy 'docker-compose' (v1). Please update Docker Desktop to get the 'docker compose' plugin (v2): https://docs.docker.com/compose/migrate/"
 
 ok "Docker is running"
 
