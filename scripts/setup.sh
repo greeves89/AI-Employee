@@ -39,7 +39,6 @@ fi
 # Auto-generate API_SECRET_KEY if empty
 if grep -qE "^API_SECRET_KEY=\s*$" .env; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
-    # macOS/Linux compatible sed
     sed -i.bak "s|^API_SECRET_KEY=.*|API_SECRET_KEY=${SECRET}|" .env && rm -f .env.bak
     ok "Generated API_SECRET_KEY"
 fi
@@ -49,6 +48,22 @@ if grep -qE "^ENCRYPTION_KEY=\s*$" .env; then
     ENC_KEY=$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode() + '=')")
     sed -i.bak "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${ENC_KEY}|" .env && rm -f .env.bak
     ok "Generated ENCRYPTION_KEY"
+fi
+
+# Auto-generate DB_PASSWORD if still default
+if grep -qE "^DB_PASSWORD=devpassword" .env; then
+    DB_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")
+    sed -i.bak "s|^DB_PASSWORD=.*|DB_PASSWORD=${DB_PASS}|" .env && rm -f .env.bak
+    sed -i.bak "s|^DATABASE_URL=postgresql+asyncpg://ai_employee:.*@|DATABASE_URL=postgresql+asyncpg://ai_employee:${DB_PASS}@|" .env && rm -f .env.bak
+    ok "Generated DB_PASSWORD"
+fi
+
+# Auto-generate REDIS_PASSWORD if still default
+if grep -qE "^REDIS_PASSWORD=changeme-redis-password" .env; then
+    REDIS_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")
+    sed -i.bak "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASS}|" .env && rm -f .env.bak
+    sed -i.bak "s|^REDIS_URL=redis://:.*@|REDIS_URL=redis://:${REDIS_PASS}@|" .env && rm -f .env.bak
+    ok "Generated REDIS_PASSWORD"
 fi
 
 ok ".env ready"
