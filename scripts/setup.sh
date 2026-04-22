@@ -94,6 +94,7 @@ ADMIN_PASSWORD="${ADMIN_PASSWORD:-$DEFAULT_PW}"
 # ── 5. Build images ───────────────────────────────────────────────────────────
 echo ""
 info "Building Docker images (this takes a few minutes on first run)..."
+docker build -t ai-employee-agent:latest ./agent
 docker compose build
 ok "Images built"
 
