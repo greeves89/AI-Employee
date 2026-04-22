@@ -75,21 +75,6 @@ else
     ok "Claude auth configured"
 fi
 
-# ── 4. Admin account ──────────────────────────────────────────────────────────
-echo ""
-info "Admin account setup (used to log in to the web UI)"
-
-read -rp "  Admin email    [admin@example.com]: " ADMIN_EMAIL
-ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
-
-read -rp "  Admin name     [Admin]: " ADMIN_NAME
-ADMIN_NAME="${ADMIN_NAME:-Admin}"
-
-# Generate a random password if user just hits enter
-DEFAULT_PW=$(python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(16)))")
-read -rsp "  Admin password [random — shown at end]: " ADMIN_PASSWORD
-echo ""
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-$DEFAULT_PW}"
 
 # ── 5. Shared volume ──────────────────────────────────────────────────────────
 docker volume inspect ai-employee-shared &>/dev/null || docker volume create ai-employee-shared
@@ -117,24 +102,7 @@ until curl -sf http://localhost:8000/health >/dev/null 2>&1; do
 done
 ok "Orchestrator is ready"
 
-# ── 8. Create first admin user ────────────────────────────────────────────────
-info "Creating admin account..."
-HTTP_STATUS=$(curl -s -o /tmp/ai_setup_reg.json -w "%{http_code}" \
-    -X POST http://localhost:8000/api/v1/auth/register \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"name\":\"${ADMIN_NAME}\"}")
-
-if [ "$HTTP_STATUS" = "200" ]; then
-    ok "Admin account created"
-elif [ "$HTTP_STATUS" = "409" ]; then
-    ok "Admin account already exists — skipping"
-else
-    DETAIL=$(python3 -c "import json,sys; d=json.load(open('/tmp/ai_setup_reg.json')); print(d.get('detail','unknown'))" 2>/dev/null || echo "unknown")
-    warn "Registration returned HTTP ${HTTP_STATUS}: ${DETAIL}"
-    warn "You can create an account manually at http://localhost:3000"
-fi
-
-# ── 9. Done ───────────────────────────────────────────────────────────────────
+# ── 8. Done ───────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║               Setup Complete!                    ║"
@@ -143,8 +111,5 @@ echo ""
 echo -e "  Web UI:   ${CYAN}http://localhost:3000${NC}"
 echo -e "  API docs: ${CYAN}http://localhost:8000/docs${NC}"
 echo ""
-echo -e "  Email:    ${CYAN}${ADMIN_EMAIL}${NC}"
-echo -e "  Password: ${CYAN}${ADMIN_PASSWORD}${NC}"
-echo ""
-warn "Save the password above — it won't be shown again!"
+info "Open the Web UI and create your admin account to get started."
 echo ""
