@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.24.0] — 2026-04-22
+
+### Added
+- **Per-Agent Idle Timeout & Disk Quota** — Each agent can now configure its own idle timeout and disk quota in Settings. Files tab shows a live disk usage bar based on the agent's individual quota.
+- **GitHub Star Button** — Sidebar now shows a "Star on GitHub" button with the live star count from the repository.
+
+### Fixed
+- **Disk bar uses per-agent quota** — Disk usage bar in Files tab now correctly reads the agent's own quota instead of the global default.
+- **Telegram wake-up** — Always verifies actual Docker container state before skipping wake-up to avoid stale status.
+- **Cloudflared tunnel stability** — Added healthcheck and autoheal label to prevent silent tunnel degradation.
+- **Skill duplicate names** — Skills can no longer be created with date-suffixed duplicate names.
+- **Setup: agent image not found** — `setup.sh` now automatically builds `ai-employee-agent:latest` before starting the stack, preventing "pull access denied" errors on fresh installs.
+- **Docker Compose v2 requirement documented** — README and setup.sh now clearly state that Docker Compose v2 (`docker compose`) is required.
+
+---
+
 ## [1.23.0] — 2026-04-21
 
 ### Added
