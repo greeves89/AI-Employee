@@ -91,14 +91,18 @@ read -rsp "  Admin password [random — shown at end]: " ADMIN_PASSWORD
 echo ""
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$DEFAULT_PW}"
 
-# ── 5. Build images ───────────────────────────────────────────────────────────
+# ── 5. Shared volume ──────────────────────────────────────────────────────────
+docker volume inspect ai-employee-shared &>/dev/null || docker volume create ai-employee-shared
+ok "Shared volume ready"
+
+# ── 6. Build images ───────────────────────────────────────────────────────────
 echo ""
 info "Building Docker images (this takes a few minutes on first run)..."
 docker build -t ai-employee-agent:latest ./agent
 docker compose build
 ok "Images built"
 
-# ── 6. Start stack ────────────────────────────────────────────────────────────
+# ── 7. Start stack ────────────────────────────────────────────────────────────
 info "Starting all services..."
 docker compose up -d
 ok "Services started"
