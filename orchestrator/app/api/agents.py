@@ -915,6 +915,34 @@ async def update_agent_browser_mode(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+class AgentResourceLimits(BaseModel):
+    idle_timeout_minutes: int | None = None   # 0 = never stop
+    workspace_size_gb: float | None = None    # disk quota override
+
+
+@router.patch("/{agent_id}/resource-limits")
+async def update_agent_resource_limits(
+    agent_id: str,
+    body: AgentResourceLimits,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Update per-agent idle timeout and workspace disk quota."""
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    config = dict(agent.config or {})
+    if body.idle_timeout_minutes is not None:
+        config["idle_timeout_minutes"] = body.idle_timeout_minutes
+    if body.workspace_size_gb is not None:
+        config["workspace_size_gb"] = body.workspace_size_gb
+    agent.config = config
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(agent, "config")
+    await db.commit()
+    return {"idle_timeout_minutes": config.get("idle_timeout_minutes"), "workspace_size_gb": config.get("workspace_size_gb")}
+
+
 @router.get("/{agent_id}/integrations")
 async def get_agent_integrations(
     agent_id: str,

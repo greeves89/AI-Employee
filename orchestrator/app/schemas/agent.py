@@ -83,10 +83,16 @@ class AgentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Per-agent resource overrides (from agent.config JSON)
+    config: dict | None = None
+
     # Live metrics (from Redis, not DB)
     current_task: str | None = None
     cpu_percent: float | None = None
     memory_usage_mb: float | None = None
+    disk_usage_mb: float | None = None
+    disk_limit_mb: float | None = None
+    disk_percent: float | None = None
     queue_depth: int | None = None
 
     model_config = {"from_attributes": True}

@@ -134,6 +134,16 @@ export async function updateAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}/update`, { method: "POST" });
 }
 
+export async function updateAgentResourceLimits(
+  id: string,
+  limits: { idle_timeout_minutes?: number | null; workspace_size_gb?: number | null },
+): Promise<{ idle_timeout_minutes: number | null; workspace_size_gb: number | null }> {
+  return fetchJSON(`${getBase()}/agents/${id}/resource-limits`, {
+    method: "PATCH",
+    body: JSON.stringify(limits),
+  });
+}
+
 export async function removeAgent(id: string, removeData = false): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${id}?remove_data=${removeData}`, {
     method: "DELETE",

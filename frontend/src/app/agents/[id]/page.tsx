@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  Cpu, MemoryStick, MessageSquare, History,
+  Cpu, MemoryStick, HardDrive, MessageSquare, History,
   CheckCircle2, XCircle, Clock, Loader2, RotateCcw,
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
@@ -119,6 +119,9 @@ export default function AgentDetailPage() {
   const isActive = stateConfig.online;
   const cpuPercent = agent.cpu_percent ?? 0;
   const memMb = agent.memory_usage_mb ?? 0;
+  const diskPercent = agent.disk_percent ?? 0;
+  const diskUsageMb = agent.disk_usage_mb ?? 0;
+  const diskLimitMb = agent.disk_limit_mb ?? 0;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -138,6 +141,14 @@ export default function AgentDetailPage() {
                   <MemoryStick className="h-3 w-3 text-emerald-400" />
                   <span className="text-emerald-400 font-medium">{memMb.toFixed(0)} MB</span>
                 </div>
+                {diskLimitMb > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")} />
+                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")}>
+                      {diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`} / {diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   {agent.mode === "custom_llm" ? <Plug className="h-3 w-3 text-violet-400" /> : <Hash className="h-3 w-3 text-violet-400" />}
                   <span className="text-violet-400 font-medium">
@@ -250,7 +261,7 @@ export default function AgentDetailPage() {
           {activeTab === "chat" && <AgentChat agentId={agentId} />}
           {activeTab === "terminal" && <LiveTerminal agentId={agentId} />}
           {activeTab === "todos" && <TodoTab agentId={agentId} />}
-          {activeTab === "files" && <FileBrowser agentId={agentId} />}
+          {activeTab === "files" && <FileBrowser agentId={agentId} diskUsageMb={diskUsageMb} diskLimitMb={diskLimitMb} diskPercent={diskPercent} />}
           {activeTab === "apps" && <DockerAppsTab agentId={agentId} />}
           {activeTab === "history" && <TaskHistory tasks={tasks} />}
           {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
@@ -1619,6 +1630,9 @@ function AgentSettings({
         </div>
       </div>
 
+      {/* Resource Limits */}
+      <ResourceLimitsSection agentId={agentId} agent={agent} onUpdated={onUpdated} />
+
       {/* Status messages */}
       {message && (
         <div className={cn(
@@ -1634,9 +1648,113 @@ function AgentSettings({
   );
 }
 
+function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string; agent: Agent; onUpdated: (a: Agent) => void }) {
+  const currentTimeout = agent.config?.idle_timeout_minutes ?? "";
+  const currentQuota = agent.config?.workspace_size_gb ?? "";
+
+  const [idleTimeout, setIdleTimeout] = useState(String(currentTimeout));
+  const [workspaceGb, setWorkspaceGb] = useState(String(currentQuota));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const hasChanges = idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const timeoutVal = idleTimeout === "" ? null : parseInt(idleTimeout);
+      const quotaVal = workspaceGb === "" ? null : parseFloat(workspaceGb);
+      await api.updateAgentResourceLimits(agentId, {
+        idle_timeout_minutes: timeoutVal,
+        workspace_size_gb: quotaVal,
+      });
+      const updated = await api.getAgent(agentId);
+      onUpdated(updated as Agent);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+        <div className="flex items-center gap-2">
+          <HardDrive className="h-4 w-4 text-orange-400" />
+          <span className="text-sm font-medium">Ressource-Limits</span>
+        </div>
+        {hasChanges && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : null}
+            {saved ? "Gespeichert" : "Speichern"}
+          </button>
+        )}
+      </div>
+      <div className="p-5 space-y-5">
+        {/* Idle Timeout */}
+        <div className="space-y-2">
+          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+            Auto-Stop nach Inaktivität
+          </label>
+          <div className="flex items-center gap-3">
+            <select
+              value={idleTimeout}
+              onChange={(e) => setIdleTimeout(e.target.value)}
+              className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+            >
+              <option value="0">Nie (immer an)</option>
+              <option value="15">15 Minuten</option>
+              <option value="30">30 Minuten</option>
+              <option value="60">1 Stunde</option>
+              <option value="120">2 Stunden</option>
+              <option value="480">8 Stunden</option>
+              <option value="1440">24 Stunden</option>
+            </select>
+            <p className="text-xs text-muted-foreground/50">
+              {idleTimeout === "0" || idleTimeout === "" ? "Agent bleibt immer gestartet." : `Agent stoppt nach ${idleTimeout} Min. Inaktivität und fährt beim nächsten Task automatisch hoch.`}
+            </p>
+          </div>
+        </div>
+
+        {/* Workspace Quota */}
+        <div className="space-y-2">
+          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+            Workspace-Größe (Disk-Quota)
+          </label>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={workspaceGb}
+                onChange={(e) => setWorkspaceGb(e.target.value)}
+                placeholder="5"
+                className="w-24 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+              <span className="text-sm text-muted-foreground">GB</span>
+            </div>
+            <p className="text-xs text-muted-foreground/50">
+              Agent wird bei 95% des Limits gestoppt. Standard: 5 GB.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type FileSortMode = "name" | "date" | "size";
 
-function FileBrowser({ agentId }: { agentId: string }) {
+function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 0 }: { agentId: string; diskUsageMb?: number; diskLimitMb?: number; diskPercent?: number }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
@@ -1792,10 +1910,40 @@ function FileBrowser({ agentId }: { agentId: string }) {
     });
   };
 
+  const diskColor = diskPercent >= 95 ? "bg-red-500" : diskPercent >= 80 ? "bg-amber-500" : "bg-emerald-500";
+  const diskTextColor = diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-emerald-400";
+  const diskUsageLabel = diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`;
+  const diskLimitLabel = diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`;
+
   return (
     <div className="flex gap-4 h-full">
       {/* Tree panel */}
       <div className="w-[380px] shrink-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
+        {/* Disk usage bar */}
+        {diskLimitMb > 0 && (
+          <div className="border-b border-foreground/[0.06] px-3 py-2 space-y-1">
+            <div className="flex items-center justify-between text-[10px]">
+              <div className="flex items-center gap-1 text-muted-foreground/60">
+                <HardDrive className="h-3 w-3" />
+                <span>Workspace</span>
+              </div>
+              <span className={cn("font-medium tabular-nums", diskTextColor)}>
+                {diskUsageLabel} / {diskLimitLabel} ({diskPercent.toFixed(0)}%)
+              </span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-foreground/[0.06] overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-500", diskColor)}
+                style={{ width: `${Math.min(diskPercent, 100)}%` }}
+              />
+            </div>
+            {diskPercent >= 80 && (
+              <p className={cn("text-[10px]", diskTextColor)}>
+                {diskPercent >= 95 ? "⚠ Kritisch: Agent wird gestoppt bei 95%" : "⚠ Speicher wird knapp"}
+              </p>
+            )}
+          </div>
+        )}
         {/* Search + Sort + Toolbar */}
         <div className="border-b border-foreground/[0.06] px-3 py-2 space-y-2">
           <div className="flex items-center gap-2">

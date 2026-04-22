@@ -69,26 +69,65 @@ class UserLifecycleService:
     async def _sweep(self) -> None:
         """One sweep: find inactive users and stop their idle agents."""
         async with self.db_factory() as db:
-            timeout_minutes = await _get_timeout_minutes(db)
-            if timeout_minutes <= 0:
-                # Persistent mode: never auto-stop (user opted out)
-                return
-            threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-            # Find all users with last_active_at < threshold (or null)
+            global_timeout = await _get_timeout_minutes(db)
+            now = datetime.now(timezone.utc)
+
+            # Load all running agents and their users in one pass
             result = await db.execute(
-                select(User).where(
-                    (User.last_active_at.is_(None)) | (User.last_active_at < threshold)
-                )
+                select(Agent).where(Agent.state.in_([AgentState.RUNNING, AgentState.IDLE]))
             )
-            inactive_users = list(result.scalars().all())
-            if not inactive_users:
+            agents = list(result.scalars().all())
+            if not agents:
                 return
 
+            # Resolve unique user IDs → last_active_at
+            user_ids = {a.user_id for a in agents if a.user_id}
+            if not user_ids:
+                return
+            users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+            user_map = {u.id: u for u in users_result.scalars().all()}
+
             total_stopped = 0
-            for user in inactive_users:
-                stopped = await self._stop_user_agents(db, user)
-                total_stopped += stopped
+            for agent in agents:
+                user = user_map.get(agent.user_id)
+                if not user:
+                    continue
+
+                # Per-agent timeout overrides global; 0 = never stop this agent
+                per_agent = agent.config.get("idle_timeout_minutes") if agent.config else None
+                if per_agent is not None:
+                    timeout = int(per_agent)
+                else:
+                    timeout = global_timeout
+
+                if timeout <= 0:
+                    continue  # persistent mode for this agent
+
+                threshold = now - timedelta(minutes=timeout)
+                last_active = user.last_active_at
+                if last_active is not None and last_active >= threshold:
+                    continue  # user was active recently enough for this agent's timeout
+
+                # Skip agents with queued/running tasks
+                queue_depth = await self.redis.get_queue_depth(agent.id)
+                status = await self.redis.get_agent_status(agent.id)
+                if queue_depth > 0 or status.get("state") == "working":
+                    continue
+
+                try:
+                    if agent.container_id:
+                        self.docker.stop_container(agent.container_id)
+                    agent.state = AgentState.STOPPED
+                    total_stopped += 1
+                    logger.info(
+                        f"[UserLifecycle] Stopped agent {agent.name} ({agent.id}) "
+                        f"after {timeout}min inactivity (user {user.email})"
+                    )
+                except Exception as e:
+                    logger.warning(f"[UserLifecycle] Could not stop {agent.id}: {e}")
+
             if total_stopped > 0:
+                await db.commit()
                 logger.info(f"[UserLifecycle] Auto-stopped {total_stopped} agents of inactive users")
 
     async def _stop_user_agents(self, db: AsyncSession, user: User) -> int:

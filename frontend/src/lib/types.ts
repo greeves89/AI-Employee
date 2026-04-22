@@ -63,7 +63,11 @@ export interface Agent {
   current_task: string | null;
   cpu_percent: number | null;
   memory_usage_mb: number | null;
+  disk_usage_mb: number | null;
+  disk_limit_mb: number | null;
+  disk_percent: number | null;
   queue_depth: number | null;
+  config?: Record<string, unknown> | null;
 }
 
 export type UserRole = "admin" | "manager" | "member" | "viewer";
