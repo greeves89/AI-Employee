@@ -73,19 +73,7 @@ HAS_API_KEY=$(grep -E "^ANTHROPIC_API_KEY=.+" .env || true)
 HAS_OAUTH=$(grep -E "^CLAUDE_CODE_OAUTH_TOKEN=.+" .env || true)
 
 if [ -z "$HAS_API_KEY" ] && [ -z "$HAS_OAUTH" ]; then
-    echo ""
-    warn "No Claude authentication found in .env!"
-    echo "  Agents need one of:"
-    echo "    ANTHROPIC_API_KEY=sk-ant-...   (from console.anthropic.com)"
-    echo "    CLAUDE_CODE_OAUTH_TOKEN=...    (from 'claude login' → macOS Keychain)"
-    echo ""
-    read -rp "Paste your ANTHROPIC_API_KEY (or press Enter to skip): " USER_KEY
-    if [ -n "$USER_KEY" ]; then
-        sed -i.bak "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${USER_KEY}|" .env && rm -f .env.bak
-        ok "API key saved to .env"
-    else
-        warn "Skipped — agents won't work until you add a key to .env"
-    fi
+    warn "No Claude authentication found in .env — add ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN before creating agents."
 else
     ok "Claude auth configured"
 fi
