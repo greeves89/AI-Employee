@@ -248,24 +248,39 @@ class TelegramAgentBot:
         """If this agent's container is stopped, wake it up. Returns True if we had to wake.
 
         Sends user-visible messages: "Agent fährt hoch, einen Moment!" then "Agent hochgefahren!"
+        Always verifies actual Docker container state — DB may be stale after a restart.
         """
         try:
             from app.db.session import async_session_factory
             from app.models.agent import Agent, AgentState
             from app.services.user_lifecycle import wake_agent
+            from app.services.docker_service import DockerService
             from sqlalchemy import select
+
+            docker = DockerService()
 
             async with async_session_factory() as db:
                 agent = await db.scalar(select(Agent).where(Agent.id == self.agent_id))
                 if not agent:
                     return False
-                if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+
+                # Check actual container state — DB may be stale after orchestrator restart
+                needs_wake = False
+                if agent.state not in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+                    needs_wake = True
+                elif agent.container_id:
+                    container_status = docker.get_container_status(agent.container_id)
+                    if container_status not in ("running", "created"):
+                        # DB says running but container is actually stopped — fix DB state too
+                        agent.state = AgentState.STOPPED
+                        await db.commit()
+                        needs_wake = True
+
+                if not needs_wake:
                     return False
 
                 # Needs waking — tell user and start
                 await update.message.reply_text("⏳ Agent fährt hoch, einen Moment...")
-                from app.services.docker_service import DockerService
-                docker = DockerService()
                 ok = await wake_agent(db, docker, self.agent_id, wait=True, timeout=20)
                 return ok
         except Exception as e:

@@ -648,6 +648,39 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Stale task recovery failed: {e}")
 
+    # Restart agent containers that were RUNNING before orchestrator shutdown
+    # (containers get killed when orchestrator restarts via docker-compose rebuild)
+    try:
+        from app.db.session import async_session_factory as _sf_restart
+        from app.models.agent import Agent, AgentState
+        from sqlalchemy import select as _sel
+
+        async with _sf_restart() as db:
+            result = await db.execute(
+                _sel(Agent).where(Agent.state.in_([AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING]))
+            )
+            previously_running = list(result.scalars().all())
+            restarted = 0
+            for agent in previously_running:
+                if not agent.container_id:
+                    continue
+                container_status = app.state.docker.get_container_status(agent.container_id)
+                if container_status in ("exited", "created", "paused"):
+                    try:
+                        app.state.docker.start_container(agent.container_id)
+                        restarted += 1
+                    except Exception as ex:
+                        logger.warning(f"Could not restart agent {agent.name} ({agent.id}) on startup: {ex}")
+                        agent.state = AgentState.STOPPED
+                elif container_status == "unknown":
+                    # Container gone entirely — mark as stopped, will be recreated on next use
+                    agent.state = AgentState.STOPPED
+            await db.commit()
+            if restarted:
+                logger.info(f"[Startup] Restarted {restarted} agent containers from previous session")
+    except Exception as e:
+        logger.warning(f"Agent startup recovery failed: {e}")
+
     # Start background task listener (completions + starts)
     completion_task = asyncio.create_task(_listen_task_events(app.state.redis))
 
@@ -704,6 +737,14 @@ async def lifespan(app: FastAPI):
     user_lifecycle_task = asyncio.create_task(user_lifecycle.run())
     app.state.user_lifecycle = user_lifecycle
 
+    # Start disk monitor (workspace quota enforcement, every 5 min)
+    from app.services.disk_monitor import DiskMonitorService
+    from app.db.session import async_session_factory as _sf_disk
+
+    disk_monitor = DiskMonitorService(_sf_disk, app.state.docker)
+    disk_monitor_task = asyncio.create_task(disk_monitor.run())
+    app.state.disk_monitor = disk_monitor
+
     # Start embedding backfill (for semantic memory search)
     from app.services.embedding_backfill import run_backfill_loop
     from app.db.session import async_session_factory as _sf_emb
@@ -741,6 +782,8 @@ async def lifespan(app: FastAPI):
     self_test_task.cancel()
     user_lifecycle.stop()
     user_lifecycle_task.cancel()
+    disk_monitor.stop()
+    disk_monitor_task.cancel()
     embedding_backfill_task.cancel()
     if telegram_task:
         telegram_task.cancel()
