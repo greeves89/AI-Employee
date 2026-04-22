@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ import {
   ChevronRight,
   ChevronDown,
   Bell,
+  Star,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
@@ -96,6 +97,14 @@ export function Sidebar() {
   const isAdmin = user?.role === "admin";
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { collapsed, toggle } = useSidebarCollapsed();
+  const [starCount, setStarCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("https://api.github.com/repos/greeves89/AI-Employee")
+      .then((r) => r.json())
+      .then((d) => setStarCount(d.stargazers_count ?? null))
+      .catch(() => {});
+  }, []);
 
   // Track which groups are open (all open by default)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -265,6 +274,15 @@ export function Sidebar() {
                 <Shield className="h-4 w-4" />
               </Link>
             )}
+            <a
+              href="https://github.com/greeves89/AI-Employee"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Star on GitHub"
+              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all"
+            >
+              <Star className="h-4 w-4" />
+            </a>
             <button
               onClick={toggleTheme}
               title={theme === "dark" ? "Light Mode" : "Dark Mode"}
@@ -297,6 +315,20 @@ export function Sidebar() {
               </Link>
             )}
             <NotificationBell variant="sidebar" />
+            <a
+              href="https://github.com/greeves89/AI-Employee"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all duration-150"
+            >
+              <Star className="h-4 w-4" />
+              <span className="text-[13px] font-medium">Star on GitHub</span>
+              {starCount !== null && (
+                <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">
+                  {starCount}
+                </span>
+              )}
+            </a>
             <button
               onClick={toggleTheme}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
