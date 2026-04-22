@@ -344,6 +344,15 @@ I MUST keep my workspace organized with proper directories:
 - When creating scripts: put in `/workspace/scripts/`
 - Create additional subdirectories as needed
 - Use `mkdir -p` to create directories before writing files
+
+## Disk Quota (IMPORTANT!)
+My workspace has a soft quota of **$AGENT_WORKSPACE_SIZE_GB GB**.
+- **Before large operations** (downloads, builds, cloning repos): check with `df -h /workspace` or `du -sh /workspace`
+- **Check remaining space**: `echo "Used: $(du -sh /workspace 2>/dev/null | cut -f1)"`
+- **Warning file**: If `/workspace/.disk_warning` exists, read it — I am running low on space and MUST clean up first
+- **Clean up**: `rm -rf /workspace/data/cache /workspace/tmp && find /workspace -name '*.log' -delete`
+- **Find large files**: `du -sh /workspace/* | sort -rh | head -10`
+- If I ignore disk warnings and run out of space, my container will be stopped automatically
 """
 
 DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
@@ -567,6 +576,7 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
                 "COMPUTER_USE_BROWSER": "true" if browser_mode else "false",
                 "COMPUTER_USE_USER_ID": str(user_id) if user_id else "",
+                "AGENT_WORKSPACE_SIZE_GB": str(settings.agent_workspace_size_gb),
             })
 
         # Create Docker container with workspace + session + shared volumes
@@ -592,11 +602,14 @@ class AgentManager:
             logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
         # Initialize workspace files
+        claude_md = DEFAULT_CLAUDE_MD.replace(
+            "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
+        )
         if mode == "claude_code":
             # Claude Code: full CLAUDE.md + knowledge.md
             try:
                 self.docker.write_file_in_container(
-                    container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
+                    container.id, "/workspace/CLAUDE.md", claude_md
                 )
                 self.docker.write_file_in_container(
                     container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
@@ -608,7 +621,7 @@ class AgentManager:
             # Custom LLM: full workspace setup (same as Claude Code for parity)
             try:
                 self.docker.write_file_in_container(
-                    container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
+                    container.id, "/workspace/CLAUDE.md", claude_md
                 )
                 self.docker.write_file_in_container(
                     container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
@@ -973,7 +986,9 @@ class AgentManager:
         if mode == "claude_code":
             try:
                 self.docker.write_file_in_container(
-                    container.id, "/workspace/CLAUDE.md", DEFAULT_CLAUDE_MD
+                    container.id,
+                    "/workspace/CLAUDE.md",
+                    DEFAULT_CLAUDE_MD.replace("$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)),
                 )
                 logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
             except Exception as e:
@@ -1158,8 +1173,8 @@ class AgentManager:
 
         # Add Docker stats if running (run in thread pool to avoid blocking)
         if include_stats and agent.container_id and agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+            loop = asyncio.get_event_loop()
             try:
-                loop = asyncio.get_event_loop()
                 stats = await loop.run_in_executor(
                     None, self.docker.get_container_stats, agent.container_id
                 )
@@ -1168,6 +1183,21 @@ class AgentManager:
             except Exception:
                 result["cpu_percent"] = None
                 result["memory_usage_mb"] = None
+            try:
+                per_agent_quota = float(agent.config.get("workspace_size_gb") or settings.agent_workspace_size_gb) if agent.config else settings.agent_workspace_size_gb
+                disk = await loop.run_in_executor(
+                    None,
+                    self.docker.get_workspace_disk_usage,
+                    agent.container_id,
+                    per_agent_quota,
+                )
+                result["disk_usage_mb"] = disk.get("disk_usage_mb")
+                result["disk_limit_mb"] = disk.get("disk_limit_mb")
+                result["disk_percent"] = disk.get("disk_percent")
+            except Exception:
+                result["disk_usage_mb"] = None
+                result["disk_limit_mb"] = None
+                result["disk_percent"] = None
 
         return result
 
