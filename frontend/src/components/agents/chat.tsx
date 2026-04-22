@@ -58,7 +58,7 @@ interface SessionTab {
   isNew?: boolean;
 }
 
-import { getWsUrl } from "@/lib/config";
+import { getWsUrl, getApiUrl } from "@/lib/config";
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
@@ -335,7 +335,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
     // Fetch one-time ticket for WebSocket auth
     let authParam = "";
     try {
-      const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+      const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
         method: "POST",
         credentials: "include",
       });

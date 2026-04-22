@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { LogEvent } from "@/lib/types";
 import { useAuthStore } from "@/lib/auth";
 
-import { getWsUrl } from "@/lib/config";
+import { getWsUrl, getApiUrl } from "@/lib/config";
 
 export function useWebSocket(path: string) {
   const [messages, setMessages] = useState<LogEvent[]>([]);
@@ -31,7 +31,7 @@ export function useWebSocket(path: string) {
     // Fetch one-time ticket for WebSocket auth
     let authParam = "";
     try {
-      const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+      const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
         method: "POST",
         credentials: "include",
       });

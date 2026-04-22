@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     max_agents: int = 10
     agent_memory_limit: str = "4g"
     agent_cpu_quota: int = 200000  # 2 CPUs
+    agent_workspace_size_gb: float = 10.0
 
     # Telegram
     telegram_bot_token: str = ""

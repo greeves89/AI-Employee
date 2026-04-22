@@ -1,0 +1,35 @@
+# Internal reverse proxy - Cloudflare Tunnel terminates TLS
+# Caddy routes requests to the correct backend service
+
+:80 {
+	# Security headers (defence in depth — also set by FastAPI middleware)
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# API + health endpoints → orchestrator
+	handle /api/* {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
+	# Backend healthcheck (for Docker/monitoring) → orchestrator
+	# Use /healthz to avoid conflict with frontend /health route
+	handle /healthz {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
+	# WebSocket connections → orchestrator
+	handle /ws/* {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
+	# Everything else → frontend
+	handle {
+		reverse_proxy ai-employee-frontend:3000
+	}
+}

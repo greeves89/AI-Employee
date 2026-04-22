@@ -36,10 +36,14 @@ if [ ! -f .env ]; then
     info "Created .env from .env.example"
 fi
 
-# Auto-generate API_SECRET_KEY if empty
-if grep -qE "^API_SECRET_KEY=\s*$" .env; then
+# Auto-generate API_SECRET_KEY if missing, empty, or still default
+if ! grep -qE "^API_SECRET_KEY=.{32,}" .env; then
     SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
-    sed -i.bak "s|^API_SECRET_KEY=.*|API_SECRET_KEY=${SECRET}|" .env && rm -f .env.bak
+    if grep -q "^API_SECRET_KEY=" .env; then
+        sed -i.bak "s|^API_SECRET_KEY=.*|API_SECRET_KEY=${SECRET}|" .env && rm -f .env.bak
+    else
+        echo "API_SECRET_KEY=${SECRET}" >> .env
+    fi
     ok "Generated API_SECRET_KEY"
 fi
 

@@ -17,7 +17,7 @@ import { useAuthStore } from "@/lib/auth";
 import type { Task, LogEvent } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
-import { getWsUrl } from "@/lib/config";
+import { getWsUrl, getApiUrl } from "@/lib/config";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string; label: string }> = {
   pending:   { icon: Clock,        color: "text-amber-400",   badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",     label: "Pending" },
@@ -59,7 +59,7 @@ export default function TaskDetailPage() {
     // Fetch one-time ticket for WebSocket auth
     let authParam = "";
     try {
-      const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+      const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
         method: "POST",
         credentials: "include",
       });

@@ -14,7 +14,7 @@ import {
 import type { Notification } from "@/lib/types";
 import { useAuthStore } from "@/lib/auth";
 
-import { getWsUrl } from "@/lib/config";
+import { getWsUrl, getApiUrl } from "@/lib/config";
 
 const typeColors: Record<string, string> = {
   info: "bg-blue-500",
@@ -72,7 +72,7 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
       // Fetch one-time ticket for WebSocket auth
       let authParam = "";
       try {
-        const resp = await fetch(`${window.location.origin}/api/v1/ws/ticket`, {
+        const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
           method: "POST",
           credentials: "include",
         });
