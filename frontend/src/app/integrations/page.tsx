@@ -5,7 +5,7 @@ import {
   Plug, Mail, Cloud, Smartphone, CheckCircle2,
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
-  Github, Eye, EyeOff, Save,
+  Github, Eye, EyeOff, Save, Users, Copy, Info,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,12 @@ export default function IntegrationsPage() {
   const [patToken, setPatToken] = useState("");
   const [patSaving, setPatSaving] = useState<string | null>(null);
   const [patVisible, setPatVisible] = useState(false);
+  const [setupExpanded, setSetupExpanded] = useState<string | null>(null);
   const searchParams = useSearchParams();
+
+  const redirectUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/api/v1/integrations/microsoft/callback`
+    : "/api/v1/integrations/microsoft/callback";
 
   const loadIntegrations = async () => {
     try {
@@ -185,6 +190,12 @@ export default function IntegrationsPage() {
                                 Connected
                               </span>
                             )}
+                            {integration.per_user && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400 border border-blue-500/20">
+                                <Users className="h-2.5 w-2.5" />
+                                Per user
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">{integration.description}</p>
                           {integration.connected && integration.account_label && (
@@ -194,7 +205,7 @@ export default function IntegrationsPage() {
                           )}
                           {!integration.available && !integration.connected && integration.auth_type !== "pat" && (
                             <p className="text-[10px] text-yellow-500/80 mt-1.5">
-                              Not configured - set OAUTH_{integration.provider.toUpperCase()}_CLIENT_ID in .env
+                              Not configured — set OAUTH_{integration.provider.toUpperCase()}_CLIENT_ID in settings
                             </p>
                           )}
                         </div>
@@ -225,6 +236,46 @@ export default function IntegrationsPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* Microsoft 365 admin setup guide */}
+                    {integration.provider === "microsoft" && !integration.available && !integration.connected && (
+                      <div className="mt-4 pt-4 border-t border-foreground/[0.06]">
+                        <button
+                          onClick={() => setSetupExpanded(setupExpanded === "microsoft" ? null : "microsoft")}
+                          className="flex items-center gap-2 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                          How to set up Microsoft 365 (Azure App Registration)
+                          <ChevronRight className={cn("h-3 w-3 transition-transform", setupExpanded === "microsoft" && "rotate-90")} />
+                        </button>
+                        {setupExpanded === "microsoft" && (
+                          <div className="mt-3 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3 text-xs text-muted-foreground">
+                            <ol className="list-decimal list-inside space-y-2">
+                              <li>Open <strong className="text-foreground">portal.azure.com</strong> → Azure Active Directory → App registrations → New registration</li>
+                              <li>Set Redirect URI (Web) to:
+                                <div className="mt-1 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
+                                  <span className="flex-1 text-emerald-400 break-all">{redirectUrl}</span>
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(redirectUrl)}
+                                    className="text-muted-foreground/40 hover:text-muted-foreground transition-colors flex-shrink-0"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </li>
+                              <li>Under <strong className="text-foreground">API Permissions</strong> add Delegated scopes:<br />
+                                <span className="text-[10px] font-mono text-blue-300/80">Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, User.Read, offline_access</span>
+                              </li>
+                              <li>Under <strong className="text-foreground">Certificates &amp; Secrets</strong> create a new Client Secret</li>
+                              <li>Copy <strong className="text-foreground">Application (client) ID</strong> and the secret into <strong className="text-foreground">Settings → OAuth</strong></li>
+                            </ol>
+                            <p className="text-[10px] text-muted-foreground/60">
+                              Each user must sign in individually — tokens are stored per user, not shared.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* PAT token input for PAT-based providers (e.g. GitHub) */}
                     {integration.auth_type === "pat" && !integration.connected && (

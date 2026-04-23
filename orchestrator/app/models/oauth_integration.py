@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -17,12 +17,21 @@ class OAuthProvider(str, enum.Enum):
     ANTHROPIC = "anthropic"
 
 
+# Providers where each user has their own token (vs. global/admin token)
+PER_USER_PROVIDERS = {"microsoft", "google"}
+
+
 class OAuthIntegration(Base, TimestampMixin):
     __tablename__ = "oauth_integrations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     provider: Mapped[OAuthProvider] = mapped_column(
-        Enum(OAuthProvider), nullable=False, unique=True, index=True
+        Enum(OAuthProvider), nullable=False, index=True
+    )
+    # NULL = global token (GitHub PAT, Anthropic bot session)
+    # Non-NULL = per-user token (Microsoft, Google per user)
+    user_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Encrypted with Fernet (ENCRYPTION_KEY)
     access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)

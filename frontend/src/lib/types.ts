@@ -92,6 +92,7 @@ export interface Integration {
   scopes: string;
   available: boolean;
   auth_type: "oauth" | "pat";
+  per_user?: boolean;
 }
 
 export interface Task {
