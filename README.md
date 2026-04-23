@@ -7,7 +7,7 @@
 [![License: Fair-Code](https://img.shields.io/badge/license-Fair--Code-blue.svg)](LICENSE.md)
 [![Version](https://img.shields.io/badge/version-1.26.0-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
-[![DSGVO](https://img.shields.io/badge/DSGVO-compliant-success.svg)](#governance--compliance)
+[![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
 
 [Quick Start](#-quick-start) ·
@@ -60,7 +60,7 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Human-in-the-loop approvals | Yes | Partial | Yes | Partial | Yes (Agents SDK) |
 | Governance audit trail | Yes | Yes | Yes | Yes (Business+) | Yes (Enterprise) |
 | Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
-| DSGVO-compliant by default | Yes | Partial | BYO | No | No |
+| DSGVO-compliant by default | Yes* | Partial | BYO | No | No |
 | Telegram + Voice (STT/TTS) | Yes | Yes | BYO | No | No |
 | Agents deploy Docker apps | Yes | No | No | No | No |
 | 25 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
@@ -151,7 +151,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 - **Approval rules & inline Telegram approvals** — Define additional natural-language rules on top of the level preset. Agents call the `request_approval` MCP tool and wait. Approve or deny with a single Telegram button tap.
 - **Full governance audit trail** — Every governance event is written to `audit_logs`: approval requests, approvals/denials, level changes, rule edits, preset changes. Enterprise-ready traceability out of the box.
 - **Multi-tenant RLS** — PostgreSQL Row-Level Security on 9 user-scoped tables. Users only ever see their own data, enforced at the database layer.
-- **DSGVO-ready** — All embeddings generated locally, all data stays on your infrastructure, data export and deletion endpoints included.
+- **DSGVO-ready\*** — All embeddings, memory, knowledge, and logs stay on your infrastructure. Data export and deletion endpoints included. *\*Note: LLM inference via Claude API or OpenAI routes prompts through external servers (US). For full DSGVO compliance use local models (Ollama/Mistral) or Azure OpenAI in EU data regions.*
 
 ### Integrations
 
