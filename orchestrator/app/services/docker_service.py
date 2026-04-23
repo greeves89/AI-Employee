@@ -58,8 +58,9 @@ class DockerService:
         session_volume_name: str | None = None,
         shared_volume_name: str | None = None,
         needs_sudo: bool = False,
+        bind_mounts: dict[str, dict] | None = None,
     ) -> docker.models.containers.Container:
-        # Ensure volumes exist
+        # Ensure named volumes exist (bind-mount host paths are not managed here)
         for vol in [volume_name, session_volume_name, shared_volume_name]:
             if vol:
                 try:
@@ -72,6 +73,9 @@ class DockerService:
             volumes[session_volume_name] = {"bind": "/home/agent/.claude", "mode": "rw"}
         if shared_volume_name:
             volumes[shared_volume_name] = {"bind": "/shared", "mode": "rw"}
+        # Admin-defined bind mounts (host_path → {bind: container_path, mode: ro|rw})
+        if bind_mounts:
+            volumes.update(bind_mounts)
 
         # Security: no-new-privileges blocks sudo. Only enable it when
         # no sudo permissions are configured. The container sandbox is

@@ -1718,6 +1718,9 @@ function AgentSettings({
       {/* Resource Limits */}
       <ResourceLimitsSection agentId={agentId} agent={agent} onUpdated={onUpdated} />
 
+      {/* Volume Mounts */}
+      <MountSelectorSection agentId={agentId} />
+
       {/* Status messages */}
       {message && (
         <div className={cn(
@@ -1832,6 +1835,128 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
             </p>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Mount Selector ────────────────────────────────────────────────────────────
+
+function MountSelectorSection({ agentId }: { agentId: string }) {
+  const [catalog, setCatalog] = useState<import("@/lib/api").MountCatalogEntry[]>([]);
+  const [assigned, setAssigned] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.getAgentMountCatalog(),
+      api.getAgentMounts(agentId),
+    ]).then(([cat, ag]) => {
+      setCatalog(cat.mounts ?? []);
+      setAssigned(ag.mounts ?? []);
+    }).catch(() => {
+      setCatalog([]);
+    }).finally(() => setLoading(false));
+  }, [agentId]);
+
+  if (!loading && catalog.length === 0) return null;
+
+  const toggle = (label: string) => {
+    setAssigned((prev) =>
+      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]
+    );
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateAgentMounts(agentId, assigned);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+      <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+        <div className="flex items-center gap-2">
+          <FolderOpen className="h-4 w-4 text-blue-400" />
+          <span className="text-sm font-medium">Volume Mounts</span>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : null}
+          {saved ? "Gespeichert & Neustart" : "Speichern & Neu starten"}
+        </button>
+      </div>
+      <div className="p-5 space-y-3">
+        {loading ? (
+          <div className="h-8 animate-pulse rounded-lg bg-foreground/[0.04]" />
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Vom Admin freigegebene Mounts. Änderungen erfordern einen Agent-Neustart (wird automatisch durchgeführt).
+            </p>
+            <div className="space-y-2">
+              {catalog.map((entry) => {
+                const enabled = assigned.includes(entry.label);
+                return (
+                  <div
+                    key={entry.label}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg border px-3 py-2.5 transition-all cursor-pointer",
+                      enabled
+                        ? "border-blue-500/20 bg-blue-500/5"
+                        : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
+                    )}
+                    onClick={() => toggle(entry.label)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <FolderOpen className={cn("h-4 w-4 shrink-0", enabled ? "text-blue-400" : "text-muted-foreground/40")} />
+                      <div className="min-w-0">
+                        <p className={cn("text-xs font-medium", enabled ? "text-foreground" : "text-muted-foreground/70")}>
+                          {entry.label}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/50 font-mono truncate">
+                          → {entry.container_path}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide",
+                        entry.mode === "rw"
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          : "bg-foreground/[0.04] text-muted-foreground border-foreground/[0.1]"
+                      )}>
+                        {entry.mode === "rw" ? "read-write" : "read-only"}
+                      </span>
+                      <div className={cn(
+                        "h-4 w-4 rounded border flex items-center justify-center transition-all",
+                        enabled ? "bg-blue-500 border-blue-500" : "border-foreground/[0.2]"
+                      )}>
+                        {enabled && <Check className="h-2.5 w-2.5 text-white" />}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-muted-foreground/50">
+              Mounts werden in <code className="text-blue-400/70">docker-compose.yml → AGENT_MOUNT_CATALOG</code> vom Admin konfiguriert.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

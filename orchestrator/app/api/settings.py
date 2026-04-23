@@ -129,3 +129,20 @@ async def update_settings(
 
     await db.commit()
     return {"status": "updated"}
+
+
+@router.get("/agent-mounts")
+async def get_agent_mount_catalog(user=Depends(require_auth)):
+    """Return the admin-defined mount catalog (safe view — host paths omitted)."""
+    from app.core.mounts import parse_mount_catalog
+    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    return {
+        "mounts": [
+            {
+                "label": e.label,
+                "container_path": e.container_path,
+                "mode": e.mode,
+            }
+            for e in catalog.values()
+        ]
+    }

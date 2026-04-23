@@ -127,6 +127,14 @@ services:
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
       AGENT_IMAGE: ai-employee-agent:latest
+      # Enterprise Volume Mounts — admin-defined allowlist (host paths never exposed to UI)
+      # Format (one per line): label:host_path:container_path:mode  (mode = ro or rw)
+      # Example:
+      #   AGENT_MOUNT_CATALOG: |
+      #     nas-documents:/mnt/nas/documents:/mnt/documents:ro
+      #     project-repo:/srv/repos/myproject:/workspace/repo:rw
+      #     shared-output:/data/agent-output:/output:rw
+      AGENT_MOUNT_CATALOG: ${AGENT_MOUNT_CATALOG:-}
     volumes:
       - ./orchestrator:/app
       - ai-employee-shared:/shared

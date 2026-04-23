@@ -145,6 +145,31 @@ export async function updateAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}/update`, { method: "POST" });
 }
 
+// Volume Mounts
+export interface MountCatalogEntry {
+  label: string;
+  container_path: string;
+  mode: "ro" | "rw";
+}
+
+export async function getAgentMountCatalog(): Promise<{ mounts: MountCatalogEntry[] }> {
+  return fetchJSON(`${getBase()}/settings/agent-mounts`);
+}
+
+export async function getAgentMounts(agentId: string): Promise<{ agent_id: string; mounts: string[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/mounts`);
+}
+
+export async function updateAgentMounts(
+  agentId: string,
+  mounts: string[],
+): Promise<{ agent_id: string; mounts: string[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/mounts`, {
+    method: "PATCH",
+    body: JSON.stringify({ mounts }),
+  });
+}
+
 export async function updateAgentResourceLimits(
   id: string,
   limits: { idle_timeout_minutes?: number | null; workspace_size_gb?: number | null },

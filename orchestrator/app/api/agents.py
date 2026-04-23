@@ -1092,6 +1092,61 @@ async def update_agent_mcp_servers(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+# --- Volume Mounts ---
+
+
+@router.get("/{agent_id}/mounts")
+async def get_agent_mounts(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Return the mount labels currently assigned to this agent."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        return {"agent_id": agent_id, "mounts": config.get("mounts", [])}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.patch("/{agent_id}/mounts")
+async def update_agent_mounts(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Assign volume mounts to an agent (labels from admin catalog) and restart."""
+    await _check_owner(agent_id, user, db)
+    from app.core.mounts import parse_mount_catalog
+    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    new_mounts: list[str] = body.get("mounts", [])
+    unknown = [m for m in new_mounts if m not in catalog]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = agent.config or {}
+        old_mounts = set(config.get("mounts", []))
+        config["mounts"] = new_mounts
+        agent.config = config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+
+        # Auto-restart if mounts changed and agent is running
+        if set(new_mounts) != old_mounts and agent.state == AgentState.RUNNING:
+            await manager.restart_agent(agent_id)
+
+        return {"agent_id": agent_id, "mounts": new_mounts}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 # --- Proactive Mode ---
 
 class ProactiveUpdate(BaseModel):

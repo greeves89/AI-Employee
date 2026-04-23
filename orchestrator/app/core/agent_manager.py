@@ -594,6 +594,7 @@ class AgentManager:
             memory_limit=settings.agent_memory_limit,
             cpu_quota=settings.agent_cpu_quota,
             needs_sudo=needs_sudo,
+            bind_mounts=None,  # No mounts on initial create; assigned via PATCH /agents/{id}/mounts
         )
 
         # Apply permission packages (write sudoers file as root)
@@ -824,9 +825,13 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
 
-        # 3. Create new container with same volumes
+        # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
+        from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        catalog = parse_mount_catalog(settings.agent_mount_catalog)
+        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog)
+        bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
@@ -838,6 +843,7 @@ class AgentManager:
             memory_limit=settings.agent_memory_limit,
             cpu_quota=settings.agent_cpu_quota,
             needs_sudo=needs_sudo,
+            bind_mounts=bind_mounts,
         )
 
         # 4. Re-apply permissions
@@ -964,9 +970,13 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
 
-        # 3. Create new container with same volumes
+        # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
+        from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        catalog = parse_mount_catalog(settings.agent_mount_catalog)
+        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog)
+        bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
@@ -978,6 +988,7 @@ class AgentManager:
             memory_limit=settings.agent_memory_limit,
             cpu_quota=settings.agent_cpu_quota,
             needs_sudo=needs_sudo,
+            bind_mounts=bind_mounts,
         )
 
         # 4. Re-apply permission packages from config

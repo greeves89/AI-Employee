@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     agent_memory_limit: str = "4g"
     agent_cpu_quota: int = 200000  # 2 CPUs
     agent_workspace_size_gb: float = 10.0
+    # Admin-defined mount catalog: newline-separated entries
+    # Format per line: label:host_path:container_path:mode  (mode = ro | rw)
+    # Example: nas-docs:/mnt/nas/docs:/mnt/docs:ro
+    agent_mount_catalog: str = ""
 
     # Telegram
     telegram_bot_token: str = ""
