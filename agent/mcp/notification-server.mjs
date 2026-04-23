@@ -194,28 +194,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "request_approval": {
-      const result = await apiCall("/notifications/", {
+      // Post to the proper approvals endpoint (persisted in DB, shown on Approvals page)
+      const result = await apiCall("/approvals/request", {
         method: "POST",
         body: JSON.stringify({
-          agent_id: AGENT_ID,
-          type: "approval",
-          title: args.question,
-          message: args.context || "",
-          priority: "high",
-          meta: { options: args.options },
+          tool: args.question,
+          input: { options: args.options || [] },
+          reasoning: args.context || "",
+          risk_level: "high",
         }),
       });
 
-      // Poll for user response — up to 5 minutes
+      const approvalId = result.approval_id;
+
+      // Poll /approvals/check/{id} — up to 10 minutes
       const startTime = Date.now();
-      const maxWait = 5 * 60 * 1000; // 5 minutes
-      let userChoice = null;
+      const maxWait = 10 * 60 * 1000;
+      let decision = null;
       while (Date.now() - startTime < maxWait) {
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 4000));
         try {
-          const poll = await apiCall(`/notifications/${result.id}/result`);
-          if (poll.status === "responded" && poll.choice) {
-            userChoice = poll.choice;
+          const poll = await apiCall(`/approvals/check/${approvalId}`);
+          if (poll.status === "approved" || poll.status === "denied") {
+            decision = poll;
             break;
           }
         } catch (e) {
@@ -223,18 +224,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
-      if (userChoice) {
+      if (decision) {
+        const approved = decision.status === "approved";
         return {
           content: [{
             type: "text",
-            text: `User responded. ${wrapData("user-approval", `choice: "${userChoice}"`)} Proceed according to the user's choice above.`,
+            text: approved
+              ? `User APPROVED the action (approval_id: ${approvalId}). You may proceed.`
+              : `User DENIED the action (approval_id: ${approvalId}). Reason: "${decision.user_response || "No reason given"}". Do NOT proceed.`,
           }],
         };
       } else {
         return {
           content: [{
             type: "text",
-            text: `User did not respond within 5 minutes. Do NOT proceed with the action. Ask again later or abort the task.`,
+            text: `User did not respond within 10 minutes (approval_id: ${approvalId}). Do NOT proceed with the action. Inform the user and wait for explicit confirmation.`,
           }],
         };
       }

@@ -1,23 +1,25 @@
 """API endpoints for command approval workflow.
 
 When agents need to execute risky commands, they request approval from users.
-Users can approve or deny requests via WebSocket notifications + this API.
+Approvals are persisted in the DB (CommandApproval model) and survive restarts.
+A Notification is created on each new request so the user sees it in the bell + Telegram.
 """
 
+import json
 import logging
-import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import require_agent_access, require_auth, verify_agent_token
 from app.models.agent import Agent
 from app.models.audit_log import AuditLog, AuditEventType
+from app.models.command_approval import ApprovalStatus, CommandApproval
+from app.models.notification import Notification
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
@@ -25,12 +27,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
+def _get_redis() -> RedisService | None:
+    from app.api.ws import _redis
+    return _redis
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCHEMAS
 # ══════════════════════════════════════════════════════════════════════════════
 
 class ApprovalRequest(BaseModel):
-    """Agent requests approval for a tool call."""
     tool: str
     input: dict
     reasoning: str
@@ -38,22 +44,52 @@ class ApprovalRequest(BaseModel):
 
 
 class ApprovalDecision(BaseModel):
-    """User approves or denies a request."""
     decision: str  # "approve" or "deny"
-    reason: str | None = None  # Optional reason for denial
+    reason: str | None = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# IN-MEMORY APPROVAL STORE (TODO: Move to Redis for production)
+# HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-# In-memory store for pending approvals
-# Key: approval_id -> {agent_id, tool, input, reasoning, status, created_at, ...}
-pending_approvals: dict[str, dict] = {}
+def _approval_to_dict(a: CommandApproval) -> dict:
+    return {
+        "approval_id": str(a.id),
+        "agent_id": a.agent_id,
+        "tool": a.command,
+        "reasoning": a.description,
+        "risk_level": a.risk_level,
+        "status": a.status,
+        "meta": a.meta or {},
+        "created_at": a.created_at.isoformat(),
+        "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+        "user_response": a.user_response,
+    }
+
+
+async def _publish_notification(redis: RedisService | None, notif: Notification) -> None:
+    if not redis or not redis.client:
+        return
+    event = json.dumps({
+        "type": "notification",
+        "data": {
+            "id": notif.id,
+            "agent_id": notif.agent_id,
+            "type": notif.type,
+            "title": notif.title,
+            "message": notif.message,
+            "priority": notif.priority,
+            "read": notif.read,
+            "action_url": notif.action_url,
+            "meta": notif.meta,
+            "created_at": notif.created_at.isoformat(),
+        },
+    })
+    await redis.client.publish("notifications:live", event)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AGENT ENDPOINTS (Request Approval)
+# AGENT ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/request")
@@ -62,56 +98,66 @@ async def request_approval(
     agent_auth: dict = Depends(verify_agent_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Agent requests approval for a risky tool call.
-
-    This endpoint is called by the agent when Claude wants to execute
-    a command that requires user approval (medium/high risk).
-
-    Flow:
-    1. Agent calls this endpoint with tool details
-    2. Approval request is stored and broadcast via WebSocket
-    3. Agent polls /check/{approval_id} or waits for WebSocket callback
-    4. User approves/denies via UI
-    5. Agent receives decision and proceeds/aborts
-    """
     agent_id = agent_auth["agent_id"]
 
-    # Block if risk level is "blocked"
     if body.risk_level == "blocked":
-        logger.warning(
-            f"Agent {agent_id} attempted blocked command: {body.tool} - {body.input}"
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="This command is forbidden and cannot be executed even with approval.",
-        )
+        logger.warning(f"Agent {agent_id} attempted blocked command: {body.tool}")
+        raise HTTPException(status_code=403, detail="This command is forbidden and cannot be executed even with approval.")
 
-    # Create approval request
-    approval_id = str(uuid.uuid4())
-    approval_request = {
-        "approval_id": approval_id,
-        "agent_id": agent_id,
-        "tool": body.tool,
-        "input": body.input,
-        "reasoning": body.reasoning,
-        "risk_level": body.risk_level,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    pending_approvals[approval_id] = approval_request
-
-    # TODO: Broadcast via WebSocket to notify user
-    # await notify_user_approval_needed(agent_id, approval_request)
-
-    logger.info(
-        f"Approval request created: {approval_id} for agent {agent_id} - "
-        f"{body.tool} (risk: {body.risk_level})"
+    # Persist to DB
+    approval = CommandApproval(
+        agent_id=agent_id,
+        command=body.tool,
+        description=body.reasoning,
+        risk_level=body.risk_level,
+        status=ApprovalStatus.PENDING,
+        meta={"input": body.input},
     )
+    db.add(approval)
+    await db.commit()
+    await db.refresh(approval)
+
+    # Create notification so user sees it in bell + Telegram
+    notif = Notification(
+        agent_id=agent_id,
+        type="approval",
+        title=f"Approval required: {body.tool}",
+        message=body.reasoning,
+        priority="high",
+        action_url="/approvals",
+        meta={"approval_id": approval.id, "risk_level": body.risk_level, "input": body.input},
+    )
+    db.add(notif)
+    await db.commit()
+    await db.refresh(notif)
+
+    redis = _get_redis()
+    await _publish_notification(redis, notif)
+
+    # Also send Telegram for high/critical risk
+    if body.risk_level in ("high", "critical"):
+        try:
+            from app.api.notifications import _send_telegram
+            from app.api.notifications import NotificationCreate
+            await _send_telegram(
+                NotificationCreate(
+                    agent_id=agent_id,
+                    type="approval",
+                    title=notif.title,
+                    message=notif.message,
+                    priority="high",
+                    action_url="/approvals",
+                ),
+                redis,
+                notif_id=notif.id,
+            )
+        except Exception as e:
+            logger.warning(f"Telegram notification failed for approval {approval.id}: {e}")
+
+    logger.info(f"Approval {approval.id} created for agent {agent_id} - {body.tool} (risk: {body.risk_level})")
 
     return {
-        "approval_id": approval_id,
+        "approval_id": str(approval.id),
         "status": "pending",
         "message": "Approval request created. Waiting for user decision.",
     }
@@ -121,38 +167,26 @@ async def request_approval(
 async def check_approval_status(
     approval_id: str,
     agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Agent polls this endpoint to check if approval was granted.
+    result = await db.execute(select(CommandApproval).where(CommandApproval.id == int(approval_id)))
+    approval = result.scalar_one_or_none()
 
-    Returns:
-    - {"status": "pending"} - Still waiting
-    - {"status": "approved", "approved_by": user_id, "approved_at": timestamp}
-    - {"status": "denied", "denied_by": user_id, "reason": "..."}
-    """
-    if approval_id not in pending_approvals:
+    if not approval:
         raise HTTPException(status_code=404, detail="Approval request not found")
-
-    request = pending_approvals[approval_id]
-    agent_id = agent_auth["agent_id"]
-
-    # Verify this agent owns the request
-    if request["agent_id"] != agent_id:
+    if approval.agent_id != agent_auth["agent_id"]:
         raise HTTPException(status_code=403, detail="Not authorized for this request")
 
     return {
-        "approval_id": approval_id,
-        "status": request["status"],
-        "approved_by": request.get("approved_by"),
-        "approved_at": request.get("approved_at"),
-        "denied_by": request.get("denied_by"),
-        "denied_at": request.get("denied_at"),
-        "deny_reason": request.get("deny_reason"),
+        "approval_id": str(approval.id),
+        "status": approval.status,
+        "user_response": approval.user_response,
+        "resolved_at": approval.resolved_at.isoformat() if approval.resolved_at else None,
     }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# USER ENDPOINTS (Approve/Deny)
+# USER ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/pending")
@@ -160,36 +194,36 @@ async def list_pending_approvals(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    List pending approval requests for current user's agents.
-
-    Returns list of approval requests sorted by created_at (newest first).
-    Admins/Managers see all; members only see approvals for their own agents.
-    """
     from app.models.user import UserRole
 
-    # Get agent IDs the user has access to
-    if user.role in (UserRole.ADMIN, UserRole.MANAGER):
-        # Admins/Managers see everything
-        allowed_agent_ids = None
-    else:
-        # Members only see their own agents
-        result = await db.execute(
-            select(Agent.id).where(Agent.user_id == user.id)
-        )
-        allowed_agent_ids = set(result.scalars().all())
+    query = select(CommandApproval).where(CommandApproval.status == ApprovalStatus.PENDING)
 
-    pending = [
-        req
-        for req in pending_approvals.values()
-        if req["status"] == "pending"
-        and (allowed_agent_ids is None or req.get("agent_id") in allowed_agent_ids)
-    ]
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        agent_result = await db.execute(select(Agent.id).where(Agent.user_id == user.id))
+        allowed_ids = list(agent_result.scalars().all())
+        query = query.where(CommandApproval.agent_id.in_(allowed_ids))
 
-    # Sort by created_at (newest first)
-    pending.sort(key=lambda x: x["created_at"], reverse=True)
+    query = query.order_by(CommandApproval.created_at.desc())
+    result = await db.execute(query)
+    approvals = result.scalars().all()
 
-    return {"approvals": pending, "count": len(pending)}
+    return {"approvals": [_approval_to_dict(a) for a in approvals], "count": len(approvals)}
+
+
+@router.get("/all")
+async def list_all_approvals(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.user import UserRole
+    query = select(CommandApproval).order_by(CommandApproval.created_at.desc()).limit(100)
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        agent_result = await db.execute(select(Agent.id).where(Agent.user_id == user.id))
+        allowed_ids = list(agent_result.scalars().all())
+        query = select(CommandApproval).where(CommandApproval.agent_id.in_(allowed_ids)).order_by(CommandApproval.created_at.desc()).limit(100)
+    result = await db.execute(query)
+    approvals = result.scalars().all()
+    return {"approvals": [_approval_to_dict(a) for a in approvals], "count": len(approvals)}
 
 
 @router.post("/{approval_id}/approve")
@@ -198,55 +232,43 @@ async def approve_request(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    User approves a pending tool call request.
+    result = await db.execute(select(CommandApproval).where(CommandApproval.id == int(approval_id)))
+    approval = result.scalar_one_or_none()
 
-    This allows the agent to proceed with executing the command.
-    """
-    if approval_id not in pending_approvals:
+    if not approval:
         raise HTTPException(status_code=404, detail="Approval request not found")
 
-    request = pending_approvals[approval_id]
+    await require_agent_access(approval.agent_id, user, db)
 
-    # Verify user has access to this agent
-    await require_agent_access(request["agent_id"], user, db)
+    if approval.status != ApprovalStatus.PENDING:
+        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
 
-    if request["status"] != "pending":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Request already {request['status']}",
-        )
+    approval.status = ApprovalStatus.APPROVED
+    approval.resolved_at = datetime.now(timezone.utc)
+    approval.user_response = f"Approved by {user.email}"
 
-    # Update status
-    request["status"] = "approved"
-    request["approved_by"] = user.id
-    request["approved_at"] = datetime.now(timezone.utc).isoformat()
-
-    # Write audit log entry
     audit_entry = AuditLog(
-        agent_id=request["agent_id"],
+        agent_id=approval.agent_id,
         approval_id=approval_id,
         event_type=AuditEventType.COMMAND_APPROVED,
-        command=f"{request.get('tool')} {request.get('input', {})}",
+        command=f"{approval.command} {(approval.meta or {}).get('input', {})}",
         outcome="success",
         user_id=str(user.id),
-        meta={"risk_level": request.get("risk_level"), "reasoning": request.get("reasoning")},
+        meta={"risk_level": approval.risk_level, "reasoning": approval.description},
     )
     db.add(audit_entry)
     await db.commit()
 
-    # TODO: Notify agent via WebSocket or Redis PubSub
-    # await notify_agent_approval_decision(request["agent_id"], approval_id, "approved")
+    # Notify agent via Redis so it can stop polling
+    redis = _get_redis()
+    if redis and redis.client:
+        await redis.client.publish(
+            f"approval:{approval.id}",
+            json.dumps({"status": "approved", "approval_id": str(approval.id)}),
+        )
 
-    logger.info(
-        f"Approval {approval_id} approved by user {user.id} for agent {request['agent_id']}"
-    )
-
-    return {
-        "approval_id": approval_id,
-        "status": "approved",
-        "message": "Command approved. Agent will proceed.",
-    }
+    logger.info(f"Approval {approval.id} approved by user {user.id}")
+    return {"approval_id": approval_id, "status": "approved", "message": "Command approved. Agent will proceed."}
 
 
 @router.post("/{approval_id}/deny")
@@ -256,140 +278,59 @@ async def deny_request(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    User denies a pending tool call request.
+    result = await db.execute(select(CommandApproval).where(CommandApproval.id == int(approval_id)))
+    approval = result.scalar_one_or_none()
 
-    This prevents the agent from executing the command.
-    Optionally include a reason for the denial.
-    """
-    if approval_id not in pending_approvals:
+    if not approval:
         raise HTTPException(status_code=404, detail="Approval request not found")
 
-    request = pending_approvals[approval_id]
+    await require_agent_access(approval.agent_id, user, db)
 
-    # Verify user has access to this agent
-    await require_agent_access(request["agent_id"], user, db)
+    if approval.status != ApprovalStatus.PENDING:
+        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
 
-    if request["status"] != "pending":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Request already {request['status']}",
-        )
+    approval.status = ApprovalStatus.DENIED
+    approval.resolved_at = datetime.now(timezone.utc)
+    approval.user_response = decision.reason or "Denied by user"
 
-    # Update status
-    request["status"] = "denied"
-    request["denied_by"] = user.id
-    request["denied_at"] = datetime.now(timezone.utc).isoformat()
-    request["deny_reason"] = decision.reason or "No reason provided"
-
-    # Write audit log entry
     audit_entry = AuditLog(
-        agent_id=request["agent_id"],
+        agent_id=approval.agent_id,
         approval_id=approval_id,
         event_type=AuditEventType.COMMAND_DENIED,
-        command=f"{request.get('tool')} {request.get('input', {})}",
+        command=f"{approval.command} {(approval.meta or {}).get('input', {})}",
         outcome="blocked",
         user_id=str(user.id),
-        meta={
-            "risk_level": request.get("risk_level"),
-            "deny_reason": decision.reason,
-            "reasoning": request.get("reasoning"),
-        },
+        meta={"risk_level": approval.risk_level, "deny_reason": decision.reason},
     )
     db.add(audit_entry)
     await db.commit()
 
-    # TODO: Notify agent via WebSocket or Redis PubSub
-    # await notify_agent_approval_decision(request["agent_id"], approval_id, "denied")
+    redis = _get_redis()
+    if redis and redis.client:
+        await redis.client.publish(
+            f"approval:{approval.id}",
+            json.dumps({"status": "denied", "approval_id": str(approval.id), "reason": decision.reason}),
+        )
 
-    logger.info(
-        f"Approval {approval_id} denied by user {user.id} for agent {request['agent_id']} "
-        f"- Reason: {decision.reason}"
-    )
-
-    return {
-        "approval_id": approval_id,
-        "status": "denied",
-        "reason": decision.reason,
-        "message": "Command denied. Agent will not proceed.",
-    }
+    logger.info(f"Approval {approval.id} denied by user {user.id}")
+    return {"approval_id": approval_id, "status": "denied", "reason": decision.reason, "message": "Command denied."}
 
 
 @router.delete("/{approval_id}")
 async def cancel_approval_request(
     approval_id: str,
     user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Cancel/delete an approval request.
+    result = await db.execute(select(CommandApproval).where(CommandApproval.id == int(approval_id)))
+    approval = result.scalar_one_or_none()
 
-    This is treated as a denial - the agent will not proceed.
-    """
-    if approval_id not in pending_approvals:
+    if not approval:
         raise HTTPException(status_code=404, detail="Approval request not found")
 
-    request = pending_approvals[approval_id]
-
-    # Mark as denied (cancellation = denial)
-    request["status"] = "denied"
-    request["denied_by"] = user.id
-    request["denied_at"] = datetime.now(timezone.utc).isoformat()
-    request["deny_reason"] = "Cancelled by user"
-
-    logger.info(f"Approval {approval_id} cancelled by user {user.id}")
+    approval.status = ApprovalStatus.DENIED
+    approval.resolved_at = datetime.now(timezone.utc)
+    approval.user_response = "Cancelled by user"
+    await db.commit()
 
     return {"message": "Approval request cancelled"}
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ADMIN/DEBUG ENDPOINTS
-# ══════════════════════════════════════════════════════════════════════════════
-
-@router.get("/all")
-async def list_all_approvals(
-    user=Depends(require_auth),
-):
-    """
-    List ALL approval requests (for debugging).
-
-    In production, this should be admin-only or removed.
-    """
-    # TODO: Require admin role
-
-    return {
-        "approvals": list(pending_approvals.values()),
-        "count": len(pending_approvals),
-    }
-
-
-@router.delete("/cleanup")
-async def cleanup_old_approvals(
-    user=Depends(require_auth),
-):
-    """
-    Clean up old/expired approval requests.
-
-    Removes requests older than 24 hours or already decided.
-    """
-    # TODO: Require admin role
-
-    now = datetime.now(timezone.utc)
-    to_delete = []
-
-    for approval_id, request in pending_approvals.items():
-        created_at = datetime.fromisoformat(request["created_at"])
-        age_hours = (now - created_at).total_seconds() / 3600
-
-        # Delete if > 24 hours old or already decided
-        if age_hours > 24 or request["status"] != "pending":
-            to_delete.append(approval_id)
-
-    for approval_id in to_delete:
-        del pending_approvals[approval_id]
-
-    logger.info(f"Cleaned up {len(to_delete)} old approval requests")
-
-    return {
-        "deleted": len(to_delete),
-        "remaining": len(pending_approvals),
-    }
