@@ -56,9 +56,7 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Multi-agent (isolated containers) | Yes | No (shared FS) | No | No | No |
 | Multi-user with RLS isolation | Yes | No | No | Yes | Yes |
 | Local semantic memory (no OpenAI) | Yes (bge-m3) | Partial | BYO | No | No |
-| Autonomy levels (L1–L4 whitelist) | Yes | No | No | No | No |
 | Approval rules & governance | Yes | No | No | Partial | No |
-| Full governance audit trail | Yes | No | No | No | No |
 | Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
 | DSGVO-compliant by default | Yes | Partial | BYO | No | No |
 | Telegram + Voice (STT/TTS) | Yes | Yes | BYO | No | No |
