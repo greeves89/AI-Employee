@@ -169,7 +169,7 @@ async def update_entry(
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        if entry.user_id and entry.user_id != str(user.id):
+        if entry.user_id != str(user.id):
             raise HTTPException(status_code=403, detail="Access denied")
 
     if body.title is not None:
@@ -205,7 +205,7 @@ async def delete_entry(
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        if entry.user_id and entry.user_id != str(user.id):
+        if entry.user_id != str(user.id):
             raise HTTPException(status_code=403, detail="Access denied")
     await db.delete(entry)
     await db.commit()
