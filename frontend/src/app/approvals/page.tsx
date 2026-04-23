@@ -6,9 +6,10 @@ import { ApprovalModal } from "@/components/agents/approval-modal";
 import {
   getPendingApprovals, approveCommand, denyCommand,
   getApprovalRules, createApprovalRule, updateApprovalRule, deleteApprovalRule,
+  getLevelPresets, addPresetRule, deletePresetRule,
 } from "@/lib/api";
 import type { ApprovalRequest } from "@/lib/types";
-import type { ApprovalRule } from "@/lib/api";
+import type { ApprovalRule, LevelPreset, PresetRule } from "@/lib/api";
 import {
   AlertCircle,
   ShieldAlert,
@@ -26,6 +27,9 @@ import {
   ShoppingCart,
   Settings,
   X,
+  Layers,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,9 +37,20 @@ const CATEGORY_CONFIG: Record<string, { icon: typeof DollarSign; color: string; 
   money: { icon: DollarSign, color: "text-emerald-400", label: "Geld" },
   email: { icon: Mail, color: "text-blue-400", label: "E-Mail" },
   file_delete: { icon: FileX, color: "text-red-400", label: "Datei löschen" },
+  file_write: { icon: FileX, color: "text-orange-400", label: "Datei schreiben" },
   external_api: { icon: Globe, color: "text-purple-400", label: "Externe API" },
+  external_communication: { icon: Globe, color: "text-purple-400", label: "Externe Komm." },
   purchase: { icon: ShoppingCart, color: "text-amber-400", label: "Kauf" },
+  shell_exec: { icon: Settings, color: "text-red-400", label: "Shell" },
+  system_config: { icon: Settings, color: "text-amber-400", label: "System" },
   custom: { icon: Settings, color: "text-zinc-400", label: "Sonstige" },
+};
+
+const LEVEL_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  l1: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "L1" },
+  l2: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "L2" },
+  l3: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "L3" },
+  l4: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "L4" },
 };
 
 const containerVariants = {
@@ -84,7 +99,7 @@ const riskConfig = {
 };
 
 export default function ApprovalsPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "rules">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "rules" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<ApprovalRequest | null>(null);
@@ -94,6 +109,13 @@ export default function ApprovalsPage() {
   // Rules state
   const [rules, setRules] = useState<ApprovalRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
+
+  // Presets state
+  const [presets, setPresets] = useState<Record<string, LevelPreset>>({});
+  const [presetsLoading, setPresetsLoading] = useState(false);
+  const [expandedLevel, setExpandedLevel] = useState<string | null>("l1");
+  const [addingRuleLevel, setAddingRuleLevel] = useState<string | null>(null);
+  const [presetDraft, setPresetDraft] = useState({ name: "", description: "", category: "custom" });
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [ruleDraft, setRuleDraft] = useState<{ name: string; description: string; category: string; threshold: string }>({
     name: "",
@@ -132,9 +154,27 @@ export default function ApprovalsPage() {
     }
   };
 
+  // Bug fix: load rules immediately on mount, not just on tab click
+  useEffect(() => {
+    loadRules();
+  }, []);
+
   useEffect(() => {
     if (activeTab === "rules") loadRules();
+    if (activeTab === "presets") loadPresets();
   }, [activeTab]);
+
+  const loadPresets = async () => {
+    setPresetsLoading(true);
+    try {
+      const data = await getLevelPresets();
+      setPresets(data.presets);
+    } catch (error) {
+      console.error("Failed to load presets:", error);
+    } finally {
+      setPresetsLoading(false);
+    }
+  };
 
   const handleSaveRule = async () => {
     if (!ruleDraft.name.trim() || !ruleDraft.description.trim()) return;
@@ -168,6 +208,31 @@ export default function ApprovalsPage() {
       await loadRules();
     } catch (error) {
       console.error("Failed to delete rule:", error);
+    }
+  };
+
+  const handleAddPresetRule = async (level: string) => {
+    if (!presetDraft.name.trim() || !presetDraft.description.trim()) return;
+    try {
+      await addPresetRule(level, {
+        name: presetDraft.name.trim(),
+        description: presetDraft.description.trim(),
+        category: presetDraft.category,
+      });
+      setPresetDraft({ name: "", description: "", category: "custom" });
+      setAddingRuleLevel(null);
+      await loadPresets();
+    } catch (error) {
+      console.error("Failed to add preset rule:", error);
+    }
+  };
+
+  const handleDeletePresetRule = async (level: string, ruleId: number) => {
+    try {
+      await deletePresetRule(level, ruleId);
+      await loadPresets();
+    } catch (error) {
+      console.error("Failed to delete preset rule:", error);
     }
   };
 
@@ -237,6 +302,18 @@ export default function ApprovalsPage() {
           )}
         >
           Regeln ({rules.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("presets")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-all inline-flex items-center gap-1.5",
+            activeTab === "presets"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Layers className="h-3.5 w-3.5" />
+          Level-Presets
         </button>
       </div>
 
@@ -375,7 +452,7 @@ export default function ApprovalsPage() {
                       <Icon className={cn("h-4 w-4", cfg.color)} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-sm font-medium">{rule.name}</span>
                         <span className="inline-flex items-center rounded-full bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                           {cfg.label}
@@ -383,6 +460,12 @@ export default function ApprovalsPage() {
                         {rule.threshold !== null && (
                           <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-400">
                             &gt; {rule.threshold}
+                          </span>
+                        )}
+                        {rule.is_preset && rule.agent_id && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                            <Layers className="h-2.5 w-2.5" />
+                            Auto-Preset
                           </span>
                         )}
                       </div>
@@ -547,6 +630,150 @@ export default function ApprovalsPage() {
         </motion.div>
       )}
       </>
+      )}
+
+      {/* Level Presets Tab */}
+      {activeTab === "presets" && (
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Jedes Level definiert was ein Agent <strong>ohne Rückfrage tun darf</strong> (Whitelist). Alles außerhalb löst automatisch eine Freigabe-Anfrage aus.
+            </p>
+            <p className="text-[11px] text-muted-foreground/60 mt-1">
+              Einträge mit dem Badge <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[10px] text-primary font-medium"><Layers className="h-2.5 w-2.5" />Auto-Preset</span> in der Regeln-Liste sind automatisch generiert.
+            </p>
+          </div>
+
+          {presetsLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(["l1", "l2", "l3", "l4"] as const).map((level) => {
+                const preset = presets[level];
+                if (!preset) return null;
+                const colors = LEVEL_COLORS[level];
+                const isExpanded = expandedLevel === level;
+                return (
+                  <div key={level} className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+                    <button
+                      onClick={() => setExpandedLevel(isExpanded ? null : level)}
+                      className="w-full flex items-center gap-4 p-4 hover:bg-foreground/[0.02] transition-colors text-left"
+                    >
+                      <span className={cn(
+                        "inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-xs font-bold border shrink-0",
+                        colors.bg, colors.text, colors.border
+                      )}>
+                        {colors.label}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{preset.label}</p>
+                        <p className="text-[11px] text-muted-foreground/60 mt-0.5">{preset.description}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[11px] text-muted-foreground/50">
+                          {preset.rule_count === 0 ? "Alles erlaubt" : `${preset.rule_count} erlaubte Aktion${preset.rule_count !== 1 ? "en" : ""}`}
+                        </span>
+                        {isExpanded
+                          ? <ChevronDown className="h-4 w-4 text-muted-foreground/40" />
+                          : <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                        }
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-foreground/[0.06] divide-y divide-foreground/[0.04]">
+                        {preset.rule_count === 0 && addingRuleLevel !== level ? (
+                          <div className="px-4 py-5 text-center text-[11px] text-muted-foreground/40">
+                            Keine Regeln — Agent handelt vollständig autonom.
+                          </div>
+                        ) : (preset.rules as PresetRule[]).map((rule) => {
+                          const cfg = CATEGORY_CONFIG[rule.category] || CATEGORY_CONFIG.custom;
+                          const Icon = cfg.icon;
+                          return (
+                            <div key={rule.id} className="flex items-start gap-3 px-4 py-3 group/rule">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground/[0.04] mt-0.5">
+                                <Icon className={cn("h-3.5 w-3.5", cfg.color)} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium">{rule.name}</p>
+                                <p className="text-[11px] text-muted-foreground/60 mt-0.5 leading-relaxed">{rule.description}</p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="inline-flex items-center rounded-full bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] text-muted-foreground">
+                                  {cfg.label}
+                                </span>
+                                <button
+                                  onClick={() => handleDeletePresetRule(level, rule.id)}
+                                  className="rounded-md p-1 text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover/rule:opacity-100"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Add rule form */}
+                        {addingRuleLevel === level ? (
+                          <div className="px-4 py-3 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                value={presetDraft.name}
+                                onChange={(e) => setPresetDraft({ ...presetDraft, name: e.target.value })}
+                                placeholder="Regelname"
+                                className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs outline-none focus:border-primary/50"
+                              />
+                              <select
+                                value={presetDraft.category}
+                                onChange={(e) => setPresetDraft({ ...presetDraft, category: e.target.value })}
+                                className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs outline-none focus:border-primary/50"
+                              >
+                                {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
+                                  <option key={key} value={key}>{cfg.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <textarea
+                              value={presetDraft.description}
+                              onChange={(e) => setPresetDraft({ ...presetDraft, description: e.target.value })}
+                              placeholder="Beschreibung — was der Agent beachten soll"
+                              rows={2}
+                              className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs outline-none focus:border-primary/50 resize-none"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => { setAddingRuleLevel(null); setPresetDraft({ name: "", description: "", category: "custom" }); }}
+                                className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                              >
+                                Abbrechen
+                              </button>
+                              <button
+                                onClick={() => handleAddPresetRule(level)}
+                                disabled={!presetDraft.name.trim() || !presetDraft.description.trim()}
+                                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+                              >
+                                Hinzufügen
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setAddingRuleLevel(level); setExpandedLevel(level); setPresetDraft({ name: "", description: "", category: "custom" }); }}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-foreground/[0.02] transition-colors"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Regel hinzufügen
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <ApprovalModal

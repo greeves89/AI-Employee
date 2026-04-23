@@ -41,6 +41,7 @@ class Agent(Base, TimestampMixin):
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
     browser_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    autonomy_level: Mapped[str] = mapped_column(String, default="l3", server_default="l3")
     # SHA-256 hex of the plaintext webhook token. Set by
     # /agents/{id}/webhook/rotate; plaintext is shown once and never stored.
     webhook_token_hash: Mapped[str | None] = mapped_column(

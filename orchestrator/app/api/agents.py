@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.agent_manager import AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
-from app.dependencies import get_docker_service, get_redis_service, require_auth, require_auth_or_agent, require_manager
+from app.dependencies import get_docker_service, get_redis_service, require_auth, require_auth_or_agent, require_manager, verify_agent_token
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
@@ -199,12 +199,14 @@ async def poll_reply(
     since_id: int = 0,
     timeout: int = 45,
     db: AsyncSession = Depends(get_db),
+    agent=Depends(verify_agent_token),
 ):
     """Poll for a new message from a specific agent. Long-polls up to timeout seconds.
 
-    Used by agents waiting for a reply after send_message. Open endpoint
-    (no user auth) so agents can call it directly.
+    Requires a valid agent token. The requesting agent must be the recipient (to_agent_id).
     """
+    if agent["agent_id"] != to_agent_id:
+        raise HTTPException(status_code=403, detail="Agents may only poll their own messages")
     import asyncio
     from sqlalchemy import select, and_
     from app.models.agent_message import AgentMessage as AgentMessageModel
@@ -302,6 +304,7 @@ async def create_agent(
             mode=data.mode,
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
             browser_mode=data.browser_mode,
+            autonomy_level=data.autonomy_level,
         )
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
@@ -323,6 +326,53 @@ async def get_agent(
         return await manager.get_agent_with_metrics(agent_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+
+class AutonomyLevelUpdate(BaseModel):
+    level: str
+
+
+@router.post("/{agent_id}/autonomy-level")
+async def set_autonomy_level(
+    agent_id: str,
+    data: AutonomyLevelUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    await _check_owner(agent_id, user, db)
+    level = data.level.lower()
+    if level not in {"l1", "l2", "l3", "l4"}:
+        raise HTTPException(status_code=422, detail="Invalid level. Must be l1, l2, l3, or l4")
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    previous_level = agent.autonomy_level
+    agent.autonomy_level = level
+    await db.commit()
+
+    # Apply the matching approval rule preset for this level
+    from app.api.approval_rules import apply_autonomy_preset
+    rules = await apply_autonomy_preset(db, agent_id, level)
+
+    # Audit log
+    from app.models.audit_log import AuditLog, AuditEventType
+    db.add(AuditLog(
+        agent_id=agent_id,
+        event_type=AuditEventType.AUTONOMY_LEVEL_CHANGED,
+        command=f"autonomy_level: {previous_level} → {level}",
+        outcome="success",
+        user_id=str(user.id),
+        meta={"previous_level": previous_level, "new_level": level, "rules_applied": [r.name for r in rules]},
+    ))
+    await db.commit()
+
+    return {
+        "agent_id": agent.id,
+        "autonomy_level": agent.autonomy_level,
+        "rules_applied": len(rules),
+        "rule_names": [r.name for r in rules],
+    }
 
 
 @router.post("/{agent_id}/stop")

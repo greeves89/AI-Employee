@@ -57,10 +57,21 @@ export async function createAgent(
   budget_usd?: number,
   mode: AgentMode = "claude_code",
   llm_config?: LLMConfig,
+  autonomy_level?: string,
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
-    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config }),
+    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level }),
+  });
+}
+
+export async function setAgentAutonomyLevel(
+  agentId: string,
+  level: string,
+): Promise<{ agent_id: string; autonomy_level: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/autonomy-level`, {
+    method: "POST",
+    body: JSON.stringify({ level }),
   });
 }
 
@@ -904,11 +915,35 @@ export interface ApprovalRule {
   threshold: number | null;
   is_active: boolean;
   agent_id: string | null;
+  created_by: string | null;
+  is_preset: boolean;
   created_at: string | null;
+}
+
+export interface PresetRule {
+  id: number;
+  level: string;
+  name: string;
+  description: string;
+  category: string;
+  sort_order: number;
+  created_at: string | null;
+}
+
+export interface LevelPreset {
+  level: string;
+  label: string;
+  description: string;
+  rules: PresetRule[];
+  rule_count: number;
 }
 
 export async function getApprovalRules(): Promise<{ rules: ApprovalRule[] }> {
   return fetchJSON(`${getBase()}/approval-rules/`);
+}
+
+export async function getLevelPresets(): Promise<{ presets: Record<string, LevelPreset> }> {
+  return fetchJSON(`${getBase()}/approval-rules/level-presets`);
 }
 
 export async function createApprovalRule(data: {
@@ -936,6 +971,22 @@ export async function updateApprovalRule(
 
 export async function deleteApprovalRule(id: number): Promise<{ status: string }> {
   return fetchJSON(`${getBase()}/approval-rules/${id}`, { method: "DELETE" });
+}
+
+export async function addPresetRule(
+  level: string,
+  data: { name: string; description: string; category: string; sort_order?: number },
+): Promise<PresetRule> {
+  return fetchJSON(`${getBase()}/approval-rules/level-presets/${level}/rules`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePresetRule(level: string, ruleId: number): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/approval-rules/level-presets/${level}/rules/${ruleId}`, {
+    method: "DELETE",
+  });
 }
 
 // --- Event Triggers ---

@@ -154,6 +154,17 @@ async def request_approval(
         except Exception as e:
             logger.warning(f"Telegram notification failed for approval {approval.id}: {e}")
 
+    audit_entry = AuditLog(
+        agent_id=agent_id,
+        approval_id=str(approval.id),
+        event_type=AuditEventType.APPROVAL_REQUESTED,
+        command=body.tool,
+        outcome="pending",
+        meta={"risk_level": body.risk_level, "reasoning": body.reasoning, "input": body.input},
+    )
+    db.add(audit_entry)
+    await db.commit()
+
     logger.info(f"Approval {approval.id} created for agent {agent_id} - {body.tool} (risk: {body.risk_level})")
 
     return {

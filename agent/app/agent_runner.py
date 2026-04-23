@@ -50,8 +50,18 @@ class AgentRunner:
 
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
+            skill_preload = get_skill_preload()
+            memory_preload = get_memory_preload()
             skills_ctx = get_skills_context()
-            enhanced_prompt = task_id_line + CHAT_STARTUP_PREFIX + skills_ctx + prompt
+            enhanced_prompt = (
+                task_id_line
+                + CHAT_STARTUP_PREFIX
+                + memory_preload
+                + skill_preload
+                + skills_ctx
+                + prompt
+                + SELF_IMPROVEMENT_SUFFIX
+            )
         else:
             # Full mode: startup context + memory + skills + user feedback + performance + self-improvement
             memory_preload = get_memory_preload()

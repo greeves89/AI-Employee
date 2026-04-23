@@ -58,6 +58,7 @@ class AgentCreate(BaseModel):
     mode: AgentMode = "claude_code"
     llm_config: LLMConfig | None = None  # required when mode == "custom_llm"
     browser_mode: bool = False  # Enable Playwright browser control inside agent container
+    autonomy_level: str = "l3"
 
 
 class AgentResponse(BaseModel):
@@ -76,6 +77,7 @@ class AgentResponse(BaseModel):
     update_available: bool = False
     budget_usd: float | None = None
     browser_mode: bool = False
+    autonomy_level: str = "l3"
     webhook_enabled: bool = False
     webhook_token: str | None = None
     total_cost_usd: float = 0.0

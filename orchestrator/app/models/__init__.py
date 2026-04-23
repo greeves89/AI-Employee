@@ -26,6 +26,7 @@ from app.models.approval_rule import ApprovalRule
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.models.event_trigger import EventTrigger
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile
+from app.models.autonomy_preset_rule import AutonomyPresetRule
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -45,4 +46,5 @@ __all__ = [
     "KnowledgeFeed", "KnowledgeFeedItem",
     "EventTrigger",
     "Skill", "SkillStatus", "SkillCategory", "AgentSkillAssignment", "SkillFile",
+    "AutonomyPresetRule",
 ]

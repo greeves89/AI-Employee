@@ -512,7 +512,7 @@ class AgentManager:
                 env["GH_TOKEN"] = token  # gh CLI uses GH_TOKEN
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False) -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
@@ -541,6 +541,7 @@ class AgentManager:
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
+            "AUTONOMY_LEVEL": autonomy_level.lower(),
         }
 
         if mode == "custom_llm" and llm_config:
@@ -649,6 +650,7 @@ class AgentManager:
             llm_config=encrypted_llm_config,
             budget_usd=budget_usd,
             browser_mode=browser_mode,
+            autonomy_level=autonomy_level.lower(),
             config={
                 "session_volume": session_volume,
                 "role": role or "",
@@ -786,6 +788,7 @@ class AgentManager:
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
+            "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
         if mode == "custom_llm" and agent.llm_config:
@@ -925,6 +928,7 @@ class AgentManager:
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
+            "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
         if mode == "custom_llm" and agent.llm_config:
@@ -1149,6 +1153,7 @@ class AgentManager:
             "update_available": update_available,
             "budget_usd": agent.budget_usd,
             "browser_mode": agent.browser_mode,
+            "autonomy_level": agent.autonomy_level or "l3",
             "webhook_enabled": agent.webhook_enabled,
             "webhook_token": agent.webhook_token,
             "total_cost_usd": config.get("total_cost_usd", 0.0),

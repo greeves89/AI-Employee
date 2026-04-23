@@ -515,6 +515,17 @@ async def lifespan(app: FastAPI):
         logger.warning("Alembic migration timed out, falling back to direct init ...")
         await _init_db_from_models()
 
+    # Seed autonomy preset rules (defaults per level into DB if not yet present)
+    try:
+        from app.api.approval_rules import seed_autonomy_presets
+        from app.db.session import async_session_factory as _sf_presets
+
+        async with _sf_presets() as db:
+            await seed_autonomy_presets(db)
+        logger.info("Autonomy preset rules seeded")
+    except Exception as e:
+        logger.warning(f"Failed to seed autonomy presets: {e}")
+
     # Seed builtin agent templates
     try:
         from app.core.agent_templates import BUILTIN_TEMPLATES

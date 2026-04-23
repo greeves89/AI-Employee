@@ -10,17 +10,31 @@ from app.models.base import Base
 
 
 class AuditEventType(str, Enum):
-    COMMAND_EXECUTED = "command_executed"     # sudo/privileged command run
-    COMMAND_APPROVED = "command_approved"     # user approved a command
-    COMMAND_DENIED = "command_denied"         # user denied a command
-    COMMAND_BLOCKED = "command_blocked"       # command blocked by filter
-    AGENT_STARTED = "agent_started"           # agent container started
-    AGENT_STOPPED = "agent_stopped"           # agent container stopped
-    FILE_WRITTEN = "file_written"             # file write operation
-    NETWORK_REQUEST = "network_request"       # outbound network call
-    SKILL_FILE_UPLOADED = "skill_file_uploaded"   # file attached to a skill
-    SKILL_FILE_DOWNLOADED = "skill_file_downloaded"  # agent or user downloaded a skill file
-    SKILL_FILE_DELETED = "skill_file_deleted"     # file removed from a skill
+    # Command / approval lifecycle
+    COMMAND_EXECUTED = "command_executed"         # sudo/privileged command run
+    APPROVAL_REQUESTED = "approval_requested"     # agent requested user approval
+    COMMAND_APPROVED = "command_approved"         # user approved a command
+    COMMAND_DENIED = "command_denied"             # user denied a command
+    COMMAND_BLOCKED = "command_blocked"           # command blocked by filter
+    # Agent lifecycle
+    AGENT_STARTED = "agent_started"               # agent container started
+    AGENT_STOPPED = "agent_stopped"               # agent container stopped
+    AGENT_CREATED = "agent_created"               # new agent created
+    AGENT_DELETED = "agent_deleted"               # agent deleted
+    # Governance / policy changes
+    AUTONOMY_LEVEL_CHANGED = "autonomy_level_changed"   # agent autonomy level changed
+    APPROVAL_RULE_CREATED = "approval_rule_created"     # global/agent approval rule created
+    APPROVAL_RULE_UPDATED = "approval_rule_updated"     # approval rule toggled or edited
+    APPROVAL_RULE_DELETED = "approval_rule_deleted"     # approval rule deleted
+    PRESET_RULE_ADDED = "preset_rule_added"             # rule added to level preset
+    PRESET_RULE_DELETED = "preset_rule_deleted"         # rule removed from level preset
+    # File / network
+    FILE_WRITTEN = "file_written"                 # file write operation
+    NETWORK_REQUEST = "network_request"           # outbound network call
+    # Skills
+    SKILL_FILE_UPLOADED = "skill_file_uploaded"
+    SKILL_FILE_DOWNLOADED = "skill_file_downloaded"
+    SKILL_FILE_DELETED = "skill_file_deleted"
 
 
 class AuditLog(Base):
