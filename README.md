@@ -5,7 +5,7 @@
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
 [![License: Fair-Code](https://img.shields.io/badge/license-Fair--Code-blue.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.21.0-green.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.26.0-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-compliant-success.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -34,7 +34,7 @@
 
 ---
 
-> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform), und Governance-Regeln wie "Frage nach, bevor du mehr als 50 EUR ausgibst" sind von Haus aus eingebaut. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform). Neu: Autonomie-Level L1–L4 — jeder Agent bekommt eine Whitelist was er darf; alles andere löst automatisch eine Freigabe-Anfrage aus. Alle Governance-Ereignisse (Freigaben, Level-Änderungen, Regeländerungen) werden lückenlos im Audit-Log erfasst. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
 
 ---
 
