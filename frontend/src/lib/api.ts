@@ -1510,13 +1510,24 @@ export interface ComputerUseSession {
   session_id: string;
   status: "connected" | "waiting_for_bridge" | "waiting";
   created_at: number;
+  action_count: number;
+  platform: string;
+  capabilities: string[];
+  allowed_capabilities: string[];
+  last_disconnected_at: number | null;
+}
+
+export interface CapabilityGroup {
+  id: string;
+  actions: string[];
+  default: boolean;
 }
 
 export async function listComputerUseSessions(): Promise<{ sessions: ComputerUseSession[] }> {
   return fetchJSON(`${getBase()}/computer-use/sessions`);
 }
 
-export async function createComputerUseSession(): Promise<{ session_id: string; status: string; ws_url: string }> {
+export async function createComputerUseSession(): Promise<{ session_id: string; status: string; ws_url: string; allowed_capabilities: string[] }> {
   return fetchJSON(`${getBase()}/computer-use/sessions`, { method: "POST" });
 }
 
@@ -1524,12 +1535,26 @@ export async function deleteComputerUseSession(sessionId: string): Promise<void>
   return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`, { method: "DELETE" });
 }
 
-export async function getComputerUseSession(sessionId: string): Promise<ComputerUseSession & { session_id: string }> {
+export async function getComputerUseSession(sessionId: string): Promise<ComputerUseSession> {
   return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}`);
 }
 
 export async function getComputerUseScreenshot(sessionId: string): Promise<{ screenshot_b64: string; ts: number }> {
   return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/screenshot`);
+}
+
+export async function updateSessionCapabilities(
+  sessionId: string,
+  allowedCapabilities: string[],
+): Promise<{ session_id: string; allowed_capabilities: string[] }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/capabilities`, {
+    method: "PATCH",
+    body: JSON.stringify({ allowed_capabilities: allowedCapabilities }),
+  });
+}
+
+export async function getCapabilityGroups(): Promise<{ groups: CapabilityGroup[] }> {
+  return fetchJSON(`${getBase()}/computer-use/capabilities`);
 }
 
 // --- Meeting Rooms ---

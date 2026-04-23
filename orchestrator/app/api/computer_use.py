@@ -11,6 +11,7 @@ Security model:
   - Bridge WS must present valid JWT + matching session_id (no auto-create)
   - Agents (HMAC token) are verified against agent.user_id == session.user_id
   - Agents can list sessions for their own user via require_auth_or_agent
+  - Capability groups restrict which actions agents may invoke (enforced server-side)
 """
 import asyncio
 import json
@@ -39,6 +40,46 @@ SESSION_TIMEOUT_SECS = 30 * 60
 MAX_ACTIONS_PER_SESSION = 50
 
 
+# ── Capability groups ─────────────────────────────────────────────────────────
+
+# Map capability-group name → list of allowed action strings
+CAPABILITY_GROUPS: dict[str, list[str]] = {
+    "screenshots": ["screenshot", "get_mouse_position"],
+    "mouse": ["mouse_move", "mouse_click", "mouse_scroll", "drag"],
+    "keyboard": ["key", "type", "hotkey"],
+    "accessibility": ["ax_tree"],
+    "apps": ["open_app", "close_app"],
+    "clipboard": ["clipboard_read", "clipboard_write"],
+    "shell": ["shell_run"],
+}
+
+# Groups enabled for all new sessions unless the user changes them.
+# shell and clipboard are off by default for safety.
+DEFAULT_ALLOWED_CAPABILITIES: set[str] = {
+    "screenshots",
+    "mouse",
+    "keyboard",
+    "accessibility",
+    "apps",
+}
+
+# Reverse map: action → capability group
+_ACTION_TO_GROUP: dict[str, str] = {
+    action: group
+    for group, actions in CAPABILITY_GROUPS.items()
+    for action in actions
+}
+
+
+def _action_allowed(action: str, allowed: set[str]) -> bool:
+    """Return True if the action is covered by at least one allowed capability group."""
+    group = _ACTION_TO_GROUP.get(action)
+    if group is None:
+        # Unknown actions (e.g. future bridge commands) — block by default
+        return False
+    return group in allowed
+
+
 def init_computer_use(redis: RedisService) -> None:
     global _redis
     _redis = redis
@@ -58,18 +99,33 @@ async def _resolve_caller_user_id(caller, db: AsyncSession) -> str | None:
     return str(caller.id)
 
 
+def _session_view(sid: str, s: dict) -> dict:
+    return {
+        "session_id": sid,
+        "status": "connected" if s["bridge_connected"] else "waiting_for_bridge",
+        "created_at": s["created_at"],
+        "action_count": s["action_count"],
+        "platform": s.get("platform", "unknown"),
+        "capabilities": s.get("capabilities", []),
+        "allowed_capabilities": sorted(s.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
+        "last_disconnected_at": s.get("last_disconnected_at"),
+    }
+
+
 # ── Session Management ────────────────────────────────────────────────────────
 
 class SessionCreateResponse(BaseModel):
     session_id: str
     status: str
     ws_url: str
+    allowed_capabilities: list[str]
 
 
 @router.post("/sessions", response_model=SessionCreateResponse)
 async def create_session(user=Depends(require_auth)):
     """Create a new bridge session. Returns session_id + WS URL for the bridge app."""
     session_id = uuid.uuid4().hex[:12]
+    allowed = set(DEFAULT_ALLOWED_CAPABILITIES)
     _sessions[session_id] = {
         "user_id": str(user.id),
         "created_at": time.time(),
@@ -78,12 +134,15 @@ async def create_session(user=Depends(require_auth)):
         "action_count": 0,
         "audit_log": [],
         "pending_results": {},
+        "allowed_capabilities": allowed,
+        "last_disconnected_at": None,
     }
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
     return {
         "session_id": session_id,
         "status": "waiting_for_bridge",
         "ws_url": f"/ws/computer-use/bridge?session_id={session_id}",
+        "allowed_capabilities": sorted(allowed),
     }
 
 
@@ -103,14 +162,7 @@ async def list_sessions(
         _sessions.pop(sid, None)
 
     user_sessions = [
-        {
-            "session_id": sid,
-            "status": "connected" if s["bridge_connected"] else "waiting_for_bridge",
-            "created_at": s["created_at"],
-            "action_count": s["action_count"],
-            "platform": s.get("platform", "unknown"),
-            "capabilities": s.get("capabilities", []),
-        }
+        _session_view(sid, s)
         for sid, s in _sessions.items()
         if s["user_id"] == user_id
     ]
@@ -122,13 +174,7 @@ async def get_session(session_id: str, user=Depends(require_auth)):
     session = _sessions.get(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
-    return {
-        "session_id": session_id,
-        "status": "connected" if session["bridge_connected"] else "waiting_for_bridge",
-        "created_at": session["created_at"],
-        "action_count": session["action_count"],
-        "platform": session.get("platform", "unknown"),
-    }
+    return _session_view(session_id, session)
 
 
 @router.delete("/sessions/{session_id}")
@@ -144,6 +190,48 @@ async def delete_session(session_id: str, user=Depends(require_auth)):
             pass
     _sessions.pop(session_id, None)
     return {"ok": True}
+
+
+class CapabilityUpdate(BaseModel):
+    allowed_capabilities: list[str]
+
+
+@router.patch("/sessions/{session_id}/capabilities")
+async def update_capabilities(
+    session_id: str,
+    req: CapabilityUpdate,
+    user=Depends(require_auth),
+):
+    """Update which capability groups are allowed for this session."""
+    session = _sessions.get(session_id)
+    if not session or session["user_id"] != str(user.id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    unknown = set(req.allowed_capabilities) - set(CAPABILITY_GROUPS.keys())
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown capability groups: {sorted(unknown)}")
+
+    session["allowed_capabilities"] = set(req.allowed_capabilities)
+    logger.info(f"Session {session_id}: capabilities updated to {sorted(req.allowed_capabilities)}")
+    return {
+        "session_id": session_id,
+        "allowed_capabilities": sorted(session["allowed_capabilities"]),
+    }
+
+
+@router.get("/capabilities")
+async def list_capability_groups(_=Depends(require_auth)):
+    """Return all known capability groups and their included actions."""
+    return {
+        "groups": [
+            {
+                "id": group_id,
+                "actions": actions,
+                "default": group_id in DEFAULT_ALLOWED_CAPABILITIES,
+            }
+            for group_id, actions in CAPABILITY_GROUPS.items()
+        ]
+    }
 
 
 @router.get("/sessions/{session_id}/audit")
@@ -195,6 +283,15 @@ async def send_command(
         raise HTTPException(
             status_code=429,
             detail=f"Action limit reached ({MAX_ACTIONS_PER_SESSION}/session).",
+        )
+
+    # Capability check — enforce server-side
+    allowed: set[str] = session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)
+    if not _action_allowed(req.action, allowed):
+        group = _ACTION_TO_GROUP.get(req.action, "unknown")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Action '{req.action}' is not permitted (capability group '{group}' is disabled for this session).",
         )
 
     if not session["bridge_connected"] or not session["bridge_ws"]:
@@ -252,7 +349,11 @@ async def get_screenshot(
         return {"screenshot_b64": cached["data"], "ts": cached["ts"]}
 
     if not session["bridge_connected"] or not session["bridge_ws"]:
-        raise HTTPException(status_code=503, detail="Bridge not connected")
+        raise HTTPException(
+            status_code=503,
+            detail="bridge_disconnected",
+            headers={"X-Bridge-Status": "disconnected"},
+        )
 
     cmd_id = uuid.uuid4().hex[:8]
     command_msg = json.dumps({
@@ -328,6 +429,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
     await websocket.send_text(json.dumps({
         "type": "session_info",
         "session_id": session_id,
+        "allowed_capabilities": sorted(session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
     }))
 
     try:
@@ -360,6 +462,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
     finally:
         session["bridge_connected"] = False
         session["bridge_ws"] = None
+        session["last_disconnected_at"] = time.time()
         for future in session["pending_results"].values():
             if not future.done():
                 future.set_exception(RuntimeError("Bridge disconnected"))
