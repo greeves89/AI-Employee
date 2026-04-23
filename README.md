@@ -5,7 +5,7 @@
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
 [![License: Fair-Code](https://img.shields.io/badge/license-Fair--Code-blue.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.26.0-green.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.27.0-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -41,7 +41,7 @@
 
 ---
 
-> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform). Neu: Autonomie-Level L1–L4 — jeder Agent bekommt eine Whitelist was er darf; alles andere löst automatisch eine Freigabe-Anfrage aus. Alle Governance-Ereignisse (Freigaben, Level-Änderungen, Regeländerungen) werden lückenlos im Audit-Log erfasst. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen (DSGVO-konform). Neu: Autonomie-Level L1–L4 — jeder Agent bekommt eine Whitelist was er darf; alles andere löst automatisch eine Freigabe-Anfrage aus. Native Microsoft 365-Integration — Agents lesen und schreiben Outlook-Mail, Kalender, Teams-Nachrichten, Planner-Aufgaben und OneDrive direkt über 25 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth (kein geteiltes Token). Alle Governance-Ereignisse (Freigaben, Level-Änderungen, Regeländerungen) werden lückenlos im Audit-Log erfasst. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
 
 ---
 
@@ -144,9 +144,10 @@ Database migrations run automatically on startup. Your data is persisted in name
 ### Integrations
 
 - **Per-agent Telegram bots** — Each agent can have its own Telegram bot with voice STT/TTS.
-- **OAuth integrations** — Google, Microsoft, Apple accounts with encrypted token storage. Gmail, Calendar, Outlook, Drive, OneDrive, iCloud.
-- **MCP servers** — Memory, Knowledge, Notifications, Orchestrator, Skills. Plug in any third-party MCP server too.
-- **Skills system** — Reusable capability modules (e.g. `invoice-parser`, `pdf-signer`, `contract-diff`) that any agent can pick up.
+- **Microsoft 365 (MS Graph MCP)** — Native Office 365 integration via a built-in MCP server with 25 tools: read/send Outlook mail, manage Calendar events, post to Teams channels and 1:1 chats, Planner tasks, Microsoft To-Do lists, and OneDrive file search/read. Each user connects their own M365 account via OAuth — tokens are stored per-user, never shared. Admin configures the Azure App Registration once in Settings; users sign in individually.
+- **OAuth integrations** — Per-user Google and Microsoft accounts with encrypted token storage. Gmail, Calendar, Outlook, Drive, OneDrive. Apple account support also included.
+- **MCP servers** — Memory, Knowledge, Notifications, Orchestrator, Skills, MS Graph. Plug in any third-party MCP server too.
+- **Skills system** — Reusable capability modules (e.g. `invoice-parser`, `pdf-signer`, `contract-diff`) that any agent can pick up. Skills can carry file attachments (scripts, configs) that are pushed into the agent workspace automatically.
 - **Docker-deploy capability** — Agents can write and deploy their own docker-compose apps. Your marketing agent can literally ship its own tool.
 
 ### Self-Host & Operations
@@ -244,7 +245,6 @@ What's actively in development or planned next:
 
 ### In Progress
 - **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via Playwright MCP. Fill forms, scrape dynamic pages, interact with web UIs that have no API.
-- **Microsoft Graph MCP** — Native Office 365 integration: read/write Outlook mail, Teams messages, SharePoint files, OneDrive, and Calendar directly from agent tools.
 - **Per-Agent Model Selection** — Switch any agent to a different LLM (GPT-4o, Gemini, local Ollama) without restarting. Model choice persists per agent.
 - **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
 
