@@ -1540,6 +1540,7 @@ export interface ComputerUseSession {
   capabilities: string[];
   allowed_capabilities: string[];
   last_disconnected_at: number | null;
+  bridge_last_seen_at: number | null;
 }
 
 export interface CapabilityGroup {
