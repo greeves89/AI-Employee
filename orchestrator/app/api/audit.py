@@ -143,7 +143,7 @@ async def list_audit_logs(
                 "event_type": e.event_type,
                 "outcome": e.outcome,
                 "command": e.command,
-                "details": e.details,
+                "details": e.meta,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
             }
             for e in logs

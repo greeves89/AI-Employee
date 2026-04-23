@@ -26,14 +26,34 @@ def _get_task_router(
     return TaskRouter(db, redis, lb, docker_service=docker)
 
 
+async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
+    """Return agent IDs owned by user, or None if admin (sees all)."""
+    from app.models.user import UserRole
+    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+        return None
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+    owned = await db.execute(
+        select(Agent.id).where(
+            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+        )
+    )
+    shared = await db.execute(
+        select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
+    )
+    return list({row[0] for row in owned.all()} | {row[0] for row in shared.all()})
+
+
 @router.get("/", response_model=TaskListResponse)
 async def list_tasks(
     status: TaskStatus | None = None,
     agent_id: str | None = None,
     user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
 ):
-    tasks = await router_.list_tasks(status=status, agent_id=agent_id)
+    agent_ids = await _get_user_agent_ids(user, db) if hasattr(user, "role") else None
+    tasks = await router_.list_tasks(status=status, agent_id=agent_id, agent_ids=agent_ids)
     return TaskListResponse(
         tasks=[TaskResponse.model_validate(t) for t in tasks],
         total=len(tasks),

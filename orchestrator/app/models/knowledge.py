@@ -23,6 +23,7 @@ class KnowledgeEntry(Base):
     tags: Mapped[list] = mapped_column(JSON, default=list)  # ["project", "decision", ...]
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)  # agent_id or "user"
     updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     access_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -201,9 +201,14 @@ async def list_rules(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(ApprovalRule).order_by(ApprovalRule.category, ApprovalRule.id)
-    )
+    from app.models.user import UserRole
+    from sqlalchemy import or_
+    stmt = select(ApprovalRule).order_by(ApprovalRule.category, ApprovalRule.id)
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        stmt = stmt.where(
+            or_(ApprovalRule.created_by.is_(None), ApprovalRule.created_by == str(user.id))
+        )
+    result = await db.execute(stmt)
     rules = result.scalars().all()
     return {"rules": [_to_response(r) for r in rules]}
 
@@ -246,9 +251,13 @@ async def update_rule(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.audit_log import AuditLog, AuditEventType
+    from app.models.user import UserRole
     rule = await db.scalar(select(ApprovalRule).where(ApprovalRule.id == rule_id))
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        if rule.created_by and rule.created_by != str(user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
     changes = body.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(rule, field, value)
@@ -273,9 +282,13 @@ async def delete_rule(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.audit_log import AuditLog, AuditEventType
+    from app.models.user import UserRole
     rule = await db.scalar(select(ApprovalRule).where(ApprovalRule.id == rule_id))
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        if rule.created_by and rule.created_by != str(user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
     rule_name = rule.name
     rule_agent = rule.agent_id or "global"
     await db.delete(rule)

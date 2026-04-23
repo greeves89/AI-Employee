@@ -432,13 +432,18 @@ class TaskRouter:
             schedule.fail_count += 1
 
     async def list_tasks(
-        self, status: TaskStatus | None = None, agent_id: str | None = None
+        self,
+        status: TaskStatus | None = None,
+        agent_id: str | None = None,
+        agent_ids: list[str] | None = None,
     ) -> list[Task]:
         query = select(Task).order_by(Task.created_at.desc())
         if status:
             query = query.where(Task.status == status)
         if agent_id:
             query = query.where(Task.agent_id == agent_id)
+        elif agent_ids is not None:
+            query = query.where(Task.agent_id.in_(agent_ids))
         result = await self.db.execute(query)
         return list(result.scalars().all())
 

@@ -66,10 +66,22 @@ async def get_permission_packages(user=Depends(require_auth)):
 @router.get("/team/directory")
 async def get_team_directory(
     user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Get the team directory - all agents with their roles and status."""
+    from app.models.user import UserRole
     agents = await manager.list_agents()
+    if hasattr(user, "role") and user.role != UserRole.ADMIN:
+        from app.models.agent_access import AgentAccess
+        access_result = await db.execute(
+            select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
+        )
+        accessible_ids = {row[0] for row in access_result.all()}
+        agents = [
+            a for a in agents
+            if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+        ]
     directory = []
     for agent in agents:
         config = agent.config or {}

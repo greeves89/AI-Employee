@@ -619,6 +619,13 @@ async def list_agent_memories(
     db: AsyncSession = Depends(get_db),
 ):
     """List all memories for an agent (for the frontend Memory tab + agent API)."""
+    if hasattr(user, "role"):
+        from app.models.user import UserRole
+        from app.models.agent import Agent
+        if user.role != UserRole.ADMIN:
+            agent_obj = await db.get(Agent, agent_id)
+            if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
+                raise HTTPException(status_code=403, detail="Access denied")
     query = select(AgentMemory).where(AgentMemory.agent_id == agent_id)
     if category:
         query = query.where(AgentMemory.category == category)

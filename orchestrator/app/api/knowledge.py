@@ -140,12 +140,14 @@ async def create_entry(
     # Auto-extract tags from content if not provided
     all_tags = list(set(body.tags + _extract_tags(body.content)))
 
+    owner_id = str(user.id) if hasattr(user, "id") and str(user.id) != "__anonymous__" else None
     entry = KnowledgeEntry(
         title=body.title,
         content=body.content,
         tags=all_tags,
         created_by="user",
         updated_by="user",
+        user_id=owner_id,
     )
     db.add(entry)
     await db.commit()
@@ -161,10 +163,14 @@ async def update_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a knowledge entry."""
+    from app.models.user import UserRole
     result = await db.execute(select(KnowledgeEntry).where(KnowledgeEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        if entry.user_id and entry.user_id != str(user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
 
     if body.title is not None:
         entry.title = body.title
@@ -193,10 +199,14 @@ async def delete_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a knowledge entry."""
+    from app.models.user import UserRole
     result = await db.execute(select(KnowledgeEntry).where(KnowledgeEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        if entry.user_id and entry.user_id != str(user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
     await db.delete(entry)
     await db.commit()
     return {"deleted": entry_id}

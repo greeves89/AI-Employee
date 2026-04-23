@@ -21,6 +21,24 @@ from app.schemas.schedule import (
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
 
+async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
+    """Return agent IDs owned by user, or None if admin (sees all)."""
+    from app.models.user import UserRole
+    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+        return None
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+    owned = await db.execute(
+        select(Agent.id).where(
+            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+        )
+    )
+    shared = await db.execute(
+        select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
+    )
+    return list({row[0] for row in owned.all()} | {row[0] for row in shared.all()})
+
+
 async def _get_schedule(db: AsyncSession, schedule_id: str) -> Schedule:
     result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
@@ -29,9 +47,24 @@ async def _get_schedule(db: AsyncSession, schedule_id: str) -> Schedule:
     return schedule
 
 
+async def _check_schedule_access(schedule: Schedule, user, db: AsyncSession) -> None:
+    """Raise 403 if the calling user does not own the schedule's agent."""
+    from app.models.user import UserRole
+    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+        return
+    allowed = await _get_user_agent_ids(user, db)
+    if allowed is not None and schedule.agent_id not in allowed:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 @router.get("/", response_model=ScheduleListResponse)
 async def list_schedules(user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Schedule).order_by(Schedule.created_at.desc()))
+    query = select(Schedule).order_by(Schedule.created_at.desc())
+    if hasattr(user, "role"):
+        allowed = await _get_user_agent_ids(user, db)
+        if allowed is not None:
+            query = query.where(Schedule.agent_id.in_(allowed))
+    result = await db.execute(query)
     schedules = list(result.scalars().all())
     return ScheduleListResponse(
         schedules=[ScheduleResponse.from_schedule(s) for s in schedules],
@@ -68,6 +101,7 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
 @router.get("/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
+    await _check_schedule_access(schedule, user, db)
     return ScheduleResponse.from_schedule(schedule)
 
 
@@ -76,6 +110,7 @@ async def update_schedule(
     schedule_id: str, data: ScheduleUpdate, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db),
 ):
     schedule = await _get_schedule(db, schedule_id)
+    await _check_schedule_access(schedule, user, db)
 
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)
@@ -93,6 +128,7 @@ async def update_schedule(
 @router.delete("/{schedule_id}")
 async def delete_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
+    await _check_schedule_access(schedule, user, db)
     await db.delete(schedule)
     await db.commit()
     return {"status": "deleted", "schedule_id": schedule_id}
@@ -107,6 +143,7 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent)
     from app.services.redis_service import RedisService
 
     schedule = await _get_schedule(db, schedule_id)
+    await _check_schedule_access(schedule, user, db)
 
     redis = RedisService(os.environ.get("REDIS_URL", "redis://redis:6379"))
     await redis.connect()
@@ -138,6 +175,7 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent)
 @router.post("/{schedule_id}/pause")
 async def pause_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
+    await _check_schedule_access(schedule, user, db)
     schedule.enabled = False
     await db.commit()
     return {"status": "paused", "schedule_id": schedule_id}
@@ -146,6 +184,7 @@ async def pause_schedule(schedule_id: str, user=Depends(require_auth_or_agent), 
 @router.post("/{schedule_id}/resume")
 async def resume_schedule(schedule_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     schedule = await _get_schedule(db, schedule_id)
+    await _check_schedule_access(schedule, user, db)
     schedule.enabled = True
     now = datetime.now(timezone.utc)
     schedule.next_run_at = _calc_next_run(schedule, now)
