@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.dependencies import require_auth, require_auth_or_agent, verify_agent_token
 from app.models.agent import Agent
+from app.models.skill import Skill, SkillTaskUsage
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
 from app.schemas.task_rating import (
@@ -42,6 +43,16 @@ def _to_response(r: TaskRating) -> dict:
 
 class TaskSelfRateBody(BaseModel):
     rating: int  # 1-5
+    reflection: str = ""
+    skill_id: int | None = None          # which skill was used
+    skill_helpfulness: int | None = None  # 1-5: how much did the skill help?
+
+
+class SkillUsageBody(BaseModel):
+    task_id: str
+    skill_id: int
+    skill_helpfulness: int        # 1-5
+    agent_self_rating: int        # 1-5
     reflection: str = ""
 
 
@@ -95,6 +106,43 @@ async def task_self_rate(
         task_num_turns=task.num_turns,
     )
     db.add(rating)
+
+    # Record skill usage + update rolling avg_agent_duration on the skill
+    if body.skill_id and body.skill_helpfulness:
+        skill_result = await db.execute(select(Skill).where(Skill.id == body.skill_id))
+        skill = skill_result.scalar_one_or_none()
+        if skill:
+            time_saved: int | None = None
+            if skill.manual_duration_seconds and task.duration_ms:
+                agent_secs = task.duration_ms / 1000
+                time_saved = max(0, int(skill.manual_duration_seconds - agent_secs))
+
+            usage = SkillTaskUsage(
+                skill_id=body.skill_id,
+                task_id=task.id,
+                agent_id=agent_id,
+                skill_helpfulness=body.skill_helpfulness,
+                agent_self_rating=body.rating,
+                task_duration_ms=task.duration_ms,
+                task_cost_usd=task.cost_usd,
+                task_num_turns=task.num_turns,
+                time_saved_seconds=time_saved,
+            )
+            db.add(usage)
+
+            # Update rolling avg_agent_duration_ms on the skill
+            if task.duration_ms:
+                count = (skill.usage_count or 0)
+                prev_avg = skill.avg_agent_duration_ms or task.duration_ms
+                skill.avg_agent_duration_ms = (prev_avg * count + task.duration_ms) / (count + 1)
+
+            skill.usage_count = (skill.usage_count or 0) + 1
+
+            # Update skill avg_rating from helpfulness
+            prev_rating = skill.avg_rating or body.skill_helpfulness
+            n = skill.usage_count
+            skill.avg_rating = (prev_rating * (n - 1) + body.skill_helpfulness) / n
+
     await db.commit()
     await db.refresh(rating)
     return _to_response(rating)
@@ -170,6 +218,27 @@ async def rate_task(
         except Exception as e:
             logger.warning(f"Could not save feedback memory: {e}")
 
+    # If task has a linked SkillTaskUsage, merge the user_rating into it
+    try:
+        usage_result = await db.execute(
+            select(SkillTaskUsage)
+            .where(SkillTaskUsage.task_id == task_id)
+            .order_by(SkillTaskUsage.created_at.desc())
+            .limit(1)
+        )
+        usage = usage_result.scalar_one_or_none()
+        if usage:
+            usage.user_rating = body.rating
+            # Auto-trigger skill improvement if user rating dropped vs agent self-rating
+            if usage.agent_self_rating and body.rating < usage.agent_self_rating - 1:
+                logger.info(
+                    f"User rating {body.rating} significantly below agent self-rating "
+                    f"{usage.agent_self_rating} for skill {usage.skill_id} — will queue improvement"
+                )
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"Could not update skill usage user_rating: {e}")
+
     # If this task produced a skill, queue a follow-up to update it — for ANY feedback with text
     if body.comment:
         try:
@@ -219,6 +288,82 @@ async def rate_task(
             logger.warning(f"Could not queue skill-update follow-up: {e}")
 
     return _to_response(rating)
+
+
+@router.post("/skill-usage")
+async def record_skill_usage(
+    body: SkillUsageBody,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent explicitly records which skill it used for a task + combined quality rating.
+
+    Designed to be called by the agent at task completion when a skill was the main driver.
+    Updates skill avg_rating, avg_agent_duration_ms, usage_count, and computes time saved.
+    """
+    agent_id = auth["agent_id"]
+
+    if not 1 <= body.skill_helpfulness <= 5:
+        raise HTTPException(status_code=400, detail="skill_helpfulness must be 1-5")
+    if not 1 <= body.agent_self_rating <= 5:
+        raise HTTPException(status_code=400, detail="agent_self_rating must be 1-5")
+
+    task_result = await db.execute(select(Task).where(Task.id == body.task_id))
+    task = task_result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    skill_result = await db.execute(select(Skill).where(Skill.id == body.skill_id))
+    skill = skill_result.scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    # Deduplicate per task+skill
+    existing = await db.execute(
+        select(SkillTaskUsage).where(
+            SkillTaskUsage.task_id == body.task_id,
+            SkillTaskUsage.skill_id == body.skill_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Skill usage already recorded for this task")
+
+    time_saved: int | None = None
+    if skill.manual_duration_seconds and task.duration_ms:
+        agent_secs = task.duration_ms / 1000
+        time_saved = max(0, int(skill.manual_duration_seconds - agent_secs))
+
+    usage = SkillTaskUsage(
+        skill_id=body.skill_id,
+        task_id=body.task_id,
+        agent_id=agent_id,
+        skill_helpfulness=body.skill_helpfulness,
+        agent_self_rating=body.agent_self_rating,
+        task_duration_ms=task.duration_ms,
+        task_cost_usd=task.cost_usd,
+        task_num_turns=task.num_turns,
+        time_saved_seconds=time_saved,
+    )
+    db.add(usage)
+
+    # Update skill rolling metrics
+    count = skill.usage_count or 0
+    if task.duration_ms:
+        prev_avg = skill.avg_agent_duration_ms or float(task.duration_ms)
+        skill.avg_agent_duration_ms = (prev_avg * count + task.duration_ms) / (count + 1)
+    prev_rating = skill.avg_rating or float(body.skill_helpfulness)
+    skill.avg_rating = (prev_rating * count + body.skill_helpfulness) / (count + 1)
+    skill.usage_count = count + 1
+
+    await db.commit()
+
+    return {
+        "skill_id": body.skill_id,
+        "task_id": body.task_id,
+        "time_saved_seconds": time_saved,
+        "skill_avg_rating": round(skill.avg_rating, 2),
+        "skill_usage_count": skill.usage_count,
+    }
 
 
 @router.get("/agents/{agent_id}/ratings", response_model=AgentRatingsResponse)

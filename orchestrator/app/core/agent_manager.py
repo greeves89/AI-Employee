@@ -496,20 +496,33 @@ class AgentManager:
         mcp_map = {s.name: s.url for s in servers}
         return {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
 
-    async def _get_integration_env(self, agent_integrations: list[str]) -> dict[str, str]:
+    async def _get_integration_env(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:
         """Get environment variables for agent integrations (e.g., GitHub token)."""
         env: dict[str, str] = {}
         if "github" in agent_integrations:
             result = await self.db.execute(
                 select(OAuthIntegration).where(
-                    OAuthIntegration.provider == OAuthProvider.GITHUB
+                    OAuthIntegration.provider == OAuthProvider.GITHUB,
+                    OAuthIntegration.user_id.is_(None),
                 )
             )
             integration = result.scalar_one_or_none()
             if integration:
                 token = decrypt_token(integration.access_token_encrypted)
                 env["GITHUB_TOKEN"] = token
-                env["GH_TOKEN"] = token  # gh CLI uses GH_TOKEN
+                env["GH_TOKEN"] = token
+        if "microsoft" in agent_integrations and user_id:
+            from sqlalchemy import and_ as _sqland
+            result = await self.db.execute(
+                select(OAuthIntegration).where(
+                    _sqland(
+                        OAuthIntegration.provider == OAuthProvider.MICROSOFT,
+                        OAuthIntegration.user_id == user_id,
+                    )
+                )
+            )
+            if result.scalar_one_or_none():
+                env["MSGRAPH_ENABLED"] = "true"
         return env
 
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
@@ -547,7 +560,7 @@ class AgentManager:
         if mode == "custom_llm" and llm_config:
             # Custom LLM: LLM-specific env vars + integrations + MCP servers
             mcp_env = await self._get_custom_mcp_env()
-            integration_env = await self._get_integration_env(integrations or [])
+            integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
             env_vars.update({
                 "LLM_PROVIDER_TYPE": llm_config["provider_type"],
                 "LLM_API_ENDPOINT": llm_config["api_endpoint"],
@@ -568,7 +581,7 @@ class AgentManager:
             agent_provider = None  # Will be set from DB config after agent is created
             provider_env = self._build_provider_env(agent_provider)
             mcp_env = await self._get_custom_mcp_env()
-            integration_env = await self._get_integration_env(integrations or [])
+            integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
             env_vars.update({
                 **provider_env,
                 **mcp_env,
@@ -797,7 +810,7 @@ class AgentManager:
             llm_cfg = agent.llm_config
             api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
             mcp_env = await self._get_custom_mcp_env(agent_config=config)
-            integration_env = await self._get_integration_env(config.get("integrations", []))
+            integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
                 "LLM_API_ENDPOINT": llm_cfg.get("api_endpoint", ""),
@@ -816,7 +829,7 @@ class AgentManager:
             agent_provider = config.get("model_provider")
             provider_env = self._build_provider_env(agent_provider)
             mcp_env = await self._get_custom_mcp_env(agent_config=config)
-            integration_env = await self._get_integration_env(config.get("integrations", []))
+            integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 **provider_env,
                 **mcp_env,
@@ -942,7 +955,7 @@ class AgentManager:
             llm_cfg = agent.llm_config
             api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
             mcp_env = await self._get_custom_mcp_env(agent_config=config)
-            integration_env = await self._get_integration_env(config.get("integrations", []))
+            integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
                 "LLM_API_ENDPOINT": llm_cfg.get("api_endpoint", ""),
@@ -961,7 +974,7 @@ class AgentManager:
             agent_provider = config.get("model_provider")
             provider_env = self._build_provider_env(agent_provider)
             mcp_env = await self._get_custom_mcp_env(agent_config=config)
-            integration_env = await self._get_integration_env(config.get("integrations", []))
+            integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 **provider_env,
                 **mcp_env,

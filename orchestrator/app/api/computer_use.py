@@ -109,6 +109,7 @@ def _session_view(sid: str, s: dict) -> dict:
         "capabilities": s.get("capabilities", []),
         "allowed_capabilities": sorted(s.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
         "last_disconnected_at": s.get("last_disconnected_at"),
+        "bridge_last_seen_at": s.get("bridge_last_seen_at"),
     }
 
 
@@ -136,6 +137,9 @@ async def create_session(user=Depends(require_auth)):
         "pending_results": {},
         "allowed_capabilities": allowed,
         "last_disconnected_at": None,
+        # Heartbeat: updated on connect + every message. Used to detect
+        # NAT/WiFi drops that don't send TCP FIN (no WebSocketDisconnect fires).
+        "bridge_last_seen_at": None,
     }
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
     return {
@@ -329,6 +333,39 @@ async def send_command(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Session status (lightweight — lets UI distinguish "no screenshot yet" from "bridge gone") ──
+
+@router.get("/sessions/{session_id}/status")
+async def get_session_status(
+    session_id: str,
+    user=Depends(require_auth),
+):
+    """Return bridge connection state without triggering a screenshot.
+
+    Stale check: if bridge_last_seen_at is >20s ago the bridge is considered
+    gone even if bridge_connected is True (NAT/WiFi drop, no TCP FIN).
+    """
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(user.id) != session["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    now = time.time()
+    last_seen = session.get("bridge_last_seen_at")
+    stale = last_seen is None or (now - last_seen) > 20
+    connected = session["bridge_connected"] and not stale
+
+    return {
+        "bridge_connected": connected,
+        "bridge_last_seen_at": last_seen,
+        "last_disconnected_at": session.get("last_disconnected_at"),
+        "allowed_capabilities": sorted(session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
+        "platform": session.get("platform"),
+        "action_count": session["action_count"],
+    }
+
+
 # ── Screenshot endpoint (frontend live view) ──────────────────────────────────
 
 @router.get("/sessions/{session_id}/screenshot")
@@ -424,6 +461,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
 
     session["bridge_connected"] = True
     session["bridge_ws"] = websocket
+    session["bridge_last_seen_at"] = time.time()
     logger.info(f"Bridge connected for session {session_id} (user {user_id})")
 
     await websocket.send_text(json.dumps({
@@ -432,9 +470,24 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
         "allowed_capabilities": sorted(session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
     }))
 
+    async def _ping_loop():
+        """Send ping every 10s. NAT/WiFi drops don't send TCP FIN, so without
+        a heartbeat bridge_connected stays True forever after a network drop."""
+        try:
+            while True:
+                await asyncio.sleep(10)
+                await websocket.send_text(json.dumps({"type": "ping"}))
+        except Exception:
+            pass
+
+    ping_task = asyncio.create_task(_ping_loop())
+
     try:
         while True:
             raw = await websocket.receive_text()
+            # Update heartbeat timestamp on every incoming message
+            session["bridge_last_seen_at"] = time.time()
+
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
@@ -455,11 +508,12 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                 session["platform"] = msg.get("platform", "unknown")
 
             elif msg_type == "pong":
-                pass
+                pass  # bridge_last_seen_at already updated above
 
     except WebSocketDisconnect:
         logger.info(f"Bridge disconnected for session {session_id}")
     finally:
+        ping_task.cancel()
         session["bridge_connected"] = False
         session["bridge_ws"] = None
         session["last_disconnected_at"] = time.time()

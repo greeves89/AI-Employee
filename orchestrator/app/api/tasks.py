@@ -175,11 +175,16 @@ async def estimate_task_cost(
 async def get_task(
     task_id: str,
     user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
 ):
     task = await router_.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if hasattr(user, "role"):
+        allowed = await _get_user_agent_ids(user, db)
+        if allowed is not None and task.agent_id not in allowed:
+            raise HTTPException(status_code=403, detail="Access denied")
     return TaskResponse.model_validate(task)
 
 

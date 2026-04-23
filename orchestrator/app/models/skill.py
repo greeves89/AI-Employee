@@ -53,9 +53,13 @@ class Skill(Base, TimestampMixin):
     # Role-based auto-assign (skill auto-assigned to agents with matching roles)
     roles: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ["devops", "fullstack"]
 
+    # Time tracking — basis for ROI / time-savings analytics
+    manual_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)  # estimated manual effort
+
     # Usage & quality
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     avg_rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    avg_agent_duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)  # rolling avg of agent execution time
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)  # visible in marketplace
 
 
@@ -67,6 +71,39 @@ class AgentSkillAssignment(Base, TimestampMixin):
     agent_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     skill_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     assigned_by: Mapped[str] = mapped_column(String, default="user")  # "user", "auto:role", "auto:path", "agent"
+
+
+class SkillTaskUsage(Base):
+    """Records every time a skill was used during a task — with combined quality signals.
+
+    Populated when a task is rated (user or agent). Enables per-skill analytics:
+    time savings vs manual effort, quality trend, agent self-assessment vs user feedback.
+    """
+    __tablename__ = "skill_task_usages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), index=True, nullable=False)
+    task_id: Mapped[str] = mapped_column(String, ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=False)
+    agent_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+
+    # Ratings — all optional, filled in progressively
+    skill_helpfulness: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 1-5: how much did the skill help?
+    agent_self_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 1-5: agent's own task quality score
+    user_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)         # 1-5: human rating
+
+    # Task execution snapshot
+    task_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    task_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    task_num_turns: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Derived savings — filled when task completes if skill has manual_duration_seconds
+    time_saved_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
 
 
 class SkillFile(Base):

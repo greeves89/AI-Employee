@@ -16,6 +16,7 @@ class IntegrationStatus(BaseModel):
     scopes: str = ""
     available: bool  # True if client credentials are configured
     auth_type: str = "oauth"  # "oauth" or "pat"
+    per_user: bool = False  # True if each user needs their own OAuth login
 
 
 class IntegrationListResponse(BaseModel):

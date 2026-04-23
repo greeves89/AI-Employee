@@ -417,7 +417,8 @@ function SessionCard({
   onDelete: (id: string) => void;
   onCapabilitiesChange: (id: string, caps: string[]) => void;
 }) {
-  const isConnected = session.status === "connected";
+  const bridgeStale = session.bridge_last_seen_at !== null && (Date.now() / 1000 - session.bridge_last_seen_at) > 20;
+  const isConnected = session.status === "connected" && !bridgeStale;
   const wsUrl = `${wsBase}/ws/computer-use/bridge?session_id=${session.session_id}`;
 
   const [copiedWs, setCopiedWs] = useState(false);
@@ -448,6 +449,7 @@ function SessionCard({
       }
     } catch (e: unknown) {
       const status = (e as { status?: number })?.status;
+      console.warn(`[computer-use] screenshot fetch failed: HTTP ${status ?? "unknown"}`, e);
       setScreenshotError(status === 503 ? "disconnected" : "error");
     } finally {
       setScreenshotLoading(false);
