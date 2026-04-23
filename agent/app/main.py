@@ -163,6 +163,19 @@ def register_mcp_servers() -> None:
         else:
             print("[Agent] WARN: Failed to register Playwright MCP server")
 
+    # MS Graph MCP — Microsoft 365 (Outlook, Calendar, Teams, Planner, To-Do, OneDrive)
+    # Registered when MSGRAPH_ENABLED=true (set by orchestrator when microsoft integration exists)
+    if os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
+        env_args = [
+            "-e", f"ORCHESTRATOR_URL={settings.orchestrator_url}",
+            "-e", f"AGENT_ID={settings.agent_id}",
+            "-e", f"AGENT_TOKEN={settings.agent_token}",
+        ]
+        if _run_mcp_add(env_args + ["--", "msgraph", "node", "/opt/mcp/msgraph-server.mjs"]):
+            print("[Agent] Registered MS Graph MCP server")
+        else:
+            print("[Agent] WARN: Failed to register MS Graph MCP server")
+
     # Computer-Use Desktop Bridge MCP — local desktop control via bridge app
     bridge_url = os.environ.get("COMPUTER_USE_BRIDGE_MCP_URL", "")
     if bridge_url:

@@ -30,7 +30,7 @@ def _get_oauth_service(
 @router.get("/", response_model=IntegrationListResponse)
 async def list_integrations(user=Depends(require_auth), service: OAuthService = Depends(_get_oauth_service)):
     """List all OAuth providers with their connection status."""
-    integrations = await service.list_integrations()
+    integrations = await service.list_integrations(user_id=user.id)
     return IntegrationListResponse(
         integrations=[IntegrationStatus(**i) for i in integrations]
     )
@@ -44,7 +44,7 @@ async def get_auth_url(
 ):
     """Generate OAuth authorization URL for a provider."""
     try:
-        auth_url = await service.generate_auth_url(provider)
+        auth_url = await service.generate_auth_url(provider, user_id=user.id)
         return AuthUrlResponse(auth_url=auth_url, provider=provider)
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -82,8 +82,10 @@ async def disconnect_integration(
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Disconnect an OAuth integration."""
+    from app.models.oauth_integration import PER_USER_PROVIDERS
     try:
-        await service.disconnect(provider)
+        uid = user.id if provider in PER_USER_PROVIDERS else None
+        await service.disconnect(provider, user_id=uid)
         return {"status": "disconnected", "provider": provider}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -96,8 +98,10 @@ async def refresh_token(
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Manually refresh an OAuth token."""
+    from app.models.oauth_integration import PER_USER_PROVIDERS
     try:
-        token = await service.get_valid_token(provider)
+        uid = user.id if provider in PER_USER_PROVIDERS else None
+        await service.get_valid_token(provider, user_id=uid)
         return {"status": "refreshed", "provider": provider}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -109,7 +113,7 @@ async def get_token(
     user=Depends(require_admin),
     service: OAuthService = Depends(_get_oauth_service),
 ):
-    """Get a fresh decrypted token (admin only — for agent internal use)."""
+    """Get a fresh decrypted token (admin only — global token only)."""
     try:
         token = await service.get_valid_token(provider)
         return {"token": token, "provider": provider}
@@ -122,14 +126,25 @@ async def get_token_for_agent(
     provider: str,
     agent_info=Depends(verify_agent_token),
     service: OAuthService = Depends(_get_oauth_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a fresh OAuth token for an authenticated agent (HMAC auth).
 
-    Used by MCP servers running inside agent containers to call
-    external APIs (Gmail, Outlook, etc.) on behalf of the user.
+    For per-user providers (microsoft, google), looks up the agent's owner user_id
+    and returns that user's token. For global providers (github), returns the global token.
     """
+    from app.models.agent import Agent
+    from app.models.oauth_integration import PER_USER_PROVIDERS
+    from sqlalchemy import select
+
+    user_id: str | None = None
+    if provider in PER_USER_PROVIDERS:
+        agent = await db.scalar(select(Agent).where(Agent.id == agent_info["agent_id"]))
+        if agent:
+            user_id = agent.user_id
+
     try:
-        token = await service.get_valid_token(provider)
+        token = await service.get_valid_token(provider, user_id=user_id)
         return {"token": token, "provider": provider}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=f"No {provider} integration connected: {e}")
@@ -154,6 +169,7 @@ async def exchange_code_manual(
     try:
         # Strip URL fragment (everything after #) — user may accidentally copy it
         code = body.code.split("#")[0].strip()
+        # exchange_code reads user_id from the state payload stored in Redis
         integration = await service.exchange_code(provider, code, body.state)
         return {
             "status": "connected",
