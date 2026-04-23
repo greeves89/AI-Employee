@@ -85,30 +85,12 @@ Get a working platform in under 5 minutes.
 ### Install
 
 ```bash
-# 1. Clone
 git clone https://github.com/greeves89/AI-Employee.git
 cd AI-Employee
-
-# 2. Copy the community env template
-cp .env.community.example .env
-
-# 3. Generate required secrets
-python -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> .env
-echo "JWT_SECRET=$(openssl rand -base64 32)" >> .env
-echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)" >> .env
-
-# 4. Add your Claude token (OAuth or API key) to .env
-#    CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...   OR
-#    ANTHROPIC_API_KEY=sk-ant-api-...
-
-# 5. Start the stack
-docker compose -f docker-compose.community.yml up -d
-
-# 6. Open the UI
-open http://localhost:3000
+./scripts/setup.sh
 ```
 
-First login will walk you through creating an admin user, picking an agent template, and running your first task.
+The setup script handles everything: generates secrets, copies the env template, builds the agent image, and starts the stack. Open **http://localhost:3000** when it's done and create your admin account on first login.
 
 ### Updating
 
