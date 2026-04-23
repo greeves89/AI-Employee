@@ -15,6 +15,7 @@
 [Comparison](COMPARISON.md) ·
 [Templates](#-agent-templates) ·
 [Use Cases](#-use-cases) ·
+[Roadmap](#roadmap) ·
 [Contributing](CONTRIBUTING.md)
 
 </div>
@@ -30,6 +31,12 @@
   <img src="docs/assets/agents.png" alt="AI-Employee Agent Grid" width="49%" />
   <img src="docs/assets/tasks.png" alt="AI-Employee Task History" width="49%" />
   <p><em>Left: Agent grid with CPU/Memory monitoring &nbsp;·&nbsp; Right: Task history across all agents</em></p>
+</div>
+
+<div align="center">
+  <img src="docs/assets/approvals.png" alt="AI-Employee Approvals & Governance" width="49%" />
+  <img src="docs/assets/level-presets.png" alt="AI-Employee Autonomy Level Presets" width="49%" />
+  <p><em>Left: Approval request queue with risk levels &nbsp;·&nbsp; Right: L1–L4 autonomy whitelist editor</em></p>
 </div>
 
 ---
@@ -96,8 +103,7 @@ The setup script handles everything: generates secrets, copies the env template,
 
 ```bash
 git pull
-docker compose -f docker-compose.community.yml pull
-docker compose -f docker-compose.community.yml up -d
+./scripts/setup.sh
 ```
 
 Database migrations run automatically on startup. Your data is persisted in named Docker volumes.
@@ -231,6 +237,32 @@ Real scenarios AI-Employee is already used for:
 - **Internal docs assistant** — Researcher agent indexes company wiki, answers questions with citations, writes onboarding guides.
 - **Agency client reporting** — Project Manager agent compiles weekly client reports from Jira, Slack, and Google Analytics.
 - **Personal CEO assistant** — Executive Assistant agent prepares morning briefings, summarizes overnight email, suggests agenda for meetings.
+
+## Roadmap
+
+What's actively in development or planned next:
+
+### In Progress
+- **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via Playwright MCP. Fill forms, scrape dynamic pages, interact with web UIs that have no API.
+- **Microsoft Graph MCP** — Native Office 365 integration: read/write Outlook mail, Teams messages, SharePoint files, OneDrive, and Calendar directly from agent tools.
+- **Per-Agent Model Selection** — Switch any agent to a different LLM (GPT-4o, Gemini, local Ollama) without restarting. Model choice persists per agent.
+- **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
+
+### Planned
+- **Task & Skill Analytics** — Dashboard showing task success rates, average cost/duration, skill usage stats, and rating trends. Identify which agents and skills perform best.
+- **Autonomy Level → Sudo Package coupling** — Setting an agent to L1 automatically applies minimal OS permissions; L4 grants full root. One setting controls both prompt whitelist and container permissions.
+- **SSO / SAML** — Enterprise single sign-on via SAML 2.0 and OIDC. Map identity provider groups to AI-Employee roles.
+- **Multi-tenant agent assignment** — Admins assign specific agents to specific users or teams. Fine-grained access control beyond the current RLS model.
+- **Mobile PWA** — Installable progressive web app for iOS/Android with push notifications for approval requests and task completions.
+- **Webhook triggers** — Trigger agent tasks from external events (GitHub PR, Jira ticket, form submission) via configurable inbound webhooks.
+- **Skill ratings analytics** — Aggregate skill performance across all agents: which skills are used most, highest/lowest rated, most often replaced.
+
+### Community Requested
+- Voice-to-task via Telegram (hands-free task submission)
+- Agent-to-agent file handoff notifications
+- DATEV / Lexware export improvements for tax workflows
+
+---
 
 ## Configuration
 
