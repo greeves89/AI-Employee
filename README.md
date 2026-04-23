@@ -143,9 +143,11 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 ### Governance & Compliance
 
-- **Approval rules** — Define natural-language rules like *"ask before spending more than 50 EUR"*, *"get sign-off before emailing external clients"*, or *"always confirm before deleting files"*. Agents call the `request_approval` MCP tool automatically.
-- **Inline Telegram approvals** — Approve or reject with a single button tap.
-- **Audit logging** — Every agent action, tool call, and user interaction is logged with full context.
+- **Autonomy Levels L1–L4** — Assign each agent a level that defines exactly what it may do without asking. L1 = read-only research, L2 = recommendations + workspace writes, L3 = full execution (shell, packages), L4 = fully autonomous. The level is enforced via a whitelist injected into every prompt.
+- **Whitelist-based approval model** — Instead of listing what agents must ask about (blacklist), you define what they *may* do freely. Everything outside the whitelist automatically triggers an approval request — no gaps, no forgotten rules.
+- **DB-backed level presets** — The allowed-action sets per level are stored in the database and editable in the UI. Add domain-specific permissions to a level without touching code. Seeded automatically on first startup.
+- **Approval rules & inline Telegram approvals** — Define additional natural-language rules on top of the level preset. Agents call the `request_approval` MCP tool and wait. Approve or deny with a single Telegram button tap.
+- **Full governance audit trail** — Every governance event is written to `audit_logs`: approval requests, approvals/denials, level changes, rule edits, preset changes. Enterprise-ready traceability out of the box.
 - **Multi-tenant RLS** — PostgreSQL Row-Level Security on 9 user-scoped tables. Users only ever see their own data, enforced at the database layer.
 - **DSGVO-ready** — All embeddings generated locally, all data stays on your infrastructure, data export and deletion endpoints included.
 
