@@ -1,7 +1,7 @@
 """Add cron_expression to schedules + make interval_seconds nullable
 
 Revision ID: v6p7q8r9s0t1
-Revises: u5o6p7q8r9s0
+Revises: t4n5o6p7q8r9
 Create Date: 2026-04-18
 
 Adds an optional cron_expression column to the schedules table.
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "v6p7q8r9s0t1"
-down_revision = "u5o6p7q8r9s0"
+down_revision = "t4n5o6p7q8r9"
 branch_labels = None
 depends_on = None
 

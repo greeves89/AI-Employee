@@ -160,6 +160,9 @@ export function CreateAgentModal({
   // Mode selection
   const [mode, setMode] = useState<AgentMode>("claude_code");
 
+  // Autonomy level
+  const [autonomyLevel, setAutonomyLevel] = useState("l3");
+
   // Custom LLM fields
   const [llmProvider, setLlmProvider] = useState<LLMProviderType>("openai");
   const [llmEndpoint, setLlmEndpoint] = useState("https://api.openai.com/v1");
@@ -181,6 +184,7 @@ export function CreateAgentModal({
       setBudgetUsd("");
       setError(null);
       setMode("claude_code");
+      setAutonomyLevel("l3");
       setLlmProvider("openai");
       setLlmEndpoint("https://api.openai.com/v1");
       setLlmApiKey("");
@@ -289,6 +293,7 @@ export function CreateAgentModal({
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           "custom_llm",
           llmConfig,
+          autonomyLevel,
         );
       } else {
         await api.createAgent(
@@ -298,6 +303,8 @@ export function CreateAgentModal({
           selectedPermissions.length > 0 ? selectedPermissions : undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           "claude_code",
+          undefined,
+          autonomyLevel,
         );
       }
       setName("");
@@ -729,6 +736,29 @@ export function CreateAgentModal({
                             </div>
                             <p className="text-[11px] text-muted-foreground/50 mt-1">
                               Max. Kosten fuer diesen Agent. Ohne Angabe: unbegrenzt.
+                            </p>
+                          </div>
+
+                          {/* Autonomy Level */}
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                              Autonomie-Level
+                            </label>
+                            <select
+                              value={autonomyLevel}
+                              onChange={(e) => setAutonomyLevel(e.target.value)}
+                              className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                            >
+                              <option value="l1">L1 — Nur lesen &amp; suchen</option>
+                              <option value="l2">L2 — Empfehlungen erstellen</option>
+                              <option value="l3">L3 — Aktionen mit Freigabe (Standard)</option>
+                              <option value="l4">L4 — Vollstaendig autonom</option>
+                            </select>
+                            <p className="mt-1 text-[11px] text-muted-foreground/60">
+                              {autonomyLevel === "l1" && "Agent kann nur lesen und suchen — keine Aktionen."}
+                              {autonomyLevel === "l2" && "Agent erstellt Empfehlungen und Entwuerfe — fuehrt nichts aus."}
+                              {autonomyLevel === "l3" && "Agent fragt vor jeder Aktion um Erlaubnis (empfohlen)."}
+                              {autonomyLevel === "l4" && "Agent handelt vollstaendig eigenstnadig ohne Rueckfragen."}
                             </p>
                           </div>
 

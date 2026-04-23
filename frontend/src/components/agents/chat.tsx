@@ -177,6 +177,16 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [totalCost, setTotalCost] = useState(0);
   const [totalTurns, setTotalTurns] = useState(0);
+
+  // L3 approval polling
+  interface PendingApproval {
+    approval_id: string;
+    tool: string;
+    reasoning: string;
+    risk_level: string;
+    agent_id: string;
+  }
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [messageCount, setMessageCount] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -364,15 +374,17 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
 
     ws.onclose = (event) => {
       setIsConnected(false);
-      // Don't reconnect if we intentionally closed (e.g., cleanup)
+      // Don't reconnect if we intentionally closed (e.g., navigation / unmount)
       if (intentionalClose.current) {
         intentionalClose.current = false;
         return;
       }
-      if (event.code === 4004 || event.code === 4010) {
+      // 4001 = auth failure (permanent), 4004 = agent not found (permanent)
+      // 4010 = container stopped/restarting → treat as temporary, keep retrying
+      if (event.code === 4001 || event.code === 4004) {
         setConnectionFailed(true);
         setMessages((prev) => [
-          ...prev,
+          ...prev.filter((m) => m.id !== "reconnecting"),
           {
             id: "agent-unavailable",
             role: "error",
@@ -385,6 +397,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       reconnectAttempts.current++;
       if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 10000);
+        const isContainerDown = event.code === 4010;
         setMessages((prev) => {
           const filtered = prev.filter((m) => m.id !== "reconnecting");
           return [
@@ -392,7 +405,9 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             {
               id: "reconnecting",
               role: "system",
-              content: `Reconnecting... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
+              content: isContainerDown
+                ? `Agent container is starting… reconnecting (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`
+                : `Reconnecting... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
               timestamp: new Date().toISOString(),
             },
           ];
@@ -780,6 +795,21 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
     return () => clearInterval(interval);
   }, [isWaiting, messages, thinkingStartTime]);
 
+  // Poll for pending L3 approvals when agent is working
+  useEffect(() => {
+    if (!isWaiting) { setPendingApproval(null); return; }
+    const poll = setInterval(async () => {
+      try {
+        const res = await fetch(`${getApiUrl()}/api/v1/approvals/pending`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const agentApprovals = (data.approvals || []).filter((a: PendingApproval) => a.agent_id === agentId);
+        setPendingApproval(agentApprovals[0] || null);
+      } catch {}
+    }, 3000);
+    return () => clearInterval(poll);
+  }, [isWaiting, agentId]);
+
   const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
   const contextLimit = 200000;
   const contextPercent = Math.min((estimatedTokens / contextLimit) * 100, 100);
@@ -905,6 +935,48 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* L3 Approval Request Banner */}
+      {pendingApproval && (
+        <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-300">Freigabe erforderlich</p>
+              <p className="mt-0.5 text-xs text-amber-400/80">{pendingApproval.tool}</p>
+              {pendingApproval.reasoning && (
+                <p className="mt-1 text-xs text-muted-foreground">{pendingApproval.reasoning}</p>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={async () => {
+                  await fetch(`${getApiUrl()}/api/v1/approvals/${pendingApproval.approval_id}/approve`, {
+                    method: "POST", credentials: "include"
+                  });
+                  setPendingApproval(null);
+                }}
+                className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30"
+              >
+                Freigeben
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch(`${getApiUrl()}/api/v1/approvals/${pendingApproval.approval_id}/deny`, {
+                    method: "POST", credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ decision: "deny", reason: "Vom Nutzer abgelehnt" })
+                  });
+                  setPendingApproval(null);
+                }}
+                className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30"
+              >
+                Ablehnen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input area */}
       <div className="border-t border-border p-4">

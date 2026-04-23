@@ -193,7 +193,7 @@ class DockerService:
             for c in containers
         ]
 
-    def exec_in_container(self, container_id: str, cmd: str, user: str | None = None) -> tuple[int, str]:
+    def exec_in_container(self, container_id: str, cmd: str | list, user: str | None = None) -> tuple[int, str]:
         container = self.client.containers.get(container_id)
         kwargs = {"demux": True}
         if user:

@@ -17,26 +17,29 @@ BLOCKED_EXTENSIONS = {
 }
 
 
+_WORKSPACE_ROOT = "/workspace"
+
+
 def _validate_path(path: str) -> str:
-    """Validate and sanitize a container file path."""
-    # Null byte injection check
+    """Validate a container file path and confirm it stays within /workspace."""
     if "\x00" in path:
         raise ValueError("Null bytes not allowed in path")
 
-    # Block path traversal (normalized check)
-    normalized = os.path.normpath(path)
-    if ".." in normalized.split("/"):
-        raise ValueError("Path traversal not allowed")
-
-    # Must be absolute
     if not path.startswith("/"):
         raise ValueError("Path must be absolute")
 
-    # Block overly long paths
     if len(path) > 4096:
         raise ValueError("Path too long")
 
-    return shlex.quote(path)
+    # Resolve .. *first*, then check confinement — this is the correct order.
+    # Checking for ".." in the raw string is insufficient because normpath
+    # strips them before we can catch traversal like /workspace/../etc.
+    normalized = os.path.normpath(path)
+    if normalized != _WORKSPACE_ROOT and not normalized.startswith(_WORKSPACE_ROOT + "/"):
+        raise ValueError("Path must be within /workspace")
+
+    # Return the normalized path (not raw input) so callers always get a clean path
+    return normalized
 
 
 def _validate_filename(filename: str) -> str:
@@ -72,12 +75,14 @@ class FileManager:
 
     def list_directory(self, container_id: str, path: str = "/workspace") -> list[dict]:
         safe_path = _validate_path(path)
-        # Use -not -type l to exclude symlinks from listing for security
-        cmd = (
-            f'find {safe_path} -maxdepth 1 -not -path {safe_path} -not -type l '
-            f'-printf "%y|%s|%T@|%f\\n" 2>/dev/null | sort'
+        # Pass args as list to avoid shell interpretation / nested-quoting injection
+        exit_code, output = self.docker.exec_in_container(
+            container_id,
+            ["find", safe_path, "-maxdepth", "1",
+             "-not", "-path", safe_path,
+             "-not", "-type", "l",
+             "-printf", "%y|%s|%T@|%f\n"],
         )
-        exit_code, output = self.docker.exec_in_container(container_id, f"bash -c '{cmd}'")
 
         entries = []
         for line in output.strip().split("\n"):
@@ -97,20 +102,20 @@ class FileManager:
                     "path": f"{path.rstrip('/')}/{name}",
                 }
             )
+        entries.sort(key=lambda e: e["name"])
 
         return entries
 
     def read_file(self, container_id: str, file_path: str) -> bytes:
-        _validate_path(file_path)
-        # Verify it's not a symlink before reading
-        safe_path = shlex.quote(file_path)
+        validated = _validate_path(file_path)
+        # Verify it's not a symlink before reading (list args — no shell injection)
         exit_code, output = self.docker.exec_in_container(
-            container_id, f"bash -c 'test -L {safe_path} && echo SYMLINK || echo OK'"
+            container_id, ["bash", "-c", f"test -L {shlex.quote(validated)} && echo SYMLINK || echo OK"]
         )
         if output.strip() == "SYMLINK":
             raise ValueError("Cannot read symlinks for security reasons")
 
-        return self.docker.get_file_from_container(container_id, file_path)
+        return self.docker.get_file_from_container(container_id, validated)
 
     async def upload_files(
         self, container_id: str, target_path: str, files: list[tuple[str, bytes]]
@@ -148,9 +153,7 @@ class FileManager:
             )
 
         safe_path = _validate_path(target_path)
-        self.docker.exec_in_container(
-            container_id, f"mkdir -p {safe_path}"
-        )
+        self.docker.exec_in_container(container_id, ["mkdir", "-p", safe_path])
 
         self.docker.write_files_in_container(container_id, target_path, files)
         logger.info(f"Uploaded {len(files)} files ({total_size} bytes) to {target_path}")
@@ -158,8 +161,9 @@ class FileManager:
 
     def get_file_info(self, container_id: str, file_path: str) -> dict:
         safe_path = _validate_path(file_path)
-        cmd = f'stat -c "%s|%Y|%F" {safe_path} 2>/dev/null'
-        exit_code, output = self.docker.exec_in_container(container_id, f"bash -c '{cmd}'")
+        exit_code, output = self.docker.exec_in_container(
+            container_id, ["stat", "-c", "%s|%Y|%F", safe_path]
+        )
 
         if exit_code != 0:
             raise FileNotFoundError(f"File not found: {file_path}")

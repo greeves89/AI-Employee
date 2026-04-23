@@ -10,7 +10,7 @@ import {
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
-  Settings, Package, ShieldOff, Check, ListTodo,
+  Settings, Package, ShieldOff, ShieldAlert, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
 } from "lucide-react";
@@ -1035,6 +1035,26 @@ function AgentSettings({
 
   const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
 
+  // Autonomy level state
+  const [autonomyLevel, setAutonomyLevel] = useState(agent.autonomy_level ?? "l3");
+  const [autonomySaving, setAutonomySaving] = useState(false);
+  const autonomyChanged = autonomyLevel !== (agent.autonomy_level ?? "l3");
+
+  const handleAutonomySave = async () => {
+    setAutonomySaving(true);
+    setMessage(null);
+    try {
+      await api.setAgentAutonomyLevel(agentId, autonomyLevel);
+      setMessage({ type: "success", text: "Autonomie-Level aktualisiert. Restart erforderlich." });
+      const updated = await api.getAgent(agentId);
+      onUpdated(updated as Agent);
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Fehler" });
+    } finally {
+      setAutonomySaving(false);
+    }
+  };
+
   // Webhook state
   const [webhookEnabled, setWebhookEnabled] = useState(agent.webhook_enabled ?? false);
   const [webhookToken, setWebhookToken] = useState<string | null>(agent.webhook_token ?? null);
@@ -1100,6 +1120,71 @@ function AgentSettings({
     <div className="space-y-6 overflow-auto h-full pb-4">
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
+
+      {/* Autonomy Level */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-400" />
+            <span className="text-sm font-medium">Autonomie-Level</span>
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+              autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+              autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+              autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
+            )}>
+              {autonomyLevel.toUpperCase()}
+            </span>
+          </div>
+          {autonomyChanged && (
+            <button
+              onClick={handleAutonomySave}
+              disabled={autonomySaving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-amber-500 disabled:opacity-40 transition-all"
+            >
+              {autonomySaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Speichern
+            </button>
+          )}
+        </div>
+        <div className="p-5 space-y-3">
+          {[
+            { value: "l1", label: "L1 — Nur lesen & suchen", desc: "Agent kann nur lesen und suchen — keine Aktionen.", color: "border-blue-500/30 bg-blue-500/[0.06] text-blue-400" },
+            { value: "l2", label: "L2 — Empfehlungen erstellen", desc: "Agent erstellt Empfehlungen und Entwuerfe — fuehrt nichts aus.", color: "border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-400" },
+            { value: "l3", label: "L3 — Aktionen mit Freigabe", desc: "Agent fragt vor jeder Aktion um Erlaubnis (empfohlen).", color: "border-amber-500/30 bg-amber-500/[0.06] text-amber-400" },
+            { value: "l4", label: "L4 — Vollstaendig autonom", desc: "Agent handelt eigenstaendig ohne Rueckfragen.", color: "border-red-500/30 bg-red-500/[0.06] text-red-400" },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setAutonomyLevel(opt.value)}
+              className={cn(
+                "w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200",
+                autonomyLevel === opt.value
+                  ? opt.color
+                  : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
+              )}
+            >
+              <div className="flex-1 min-w-0">
+                <span className={cn("text-sm font-medium", autonomyLevel === opt.value ? "" : "text-muted-foreground")}>
+                  {opt.label}
+                </span>
+                <p className="text-xs text-muted-foreground/70 mt-0.5">{opt.desc}</p>
+              </div>
+              <div className={cn(
+                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all mt-0.5",
+                autonomyLevel === opt.value ? "border-current bg-current" : "border-foreground/20"
+              )}>
+                {autonomyLevel === opt.value && <Check className="h-3 w-3 text-background" />}
+              </div>
+            </button>
+          ))}
+          <p className="text-[11px] text-muted-foreground/50 pt-1">
+            Aenderungen werden nach dem naechsten Neustart des Agents wirksam.
+          </p>
+        </div>
+      </div>
 
       {/* Model Selection (Claude Code agents) */}
       {agent.mode === "claude_code" && (

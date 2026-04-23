@@ -13,18 +13,28 @@ global system prompt.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "u5o6p7q8r9s0"
+revision = "u5o6p7q8r9s0b"
 down_revision = "t4n5o6p7q8r9"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "agent_templates",
-        sa.Column("claude_md", sa.Text(), nullable=False, server_default=""),
+    # Column may already exist from b1b4f9d7981f migration; add only if missing
+    from alembic import op as _op
+    conn = _op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='agent_templates' AND column_name='claude_md'"
+        )
     )
+    if not result.fetchone():
+        op.add_column(
+            "agent_templates",
+            sa.Column("claude_md", sa.Text(), nullable=False, server_default=""),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("agent_templates", "claude_md")
+    pass  # column managed by b1b4f9d7981f
