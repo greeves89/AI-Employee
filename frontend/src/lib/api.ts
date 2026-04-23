@@ -1101,6 +1101,8 @@ export interface MarketplaceSkill {
   roles: string[] | null;
   usage_count: number;
   avg_rating: number | null;
+  avg_agent_duration_ms: number | null;
+  manual_duration_seconds: number | null;
   is_public: boolean;
   assigned_agents: string[];
   assigned_to_agent?: boolean;
@@ -1623,4 +1625,47 @@ export async function startMeetingRoom(
 
 export async function stopMeetingRoom(id: string): Promise<{ status: string }> {
   return fetchJSON(`${getBase()}/meeting-rooms/${id}/stop`, { method: "POST" });
+}
+
+// Analytics
+export async function getAnalyticsOverview(days = 30) {
+  return fetchJSON<{
+    period_days: number;
+    total_tasks: number;
+    completed_tasks: number;
+    success_rate_pct: number;
+    total_cost_usd: number;
+    avg_duration_ms: number;
+    total_time_saved_seconds: number;
+    active_agents: number;
+    avg_task_rating: number | null;
+    daily_tasks: { date: string; count: number; cost: number }[];
+  }>(`${getBase()}/analytics/overview?days=${days}`);
+}
+
+export async function getAnalyticsSkills(days = 30) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return fetchJSON<{ period_days: number; skills: any[] }>(`${getBase()}/analytics/skills?days=${days}`);
+}
+
+export async function getAnalyticsAgents(days = 30) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return fetchJSON<{ period_days: number; agents: any[] }>(`${getBase()}/analytics/agents?days=${days}`);
+}
+
+export async function getSkillTrend(skillId: number, days = 60) {
+  return fetchJSON<{
+    skill_id: number;
+    skill_name: string;
+    manual_duration_seconds: number | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    trend: any[];
+  }>(`${getBase()}/analytics/skills/${skillId}/trend?days=${days}`);
+}
+
+export async function updateSkillManualDuration(skillId: number, seconds: number | null) {
+  return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/manual-duration`, {
+    method: "PATCH",
+    body: JSON.stringify({ manual_duration_seconds: seconds }),
+  });
 }

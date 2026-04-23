@@ -29,6 +29,7 @@ import {
   ChevronDown,
   Bell,
   Star,
+  BarChart3,
 } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
@@ -58,6 +59,7 @@ const navGroups: NavGroup[] = [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
       { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
       { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
+      { href: "/analytics", label: "Analytics", icon: BarChart3, simpleVisible: true },
     ],
   },
   {

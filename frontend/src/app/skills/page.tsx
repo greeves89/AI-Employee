@@ -48,6 +48,10 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [manualDuration, setManualDuration] = useState<string>(
+    skill.manual_duration_seconds ? String(Math.round(skill.manual_duration_seconds / 60)) : ""
+  );
+  const [savingDuration, setSavingDuration] = useState(false);
 
   const loadFiles = useCallback(async () => {
     if (!skill.id) return;
@@ -108,6 +112,20 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
   const cfg = CATEGORY_CONFIG[skill.category?.toUpperCase()] || CATEGORY_CONFIG.ROUTINE;
   const Icon = cfg.icon;
 
+  const handleSaveDuration = async () => {
+    if (!skill.id) return;
+    setSavingDuration(true);
+    try {
+      const minutes = parseFloat(manualDuration);
+      const seconds = isNaN(minutes) || manualDuration === "" ? null : Math.round(minutes * 60);
+      await api.updateSkillManualDuration(skill.id, seconds);
+    } catch {
+      // ignore
+    } finally {
+      setSavingDuration(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-3xl rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl flex flex-col max-h-[90vh]">
@@ -153,6 +171,36 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
               </div>
             )}
           </div>
+
+          {/* Manual duration for ROI analytics */}
+          {skill.id && (
+            <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
+              <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Manuelle Dauer (Minuten)</p>
+              <p className="text-[11px] text-muted-foreground/50">
+                Wie lange würde diese Aufgabe manuell dauern? Basis für die Zeitersparnis-Berechnung in Analytics.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="z.B. 30"
+                  value={manualDuration}
+                  onChange={(e) => setManualDuration(e.target.value)}
+                  className="w-28 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-sm focus:outline-none focus:border-primary/50"
+                />
+                <span className="text-xs text-muted-foreground">min</span>
+                <button
+                  onClick={handleSaveDuration}
+                  disabled={savingDuration}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-all disabled:opacity-50"
+                >
+                  {savingDuration ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  Speichern
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Instructions preview */}
           {skill.content && (

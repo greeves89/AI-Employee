@@ -97,6 +97,8 @@ def _to_response(skill: Skill, assigned_agents: list[str] | None = None) -> dict
         "roles": skill.roles,
         "usage_count": skill.usage_count,
         "avg_rating": skill.avg_rating,
+        "avg_agent_duration_ms": skill.avg_agent_duration_ms,
+        "manual_duration_seconds": skill.manual_duration_seconds,
         "is_public": skill.is_public,
         "assigned_agents": assigned_agents or [],
         "created_at": skill.created_at.isoformat() if skill.created_at else None,
@@ -512,6 +514,28 @@ async def rate_skill(
     await db.commit()
     await db.refresh(skill)
     return _to_response(skill)
+
+
+class ManualDurationBody(BaseModel):
+    manual_duration_seconds: int | None = None
+
+
+@router.patch("/marketplace/{skill_id}/manual-duration")
+async def set_skill_manual_duration(
+    skill_id: int,
+    body: ManualDurationBody,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the estimated manual effort for a skill — used for ROI / time-savings analytics."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    skill.manual_duration_seconds = body.manual_duration_seconds
+    await db.commit()
+    await db.refresh(skill)
+    return {"id": skill.id, "manual_duration_seconds": skill.manual_duration_seconds}
 
 
 # --- File Attachments ---
