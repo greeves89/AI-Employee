@@ -135,9 +135,9 @@ services:
       #     project-repo:/srv/repos/myproject:/workspace/repo:rw
       #     shared-output:/data/agent-output:/output:rw
       AGENT_MOUNT_CATALOG: ${AGENT_MOUNT_CATALOG:-}
-      AGENT_VERSION: "1.29.0"
     volumes:
       - ./orchestrator:/app
+      - ./VERSION:/VERSION:ro
       - ai-employee-shared:/shared
       - ${HOME}/.ai-employee:/host-auth:ro
     deploy:
