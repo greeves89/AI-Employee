@@ -325,7 +325,6 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            <UserMenu />
             <NotificationBell variant="sidebar" />
             <button
               onClick={toggleTheme}
@@ -380,6 +379,7 @@ export function Sidebar() {
                 )}
               </Link>
             )}
+            <UserMenu />
           </>
         )}
       </div>
@@ -433,7 +433,7 @@ export function Sidebar() {
                 </div>
                 <div className="flex-1 overflow-y-auto px-6 py-4">
                   {aboutChangelog ? (
-                    <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06]">
+                    <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06]">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
                     </div>
                   ) : (
