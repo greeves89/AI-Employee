@@ -263,14 +263,15 @@ export default function IntegrationsPage() {
                                   </button>
                                 </div>
                               </li>
-                              <li>Under <strong className="text-foreground">API Permissions</strong> add Delegated scopes:<br />
-                                <span className="text-[10px] font-mono text-blue-300/80">Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, User.Read, offline_access</span>
+                              <li>Under <strong className="text-foreground">API Permissions</strong> → Add permission → Microsoft Graph → Delegated:<br />
+                                <span className="text-[10px] font-mono text-blue-300/80">User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access</span>
+                                <p className="mt-1 text-amber-400/80">→ Then click <strong>&quot;Grant admin consent&quot;</strong></p>
                               </li>
                               <li>Under <strong className="text-foreground">Certificates &amp; Secrets</strong> create a new Client Secret</li>
-                              <li>Copy <strong className="text-foreground">Application (client) ID</strong> and the secret into <strong className="text-foreground">Settings → OAuth</strong></li>
+                              <li>Enter <strong className="text-foreground">Client ID &amp; Secret</strong> in <strong className="text-foreground">Settings → OAuth → Microsoft 365</strong></li>
                             </ol>
                             <p className="text-[10px] text-muted-foreground/60">
-                              Each user must sign in individually — tokens are stored per user, not shared.
+                              Admin setup is done once. Each user then connects their own account here — tokens are stored per user, not shared.
                             </p>
                           </div>
                         )}

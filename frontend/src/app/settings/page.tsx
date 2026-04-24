@@ -6,7 +6,7 @@ import {
   Key, MessageSquare, Save, Loader2,
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
-  ExternalLink, Copy, LogIn,
+  ExternalLink, Copy, LogIn, Info, ChevronRight,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -141,6 +141,7 @@ export default function SettingsPage() {
   const [googleClientSecret, setGoogleClientSecret] = useState("");
   const [microsoftClientId, setMicrosoftClientId] = useState("");
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
+  const [msGuideExpanded, setMsGuideExpanded] = useState(false);
   const [appleClientId, setAppleClientId] = useState("");
   const [appleTeamId, setAppleTeamId] = useState("");
   // Claude OAuth login
@@ -891,14 +892,16 @@ export default function SettingsPage() {
                       <Globe className="h-4 w-4 text-blue-400" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold">Microsoft OAuth</h3>
-                      <p className="text-[11px] text-muted-foreground/60">Outlook, OneDrive, Teams</p>
+                      <h3 className="text-sm font-semibold">Microsoft 365 — SSO + MS Graph</h3>
+                      <p className="text-[11px] text-muted-foreground/60">
+                        Enables: Login with Microsoft &amp; per-user M365 integration (Outlook, Teams, Calendar, OneDrive, To-Do)
+                      </p>
                     </div>
                   </div>
                   {settings?.has_microsoft_oauth ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      Configured
+                      Active
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
@@ -907,7 +910,66 @@ export default function SettingsPage() {
                     </span>
                   )}
                 </div>
-                <div className="p-5 grid grid-cols-2 gap-3">
+
+                {/* Azure App Registration guide */}
+                <div className="px-5 pt-4 pb-2">
+                  <button
+                    onClick={() => setMsGuideExpanded(!msGuideExpanded)}
+                    className="flex items-center gap-2 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                    Azure App Registration — Setup-Anleitung
+                    <ChevronRight className={cn("h-3 w-3 transition-transform", msGuideExpanded && "rotate-90")} />
+                  </button>
+                  {msGuideExpanded && (
+                    <div className="mt-3 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3 text-xs text-muted-foreground">
+                      <p className="text-[11px] font-medium text-blue-300">
+                        Einmalige Einrichtung durch den Admin. Danach können sich alle User per Microsoft anmelden UND ihre M365-Konten verbinden.
+                      </p>
+                      <ol className="list-decimal list-inside space-y-2.5">
+                        <li>
+                          <strong className="text-foreground">portal.azure.com</strong> → Azure Active Directory → App-Registrierungen → Neue Registrierung
+                        </li>
+                        <li>
+                          Unter <strong className="text-foreground">Authentifizierung</strong> → Plattform hinzufügen → Web → folgende <strong className="text-foreground">zwei</strong> Redirect-URIs eintragen:
+                          {[
+                            `${typeof window !== "undefined" ? window.location.origin : "https://deine-domain.com"}/api/v1/auth/sso/microsoft/callback`,
+                            `${typeof window !== "undefined" ? window.location.origin : "https://deine-domain.com"}/api/v1/integrations/microsoft/callback`,
+                          ].map((url) => (
+                            <div key={url} className="mt-1.5 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
+                              <span className="flex-1 text-emerald-400 break-all">{url}</span>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(url)}
+                                className="text-muted-foreground/40 hover:text-muted-foreground transition-colors flex-shrink-0"
+                                title="Kopieren"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </li>
+                        <li>
+                          Unter <strong className="text-foreground">API-Berechtigungen</strong> → Berechtigung hinzufügen → Microsoft Graph → Delegiert:
+                          <div className="mt-1.5 rounded-md border border-foreground/10 bg-background/50 px-3 py-2 font-mono text-[10px] text-blue-300/80 leading-relaxed">
+                            User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access
+                          </div>
+                          <p className="mt-1 text-[10px] text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
+                        </li>
+                        <li>
+                          Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> → Neuer geheimer Clientschlüssel erstellen
+                        </li>
+                        <li>
+                          <strong className="text-foreground">Application (Client) ID</strong> und Secret in die Felder unten eintragen &amp; speichern
+                        </li>
+                      </ol>
+                      <p className="text-[10px] text-muted-foreground/50 pt-1 border-t border-foreground/[0.06]">
+                        Jeder User verbindet sein eigenes M365-Konto unter <strong>Integrations</strong>. Token werden pro User gespeichert, nicht geteilt.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-5 pt-3 grid grid-cols-2 gap-3">
                   <CredentialField
                     label="Application (Client) ID"
                     value={microsoftClientId}
@@ -924,6 +986,13 @@ export default function SettingsPage() {
                     mono
                   />
                 </div>
+
+                {settings?.has_microsoft_oauth && (
+                  <div className="px-5 pb-4 flex items-center gap-2 text-[11px] text-emerald-400/80">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    SSO aktiv — &quot;Mit Microsoft anmelden&quot; erscheint auf der Login-Seite. User können ihr Konto unter Integrations verbinden.
+                  </div>
+                )}
               </div>
 
               {/* Apple */}
