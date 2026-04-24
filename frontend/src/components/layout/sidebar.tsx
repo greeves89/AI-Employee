@@ -33,7 +33,6 @@ import {
   Info,
   X,
 } from "lucide-react";
-import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -399,68 +398,66 @@ export function Sidebar() {
         )}
       </button>
 
-      {/* About Modal */}
-      <Dialog.Root open={aboutOpen} onOpenChange={setAboutOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
-          <AnimatePresence>
-            {aboutOpen && (
-              <Dialog.Content asChild>
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.96, y: 8 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                  transition={{ duration: 0.2 }}
-                  className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl outline-none"
-                >
-                  {/* Header */}
-                  <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-foreground/[0.06] shrink-0">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-                      <Bot className="h-5 w-5 text-primary" />
+      {/* About Modal — rendered via portal to avoid transform context of motion.aside */}
+      <AnimatePresence>
+        {aboutOpen && typeof document !== "undefined" && (() => {
+          const { createPortal } = require("react-dom");
+          return createPortal(
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+                onClick={() => setAboutOpen(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                transition={{ duration: 0.2 }}
+                className="fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
+              >
+                <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-foreground/[0.06] shrink-0">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+                    <Bot className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base font-semibold">AI Employee</p>
+                    {aboutVersion && <p className="text-[12px] text-muted-foreground font-mono">v{aboutVersion}</p>}
+                  </div>
+                  <button
+                    onClick={() => setAboutOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  {aboutChangelog ? (
+                    <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06]">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <Dialog.Title className="text-base font-semibold">AI Employee</Dialog.Title>
-                      {aboutVersion && (
-                        <p className="text-[12px] text-muted-foreground font-mono">v{aboutVersion}</p>
-                      )}
+                  ) : (
+                    <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
+                      Lade Changelog...
                     </div>
-                    <Dialog.Close className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all">
-                      <X className="h-4 w-4" />
-                    </Dialog.Close>
-                  </div>
-
-                  {/* Changelog */}
-                  <div className="flex-1 overflow-y-auto px-6 py-4">
-                    {aboutChangelog ? (
-                      <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06]">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
-                        Lade Changelog...
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between px-6 py-3 border-t border-foreground/[0.06] shrink-0">
-                    <span className="text-[11px] text-muted-foreground/50">Made with ♥ by greeves89</span>
-                    <a
-                      href="https://github.com/greeves89/AI-Employee"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-yellow-400 transition-colors"
-                    >
-                      <Star className="h-3 w-3" />
-                      GitHub
-                    </a>
-                  </div>
-                </motion.div>
-              </Dialog.Content>
-            )}
-          </AnimatePresence>
-        </Dialog.Portal>
-      </Dialog.Root>
+                  )}
+                </div>
+                <div className="flex items-center justify-between px-6 py-3 border-t border-foreground/[0.06] shrink-0">
+                  <span className="text-[11px] text-muted-foreground/50">Made with ♥ by greeves89</span>
+                  <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-yellow-400 transition-colors">
+                    <Star className="h-3 w-3" />GitHub
+                  </a>
+                </div>
+              </motion.div>
+            </>,
+            document.body
+          );
+        })()}
+      </AnimatePresence>
     </aside>
   );
 }
