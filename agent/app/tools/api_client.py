@@ -619,14 +619,35 @@ class OrchestratorAPIClient:
 
     async def skill_get_my_skills(self, params: dict) -> str:
         """Get all skills assigned to this agent."""
+        import os
+        # Always scan filesystem first — guaranteed source of truth
+        skills_dir = os.path.join(os.environ.get("WORKSPACE_DIR", "/workspace"), ".claude", "skills")
+        fs_skills: list[dict] = []
+        if os.path.isdir(skills_dir):
+            for entry in os.listdir(skills_dir):
+                skill_md = os.path.join(skills_dir, entry, "SKILL.md")
+                if os.path.isfile(skill_md):
+                    try:
+                        with open(skill_md) as f:
+                            content = f.read()
+                        fs_skills.append({"name": entry, "description": content.split("\n")[0].lstrip("# "), "content": content[:300]})
+                    except Exception:
+                        pass
+
+        # Also try DB-assigned skills
         result = await self._request("GET", "/skills/agent/available")
-        if isinstance(result, str):
-            return result
-        skills = result.get("skills", [])
-        if not skills:
-            return "No skills assigned. Search with skill_search to find useful ones."
-        lines = [f"You have {len(skills)} skills:", ""]
-        for s in skills:
+        db_skills: list[dict] = []
+        if not isinstance(result, str):
+            db_skills = result.get("skills", [])
+
+        # Merge: DB skills first, then filesystem (by name, no duplicates)
+        db_names = {s.get("name") for s in db_skills}
+        all_skills = db_skills + [s for s in fs_skills if s["name"] not in db_names]
+
+        if not all_skills:
+            return "No skills found. Search with skill_search or check /workspace/.claude/skills/ manually."
+        lines = [f"You have {len(all_skills)} skills:", ""]
+        for s in all_skills:
             lines.append(f"**{s.get('name')}** — {s.get('description', '')}")
             lines.append(s.get("content", "")[:300])
             lines.append("---")
