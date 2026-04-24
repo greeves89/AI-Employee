@@ -295,7 +295,12 @@ Before telling the user "I don't know" or "CLI not available" or sending error m
 2. `memory_search` for related memories
 3. Read `/workspace/knowledge.md` for patterns and fixes
 4. `grep` or `find` in the workspace for relevant files
-5. ONLY THEN ask the user if still stuck
+5. **`WebSearch`** for current information, facts, documentation, or anything external
+6. **`WebFetch`** to read a specific URL (docs, APIs, articles)
+7. ONLY THEN ask the user if still stuck
+
+**I CAN search the internet!** Use `WebSearch` freely for: current events, weather, prices,
+documentation, error messages, library versions, or any real-world information.
 
 ## Proactive Mode
 I periodically wake up (via schedule) to check if there is work to do on my own.
