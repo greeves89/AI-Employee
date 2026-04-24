@@ -1,25 +1,22 @@
 """skill analytics: manual_duration, avg_agent_duration, skill_task_usages table
 
-Revision ID: a1b2c3d4e5f6
-Revises: z0t1u2v3w4x5
+Revision ID: a2b3c4d5e6f7
+Revises: a2u3v4w5x6y7
 Create Date: 2026-04-23
 
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "a1b2c3d4e5f6"
-down_revision = "z0t1u2v3w4x5"
+revision = "a2b3c4d5e6f7"
+down_revision = "a2u3v4w5x6y7"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    # Add time-tracking columns to skills
     op.add_column("skills", sa.Column("manual_duration_seconds", sa.Integer(), nullable=True))
     op.add_column("skills", sa.Column("avg_agent_duration_ms", sa.Float(), nullable=True))
-
-    # New table: one row per skill-task pair, captures all quality signals
     op.create_table(
         "skill_task_usages",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -33,8 +30,7 @@ def upgrade() -> None:
         sa.Column("task_cost_usd", sa.Float(), nullable=True),
         sa.Column("task_num_turns", sa.Integer(), nullable=True),
         sa.Column("time_saved_seconds", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
     )
     op.create_index("ix_skill_task_usages_created_at", "skill_task_usages", ["created_at"])
 
