@@ -599,8 +599,9 @@ class OrchestratorAPIClient:
         lines = [f"Found {len(skills)} skills:", ""]
         for s in skills:
             rating = f" [{'★' * round(s.get('avg_rating', 0))}{'☆' * (5 - round(s.get('avg_rating', 0)))}]" if s.get("avg_rating") else ""
-            lines.append(f"**{s.get('name')}** ({s.get('category')}){rating} — {s.get('description', '')}")
+            lines.append(f"**{s.get('name')}** (id={s.get('id')} | {s.get('category')}){rating} — {s.get('description', '')}")
             lines.append(s.get("content", "")[:200])
+            lines.append(f"→ Use skill_install(skill_id={s.get('id')}) to install this skill.")
             lines.append("---")
         return "\n".join(lines)
 

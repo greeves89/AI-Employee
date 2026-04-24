@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, cast, Text
 from sqlalchemy.ext.asyncio import AsyncSession
 import io
 import re
@@ -518,13 +518,19 @@ async def agent_search_skills(
     auth: dict = Depends(verify_agent_token),
 ):
     """Agent searches the skill marketplace."""
+    from sqlalchemy import or_
     query = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
     if q:
-        query = query.where(
-            Skill.name.ilike(f"%{q}%") | Skill.description.ilike(f"%{q}%")
-        )
+        # Match any word in the query (OR logic) so long LLM queries still find results
+        words = [w for w in q.split() if len(w) >= 3][:6]
+        if words:
+            conditions = [
+                Skill.name.ilike(f"%{w}%") | Skill.description.ilike(f"%{w}%")
+                for w in words
+            ]
+            query = query.where(or_(*conditions))
     if category:
-        query = query.where(Skill.category == category)
+        query = query.where(cast(Skill.category, Text) == category.upper())
     query = query.order_by(Skill.usage_count.desc()).limit(limit)
     skills = list((await db.execute(query)).scalars().all())
     return {"skills": [_to_response(s) for s in skills], "total": len(skills)}

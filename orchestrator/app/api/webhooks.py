@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.dependencies import get_redis_service, require_auth
 from app.models.agent import Agent
 from app.models.feedback import Feedback, FeedbackStatus
+from app.models.task import Task, TaskStatus
 from app.models.webhook import WebhookEvent
 from app.security.agent_guard import (
     check_webhook_payload,
@@ -195,10 +196,22 @@ async def receive_webhook(
         for trigger in triggers:
             prompt = await fire_trigger(trigger, payload, str(source), str(event_type), db)
             task_id = uuid.uuid4().hex[:12]
+            title = f"Trigger: {trigger.name} ({source}/{event_type})"
+            task = Task(
+                id=task_id,
+                title=title,
+                prompt=prompt,
+                status=TaskStatus.QUEUED,
+                agent_id=agent_id,
+                model=trigger.model,
+                priority=trigger.priority,
+                metadata_={"source": "webhook", "trigger": trigger.name},
+            )
+            db.add(task)
             task_payload = json.dumps({
                 "id": task_id,
                 "prompt": prompt,
-                "title": f"Trigger: {trigger.name} ({source}/{event_type})",
+                "title": title,
                 "model": trigger.model,
                 "priority": trigger.priority,
             })
@@ -208,10 +221,20 @@ async def receive_webhook(
         # No triggers defined — fall back to default behavior (create task with raw payload)
         prompt = sanitize_webhook_payload(payload, str(source), str(event_type))
         task_id = uuid.uuid4().hex[:12]
+        title = f"Webhook: {source}/{event_type}"
+        task = Task(
+            id=task_id,
+            title=title,
+            prompt=prompt,
+            status=TaskStatus.QUEUED,
+            agent_id=agent_id,
+            metadata_={"source": "webhook"},
+        )
+        db.add(task)
         task_payload = json.dumps({
             "id": task_id,
             "prompt": prompt,
-            "title": f"Webhook: {source}/{event_type}",
+            "title": title,
             "model": None,
         })
         await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
