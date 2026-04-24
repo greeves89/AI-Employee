@@ -1,7 +1,9 @@
 import asyncio
+import base64
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -1765,8 +1767,6 @@ async def install_skill_from_repo(
             write_cmd = f"sh -c 'mkdir -p \"{skill_dir}\" && printf \\'%s\\' \\'{escaped}\\' > \"{skill_path}\"'"
             try:
                 docker.exec_in_container(agent.container_id, f"mkdir -p \"{skill_dir}\"")
-                # Write via base64 to avoid shell escaping issues
-                import base64
                 b64 = base64.b64encode(body.content.encode()).decode()
                 docker.exec_in_container(
                     agent.container_id,
