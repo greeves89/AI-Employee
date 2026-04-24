@@ -32,10 +32,13 @@ interface Skill {
 
 interface CatalogSkill {
   name: string;
-  repo: string;
+  repo?: string;
+  source_repo?: string;
   description: string;
   installs?: string;
   category: string;
+  type?: "db" | "github";
+  id?: string;
 }
 
 // Fallback catalog used when the API hasn't crawled yet
@@ -118,17 +121,24 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
     setInstallingSkill(cat.name);
     setInstallError("");
     try {
+      const repo = cat.repo || cat.source_repo;
+      if (!repo) {
+        setInstallError(`${cat.name}: No repository URL available`);
+        setInstallingSkill(null);
+        return;
+      }
       const res = await fetch(`${API}/api/v1/agents/${agentId}/skills/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ repo: cat.repo, skill: cat.name }),
+        body: JSON.stringify({ repo, skill: cat.name }),
       });
       if (res.ok) {
         fetchSkills();
       } else {
         const data = await res.json().catch(() => ({ detail: "Install failed" }));
-        setInstallError(`${cat.name}: ${data.detail || "Install failed"}`);
+        const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+        setInstallError(`${cat.name}: ${detail || "Install failed"}`);
       }
     } catch {
       setInstallError(`${cat.name}: Network error`);
