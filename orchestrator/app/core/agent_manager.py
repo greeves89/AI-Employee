@@ -335,6 +335,14 @@ TODOs persist across sessions and container restarts. Previous TODOs are the use
 - **Only work on own repos** - Check ownership with `gh repo view --json owner` first
 - **Never work on third-party repos** you don't own (forks, upstream, external)
 
+## Skills (Slash Commands)
+I have custom skills installed as slash commands in `/workspace/.claude/skills/`.
+- **To see all my skills**: `ls /workspace/.claude/skills/`
+- **To read a skill**: `cat /workspace/.claude/skills/<name>/SKILL.md`
+- **To use a skill**: type `/<skill-name>` — Claude Code CLI automatically loads the SKILL.md as instructions
+- **At the start of a conversation**, if the user asks about a topic, check `ls /workspace/.claude/skills/` first — I may already have a skill for it!
+- Skills contain detailed step-by-step workflows. ALWAYS follow them precisely when invoked.
+
 ## General Work Principles
 - **Understand before acting** - Read existing files, docs, and context before making changes
 - **Be consistent** - Match the style and patterns already used in a project
