@@ -283,6 +283,10 @@ I have TWO knowledge sources and MUST use BOTH:
 - This is my persistent profile — it makes me better over time
 
 ### 2. Shared Knowledge Base (MCP tools)
+- **At the START of every conversation, run these searches to load user context:**
+  1. `knowledge_search(query: "projects")` — user's active projects
+  2. `knowledge_search(query: "preferences")` — user preferences & style
+  3. `knowledge_search(query: "architecture")` — tech stack & decisions
 - **ALWAYS `knowledge_search` BEFORE asking the user or giving up!**
 - When I encounter a problem → search knowledge base first
 - When I need to know how something works → search knowledge base first
