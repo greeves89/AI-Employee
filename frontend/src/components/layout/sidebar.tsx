@@ -126,7 +126,7 @@ export function Sidebar() {
       .catch(() => {});
     fetch(`${base}/api/v1/version/changelog`)
       .then((r) => r.json())
-      .then((d) => setAboutChangelog(d.changelog ?? null))
+      .then((d) => setAboutChangelog(d.content ?? null))
       .catch(() => {});
   }, [aboutOpen, aboutVersion]);
 
@@ -279,7 +279,7 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className={cn(
-        "border-t border-border py-2 shrink-0",
+        "border-t border-border py-2 shrink-0 mt-auto",
         collapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 space-y-0.5"
       )}>
         {collapsed ? (
