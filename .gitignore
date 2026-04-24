@@ -42,6 +42,42 @@ logs/
 # Auto-generated secrets
 orchestrator/data/
 
+# AI coding tool config dirs (never commit these)
+.adal/
+.agents/
+.augment/
+.bob/
+.claude/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+skills/
+skills-lock.json
+agent/l3-approval-hook.sh
+orchestrator/VERSION
+
 # Temporary/generated files
 cookies.txt
 create_pptx.py
