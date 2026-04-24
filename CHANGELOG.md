@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.28.0] — 2026-04-23
+
+### Added
+- **Skill Analytics Dashboard** — New `/analytics` page with platform-wide stats: total tasks, total cost, estimated time saved, avg rating, agent count. Daily task-volume area chart. Sortable skill table with ROI column (manual duration vs. actual agent time). Per-agent performance table with success rate, avg cost, avg duration.
+- **Skill time-savings tracking** — New `manual_duration_seconds` field per skill (set in the Skills modal). New `skill_task_usages` table records actual agent duration vs. manual baseline per task. Time-saved is calculated automatically and shown in the analytics dashboard.
+- **Skill usage API** — `POST /ratings/skill-usage` to record explicit skill–task pairings; `PATCH /skills/marketplace/{id}/manual-duration` to set the manual-effort baseline for ROI calculation.
+- **Analytics sidebar link** — Analytics page added to the main navigation.
+
+### Fixed
+- **Multi-user data isolation** — Comprehensive security fix: regular users can no longer read, modify, or delete data belonging to other users. All endpoints now enforce ownership:
+  - **Tasks** — list and detail endpoints filtered by user-owned agents
+  - **Schedules** — list scoped; all mutations (update / delete / trigger / pause / resume) check agent ownership
+  - **Knowledge Base** — fully per-user: 1 KB per user, shared across all of that user's agents, invisible to other users. Agent-facing write/search/read endpoints scope to the agent owner's KB automatically
+  - **Approval Rules** — list shows only global + own rules; PATCH/DELETE blocked for foreign rules
+  - **Agent Memories** — GET `/memory/agents/{id}` verifies agent ownership before returning
+  - **Team Directory** — scoped to user-owned agents for non-admins
+  - **Audit Log** — fixed 500 crash (`e.details` → `e.meta`)
+- **Host-mount injection into CLAUDE.md** — Configured NFS/SMB/local volume mounts are now listed in the agent's CLAUDE.md so Claude knows which paths are available.
+- **Alembic multi-head** — Merge migration added to resolve diverged migration heads after parallel feature branches.
+
+---
+
 ## [1.27.0] — 2026-04-23
 
 ### Added
