@@ -34,7 +34,7 @@ import {
   Info,
   X,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { NotificationBell } from "./notification-bell";
@@ -399,25 +399,22 @@ export function Sidebar() {
         )}
       </button>
 
-      {/* About Modal — rendered via portal to avoid transform context of motion.aside */}
-      <AnimatePresence>
-        {aboutOpen && typeof document !== "undefined" && createPortal(
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
-                onClick={() => setAboutOpen(false)}
-              />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 8 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                transition={{ duration: 0.2 }}
-                className="fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
-              >
+      {/* About Modal — portal to document.body to escape motion.aside transform context */}
+      {aboutOpen && typeof document !== "undefined" && createPortal(
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+            onClick={() => setAboutOpen(false)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
+          >
                 <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-foreground/[0.06] shrink-0">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
                     <Bot className="h-5 w-5 text-primary" />
@@ -452,10 +449,9 @@ export function Sidebar() {
                   </a>
                 </div>
               </motion.div>
-            </>,
-            document.body
-          )}
-      </AnimatePresence>
+        </>,
+        document.body
+      )}
     </aside>
   );
 }
