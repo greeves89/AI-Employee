@@ -20,6 +20,76 @@ logger = logging.getLogger(__name__)
 # Safety limit for bash output
 MAX_OUTPUT_CHARS = 30000
 
+# Maps tool name → autonomy category (must match DB category strings exactly)
+# Tools NOT listed here are always allowed (read-only / meta tools).
+TOOL_CATEGORY_MAP: dict[str, str] = {
+    # Shell execution (matches L3 DB category "shell_exec")
+    "bash": "shell_exec",
+    # File writes (matches DB category "file_write")
+    "write_file": "file_write",
+    "edit_file": "file_write",
+    "multi_edit": "file_write",
+    # External communication
+    "send_telegram": "external_communication",
+    "notify_user": "external_communication",
+    # Shared knowledge writes
+    "knowledge_write": "knowledge_write",
+    # Package installation
+    "install_package": "system_config",
+}
+
+# These are ALWAYS allowed regardless of whitelist
+ALWAYS_ALLOWED_TOOLS = frozenset({
+    "request_approval",
+    "rate_task",
+    "memory_save", "memory_search", "memory_list", "memory_delete",
+    "read_file", "list_files", "glob", "grep",
+    "git_status", "git_diff",
+    "web_search", "web_fetch",
+    "knowledge_search", "knowledge_read",
+    "list_team", "list_tasks", "list_todos", "list_schedules",
+    "skill_search", "skill_get_my_skills",
+    "send_message", "create_task",
+})
+
+
+def _get_allowed_categories() -> set[str] | None:
+    """Fetch allowed tool categories from the orchestrator whitelist.
+
+    Returns None if no approval rules are configured (= allow everything).
+    Cached with 60s TTL so level changes propagate without restart.
+    """
+    now = time.time()
+    cached = _get_allowed_categories._cache
+    if cached and now < cached[1]:
+        return cached[0]
+
+    try:
+        import urllib.request as _req
+        import json as _json
+        url = f"{settings.orchestrator_url}/api/v1/approval-rules/for-agent/{settings.agent_id}"
+        req = _req.Request(url, headers={"X-Agent-Token": settings.agent_token})
+        with _req.urlopen(req, timeout=3) as resp:
+            data = _json.loads(resp.read())
+        rules = data.get("rules", [])
+        if not rules:
+            # No rules = no restrictions
+            categories = None
+        else:
+            # If any rule explicitly covers ALL actions (L4 wildcard), treat as unrestricted
+            names = {r.get("name", "").lower() for r in rules}
+            if any(w in names for w in ("alles erlaubt", "all allowed", "full autonomy")):
+                categories = None
+            else:
+                categories = {r["category"] for r in rules}
+        _get_allowed_categories._cache = (categories, now + _AUTONOMY_CACHE_TTL)
+        return categories
+    except Exception:
+        return None  # Fail open — don't block on orchestrator unavailability
+
+
+_get_allowed_categories._cache = (None, 0.0)
+
 # Tools safe to execute concurrently (read-only, no side effects)
 CONCURRENT_SAFE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
@@ -35,7 +105,8 @@ _CACHEABLE_TOOLS = frozenset({
     "memory_search", "knowledge_search", "list_team",
     "list_tasks", "list_todos", "list_schedules",
 })
-_CACHE_TTL_SECONDS = 120  # 2 minutes
+_CACHE_TTL_SECONDS = 120  # 2 minutes (tool result cache)
+_AUTONOMY_CACHE_TTL = 10  # 10s — fast enough for level changes to propagate
 
 
 class _ToolCache:
@@ -115,7 +186,22 @@ class ToolExecutor:
         Concurrent-safe tools are guarded by a semaphore (TOOL_MAX_CONCURRENCY).
         Read-only tools are cached for 2 minutes to avoid redundant work.
         Write operations invalidate the cache automatically.
+        Autonomy whitelist is enforced here at code level — blocked tools return
+        an error instructing the agent to call request_approval first.
         """
+        # Hard autonomy enforcement — independent of LLM compliance
+        if tool_name not in ALWAYS_ALLOWED_TOOLS:
+            category = TOOL_CATEGORY_MAP.get(tool_name)
+            if category is not None:
+                allowed = _get_allowed_categories()
+                if allowed is not None and category not in allowed:
+                    return (
+                        f"[AUTONOMY BLOCK] Tool '{tool_name}' requires category "
+                        f"'{category}' which is NOT in your current whitelist. "
+                        f"You MUST call `request_approval` first and wait for "
+                        f"user approval before attempting this action."
+                    )
+
         if tool_name in CONCURRENT_SAFE_TOOLS:
             async with self._semaphore:
                 return await self._execute_inner(tool_name, tool_input)
