@@ -364,7 +364,8 @@ class OpenAIProvider(BaseLLMProvider):
                         input_tokens = usage.get("prompt_tokens", input_tokens)
                         output_tokens = usage.get("completion_tokens", output_tokens)
 
-                    yield from self._parse_chat_chunk(chunk, pending_tool_calls)
+                    for _ev in self._parse_chat_chunk(chunk, pending_tool_calls):
+                        yield _ev
 
         except httpx.ConnectError as e:
             yield LLMEvent(type="error", text=f"Connection failed: {e}")
