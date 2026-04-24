@@ -414,7 +414,7 @@ export function Sidebar() {
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="w-[90vw] max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
+            className="w-[90vw] max-w-2xl max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
           >
                 <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-foreground/[0.06] shrink-0">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
