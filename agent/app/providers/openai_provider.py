@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 # Models that require the Responses API
 _RESPONSES_API_PATTERNS = ("codex",)
 
+# Models that use max_completion_tokens instead of max_tokens
+_MAX_COMPLETION_TOKENS_PATTERNS = ("o1", "o3", "o4", "gpt-5", "o1-mini", "o1-preview")
+
+
+def _uses_completion_tokens(model_name: str) -> bool:
+    lower = model_name.lower()
+    return any(lower.startswith(p) or f"/{p}" in lower for p in _MAX_COMPLETION_TOKENS_PATTERNS)
+
 
 class OpenAIProvider(BaseLLMProvider):
     """Provider for OpenAI-compatible APIs with streaming."""
@@ -391,10 +399,11 @@ class OpenAIProvider(BaseLLMProvider):
                 entry["tool_calls"] = msg.tool_calls
             msg_payload.append(entry)
 
+        tokens_key = "max_completion_tokens" if _uses_completion_tokens(self.model_name) else "max_tokens"
         body: dict = {
             "model": self.model_name,
             "messages": msg_payload,
-            "max_tokens": self.max_tokens,
+            tokens_key: self.max_tokens,
             "temperature": self.temperature,
             "stream": True,
         }
@@ -478,10 +487,11 @@ class OpenAIProvider(BaseLLMProvider):
 
     def _build_legacy_body(self, messages: list[ChatMessage]) -> dict:
         """Build request body for /completions (legacy) format."""
+        tokens_key = "max_completion_tokens" if _uses_completion_tokens(self.model_name) else "max_tokens"
         return {
             "model": self.model_name,
             "prompt": self._messages_to_prompt(messages),
-            "max_tokens": self.max_tokens,
+            tokens_key: self.max_tokens,
             "temperature": self.temperature,
             "stream": True,
         }
