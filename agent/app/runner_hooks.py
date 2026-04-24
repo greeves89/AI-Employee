@@ -79,9 +79,11 @@ If you CAN do it → request approval, then proceed if approved.
 MANDATORY STEPS — do these IN ORDER for EVERY real request (not just greetings):
 
 STEP 1 — BEFORE anything else: Call `TodoWrite` to create a TODO for what you're about to do.
-STEP 2 — Call `skill_search` with a short summary of what the request needs.
-          If a skill matches: use it. Note the skill ID — call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
-          If no skill fits: proceed normally. Propose a new skill at the end with skill_propose.
+STEP 2 — Check your INSTALLED SKILLS first (listed above under "YOUR INSTALLED SKILLS").
+          These are YOUR actual skills — already installed and ready to use.
+          If an installed skill matches the request: read it with `read_file` and follow it precisely.
+          If no installed skill fits: call `skill_search` to find new ones from the marketplace.
+          Note the skill ID if used — call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
 STEP 3 — Call `memory_search` to check for relevant past learnings.
 STEP 4 — Execute the task. Call tools — never just describe what you would do.
 
