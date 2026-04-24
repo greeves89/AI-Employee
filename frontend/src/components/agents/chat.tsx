@@ -819,8 +819,8 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   return (
     <div className="flex flex-col h-full min-h-0 rounded-xl border border-border bg-card/80 backdrop-blur-sm overflow-hidden">
       {/* Session tabs */}
-      <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 overflow-x-auto shrink-0">
-        <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
+      <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
+        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
           {sessions.map((session) => (
             <div
               key={session.id}
@@ -861,7 +861,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
         </button>
 
         {/* Connection status */}
-        <div className="flex items-center gap-1.5 ml-2 shrink-0 border-l border-border pl-2">
+        <div className="flex items-center gap-1.5 ml-1 shrink-0 border-l border-border pl-2">
           <span className="relative flex h-2 w-2">
             {isConnected && (
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
