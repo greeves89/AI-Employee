@@ -1,16 +1,21 @@
+import os
 import pathlib
 from pydantic_settings import BaseSettings
 
 def _read_version() -> str:
+    # Env var wins (set via docker-compose)
+    if v := os.environ.get("AGENT_VERSION", "").strip():
+        return v
+    # Local dev: walk up from orchestrator/app/config.py to repo root
     for candidate in [
-        pathlib.Path("/app/VERSION"),
         pathlib.Path(__file__).parent.parent.parent / "VERSION",
+        pathlib.Path(__file__).parent.parent / "VERSION",
     ]:
         if candidate.exists():
             v = candidate.read_text().strip()
             if v:
                 return v
-    return "1.28.0"
+    return "1.29.0"
 
 AGENT_VERSION = _read_version()
 

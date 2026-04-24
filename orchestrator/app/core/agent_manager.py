@@ -488,18 +488,17 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not publish event for agent {agent_id}: {e}")
 
-    async def _get_custom_mcp_env(self, agent_config: dict | None = None) -> dict[str, str]:
+    async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
 
         If agent_config contains 'mcp_servers' (list of IDs), only those
         servers are included. Otherwise all enabled servers are returned.
+        Automatically injects the MS Graph MCP server when microsoft is connected.
         """
         result = await self.db.execute(
             select(McpServer).where(McpServer.enabled == True)
         )
         servers = result.scalars().all()
-        if not servers:
-            return {}
 
         # Per-agent filtering
         agent_mcp_ids = None
@@ -509,9 +508,14 @@ class AgentManager:
         if agent_mcp_ids is not None:
             servers = [s for s in servers if s.id in agent_mcp_ids]
 
-        if not servers:
-            return {}
         mcp_map = {s.name: s.url for s in servers}
+
+        # Auto-inject MS Graph MCP server when agent has microsoft integration
+        if agent_id and agent_integrations and "microsoft" in agent_integrations:
+            mcp_map["msgraph"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/msgraph/{agent_id}"
+
+        if not mcp_map:
+            return {}
         return {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
 
     async def _get_integration_env(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:
@@ -577,7 +581,7 @@ class AgentManager:
 
         if mode == "custom_llm" and llm_config:
             # Custom LLM: LLM-specific env vars + integrations + MCP servers
-            mcp_env = await self._get_custom_mcp_env()
+            mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
             integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
             env_vars.update({
                 "LLM_PROVIDER_TYPE": llm_config["provider_type"],
@@ -598,7 +602,7 @@ class AgentManager:
             # Per-agent provider from config, fallback to global
             agent_provider = None  # Will be set from DB config after agent is created
             provider_env = self._build_provider_env(agent_provider)
-            mcp_env = await self._get_custom_mcp_env()
+            mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
             integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
             env_vars.update({
                 **provider_env,
@@ -828,7 +832,7 @@ class AgentManager:
             from app.core.encryption import decrypt_token as _decrypt
             llm_cfg = agent.llm_config
             api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
-            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
@@ -847,7 +851,7 @@ class AgentManager:
         else:
             agent_provider = config.get("model_provider")
             provider_env = self._build_provider_env(agent_provider)
-            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 **provider_env,
@@ -973,7 +977,7 @@ class AgentManager:
             from app.core.encryption import decrypt_token as _decrypt
             llm_cfg = agent.llm_config
             api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
-            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
@@ -992,7 +996,7 @@ class AgentManager:
         else:
             agent_provider = config.get("model_provider")
             provider_env = self._build_provider_env(agent_provider)
-            mcp_env = await self._get_custom_mcp_env(agent_config=config)
+            mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
                 **provider_env,
