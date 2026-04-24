@@ -82,15 +82,18 @@ async def get_overview(
     avg_rating = avg_rating_result.scalar()
 
     # Daily task volume for sparkline (last `days` days)
+    from sqlalchemy import text as sa_text
     daily_result = await db.execute(
-        select(
-            func.date_trunc("day", Task.created_at).label("day"),
-            func.count(Task.id).label("count"),
-            func.coalesce(func.sum(Task.cost_usd), 0).label("cost"),
-        )
-        .where(Task.created_at >= since)
-        .group_by(func.date_trunc("day", Task.created_at))
-        .order_by(func.date_trunc("day", Task.created_at))
+        sa_text("""
+            SELECT date_trunc('day', created_at) AS day,
+                   COUNT(id) AS count,
+                   COALESCE(SUM(cost_usd), 0) AS cost
+            FROM tasks
+            WHERE created_at >= :since
+            GROUP BY date_trunc('day', created_at)
+            ORDER BY date_trunc('day', created_at)
+        """),
+        {"since": since},
     )
     daily_rows = daily_result.all()
     daily_tasks = [{"date": str(r.day)[:10], "count": r.count, "cost": float(r.cost or 0)} for r in daily_rows]
@@ -206,21 +209,21 @@ async def get_skill_trend(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Skill not found")
 
+    from sqlalchemy import text as sa_text
     weekly = await db.execute(
-        select(
-            func.date_trunc("week", SkillTaskUsage.created_at).label("week"),
-            func.count(SkillTaskUsage.id).label("uses"),
-            func.avg(SkillTaskUsage.skill_helpfulness).label("avg_helpfulness"),
-            func.avg(SkillTaskUsage.user_rating).label("avg_user_rating"),
-            func.avg(SkillTaskUsage.agent_self_rating).label("avg_agent_rating"),
-            func.sum(SkillTaskUsage.time_saved_seconds).label("time_saved"),
-        )
-        .where(
-            SkillTaskUsage.skill_id == skill_id,
-            SkillTaskUsage.created_at >= since,
-        )
-        .group_by(func.date_trunc("week", SkillTaskUsage.created_at))
-        .order_by(func.date_trunc("week", SkillTaskUsage.created_at))
+        sa_text("""
+            SELECT date_trunc('week', created_at) AS week,
+                   COUNT(id) AS uses,
+                   AVG(skill_helpfulness) AS avg_helpfulness,
+                   AVG(user_rating) AS avg_user_rating,
+                   AVG(agent_self_rating) AS avg_agent_rating,
+                   SUM(time_saved_seconds) AS time_saved
+            FROM skill_task_usages
+            WHERE skill_id = :skill_id AND created_at >= :since
+            GROUP BY date_trunc('week', created_at)
+            ORDER BY date_trunc('week', created_at)
+        """),
+        {"skill_id": skill_id, "since": since},
     )
 
     trend = []
@@ -264,9 +267,7 @@ async def get_agents_analytics(
         select(
             Task.agent_id,
             func.count(Task.id).label("total"),
-            func.sum(
-                func.cast(Task.status == TaskStatus.COMPLETED, db.bind.dialect.name == "postgresql" and "int" or "integer")
-            ).label("completed"),
+            func.count(Task.id).filter(Task.status == TaskStatus.COMPLETED).label("completed"),
             func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
             func.avg(Task.duration_ms).label("avg_duration_ms"),
         )
