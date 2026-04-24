@@ -911,6 +911,16 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not update team registry: {e}")
 
+        # 5b. Refresh CLAUDE.md with latest DEFAULT_CLAUDE_MD (picks up any updates)
+        try:
+            agent_mounts = config.get("mounts", [])
+            fresh_claude_md = DEFAULT_CLAUDE_MD.replace(
+                "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
+            ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
+            self.docker.write_file_in_container(container.id, "/workspace/CLAUDE.md", fresh_claude_md)
+        except Exception as e:
+            logger.warning(f"Could not refresh CLAUDE.md for agent {agent_id}: {e}")
+
         # 6. Update DB
         agent.container_id = container.id
         agent.state = AgentState.RUNNING
