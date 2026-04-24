@@ -331,7 +331,8 @@ class OpenAIProvider(BaseLLMProvider):
                                     chunk = json.loads(data)
                                 except json.JSONDecodeError:
                                     continue
-                                yield from self._parse_chat_chunk(chunk, pending_tool_calls)
+                                for _ev in self._parse_chat_chunk(chunk, pending_tool_calls):
+                                        yield _ev
                                 usage = chunk.get("usage")
                                 if usage:
                                     input_tokens = usage.get("prompt_tokens", input_tokens)
