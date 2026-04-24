@@ -1,26 +1,32 @@
 """Add browser_mode column to agents table for Playwright browser control
 
-Revision ID: u5o6p7q8r9s0
-Revises: w7q8r9s0t1u2
+Revision ID: ub5oc6pd7qe8
+Revises: a2b3c4d5e6f7
 Create Date: 2026-04-19
 
-browser_mode enables the Playwright MCP server inside the agent container
-(COMPUTER_USE_BROWSER=true env var) for headless browser automation.
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "u5o6p7q8r9s0"
-down_revision = "w7q8r9s0t1u2"
+revision = "ub5oc6pd7qe8"
+down_revision = "a2b3c4d5e6f7"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "agents",
-        sa.Column("browser_mode", sa.Boolean(), nullable=False, server_default="false"),
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='agents' AND column_name='browser_mode'"
+        )
     )
+    if not result.fetchone():
+        op.add_column(
+            "agents",
+            sa.Column("browser_mode", sa.Boolean(), nullable=False, server_default="false"),
+        )
 
 
 def downgrade() -> None:

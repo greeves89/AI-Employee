@@ -191,6 +191,7 @@ DEFAULT_CLAUDE_MD = """# Agent System Instructions
 - Shared files: `/shared/` (all agents can read/write)
 - Team directory: `/shared/team.json`
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
+$MOUNTS_SECTION
 
 ## MCP Tools (IMPORTANT!)
 I have powerful MCP (Model Context Protocol) tools available. These appear as native
@@ -389,6 +390,23 @@ DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
 ## Errors & Fixes
 <!-- Common errors and how I resolved them -->
 """
+
+
+def _build_mounts_section(mount_labels: list[str]) -> str:
+    """Return a CLAUDE.md section listing mounted host directories, or empty string."""
+    if not mount_labels:
+        return ""
+    from app.core.mounts import parse_mount_catalog
+    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    lines = ["\n## Host Mounts"]
+    lines.append("The following directories from the host are mounted into this container:")
+    for label in mount_labels:
+        entry = catalog.get(label)
+        if entry:
+            mode_note = "(read-only)" if entry.mode == "ro" else "(read-write)"
+            lines.append(f"- `{entry.container_path}` — {label} {mode_note}")
+    lines.append("\nWhen the user asks about their local files, always check these paths first.")
+    return "\n".join(lines)
 
 
 class AgentManager:
@@ -617,9 +635,10 @@ class AgentManager:
             logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
         # Initialize workspace files
+        agent_mounts = config.get("mounts", []) if config else []
         claude_md = DEFAULT_CLAUDE_MD.replace(
             "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-        )
+        ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
         if mode == "claude_code":
             # Claude Code: full CLAUDE.md + knowledge.md
             try:
@@ -1013,10 +1032,13 @@ class AgentManager:
         # 5. Update workspace files (only CLAUDE.md for claude_code, knowledge preserved)
         if mode == "claude_code":
             try:
+                _agent_mounts = (agent.config or {}).get("mounts", [])
                 self.docker.write_file_in_container(
                     container.id,
                     "/workspace/CLAUDE.md",
-                    DEFAULT_CLAUDE_MD.replace("$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)),
+                    DEFAULT_CLAUDE_MD.replace(
+                        "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
+                    ).replace("$MOUNTS_SECTION", _build_mounts_section(_agent_mounts)),
                 )
                 logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
             except Exception as e:
