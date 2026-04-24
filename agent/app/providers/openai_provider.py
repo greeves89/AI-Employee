@@ -26,13 +26,14 @@ logger = logging.getLogger(__name__)
 # Models that require the Responses API
 _RESPONSES_API_PATTERNS = ("codex",)
 
-# Models that use max_completion_tokens instead of max_tokens
-_MAX_COMPLETION_TOKENS_PATTERNS = ("o1", "o3", "o4", "gpt-5", "o1-mini", "o1-preview")
-
-
-def _uses_completion_tokens(model_name: str) -> bool:
-    lower = model_name.lower()
-    return any(lower.startswith(p) or f"/{p}" in lower for p in _MAX_COMPLETION_TOKENS_PATTERNS)
+def _extract_tokens_error(error_text: str) -> str | None:
+    """Return the correct tokens param name if OpenAI tells us to use the other one."""
+    if "max_completion_tokens" in error_text and "max_tokens" in error_text:
+        if "Use 'max_completion_tokens'" in error_text:
+            return "max_completion_tokens"
+        if "Use 'max_tokens'" in error_text:
+            return "max_tokens"
+    return None
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -295,13 +296,50 @@ class OpenAIProvider(BaseLLMProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        async for event in self._stream_chat_with_body(url, headers, body):
+            yield event
 
+    async def _stream_chat_with_body(
+        self, url: str, headers: dict, body: dict
+    ) -> AsyncIterator[LLMEvent]:
+        """Execute a single chat completions stream request. Retries once on tokens param mismatch."""
         input_tokens = 0
         output_tokens = 0
         pending_tool_calls: dict[int, dict] = {}
 
         try:
             async with self._client.stream("POST", url, json=body, headers=headers) as response:
+                if response.status_code == 400:
+                    error_body = await response.aread()
+                    error_text = error_body.decode("utf-8", errors="replace")
+                    correct_key = _extract_tokens_error(error_text)
+                    if correct_key:
+                        wrong_key = "max_tokens" if correct_key == "max_completion_tokens" else "max_completion_tokens"
+                        body[correct_key] = body.pop(wrong_key, body.get(correct_key))
+                        async with self._client.stream("POST", url, json=body, headers=headers) as retry:
+                            if retry.status_code != 200:
+                                err = (await retry.aread()).decode("utf-8", errors="replace")
+                                yield LLMEvent(type="error", text=f"API error {retry.status_code}: {err}")
+                                return
+                            async for line in retry.aiter_lines():
+                                if not line.startswith("data: "):
+                                    continue
+                                data = line[6:]
+                                if data == "[DONE]":
+                                    break
+                                try:
+                                    chunk = json.loads(data)
+                                except json.JSONDecodeError:
+                                    continue
+                                yield from self._parse_chat_chunk(chunk, pending_tool_calls)
+                                usage = chunk.get("usage")
+                                if usage:
+                                    input_tokens = usage.get("prompt_tokens", input_tokens)
+                                    output_tokens = usage.get("completion_tokens", output_tokens)
+                        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+                        return
+                    yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_text}")
+                    return
                 if response.status_code != 200:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
@@ -325,51 +363,7 @@ class OpenAIProvider(BaseLLMProvider):
                         input_tokens = usage.get("prompt_tokens", input_tokens)
                         output_tokens = usage.get("completion_tokens", output_tokens)
 
-                    choices = chunk.get("choices", [])
-                    if not choices:
-                        continue
-
-                    delta = choices[0].get("delta", {})
-                    finish_reason = choices[0].get("finish_reason")
-
-                    content = delta.get("content")
-                    if content:
-                        yield LLMEvent(type="text_delta", text=content)
-
-                    # Tool calls (streamed incrementally)
-                    tool_calls = delta.get("tool_calls", [])
-                    for tc in tool_calls:
-                        idx = tc.get("index", 0)
-                        if idx not in pending_tool_calls:
-                            pending_tool_calls[idx] = {
-                                "id": tc.get("id", ""),
-                                "name": tc.get("function", {}).get("name", ""),
-                                "arguments_json": "",
-                            }
-                        else:
-                            if tc.get("id"):
-                                pending_tool_calls[idx]["id"] = tc["id"]
-                            if tc.get("function", {}).get("name"):
-                                pending_tool_calls[idx]["name"] = tc["function"]["name"]
-
-                        args_chunk = tc.get("function", {}).get("arguments", "")
-                        if args_chunk:
-                            pending_tool_calls[idx]["arguments_json"] += args_chunk
-
-                    if finish_reason in ("tool_calls", "stop") and pending_tool_calls:
-                        for idx in sorted(pending_tool_calls.keys()):
-                            tc_data = pending_tool_calls[idx]
-                            try:
-                                tool_input = json.loads(tc_data["arguments_json"])
-                            except json.JSONDecodeError:
-                                tool_input = {"raw": tc_data["arguments_json"]}
-                            yield LLMEvent(
-                                type="tool_call",
-                                tool_id=tc_data["id"],
-                                tool_name=tc_data["name"],
-                                tool_input=tool_input,
-                            )
-                        pending_tool_calls.clear()
+                    yield from self._parse_chat_chunk(chunk, pending_tool_calls)
 
         except httpx.ConnectError as e:
             yield LLMEvent(type="error", text=f"Connection failed: {e}")
@@ -382,6 +376,56 @@ class OpenAIProvider(BaseLLMProvider):
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+
+    def _parse_chat_chunk(
+        self, chunk: dict, pending_tool_calls: dict[int, dict]
+    ) -> list[LLMEvent]:
+        """Parse a single SSE chunk from Chat Completions stream into LLMEvents."""
+        events = []
+        choices = chunk.get("choices", [])
+        if not choices:
+            return events
+
+        delta = choices[0].get("delta", {})
+        finish_reason = choices[0].get("finish_reason")
+
+        content = delta.get("content")
+        if content:
+            events.append(LLMEvent(type="text_delta", text=content))
+
+        for tc in delta.get("tool_calls", []):
+            idx = tc.get("index", 0)
+            if idx not in pending_tool_calls:
+                pending_tool_calls[idx] = {
+                    "id": tc.get("id", ""),
+                    "name": tc.get("function", {}).get("name", ""),
+                    "arguments_json": "",
+                }
+            else:
+                if tc.get("id"):
+                    pending_tool_calls[idx]["id"] = tc["id"]
+                if tc.get("function", {}).get("name"):
+                    pending_tool_calls[idx]["name"] = tc["function"]["name"]
+            args_chunk = tc.get("function", {}).get("arguments", "")
+            if args_chunk:
+                pending_tool_calls[idx]["arguments_json"] += args_chunk
+
+        if finish_reason in ("tool_calls", "stop") and pending_tool_calls:
+            for idx in sorted(pending_tool_calls.keys()):
+                tc_data = pending_tool_calls[idx]
+                try:
+                    tool_input = json.loads(tc_data["arguments_json"])
+                except json.JSONDecodeError:
+                    tool_input = {"raw": tc_data["arguments_json"]}
+                events.append(LLMEvent(
+                    type="tool_call",
+                    tool_id=tc_data["id"],
+                    tool_name=tc_data["name"],
+                    tool_input=tool_input,
+                ))
+            pending_tool_calls.clear()
+
+        return events
 
     def _build_chat_body(self, messages: list[ChatMessage], tools: list[dict] | None) -> dict:
         """Build request body for /chat/completions format."""
@@ -399,11 +443,10 @@ class OpenAIProvider(BaseLLMProvider):
                 entry["tool_calls"] = msg.tool_calls
             msg_payload.append(entry)
 
-        tokens_key = "max_completion_tokens" if _uses_completion_tokens(self.model_name) else "max_tokens"
         body: dict = {
             "model": self.model_name,
             "messages": msg_payload,
-            tokens_key: self.max_tokens,
+            "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "stream": True,
         }
@@ -487,11 +530,10 @@ class OpenAIProvider(BaseLLMProvider):
 
     def _build_legacy_body(self, messages: list[ChatMessage]) -> dict:
         """Build request body for /completions (legacy) format."""
-        tokens_key = "max_completion_tokens" if _uses_completion_tokens(self.model_name) else "max_tokens"
         return {
             "model": self.model_name,
             "prompt": self._messages_to_prompt(messages),
-            tokens_key: self.max_tokens,
+            "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "stream": True,
         }
