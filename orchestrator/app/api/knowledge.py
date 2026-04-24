@@ -68,7 +68,11 @@ async def list_entries(
     db: AsyncSession = Depends(get_db),
 ):
     """List all knowledge entries with optional search and tag filter."""
+    from app.models.user import UserRole
     query = select(KnowledgeEntry)
+
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        query = query.where(KnowledgeEntry.user_id == str(user.id))
 
     if q:
         pattern = f"%{q}%"
@@ -102,10 +106,14 @@ async def get_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single knowledge entry by ID."""
+    from app.models.user import UserRole
     result = await db.execute(select(KnowledgeEntry).where(KnowledgeEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        if entry.user_id != str(user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
 
     # Bump access count
     entry.access_count += 1
@@ -274,7 +282,12 @@ async def agent_write(
     auth: dict = Depends(verify_agent_token),
 ):
     """Create or update a knowledge entry (agent-facing). Upsert by title."""
+    from app.models.agent import Agent
     agent_id = auth["agent_id"]
+
+    # Resolve the agent's owner so entries are scoped to that user's KB
+    agent_obj = await db.get(Agent, agent_id)
+    owner_user_id = agent_obj.user_id if agent_obj else None
 
     existing = await db.execute(
         select(KnowledgeEntry).where(KnowledgeEntry.title == body.title)
@@ -294,6 +307,7 @@ async def agent_write(
             tags=all_tags,
             created_by=agent_id,
             updated_by=agent_id,
+            user_id=owner_user_id,
         )
         db.add(entry)
 
@@ -333,7 +347,13 @@ async def agent_search(
 
     If OpenAI embeddings are available AND no tag filter is set, uses semantic
     vector search. Otherwise falls back to keyword matching.
+    Results are scoped to the agent owner's KB.
     """
+    from app.models.agent import Agent
+    agent_id = auth["agent_id"]
+    agent_obj = await db.get(Agent, agent_id)
+    owner_user_id = agent_obj.user_id if agent_obj else None
+
     # Try semantic search first
     if q and not tag:
         try:
@@ -344,19 +364,20 @@ async def agent_search(
             if svc.enabled:
                 qvec = await svc.embed(q)
                 if qvec is not None:
+                    user_filter = "AND user_id = :uid" if owner_user_id else ""
                     rows = (await db.execute(
                         sa_text(
-                            """
+                            f"""
                             SELECT id, title, content, tags, created_by, updated_by,
                                    access_count, created_at, updated_at,
                                    1 - (embedding <=> CAST(:qvec AS vector)) AS similarity
                             FROM knowledge_entries
-                            WHERE embedding IS NOT NULL
+                            WHERE embedding IS NOT NULL {user_filter}
                             ORDER BY embedding <=> CAST(:qvec AS vector)
                             LIMIT :limit
                             """
                         ),
-                        {"qvec": str(qvec), "limit": limit},
+                        {"qvec": str(qvec), "limit": limit, "uid": owner_user_id},
                     )).mappings().all()
 
                     if rows:
@@ -392,6 +413,8 @@ async def agent_search(
 
     # Keyword search fallback
     query = select(KnowledgeEntry)
+    if owner_user_id:
+        query = query.where(KnowledgeEntry.user_id == owner_user_id)
     if q:
         pattern = f"%{q}%"
         query = query.where(
@@ -430,9 +453,15 @@ async def agent_read(
     auth: dict = Depends(verify_agent_token),
 ):
     """Read a specific knowledge entry by title (agent-facing)."""
-    result = await db.execute(
-        select(KnowledgeEntry).where(KnowledgeEntry.title == title)
-    )
+    from app.models.agent import Agent
+    agent_id = auth["agent_id"]
+    agent_obj = await db.get(Agent, agent_id)
+    owner_user_id = agent_obj.user_id if agent_obj else None
+
+    stmt = select(KnowledgeEntry).where(KnowledgeEntry.title == title)
+    if owner_user_id:
+        stmt = stmt.where(KnowledgeEntry.user_id == owner_user_id)
+    result = await db.execute(stmt)
     entry = result.scalar_one_or_none()
     if not entry:
         raise HTTPException(status_code=404, detail=f"Knowledge entry '{title}' not found")
