@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -283,6 +284,30 @@ export function Sidebar() {
       )}>
         {collapsed ? (
           <>
+            <NotificationBell variant="sidebar" />
+            <button
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
+              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <a
+              href="https://github.com/greeves89/AI-Employee"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Star on GitHub"
+              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all"
+            >
+              <Star className="h-4 w-4" />
+            </a>
+            <button
+              onClick={() => setAboutOpen(true)}
+              title="Über AI Employee"
+              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
+            >
+              <Info className="h-4 w-4" />
+            </button>
             {isAdmin && (
               <Link
                 href="/admin"
@@ -297,33 +322,44 @@ export function Sidebar() {
                 <Shield className="h-4 w-4" />
               </Link>
             )}
+          </>
+        ) : (
+          <>
+            <UserMenu />
+            <NotificationBell variant="sidebar" />
             <button
-              onClick={() => setAboutOpen(true)}
-              title="Über AI Employee"
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
+              onClick={toggleTheme}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
             >
-              <Info className="h-4 w-4" />
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="text-[13px] font-medium">
+                {theme === "dark" ? "Light Mode" : "Dark Mode"}
+              </span>
             </button>
             <a
               href="https://github.com/greeves89/AI-Employee"
               target="_blank"
               rel="noopener noreferrer"
-              title="Star on GitHub"
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all duration-150"
             >
               <Star className="h-4 w-4" />
+              <span className="text-[13px] font-medium">Star on GitHub</span>
+              {starCount !== null && (
+                <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">
+                  {starCount}
+                </span>
+              )}
             </a>
             <button
-              onClick={toggleTheme}
-              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
+              onClick={() => setAboutOpen(true)}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
             >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <Info className="h-4 w-4" />
+              <span className="text-[13px] font-medium">Über AI Employee</span>
+              {aboutVersion && (
+                <span className="ml-auto text-[11px] font-mono text-muted-foreground/50">v{aboutVersion}</span>
+              )}
             </button>
-            <NotificationBell variant="sidebar" />
-          </>
-        ) : (
-          <>
             {isAdmin && (
               <Link
                 href="/admin"
@@ -344,41 +380,6 @@ export function Sidebar() {
                 )}
               </Link>
             )}
-            <NotificationBell variant="sidebar" />
-            <button
-              onClick={() => setAboutOpen(true)}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
-            >
-              <Info className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Über AI Employee</span>
-              {aboutVersion && (
-                <span className="ml-auto text-[11px] font-mono text-muted-foreground/50">v{aboutVersion}</span>
-              )}
-            </button>
-            <a
-              href="https://github.com/greeves89/AI-Employee"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all duration-150"
-            >
-              <Star className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Star on GitHub</span>
-              {starCount !== null && (
-                <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">
-                  {starCount}
-                </span>
-              )}
-            </a>
-            <button
-              onClick={toggleTheme}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="text-[13px] font-medium">
-                {theme === "dark" ? "Light Mode" : "Dark Mode"}
-              </span>
-            </button>
-            <UserMenu />
           </>
         )}
       </div>
@@ -400,9 +401,7 @@ export function Sidebar() {
 
       {/* About Modal — rendered via portal to avoid transform context of motion.aside */}
       <AnimatePresence>
-        {aboutOpen && typeof document !== "undefined" && (() => {
-          const { createPortal } = require("react-dom");
-          return createPortal(
+        {aboutOpen && typeof document !== "undefined" && createPortal(
             <>
               <motion.div
                 initial={{ opacity: 0 }}
@@ -455,8 +454,7 @@ export function Sidebar() {
               </motion.div>
             </>,
             document.body
-          );
-        })()}
+          )}
       </AnimatePresence>
     </aside>
   );
