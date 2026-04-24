@@ -2031,6 +2031,24 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     window.open(url, "_blank");
   };
 
+  const handleDelete = async (path: string, name: string) => {
+    if (!confirm(`"${name}" löschen?`)) return;
+    try {
+      await api.deleteFile(agentId, path);
+      setTreeData((prev) => {
+        const next = { ...prev };
+        for (const [dir, entries] of Object.entries(next)) {
+          next[dir] = entries.filter((e) => e.path !== path);
+        }
+        delete next[path];
+        return next;
+      });
+      if (selectedFile?.path === path) setSelectedFile(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Löschen fehlgeschlagen");
+    }
+  };
+
   const sortEntries = (entries: FileEntry[]) =>
     [...entries].sort((a, b) => {
       if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
@@ -2108,6 +2126,15 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 title="Download"
               >
                 <Download className="h-2.5 w-2.5" />
+              </button>
+            )}
+            {entry.path !== "/workspace" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(entry.path, entry.name); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title="Löschen"
+              >
+                <Trash2 className="h-2.5 w-2.5" />
               </button>
             )}
             {isDir && isExpanded && !treeData[entry.path] && (

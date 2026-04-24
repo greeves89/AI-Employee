@@ -337,6 +337,17 @@ export async function uploadFiles(
   return res.json();
 }
 
+export async function deleteFile(agentId: string, path: string): Promise<void> {
+  const res = await fetch(
+    `${getBase()}/agents/${agentId}/files?path=${encodeURIComponent(path)}`,
+    { method: "DELETE", credentials: "include" }
+  );
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`Delete failed: ${error}`);
+  }
+}
+
 // Chat History & Sessions
 export interface ChatHistoryMessage {
   id: string;

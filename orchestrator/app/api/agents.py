@@ -692,6 +692,34 @@ async def download_file(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.delete("/{agent_id}/files")
+async def delete_file(
+    agent_id: str,
+    path: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Delete a file or directory in the agent's workspace."""
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+    # Safety: only allow deletion within /workspace
+    if not path.startswith("/workspace/") or ".." in path:
+        raise HTTPException(status_code=400, detail="Path must be inside /workspace/")
+    try:
+        import docker as docker_sdk
+        client = docker_sdk.from_env()
+        container = client.containers.get(agent.container_id)
+        exit_code, output = container.exec_run(["rm", "-rf", path])
+        if exit_code != 0:
+            raise HTTPException(status_code=500, detail=output.decode())
+        return {"deleted": path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class AgentMessage(BaseModel):
     from_agent_id: str | None = None
     from_name: str | None = None
