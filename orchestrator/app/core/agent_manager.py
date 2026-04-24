@@ -639,7 +639,7 @@ class AgentManager:
             logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
         # Initialize workspace files
-        agent_mounts = config.get("mounts", []) if config else []
+        agent_mounts = []
         claude_md = DEFAULT_CLAUDE_MD.replace(
             "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
         ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
