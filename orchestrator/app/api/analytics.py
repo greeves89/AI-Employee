@@ -126,9 +126,9 @@ async def get_skills_analytics(
     """Per-skill analytics: time savings vs manual, rating trend, usage stats."""
     since = _days_ago(days)
 
-    # All skills with usage stats aggregated from skill_task_usages in the period
+    # All active skills — show even with 0 usage so dashboard is never empty
     skills_result = await db.execute(
-        select(Skill).where(Skill.usage_count > 0).order_by(Skill.usage_count.desc()).limit(limit)
+        select(Skill).where(Skill.status == "active").order_by(Skill.usage_count.desc(), Skill.name).limit(limit)
     )
     skills = list(skills_result.scalars().all())
 
@@ -309,3 +309,99 @@ async def get_agents_analytics(
 
     result.sort(key=lambda x: x["total_tasks"], reverse=True)
     return {"period_days": days, "agents": result}
+
+
+@router.get("/agents/{agent_id}")
+async def get_agent_detail(
+    agent_id: str,
+    days: int = Query(30, ge=1, le=365),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detailed analytics for a single agent: daily volume, recent ratings, top errors."""
+    from sqlalchemy import text as sa_text
+    since = _days_ago(days)
+
+    agent = await db.get(Agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Task summary
+    task_row = (await db.execute(
+        select(
+            func.count(Task.id).label("total"),
+            func.count(Task.id).filter(Task.status == TaskStatus.COMPLETED).label("completed"),
+            func.count(Task.id).filter(Task.status == TaskStatus.FAILED).label("failed"),
+            func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
+            func.avg(Task.duration_ms).label("avg_duration_ms"),
+            func.avg(Task.num_turns).label("avg_turns"),
+        )
+        .where(Task.agent_id == agent_id, Task.created_at >= since)
+    )).one()
+
+    # Daily volume
+    daily = (await db.execute(
+        sa_text("""
+            SELECT date_trunc('day', created_at) AS day,
+                   COUNT(id) AS total,
+                   COUNT(id) FILTER (WHERE status = 'completed') AS completed,
+                   COUNT(id) FILTER (WHERE status = 'failed') AS failed
+            FROM tasks
+            WHERE agent_id = :agent_id AND created_at >= :since
+            GROUP BY date_trunc('day', created_at)
+            ORDER BY date_trunc('day', created_at)
+        """),
+        {"agent_id": agent_id, "since": since},
+    )).mappings().all()
+
+    # Recent ratings with comments
+    ratings_result = await db.execute(
+        select(TaskRating)
+        .where(TaskRating.agent_id == agent_id)
+        .order_by(TaskRating.created_at.desc())
+        .limit(20)
+    )
+    ratings = ratings_result.scalars().all()
+
+    # Top error patterns (from failed task titles/errors)
+    errors_result = await db.execute(
+        select(Task.title, Task.error)
+        .where(Task.agent_id == agent_id, Task.status == TaskStatus.FAILED, Task.created_at >= since)
+        .order_by(Task.created_at.desc())
+        .limit(10)
+    )
+    recent_errors = [{"title": r.title, "error": (r.error or "")[:200]} for r in errors_result.all()]
+
+    return {
+        "agent": {
+            "id": agent.id,
+            "name": agent.name,
+            "role": agent.config.get("role") if agent.config else None,
+            "state": agent.state,
+        },
+        "period_days": days,
+        "summary": {
+            "total_tasks": task_row.total or 0,
+            "completed": task_row.completed or 0,
+            "failed": task_row.failed or 0,
+            "success_rate_pct": round((task_row.completed or 0) / task_row.total * 100, 1) if task_row.total else 0.0,
+            "total_cost_usd": round(float(task_row.total_cost or 0), 4),
+            "avg_duration_ms": int(task_row.avg_duration_ms or 0),
+            "avg_turns": round(float(task_row.avg_turns or 0), 1),
+        },
+        "daily": [
+            {"date": str(r["day"])[:10], "total": r["total"], "completed": r["completed"], "failed": r["failed"]}
+            for r in daily
+        ],
+        "ratings": [
+            {
+                "id": r.id,
+                "rating": r.rating,
+                "comment": r.comment,
+                "task_id": r.task_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in ratings
+        ],
+        "recent_errors": recent_errors,
+    }

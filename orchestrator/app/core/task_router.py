@@ -362,6 +362,10 @@ class TaskRouter:
         # Auto-rate the task based on outcome metrics
         await self._auto_rate_task(task)
 
+        # Track skill usage for installed skills on this agent
+        if agent_id and task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            await self._record_skill_usages(task, agent_id)
+
         # Subtask completion callback: notify the parent task's agent
         if task.parent_task_id:
             await self._notify_parent_agent(task)
@@ -554,6 +558,38 @@ class TaskRouter:
             await self._maybe_trigger_improvement(task.agent_id)
         except Exception as e:
             logger.warning(f"Could not auto-rate task {task.id}: {e}")
+
+    async def _record_skill_usages(self, task: Task, agent_id: str) -> None:
+        """Record SkillTaskUsage for every skill installed on this agent at task completion."""
+        try:
+            from app.models.skill import AgentSkillAssignment, Skill, SkillTaskUsage
+            assignments = list((await self.db.execute(
+                select(AgentSkillAssignment).where(AgentSkillAssignment.agent_id == agent_id)
+            )).scalars().all())
+            if not assignments:
+                return
+            skill_ids = [a.skill_id for a in assignments]
+            skills = list((await self.db.execute(
+                select(Skill).where(Skill.id.in_(skill_ids))
+            )).scalars().all())
+            for skill in skills:
+                usage = SkillTaskUsage(
+                    skill_id=skill.id,
+                    task_id=task.id,
+                    agent_id=agent_id,
+                    task_duration_ms=task.duration_ms,
+                    task_cost_usd=task.cost_usd,
+                )
+                self.db.add(usage)
+                skill.usage_count = (skill.usage_count or 0) + 1
+                skill.avg_agent_duration_ms = (
+                    int(task.duration_ms)
+                    if not skill.avg_agent_duration_ms
+                    else int((skill.avg_agent_duration_ms * 0.8 + (task.duration_ms or 0) * 0.2))
+                )
+            await self.db.commit()
+        except Exception as e:
+            logger.warning(f"Could not record skill usages for task {task.id}: {e}")
 
     async def _maybe_trigger_improvement(self, agent_id: str) -> None:
         """Trigger the improvement engine every 10th rated task for an agent."""
