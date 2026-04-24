@@ -653,6 +653,42 @@ class OrchestratorAPIClient:
             lines.append("---")
         return "\n".join(lines)
 
+    async def skill_install(self, params: dict) -> str:
+        """Install a marketplace skill to this agent."""
+        skill_id = params.get("skill_id")
+        if not skill_id:
+            return "Error: skill_id is required"
+        result = await self._request("POST", f"/skills/agent/install/{skill_id}")
+        if isinstance(result, dict) and result.get("status") in ("installed", "already_installed"):
+            content = result.get("content", "")
+            name = result.get("skill_name", str(skill_id))
+            status = result.get("status")
+            msg = f"Skill '{name}' {'installed' if status == 'installed' else 'already installed'}."
+            if content:
+                msg += f"\n\nSkill instructions:\n{content}"
+            return msg
+        return f"Error installing skill: {result}"
+
+    async def skill_rate(self, params: dict) -> str:
+        """Record skill usage and rating after using a marketplace skill."""
+        body = {
+            "skill_id": params.get("skill_id"),
+            "task_id": params.get("task_id"),
+            "helpfulness": params.get("helpfulness"),
+            "rating": params.get("rating"),
+            "comment": params.get("comment", ""),
+        }
+        if not body["skill_id"]:
+            return "Error: skill_id is required"
+        result = await self._request("POST", "/skills/agent/record-usage", json=body)
+        if isinstance(result, dict) and result.get("status") == "recorded":
+            return (
+                f"Skill usage recorded. "
+                f"Avg rating: {result.get('avg_rating', 'n/a')}, "
+                f"Total uses: {result.get('usage_count', 'n/a')}"
+            )
+        return f"Error recording skill usage: {result}"
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()

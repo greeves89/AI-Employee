@@ -979,6 +979,38 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_install",
+            "description": "Install a skill from the marketplace to yourself. Call after skill_search when you find a relevant skill. The skill content is returned immediately so you can use it right away.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "integer", "description": "ID of the skill to install (from skill_search results)"},
+                },
+                "required": ["skill_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_rate",
+            "description": "Record that you used a skill and rate how helpful it was. MANDATORY after using a marketplace skill. Call at task end with the skill_id and your ratings.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "integer", "description": "ID of the skill you used"},
+                    "task_id": {"type": "string", "description": "Current task ID (CURRENT_TASK_ID)"},
+                    "helpfulness": {"type": "integer", "description": "How helpful was the skill? 1=not helpful, 5=essential", "minimum": 1, "maximum": 5},
+                    "rating": {"type": "integer", "description": "Your overall self-rating of task quality. 1-5.", "minimum": 1, "maximum": 5},
+                    "comment": {"type": "string", "description": "Optional: what worked well or what could be improved in the skill"},
+                },
+                "required": ["skill_id", "helpfulness", "rating"],
+            },
+        },
+    },
 ]
 
 # ── Combined Tool List ──

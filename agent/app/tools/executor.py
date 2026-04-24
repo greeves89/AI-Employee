@@ -48,7 +48,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "web_search", "web_fetch",
     "knowledge_search", "knowledge_read",
     "list_team", "list_tasks", "list_todos", "list_schedules",
-    "skill_search", "skill_get_my_skills",
+    "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
     "send_message", "create_task",
 })
 

@@ -362,6 +362,46 @@ async def unassign_skill(
     return {"status": "unassigned"}
 
 
+@router.post("/agent/install/{skill_id}", status_code=201)
+async def agent_install_skill(
+    skill_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent self-assigns a skill from the marketplace. Returns skill content for immediate use."""
+    agent_id = auth["agent_id"]
+
+    skill = (await db.execute(
+        select(Skill).where(Skill.id == skill_id, Skill.status == SkillStatus.ACTIVE)
+    )).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found or not active")
+
+    existing = (await db.execute(
+        select(AgentSkillAssignment).where(
+            AgentSkillAssignment.skill_id == skill_id,
+            AgentSkillAssignment.agent_id == agent_id,
+        )
+    )).scalar_one_or_none()
+
+    if not existing:
+        db.add(AgentSkillAssignment(
+            skill_id=skill_id,
+            agent_id=agent_id,
+            assigned_by=f"agent:{agent_id}",
+        ))
+        await db.commit()
+        await _push_skill_files_to_agent(request, db, skill_id, skill.name, agent_id)
+
+    return {
+        "status": "installed" if not existing else "already_installed",
+        "skill_id": skill_id,
+        "skill_name": skill.name,
+        "content": skill.content,
+    }
+
+
 @router.get("/agent/available")
 async def agent_available_skills(
     db: AsyncSession = Depends(get_db),
