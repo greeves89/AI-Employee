@@ -122,16 +122,23 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
     setInstallError("");
     try {
       const repo = cat.repo || cat.source_repo;
-      if (!repo) {
+      const isDbSkill = cat.type === "db" || (!repo && (cat as any).content);
+      if (!repo && !isDbSkill) {
         setInstallError(`${cat.name}: No repository URL available`);
         setInstallingSkill(null);
         return;
+      }
+      const payload: Record<string, string> = { skill: cat.name };
+      if (isDbSkill && (cat as any).content) {
+        payload.content = (cat as any).content;
+      } else if (repo) {
+        payload.repo = repo;
       }
       const res = await fetch(`${API}/api/v1/agents/${agentId}/skills/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ repo, skill: cat.name }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         fetchSkills();
