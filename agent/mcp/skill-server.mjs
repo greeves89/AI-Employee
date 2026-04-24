@@ -114,10 +114,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "skill_record_usage",
+      description:
+        "Record that you actively used a skill during this task. Call this whenever you apply a skill's " +
+        "instructions to complete work — this builds the analytics data for skill effectiveness. " +
+        "Use skill_rate instead if you also want to leave a quality rating.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          skill_id: {
+            type: "number",
+            description: "The numeric ID of the skill you used.",
+          },
+          task_id: {
+            type: "string",
+            description: "Optional: the current task ID (shown as CURRENT_TASK_ID at the top of your prompt).",
+          },
+          helpfulness: {
+            type: "number",
+            description: "Optional: how helpful was the skill? 1 (not helpful) to 5 (extremely helpful).",
+          },
+        },
+        required: ["skill_id"],
+      },
+    },
+    {
       name: "skill_rate",
       description:
-        "Rate a skill after using it. Call this at the end of every task where you used a skill. " +
-        "Your rating improves skill quality over time and helps other agents find the best skills.",
+        "Rate a skill after using it AND record that you used it. Call this at the end of every task " +
+        "where you used a skill. Your rating improves skill quality over time and helps other agents " +
+        "find the best skills. This also records a usage entry for analytics.",
       inputSchema: {
         type: "object",
         properties: {
@@ -128,6 +154,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           rating: {
             type: "number",
             description: "Rating from 1 (poor) to 5 (excellent).",
+          },
+          helpfulness: {
+            type: "number",
+            description: "Optional: how much did the skill help with this specific task? 1-5.",
+          },
+          task_id: {
+            type: "string",
+            description: "Optional: the current task ID (shown as CURRENT_TASK_ID at the top of your prompt).",
           },
           comment: {
             type: "string",
@@ -238,10 +272,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
-    case "skill_rate": {
-      const result = await apiCall(`/skills/marketplace/${args.skill_id}/rate`, {
+    case "skill_record_usage": {
+      const result = await apiCall("/skills/agent/record-usage", {
         method: "POST",
-        body: JSON.stringify({ rating: args.rating, comment: args.comment || "" }),
+        body: JSON.stringify({
+          skill_id: args.skill_id,
+          task_id: args.task_id || null,
+          helpfulness: args.helpfulness || null,
+        }),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Skill usage recorded (skill_id: ${args.skill_id}). Total uses: ${result.usage_count ?? "n/a"}.`,
+        }],
+      };
+    }
+
+    case "skill_rate": {
+      const result = await apiCall("/skills/agent/record-usage", {
+        method: "POST",
+        body: JSON.stringify({
+          skill_id: args.skill_id,
+          task_id: args.task_id || null,
+          helpfulness: args.helpfulness || null,
+          rating: args.rating,
+        }),
       });
       const stars = "★".repeat(args.rating) + "☆".repeat(5 - args.rating);
       return {

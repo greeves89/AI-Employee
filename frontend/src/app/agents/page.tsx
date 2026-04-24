@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle, Sparkles } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle, Sparkles, ArrowUpCircle } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
@@ -53,6 +53,31 @@ export default function AgentsPage() {
   };
 
   const [stoppingAll, setStoppingAll] = useState(false);
+  const [updatingAll, setUpdatingAll] = useState(false);
+  const [updatingAgent, setUpdatingAgent] = useState<string | null>(null);
+
+  const agentsNeedingUpdate = agents.filter((a) => a.update_available);
+
+  const handleUpdateAll = async () => {
+    if (!confirm(`${agentsNeedingUpdate.length} Agent(s) auf die neueste Version aktualisieren?`)) return;
+    setUpdatingAll(true);
+    try {
+      await Promise.all(agentsNeedingUpdate.map((a) => api.updateAgent(a.id)));
+      await refresh();
+    } finally {
+      setUpdatingAll(false);
+    }
+  };
+
+  const handleUpdateAgent = async (id: string) => {
+    setUpdatingAgent(id);
+    try {
+      await api.updateAgent(id);
+      await refresh();
+    } finally {
+      setUpdatingAgent(null);
+    }
+  };
 
   const handleStopAll = async () => {
     if (!confirm("Alle Agents stoppen?")) return;
@@ -127,6 +152,18 @@ export default function AgentsPage() {
                 <Network className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Update All — only visible when at least one agent has an update */}
+            {agentsNeedingUpdate.length > 0 && (
+              <button
+                onClick={handleUpdateAll}
+                disabled={updatingAll}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
+              >
+                {updatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}
+                Update All ({agentsNeedingUpdate.length})
+              </button>
+            )}
 
             {/* Stop All */}
             {agents.some((a) => ["running", "idle", "working"].includes(a.state)) && (
@@ -250,12 +287,21 @@ export default function AgentsPage() {
 
                 {/* Floating action buttons */}
                 <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-                  {actionLoading === agent.id ? (
+                  {actionLoading === agent.id || updatingAgent === agent.id ? (
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                     </div>
                   ) : (
                     <>
+                      {agent.update_available && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUpdateAgent(agent.id); }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-amber-400 hover:bg-amber-500/15 transition-colors"
+                          title="Update agent"
+                        >
+                          <ArrowUpCircle className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {agent.state === "stopped" ? (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleStart(agent.id); }}

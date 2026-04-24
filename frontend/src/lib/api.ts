@@ -1653,6 +1653,11 @@ export async function getAnalyticsAgents(days = 30) {
   return fetchJSON<{ period_days: number; agents: any[] }>(`${getBase()}/analytics/agents?days=${days}`);
 }
 
+export async function getAnalyticsAgentDetail(agentId: string, days = 30) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return fetchJSON<any>(`${getBase()}/analytics/agents/${agentId}?days=${days}`);
+}
+
 export async function getSkillTrend(skillId: number, days = 60) {
   return fetchJSON<{
     skill_id: number;

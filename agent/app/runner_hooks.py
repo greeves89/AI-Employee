@@ -47,7 +47,7 @@ FIRST STEPS (do these BEFORE starting the actual task):
 4. Use list_todos to check for pending work items
 5. **Search the skill marketplace** with skill_search (query = short summary of what the task needs).
    - Read the description of matching skills and decide yourself if one fits.
-   - If a relevant skill fits: use it. Note the skill ID — you must rate it with skill_rate after.
+   - If a relevant skill fits: use it. Note the skill ID — you must call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
    - If no skill fits or none found: proceed with your own approach. At the end you MUST
      create a new skill with skill_propose so the next agent can benefit from your approach.
 
@@ -80,7 +80,7 @@ MANDATORY STEPS — do these IN ORDER for EVERY real request (not just greetings
 
 STEP 1 — BEFORE anything else: Call `TodoWrite` to create a TODO for what you're about to do.
 STEP 2 — Call `skill_search` with a short summary of what the request needs.
-          If a skill matches: use it. Note the skill ID — you must rate it with skill_rate after.
+          If a skill matches: use it. Note the skill ID — call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
           If no skill fits: proceed normally. Propose a new skill at the end with skill_propose.
 STEP 3 — Call `memory_search` to check for relevant past learnings.
 STEP 4 — Execute the task. Call tools — never just describe what you would do.
@@ -164,8 +164,14 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    - reflection: ONE sentence about what went well or what to do differently next time
 
 7. **Rate any skill you used (MANDATORY)**: If you used a skill from the marketplace (step 5
-   of FIRST STEPS), call `skill_rate` now with an honest 1-5 rating and a short comment on
-   what worked or what could be improved. This is how skills get better over time.
+   of FIRST STEPS), call `skill_rate` now with:
+   - skill_id: the numeric ID of the skill
+   - rating: 1-5 (how good was the task outcome?)
+   - helpfulness: 1-5 (how much did THIS SKILL specifically help?)
+   - task_id: EXACT value of CURRENT_TASK_ID from the very top of this prompt
+   - comment: one sentence on what worked or could improve
+   This records both the rating AND the usage entry for analytics. The task_id links the usage
+   to this specific task — without it the analytics data is incomplete.
 
 8. **Propose a skill (MANDATORY for reusable work)**: Did this task produce something reusable —
    a workflow, a code pattern, a report template, a process, or any repeatable approach?

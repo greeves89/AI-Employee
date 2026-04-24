@@ -10,7 +10,7 @@ import re
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
-from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile
+from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage
 from app.models.audit_log import AuditLog, AuditEventType
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
 
@@ -398,6 +398,74 @@ async def agent_available_skills(
     return {
         "skills": [{"name": s.name, "content": s.content, "description": s.description} for s in skills],
         "total": len(skills),
+    }
+
+
+class AgentRecordUsageBody(BaseModel):
+    skill_id: int
+    task_id: str | None = None
+    helpfulness: int | None = None   # 1-5: how much did the skill help?
+    rating: int | None = None        # 1-5: agent self-rating of task quality
+    comment: str | None = None
+
+
+@router.post("/agent/record-usage", status_code=201)
+async def agent_record_skill_usage(
+    body: AgentRecordUsageBody,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Agent records explicit skill usage — called from MCP skill_rate / skill_record_usage tools.
+
+    Creates a SkillTaskUsage row. If a rating is provided, also updates the skill's rolling avg_rating.
+    """
+    agent_id = auth["agent_id"]
+
+    skill = (await db.execute(select(Skill).where(Skill.id == body.skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    # Resolve task context for duration/cost if task_id provided
+    task_duration_ms = None
+    task_cost_usd = None
+    time_saved_seconds = None
+    if body.task_id:
+        from app.models.task import Task
+        task = (await db.execute(select(Task).where(Task.id == body.task_id))).scalar_one_or_none()
+        if task:
+            task_duration_ms = task.duration_ms
+            task_cost_usd = task.cost_usd
+            if skill.manual_duration_seconds and task.duration_ms:
+                agent_secs = task.duration_ms / 1000
+                time_saved_seconds = max(0, int(skill.manual_duration_seconds - agent_secs))
+
+    usage = SkillTaskUsage(
+        skill_id=body.skill_id,
+        task_id=body.task_id or "manual",
+        agent_id=agent_id,
+        skill_helpfulness=body.helpfulness,
+        agent_self_rating=body.rating,
+        task_duration_ms=task_duration_ms,
+        task_cost_usd=task_cost_usd,
+        time_saved_seconds=time_saved_seconds,
+    )
+    db.add(usage)
+
+    # Update skill rolling avg if rating provided
+    if body.rating and 1 <= body.rating <= 5:
+        total = skill.usage_count or 0
+        if skill.avg_rating is None:
+            skill.avg_rating = float(body.rating)
+        else:
+            skill.avg_rating = round((skill.avg_rating * total + body.rating) / (total + 1), 2)
+        skill.usage_count = total + 1
+
+    await db.commit()
+    return {
+        "status": "recorded",
+        "skill_id": body.skill_id,
+        "avg_rating": skill.avg_rating,
+        "usage_count": skill.usage_count,
     }
 
 

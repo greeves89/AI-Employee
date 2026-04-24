@@ -137,6 +137,7 @@ services:
       AGENT_MOUNT_CATALOG: ${AGENT_MOUNT_CATALOG:-}
     volumes:
       - ./orchestrator:/app
+      - ./VERSION:/app/VERSION:ro
       - ai-employee-shared:/shared
       - ${HOME}/.ai-employee:/host-auth:ro
     deploy:

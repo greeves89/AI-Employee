@@ -1,7 +1,18 @@
+import pathlib
 from pydantic_settings import BaseSettings
 
-# Bump this when the agent image changes and agents need updating
-AGENT_VERSION = "1.27.0"
+def _read_version() -> str:
+    for candidate in [
+        pathlib.Path("/app/VERSION"),
+        pathlib.Path(__file__).parent.parent.parent / "VERSION",
+    ]:
+        if candidate.exists():
+            v = candidate.read_text().strip()
+            if v:
+                return v
+    return "1.28.0"
+
+AGENT_VERSION = _read_version()
 
 
 class Settings(BaseSettings):
