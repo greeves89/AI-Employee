@@ -217,10 +217,14 @@ class LLMChatHandler:
 
         # Build system message if this is the first message
         if not self._history:
+            from app.runner_hooks import get_skills_context
             system_prompt = settings.llm_system_prompt or (
                 "You are a helpful AI coding assistant running in a Docker container. "
                 "Your workspace is at /workspace. Use the available tools to help the user."
             )
+            skills_ctx = get_skills_context()
+            if skills_ctx:
+                system_prompt = system_prompt + "\n" + skills_ctx
             self._history.append(ChatMessage(role="system", content=system_prompt))
 
         # Add user message to history

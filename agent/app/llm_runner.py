@@ -188,11 +188,14 @@ class LLMRunner:
             "Your workspace is at /workspace. Use the available tools to complete tasks."
         )
 
+        skills_ctx = get_skills_context()
+
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
-            skills_ctx = get_skills_context()
             system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES
-            enhanced_prompt = CHAT_STARTUP_PREFIX + skills_ctx + prompt
+            if skills_ctx:
+                system_prompt += "\n" + skills_ctx
+            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
         else:
             memory_preload = get_memory_preload()
             approval_rules = get_approval_rules_prefix()
@@ -205,6 +208,8 @@ class LLMRunner:
                 + memory_preload
                 + improvement_ctx
             )
+            if skills_ctx:
+                system_prompt += "\n" + skills_ctx
             enhanced_prompt = TASK_STARTUP_PREFIX + prompt + SELF_IMPROVEMENT_SUFFIX
 
         messages: list[ChatMessage] = [
