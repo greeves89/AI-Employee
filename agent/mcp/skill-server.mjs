@@ -55,6 +55,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         "Search the skill marketplace for reusable routines, templates, workflows, and patterns. " +
         "Use this when you need a proven approach for a task, before inventing your own solution. " +
+        "Always pass task_id so usage is tracked even if you don't call skill_install afterward. " +
         "Categories: routine, template, workflow, pattern, recipe, tool.",
       inputSchema: {
         type: "object",
@@ -67,6 +68,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             enum: ["routine", "template", "workflow", "pattern", "recipe", "tool"],
             description: "Optional category filter.",
+          },
+          task_id: {
+            type: "string",
+            description: "Current task ID (CURRENT_TASK_ID). Required for usage tracking.",
           },
         },
       },
@@ -114,6 +119,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "skill_install",
+      description:
+        "Install a skill from the marketplace to yourself. Call after skill_search when you find " +
+        "a relevant skill. The skill content is returned immediately so you can use it right away.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          skill_id: {
+            type: "number",
+            description: "ID of the skill to install (from skill_search results).",
+          },
+        },
+        required: ["skill_id"],
+      },
+    },
+    {
       name: "skill_record_usage",
       description:
         "Record that you actively used a skill during this task. Call this whenever you apply a skill's " +
@@ -142,8 +163,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "skill_rate",
       description:
         "Rate a skill after using it AND record that you used it. Call this at the end of every task " +
-        "where you used a skill. Your rating improves skill quality over time and helps other agents " +
-        "find the best skills. This also records a usage entry for analytics.",
+        "where you used a skill. Also call this when the user gives feedback on your result — " +
+        "pass user_rating based on their sentiment. Your rating improves skill quality over time.",
       inputSchema: {
         type: "object",
         properties: {
@@ -153,19 +174,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           rating: {
             type: "number",
-            description: "Rating from 1 (poor) to 5 (excellent).",
+            description: "Your self-rating of task quality: 1 (poor) to 5 (excellent).",
           },
           helpfulness: {
             type: "number",
-            description: "Optional: how much did the skill help with this specific task? 1-5.",
+            description: "How much did this skill specifically help? 1-5.",
+          },
+          user_rating: {
+            type: "number",
+            description: "User feedback interpreted from natural language. 'super/perfekt'=5, 'gut/ok'=4, 'geht so'=3, 'nicht gut'=2, 'schlecht'=1. Only set when user has actually responded.",
           },
           task_id: {
             type: "string",
-            description: "Optional: the current task ID (shown as CURRENT_TASK_ID at the top of your prompt).",
+            description: "The current task ID (CURRENT_TASK_ID from the top of your prompt).",
           },
           comment: {
             type: "string",
-            description: "Optional: what worked well or what could be improved.",
+            description: "What worked well or what could be improved in the skill.",
           },
         },
         required: ["skill_id", "rating"],
@@ -210,6 +235,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const params = new URLSearchParams();
       if (args.query) params.set("q", args.query);
       if (args.category) params.set("category", args.category);
+      if (args.task_id) params.set("task_id", args.task_id);
       const qs = params.toString() ? `?${params}` : "";
 
       const result = await apiCall(`/skills/agent/search${qs}`);
@@ -289,21 +315,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
-    case "skill_rate": {
-      const result = await apiCall("/skills/agent/record-usage", {
+    case "skill_install": {
+      const result = await apiCall(`/skills/agent/install/${args.skill_id}`, {
         method: "POST",
-        body: JSON.stringify({
-          skill_id: args.skill_id,
-          task_id: args.task_id || null,
-          helpfulness: args.helpfulness || null,
-          rating: args.rating,
-        }),
       });
-      const stars = "★".repeat(args.rating) + "☆".repeat(5 - args.rating);
+      const status = result.status === "already_installed" ? "already installed" : "installed";
       return {
         content: [{
           type: "text",
-          text: `Skill rated ${stars}. New avg: ${result.avg_rating?.toFixed(1) ?? "n/a"} (${result.usage_count} uses).`,
+          text: wrapData(
+            `skill-install:${args.skill_id}`,
+            `Skill "${result.skill_name}" ${status} (id=${args.skill_id}).\n\n${result.content || ""}`,
+          ),
+        }],
+      };
+    }
+
+    case "skill_rate": {
+      const body = {
+        skill_id: args.skill_id,
+        task_id: args.task_id || null,
+        helpfulness: args.helpfulness || null,
+        rating: args.rating,
+        comment: args.comment || null,
+      };
+      if (args.user_rating != null) body.user_rating = args.user_rating;
+      const result = await apiCall("/skills/agent/record-usage", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const stars = "★".repeat(args.rating) + "☆".repeat(5 - args.rating);
+      const userFeedback = args.user_rating ? ` | User rating: ${args.user_rating}/5` : "";
+      return {
+        content: [{
+          type: "text",
+          text: `Skill rated ${stars}${userFeedback}. New avg: ${result.avg_rating?.toFixed(1) ?? "n/a"} (${result.usage_count} uses).`,
         }],
       };
     }

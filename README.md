@@ -5,7 +5,7 @@
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
 [![License: Fair-Code](https://img.shields.io/badge/license-Fair--Code-blue.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.29.0-green.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.31.0-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -41,7 +41,7 @@
 
 ---
 
-> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Neu in v1.29: Agent Detail Modal im Analytics-Dashboard, `skill_record_usage` MCP-Tool für präzises Skill-Tracking mit Task-Kontext, "Update All"-Button für Agent-Container-Updates, und dynamische Versionserkennung ohne Hardcoding. Neu in v1.28: Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Approval-Regeln und eine eigene Knowledge Base (die automatisch von allen seinen Agents geteilt wird). Skill Analytics Dashboard — Zeitersparnis, ROI pro Skill und Agent-Performance auf einen Blick. Autonomie-Level L1–L4 mit Whitelist-Modell; alles außerhalb der Whitelist löst automatisch eine Freigabe-Anfrage aus. Native Microsoft 365-Integration über 25 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Neu in v1.31: Self-Improvement-Engine — Skills mit schlechten Bewertungen werden automatisch von Agents verbessert. Skill-Analytics zeigt jetzt korrekte Nutzungszahlen. Positiver Feedback-Loop in usage_count gefixt. Neu in v1.29: Agent Detail Modal im Analytics-Dashboard, `skill_record_usage` MCP-Tool für präzises Skill-Tracking mit Task-Kontext, "Update All"-Button für Agent-Container-Updates, und dynamische Versionserkennung ohne Hardcoding. Neu in v1.28: Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Approval-Regeln und eine eigene Knowledge Base (die automatisch von allen seinen Agents geteilt wird). Skill Analytics Dashboard — Zeitersparnis, ROI pro Skill und Agent-Performance auf einen Blick. Autonomie-Level L1–L4 mit Whitelist-Modell; alles außerhalb der Whitelist löst automatisch eine Freigabe-Anfrage aus. Native Microsoft 365-Integration über 25 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für den internen geschäftlichen Einsatz — eine kommerzielle Lizenz ist nur erforderlich, wenn Sie AI-Employee als SaaS an Dritte weiterverkaufen möchten. Kontakt: daniel.alisch@me.com
 
 ---
 

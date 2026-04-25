@@ -997,7 +997,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "skill_rate",
-            "description": "Record that you used a skill and rate how helpful it was. MANDATORY after using a marketplace skill. Call at task end with the skill_id and your ratings.",
+            "description": "Record that you used a skill and rate how helpful it was. MANDATORY after using a marketplace skill. Also call this when the user gives feedback on your result — pass user_rating based on their sentiment.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1005,7 +1005,8 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "task_id": {"type": "string", "description": "Current task ID (CURRENT_TASK_ID)"},
                     "helpfulness": {"type": "integer", "description": "How helpful was the skill? 1=not helpful, 5=essential", "minimum": 1, "maximum": 5},
                     "rating": {"type": "integer", "description": "Your overall self-rating of task quality. 1-5.", "minimum": 1, "maximum": 5},
-                    "comment": {"type": "string", "description": "Optional: what worked well or what could be improved in the skill"},
+                    "user_rating": {"type": "integer", "description": "User feedback rating 1-5. Interpret from natural language: 'super/perfekt'=5, 'gut/ok'=4, 'geht so'=3, 'nicht gut'=2, 'schlecht'=1. Only set when user has actually given feedback.", "minimum": 1, "maximum": 5},
+                    "comment": {"type": "string", "description": "What worked well or what could be improved in the skill"},
                 },
                 "required": ["skill_id", "helpfulness", "rating"],
             },

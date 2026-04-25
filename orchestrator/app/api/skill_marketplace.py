@@ -394,6 +394,28 @@ async def agent_install_skill(
         await db.commit()
         await _push_skill_files_to_agent(request, db, skill_id, skill.name, agent_id)
 
+    # Track install as a usage event so analytics reflects actual use in the current task
+    from app.models.task import Task, TaskStatus as TS
+    running_task = (await db.execute(
+        select(Task.id).where(
+            Task.agent_id == agent_id,
+            Task.status == TS.RUNNING,
+        ).order_by(Task.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+
+    if running_task:
+        usage_exists = (await db.execute(
+            select(SkillTaskUsage).where(
+                SkillTaskUsage.skill_id == skill_id,
+                SkillTaskUsage.task_id == running_task,
+                SkillTaskUsage.agent_id == agent_id,
+            )
+        )).scalar_one_or_none()
+        if not usage_exists:
+            db.add(SkillTaskUsage(skill_id=skill_id, task_id=running_task, agent_id=agent_id))
+            skill.usage_count = (skill.usage_count or 0) + 1
+            await db.commit()
+
     return {
         "status": "installed" if not existing else "already_installed",
         "skill_id": skill_id,
@@ -444,8 +466,9 @@ async def agent_available_skills(
 class AgentRecordUsageBody(BaseModel):
     skill_id: int
     task_id: str | None = None
-    helpfulness: int | None = None   # 1-5: how much did the skill help?
-    rating: int | None = None        # 1-5: agent self-rating of task quality
+    helpfulness: int | None = None    # 1-5: how much did the skill help?
+    rating: int | None = None         # 1-5: agent self-rating of task quality
+    user_rating: int | None = None    # 1-5: user feedback interpreted by agent from chat
     comment: str | None = None
 
 
@@ -455,9 +478,10 @@ async def agent_record_skill_usage(
     db: AsyncSession = Depends(get_db),
     auth: dict = Depends(verify_agent_token),
 ):
-    """Agent records explicit skill usage — called from MCP skill_rate / skill_record_usage tools.
+    """Agent records explicit skill usage — called from MCP skill_rate tool.
 
-    Creates a SkillTaskUsage row. If a rating is provided, also updates the skill's rolling avg_rating.
+    Upserts a SkillTaskUsage row (one per task+skill combo). Backfills timing from
+    the task record if available. Updates skill rolling averages.
     """
     agent_id = auth["agent_id"]
 
@@ -465,7 +489,9 @@ async def agent_record_skill_usage(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
 
-    # Resolve task context for duration/cost if task_id provided
+    task_id = body.task_id or "manual"
+
+    # Resolve task timing — may be None if task is still running (backfilled later)
     task_duration_ms = None
     task_cost_usd = None
     time_saved_seconds = None
@@ -479,30 +505,62 @@ async def agent_record_skill_usage(
                 agent_secs = task.duration_ms / 1000
                 time_saved_seconds = max(0, int(skill.manual_duration_seconds - agent_secs))
 
-    usage = SkillTaskUsage(
-        skill_id=body.skill_id,
-        task_id=body.task_id or "manual",
-        agent_id=agent_id,
-        skill_helpfulness=body.helpfulness,
-        agent_self_rating=body.rating,
-        task_duration_ms=task_duration_ms,
-        task_cost_usd=task_cost_usd,
-        time_saved_seconds=time_saved_seconds,
-    )
-    db.add(usage)
+    # Upsert: find existing record for this task+skill combo
+    existing = (await db.execute(
+        select(SkillTaskUsage).where(
+            SkillTaskUsage.task_id == task_id,
+            SkillTaskUsage.skill_id == body.skill_id,
+            SkillTaskUsage.agent_id == agent_id,
+        )
+    )).scalar_one_or_none()
 
-    # Update skill rolling avg if rating provided
-    if body.rating and 1 <= body.rating <= 5:
-        total = skill.usage_count or 0
-        if skill.avg_rating is None:
-            skill.avg_rating = float(body.rating)
-        else:
-            skill.avg_rating = round((skill.avg_rating * total + body.rating) / (total + 1), 2)
-        skill.usage_count = total + 1
+    is_new = existing is None
+    if existing:
+        if body.helpfulness is not None:
+            existing.skill_helpfulness = body.helpfulness
+        if body.rating is not None:
+            existing.agent_self_rating = body.rating
+        if body.user_rating is not None:
+            existing.user_rating = body.user_rating
+        if task_duration_ms is not None:
+            existing.task_duration_ms = task_duration_ms
+        if task_cost_usd is not None:
+            existing.task_cost_usd = task_cost_usd
+        if time_saved_seconds is not None:
+            existing.time_saved_seconds = time_saved_seconds
+        usage = existing
+    else:
+        usage = SkillTaskUsage(
+            skill_id=body.skill_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            skill_helpfulness=body.helpfulness,
+            agent_self_rating=body.rating,
+            user_rating=body.user_rating,
+            task_duration_ms=task_duration_ms,
+            task_cost_usd=task_cost_usd,
+            time_saved_seconds=time_saved_seconds,
+        )
+        db.add(usage)
+
+    # Update skill rolling averages (only on new records to avoid double-counting)
+    if is_new:
+        skill.usage_count = (skill.usage_count or 0) + 1
+        if body.rating and 1 <= body.rating <= 5:
+            total = skill.usage_count
+            if skill.avg_rating is None:
+                skill.avg_rating = float(body.rating)
+            else:
+                skill.avg_rating = round((skill.avg_rating * (total - 1) + body.rating) / total, 2)
+    elif body.rating and 1 <= body.rating <= 5 and existing and existing.agent_self_rating != body.rating:
+        # Rating changed on existing record — recalculate is complex, do simple EMA update
+        skill.avg_rating = round(
+            (skill.avg_rating or body.rating) * 0.9 + body.rating * 0.1, 2
+        ) if skill.avg_rating else float(body.rating)
 
     await db.commit()
     return {
-        "status": "recorded",
+        "status": "updated" if not is_new else "recorded",
         "skill_id": body.skill_id,
         "avg_rating": skill.avg_rating,
         "usage_count": skill.usage_count,
@@ -514,10 +572,16 @@ async def agent_search_skills(
     q: str = Query(""),
     category: str | None = Query(None),
     limit: int = Query(10, ge=1, le=50),
+    task_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     auth: dict = Depends(verify_agent_token),
 ):
-    """Agent searches the skill marketplace."""
+    """Agent searches the skill marketplace.
+
+    If task_id is provided and skills are found, records an implicit usage entry
+    for the top result. This ensures analytics data even when skill_rate isn't called.
+    Explicit skill_rate calls will upsert the same record with quality ratings.
+    """
     from sqlalchemy import or_
     query = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
     if q:
@@ -533,6 +597,44 @@ async def agent_search_skills(
         query = query.where(cast(Skill.category, Text) == category.upper())
     query = query.order_by(Skill.usage_count.desc()).limit(limit)
     skills = list((await db.execute(query)).scalars().all())
+
+    # Implicit usage tracking: record top matching skill against the agent's current running task.
+    # The agent rarely passes task_id voluntarily, so we look it up server-side.
+    if skills:
+        agent_id = auth["agent_id"]
+        # Resolve task_id: use agent-provided one, or look up the currently running task
+        resolved_task_id = task_id
+        if not resolved_task_id:
+            from app.models.task import Task, TaskStatus
+            running = (await db.execute(
+                select(Task.id).where(
+                    Task.agent_id == agent_id,
+                    Task.status == TaskStatus.RUNNING,
+                ).order_by(Task.created_at.desc()).limit(1)
+            )).scalar_one_or_none()
+            resolved_task_id = running
+
+        # Only track implicit usage when there's a real search query — not on blank/browse searches.
+        # Without this guard, the top-ranked skill gets incremented on every search call,
+        # creating a runaway positive feedback loop.
+        if resolved_task_id and q.strip():
+            top_skill = skills[0]
+            existing = (await db.execute(
+                select(SkillTaskUsage).where(
+                    SkillTaskUsage.task_id == resolved_task_id,
+                    SkillTaskUsage.skill_id == top_skill.id,
+                    SkillTaskUsage.agent_id == agent_id,
+                )
+            )).scalar_one_or_none()
+            if not existing:
+                db.add(SkillTaskUsage(
+                    skill_id=top_skill.id,
+                    task_id=resolved_task_id,
+                    agent_id=agent_id,
+                ))
+                top_skill.usage_count = (top_skill.usage_count or 0) + 1
+                await db.commit()
+
     return {"skills": [_to_response(s) for s in skills], "total": len(skills)}
 
 
@@ -902,8 +1004,17 @@ async def agent_update_skill(
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
-    if skill.created_by != f"agent:{agent_id}":
-        raise HTTPException(status_code=403, detail="You can only update skills you created")
+
+    # Allow update if the agent created it OR has it assigned (e.g. improvement tasks)
+    is_creator = skill.created_by == f"agent:{agent_id}"
+    has_assignment = (await db.execute(
+        select(AgentSkillAssignment.id).where(
+            AgentSkillAssignment.skill_id == skill_id,
+            AgentSkillAssignment.agent_id == agent_id,
+        )
+    )).scalar_one_or_none() is not None
+    if not is_creator and not has_assignment:
+        raise HTTPException(status_code=403, detail="You can only update skills you created or have installed")
 
     if body.description is not None:
         skill.description = body.description

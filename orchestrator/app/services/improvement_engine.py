@@ -1,10 +1,11 @@
-"""Improvement Engine - periodic analysis of task ratings to generate agent insights.
+"""Improvement Engine - periodic analysis of task ratings + skill quality.
 
 Runs as a background job, analyzing ratings every hour to:
 1. Detect performance trends (improving/declining)
 2. Identify recurring issues from low-rating comments
 3. Generate LLM improvement suggestions when average rating < 3.5 (min 5 ratings)
 4. Store suggestions in agent_memories and send notifications when significant changes detected
+5. Auto-improve skill content when avg helpfulness < 3.0 (min 5 rated usages)
 """
 
 import asyncio
@@ -22,6 +23,7 @@ from app.config import settings
 from app.models.agent import Agent
 from app.models.notification import Notification
 from app.models.task_rating import TaskRating
+from app.models.skill import Skill, SkillTaskUsage
 
 # Model used for improvement suggestions (same as task self-reflection)
 _SUGGESTION_MODEL = "claude-haiku-4-5-20251001"
@@ -29,6 +31,10 @@ _SUGGESTION_MODEL = "claude-haiku-4-5-20251001"
 _MIN_RATINGS_FOR_SUGGESTION = 5
 # Average rating threshold below which suggestions are generated
 _SUGGESTION_THRESHOLD = 3.5
+# Minimum rated skill usages before auto-improving skill content
+_MIN_SKILL_USAGES_FOR_IMPROVEMENT = 5
+# Avg helpfulness threshold at or below which skill content is auto-improved
+_SKILL_IMPROVEMENT_THRESHOLD = 3.0
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +91,12 @@ class ImprovementEngine:
                 except Exception as e:
                     logger.warning(f"[ImprovementEngine] Failed to analyze agent {agent_id}: {e}")
 
+            # Also analyze skill quality across all agents
+            try:
+                await _improve_poorly_rated_skills(db)
+            except Exception as e:
+                logger.warning(f"[ImprovementEngine] Skill improvement pass failed: {e}")
+
             await db.commit()
 
     async def analyze(self, agent_id: str, db: AsyncSession) -> None:
@@ -94,6 +106,7 @@ class ImprovementEngine:
         """
         try:
             await self._analyze_agent(db, agent_id)
+            await _improve_poorly_rated_skills(db)
             await db.commit()
         except Exception as e:
             logger.warning(f"[ImprovementEngine] analyze({agent_id}) failed: {e}")
@@ -281,6 +294,131 @@ def _classify_performance(avg: float, trend: float, recent_avg: float) -> str:
             return "declining"
         return "average"
     return "needs_attention"
+
+
+async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
+    """Find skills with low helpfulness ratings and dispatch improvement tasks to agents.
+
+    Triggered hourly. Only processes skills that haven't been improved in the last 24h
+    to avoid thrashing. Uses the agent task queue (not direct API calls) so that the
+    orchestrator does not need an Anthropic API key.
+    """
+    import uuid
+    from app.models.skill import AgentSkillAssignment
+    from app.models.task import Task, TaskStatus
+
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Find skills with enough rated usages and low avg helpfulness
+    agg = (await db.execute(
+        select(
+            SkillTaskUsage.skill_id,
+            func.count(SkillTaskUsage.id).label("rated_count"),
+            func.avg(SkillTaskUsage.skill_helpfulness).label("avg_helpfulness"),
+            func.avg(SkillTaskUsage.agent_self_rating).label("avg_agent_rating"),
+        )
+        .where(SkillTaskUsage.skill_helpfulness.isnot(None))
+        .group_by(SkillTaskUsage.skill_id)
+        .having(func.count(SkillTaskUsage.id) >= _MIN_SKILL_USAGES_FOR_IMPROVEMENT)
+        .having(func.avg(SkillTaskUsage.skill_helpfulness) <= _SKILL_IMPROVEMENT_THRESHOLD)
+    )).all()
+
+    if not agg:
+        return
+
+    skill_ids = [row.skill_id for row in agg]
+    skills = {s.id: s for s in (await db.execute(
+        select(Skill).where(Skill.id.in_(skill_ids), Skill.status == "active")
+    )).scalars().all()}
+
+    # Get Redis for task dispatch
+    try:
+        from app.services.redis_service import RedisService
+        redis = RedisService(settings.redis_url)
+        await redis.connect()
+    except Exception as exc:
+        logger.warning(f"[ImprovementEngine] Cannot connect to Redis for skill improvement: {exc}")
+        return
+
+    try:
+        for row in agg:
+            skill = skills.get(row.skill_id)
+            if not skill:
+                continue
+
+            # Skip if recently improved
+            if skill.updated_at and skill.updated_at.replace(tzinfo=timezone.utc) > since_24h:
+                logger.debug(f"[ImprovementEngine] Skill '{skill.name}' updated recently — skipping")
+                continue
+
+            # Find an agent that has this skill assigned
+            agent_row = (await db.execute(
+                select(AgentSkillAssignment.agent_id)
+                .where(AgentSkillAssignment.skill_id == skill.id)
+                .limit(1)
+            )).scalar_one_or_none()
+
+            if not agent_row:
+                logger.warning(f"[ImprovementEngine] Skill '{skill.name}' has no assigned agents — cannot dispatch improvement task")
+                continue
+
+            agent_id = agent_row
+            avg_h = float(row.avg_helpfulness)
+            avg_r = float(row.avg_agent_rating or 0)
+            rated_count = int(row.rated_count)
+
+            logger.info(
+                f"[ImprovementEngine] Skill '{skill.name}' (id={skill.id}) needs improvement: "
+                f"avg_helpfulness={avg_h:.1f}, avg_rating={avg_r:.1f} over {rated_count} usages — "
+                f"dispatching improvement task to agent {agent_id}"
+            )
+
+            prompt = (
+                f"SYSTEM TASK — SKILL SELF-IMPROVEMENT\n\n"
+                f"The skill '{skill.name}' (id={skill.id}) has been rated with low helpfulness "
+                f"({avg_h:.1f}/5 average over {rated_count} rated usages, agent quality {avg_r:.1f}/5). "
+                f"Your job is to rewrite its content to be more actionable and effective.\n\n"
+                f"CURRENT SKILL CONTENT:\n{skill.content or '(empty)'}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"1. Analyze why the current content might have low helpfulness ratings.\n"
+                f"2. Rewrite the skill content to be clearer, more step-by-step, and easier to follow.\n"
+                f"   - Make steps explicit and concrete (no vague instructions)\n"
+                f"   - Add examples where helpful\n"
+                f"   - Keep the same general purpose but improve quality\n"
+                f"3. Call skill_update(skill_id={skill.id}, content=<your improved content>, "
+                f"feedback='Auto-improvement: avg helpfulness was {avg_h:.1f}/5 over {rated_count} uses') "
+                f"to save the improved version.\n\n"
+                f"Do not ask for confirmation — just analyze and update the skill now."
+            )
+
+            task_id = uuid.uuid4().hex[:12]
+            task = Task(
+                id=task_id,
+                title=f"Auto-improve skill: {skill.name}",
+                prompt=prompt,
+                status=TaskStatus.QUEUED,
+                agent_id=agent_id,
+                metadata_={"source": "improvement_engine", "skill_id": skill.id},
+            )
+            db.add(task)
+
+            task_payload = json.dumps({
+                "id": task_id,
+                "prompt": prompt,
+                "title": f"Auto-improve skill: {skill.name}",
+                "model": None,
+                "priority": "low",
+            })
+
+            await redis.push_task(agent_id, task_payload)
+            logger.info(f"[ImprovementEngine] Improvement task {task_id} queued for agent {agent_id}")
+
+            # Mark skill as recently updated to prevent re-queuing next run
+            skill.updated_at = datetime.now(timezone.utc)
+
+        await db.commit()
+    finally:
+        await redis.disconnect()
 
 
 async def _send_trend_notification(

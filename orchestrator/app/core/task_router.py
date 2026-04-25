@@ -560,36 +560,43 @@ class TaskRouter:
             logger.warning(f"Could not auto-rate task {task.id}: {e}")
 
     async def _record_skill_usages(self, task: Task, agent_id: str) -> None:
-        """Record SkillTaskUsage for every skill installed on this agent at task completion."""
+        """Backfill timing data on SkillTaskUsage rows created by explicit skill_rate calls.
+
+        We no longer create records for all installed skills — only skills the agent
+        explicitly rated via skill_rate matter. This method backfills task_duration_ms
+        and task_cost_usd once the task is complete (those values are None at skill_rate
+        call time because the task is still running).
+        """
         try:
-            from app.models.skill import AgentSkillAssignment, Skill, SkillTaskUsage
-            assignments = list((await self.db.execute(
-                select(AgentSkillAssignment).where(AgentSkillAssignment.agent_id == agent_id)
+            from app.models.skill import Skill, SkillTaskUsage
+            existing = list((await self.db.execute(
+                select(SkillTaskUsage).where(
+                    SkillTaskUsage.task_id == task.id,
+                    SkillTaskUsage.task_duration_ms.is_(None),
+                )
             )).scalars().all())
-            if not assignments:
+            if not existing:
                 return
-            skill_ids = [a.skill_id for a in assignments]
-            skills = list((await self.db.execute(
+            skill_ids = {u.skill_id for u in existing}
+            skills = {s.id: s for s in (await self.db.execute(
                 select(Skill).where(Skill.id.in_(skill_ids))
-            )).scalars().all())
-            for skill in skills:
-                usage = SkillTaskUsage(
-                    skill_id=skill.id,
-                    task_id=task.id,
-                    agent_id=agent_id,
-                    task_duration_ms=task.duration_ms,
-                    task_cost_usd=task.cost_usd,
-                )
-                self.db.add(usage)
-                skill.usage_count = (skill.usage_count or 0) + 1
-                skill.avg_agent_duration_ms = (
-                    int(task.duration_ms)
-                    if not skill.avg_agent_duration_ms
-                    else int((skill.avg_agent_duration_ms * 0.8 + (task.duration_ms or 0) * 0.2))
-                )
+            )).scalars().all()}
+            for usage in existing:
+                usage.task_duration_ms = task.duration_ms
+                usage.task_cost_usd = task.cost_usd
+                skill = skills.get(usage.skill_id)
+                if skill and task.duration_ms:
+                    skill.avg_agent_duration_ms = (
+                        int(task.duration_ms)
+                        if not skill.avg_agent_duration_ms
+                        else int((skill.avg_agent_duration_ms * 0.8 + task.duration_ms * 0.2))
+                    )
+                    if skill.manual_duration_seconds:
+                        agent_secs = task.duration_ms / 1000
+                        usage.time_saved_seconds = max(0, int(skill.manual_duration_seconds - agent_secs))
             await self.db.commit()
         except Exception as e:
-            logger.warning(f"Could not record skill usages for task {task.id}: {e}")
+            logger.warning(f"Could not backfill skill timings for task {task.id}: {e}")
 
     async def _maybe_trigger_improvement(self, agent_id: str) -> None:
         """Trigger the improvement engine every 10th rated task for an agent."""

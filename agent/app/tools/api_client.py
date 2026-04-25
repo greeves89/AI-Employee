@@ -679,10 +679,12 @@ class OrchestratorAPIClient:
             "rating": params.get("rating"),
             "comment": params.get("comment", ""),
         }
+        if params.get("user_rating") is not None:
+            body["user_rating"] = params["user_rating"]
         if not body["skill_id"]:
             return "Error: skill_id is required"
         result = await self._request("POST", "/skills/agent/record-usage", json=body)
-        if isinstance(result, dict) and result.get("status") == "recorded":
+        if isinstance(result, dict) and result.get("status") in ("recorded", "updated"):
             return (
                 f"Skill usage recorded. "
                 f"Avg rating: {result.get('avg_rating', 'n/a')}, "
