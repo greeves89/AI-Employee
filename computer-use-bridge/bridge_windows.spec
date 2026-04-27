@@ -3,13 +3,14 @@
 
 block_cipher = None
 
+from PyInstaller.utils.hooks import collect_all
+ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
+
 a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
-    binaries=[],
-    datas=[
-        ('bridge.py', '.'),
-    ],
+    binaries=ctk_binaries,
+    datas=[('bridge.py', '.')] + ctk_datas,
     hiddenimports=[
         'pystray',
         'pystray._win32',
@@ -21,7 +22,9 @@ a = Analysis(
         'websockets',
         'tkinter',
         'tkinter.ttk',
-    ],
+        'tkinter.filedialog',
+        'customtkinter',
+    ] + ctk_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

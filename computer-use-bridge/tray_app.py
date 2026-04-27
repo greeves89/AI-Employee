@@ -616,114 +616,309 @@ def show_status_window(cfg: dict) -> None:
     panel.close()
 
 
-# ── tkinter fallbacks (non-macOS / no AppKit) ─────────────────────────────────
+# ── Windows/Linux dialogs (customtkinter — dark, modern) ──────────────────────
+
+def _ctk_available():
+    try:
+        import customtkinter  # noqa
+        return True
+    except ImportError:
+        return False
+
+
+def _ctk_setup():
+    import customtkinter as ctk
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("blue")
+    return ctk
+
+
+RISK_COLORS = {"gering": "#22c55e", "mittel": "#f59e0b", "hoch": "#ef4444"}
+
 
 def _show_setup_tkinter(cfg):
-    try:
-        import tkinter as tk
-        from tkinter import ttk, messagebox
-    except ImportError:
-        return None
+    if not _ctk_available():
+        return _show_setup_plain_tkinter(cfg)
+
+    ctk = _ctk_setup()
     result = {}
-    root = tk.Tk(); root.title("AI-Employee Bridge — Einstellungen")
-    root.resizable(False, False); root.geometry("480x320")
-    frame = ttk.Frame(root, padding=20); frame.pack(fill="both", expand=True)
-    ttk.Label(frame, text="AI-Employee Bridge", font=("", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=(0,4), sticky="w")
-    ttk.Label(frame, text="Server URL:").grid(row=1, column=0, sticky="w", pady=4)
-    url_var = tk.StringVar(value=cfg.get("url",""))
-    ttk.Entry(frame, textvariable=url_var, width=40).grid(row=1, column=1, padx=(8,0))
-    ttk.Label(frame, text="E-Mail:").grid(row=2, column=0, sticky="w", pady=4)
-    em_var = tk.StringVar()
-    ttk.Entry(frame, textvariable=em_var, width=40).grid(row=2, column=1, padx=(8,0))
-    ttk.Label(frame, text="Passwort:").grid(row=3, column=0, sticky="w", pady=4)
-    pw_var = tk.StringVar()
-    ttk.Entry(frame, textvariable=pw_var, width=40, show="*").grid(row=3, column=1, padx=(8,0))
-    auto_var = tk.BooleanVar(value=cfg.get("auto_connect", True))
-    ttk.Checkbutton(frame, text="Beim Start automatisch verbinden", variable=auto_var).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8,0))
-    sv = tk.StringVar()
-    ttk.Label(frame, textvariable=sv, foreground="gray").grid(row=5, column=0, columnspan=2, sticky="w")
+
+    root = ctk.CTk()
+    root.title("AI-Employee Bridge — Einstellungen")
+    root.geometry("480x400")
+    root.resizable(False, False)
+
+    # Header
+    ctk.CTkLabel(root, text="AI-Employee Bridge", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w", padx=24, pady=(24, 2))
+    ctk.CTkLabel(root, text="Verbinde diesen PC mit deinem AI-Employee Server.", text_color="gray60", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=24)
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=12)
+
+    def field(label, placeholder, secure=False, value=""):
+        ctk.CTkLabel(root, text=label, font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(4,1))
+        e = ctk.CTkEntry(root, placeholder_text=placeholder, show="●" if secure else "", width=432, height=36)
+        if value: e.insert(0, value)
+        e.pack(padx=24)
+        return e
+
+    url_f = field("SERVER URL", "https://agents.example.com", value=cfg.get("url",""))
+    em_f  = field("E-MAIL",    "name@example.com")
+    pw_f  = field("PASSWORT",  "••••••••", secure=True)
+
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=12)
+
+    auto_var = ctk.BooleanVar(value=cfg.get("auto_connect", True))
+    ctk.CTkCheckBox(root, text="Beim Start automatisch verbinden", variable=auto_var).pack(anchor="w", padx=24)
+
+    status_lbl = ctk.CTkLabel(root, text="", text_color="gray50", font=ctk.CTkFont(size=11))
+    status_lbl.pack(anchor="w", padx=24, pady=(6,0))
+
+    btn_frame = ctk.CTkFrame(root, fg_color="transparent")
+    btn_frame.pack(fill="x", padx=24, pady=12)
+
+    def on_cancel(): root.destroy()
+
     def on_save():
-        url, email, pw = url_var.get().strip().rstrip("/"), em_var.get().strip(), pw_var.get()
+        url   = url_f.get().strip().rstrip("/")
+        email = em_f.get().strip()
+        pw    = pw_f.get()
         if not url or not email or not pw:
-            messagebox.showerror("Fehler", "Bitte alle Felder ausfüllen."); return
-        sv.set("Verbinde…"); root.update()
+            status_lbl.configure(text="⚠  Bitte alle Felder ausfüllen.", text_color="#f59e0b"); return
+        status_lbl.configure(text="Verbinde…", text_color="gray50")
         caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
         def _do():
             try:
                 token, sid = login_and_prepare(url, email, pw, caps)
-                result.update({"url":url,"token":token,"session":sid,"auto_connect":auto_var.get(),"allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
+                result.update({"url":url,"token":token,"session":sid,"auto_connect":bool(auto_var.get()),
+                               "allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
+            except urllib.error.HTTPError:
+                root.after(0, lambda: status_lbl.configure(text="⚠  Falsche E-Mail oder Passwort.", text_color="#ef4444"))
             except Exception as e:
-                root.after(0, lambda: sv.set(f"Fehler: {e}"))
+                root.after(0, lambda: status_lbl.configure(text=f"⚠  {e}", text_color="#ef4444"))
         threading.Thread(target=_do, daemon=True).start()
-    bf = ttk.Frame(frame); bf.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12,0))
-    ttk.Button(bf, text="Abbrechen", command=root.destroy).pack(side="right", padx=(4,0))
-    ttk.Button(bf, text="Anmelden", command=on_save).pack(side="right")
+
+    ctk.CTkButton(btn_frame, text="Abbrechen", fg_color="transparent", border_width=1,
+                  text_color="gray60", border_color="#444", width=100, command=on_cancel).pack(side="right", padx=(8,0))
+    ctk.CTkButton(btn_frame, text="Anmelden & Verbinden", width=180, command=on_save).pack(side="right")
+
     root.mainloop()
     return result if result else None
 
 
 def _show_permissions_tkinter(cfg):
+    if not _ctk_available():
+        return _show_permissions_plain_tkinter(cfg)
+
+    ctk = _ctk_setup()
+    current = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+    paths   = list(cfg.get("allowed_paths", []))
+    cap_vars = {}
+
+    root = ctk.CTk()
+    root.title("AI-Employee Bridge — Berechtigungen")
+    root.geometry("520x660")
+    root.resizable(False, False)
+
+    ctk.CTkLabel(root, text="Berechtigungen", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w", padx=24, pady=(24,2))
+    ctk.CTkLabel(root, text="Was darf der Agent auf diesem PC tun?", text_color="gray60", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=24)
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
+
+    scroll = ctk.CTkScrollableFrame(root, height=300, fg_color="transparent")
+    scroll.pack(fill="x", padx=24)
+
+    for cap in CAPABILITY_META:
+        row = ctk.CTkFrame(scroll, fg_color="#1e1e2e", corner_radius=8)
+        row.pack(fill="x", pady=3, ipady=6)
+        v = ctk.BooleanVar(value=cap["id"] in current)
+        cap_vars[cap["id"]] = v
+        left = ctk.CTkFrame(row, fg_color="transparent")
+        left.pack(side="left", fill="both", expand=True, padx=10)
+        ctk.CTkCheckBox(left, text=cap["label"], variable=v, font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(left, text=cap["desc"], text_color="gray50", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=22)
+        risk_col = RISK_COLORS.get(cap["risk"], "gray")
+        ctk.CTkLabel(row, text=f"● {cap['risk']}", text_color=risk_col, font=ctk.CTkFont(size=10)).pack(side="right", padx=12)
+
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
+
+    ctk.CTkLabel(root, text="ORDNER-ZUGRIFF", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(0,4))
+
+    path_box = ctk.CTkTextbox(root, height=72, font=ctk.CTkFont(family="Courier", size=11))
+    path_box.pack(fill="x", padx=24)
+    path_box.insert("1.0", "\n".join(paths) if paths else "")
+    path_box.configure(state="disabled")
+
+    def refresh_paths():
+        path_box.configure(state="normal")
+        path_box.delete("1.0", "end")
+        path_box.insert("1.0", "\n".join(paths))
+        path_box.configure(state="disabled")
+
+    pb = ctk.CTkFrame(root, fg_color="transparent")
+    pb.pack(fill="x", padx=24, pady=(4,0))
+
+    def add_path():
+        import tkinter.filedialog as fd
+        p = fd.askdirectory(title="Ordner wählen")
+        if p and p not in paths:
+            paths.append(p); refresh_paths()
+
+    def del_path():
+        if paths: paths.pop(); refresh_paths()
+
+    ctk.CTkButton(pb, text="+ Hinzufügen", width=120, command=add_path).pack(side="left")
+    ctk.CTkButton(pb, text="– Entfernen",  width=110, fg_color="#333", hover_color="#444",
+                  text_color="gray70", command=del_path).pack(side="left", padx=(8,0))
+
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
+
+    status_lbl = ctk.CTkLabel(root, text="", text_color="gray50", font=ctk.CTkFont(size=11))
+    status_lbl.pack(anchor="w", padx=24)
+
+    bf = ctk.CTkFrame(root, fg_color="transparent")
+    bf.pack(fill="x", padx=24, pady=(4,16))
+
+    def on_cancel(): root.destroy()
+
+    def on_save():
+        cfg["allowed_capabilities"] = [cid for cid, v in cap_vars.items() if v.get()]
+        cfg["allowed_paths"] = paths
+        save_config(cfg)
+        if is_running():
+            status_lbl.configure(text="Übertrage an Server…")
+            def _p():
+                try:
+                    api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"])
+                    root.after(0, lambda: status_lbl.configure(text="✓ Gespeichert", text_color="#22c55e"))
+                except Exception as e:
+                    root.after(0, lambda: status_lbl.configure(text=f"Lokal gespeichert ({e})", text_color="#f59e0b"))
+                root.after(800, root.destroy)
+            threading.Thread(target=_p, daemon=True).start()
+        else:
+            root.destroy()
+
+    ctk.CTkButton(bf, text="Abbrechen", fg_color="transparent", border_width=1,
+                  text_color="gray60", border_color="#444", width=100, command=on_cancel).pack(side="right", padx=(8,0))
+    ctk.CTkButton(bf, text="Speichern", width=110, command=on_save).pack(side="right")
+
+    root.mainloop()
+
+
+def _show_status_tkinter(cfg):
+    if not _ctk_available():
+        return _show_status_plain_tkinter(cfg)
+
+    ctk = _ctk_setup()
+    state = _status
+    if state == "connected":
+        dot, dot_col, state_text = "●", "#22c55e", "Verbunden"
+    elif state == "connecting":
+        dot, dot_col, state_text = "●", "#f59e0b", "Verbinde…"
+    else:
+        dot, dot_col, state_text = "●", "#6b7280", state.replace("error: ", "")
+
+    root = ctk.CTk()
+    root.title("AI-Employee Bridge — Status")
+    root.geometry("420x320")
+    root.resizable(False, False)
+
+    ctk.CTkLabel(root, text="Bridge Status", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w", padx=24, pady=(24,2))
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
+
+    def row(lbl, val, val_color=None):
+        r = ctk.CTkFrame(root, fg_color="transparent")
+        r.pack(fill="x", padx=24, pady=3)
+        ctk.CTkLabel(r, text=lbl, text_color="gray50", width=100, anchor="w", font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(r, text=val, text_color=val_color or "white", anchor="w", font=ctk.CTkFont(size=12)).pack(side="left", fill="x", expand=True)
+
+    row("Verbindung", f"{dot}  {state_text}", val_color=dot_col)
+    row("Server",     cfg.get("url") or "—")
+    row("Session",    (cfg.get("session") or "—")[:16])
+
+    cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
+    caps_str = ", ".join(cap_map.get(c,c) for c in cfg.get("allowed_capabilities",[])) or "Keine"
+    row("Erlaubt", caps_str)
+
+    paths = cfg.get("allowed_paths", [])
+    if paths:
+        ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=8)
+        row("Ordner", "\n".join(paths))
+
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
+    ctk.CTkButton(root, text="Schließen", width=100, command=root.destroy).pack(anchor="e", padx=24, pady=(0,16))
+
+    root.mainloop()
+
+
+# ── Plain tkinter last-resort fallbacks (no customtkinter) ────────────────────
+
+def _show_setup_plain_tkinter(cfg):
+    try:
+        import tkinter as tk; from tkinter import ttk
+    except ImportError:
+        return None
+    result = {}
+    root = tk.Tk(); root.title("AI-Employee Bridge"); root.geometry("440x280")
+    f = ttk.Frame(root, padding=16); f.pack(fill="both", expand=True)
+    ttk.Label(f, text="Server URL:").grid(row=0, column=0, sticky="w", pady=3)
+    url_v = tk.StringVar(value=cfg.get("url","")); ttk.Entry(f, textvariable=url_v, width=36).grid(row=0, column=1)
+    ttk.Label(f, text="E-Mail:").grid(row=1, column=0, sticky="w", pady=3)
+    em_v = tk.StringVar(); ttk.Entry(f, textvariable=em_v, width=36).grid(row=1, column=1)
+    ttk.Label(f, text="Passwort:").grid(row=2, column=0, sticky="w", pady=3)
+    pw_v = tk.StringVar(); ttk.Entry(f, textvariable=pw_v, show="*", width=36).grid(row=2, column=1)
+    auto_v = tk.BooleanVar(value=cfg.get("auto_connect",True))
+    ttk.Checkbutton(f, text="Automatisch verbinden", variable=auto_v).grid(row=3, column=0, columnspan=2, sticky="w")
+    sv = tk.StringVar(); ttk.Label(f, textvariable=sv).grid(row=4, column=0, columnspan=2, sticky="w")
+    def save():
+        url, em, pw = url_v.get().strip().rstrip("/"), em_v.get().strip(), pw_v.get()
+        if not url or not em or not pw: sv.set("Felder ausfüllen!"); return
+        sv.set("Verbinde…"); root.update()
+        def _do():
+            try:
+                t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+                result.update({"url":url,"token":t,"session":s,"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
+                root.after(0, root.destroy)
+            except Exception as e:
+                root.after(0, lambda: sv.set(f"Fehler: {e}"))
+        threading.Thread(target=_do, daemon=True).start()
+    bf = ttk.Frame(f); bf.grid(row=5, column=0, columnspan=2, sticky="e", pady=8)
+    ttk.Button(bf, text="Abbrechen", command=root.destroy).pack(side="right", padx=4)
+    ttk.Button(bf, text="Anmelden", command=save).pack(side="right")
+    root.mainloop(); return result if result else None
+
+
+def _show_permissions_plain_tkinter(cfg):
     try:
         import tkinter as tk; from tkinter import ttk
     except ImportError:
         return
     current = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
     cap_vars = {}
-    root = tk.Tk(); root.title("Berechtigungen"); root.geometry("480x420")
-    frame = ttk.Frame(root, padding=20); frame.pack(fill="both", expand=True)
-    ttk.Label(frame, text="Berechtigungen", font=("",14,"bold")).pack(anchor="w")
-    ttk.Separator(frame).pack(fill="x", pady=8)
+    root = tk.Tk(); root.title("Berechtigungen"); root.geometry("460x380")
+    f = ttk.Frame(root, padding=16); f.pack(fill="both", expand=True)
     for cap in CAPABILITY_META:
-        r = ttk.Frame(frame); r.pack(fill="x", pady=3)
-        v = tk.BooleanVar(value=cap["id"] in current)
-        cap_vars[cap["id"]] = v
-        ttk.Checkbutton(r, variable=v).pack(side="left")
-        i = tk.Frame(r); i.pack(side="left", padx=(6,0))
-        tk.Label(i, text=cap["label"], font=("",10,"bold")).pack(anchor="w")
-        tk.Label(i, text=cap["desc"], foreground="gray", font=("",9)).pack(anchor="w")
-    ttk.Separator(frame).pack(fill="x", pady=8)
-    sv = tk.StringVar()
-    ttk.Label(frame, textvariable=sv, foreground="gray").pack(anchor="w")
-    def on_save():
-        cfg["allowed_capabilities"] = [cid for cid, v in cap_vars.items() if v.get()]
-        save_config(cfg)
+        v = tk.BooleanVar(value=cap["id"] in current); cap_vars[cap["id"]] = v
+        ttk.Checkbutton(f, text=f"{cap['label']} — {cap['desc']}", variable=v).pack(anchor="w", pady=2)
+    def save():
+        cfg["allowed_capabilities"] = [k for k,v in cap_vars.items() if v.get()]; save_config(cfg)
         if is_running():
-            sv.set("Übertrage…"); root.update()
-            def _p():
-                try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"])
-                except: pass
-                root.after(0, root.destroy)
-            threading.Thread(target=_p, daemon=True).start()
-        else:
-            root.destroy()
-    bf = ttk.Frame(frame); bf.pack(anchor="e", pady=(8,0))
-    ttk.Button(bf, text="Abbrechen", command=root.destroy).pack(side="right", padx=(4,0))
-    ttk.Button(bf, text="Speichern", command=on_save).pack(side="right")
+            threading.Thread(target=lambda: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"]), daemon=True).start()
+        root.destroy()
+    ttk.Button(f, text="Speichern", command=save).pack(anchor="e", pady=8)
     root.mainloop()
 
 
-def _show_status_tkinter(cfg):
+def _show_status_plain_tkinter(cfg):
     try:
         import tkinter as tk; from tkinter import ttk
     except ImportError:
         return
-    root = tk.Tk(); root.title("Bridge Status"); root.geometry("400x260")
-    frame = ttk.Frame(root, padding=20); frame.pack(fill="both", expand=True)
-    ttk.Label(frame, text="Bridge Status", font=("",13,"bold")).pack(anchor="w")
-    ttk.Separator(frame).pack(fill="x", pady=8)
-    def row(lbl, val):
-        r = ttk.Frame(frame); r.pack(fill="x", pady=2)
-        ttk.Label(r, text=lbl+":", width=14, foreground="gray").pack(side="left")
-        ttk.Label(r, text=val).pack(side="left")
+    root = tk.Tk(); root.title("Bridge Status"); root.geometry("380x220")
+    f = ttk.Frame(root, padding=16); f.pack(fill="both", expand=True)
     state = _status
-    row("Verbindung", "🟢 Verbunden" if state=="connected" else f"⚫ {state}")
-    row("Server", cfg.get("url") or "—")
-    row("Session", cfg.get("session") or "—")
-    cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
-    row("Erlaubt", ", ".join(cap_map.get(c, c) for c in cfg.get("allowed_capabilities",[])) or "Keine")
-    ttk.Separator(frame).pack(fill="x", pady=8)
-    ttk.Button(frame, text="Schließen", command=root.destroy).pack(anchor="e")
+    ttk.Label(f, text="● Verbunden" if state=="connected" else f"● {state}").pack(anchor="w")
+    ttk.Label(f, text=f"Server: {cfg.get('url','—')}").pack(anchor="w")
+    ttk.Label(f, text=f"Session: {cfg.get('session','—')}").pack(anchor="w")
+    ttk.Button(f, text="Schließen", command=root.destroy).pack(anchor="e", pady=8)
     root.mainloop()
 
 
