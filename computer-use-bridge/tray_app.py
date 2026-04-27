@@ -7,8 +7,8 @@ Bridge logs in automatically and fetches a session.
 Config saved to ~/.ai_employee_bridge.json (no passwords stored — only token).
 
 Tray menu:
-  • Status → shows connection state + capabilities
-  • Berechtigungen… → toggle what the agent may do on this machine
+  • Status        → connection state + capabilities
+  • Berechtigungen… → toggle what the agent may do on this machine + folder access
   • Einstellungen… → server URL / re-login
   • AI-Employee öffnen → open web UI
   • Verbinden / Trennen
@@ -35,151 +35,135 @@ IS_WIN = platform.system() == "Windows"
 
 CONFIG_FILE = Path.home() / ".ai_employee_bridge.json"
 
-# ── Capability group metadata (mirrors orchestrator/computer_use.py) ──────────
+# ── Capability metadata ────────────────────────────────────────────────────────
 
 CAPABILITY_META = [
-    {
-        "id": "screenshots",
-        "label": "Screenshots",
-        "desc": "Bildschirminhalt lesen",
-        "risk": "gering",
-        "default": True,
-    },
-    {
-        "id": "accessibility",
-        "label": "Accessibility Tree",
-        "desc": "UI-Elemente lesen (Titel, Rollen, Positionen)",
-        "risk": "gering",
-        "default": True,
-    },
-    {
-        "id": "mouse",
-        "label": "Maus-Steuerung",
-        "desc": "Cursor bewegen, klicken, scrollen",
-        "risk": "mittel",
-        "default": True,
-    },
-    {
-        "id": "keyboard",
-        "label": "Tastatur-Eingabe",
-        "desc": "Text schreiben und Shortcuts senden",
-        "risk": "mittel",
-        "default": True,
-    },
-    {
-        "id": "apps",
-        "label": "Apps öffnen / schließen",
-        "desc": "Anwendungen starten und beenden",
-        "risk": "mittel",
-        "default": True,
-    },
-    {
-        "id": "clipboard",
-        "label": "Zwischenablage",
-        "desc": "Zwischenablage lesen und schreiben",
-        "risk": "mittel",
-        "default": False,
-    },
-    {
-        "id": "shell",
-        "label": "Shell-Befehle",
-        "desc": "Terminal-Befehle ausführen",
-        "risk": "hoch",
-        "default": False,
-    },
+    {"id": "screenshots",   "label": "Screenshots",           "desc": "Bildschirminhalt lesen",                  "risk": "gering"},
+    {"id": "accessibility", "label": "Accessibility Tree",    "desc": "UI-Elemente lesen (Titel, Rollen, Pos.)", "risk": "gering"},
+    {"id": "mouse",         "label": "Maus-Steuerung",        "desc": "Cursor bewegen, klicken, scrollen",       "risk": "mittel"},
+    {"id": "keyboard",      "label": "Tastatur-Eingabe",      "desc": "Text schreiben und Shortcuts senden",     "risk": "mittel"},
+    {"id": "apps",          "label": "Apps öffnen / schließen","desc": "Anwendungen starten und beenden",        "risk": "mittel"},
+    {"id": "clipboard",     "label": "Zwischenablage",        "desc": "Zwischenablage lesen und schreiben",     "risk": "mittel"},
+    {"id": "shell",         "label": "Shell-Befehle",         "desc": "Terminal-Befehle ausführen",              "risk": "hoch"},
 ]
 
-DEFAULT_CAPABILITIES = {c["id"] for c in CAPABILITY_META if c["default"]}
+DEFAULT_CAPABILITIES = {c["id"] for c in CAPABILITY_META if c["id"] in
+                        {"screenshots", "accessibility", "mouse", "keyboard", "apps"}}
 
-
-# ── Config ────────────────────────────────────────────────────────────────────
+# ── Config ─────────────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
     if CONFIG_FILE.exists():
         try:
             cfg = json.loads(CONFIG_FILE.read_text())
-            # Migrate: ensure allowed_capabilities key exists
             if "allowed_capabilities" not in cfg:
                 cfg["allowed_capabilities"] = sorted(DEFAULT_CAPABILITIES)
+            if "allowed_paths" not in cfg:
+                cfg["allowed_paths"] = []
             return cfg
         except Exception:
             pass
-    return {
-        "url": "",
-        "token": "",
-        "session": "",
-        "auto_connect": True,
-        "allowed_capabilities": sorted(DEFAULT_CAPABILITIES),
-    }
+    return {"url": "", "token": "", "session": "", "auto_connect": True,
+            "allowed_capabilities": sorted(DEFAULT_CAPABILITIES), "allowed_paths": []}
 
 
 def save_config(cfg: dict) -> None:
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
 
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
+# ── HTTP helpers ───────────────────────────────────────────────────────────────
 
-def _api(method: str, base_url: str, path: str, token: str, body: dict | None = None) -> dict:
+def _api(method, base_url, path, token, body=None):
     url = base_url.rstrip("/") + path
     data = json.dumps(body).encode() if body is not None else None
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}",
-        "User-Agent": "AI-Employee-Bridge/1.0",
-    }
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
-        return json.loads(resp.read())
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": f"Bearer {token}",
+                                          "User-Agent": "AI-Employee-Bridge/1.0"})
+    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
+        return json.loads(r.read())
 
 
-def api_login(base_url: str, email: str, password: str) -> str:
-    """POST /api/v1/auth/login → returns access_token."""
+def api_login(base_url, email, password):
     url = base_url.rstrip("/") + "/api/v1/auth/login"
     data = json.dumps({"email": email, "password": password}).encode()
-    req = urllib.request.Request(url, data=data, headers={
-        "Content-Type": "application/json",
-        "User-Agent": "AI-Employee-Bridge/1.0",
-    })
-    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
-        body = json.loads(resp.read())
-        return body["access_token"]
+    req = urllib.request.Request(url, data=data,
+                                 headers={"Content-Type": "application/json",
+                                          "User-Agent": "AI-Employee-Bridge/1.0"})
+    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
+        return json.loads(r.read())["access_token"]
 
 
-def api_create_session(base_url: str, token: str, allowed_capabilities: list[str]) -> tuple[str, list[str]]:
-    """POST /api/v1/computer-use/sessions → (session_id, allowed_capabilities)."""
+def api_create_session(base_url, token, caps):
     body = _api("POST", base_url, "/api/v1/computer-use/sessions", token, {})
-    # Server returns its own defaults; apply our local caps immediately
-    session_id = body["session_id"]
+    sid = body["session_id"]
     try:
-        _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{session_id}/capabilities", token,
-             {"allowed_capabilities": allowed_capabilities})
+        _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{sid}/capabilities",
+             token, {"allowed_capabilities": caps})
     except Exception:
         pass
-    return session_id, allowed_capabilities
+    return sid, caps
 
 
-def api_update_capabilities(base_url: str, token: str, session_id: str, caps: list[str]) -> None:
-    """PATCH /api/v1/computer-use/sessions/{id}/capabilities."""
-    _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{session_id}/capabilities", token,
-         {"allowed_capabilities": caps})
+def api_update_capabilities(base_url, token, session_id, caps):
+    _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{session_id}/capabilities",
+         token, {"allowed_capabilities": caps})
 
 
-def login_and_prepare(base_url: str, email: str, password: str, caps: list[str]) -> tuple[str, str]:
-    """Login + create session with given capabilities. Returns (token, session_id)."""
+def api_session_exists(base_url, token, session_id) -> bool:
+    try:
+        _api("GET", base_url, f"/api/v1/computer-use/sessions/{session_id}", token)
+        return True
+    except Exception:
+        return False
+
+
+ENSURE_OK        = "ok"
+ENSURE_NEEDS_LOGIN = "needs_login"
+ENSURE_ERROR     = "error"
+
+def ensure_session(cfg: dict) -> str:
+    """Verify session is still alive; create new one if gone. Returns ENSURE_* constant."""
+    url, token = cfg.get("url", ""), cfg.get("token", "")
+    if not url or not token:
+        return ENSURE_NEEDS_LOGIN
+    sid = cfg.get("session", "")
+    caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
+    if sid and api_session_exists(url, token, sid):
+        try:
+            api_update_capabilities(url, token, sid, caps)
+        except Exception:
+            pass
+        return ENSURE_OK
+    # Session gone — try to create a fresh one
+    try:
+        new_sid, _ = api_create_session(url, token, caps)
+        cfg["session"] = new_sid
+        save_config(cfg)
+        return ENSURE_OK
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return ENSURE_NEEDS_LOGIN
+        return ENSURE_ERROR
+    except Exception:
+        return ENSURE_ERROR
+
+
+def login_and_prepare(base_url, email, password, caps):
     token = api_login(base_url, email, password)
     session_id, _ = api_create_session(base_url, token, caps)
     return token, session_id
 
 
-# ── Bridge thread ─────────────────────────────────────────────────────────────
+# ── Bridge thread ──────────────────────────────────────────────────────────────
 
-_bridge_thread: threading.Thread | None = None
-_bridge_stop = threading.Event()
-_bridge_lock = threading.Lock()
-_status = "disconnected"
+_bridge_thread = None
+_bridge_stop   = threading.Event()
+_bridge_lock   = threading.Lock()
+_status        = "disconnected"
 
 
-def start_bridge(cfg: dict) -> bool:
+def start_bridge(cfg):
     global _bridge_thread, _status
     with _bridge_lock:
         if _bridge_thread and _bridge_thread.is_alive():
@@ -191,287 +175,571 @@ def start_bridge(cfg: dict) -> bool:
         _bridge_thread = threading.Thread(
             target=_run_bridge_thread,
             args=(cfg["url"], cfg["token"], cfg["session"]),
-            daemon=True,
-        )
+            daemon=True)
         _bridge_thread.start()
         _status = "connecting"
         return True
 
 
-def stop_bridge() -> None:
+def stop_bridge():
     global _status
     _bridge_stop.set()
     _status = "disconnected"
 
 
-def is_running() -> bool:
+def is_running():
     return _bridge_thread is not None and _bridge_thread.is_alive()
 
 
-def _run_bridge_thread(url: str, token: str, session_id: str) -> None:
+def _run_bridge_thread(url, token, session_id):
     global _status
     import asyncio
     try:
-        bridge_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+        if getattr(sys, "frozen", False):
+            bundle_contents = Path(sys.executable).parent.parent
+            for candidate in ["Frameworks", "Resources", "MacOS"]:
+                d = bundle_contents / candidate
+                if (d / "bridge.py").exists():
+                    bridge_dir = d
+                    break
+            else:
+                bridge_dir = Path(sys.executable).parent
+        else:
+            bridge_dir = Path(__file__).parent
         if str(bridge_dir) not in sys.path:
             sys.path.insert(0, str(bridge_dir))
         import bridge as bridge_module
         _status = "connected"
-        asyncio.run(bridge_module.run(url=url, token=token, session_id=session_id, stop_event=_bridge_stop))
+        asyncio.run(bridge_module.run(url=url, token=token,
+                                      session_id=session_id, stop_event=_bridge_stop))
     except Exception as e:
         _status = f"error: {e}"
+        import traceback, logging
+        logging.getLogger(__name__).error(f"Bridge error:\n{traceback.format_exc()}")
     finally:
         _status = "disconnected"
 
 
-# ── Setup dialog ──────────────────────────────────────────────────────────────
+# ── Module-level AppKit handler classes (ObjC class names must be unique) ─────
+
+# State dicts are filled by each dialog before showing the modal.
+_setup_state: dict = {}
+_perms_state: dict = {}
+_status_state: dict = {}
+
+
+def _appkit_handlers_init():
+    """Register ObjC handler classes once at module level."""
+    if getattr(_appkit_handlers_init, "_done", False):
+        return
+    _appkit_handlers_init._done = True
+
+    try:
+        from AppKit import NSObject, NSApp, NSOpenPanel
+        import urllib.error
+
+        class _SetupHandler(NSObject):
+            def cancel_(self, _s):
+                NSApp.stopModal()
+
+            def save_(self, _s):
+                st = _setup_state
+                url   = st["url_f"].stringValue().strip().rstrip("/")
+                email = st["em_f"].stringValue().strip()
+                pw    = st["pw_f"].stringValue()
+                if not url or not email or not pw:
+                    st["status_lbl"].setStringValue_("⚠  Bitte alle Felder ausfüllen.")
+                    return
+                st["status_lbl"].setStringValue_("Verbinde…")
+                cfg = st["cfg"]
+
+                def _do():
+                    try:
+                        caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
+                        token, sid = login_and_prepare(url, email, pw, caps)
+                        st["result_box"][0] = {
+                            "url": url, "token": token, "session": sid,
+                            "auto_connect": bool(st["auto_chk"].state()),
+                            "allowed_capabilities": caps,
+                            "allowed_paths": cfg.get("allowed_paths", []),
+                        }
+                        NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "stopModal", None, False)
+                    except urllib.error.HTTPError:
+                        st["status_lbl"].performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:", "⚠  Falsche E-Mail oder Passwort.", True)
+                    except Exception as e:
+                        st["status_lbl"].performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:", f"⚠  {e}", True)
+                threading.Thread(target=_do, daemon=True).start()
+
+        class _PermsHandler(NSObject):
+            def cancel_(self, _s):
+                NSApp.stopModal()
+
+            def addPath_(self, _s):
+                st = _perms_state
+                op = NSOpenPanel.openPanel()
+                op.setCanChooseFiles_(False)
+                op.setCanChooseDirectories_(True)
+                op.setAllowsMultipleSelection_(False)
+                op.setPrompt_("Ordner wählen")
+                if op.runModal() == 1:
+                    p = str(op.URL().path())
+                    if p not in st["paths"]:
+                        st["paths"].append(p)
+                        st["tv"].setString_("\n".join(st["paths"]))
+
+            def delPath_(self, _s):
+                st = _perms_state
+                lines = st["tv"].string().split("\n")
+                if lines:
+                    lines.pop()
+                    st["paths"][:] = [l for l in lines if l]
+                    st["tv"].setString_("\n".join(st["paths"]) if st["paths"] else "(keine Ordner definiert)")
+
+            def save_(self, _s):
+                st = _perms_state
+                new_caps = [cid for cid, chk in st["cap_checks"].items() if chk.state()]
+                cfg = st["cfg"]
+                cfg["allowed_capabilities"] = new_caps
+                cfg["allowed_paths"] = st["paths"]
+                save_config(cfg)
+                if cfg.get("token") and cfg.get("session") and cfg.get("url") and is_running():
+                    st["status_lbl"].setStringValue_("Übertrage an Server…")
+                    def _push():
+                        try:
+                            api_update_capabilities(cfg["url"], cfg["token"], cfg["session"], new_caps)
+                            st["status_lbl"].performSelectorOnMainThread_withObject_waitUntilDone_(
+                                "setStringValue:", "✓ Gespeichert", True)
+                        except Exception as e:
+                            st["status_lbl"].performSelectorOnMainThread_withObject_waitUntilDone_(
+                                "setStringValue:", f"Lokal gespeichert (Server: {e})", True)
+                        NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "stopModal", None, False)
+                    threading.Thread(target=_push, daemon=True).start()
+                else:
+                    st["status_lbl"].setStringValue_("✓ Gespeichert")
+                    NSApp.stopModal()
+
+        class _StatusHandler(NSObject):
+            def close_(self, _s):
+                NSApp.stopModal()
+
+        _setup_state["_handler"]  = _SetupHandler.alloc().init()
+        _perms_state["_handler"]  = _PermsHandler.alloc().init()
+        _status_state["_handler"] = _StatusHandler.alloc().init()
+    except Exception:
+        pass
+
+
+# ── Native AppKit dialog helpers ───────────────────────────────────────────────
+
+def _appkit_available():
+    try:
+        import AppKit  # noqa
+        return True
+    except ImportError:
+        return False
+
+
+def _make_panel(title, w, h):
+    from AppKit import (NSPanel, NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
+                        NSBackingStoreBuffered, NSMakeRect)
+    p = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, w, h),
+        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable,
+        NSBackingStoreBuffered, False)
+    p.setTitle_(title)
+    p.center()
+    p.setReleasedWhenClosed_(False)
+    p.setLevel_(8)  # NSFloatingWindowLevel
+    return p
+
+
+def _label(cv, text, x, y, w, h, size=13, bold=False, muted=False, color=None):
+    from AppKit import NSTextField, NSFont, NSColor
+    lbl = NSTextField.labelWithString_(text)
+    lbl.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
+    lbl.setTextColor_(color or (NSColor.secondaryLabelColor() if muted else NSColor.labelColor()))
+    lbl.setFrame_(((x, y), (w, h)))
+    lbl.setLineBreakMode_(0)  # NSLineBreakByWordWrapping
+    cv.addSubview_(lbl)
+    return lbl
+
+
+def _input(cv, x, y, w, placeholder="", secure=False, value=""):
+    from AppKit import NSTextField, NSSecureTextField, NSFont
+    cls = NSSecureTextField if secure else NSTextField
+    f = cls.alloc().initWithFrame_(((x, y), (w, 26)))
+    f.cell().setPlaceholderString_(placeholder)
+    f.setFont_(NSFont.systemFontOfSize_(13))
+    if value:
+        f.setStringValue_(value)
+    cv.addSubview_(f)
+    return f
+
+
+def _button(cv, title, x, y, w=120, h=28, key="", style=1):
+    from AppKit import NSButton
+    b = NSButton.alloc().initWithFrame_(((x, y), (w, h)))
+    b.setTitle_(title)
+    b.setBezelStyle_(style)
+    if key:
+        b.setKeyEquivalent_(key)
+    cv.addSubview_(b)
+    return b
+
+
+def _checkbox(cv, title, x, y, w, checked=False):
+    from AppKit import NSButton, NSButtonTypeSwitch
+    b = NSButton.alloc().initWithFrame_(((x, y), (w, 20)))
+    b.setTitle_(title)
+    b.setButtonType_(NSButtonTypeSwitch)
+    b.setState_(1 if checked else 0)
+    cv.addSubview_(b)
+    return b
+
+
+def _separator(cv, x, y, w):
+    from AppKit import NSBox, NSBoxSeparator
+    box = NSBox.alloc().initWithFrame_(((x, y), (w, 1)))
+    box.setBoxType_(NSBoxSeparator)
+    cv.addSubview_(box)
+
+
+def _risk_badge(cv, risk, x, y):
+    from AppKit import NSTextField, NSFont, NSColor
+    COLORS = {"gering": (0.13, 0.76, 0.37, 1), "mittel": (1.0, 0.62, 0.04, 1), "hoch": (1.0, 0.27, 0.23, 1)}
+    r, g, b, a = COLORS.get(risk, (0.5, 0.5, 0.5, 1))
+    lbl = NSTextField.labelWithString_(f"● {risk}")
+    lbl.setFont_(NSFont.systemFontOfSize_(10))
+    lbl.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a))
+    lbl.sizeToFit()
+    fr = lbl.frame()
+    lbl.setFrameOrigin_((x - fr[1][0], y))
+    cv.addSubview_(lbl)
+    return lbl
+
+
+# ── Settings Dialog ────────────────────────────────────────────────────────────
 
 def show_setup_dialog(cfg: dict) -> dict | None:
-    """URL + Email + Password dialog. Logs in and creates session automatically."""
+    if not _appkit_available():
+        return _show_setup_tkinter(cfg)
+
+    _appkit_handlers_init()
+    from AppKit import NSApp
+
+    W, H = 480, 390
+    panel = _make_panel("AI-Employee — Einstellungen", W, H)
+    cv = panel.contentView()
+    PAD = 24
+
+    _label(cv, "AI-Employee Bridge",    PAD, H-50, W-2*PAD, 28, size=17, bold=True)
+    _label(cv, "Verbinde diesen Mac mit deinem AI-Employee Server.",
+           PAD, H-72, W-2*PAD, 18, size=12, muted=True)
+    _separator(cv, PAD, H-82, W-2*PAD)
+
+    _label(cv, "SERVER URL", PAD, H-108, 120, 14, size=10, bold=True, muted=True)
+    url_f  = _input(cv, PAD, H-136, W-2*PAD, "https://agents.example.com", value=cfg.get("url",""))
+
+    _label(cv, "E-MAIL", PAD, H-168, 80, 14, size=10, bold=True, muted=True)
+    em_f   = _input(cv, PAD, H-196, W-2*PAD, "name@example.com")
+
+    _label(cv, "PASSWORT", PAD, H-228, 100, 14, size=10, bold=True, muted=True)
+    pw_f   = _input(cv, PAD, H-256, W-2*PAD, "••••••••", secure=True)
+
+    _separator(cv, PAD, H-270, W-2*PAD)
+    auto_chk   = _checkbox(cv, "Beim Start automatisch verbinden",
+                           PAD, H-298, W-2*PAD, cfg.get("auto_connect", True))
+    status_lbl = _label(cv, "", PAD, H-324, W-2*PAD, 18, size=12, muted=True)
+    cancel_btn = _button(cv, "Abbrechen",            PAD,       16, 100, key="\x1b")
+    save_btn   = _button(cv, "Anmelden & Verbinden", W-PAD-180, 16, 180, key="\r")
+
+    result_box = [None]
+    _setup_state.update(dict(url_f=url_f, em_f=em_f, pw_f=pw_f, auto_chk=auto_chk,
+                             status_lbl=status_lbl, result_box=result_box, cfg=cfg))
+
+    h = _setup_state["_handler"]
+    cancel_btn.setTarget_(h); cancel_btn.setAction_("cancel:")
+    save_btn.setTarget_(h);   save_btn.setAction_("save:")
+
+    NSApp.runModalForWindow_(panel)
+    panel.close()
+    return result_box[0]
+
+
+# ── Permissions Dialog ─────────────────────────────────────────────────────────
+
+def show_permissions_dialog(cfg: dict) -> None:
+    if not _appkit_available():
+        return _show_permissions_tkinter(cfg)
+
+    _appkit_handlers_init()
+    from AppKit import (NSApp, NSScrollView, NSTextView, NSMakeRect, NSFont)
+
+    W, H = 540, 700
+    panel = _make_panel("AI-Employee — Berechtigungen", W, H)
+    cv = panel.contentView()
+    PAD = 24
+
+    _label(cv, "Berechtigungen", PAD, H-46, W-2*PAD, 26, size=17, bold=True)
+    _label(cv, "Was darf der Agent auf diesem Mac tun?",
+           PAD, H-68, W-2*PAD, 18, size=12, muted=True)
+    _separator(cv, PAD, H-78, W-2*PAD)
+
+    cap_checks = {}
+    current_caps = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+    y = H - 78
+    for cap in CAPABILITY_META:
+        y -= 54
+        chk = _checkbox(cv, cap["label"], PAD, y+28, 240, cap["id"] in current_caps)
+        chk.setFont_(NSFont.boldSystemFontOfSize_(13))
+        cap_checks[cap["id"]] = chk
+        _label(cv, cap["desc"], PAD+20, y+10, 280, 16, size=11, muted=True)
+        _risk_badge(cv, cap["risk"], W-PAD, y+28)
+
+    _separator(cv, PAD, y-8, W-2*PAD)
+
+    folder_y = y - 32
+    _label(cv, "ORDNER-ZUGRIFF", PAD, folder_y, 200, 14, size=10, bold=True, muted=True)
+    _label(cv, "(Shell-Befehle sind auf diese Ordner beschränkt)",
+           PAD+145, folder_y, W-PAD-165, 14, size=10, muted=True)
+
+    paths = list(cfg.get("allowed_paths", []))
+    list_y, list_h = folder_y - 24, 80
+
+    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(PAD, list_y - list_h, W-2*PAD, list_h))
+    scroll.setHasVerticalScroller_(True)
+    scroll.setBorderType_(2)
+    tv = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, W-2*PAD-4, list_h))
+    tv.setEditable_(False)
+    tv.setFont_(NSFont.userFixedPitchFontOfSize_(12))
+    tv.setString_("\n".join(paths) if paths else "(keine Ordner definiert)")
+    scroll.setDocumentView_(tv)
+    cv.addSubview_(scroll)
+
+    btn_y = list_y - list_h - 4
+    add_btn = _button(cv, "+ Hinzufügen", PAD,       btn_y - 28, 120)
+    del_btn = _button(cv, "– Entfernen",  PAD+128,   btn_y - 28, 110)
+
+    _separator(cv, PAD, 56, W-2*PAD)
+    status_lbl = _label(cv, "", PAD, 38, W-2*PAD-140, 16, size=11, muted=True)
+    cancel_btn = _button(cv, "Abbrechen", PAD,        16, 100, key="\x1b")
+    save_btn   = _button(cv, "Speichern", W-PAD-110,  16, 110, key="\r")
+
+    _perms_state.update(dict(cap_checks=cap_checks, paths=paths, tv=tv,
+                             status_lbl=status_lbl, cfg=cfg))
+
+    h = _perms_state["_handler"]
+    cancel_btn.setTarget_(h); cancel_btn.setAction_("cancel:")
+    add_btn.setTarget_(h);    add_btn.setAction_("addPath:")
+    del_btn.setTarget_(h);    del_btn.setAction_("delPath:")
+    save_btn.setTarget_(h);   save_btn.setAction_("save:")
+
+    NSApp.runModalForWindow_(panel)
+    panel.close()
+
+
+# ── Status Window ──────────────────────────────────────────────────────────────
+
+def show_status_window(cfg: dict) -> None:
+    if not _appkit_available():
+        return _show_status_tkinter(cfg)
+
+    _appkit_handlers_init()
+    from AppKit import NSApp, NSColor
+
+    W = 420
+    PAD = 24
+    COL = 110   # label column width
+    VAL_X = PAD + COL + 12
+    VAL_W = W - VAL_X - PAD
+
+    state = _status
+    if state == "connected":
+        dot_color, state_text = (0.13, 0.76, 0.37, 1), "● Verbunden"
+    elif state == "connecting":
+        dot_color, state_text = (1.0, 0.62, 0.04, 1), "● Verbinde…"
+    else:
+        dot_color, state_text = (0.6, 0.6, 0.6, 1), "● " + state.replace("error: ", "")
+    dot_col = NSColor.colorWithSRGBRed_green_blue_alpha_(*dot_color)
+
+    caps = cfg.get("allowed_capabilities", [])
+    cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
+    caps_str = ", ".join(cap_map.get(c, c) for c in caps) if caps else "Keine"
+    paths = cfg.get("allowed_paths", [])
+
+    # Build rows top→down, track y from top
+    HEADER_H  = 64   # title + separator
+    ROW_H     = 28
+    CAPS_H    = 44 if len(caps_str) > 40 else 28
+    PATH_H    = 16 * len(paths) + 12 if paths else 0
+    FOOTER_H  = 60   # separator + button
+    H = HEADER_H + ROW_H * 3 + CAPS_H + (12 + PATH_H if paths else 0) + FOOTER_H
+
+    panel = _make_panel("AI-Employee Bridge — Status", W, H)
+    cv = panel.contentView()
+
+    y = H - 38
+    _label(cv, "Bridge Status", PAD, y, W - 2*PAD, 22, size=17, bold=True)
+    y -= 26
+    _separator(cv, PAD, y, W - 2*PAD)
+    y -= 10
+
+    def row(lbl, val, h=ROW_H, val_color=None):
+        nonlocal y
+        y -= h
+        _label(cv, lbl, PAD, y, COL, h-2, size=12, muted=True)
+        _label(cv, val, VAL_X, y, VAL_W, h-2, size=12, color=val_color)
+
+    row("Verbindung", state_text, val_color=dot_col)
+    row("Server",     cfg.get("url") or "—")
+    row("Session",    (cfg.get("session") or "—")[:16])
+    row("Erlaubt",    caps_str, h=CAPS_H)
+
+    if paths:
+        y -= 12
+        _separator(cv, PAD, y, W - 2*PAD)
+        y -= 4
+        row("Ordner", "\n".join(paths), h=PATH_H + 8)
+
+    _separator(cv, PAD, 52, W - 2*PAD)
+    close_btn = _button(cv, "Schließen", W - PAD - 100, 16, 100, key="\r")
+
+    h = _status_state["_handler"]
+    close_btn.setTarget_(h)
+    close_btn.setAction_("close:")
+
+    NSApp.runModalForWindow_(panel)
+    panel.close()
+
+
+# ── tkinter fallbacks (non-macOS / no AppKit) ─────────────────────────────────
+
+def _show_setup_tkinter(cfg):
     try:
         import tkinter as tk
         from tkinter import ttk, messagebox
     except ImportError:
-        print("tkinter not available")
         return None
-
     result = {}
-    root = tk.Tk()
-    root.title("AI-Employee Bridge — Einstellungen")
-    root.resizable(False, False)
-    root.geometry("480x320")
-
-    frame = ttk.Frame(root, padding=20)
-    frame.pack(fill="both", expand=True)
-
-    ttk.Label(frame, text="AI-Employee Bridge", font=("", 14, "bold")).grid(
-        row=0, column=0, columnspan=2, pady=(0, 4), sticky="w"
-    )
-    ttk.Label(frame, text="Verbinde diesen Rechner mit deinem AI-Employee Server.", foreground="gray").grid(
-        row=1, column=0, columnspan=2, pady=(0, 12), sticky="w"
-    )
-
-    ttk.Label(frame, text="Server URL:").grid(row=2, column=0, sticky="w", pady=4)
-    url_var = tk.StringVar(value=cfg.get("url", ""))
-    ttk.Entry(frame, textvariable=url_var, width=40).grid(row=2, column=1, padx=(8, 0), pady=4)
-
-    ttk.Label(frame, text="E-Mail:").grid(row=3, column=0, sticky="w", pady=4)
-    email_var = tk.StringVar()
-    ttk.Entry(frame, textvariable=email_var, width=40).grid(row=3, column=1, padx=(8, 0), pady=4)
-
-    ttk.Label(frame, text="Passwort:").grid(row=4, column=0, sticky="w", pady=4)
+    root = tk.Tk(); root.title("AI-Employee Bridge — Einstellungen")
+    root.resizable(False, False); root.geometry("480x320")
+    frame = ttk.Frame(root, padding=20); frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text="AI-Employee Bridge", font=("", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=(0,4), sticky="w")
+    ttk.Label(frame, text="Server URL:").grid(row=1, column=0, sticky="w", pady=4)
+    url_var = tk.StringVar(value=cfg.get("url",""))
+    ttk.Entry(frame, textvariable=url_var, width=40).grid(row=1, column=1, padx=(8,0))
+    ttk.Label(frame, text="E-Mail:").grid(row=2, column=0, sticky="w", pady=4)
+    em_var = tk.StringVar()
+    ttk.Entry(frame, textvariable=em_var, width=40).grid(row=2, column=1, padx=(8,0))
+    ttk.Label(frame, text="Passwort:").grid(row=3, column=0, sticky="w", pady=4)
     pw_var = tk.StringVar()
-    ttk.Entry(frame, textvariable=pw_var, width=40, show="*").grid(row=4, column=1, padx=(8, 0), pady=4)
-
+    ttk.Entry(frame, textvariable=pw_var, width=40, show="*").grid(row=3, column=1, padx=(8,0))
     auto_var = tk.BooleanVar(value=cfg.get("auto_connect", True))
-    ttk.Checkbutton(frame, text="Beim Start automatisch verbinden", variable=auto_var).grid(
-        row=5, column=0, columnspan=2, sticky="w", pady=(8, 0)
-    )
-
-    status_var = tk.StringVar(value="")
-    ttk.Label(frame, textvariable=status_var, foreground="gray").grid(
-        row=6, column=0, columnspan=2, sticky="w", pady=(4, 0)
-    )
-
+    ttk.Checkbutton(frame, text="Beim Start automatisch verbinden", variable=auto_var).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8,0))
+    sv = tk.StringVar()
+    ttk.Label(frame, textvariable=sv, foreground="gray").grid(row=5, column=0, columnspan=2, sticky="w")
     def on_save():
-        url = url_var.get().strip().rstrip("/")
-        email = email_var.get().strip()
-        pw = pw_var.get()
+        url, email, pw = url_var.get().strip().rstrip("/"), em_var.get().strip(), pw_var.get()
         if not url or not email or not pw:
-            messagebox.showerror("Fehler", "Bitte alle Felder ausfüllen.")
-            return
-        status_var.set("Verbinde…")
-        root.update()
-
+            messagebox.showerror("Fehler", "Bitte alle Felder ausfüllen."); return
+        sv.set("Verbinde…"); root.update()
         caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
-
-        def _do_login():
+        def _do():
             try:
-                token, session_id = login_and_prepare(url, email, pw, caps)
-                result["url"] = url
-                result["token"] = token
-                result["session"] = session_id
-                result["auto_connect"] = auto_var.get()
-                result["allowed_capabilities"] = caps
+                token, sid = login_and_prepare(url, email, pw, caps)
+                result.update({"url":url,"token":token,"session":sid,"auto_connect":auto_var.get(),"allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
-            except urllib.error.HTTPError as e:
-                root.after(0, lambda: status_var.set(f"Fehler: {e.code} — Zugangsdaten prüfen"))
             except Exception as e:
-                root.after(0, lambda: status_var.set(f"Fehler: {e}"))
-
-        threading.Thread(target=_do_login, daemon=True).start()
-
-    def on_cancel():
-        root.destroy()
-
-    btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=7, column=0, columnspan=2, sticky="e", pady=(12, 0))
-    ttk.Button(btn_frame, text="Abbrechen", command=on_cancel).pack(side="right", padx=(4, 0))
-    ttk.Button(btn_frame, text="Anmelden & Verbinden", command=on_save).pack(side="right")
-
+                root.after(0, lambda: sv.set(f"Fehler: {e}"))
+        threading.Thread(target=_do, daemon=True).start()
+    bf = ttk.Frame(frame); bf.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12,0))
+    ttk.Button(bf, text="Abbrechen", command=root.destroy).pack(side="right", padx=(4,0))
+    ttk.Button(bf, text="Anmelden", command=on_save).pack(side="right")
     root.mainloop()
     return result if result else None
 
 
-# ── Permissions dialog ────────────────────────────────────────────────────────
-
-def show_permissions_dialog(cfg: dict) -> None:
-    """Shows capability toggles. Saves to config + pushes to server if connected."""
+def _show_permissions_tkinter(cfg):
     try:
-        import tkinter as tk
-        from tkinter import ttk, messagebox
+        import tkinter as tk; from tkinter import ttk
     except ImportError:
         return
-
-    current_caps: set[str] = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
-    cap_vars: dict[str, tk.BooleanVar] = {}
-
-    root = tk.Tk()
-    root.title("AI-Employee Bridge — Berechtigungen")
-    root.resizable(False, False)
-    root.geometry("520x460")
-
-    frame = ttk.Frame(root, padding=20)
-    frame.pack(fill="both", expand=True)
-
-    ttk.Label(frame, text="Berechtigungen", font=("", 14, "bold")).pack(anchor="w")
-    ttk.Label(
-        frame,
-        text="Lege fest, was der Agent auf DIESEM Rechner darf.\nÄnderungen werden sofort an den Server übertragen.",
-        foreground="gray",
-        justify="left",
-    ).pack(anchor="w", pady=(4, 12))
-
-    ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=(0, 8))
-
-    RISK_COLORS_TK = {"gering": "#22c55e", "mittel": "#f59e0b", "hoch": "#ef4444"}
-
+    current = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+    cap_vars = {}
+    root = tk.Tk(); root.title("Berechtigungen"); root.geometry("480x420")
+    frame = ttk.Frame(root, padding=20); frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text="Berechtigungen", font=("",14,"bold")).pack(anchor="w")
+    ttk.Separator(frame).pack(fill="x", pady=8)
     for cap in CAPABILITY_META:
-        row_frame = ttk.Frame(frame)
-        row_frame.pack(fill="x", pady=3)
-
-        var = tk.BooleanVar(value=cap["id"] in current_caps)
-        cap_vars[cap["id"]] = var
-
-        chk = ttk.Checkbutton(row_frame, variable=var)
-        chk.pack(side="left")
-
-        info_frame = tk.Frame(row_frame)
-        info_frame.pack(side="left", padx=(6, 0), fill="x", expand=True)
-
-        tk.Label(info_frame, text=cap["label"], font=("", 10, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(info_frame, text=cap["desc"], foreground="gray", font=("", 9), anchor="w").pack(anchor="w")
-
-        risk_color = RISK_COLORS_TK.get(cap["risk"], "gray")
-        tk.Label(
-            row_frame,
-            text=f"Risiko: {cap['risk']}",
-            foreground=risk_color,
-            font=("", 9),
-        ).pack(side="right", padx=8)
-
-    ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=(12, 0))
-
-    status_var = tk.StringVar(value="")
-    ttk.Label(frame, textvariable=status_var, foreground="gray").pack(anchor="w", pady=(4, 0))
-
+        r = ttk.Frame(frame); r.pack(fill="x", pady=3)
+        v = tk.BooleanVar(value=cap["id"] in current)
+        cap_vars[cap["id"]] = v
+        ttk.Checkbutton(r, variable=v).pack(side="left")
+        i = tk.Frame(r); i.pack(side="left", padx=(6,0))
+        tk.Label(i, text=cap["label"], font=("",10,"bold")).pack(anchor="w")
+        tk.Label(i, text=cap["desc"], foreground="gray", font=("",9)).pack(anchor="w")
+    ttk.Separator(frame).pack(fill="x", pady=8)
+    sv = tk.StringVar()
+    ttk.Label(frame, textvariable=sv, foreground="gray").pack(anchor="w")
     def on_save():
-        new_caps = [cap_id for cap_id, var in cap_vars.items() if var.get()]
-        cfg["allowed_capabilities"] = new_caps
+        cfg["allowed_capabilities"] = [cid for cid, v in cap_vars.items() if v.get()]
         save_config(cfg)
-
-        if cfg.get("token") and cfg.get("session") and cfg.get("url") and is_running():
-            status_var.set("Übertrage an Server…")
-            root.update()
-
-            def _push():
-                try:
-                    api_update_capabilities(cfg["url"], cfg["token"], cfg["session"], new_caps)
-                    root.after(0, lambda: status_var.set("✓ Gespeichert und übertragen"))
-                    root.after(1500, root.destroy)
-                except Exception as e:
-                    root.after(0, lambda: status_var.set(f"Lokal gespeichert. Fehler beim Übertragen: {e}"))
-                    root.after(2000, root.destroy)
-
-            threading.Thread(target=_push, daemon=True).start()
+        if is_running():
+            sv.set("Übertrage…"); root.update()
+            def _p():
+                try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"])
+                except: pass
+                root.after(0, root.destroy)
+            threading.Thread(target=_p, daemon=True).start()
         else:
-            status_var.set("✓ Lokal gespeichert (wird beim nächsten Verbinden übertragen)")
-            root.after(1500, root.destroy)
-
-    def on_cancel():
-        root.destroy()
-
-    btn_frame = ttk.Frame(frame)
-    btn_frame.pack(anchor="e", pady=(8, 0))
-    ttk.Button(btn_frame, text="Abbrechen", command=on_cancel).pack(side="right", padx=(4, 0))
-    ttk.Button(btn_frame, text="Speichern", command=on_save).pack(side="right")
-
+            root.destroy()
+    bf = ttk.Frame(frame); bf.pack(anchor="e", pady=(8,0))
+    ttk.Button(bf, text="Abbrechen", command=root.destroy).pack(side="right", padx=(4,0))
+    ttk.Button(bf, text="Speichern", command=on_save).pack(side="right")
     root.mainloop()
 
 
-# ── Status window ─────────────────────────────────────────────────────────────
-
-def show_status_window(cfg: dict) -> None:
-    """Shows detailed status: connection state, session ID, capabilities."""
+def _show_status_tkinter(cfg):
     try:
-        import tkinter as tk
-        from tkinter import ttk
+        import tkinter as tk; from tkinter import ttk
     except ImportError:
         return
-
-    root = tk.Tk()
-    root.title("AI-Employee Bridge — Status")
-    root.resizable(False, False)
-    root.geometry("420x300")
-
-    frame = ttk.Frame(root, padding=20)
-    frame.pack(fill="both", expand=True)
-
-    ttk.Label(frame, text="Bridge Status", font=("", 13, "bold")).pack(anchor="w")
-    ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=8)
-
-    def row(label: str, value: str):
-        r = ttk.Frame(frame)
-        r.pack(fill="x", pady=2)
-        ttk.Label(r, text=label + ":", width=16, anchor="w", foreground="gray").pack(side="left")
-        ttk.Label(r, text=value, anchor="w").pack(side="left", fill="x", expand=True)
-
+    root = tk.Tk(); root.title("Bridge Status"); root.geometry("400x260")
+    frame = ttk.Frame(root, padding=20); frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text="Bridge Status", font=("",13,"bold")).pack(anchor="w")
+    ttk.Separator(frame).pack(fill="x", pady=8)
+    def row(lbl, val):
+        r = ttk.Frame(frame); r.pack(fill="x", pady=2)
+        ttk.Label(r, text=lbl+":", width=14, foreground="gray").pack(side="left")
+        ttk.Label(r, text=val).pack(side="left")
     state = _status
-    state_display = "🟢 Verbunden" if state == "connected" else ("🟡 Verbinde…" if state == "connecting" else f"⚫ {state}")
-    row("Verbindung", state_display)
+    row("Verbindung", "🟢 Verbunden" if state=="connected" else f"⚫ {state}")
     row("Server", cfg.get("url") or "—")
-    row("Session ID", cfg.get("session") or "—")
-
-    caps = cfg.get("allowed_capabilities", [])
-    if caps:
-        cap_labels = {c["id"]: c["label"] for c in CAPABILITY_META}
-        caps_str = ", ".join(cap_labels.get(c, c) for c in caps)
-    else:
-        caps_str = "Keine"
-    row("Erlaubt", caps_str or "—")
-
-    ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=8)
-
-    btn_frame = ttk.Frame(frame)
-    btn_frame.pack(anchor="e")
-    ttk.Button(btn_frame, text="Schließen", command=root.destroy).pack()
-
+    row("Session", cfg.get("session") or "—")
+    cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
+    row("Erlaubt", ", ".join(cap_map.get(c, c) for c in cfg.get("allowed_capabilities",[])) or "Keine")
+    ttk.Separator(frame).pack(fill="x", pady=8)
+    ttk.Button(frame, text="Schließen", command=root.destroy).pack(anchor="e")
     root.mainloop()
 
 
-# ── macOS menu bar (rumps) ────────────────────────────────────────────────────
+# ── macOS menu bar (rumps) ─────────────────────────────────────────────────────
 
 def run_macos(cfg: dict) -> None:
     try:
         import rumps
     except ImportError:
-        print("Install rumps: pip install rumps")
-        sys.exit(1)
+        print("Install rumps: pip install rumps"); sys.exit(1)
 
     class BridgeApp(rumps.App):
         def __init__(self):
             super().__init__("⬡", quit_button=None)
             self.cfg = load_config()
+            self._needs_login = False
             self._update_icon()
             if self.cfg.get("auto_connect") and self.cfg.get("token") and self.cfg.get("session"):
                 threading.Thread(target=self._connect, daemon=True).start()
@@ -480,168 +748,129 @@ def run_macos(cfg: dict) -> None:
             self.title = "🟢" if is_running() else "⬡"
 
         def _connect(self):
-            if self.cfg.get("token") and self.cfg.get("session"):
-                # Push capabilities before connecting
-                try:
-                    api_update_capabilities(
-                        self.cfg["url"], self.cfg["token"], self.cfg["session"],
-                        self.cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
-                    )
-                except Exception:
-                    pass
+            global _status
+            result = ensure_session(self.cfg)
+            if result == ENSURE_NEEDS_LOGIN:
+                _status = "error: token abgelaufen — bitte neu anmelden"
+                self._update_icon()
+                # Signal main thread to open settings
+                self._needs_login = True
+                return
+            if result != ENSURE_OK:
+                _status = "error: server nicht erreichbar"
+                self._update_icon()
+                return
             start_bridge(self.cfg)
             self._update_icon()
 
         @rumps.clicked("Verbinden")
         def on_connect(self, _):
             if not self.cfg.get("token"):
-                self.on_settings(None)
-                return
+                self.on_settings(None); return
             threading.Thread(target=self._connect, daemon=True).start()
 
         @rumps.clicked("Trennen")
         def on_disconnect(self, _):
-            stop_bridge()
-            self._update_icon()
+            stop_bridge(); self._update_icon()
 
         @rumps.clicked("Berechtigungen…")
         def on_permissions(self, _):
-            def _show():
-                show_permissions_dialog(self.cfg)
-                self.cfg = load_config()
-            threading.Thread(target=_show, daemon=True).start()
+            show_permissions_dialog(self.cfg)
+            self.cfg = load_config()
 
         @rumps.clicked("Einstellungen…")
         def on_settings(self, _):
-            def _show():
-                updated = show_setup_dialog(self.cfg)
-                if updated:
-                    self.cfg = updated
-                    save_config(updated)
-            threading.Thread(target=_show, daemon=True).start()
+            updated = show_setup_dialog(self.cfg)
+            if updated:
+                self.cfg = updated
+                save_config(updated)
 
         @rumps.clicked("Status")
         def on_status(self, _):
-            threading.Thread(target=lambda: show_status_window(self.cfg), daemon=True).start()
+            show_status_window(self.cfg)
 
         @rumps.clicked("AI-Employee öffnen")
         def on_open(self, _):
             url = self.cfg.get("url", "")
-            if url:
-                webbrowser.open(url)
+            if url: webbrowser.open(url)
 
         @rumps.clicked("Beenden")
         def on_quit(self, _):
-            stop_bridge()
-            rumps.quit_application()
+            stop_bridge(); rumps.quit_application()
 
         @rumps.timer(3)
         def refresh(self, _):
             self._update_icon()
+            if self._needs_login:
+                self._needs_login = False
+                self.on_settings(None)
 
     BridgeApp().run()
 
 
-# ── Windows / Linux tray (pystray) ───────────────────────────────────────────
+# ── Windows / Linux (pystray) ──────────────────────────────────────────────────
 
 def run_tray(cfg: dict) -> None:
     try:
-        import pystray
-        from PIL import Image, ImageDraw
+        import pystray; from PIL import Image, ImageDraw
     except ImportError:
         sys.exit(1)
 
-    def make_icon(connected: bool):
-        size = 64
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        draw.ellipse([8, 8, size - 8, size - 8], fill=(34, 197, 94) if connected else (156, 163, 175))
+    def make_icon(connected):
+        img = Image.new("RGBA", (64, 64), (0,0,0,0))
+        ImageDraw.Draw(img).ellipse([8,8,56,56], fill=(34,197,94) if connected else (156,163,175))
         return img
 
     def on_connect(icon, item):
-        if not cfg.get("token"):
-            on_settings(icon, item)
-            return
-        try:
-            api_update_capabilities(
-                cfg["url"], cfg["token"], cfg["session"],
-                cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
-            )
-        except Exception:
-            pass
+        if not cfg.get("token"): on_settings(icon, item); return
+        try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)))
+        except: pass
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
 
-    def on_disconnect(icon, item):
-        stop_bridge()
-
-    def on_permissions(icon, item):
-        threading.Thread(target=lambda: show_permissions_dialog(cfg), daemon=True).start()
-
+    def on_disconnect(icon, item): stop_bridge()
+    def on_permissions(icon, item): threading.Thread(target=lambda: show_permissions_dialog(cfg), daemon=True).start()
     def on_settings(icon, item):
-        def _show():
-            updated = show_setup_dialog(cfg)
-            if updated:
-                cfg.update(updated)
-                save_config(cfg)
-        threading.Thread(target=_show, daemon=True).start()
-
-    def on_status(icon, item):
-        threading.Thread(target=lambda: show_status_window(cfg), daemon=True).start()
-
+        def _s():
+            u = show_setup_dialog(cfg)
+            if u: cfg.update(u); save_config(cfg)
+        threading.Thread(target=_s, daemon=True).start()
+    def on_status(icon, item): threading.Thread(target=lambda: show_status_window(cfg), daemon=True).start()
     def on_open(icon, item):
-        url = cfg.get("url", "")
-        if url:
-            webbrowser.open(url)
-
-    def on_quit(icon, item):
-        stop_bridge()
-        icon.stop()
-
+        if cfg.get("url"): webbrowser.open(cfg["url"])
+    def on_quit(icon, item): stop_bridge(); icon.stop()
     def refresh(icon):
         import time
-        while True:
-            icon.icon = make_icon(is_running())
-            time.sleep(3)
+        while True: icon.icon = make_icon(is_running()); time.sleep(3)
 
-    icon = pystray.Icon(
-        "AI-Employee Bridge", make_icon(False),
-        menu=pystray.Menu(
-            pystray.MenuItem("Verbinden", on_connect),
-            pystray.MenuItem("Trennen", on_disconnect),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Berechtigungen…", on_permissions),
-            pystray.MenuItem("Einstellungen…", on_settings),
-            pystray.MenuItem("Status", on_status),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("AI-Employee öffnen", on_open),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Beenden", on_quit),
-        ),
-    )
+    icon = pystray.Icon("AI-Employee Bridge", make_icon(False), menu=pystray.Menu(
+        pystray.MenuItem("Verbinden", on_connect),
+        pystray.MenuItem("Trennen", on_disconnect),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Berechtigungen…", on_permissions),
+        pystray.MenuItem("Einstellungen…", on_settings),
+        pystray.MenuItem("Status", on_status),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("AI-Employee öffnen", on_open),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Beenden", on_quit),
+    ))
     threading.Thread(target=refresh, args=(icon,), daemon=True).start()
     if cfg.get("auto_connect") and cfg.get("token") and cfg.get("session"):
-        try:
-            api_update_capabilities(
-                cfg["url"], cfg["token"], cfg["session"],
-                cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
-            )
-        except Exception:
-            pass
+        try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)))
+        except: pass
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
     icon.run()
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
     cfg = load_config()
     if not cfg.get("url") or not cfg.get("token") or not cfg.get("session"):
         updated = show_setup_dialog(cfg)
-        if not updated:
-            sys.exit(0)
+        if not updated: sys.exit(0)
         cfg = updated
         save_config(cfg)
-
     if IS_MAC:
         run_macos(cfg)
     else:

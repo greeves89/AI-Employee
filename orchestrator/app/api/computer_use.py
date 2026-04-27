@@ -110,6 +110,7 @@ def _session_view(sid: str, s: dict) -> dict:
         "allowed_capabilities": sorted(s.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
         "last_disconnected_at": s.get("last_disconnected_at"),
         "bridge_last_seen_at": s.get("bridge_last_seen_at"),
+        "agent_id": s.get("agent_id"),
     }
 
 
@@ -137,9 +138,8 @@ async def create_session(user=Depends(require_auth)):
         "pending_results": {},
         "allowed_capabilities": allowed,
         "last_disconnected_at": None,
-        # Heartbeat: updated on connect + every message. Used to detect
-        # NAT/WiFi drops that don't send TCP FIN (no WebSocketDisconnect fires).
         "bridge_last_seen_at": None,
+        "agent_id": None,
     }
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
     return {
@@ -223,6 +223,34 @@ async def update_capabilities(
     }
 
 
+class AgentAssignment(BaseModel):
+    agent_id: str | None = None
+
+
+@router.patch("/sessions/{session_id}/agent")
+async def assign_agent(
+    session_id: str,
+    req: AgentAssignment,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign (or unassign) an agent to this session. Only that agent may then send commands."""
+    session = _sessions.get(session_id)
+    if not session or session["user_id"] != str(user.id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if req.agent_id is not None:
+        from sqlalchemy import select
+        from app.models.agent import Agent
+        agent = await db.scalar(select(Agent).where(Agent.id == req.agent_id))
+        if not agent or str(agent.user_id) != str(user.id):
+            raise HTTPException(status_code=404, detail="Agent not found or not yours")
+
+    session["agent_id"] = req.agent_id
+    logger.info(f"Session {session_id}: agent_id set to {req.agent_id}")
+    return _session_view(session_id, session)
+
+
 @router.get("/capabilities")
 async def list_capability_groups(_=Depends(require_auth)):
     """Return all known capability groups and their included actions."""
@@ -276,6 +304,12 @@ async def send_command(
         raise HTTPException(status_code=403, detail="Cannot verify ownership — agent has no user_id")
     if caller_user_id != session["user_id"]:
         raise HTTPException(status_code=403, detail="Access denied: this session belongs to a different user")
+
+    # Agent-level restriction: if session is assigned to a specific agent, enforce it
+    assigned_agent_id = session.get("agent_id")
+    if assigned_agent_id and hasattr(caller, "role") and caller.role == "agent":
+        if str(caller.id) != str(assigned_agent_id):
+            raise HTTPException(status_code=403, detail="This session is assigned to a different agent")
 
     # Session timeout
     if time.time() - session["created_at"] > SESSION_TIMEOUT_SECS:

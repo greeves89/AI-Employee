@@ -24,6 +24,7 @@ import {
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
+const AGENT_ID = process.env.AGENT_ID || "";
 const AGENT_USER_ID = process.env.COMPUTER_USE_USER_ID || "";
 let pinnedSessionId = process.env.COMPUTER_USE_SESSION_ID || "";
 
@@ -34,6 +35,7 @@ async function apiCall(path, options = {}) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${AGENT_TOKEN}`,
+      "X-Agent-ID": AGENT_ID,
       ...(options.headers || {}),
     },
   });

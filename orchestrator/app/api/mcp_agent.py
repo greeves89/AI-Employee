@@ -87,6 +87,48 @@ AGENT_TOOLS = [
             },
         },
     },
+    {
+        "name": "computer_use",
+        "description": (
+            "Control the user's desktop via the AI-Employee Bridge app. "
+            "First call with action='list_sessions' to find available sessions. "
+            "Then call with action='screenshot' to see the screen, or other actions to interact. "
+            "The Bridge app must be running and connected on the user's machine."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action to perform. Special: 'list_sessions' — lists available bridge sessions. "
+                        "Desktop actions: 'screenshot', 'mouse_click', 'mouse_move', 'mouse_scroll', "
+                        "'type', 'key', 'hotkey', 'open_app', 'close_app', "
+                        "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree'."
+                    ),
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Bridge session ID (from list_sessions). Required for all desktop actions.",
+                },
+                "params": {
+                    "type": "object",
+                    "description": (
+                        "Action parameters. Examples: "
+                        "screenshot: {scale: 0.5}; "
+                        "mouse_click: {x: 100, y: 200, button: 'left'}; "
+                        "type: {text: 'Hello'}; "
+                        "key: {key: 'enter'}; "
+                        "hotkey: {keys: ['cmd', 'c']}; "
+                        "open_app: {name: 'Safari'}; "
+                        "shell_run: {command: 'ls -la'}; "
+                        "clipboard_write: {text: 'hello'}."
+                    ),
+                },
+            },
+            "required": ["action"],
+        },
+    },
 ]
 
 
@@ -274,5 +316,68 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
             status = t.status.value if hasattr(t.status, "value") else t.status
             lines.append(f"  [{t.id}] {t.title} — {status}")
         return _tool_result("\n".join(lines))
+
+    if name == "computer_use":
+        from app.api.computer_use import _sessions, _action_allowed, DEFAULT_ALLOWED_CAPABILITIES
+        action = args.get("action", "").strip()
+        if not action:
+            return _tool_result("Error: 'action' is required", is_error=True)
+
+        if action == "list_sessions":
+            if not agent.user_id:
+                return _tool_result("Error: agent has no associated user", is_error=True)
+            user_sessions = [
+                {"session_id": sid, "status": "connected" if s["bridge_connected"] else "waiting_for_bridge",
+                 "platform": s.get("platform", "unknown"), "agent_id": s.get("agent_id"),
+                 "allowed_capabilities": sorted(s.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES))}
+                for sid, s in _sessions.items()
+                if s["user_id"] == str(agent.user_id)
+            ]
+            if not user_sessions:
+                return _tool_result("No active bridge sessions. Ask the user to open the AI-Employee Bridge app and click 'Verbinden'.")
+            lines = [f"Found {len(user_sessions)} bridge session(s):"]
+            for s in user_sessions:
+                lines.append(f"  session_id={s['session_id']} status={s['status']} platform={s['platform']} assigned_agent={s['agent_id'] or 'any'}")
+                lines.append(f"    capabilities: {', '.join(s['allowed_capabilities'])}")
+            return _tool_result("\n".join(lines))
+
+        session_id = args.get("session_id", "").strip()
+        if not session_id:
+            return _tool_result("Error: 'session_id' is required. Call computer_use(action='list_sessions') first.", is_error=True)
+        session = _sessions.get(session_id)
+        if not session:
+            return _tool_result(f"Error: session '{session_id}' not found. It may have expired.", is_error=True)
+        if str(session["user_id"]) != str(agent.user_id):
+            return _tool_result("Error: session belongs to a different user", is_error=True)
+        assigned = session.get("agent_id")
+        if assigned and str(assigned) != str(agent.id):
+            return _tool_result(f"Error: session is assigned to agent {assigned}, not this agent", is_error=True)
+        if not session["bridge_connected"] or not session.get("bridge_ws"):
+            return _tool_result("Error: bridge is not connected. Ask the user to open the Bridge app and connect.", is_error=True)
+        allowed: set[str] = session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)
+        if not _action_allowed(action, allowed):
+            return _tool_result(f"Error: action '{action}' is not permitted (capability disabled by user)", is_error=True)
+
+        import asyncio as _asyncio
+        cmd_id = uuid.uuid4().hex[:8]
+        params = args.get("params", {})
+        command_msg = json.dumps({"type": "command", "id": cmd_id, "command": {"action": action, "params": params}})
+        session["action_count"] = session.get("action_count", 0) + 1
+        session.setdefault("audit_log", []).append({"cmd_id": cmd_id, "action": action, "params": params, "caller": str(agent.id), "ts": __import__("time").time()})
+        result_future: _asyncio.Future = _asyncio.get_event_loop().create_future()
+        session.setdefault("pending_results", {})[cmd_id] = result_future
+        try:
+            await session["bridge_ws"].send_text(command_msg)
+            result = await _asyncio.wait_for(result_future, timeout=args.get("timeout", 15.0))
+            if action == "screenshot":
+                b64 = result.get("screenshot_b64", "")
+                return {"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]}
+            return _tool_result(json.dumps(result, ensure_ascii=False))
+        except _asyncio.TimeoutError:
+            session["pending_results"].pop(cmd_id, None)
+            return _tool_result(f"Error: bridge timed out after {args.get('timeout', 15)}s", is_error=True)
+        except Exception as e:
+            session["pending_results"].pop(cmd_id, None)
+            return _tool_result(f"Error: {e}", is_error=True)
 
     return _tool_result(f"Unknown tool: {name}", is_error=True)
