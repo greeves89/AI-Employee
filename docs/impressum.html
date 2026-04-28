@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Impressum — AI Employee</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #060d1a; --bg-card: #0b1526; --border: rgba(255,255,255,0.07);
+      --text: #f0f4ff; --muted: #6b7a99; --primary: #3b82f6;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; line-height: 1.6; }
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      border-bottom: 1px solid var(--border);
+      background: rgba(6,13,26,0.85); backdrop-filter: blur(20px);
+      padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-size: 14px; font-weight: 600; }
+    .logo-icon { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #22d3ee); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .back { font-size: 13px; color: var(--muted); text-decoration: none; padding: 8px 12px; border-radius: 10px; transition: all 0.15s; }
+    .back:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    main { max-width: 720px; margin: 0 auto; padding: 64px 24px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 40px; }
+    section { margin-bottom: 36px; }
+    h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+    p, address { font-size: 14px; color: var(--muted); font-style: normal; line-height: 1.7; }
+    a { color: var(--primary); }
+    .notice { margin-top: 48px; border: 1px solid rgba(251,146,60,0.3); border-radius: 12px; background: rgba(251,146,60,0.05); padding: 14px 16px; font-size: 12px; color: rgba(253,186,116,0.8); }
+    strong { color: rgba(253,186,116,1); }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="index.html" class="logo"><div class="logo-icon">🤖</div> AI Employee</a>
+  <a href="index.html" class="back">← Zurück</a>
+</nav>
+<main>
+  <h1>Impressum</h1>
+
+  <section>
+    <h2>Angaben gemäß § 5 DDG</h2>
+    <address>
+      [Vollständiger Name]<br/>
+      [Straße und Hausnummer]<br/>
+      [PLZ Ort]<br/>
+      Deutschland
+    </address>
+  </section>
+
+  <section>
+    <h2>Kontakt</h2>
+    <p>E-Mail: <a href="mailto:daniel.alisch@googlemail.com">daniel.alisch@googlemail.com</a></p>
+  </section>
+
+  <section>
+    <h2>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
+    <address>
+      [Vollständiger Name]<br/>
+      [Anschrift wie oben]
+    </address>
+  </section>
+
+  <section>
+    <h2>Haftungsausschluss</h2>
+    <p>Die Inhalte dieser Seite wurden mit größtmöglicher Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität der Inhalte übernehmen wir jedoch keine Gewähr.</p>
+  </section>
+
+  <section>
+    <h2>Open-Source-Lizenz</h2>
+    <p>AI Employee ist unter der Fair-Code-Lizenz veröffentlicht. Der Quellcode ist auf <a href="https://github.com/greeves89/AI-Employee" target="_blank">GitHub</a> verfügbar. Kommerzielle Nutzung als SaaS-Weiterverkauf erfordert eine separate Lizenz.</p>
+  </section>
+
+  <div class="notice">
+    <strong>Hinweis:</strong> Platzhalter in eckigen Klammern noch ausfüllen — gesetzlich vorgeschrieben (§ 5 DDG).
+  </div>
+</main>
+</body>
+</html>

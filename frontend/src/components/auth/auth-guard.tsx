@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 
-const PUBLIC_PATHS = ["/login", "/register", "/"];
+const PUBLIC_PATHS = ["/login", "/register"];
 const CUSTOM_LAYOUT_PATHS = ["/chat"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {

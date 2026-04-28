@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Employee — Die selbst gehostete KI-Agenten-Plattform</title>
+  <meta name="description" content="Die selbst gehostete Multi-Agenten-Plattform für Teams die Compliance, Governance und echte Datenisolation benötigen. DSGVO-konform, Made in Germany." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #060d1a;
+      --bg-card: #0b1526;
+      --border: rgba(255,255,255,0.07);
+      --border-hover: rgba(255,255,255,0.12);
+      --text: #f0f4ff;
+      --muted: #6b7a99;
+      --muted2: #3d4f6b;
+      --primary: #3b82f6;
+      --primary-glow: rgba(59,130,246,0.2);
+      --emerald: #34d399;
+      --cyan: #22d3ee;
+      --purple: #a78bfa;
+      --orange: #fb923c;
+      --rose: #fb7185;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59,130,246,0.12) 0%, transparent 70%),
+        linear-gradient(rgba(59,130,246,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 48px 48px, 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* NAV */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      border-bottom: 1px solid var(--border);
+      background: rgba(6,13,26,0.85);
+      backdrop-filter: blur(20px);
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; max-width: 1100px; margin: 0 auto;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .logo-icon {
+      width: 32px; height: 32px; border-radius: 10px;
+      background: linear-gradient(135deg, #3b82f6, #22d3ee);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px rgba(59,130,246,0.3);
+      font-size: 16px;
+    }
+    .logo-text { font-size: 14px; font-weight: 600; }
+    .nav-links { display: flex; align-items: center; gap: 8px; }
+    .nav-link {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 12px; border-radius: 10px;
+      font-size: 13px; color: var(--muted); text-decoration: none;
+      transition: all 0.15s;
+    }
+    .nav-link:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 10px;
+      background: var(--primary); color: #fff;
+      font-size: 13px; font-weight: 500; text-decoration: none;
+      box-shadow: 0 4px 16px rgba(59,130,246,0.25);
+      transition: all 0.15s;
+    }
+    .btn-primary:hover { background: #2563eb; box-shadow: 0 4px 24px rgba(59,130,246,0.4); }
+    .btn-outline {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 20px; border-radius: 10px;
+      border: 1px solid var(--border-hover); background: rgba(255,255,255,0.02);
+      color: var(--text); font-size: 13px; font-weight: 500; text-decoration: none;
+      transition: all 0.15s;
+    }
+    .btn-outline:hover { background: rgba(255,255,255,0.06); }
+
+    /* HERO */
+    .hero { padding: 96px 0 64px; text-align: center; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 100px;
+      border: 1px solid rgba(59,130,246,0.25); background: rgba(59,130,246,0.08);
+      font-size: 12px; font-weight: 500; color: #93c5fd;
+      margin-bottom: 24px;
+    }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800; line-height: 1.1; letter-spacing: -0.02em;
+      max-width: 760px; margin: 0 auto 24px;
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #60a5fa, #22d3ee, #3b82f6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero-sub {
+      font-size: 17px; color: var(--muted); max-width: 640px; margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+    .hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-hero-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-radius: 12px;
+      background: var(--primary); color: #fff;
+      font-size: 14px; font-weight: 600; text-decoration: none;
+      box-shadow: 0 4px 24px rgba(59,130,246,0.3);
+      transition: all 0.15s;
+    }
+    .btn-hero-primary:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(59,130,246,0.4); }
+    .btn-hero-outline {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-radius: 12px;
+      border: 1px solid var(--border-hover); background: rgba(255,255,255,0.02);
+      color: var(--text); font-size: 14px; font-weight: 500; text-decoration: none;
+      transition: all 0.15s;
+    }
+    .btn-hero-outline:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px); }
+
+    /* STATS */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 80px; }
+    @media (max-width: 600px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      border: 1px solid var(--border); border-radius: 14px;
+      background: rgba(11,21,38,0.8); backdrop-filter: blur(8px);
+      padding: 20px; text-align: center;
+    }
+    .stat-val { font-size: 26px; font-weight: 700; }
+    .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* SECTION HEADER */
+    .section-header { text-align: center; margin-bottom: 40px; }
+    .section-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted2); margin-bottom: 8px; }
+    .section-title { font-size: clamp(1.25rem, 3vw, 1.75rem); font-weight: 700; letter-spacing: -0.01em; }
+
+    /* FEATURES GRID */
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 80px; }
+    @media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 580px) { .features { grid-template-columns: 1fr; } }
+    .feature-card {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: rgba(11,21,38,0.8); backdrop-filter: blur(8px);
+      padding: 20px; transition: border-color 0.2s, background 0.2s;
+    }
+    .feature-card:hover { border-color: var(--border-hover); background: var(--bg-card); }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; margin-bottom: 16px;
+      border: 1px solid;
+    }
+    .feature-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .feature-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    /* CHECKLIST */
+    .checklist-wrap {
+      border: 1px solid var(--border); border-radius: 20px;
+      background: rgba(11,21,38,0.8); backdrop-filter: blur(8px);
+      padding: 40px; margin-bottom: 80px;
+    }
+    .checklist { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 900px) { .checklist { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 580px) { .checklist { grid-template-columns: 1fr; } }
+    .check-item {
+      display: flex; align-items: center; gap: 10px;
+      border: 1px solid rgba(255,255,255,0.04); border-radius: 10px;
+      background: rgba(255,255,255,0.02); padding: 10px 12px;
+    }
+    .check-icon { color: var(--emerald); font-size: 15px; flex-shrink: 0; }
+    .check-label { font-size: 13px; color: rgba(240,244,255,0.8); }
+
+    /* TEMPLATES */
+    .templates-wrap { margin-bottom: 80px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .tag {
+      display: inline-flex; align-items: center;
+      padding: 6px 14px; border-radius: 100px;
+      border: 1px solid; font-size: 12px; font-weight: 500;
+    }
+
+    /* ARCH CARDS */
+    .arch { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 80px; }
+    @media (max-width: 700px) { .arch { grid-template-columns: 1fr; } }
+    .arch-card {
+      border: 1px solid var(--border); border-radius: 20px;
+      background: rgba(11,21,38,0.8); backdrop-filter: blur(8px);
+      padding: 28px;
+    }
+    .arch-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; margin-bottom: 16px; border: 1px solid;
+    }
+    .arch-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+    .arch-desc { font-size: 13px; color: var(--muted); line-height: 1.65; }
+
+    /* CTA */
+    .cta-box {
+      position: relative; overflow: hidden;
+      border: 1px solid rgba(59,130,246,0.25); border-radius: 20px;
+      background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(34,211,238,0.03), transparent);
+      padding: 60px 40px; text-align: center; margin-bottom: 80px;
+    }
+    .cta-box::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 60% 80% at 50% 100%, rgba(59,130,246,0.15), transparent);
+      pointer-events: none;
+    }
+    .cta-title { font-size: clamp(1.25rem, 3vw, 1.75rem); font-weight: 700; margin-bottom: 12px; }
+    .cta-sub { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+    .cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+    .cta-cmd { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted2); }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 24px;
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+    }
+    .footer-logo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+    .footer-logo-icon {
+      width: 24px; height: 24px; border-radius: 8px;
+      background: linear-gradient(135deg, #3b82f6, #22d3ee);
+      display: flex; align-items: center; justify-content: center; font-size: 12px;
+    }
+    .footer-links { display: flex; align-items: center; gap: 20px; }
+    .footer-link {
+      font-size: 12px; color: var(--muted2); text-decoration: none;
+      display: flex; align-items: center; gap: 5px;
+      transition: color 0.15s;
+    }
+    .footer-link:hover { color: var(--muted); }
+    .footer-note { font-size: 11px; color: var(--muted2); }
+
+    /* SVG icons */
+    svg { display: inline-block; vertical-align: middle; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">
+      <div class="logo-icon">🤖</div>
+      <span class="logo-text">AI Employee</span>
+    </a>
+    <div class="nav-links">
+      <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener" class="nav-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a href="https://agents.future-app.de/login" class="btn-primary">
+        Anmelden →
+      </a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap">
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="badge">
+        <span class="badge-dot"></span>
+        Self-hosted · Open Source · DSGVO-konform · Hosted in Germany
+      </div>
+      <h1>
+        Ihr Team aus
+        <span class="gradient-text"> KI-Agenten</span><br/>
+        — vollständig unter Ihrer Kontrolle
+      </h1>
+      <p class="hero-sub">
+        Die selbst gehostete Multi-Agenten-Plattform für Teams, die Compliance, Governance und echte Datenisolation benötigen.
+        Jeder Agent läuft in seinem eigenen Docker-Container. Alle Daten bleiben auf Ihrer Infrastruktur —
+        entwickelt für KMU und regulierte Branchen im DACH-Raum.
+      </p>
+      <div class="hero-ctas">
+        <a href="https://agents.future-app.de/login" class="btn-hero-primary">
+          Zur Plattform →
+        </a>
+        <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener" class="btn-hero-outline">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Auf GitHub ansehen
+        </a>
+      </div>
+    </section>
+
+    <!-- STATS -->
+    <div class="stats">
+      <div class="stat-card"><div class="stat-val">25</div><div class="stat-label">Agenten-Vorlagen</div></div>
+      <div class="stat-card"><div class="stat-val">L1–L4</div><div class="stat-label">Autonomie-Level</div></div>
+      <div class="stat-card"><div class="stat-val">100%</div><div class="stat-label">Self-Hosted</div></div>
+      <div class="stat-card"><div class="stat-val">DSGVO</div><div class="stat-label">konform*</div></div>
+    </div>
+
+    <!-- FEATURES -->
+    <div class="section-header">
+      <div class="section-tag">Was es auszeichnet</div>
+      <div class="section-title">Für den echten Einsatz gebaut</div>
+    </div>
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(52,211,153,0.08);border-color:rgba(52,211,153,0.2);color:#34d399">🛡️</div>
+        <div class="feature-title">Governance & Compliance</div>
+        <div class="feature-desc">Autonomie-Level L1–L4 mit Whitelist-Durchsetzung. Jede Aktion außerhalb der Whitelist löst automatisch eine Freigabe-Anfrage aus. Vollständiger Audit-Trail für DSGVO-konforme Deployments.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(59,130,246,0.08);border-color:rgba(59,130,246,0.2);color:#60a5fa">🔒</div>
+        <div class="feature-title">Echte Isolation</div>
+        <div class="feature-desc">Jeder Agent läuft in seinem eigenen Docker-Container mit isoliertem Dateisystem, Arbeitsspeicher und Ressourcen-Limits. Kein geteilter Speicher, keine Datenlecks zwischen Mandanten.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(167,139,250,0.08);border-color:rgba(167,139,250,0.2);color:#a78bfa">🧠</div>
+        <div class="feature-title">Semantisches Gedächtnis</div>
+        <div class="feature-desc">Lokale bge-m3-Embeddings (1024-dim, mehrsprachig). Keine OpenAI-Kosten, keine Daten verlassen Ihren Server. Eigene Knowledge Base pro Nutzer mit Backlinks und Tags.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(34,211,238,0.08);border-color:rgba(34,211,238,0.2);color:#22d3ee">👥</div>
+        <div class="feature-title">Multi-Agenten-Meetings</div>
+        <div class="feature-desc">3–4 Agenten diskutieren im Round-Robin bis zur Entscheidung. Design-Reviews, Rechts-vs-Marketing, Architektur-Debatten — vollständig automatisiert.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(251,146,60,0.08);border-color:rgba(251,146,60,0.2);color:#fb923c">🔀</div>
+        <div class="feature-title">LLM-Agnostisch</div>
+        <div class="feature-desc">Claude, GPT-4o, Gemini 2.0, Mistral oder lokales Ollama — Modell pro Agent tauschen ohne Code-Änderung. Läuft mit bestehendem Claude Pro Abo.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(251,113,133,0.08);border-color:rgba(251,113,133,0.2);color:#fb7185">🌐</div>
+        <div class="feature-title">Microsoft 365 & OAuth</div>
+        <div class="feature-desc">25 MS-Graph-MCP-Tools — Outlook, Kalender, Teams, Planner, OneDrive. OAuth-Tokens pro Nutzer, niemals geteilt. Google- und Apple-Integrationen inklusive.</div>
+      </div>
+    </div>
+
+    <!-- VERGLEICH -->
+    <div class="section-header">
+      <div class="section-tag">Warum nicht einfach SaaS?</div>
+      <div class="section-title">AI Employee vs. die Alternativen</div>
+    </div>
+    <div class="checklist-wrap">
+      <div class="checklist">
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Docker-isolierte Agenten pro Nutzer</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Multi-Mandant mit RLS-Datenisolation</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Lokale Embeddings (kein OpenAI nötig)</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Whitelist-basierte L1–L4-Autonomie</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Agenten-zu-Agenten-Meeting-Rooms</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Agenten deployen eigene Docker-Apps</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Vollständiger Governance-Audit-Trail</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Telegram + Sprache (STT/TTS)</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Microsoft 365 via MS Graph MCP</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Self-hosted, kein Vendor Lock-in</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Desktop Bridge (Computer-Steuerung)</span></div>
+        <div class="check-item"><span class="check-icon">✓</span><span class="check-label">Skill-Analytics & ROI-Tracking</span></div>
+      </div>
+    </div>
+
+    <!-- TEMPLATES -->
+    <div class="templates-wrap">
+      <div class="section-header">
+        <div class="section-tag">Sofort einsatzbereit</div>
+        <div class="section-title">25 vorgefertigte Agenten-Vorlagen</div>
+        <p style="font-size:13px;color:var(--muted);margin-top:8px">Jede Rolle in Sekunden starten — oder eigene Agenten von Grund auf konfigurieren.</p>
+      </div>
+      <div class="tags">
+        <span class="tag" style="border-color:rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);color:#93c5fd">Fullstack Developer</span>
+        <span class="tag" style="border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.08);color:#c4b5fd">Frontend Specialist</span>
+        <span class="tag" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.08);color:#6ee7b7">Backend Engineer</span>
+        <span class="tag" style="border-color:rgba(251,146,60,0.25);background:rgba(251,146,60,0.08);color:#fdba74">DevOps Engineer</span>
+        <span class="tag" style="border-color:rgba(34,211,238,0.25);background:rgba(34,211,238,0.08);color:#67e8f9">Data Scientist</span>
+        <span class="tag" style="border-color:rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);color:#93c5fd">QA Engineer</span>
+        <span class="tag" style="border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.08);color:#c4b5fd">Code Reviewer</span>
+        <span class="tag" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.08);color:#6ee7b7">Marketing Manager</span>
+        <span class="tag" style="border-color:rgba(251,146,60,0.25);background:rgba(251,146,60,0.08);color:#fdba74">Content Creator</span>
+        <span class="tag" style="border-color:rgba(34,211,238,0.25);background:rgba(34,211,238,0.08);color:#67e8f9">SEO Specialist</span>
+        <span class="tag" style="border-color:rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);color:#93c5fd">Sales Assistant</span>
+        <span class="tag" style="border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.08);color:#c4b5fd">Kundensupport</span>
+        <span class="tag" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.08);color:#6ee7b7">Rechtsassistent</span>
+        <span class="tag" style="border-color:rgba(251,146,60,0.25);background:rgba(251,146,60,0.08);color:#fdba74">Steuerberater</span>
+        <span class="tag" style="border-color:rgba(34,211,238,0.25);background:rgba(34,211,238,0.08);color:#67e8f9">Buchhalter</span>
+        <span class="tag" style="border-color:rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);color:#93c5fd">Finanzanalyst</span>
+        <span class="tag" style="border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.08);color:#c4b5fd">HR-Assistent</span>
+        <span class="tag" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.08);color:#6ee7b7">Projektmanager</span>
+        <span class="tag" style="border-color:rgba(251,146,60,0.25);background:rgba(251,146,60,0.08);color:#fdba74">Medizinische Schreibkraft</span>
+        <span class="tag" style="border-color:rgba(34,211,238,0.25);background:rgba(34,211,238,0.08);color:#67e8f9">Recherche-Analyst</span>
+        <span class="tag" style="border-color:rgba(59,130,246,0.25);background:rgba(59,130,246,0.08);color:#93c5fd">Technischer Redakteur</span>
+        <span class="tag" style="border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.08);color:#c4b5fd">Product Manager</span>
+        <span class="tag" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.08);color:#6ee7b7">Einkaufsassistent</span>
+        <span class="tag" style="border-color:rgba(251,146,60,0.25);background:rgba(251,146,60,0.08);color:#fdba74">IT-Support</span>
+        <span class="tag" style="border-color:rgba(34,211,238,0.25);background:rgba(34,211,238,0.08);color:#67e8f9">Persönlicher Assistent</span>
+      </div>
+    </div>
+
+    <!-- ARCH -->
+    <div class="section-header">
+      <div class="section-tag">Technologie</div>
+      <div class="section-title">Was unter der Haube steckt</div>
+    </div>
+    <div class="arch">
+      <div class="arch-card">
+        <div class="arch-icon" style="background:rgba(59,130,246,0.08);border-color:rgba(59,130,246,0.2);color:#60a5fa">💻</div>
+        <div class="arch-title">Claude Code CLI Runtime</div>
+        <div class="arch-desc">Bewährtes headless Claude mit nativem Tool-Use, Datei-Bearbeitung und Shell-Zugriff. Läuft mit bestehendem Claude Pro oder Team Abo — keine Token-Kosten. Jederzeit auf GPT-4o, Gemini oder lokales Ollama wechselbar.</div>
+      </div>
+      <div class="arch-card">
+        <div class="arch-icon" style="background:rgba(167,139,250,0.08);border-color:rgba(167,139,250,0.2);color:#a78bfa">📊</div>
+        <div class="arch-title">Skill-Analytics & ROI</div>
+        <div class="arch-desc">Zeitersparnis gegenüber manuellem Aufwand, ROI pro Skill, tägliches Task-Volumen, Erfolgsquote pro Agent, Kosten und Laufzeit. Manuelle Aufwandsschätzungen für echte Produktivitätskennzahlen hinterlegbar.</div>
+      </div>
+      <div class="arch-card">
+        <div class="arch-icon" style="background:rgba(52,211,153,0.08);border-color:rgba(52,211,153,0.2);color:#34d399">💬</div>
+        <div class="arch-title">Telegram-nativ</div>
+        <div class="arch-desc">Jeder Agent erhält seinen eigenen Telegram-Bot mit Sprach-STT/TTS. Freigabe-Anfragen per Button-Tap genehmigen. Tasks starten, Ergebnisse lesen und Benachrichtigungen empfangen — alles aus Telegram.</div>
+      </div>
+      <div class="arch-card">
+        <div class="arch-icon" style="background:rgba(251,146,60,0.08);border-color:rgba(251,146,60,0.2);color:#fb923c">🖥️</div>
+        <div class="arch-title">Desktop Bridge</div>
+        <div class="arch-desc">Native macOS- und Windows-Tray-App verbindet Ihren lokalen Desktop mit dem Server. Agenten können Screenshots machen, klicken, tippen und mit jeder lokalen Anwendung interagieren — autorisiert und auditiert.</div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-box">
+      <div class="cta-title">Bereit, Ihr KI-Team zu starten?</div>
+      <div class="cta-sub">Self-hosted in unter 5 Minuten. Ein Befehl, kein Vendor Lock-in.</div>
+      <div class="cta-btns">
+        <a href="https://agents.future-app.de/login" class="btn-hero-primary">Zur Plattform →</a>
+        <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener" class="btn-hero-outline">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Auf GitHub staren
+        </a>
+      </div>
+      <div class="cta-cmd">git clone https://github.com/greeves89/AI-Employee.git &amp;&amp; ./scripts/setup.sh</div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <div class="footer-logo-icon">🤖</div>
+      <span>AI Employee</span>
+      <span style="color:var(--muted2);font-size:12px;font-weight:400">· Fair-Code Lizenz</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener" class="footer-link">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a href="https://agents.future-app.de/login" class="footer-link">Anmelden</a>
+      <a href="impressum.html" class="footer-link">Impressum</a>
+    </div>
+    <div class="footer-note">*DSGVO: lokale Modelle für volle Konformität empfohlen</div>
+  </div>
+</footer>
+
+</body>
+</html>
