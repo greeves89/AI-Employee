@@ -4,8 +4,8 @@
 
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
-[![License: Fair-Code](https://img.shields.io/badge/license-Fair--Code-blue.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.31.0-green.svg)](VERSION)
+[![License: Source Available](https://img.shields.io/badge/license-Source%20Available-orange.svg)](LICENSE.md)
+[![Version](https://img.shields.io/badge/version-1.32.1-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -286,20 +286,18 @@ Key environment variables (see `.env.community.example` for the full list):
 
 ## License
 
-AI-Employee is **Fair-Code** licensed under the **Sustainable Use License**, inspired by [n8n.io](https://n8n.io).
+AI-Employee is **Source Available**. The source code is publicly visible, but use is restricted by license.
 
 **Free for:**
-- Internal business use (including commercial organizations)
-- Personal projects, education, research
-- Client work where you deliver the service directly
-- Integrating AI-Employee as a component into your own products
+- Personal projects, learning, research, experimentation
+- Non-commercial use
 
-**Requires a commercial license:**
-- Hosting AI-Employee as a SaaS offering where third parties pay to use it
-- Reselling AI-Employee as your own branded product
-- White-label commercial distribution
+**Requires a license (contact first):**
+- Any business or commercial use — internal company tooling, SaaS, products, client work, professional services
 
-See **[LICENSE.md](LICENSE.md)** for the complete terms. For commercial licensing inquiries contact **daniel.alisch@me.com**.
+Contact **daniel.alisch@me.com** to obtain a business license.
+
+See **[LICENSE.md](LICENSE.md)** for the complete terms.
 
 ## Contributing
 
@@ -331,7 +329,7 @@ AI-Employee stands on the shoulders of outstanding open-source projects:
 - **Docker** — container runtime
 - **Traefik** / **Caddy** — reverse proxy
 - **Prometheus** / **Grafana** — observability
-- **n8n** — inspiration for the Fair-Code license
+- **n8n** — inspiration for the source-available licensing approach
 
 Built with care by **Daniel Alisch** in the DACH region.
 
