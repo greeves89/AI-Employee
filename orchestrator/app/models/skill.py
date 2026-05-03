@@ -62,6 +62,9 @@ class Skill(Base, TimestampMixin):
     avg_agent_duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)  # rolling avg of agent execution time
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)  # visible in marketplace
 
+    # Versioning
+    current_version: Mapped[int] = mapped_column(Integer, default=1)
+
 
 class AgentSkillAssignment(Base, TimestampMixin):
     """Junction table: which agents have which skills installed."""
@@ -96,8 +99,40 @@ class SkillTaskUsage(Base):
     task_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     task_num_turns: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Version tracking — which version of the skill was in use during this task
+    skill_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Derived savings — filled when task completes if skill has manual_duration_seconds
     time_saved_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class SkillVersion(Base):
+    """Immutable snapshot of a skill's content at a point in time.
+
+    Created automatically before every content update (user or agent).
+    Enables rollback and version-specific analytics.
+    """
+    __tablename__ = "skill_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), index=True, nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    # Snapshot of quality metrics at time of versioning
+    avg_helpfulness_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    usage_count_at_snapshot: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Who triggered this version and why
+    created_by: Mapped[str] = mapped_column(String, default="system")  # "user", "agent:<id>", "improvement_engine", "rollback"
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

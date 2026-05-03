@@ -25,7 +25,7 @@ from app.models.meeting_room import MeetingRoom
 from app.models.approval_rule import ApprovalRule
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.models.event_trigger import EventTrigger
-from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage
+from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.autonomy_preset_rule import AutonomyPresetRule
 
 __all__ = [
@@ -45,6 +45,6 @@ __all__ = [
     "ApprovalRule",
     "KnowledgeFeed", "KnowledgeFeedItem",
     "EventTrigger",
-    "Skill", "SkillStatus", "SkillCategory", "AgentSkillAssignment", "SkillFile", "SkillTaskUsage",
+    "Skill", "SkillStatus", "SkillCategory", "AgentSkillAssignment", "SkillFile", "SkillTaskUsage", "SkillVersion",
     "AutonomyPresetRule",
 ]
