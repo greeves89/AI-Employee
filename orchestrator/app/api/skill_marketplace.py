@@ -1167,6 +1167,9 @@ async def agent_update_skill(
             changelog += f" based on feedback: {body.feedback}"
         skill.content = body.content + changelog
 
+    if body.description is not None:
+        skill.description = body.description
+
     await db.commit()
     await db.refresh(skill)
 

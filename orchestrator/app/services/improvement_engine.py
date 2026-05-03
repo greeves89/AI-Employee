@@ -149,6 +149,12 @@ class ImprovementEngine:
                 except Exception as e:
                     logger.warning(f"[ImprovementEngine] Failed to analyze agent {agent_id}: {e}")
 
+            # Validate skills currently in probation (before dispatching new improvements)
+            try:
+                await _validate_probation_skills(db)
+            except Exception as e:
+                logger.warning(f"[ImprovementEngine] Skill probation validation failed: {e}")
+
             # Also analyze skill quality across all agents
             try:
                 await _improve_poorly_rated_skills(db)
@@ -165,6 +171,7 @@ class ImprovementEngine:
         """
         try:
             await self._analyze_agent(db, agent_id)
+            await _validate_probation_skills(db)
             await _improve_poorly_rated_skills(db)
             await db.commit()
         except Exception as e:
@@ -362,12 +369,96 @@ def _classify_performance(avg: float, trend: float, recent_avg: float) -> str:
     return "needs_attention"
 
 
+_PROBATION_MIN_USAGES = 5  # minimum new usages during probation before validating
+_PROBATION_MAX_DAYS = 14   # force validation after this many days even with few usages
+
+
+async def _validate_probation_skills(db: AsyncSession) -> None:
+    """Check skills in probation and validate/rollback based on post-improvement ratings."""
+    from app.models.skill import SkillVersion
+
+    skills_in_probation = (await db.execute(
+        select(Skill).where(Skill.improvement_status == "probation")
+    )).scalars().all()
+
+    if not skills_in_probation:
+        return
+
+    now = datetime.now(timezone.utc)
+
+    for skill in skills_in_probation:
+        probation_start = skill.probation_started_at
+        if not probation_start:
+            skill.improvement_status = None
+            continue
+
+        probation_start_aware = probation_start.replace(tzinfo=timezone.utc) if probation_start.tzinfo is None else probation_start
+
+        # Count rated usages since probation started
+        post_improvement = (await db.execute(
+            select(
+                func.count(SkillTaskUsage.id).label("count"),
+                func.avg(SkillTaskUsage.skill_helpfulness).label("avg_h"),
+            )
+            .where(
+                SkillTaskUsage.skill_id == skill.id,
+                SkillTaskUsage.skill_helpfulness.isnot(None),
+                SkillTaskUsage.created_at >= probation_start_aware,
+            )
+        )).one()
+
+        post_count = int(post_improvement.count or 0)
+        days_in_probation = (now - probation_start_aware).days
+
+        # Not enough data yet and still within time window
+        if post_count < _PROBATION_MIN_USAGES and days_in_probation < _PROBATION_MAX_DAYS:
+            continue
+
+        pre_avg = skill.pre_improvement_avg_helpfulness or 0.0
+        post_avg = float(post_improvement.avg_h) if post_improvement.avg_h is not None else 0.0
+
+        if post_avg > pre_avg or (post_count < _PROBATION_MIN_USAGES and days_in_probation >= _PROBATION_MAX_DAYS):
+            # Improved or timed out with insufficient data (keep new version)
+            skill.improvement_status = "validated"
+            logger.info(
+                f"[ImprovementEngine] Skill '{skill.name}' (id={skill.id}) VALIDATED: "
+                f"pre={pre_avg:.1f} → post={post_avg:.1f} over {post_count} usages"
+            )
+        else:
+            # Rollback: restore content from the latest version snapshot
+            latest_version = (await db.execute(
+                select(SkillVersion)
+                .where(SkillVersion.skill_id == skill.id)
+                .order_by(SkillVersion.version_number.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+
+            if latest_version:
+                skill.content = latest_version.content
+                skill.description = latest_version.description or skill.description
+                logger.info(
+                    f"[ImprovementEngine] Skill '{skill.name}' (id={skill.id}) ROLLED BACK: "
+                    f"pre={pre_avg:.1f} → post={post_avg:.1f} (worse). Restored v{latest_version.version_number}"
+                )
+            else:
+                logger.warning(
+                    f"[ImprovementEngine] Skill '{skill.name}' (id={skill.id}) needs rollback "
+                    f"but no version snapshot found"
+                )
+            skill.improvement_status = "rolled_back"
+
+        skill.probation_started_at = None
+        skill.pre_improvement_avg_helpfulness = None
+        skill.pre_improvement_rated_count = None
+
+    await db.flush()
+
+
 async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
     """Find skills with low helpfulness ratings and dispatch improvement tasks to agents.
 
     Triggered hourly. Only processes skills that haven't been improved in the last 24h
-    to avoid thrashing. Uses the agent task queue (not direct API calls) so that the
-    orchestrator does not need an Anthropic API key.
+    to avoid thrashing. Skills currently in probation are skipped.
     """
     import uuid
     from app.models.skill import AgentSkillAssignment
@@ -419,6 +510,11 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
             # Skip if recently improved
             if skill.updated_at and skill.updated_at.replace(tzinfo=timezone.utc) > since_24h:
                 logger.debug(f"[ImprovementEngine] Skill '{skill.name}' updated recently — skipping")
+                continue
+
+            # Skip if currently in probation (wait for validation first)
+            if skill.improvement_status == "probation":
+                logger.debug(f"[ImprovementEngine] Skill '{skill.name}' in probation — skipping")
                 continue
 
             # Find an agent that has this skill assigned
@@ -486,7 +582,11 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
             # Notify users whose feedback triggered this improvement
             await _notify_feedback_contributors(db, skill, avg_h, rated_count)
 
-            # Mark skill as recently updated to prevent re-queuing next run
+            # Set probation status with pre-improvement metrics
+            skill.improvement_status = "probation"
+            skill.probation_started_at = datetime.now(timezone.utc)
+            skill.pre_improvement_avg_helpfulness = avg_h
+            skill.pre_improvement_rated_count = rated_count
             skill.updated_at = datetime.now(timezone.utc)
 
         await db.commit()

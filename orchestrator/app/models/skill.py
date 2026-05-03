@@ -23,6 +23,12 @@ class SkillStatus(str, enum.Enum):
     ARCHIVED = "archived"    # Deprecated, no longer assignable
 
 
+class SkillImprovementStatus(str, enum.Enum):
+    PROBATION = "probation"    # Recently auto-improved, awaiting validation
+    VALIDATED = "validated"    # Post-improvement ratings confirmed better
+    ROLLED_BACK = "rolled_back"  # Post-improvement ratings were worse, content reverted
+
+
 class SkillCategory(str, enum.Enum):
     ROUTINE = "ROUTINE"       # Repeatable process ("how to deploy")
     TEMPLATE = "TEMPLATE"     # Document template ("meeting notes format")
@@ -64,6 +70,20 @@ class Skill(Base, TimestampMixin):
 
     # Versioning
     current_version: Mapped[int] = mapped_column(Integer, default=1)
+
+    # A/B validation after auto-improvement
+    improvement_status: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None,
+    )  # NULL=normal, "probation"=awaiting validation, "validated", "rolled_back"
+    probation_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+    )
+    pre_improvement_avg_helpfulness: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None,
+    )
+    pre_improvement_rated_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+    )
 
 
 class AgentSkillAssignment(Base, TimestampMixin):
