@@ -483,6 +483,9 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
             await redis.push_task(agent_id, task_payload)
             logger.info(f"[ImprovementEngine] Improvement task {task_id} queued for agent {agent_id}")
 
+            # Notify users whose feedback triggered this improvement
+            await _notify_feedback_contributors(db, skill, avg_h, rated_count)
+
             # Mark skill as recently updated to prevent re-queuing next run
             skill.updated_at = datetime.now(timezone.utc)
 
@@ -528,3 +531,73 @@ async def _send_trend_notification(
         meta={"type": "improvement_trend", "improvement": improvement},
     )
     db.add(notif)
+
+
+async def _notify_feedback_contributors(
+    db: AsyncSession,
+    skill: "Skill",
+    avg_helpfulness: float,
+    rated_count: int,
+) -> None:
+    """Notify users whose low ratings triggered a skill improvement.
+
+    Finds all users who rated tasks using this skill with ≤3 stars in the last 7 days
+    and creates a notification telling them their feedback is being acted upon.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+
+    # Find task_ids from recent low-rated skill usages
+    usage_result = await db.execute(
+        select(SkillTaskUsage.task_id)
+        .where(
+            SkillTaskUsage.skill_id == skill.id,
+            SkillTaskUsage.user_rating.isnot(None),
+            SkillTaskUsage.user_rating <= 3,
+            SkillTaskUsage.created_at >= since,
+        )
+    )
+    task_ids = [row[0] for row in usage_result.all()]
+
+    if not task_ids:
+        return
+
+    # Find unique users who rated those tasks
+    rating_result = await db.execute(
+        select(TaskRating.user_id, TaskRating.agent_id)
+        .where(TaskRating.task_id.in_(task_ids))
+        .distinct(TaskRating.user_id)
+    )
+    contributors = rating_result.all()
+
+    if not contributors:
+        return
+
+    for row in contributors:
+        user_id = row[0]
+        agent_id = row[1]
+        notif = Notification(
+            agent_id=agent_id,
+            type="info",
+            title=f"Dein Feedback wirkt: Skill '{skill.name}' wird verbessert",
+            message=(
+                f"Dein Feedback hat eine automatische Verbesserung ausgelöst. "
+                f"Der Skill hatte {avg_helpfulness:.1f}/5 Durchschnitt über {rated_count} Nutzungen — "
+                f"ein Agent arbeitet jetzt an einer besseren Version."
+            ),
+            priority="normal",
+            action_url=f"/skills/{skill.id}",
+            meta={
+                "type": "skill_feedback_triggered",
+                "skill_id": skill.id,
+                "skill_name": skill.name,
+                "avg_helpfulness": avg_helpfulness,
+                "rated_count": rated_count,
+                "user_id": user_id,
+            },
+        )
+        db.add(notif)
+
+    logger.info(
+        f"[ImprovementEngine] Notified {len(contributors)} users about "
+        f"skill '{skill.name}' improvement triggered by their feedback"
+    )
