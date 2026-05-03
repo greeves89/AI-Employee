@@ -1,7 +1,7 @@
 """meeting room stages config
 
-Revision ID: y9s0t1u2v3w4
-Revises: j4d5e6f7g8h9
+Revision ID: z1t2u3v4w5x6
+Revises: z0t1u2v3w4x5
 Create Date: 2026-04-20
 
 """
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "y9s0t1u2v3w4"
-down_revision = "x8r9s0t1u2v3"
+revision = "z1t2u3v4w5x6"
+down_revision = "z0t1u2v3w4x5"
 branch_labels = None
 depends_on = None
 

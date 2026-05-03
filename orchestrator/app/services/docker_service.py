@@ -160,6 +160,32 @@ class DockerService:
             "memory_percent": round((mem_usage / mem_limit) * 100, 2) if mem_limit > 0 else 0,
         }
 
+    def get_workspace_disk_usage(self, container_id: str, limit_gb: float) -> dict | None:
+        """Return /workspace disk usage stats for a container."""
+        try:
+            container = self.client.containers.get(container_id)
+            exit_code, output = container.exec_run(
+                ["df", "-BM", "--output=used,avail", "/workspace"],
+                demux=True,
+            )
+            stdout = output[0].decode("utf-8", errors="replace") if output[0] else ""
+            lines = [l for l in stdout.strip().splitlines() if l.strip() and not l.startswith("Used")]
+            if not lines:
+                return None
+            parts = lines[0].split()
+            used_mb = float(parts[0].rstrip("M"))
+            avail_mb = float(parts[1].rstrip("M"))
+            limit_mb = limit_gb * 1024
+            total_mb = used_mb + avail_mb
+            disk_percent = round((used_mb / max(limit_mb, total_mb, 1)) * 100, 2)
+            return {
+                "disk_usage_mb": round(used_mb, 2),
+                "disk_limit_mb": round(limit_mb, 2),
+                "disk_percent": disk_percent,
+            }
+        except Exception:
+            return None
+
     def get_image_id(self, image_name: str) -> str | None:
         """Get the current image ID for a given image name."""
         try:

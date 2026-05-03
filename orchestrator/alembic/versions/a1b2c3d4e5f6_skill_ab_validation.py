@@ -1,6 +1,6 @@
 """skill A/B validation: probation fields on skills table
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: c3d4e5f6g7h8
 Revises: v1s2k3r4o5l6
 Create Date: 2026-05-03
 
@@ -10,7 +10,7 @@ This migration only adds A/B probation tracking columns to skills.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "a1b2c3d4e5f6"
+revision = "c3d4e5f6g7h8"
 down_revision = "v1s2k3r4o5l6"
 branch_labels = None
 depends_on = None
