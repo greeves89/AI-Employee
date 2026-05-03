@@ -565,7 +565,7 @@ async def _notify_feedback_contributors(
     rating_result = await db.execute(
         select(TaskRating.user_id, TaskRating.agent_id)
         .where(TaskRating.task_id.in_(task_ids))
-        .distinct(TaskRating.user_id)
+        .group_by(TaskRating.user_id, TaskRating.agent_id)
     )
     contributors = rating_result.all()
 

@@ -1170,56 +1170,14 @@ async def agent_update_skill(
     await db.commit()
     await db.refresh(skill)
 
-    # Check if this update was triggered by the improvement engine and notify contributors
+    # Notify users whose feedback triggered this improvement (reuse engine logic)
     if body.feedback and "Auto-improvement" in (body.feedback or ""):
         try:
-            since = datetime.now(timezone.utc) - timedelta(days=7)
-            # Find recent low-rated usages of this skill
-            usage_result = await db.execute(
-                select(SkillTaskUsage.task_id)
-                .where(
-                    SkillTaskUsage.skill_id == skill_id,
-                    SkillTaskUsage.user_rating.isnot(None),
-                    SkillTaskUsage.user_rating <= 3,
-                    SkillTaskUsage.created_at >= since,
-                )
-            )
-            task_ids = [row[0] for row in usage_result.all()]
-
-            if task_ids:
-                rating_result = await db.execute(
-                    select(TaskRating.user_id, TaskRating.agent_id)
-                    .where(TaskRating.task_id.in_(task_ids))
-                    .distinct(TaskRating.user_id)
-                )
-                contributors = rating_result.all()
-
-                for row in contributors:
-                    notif = Notification(
-                        agent_id=row[1],
-                        type="success",
-                        title=f"Skill '{skill.name}' wurde verbessert - danke fuer dein Feedback!",
-                        message=(
-                            f"Der Skill wurde automatisch überarbeitet basierend auf deinem Feedback. "
-                            f"Die neue Version ist ab sofort aktiv."
-                        ),
-                        priority="normal",
-                        action_url=f"/skills/{skill_id}",
-                        meta={
-                            "type": "skill_improvement_completed",
-                            "skill_id": skill_id,
-                            "skill_name": skill.name,
-                            "user_id": row[0],
-                        },
-                    )
-                    db.add(notif)
-                await db.commit()
-                _logger.info(
-                    f"Notified {len(contributors)} users about completed "
-                    f"improvement of skill '{skill.name}' (id={skill_id})"
-                )
+            from app.services.improvement_engine import _notify_feedback_contributors
+            await _notify_feedback_contributors(db, skill, avg_helpfulness=0.0, rated_count=0)
+            await db.commit()
         except Exception as e:
-            _logger.warning(f"Could not send skill improvement completion notifications: {e}")
+            _logger.warning(f"Could not send skill improvement notifications: {e}")
 
     return _to_response(skill)
 
