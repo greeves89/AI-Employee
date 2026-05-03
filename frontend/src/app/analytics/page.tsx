@@ -119,6 +119,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
             <X className="h-4 w-4" />
           </button>
 
+          <Dialog.Title className="sr-only">Agent Details</Dialog.Title>
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
@@ -134,7 +135,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
                     <Bot className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <Dialog.Title className="text-base font-semibold">{data.agent.name}</Dialog.Title>
+                    <p className="text-base font-semibold">{data.agent.name}</p>
                     {data.agent.role && <p className="text-[11px] text-muted-foreground">{data.agent.role}</p>}
                   </div>
                   <span className={cn(
