@@ -10,7 +10,7 @@ import re
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
-from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage
+from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.audit_log import AuditLog, AuditEventType
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
 
@@ -100,9 +100,50 @@ def _to_response(skill: Skill, assigned_agents: list[str] | None = None) -> dict
         "avg_agent_duration_ms": skill.avg_agent_duration_ms,
         "manual_duration_seconds": skill.manual_duration_seconds,
         "is_public": skill.is_public,
+        "current_version": skill.current_version,
         "assigned_agents": assigned_agents or [],
         "created_at": skill.created_at.isoformat() if skill.created_at else None,
         "updated_at": skill.updated_at.isoformat() if skill.updated_at else None,
+    }
+
+
+async def _snapshot_version(db: AsyncSession, skill: Skill, created_by: str, change_reason: str | None = None) -> SkillVersion:
+    """Snapshot the current skill content as a new SkillVersion before mutation."""
+    # Compute avg helpfulness from recent usages
+    avg_h_result = await db.execute(
+        select(func.avg(SkillTaskUsage.skill_helpfulness))
+        .where(SkillTaskUsage.skill_id == skill.id)
+        .where(SkillTaskUsage.skill_helpfulness.isnot(None))
+    )
+    avg_h = avg_h_result.scalar()
+
+    version = SkillVersion(
+        skill_id=skill.id,
+        version_number=skill.current_version or 1,
+        content=skill.content,
+        description=skill.description,
+        avg_helpfulness_at_snapshot=round(avg_h, 2) if avg_h else None,
+        usage_count_at_snapshot=skill.usage_count or 0,
+        created_by=created_by,
+        change_reason=change_reason,
+    )
+    db.add(version)
+    skill.current_version = (skill.current_version or 1) + 1
+    return version
+
+
+def _version_to_response(v: SkillVersion) -> dict:
+    return {
+        "id": v.id,
+        "skill_id": v.skill_id,
+        "version_number": v.version_number,
+        "content": v.content,
+        "description": v.description,
+        "avg_helpfulness_at_snapshot": v.avg_helpfulness_at_snapshot,
+        "usage_count_at_snapshot": v.usage_count_at_snapshot,
+        "created_by": v.created_by,
+        "change_reason": v.change_reason,
+        "created_at": v.created_at.isoformat() if v.created_at else None,
     }
 
 
@@ -223,12 +264,16 @@ async def update_skill(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a skill."""
+    """Update a skill. Snapshots the previous version before applying changes."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "content" in updates and updates["content"] != skill.content:
+        await _snapshot_version(db, skill, created_by="user", change_reason="Manual update via UI")
+
+    for field, value in updates.items():
         setattr(skill, field, value)
 
     await db.commit()
@@ -283,6 +328,88 @@ async def reject_skill(
     skill.status = SkillStatus.ARCHIVED
     await db.commit()
     return {"id": skill_id, "status": "archived"}
+
+
+# --- Version history & rollback ---
+
+@router.get("/marketplace/{skill_id}/versions")
+async def list_skill_versions(
+    skill_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all historical versions of a skill, newest first."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    result = await db.execute(
+        select(SkillVersion)
+        .where(SkillVersion.skill_id == skill_id)
+        .order_by(SkillVersion.version_number.desc())
+    )
+    versions = list(result.scalars().all())
+    return {
+        "skill_id": skill_id,
+        "current_version": skill.current_version,
+        "versions": [_version_to_response(v) for v in versions],
+        "total": len(versions),
+    }
+
+
+@router.get("/marketplace/{skill_id}/versions/{version_id}")
+async def get_skill_version(
+    skill_id: int,
+    version_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a specific version's full content."""
+    version = (await db.execute(
+        select(SkillVersion)
+        .where(SkillVersion.skill_id == skill_id, SkillVersion.id == version_id)
+    )).scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return _version_to_response(version)
+
+
+@router.post("/marketplace/{skill_id}/rollback/{version_id}")
+async def rollback_skill(
+    skill_id: int,
+    version_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rollback a skill to a previous version. Snapshots current content first."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    target = (await db.execute(
+        select(SkillVersion)
+        .where(SkillVersion.skill_id == skill_id, SkillVersion.id == version_id)
+    )).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target version not found")
+
+    await _snapshot_version(
+        db, skill,
+        created_by="rollback",
+        change_reason=f"Rolled back to version {target.version_number}",
+    )
+
+    skill.content = target.content
+    skill.description = target.description
+    await db.commit()
+    await db.refresh(skill)
+
+    return {
+        "status": "rolled_back",
+        "skill_id": skill_id,
+        "rolled_back_to_version": target.version_number,
+        "current_version": skill.current_version,
+    }
 
 
 # --- Assignment ---
@@ -412,7 +539,10 @@ async def agent_install_skill(
             )
         )).scalar_one_or_none()
         if not usage_exists:
-            db.add(SkillTaskUsage(skill_id=skill_id, task_id=running_task, agent_id=agent_id))
+            db.add(SkillTaskUsage(
+                skill_id=skill_id, task_id=running_task, agent_id=agent_id,
+                skill_version=skill.current_version,
+            ))
             skill.usage_count = (skill.usage_count or 0) + 1
             await db.commit()
 
@@ -537,6 +667,7 @@ async def agent_record_skill_usage(
             skill_helpfulness=body.helpfulness,
             agent_self_rating=body.rating,
             user_rating=body.user_rating,
+            skill_version=skill.current_version,
             task_duration_ms=task_duration_ms,
             task_cost_usd=task_cost_usd,
             time_saved_seconds=time_saved_seconds,
@@ -631,6 +762,7 @@ async def agent_search_skills(
                     skill_id=top_skill.id,
                     task_id=resolved_task_id,
                     agent_id=agent_id,
+                    skill_version=top_skill.current_version,
                 ))
                 top_skill.usage_count = (top_skill.usage_count or 0) + 1
                 await db.commit()
@@ -1016,10 +1148,13 @@ async def agent_update_skill(
     if not is_creator and not has_assignment:
         raise HTTPException(status_code=403, detail="You can only update skills you created or have installed")
 
+    if body.content is not None and body.content != skill.content:
+        reason = body.feedback or f"Agent update by {agent_id}"
+        await _snapshot_version(db, skill, created_by=f"agent:{agent_id}", change_reason=reason)
+
     if body.description is not None:
         skill.description = body.description
     if body.content is not None:
-        old_content = skill.content
         changelog = f"\n\n---\n*Updated by agent:{agent_id}*"
         if body.feedback:
             changelog += f" based on feedback: {body.feedback}"
