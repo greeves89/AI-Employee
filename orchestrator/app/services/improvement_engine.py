@@ -25,21 +25,72 @@ from app.models.notification import Notification
 from app.models.task_rating import TaskRating
 from app.models.skill import Skill, SkillTaskUsage
 
-# Model used for improvement suggestions (same as task self-reflection)
-_SUGGESTION_MODEL = "claude-haiku-4-5-20251001"
-# Minimum number of ratings before generating suggestions
-_MIN_RATINGS_FOR_SUGGESTION = 5
-# Average rating threshold below which suggestions are generated
-_SUGGESTION_THRESHOLD = 3.5
-# Minimum rated skill usages before auto-improving skill content
-_MIN_SKILL_USAGES_FOR_IMPROVEMENT = 5
-# Avg helpfulness threshold at or below which skill content is auto-improved
-_SKILL_IMPROVEMENT_THRESHOLD = 3.0
-
 logger = logging.getLogger(__name__)
 
-# Run analysis every hour
-ANALYSIS_INTERVAL_SECONDS = 3600
+# Hardcoded defaults — overridable via PlatformSettings and per-agent config
+_DEFAULTS = {
+    "suggestion_model": "claude-haiku-4-5-20251001",
+    "min_ratings": 5,
+    "suggestion_threshold": 3.5,
+    "min_skill_usages": 5,
+    "skill_threshold": 3.0,
+    "analysis_interval": 3600,
+}
+
+# PlatformSettings key → default key mapping
+_SETTINGS_KEY_MAP = {
+    "improvement_suggestion_model": "suggestion_model",
+    "improvement_min_ratings": "min_ratings",
+    "improvement_suggestion_threshold": "suggestion_threshold",
+    "improvement_min_skill_usages": "min_skill_usages",
+    "improvement_skill_threshold": "skill_threshold",
+    "improvement_analysis_interval": "analysis_interval",
+}
+
+
+async def _load_thresholds(db, agent: Agent | None = None) -> dict:
+    """Load improvement thresholds: agent config > PlatformSettings > hardcoded defaults."""
+    from app.models.platform_settings import PlatformSettings
+
+    thresholds = dict(_DEFAULTS)
+
+    # Layer 1: global overrides from PlatformSettings
+    result = await db.execute(
+        select(PlatformSettings).where(
+            PlatformSettings.key.in_(list(_SETTINGS_KEY_MAP.keys()))
+        )
+    )
+    for row in result.scalars().all():
+        default_key = _SETTINGS_KEY_MAP.get(row.key)
+        if default_key and row.value:
+            expected_type = type(_DEFAULTS[default_key])
+            try:
+                if expected_type is int:
+                    thresholds[default_key] = int(row.value)
+                elif expected_type is float:
+                    thresholds[default_key] = float(row.value)
+                else:
+                    thresholds[default_key] = row.value
+            except (ValueError, TypeError):
+                pass  # keep hardcoded default
+
+    # Layer 2: per-agent overrides from agent.config["improvement_thresholds"]
+    if agent and agent.config:
+        overrides = agent.config.get("improvement_thresholds") or {}
+        for key in _DEFAULTS:
+            if key in overrides and overrides[key] is not None:
+                expected_type = type(_DEFAULTS[key])
+                try:
+                    if expected_type is int:
+                        thresholds[key] = int(overrides[key])
+                    elif expected_type is float:
+                        thresholds[key] = float(overrides[key])
+                    else:
+                        thresholds[key] = overrides[key]
+                except (ValueError, TypeError):
+                    pass
+
+    return thresholds
 
 
 class ImprovementEngine:
@@ -51,26 +102,33 @@ class ImprovementEngine:
     async def run(self) -> None:
         """Main loop — runs analysis periodically."""
         self._running = True
-        logger.info("[ImprovementEngine] Started — analyzing ratings every %ds", ANALYSIS_INTERVAL_SECONDS)
+        interval = _DEFAULTS["analysis_interval"]
+        logger.info("[ImprovementEngine] Started — analyzing ratings every %ds", interval)
 
         # Wait a bit before first run to let the system stabilize
         await asyncio.sleep(60)
 
         while self._running:
             try:
-                await self._run_analysis()
+                interval = await self._run_analysis()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"[ImprovementEngine] Analysis error: {e}")
 
-            await asyncio.sleep(ANALYSIS_INTERVAL_SECONDS)
+            await asyncio.sleep(interval)
 
-    async def _run_analysis(self) -> None:
-        """Run improvement analysis for all agents with recent ratings."""
+    async def _run_analysis(self) -> int:
+        """Run improvement analysis for all agents with recent ratings.
+
+        Returns the analysis interval for the next sleep cycle.
+        """
         from app.db.session import async_session_factory
 
         async with async_session_factory() as db:
+            thresholds = await _load_thresholds(db)
+            interval = thresholds["analysis_interval"]
+
             # Find agents with ratings in the last 7 days
             since = datetime.now(timezone.utc) - timedelta(days=7)
             result = await db.execute(
@@ -81,7 +139,7 @@ class ImprovementEngine:
             agent_ids = [row[0] for row in result.all()]
 
             if not agent_ids:
-                return
+                return interval
 
             logger.info(f"[ImprovementEngine] Analyzing {len(agent_ids)} agents with recent ratings")
 
@@ -98,6 +156,7 @@ class ImprovementEngine:
                 logger.warning(f"[ImprovementEngine] Skill improvement pass failed: {e}")
 
             await db.commit()
+            return interval
 
     async def analyze(self, agent_id: str, db: AsyncSession) -> None:
         """Public entry point: analyze a single agent and generate suggestions if needed.
@@ -117,6 +176,8 @@ class ImprovementEngine:
         agent = agent_result.scalar_one_or_none()
         if not agent:
             return
+
+        thresholds = await _load_thresholds(db, agent)
 
         # Get all ratings for this agent
         result = await db.execute(
@@ -173,8 +234,12 @@ class ImprovementEngine:
 
         # Generate LLM improvement suggestion if performance is poor
         suggestion = None
-        if total >= _MIN_RATINGS_FOR_SUGGESTION and avg_rating < _SUGGESTION_THRESHOLD:
-            suggestion = await _generate_improvement_suggestion(agent, improvement, top_issues)
+        min_ratings = thresholds["min_ratings"]
+        suggestion_threshold = thresholds["suggestion_threshold"]
+        if total >= min_ratings and avg_rating < suggestion_threshold:
+            suggestion = await _generate_improvement_suggestion(
+                agent, improvement, top_issues, thresholds["suggestion_model"]
+            )
             if suggestion:
                 improvement["latest_suggestion"] = suggestion
                 # Persist suggestion to agent_memories so agents can read it
@@ -200,7 +265,7 @@ class ImprovementEngine:
 
 
 async def _generate_improvement_suggestion(
-    agent: Agent, improvement: dict, top_issues: list[str]
+    agent: Agent, improvement: dict, top_issues: list[str], model: str | None = None,
 ) -> str | None:
     """Call the LLM to generate a one-paragraph improvement suggestion for the agent.
 
@@ -209,6 +274,7 @@ async def _generate_improvement_suggestion(
     api_key = settings.anthropic_api_key
     if not api_key:
         return None
+    suggestion_model = model or _DEFAULTS["suggestion_model"]
 
     issues_text = "\n".join(f"- {issue}" for issue in top_issues) if top_issues else "- No specific issues logged"
     prompt = (
@@ -235,7 +301,7 @@ async def _generate_improvement_suggestion(
                     "content-type": "application/json",
                 },
                 json={
-                    "model": _SUGGESTION_MODEL,
+                    "model": suggestion_model,
                     "max_tokens": 256,
                     "messages": [{"role": "user", "content": prompt}],
                 },
@@ -307,6 +373,10 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
     from app.models.skill import AgentSkillAssignment
     from app.models.task import Task, TaskStatus
 
+    thresholds = await _load_thresholds(db)
+    min_usages = thresholds["min_skill_usages"]
+    skill_threshold = thresholds["skill_threshold"]
+
     since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
 
     # Find skills with enough rated usages and low avg helpfulness
@@ -319,8 +389,8 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
         )
         .where(SkillTaskUsage.skill_helpfulness.isnot(None))
         .group_by(SkillTaskUsage.skill_id)
-        .having(func.count(SkillTaskUsage.id) >= _MIN_SKILL_USAGES_FOR_IMPROVEMENT)
-        .having(func.avg(SkillTaskUsage.skill_helpfulness) <= _SKILL_IMPROVEMENT_THRESHOLD)
+        .having(func.count(SkillTaskUsage.id) >= min_usages)
+        .having(func.avg(SkillTaskUsage.skill_helpfulness) <= skill_threshold)
     )).all()
 
     if not agg:
