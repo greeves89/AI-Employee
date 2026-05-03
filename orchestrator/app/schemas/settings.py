@@ -39,6 +39,13 @@ class SettingsUpdate(BaseModel):
     oauth_apple_private_key: str | None = None
     # Lifecycle config
     agent_idle_timeout_minutes: int | None = None  # 0 = never auto-stop
+    # Improvement engine thresholds
+    improvement_suggestion_model: str | None = None
+    improvement_min_ratings: int | None = None
+    improvement_suggestion_threshold: float | None = None
+    improvement_min_skill_usages: int | None = None
+    improvement_skill_threshold: float | None = None
+    improvement_analysis_interval: int | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -65,3 +72,10 @@ class SettingsResponse(BaseModel):
     has_apple_oauth: bool = False
     # Lifecycle
     agent_idle_timeout_minutes: int = 30
+    # Improvement engine thresholds
+    improvement_suggestion_model: str = "claude-haiku-4-5-20251001"
+    improvement_min_ratings: int = 5
+    improvement_suggestion_threshold: float = 3.5
+    improvement_min_skill_usages: int = 5
+    improvement_skill_threshold: float = 3.0
+    improvement_analysis_interval: int = 3600

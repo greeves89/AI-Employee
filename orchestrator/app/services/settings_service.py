@@ -48,6 +48,13 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "license_key",
     # Lifecycle configuration
     "agent_idle_timeout_minutes",
+    # Improvement engine thresholds
+    "improvement_suggestion_model",
+    "improvement_min_ratings",
+    "improvement_suggestion_threshold",
+    "improvement_min_skill_usages",
+    "improvement_skill_threshold",
+    "improvement_analysis_interval",
 }
 
 

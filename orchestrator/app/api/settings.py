@@ -30,6 +30,8 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
     else:
         auth_method = "none"
 
+    svc = SettingsService(db)
+
     return SettingsResponse(
         has_api_key=has_api_key,
         has_oauth_token=has_oauth_token,
@@ -53,7 +55,14 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         has_microsoft_oauth=bool(settings.oauth_microsoft_client_id),
         has_apple_oauth=bool(settings.oauth_apple_client_id),
         # Lifecycle
-        agent_idle_timeout_minutes=int(await SettingsService(db).get("agent_idle_timeout_minutes") or "30"),
+        agent_idle_timeout_minutes=int(await svc.get("agent_idle_timeout_minutes") or "30"),
+        # Improvement engine thresholds
+        improvement_suggestion_model=await svc.get("improvement_suggestion_model") or "claude-haiku-4-5-20251001",
+        improvement_min_ratings=int(await svc.get("improvement_min_ratings") or "5"),
+        improvement_suggestion_threshold=float(await svc.get("improvement_suggestion_threshold") or "3.5"),
+        improvement_min_skill_usages=int(await svc.get("improvement_min_skill_usages") or "5"),
+        improvement_skill_threshold=float(await svc.get("improvement_skill_threshold") or "3.0"),
+        improvement_analysis_interval=int(await svc.get("improvement_analysis_interval") or "3600"),
     )
 
 
@@ -126,6 +135,20 @@ async def update_settings(
         if data.agent_idle_timeout_minutes < 0:
             data.agent_idle_timeout_minutes = 0
         await svc.set("agent_idle_timeout_minutes", str(data.agent_idle_timeout_minutes))
+
+    # Improvement engine thresholds
+    _IMPROVEMENT_FIELDS = {
+        "improvement_suggestion_model": str,
+        "improvement_min_ratings": int,
+        "improvement_suggestion_threshold": float,
+        "improvement_min_skill_usages": int,
+        "improvement_skill_threshold": float,
+        "improvement_analysis_interval": int,
+    }
+    for field_name, field_type in _IMPROVEMENT_FIELDS.items():
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
 
     await db.commit()
     return {"status": "updated"}
