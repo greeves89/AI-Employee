@@ -13,6 +13,7 @@ from app.core.load_balancer import LoadBalancer
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.services.redis_service import RedisService
+from app.services.skill_auto_injector import auto_inject_skills
 
 # Eviction grace period for completed tasks (seconds)
 TASK_EVICT_GRACE_SECONDS = int(300)
@@ -218,6 +219,12 @@ class TaskRouter:
         )
         self.db.add(task)
         await self.db.commit()
+
+        # Auto-inject skills based on task prompt paths and agent role
+        try:
+            await auto_inject_skills(self.db, agent_id, prompt)
+        except Exception as e:
+            logger.warning(f"Skill auto-injection failed for task {task_id}: {e}")
 
         # Inject active approval rules into the prompt
         rules_prefix = await _build_approval_rules_prefix(self.db, agent_id)
