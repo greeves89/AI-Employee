@@ -677,7 +677,7 @@ class ToolExecutor:
         if now < cached[1]:
             allowlist = cached[0]
         else:
-            allowlist = self._fetch_url_allowlist()
+            allowlist = await asyncio.to_thread(self._fetch_url_allowlist)
             self._url_allowlist_cache = (allowlist, now + _AUTONOMY_CACHE_TTL)
 
         if allowlist is None:
