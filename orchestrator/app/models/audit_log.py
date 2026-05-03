@@ -28,6 +28,9 @@ class AuditEventType(str, Enum):
     APPROVAL_RULE_DELETED = "approval_rule_deleted"     # approval rule deleted
     PRESET_RULE_ADDED = "preset_rule_added"             # rule added to level preset
     PRESET_RULE_DELETED = "preset_rule_deleted"         # rule removed from level preset
+    # URL allowlist
+    URL_ALLOWLIST_APPLIED = "url_allowlist_applied"     # URL template applied to agent
+    URL_BLOCKED = "url_blocked"                         # URL access blocked by allowlist
     # File / network
     FILE_WRITTEN = "file_written"                 # file write operation
     NETWORK_REQUEST = "network_request"           # outbound network call

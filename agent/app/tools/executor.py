@@ -620,6 +620,10 @@ class ToolExecutor:
         if not url.startswith(("http://", "https://")):
             return "Error: url must start with http:// or https://"
 
+        blocked = await self._check_url_allowlist(url)
+        if blocked:
+            return blocked
+
         try:
             import httpx
             async with httpx.AsyncClient(
@@ -661,6 +665,62 @@ class ToolExecutor:
             args.append("--")
             args.append(file)
         return await _run_git(args, repo)
+
+    async def _check_url_allowlist(self, url: str) -> str | None:
+        """Check if URL is allowed by the agent's URL allowlist.
+
+        Returns None if allowed, or an error string if blocked.
+        Uses a short cache to avoid hitting the orchestrator on every fetch.
+        """
+        now = time.time()
+        cached = getattr(self, "_url_allowlist_cache", (None, 0.0))
+        if now < cached[1]:
+            allowlist = cached[0]
+        else:
+            allowlist = self._fetch_url_allowlist()
+            self._url_allowlist_cache = (allowlist, now + _AUTONOMY_CACHE_TTL)
+
+        if allowlist is None:
+            return None
+
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url if "://" in url else f"https://{url}")
+            host = (parsed.hostname or "").lower().strip(".")
+        except Exception:
+            host = ""
+
+        for pattern in allowlist:
+            pattern = pattern.lower().strip(".")
+            if pattern == "*":
+                return None
+            if pattern.startswith("*."):
+                suffix = pattern[2:]
+                if host == suffix or host.endswith("." + suffix):
+                    return None
+            elif host == pattern:
+                return None
+
+        return (
+            f"[URL BLOCKED] '{url}' is not in your URL allowlist. "
+            f"You MUST call `request_approval` with the URL and reason "
+            f"before accessing non-whitelisted URLs."
+        )
+
+    def _fetch_url_allowlist(self) -> list[str] | None:
+        """Fetch agent's URL allowlist from the orchestrator. Returns None if no restrictions."""
+        try:
+            import urllib.request as _req
+            import json as _json
+            api_url = f"{settings.orchestrator_url}/api/v1/url-allowlist/agent/{settings.agent_id}"
+            req = _req.Request(api_url, headers={"X-Agent-Token": settings.agent_token})
+            with _req.urlopen(req, timeout=3) as resp:
+                data = _json.loads(resp.read())
+            if not data.get("is_restricted"):
+                return None
+            return [e["url_pattern"] for e in data.get("entries", []) if e.get("is_active", True)]
+        except Exception:
+            return None
 
     async def close(self) -> None:
         """Clean up resources."""

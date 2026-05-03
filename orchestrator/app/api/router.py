@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import admin, agents, analytics, approval_rules, approvals, audit, auth, computer_use, docker_apps, downloads, event_triggers, features, feedback, health, integrations, knowledge, knowledge_feeds, license as license_api, meeting_rooms, memory, mcp_agent, mcp_msgraph, mcp_servers, notifications, ratings, schedules, skill_marketplace, skills_catalog, tasks, telegram_actions, templates, todos, version, webhooks, ws, settings
+from app.api import admin, agents, analytics, approval_rules, approvals, audit, auth, computer_use, docker_apps, downloads, event_triggers, features, feedback, health, integrations, knowledge, knowledge_feeds, license as license_api, meeting_rooms, memory, mcp_agent, mcp_msgraph, mcp_servers, notifications, ratings, schedules, skill_marketplace, skills_catalog, tasks, telegram_actions, templates, todos, url_allowlist, version, webhooks, ws, settings
 
 api_router = APIRouter()
 api_router.include_router(admin.router)
@@ -38,4 +38,5 @@ api_router.include_router(ws.router)
 api_router.include_router(settings.router)
 api_router.include_router(meeting_rooms.router)
 api_router.include_router(approval_rules.router)
+api_router.include_router(url_allowlist.router)
 api_router.include_router(license_api.router)
