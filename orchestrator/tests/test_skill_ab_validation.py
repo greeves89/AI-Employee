@@ -15,7 +15,7 @@ class TestSkillVersionModel:
             content="old content",
             description="old desc",
             avg_helpfulness_at_snapshot=2.5,
-            rated_usages_at_snapshot=10,
+            usage_count_at_snapshot=10,
             created_by="agent:123",
         )
         assert v.skill_id == 1
