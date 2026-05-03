@@ -107,6 +107,28 @@ def _to_response(skill: Skill, assigned_agents: list[str] | None = None) -> dict
     }
 
 
+async def _generate_skill_embedding(db: AsyncSession, skill: Skill) -> None:
+    """Generate and store a pgvector embedding for a skill (non-blocking on failure)."""
+    import logging
+    from sqlalchemy import text as sa_text
+    _logger = logging.getLogger(__name__)
+    try:
+        from app.services.embedding_service import get_embedding_service
+        from app.services.embedding_client import skill_embedding_text
+
+        svc = get_embedding_service()
+        text = skill_embedding_text(skill.name, skill.description, skill.content)
+        emb = await svc.embed(text)
+        if emb is not None:
+            await db.execute(
+                sa_text("UPDATE skills SET embedding = CAST(:emb AS vector) WHERE id = :id"),
+                {"emb": str(emb), "id": skill.id},
+            )
+            await db.commit()
+    except Exception as e:
+        _logger.warning(f"Failed to generate skill embedding for '{skill.name}': {e}")
+
+
 async def _snapshot_version(db: AsyncSession, skill: Skill, created_by: str, change_reason: str | None = None) -> SkillVersion:
     """Snapshot the current skill content as a new SkillVersion before mutation."""
     # Compute avg helpfulness from recent usages
@@ -254,6 +276,9 @@ async def create_skill(
     db.add(skill)
     await db.commit()
     await db.refresh(skill)
+
+    await _generate_skill_embedding(db, skill)
+
     return _to_response(skill)
 
 
@@ -278,6 +303,10 @@ async def update_skill(
 
     await db.commit()
     await db.refresh(skill)
+
+    if any(f in updates for f in ("name", "description", "content")):
+        await _generate_skill_embedding(db, skill)
+
     return _to_response(skill)
 
 
@@ -704,36 +733,82 @@ async def agent_search_skills(
     category: str | None = Query(None),
     limit: int = Query(10, ge=1, le=50),
     task_id: str | None = Query(None),
+    semantic: bool = Query(True),
     db: AsyncSession = Depends(get_db),
     auth: dict = Depends(verify_agent_token),
 ):
-    """Agent searches the skill marketplace.
+    """Agent searches the skill marketplace with hybrid semantic + keyword search.
+
+    When semantic=True (default) and the embedding service is available, uses
+    pgvector cosine similarity to find semantically related skills — even when
+    keywords don't match. Falls back to keyword-only if embeddings are unavailable.
 
     If task_id is provided and skills are found, records an implicit usage entry
-    for the top result. This ensures analytics data even when skill_rate isn't called.
-    Explicit skill_rate calls will upsert the same record with quality ratings.
+    for the top result.
     """
-    from sqlalchemy import or_
-    query = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
-    if q:
-        # Match any word in the query (OR logic) so long LLM queries still find results
-        words = [w for w in q.split() if len(w) >= 3][:6]
-        if words:
-            conditions = [
-                Skill.name.ilike(f"%{w}%") | Skill.description.ilike(f"%{w}%")
-                for w in words
-            ]
-            query = query.where(or_(*conditions))
-    if category:
-        query = query.where(cast(Skill.category, Text) == category.upper())
-    query = query.order_by(Skill.usage_count.desc()).limit(limit)
-    skills = list((await db.execute(query)).scalars().all())
+    import logging
+    from sqlalchemy import or_, text as sa_text
 
-    # Implicit usage tracking: record top matching skill against the agent's current running task.
-    # The agent rarely passes task_id voluntarily, so we look it up server-side.
+    _logger = logging.getLogger(__name__)
+    skills = []
+    search_mode = "keyword"
+
+    # Semantic search: use pgvector cosine similarity (like knowledge_search)
+    if q and semantic:
+        try:
+            from app.services.embedding_service import get_embedding_service
+
+            svc = get_embedding_service()
+            if svc.enabled:
+                qvec = await svc.embed(q)
+                if qvec is not None:
+                    cat_filter = "AND UPPER(category) = :cat" if category else ""
+                    rows = (await db.execute(
+                        sa_text(
+                            f"""
+                            SELECT id,
+                                   1 - (embedding <=> CAST(:qvec AS vector)) AS similarity
+                            FROM skills
+                            WHERE status = 'ACTIVE'
+                              AND embedding IS NOT NULL
+                              {cat_filter}
+                            ORDER BY embedding <=> CAST(:qvec AS vector)
+                            LIMIT :limit
+                            """
+                        ),
+                        {"qvec": str(qvec), "limit": limit, "cat": category.upper() if category else None},
+                    )).mappings().all()
+
+                    if rows:
+                        skill_ids = [r["id"] for r in rows]
+                        result = await db.execute(
+                            select(Skill).where(Skill.id.in_(skill_ids))
+                        )
+                        skill_map = {s.id: s for s in result.scalars().all()}
+                        skills = [skill_map[sid] for sid in skill_ids if sid in skill_map]
+                        search_mode = "semantic"
+        except Exception as e:
+            _logger.warning(f"Semantic skill search failed, falling back to keyword: {e}")
+
+    # Keyword fallback
+    if not skills:
+        query = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
+        if q:
+            words = [w for w in q.split() if len(w) >= 3][:6]
+            if words:
+                conditions = [
+                    Skill.name.ilike(f"%{w}%") | Skill.description.ilike(f"%{w}%")
+                    for w in words
+                ]
+                query = query.where(or_(*conditions))
+        if category:
+            query = query.where(cast(Skill.category, Text) == category.upper())
+        query = query.order_by(Skill.usage_count.desc()).limit(limit)
+        skills = list((await db.execute(query)).scalars().all())
+
+    # Implicit usage tracking
     if skills:
         agent_id = auth["agent_id"]
-        # Resolve task_id: use agent-provided one, or look up the currently running task
         resolved_task_id = task_id
         if not resolved_task_id:
             from app.models.task import Task, TaskStatus
@@ -745,9 +820,6 @@ async def agent_search_skills(
             )).scalar_one_or_none()
             resolved_task_id = running
 
-        # Only track implicit usage when there's a real search query — not on blank/browse searches.
-        # Without this guard, the top-ranked skill gets incremented on every search call,
-        # creating a runaway positive feedback loop.
         if resolved_task_id and q.strip():
             top_skill = skills[0]
             existing = (await db.execute(
@@ -767,7 +839,7 @@ async def agent_search_skills(
                 top_skill.usage_count = (top_skill.usage_count or 0) + 1
                 await db.commit()
 
-    return {"skills": [_to_response(s) for s in skills], "total": len(skills)}
+    return {"skills": [_to_response(s) for s in skills], "total": len(skills), "mode": search_mode}
 
 
 @router.get("/agent/{agent_id}")
@@ -1063,6 +1135,9 @@ async def import_skill(
     db.add(skill)
     await db.commit()
     await db.refresh(skill)
+
+    await _generate_skill_embedding(db, skill)
+
     return _to_response(skill)
 
 
@@ -1120,6 +1195,8 @@ async def agent_propose_skill(
     except Exception:
         pass
 
+    await _generate_skill_embedding(db, skill)
+
     return _to_response(skill)
 
 
@@ -1172,6 +1249,9 @@ async def agent_update_skill(
 
     await db.commit()
     await db.refresh(skill)
+
+    if body.content is not None or body.description is not None:
+        await _generate_skill_embedding(db, skill)
 
     # Notify users whose feedback triggered this improvement (reuse engine logic)
     if body.feedback and "Auto-improvement" in (body.feedback or ""):
