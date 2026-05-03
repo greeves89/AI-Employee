@@ -81,6 +81,7 @@ const navGroups: NavGroup[] = [
     key: "automation",
     items: [
       { href: "/skills", label: "Skill Marketplace", icon: Sparkles, simpleVisible: false },
+      { href: "/skill-analytics", label: "Skill Analytics", icon: BarChart3, simpleVisible: false },
       { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
     ],
   },
