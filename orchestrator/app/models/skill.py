@@ -23,6 +23,12 @@ class SkillStatus(str, enum.Enum):
     ARCHIVED = "archived"    # Deprecated, no longer assignable
 
 
+class SkillImprovementStatus(str, enum.Enum):
+    PROBATION = "probation"    # Recently auto-improved, awaiting validation
+    VALIDATED = "validated"    # Post-improvement ratings confirmed better
+    ROLLED_BACK = "rolled_back"  # Post-improvement ratings were worse, content reverted
+
+
 class SkillCategory(str, enum.Enum):
     ROUTINE = "ROUTINE"       # Repeatable process ("how to deploy")
     TEMPLATE = "TEMPLATE"     # Document template ("meeting notes format")
@@ -62,6 +68,20 @@ class Skill(Base, TimestampMixin):
     avg_agent_duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)  # rolling avg of agent execution time
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)  # visible in marketplace
 
+    # A/B validation after auto-improvement
+    improvement_status: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None,
+    )  # NULL=normal, "probation"=awaiting validation, "validated", "rolled_back"
+    probation_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+    )
+    pre_improvement_avg_helpfulness: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None,
+    )
+    pre_improvement_rated_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+    )
+
 
 class AgentSkillAssignment(Base, TimestampMixin):
     """Junction table: which agents have which skills installed."""
@@ -99,6 +119,25 @@ class SkillTaskUsage(Base):
     # Derived savings — filled when task completes if skill has manual_duration_seconds
     time_saved_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class SkillVersion(Base):
+    """Snapshot of skill content before each update — enables rollback after failed improvements."""
+    __tablename__ = "skill_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), index=True, nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    avg_helpfulness_at_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rated_usages_at_snapshot: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String, default="system")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

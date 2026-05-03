@@ -10,7 +10,7 @@ import re
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
-from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage
+from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.audit_log import AuditLog, AuditEventType
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
 
@@ -1016,14 +1016,31 @@ async def agent_update_skill(
     if not is_creator and not has_assignment:
         raise HTTPException(status_code=403, detail="You can only update skills you created or have installed")
 
-    if body.description is not None:
-        skill.description = body.description
     if body.content is not None:
-        old_content = skill.content
+        # Snapshot current version before overwriting
+        latest_version = (await db.execute(
+            select(func.coalesce(func.max(SkillVersion.version_number), 0))
+            .where(SkillVersion.skill_id == skill.id)
+        )).scalar() or 0
+
+        snapshot = SkillVersion(
+            skill_id=skill.id,
+            version_number=latest_version + 1,
+            content=skill.content,
+            description=skill.description or "",
+            avg_helpfulness_at_snapshot=skill.avg_rating,
+            rated_usages_at_snapshot=skill.usage_count,
+            created_by=f"agent:{agent_id}",
+        )
+        db.add(snapshot)
+
         changelog = f"\n\n---\n*Updated by agent:{agent_id}*"
         if body.feedback:
             changelog += f" based on feedback: {body.feedback}"
         skill.content = body.content + changelog
+
+    if body.description is not None:
+        skill.description = body.description
 
     await db.commit()
     await db.refresh(skill)
