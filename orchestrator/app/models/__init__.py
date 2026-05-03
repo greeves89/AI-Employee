@@ -28,6 +28,7 @@ from app.models.event_trigger import EventTrigger
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.autonomy_preset_rule import AutonomyPresetRule
 from app.models.url_allowlist import UrlAllowlistTemplate, UrlAllowlistTemplateEntry, AgentUrlAllowlist
+from app.models.user_profile import UserProfile, UserProfileEvent
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -49,4 +50,5 @@ __all__ = [
     "Skill", "SkillStatus", "SkillCategory", "AgentSkillAssignment", "SkillFile", "SkillTaskUsage", "SkillVersion",
     "AutonomyPresetRule",
     "UrlAllowlistTemplate", "UrlAllowlistTemplateEntry", "AgentUrlAllowlist",
+    "UserProfile", "UserProfileEvent",
 ]
