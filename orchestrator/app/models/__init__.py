@@ -27,6 +27,7 @@ from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.models.event_trigger import EventTrigger
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage
 from app.models.autonomy_preset_rule import AutonomyPresetRule
+from app.models.url_allowlist import UrlAllowlistTemplate, UrlAllowlistTemplateEntry, AgentUrlAllowlist
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -47,4 +48,5 @@ __all__ = [
     "EventTrigger",
     "Skill", "SkillStatus", "SkillCategory", "AgentSkillAssignment", "SkillFile", "SkillTaskUsage",
     "AutonomyPresetRule",
+    "UrlAllowlistTemplate", "UrlAllowlistTemplateEntry", "AgentUrlAllowlist",
 ]

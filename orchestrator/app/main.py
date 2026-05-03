@@ -526,6 +526,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed autonomy presets: {e}")
 
+    # Seed URL allowlist templates (builtin templates into DB if not yet present)
+    try:
+        from app.api.url_allowlist import seed_url_allowlist_templates
+        from app.db.session import async_session_factory as _sf_url
+
+        async with _sf_url() as db:
+            await seed_url_allowlist_templates(db)
+        logger.info("URL allowlist templates seeded")
+    except Exception as e:
+        logger.warning(f"Failed to seed URL allowlist templates: {e}")
+
     # Seed builtin agent templates
     try:
         from app.core.agent_templates import BUILTIN_TEMPLATES
