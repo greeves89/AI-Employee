@@ -1707,3 +1707,48 @@ export interface CostAttribution {
 export async function getCostAttribution(limit = 5): Promise<CostAttribution> {
   return fetchJSON(`${getBase()}/tasks/cost-attribution?limit=${limit}`);
 }
+
+// ── URL Allowlist ──────────────────────────────────────────────────────────────
+
+export interface UrlAllowlistEntry {
+  id: number;
+  url_pattern: string;
+  description: string;
+  is_active: boolean;
+}
+
+export interface UrlAllowlistTemplate {
+  id: number;
+  name: string;
+  description: string;
+  is_builtin: boolean;
+  entries: { url_pattern: string; description: string }[];
+}
+
+export async function getAgentUrlAllowlist(agentId: string): Promise<UrlAllowlistEntry[]> {
+  const data = await fetchJSON(`${getBase()}/url-allowlist/agent/${agentId}`) as { entries?: UrlAllowlistEntry[] };
+  return data.entries ?? [];
+}
+
+export async function getUrlAllowlistTemplates(): Promise<UrlAllowlistTemplate[]> {
+  const data = await fetchJSON(`${getBase()}/url-allowlist/templates`) as { templates?: UrlAllowlistTemplate[] };
+  return data.templates ?? [];
+}
+
+export async function addAgentUrl(agentId: string, url_pattern: string, description = ""): Promise<void> {
+  await fetchJSON(`${getBase()}/url-allowlist/agent/${agentId}`, {
+    method: "POST",
+    body: JSON.stringify({ url_pattern, description }),
+  });
+}
+
+export async function deleteAgentUrl(agentId: string, entryId: number): Promise<void> {
+  await fetchJSON(`${getBase()}/url-allowlist/agent/${agentId}/${entryId}`, { method: "DELETE" });
+}
+
+export async function applyUrlTemplate(agentId: string, templateId: number): Promise<void> {
+  await fetchJSON(`${getBase()}/url-allowlist/agent/${agentId}/apply-template`, {
+    method: "POST",
+    body: JSON.stringify({ template_id: templateId }),
+  });
+}
