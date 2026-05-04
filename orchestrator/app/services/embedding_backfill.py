@@ -89,6 +89,39 @@ async def backfill_knowledge_embeddings(db: AsyncSession, limit: int = BATCH_SIZ
     return count
 
 
+async def backfill_skill_embeddings(db: AsyncSession, limit: int = BATCH_SIZE) -> int:
+    """Embed up to `limit` skills that don't yet have an embedding."""
+    svc = get_embedding_service()
+
+    result = await db.execute(
+        sa_text(
+            "SELECT id, name, description, content FROM skills "
+            "WHERE embedding IS NULL AND status = 'ACTIVE' "
+            "ORDER BY usage_count DESC LIMIT :limit"
+        ),
+        {"limit": limit},
+    )
+    rows = result.mappings().all()
+    if not rows:
+        return 0
+
+    from app.services.embedding_client import skill_embedding_text
+    texts = [skill_embedding_text(r["name"], r["description"], r["content"]) for r in rows]
+    embeddings = await svc.embed_batch(texts)
+
+    count = 0
+    for row, emb in zip(rows, embeddings):
+        if emb is None:
+            continue
+        await db.execute(
+            sa_text("UPDATE skills SET embedding = CAST(:emb AS vector) WHERE id = :id"),
+            {"emb": str(emb), "id": row["id"]},
+        )
+        count += 1
+    await db.commit()
+    return count
+
+
 async def run_backfill_loop(db_factory) -> None:
     """Background loop: keep embedding unembedded entries until all done, then idle-check every 10 min."""
     await asyncio.sleep(INITIAL_DELAY_SECONDS)
@@ -107,6 +140,7 @@ async def run_backfill_loop(db_factory) -> None:
 
     total_memories = 0
     total_knowledge = 0
+    total_skills = 0
     while True:
         try:
             async with db_factory() as db:
@@ -114,20 +148,21 @@ async def run_backfill_loop(db_factory) -> None:
                 total_memories += mem_count
                 kb_count = await backfill_knowledge_embeddings(db)
                 total_knowledge += kb_count
+                skill_count = await backfill_skill_embeddings(db)
+                total_skills += skill_count
 
-            if mem_count == 0 and kb_count == 0:
-                # All done — sleep longer
+            if mem_count == 0 and kb_count == 0 and skill_count == 0:
                 logger.info(
                     f"[EmbeddingBackfill] Done. "
-                    f"Total embedded: {total_memories} memories, {total_knowledge} knowledge entries"
+                    f"Total embedded: {total_memories} memories, {total_knowledge} knowledge, {total_skills} skills"
                 )
-                await asyncio.sleep(600)  # Check again in 10 min
+                await asyncio.sleep(600)
             else:
                 logger.info(
-                    f"[EmbeddingBackfill] Embedded {mem_count} memories + {kb_count} knowledge entries "
-                    f"(total: {total_memories}+{total_knowledge})"
+                    f"[EmbeddingBackfill] Embedded {mem_count} memories + {kb_count} knowledge + {skill_count} skills "
+                    f"(total: {total_memories}+{total_knowledge}+{total_skills})"
                 )
-                await asyncio.sleep(2)  # Small pause between batches
+                await asyncio.sleep(2)
         except Exception as e:
             logger.error(f"[EmbeddingBackfill] Error: {e}")
             await asyncio.sleep(300)
