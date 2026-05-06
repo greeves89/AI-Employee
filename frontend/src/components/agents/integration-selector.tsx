@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
-  Shield, Plus, Trash2, ChevronDown,
+  Shield, Plus, Trash2, ChevronDown, KeyRound, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Integration } from "@/lib/types";
-import type { McpServerInfo, UrlAllowlistEntry, UrlAllowlistTemplate } from "@/lib/api";
+import type { McpServerInfo, UrlAllowlistEntry, UrlAllowlistTemplate, AgentSecretEntry } from "@/lib/api";
 
 // Built-in MCP servers that every agent has
 const BUILTIN_MCP_SERVERS = [
@@ -73,15 +73,22 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState<number | null>(null);
 
+  // KMS secrets state
+  const [allSecrets, setAllSecrets] = useState<AgentSecretEntry[]>([]);
+  const [agentSecretIds, setAgentSecretIds] = useState<Set<number>>(new Set());
+  const [togglingSecret, setTogglingSecret] = useState<number | null>(null);
+
   const load = useCallback(async () => {
     try {
-      const [{ integrations: all }, { integrations: enabled }, { servers }, mcpResp, entries, tmpl] = await Promise.all([
+      const [{ integrations: all }, { integrations: enabled }, { servers }, mcpResp, entries, tmpl, secretsAll, agentSecretsResp] = await Promise.all([
         api.getIntegrations(),
         api.getAgentIntegrations(agentId),
         api.getMcpServers(),
         api.getAgentMcpServers(agentId),
         api.getAgentUrlAllowlist(agentId),
         api.getUrlAllowlistTemplates(),
+        api.listSecrets(),
+        api.getAgentSecrets(agentId),
       ]);
       setIntegrations(all);
       setAgentIntegrations(enabled);
@@ -89,6 +96,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
       setAgentMcpServerIds(mcpResp.mcp_servers);
       setAllowlist(entries);
       setTemplates(tmpl);
+      setAllSecrets(secretsAll);
+      setAgentSecretIds(new Set(agentSecretsResp.map((s) => s.id)));
     } catch {
       // API not ready
     } finally {
@@ -176,6 +185,21 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
       setShowTemplates(false);
     } finally {
       setApplyingTemplate(null);
+    }
+  };
+
+  const handleToggleSecret = async (secretId: number) => {
+    setTogglingSecret(secretId);
+    try {
+      if (agentSecretIds.has(secretId)) {
+        await api.unassignSecret(agentId, secretId);
+        setAgentSecretIds(prev => { const n = new Set(prev); n.delete(secretId); return n; });
+      } else {
+        await api.assignSecret(agentId, secretId);
+        setAgentSecretIds(prev => new Set(Array.from(prev).concat(secretId)));
+      }
+    } finally {
+      setTogglingSecret(null);
     }
   };
 
@@ -573,6 +597,83 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* API Keys & Secrets (KMS) */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.06]">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg p-1.5 bg-violet-500/10">
+              <KeyRound className="h-4 w-4 text-violet-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium">API Keys & Secrets</h3>
+              <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                {agentSecretIds.size > 0 ? `${agentSecretIds.size} secret${agentSecretIds.size !== 1 ? "s" : ""} assigned` : "No secrets assigned"}
+                {" — injected as env vars when agent starts"}
+              </p>
+            </div>
+          </div>
+          <a
+            href="/secrets"
+            target="_blank"
+            className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            Manage secrets
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+
+        {allSecrets.length === 0 ? (
+          <div className="px-5 py-6 text-center">
+            <KeyRound className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
+            <p className="text-[11px] text-muted-foreground/50">No secrets configured yet.</p>
+            <a href="/secrets" target="_blank" className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
+              Create your first secret →
+            </a>
+          </div>
+        ) : (
+          <div className="divide-y divide-foreground/[0.04]">
+            {allSecrets.filter(s => s.is_active).map((secret) => {
+              const assigned = agentSecretIds.has(secret.id);
+              const toggling = togglingSecret === secret.id;
+              return (
+                <div key={secret.id} className="flex items-center gap-3 px-5 py-3">
+                  <div className="rounded-md p-1.5 bg-foreground/[0.04]">
+                    <KeyRound className="h-3.5 w-3.5 text-muted-foreground/60" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-medium truncate">{secret.name}</span>
+                      <span className="text-[10px] font-mono text-muted-foreground/50 bg-foreground/[0.04] px-1.5 py-0.5 rounded">
+                        {secret.key_name}
+                      </span>
+                    </div>
+                    {secret.description && (
+                      <p className="text-[10px] text-muted-foreground/40 mt-0.5 truncate">{secret.description}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleToggleSecret(secret.id)}
+                    disabled={toggling}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium border transition-colors shrink-0 disabled:opacity-40",
+                      assigned
+                        ? "bg-violet-500/10 text-violet-400 border-violet-500/20 hover:bg-violet-500/20"
+                        : "bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08] hover:bg-foreground/[0.08]"
+                    )}
+                  >
+                    {toggling
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : assigned ? <CheckCircle2 className="h-3 w-3" /> : <Plus className="h-3 w-3" />
+                    }
+                    {assigned ? "Assigned" : "Assign"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

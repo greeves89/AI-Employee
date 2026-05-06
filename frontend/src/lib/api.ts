@@ -1752,3 +1752,66 @@ export async function applyUrlTemplate(agentId: string, templateId: number): Pro
     body: JSON.stringify({ template_id: templateId }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Key Management System (KMS)
+// ---------------------------------------------------------------------------
+
+export interface AgentSecretEntry {
+  id: number;
+  name: string;
+  key_name: string;
+  secret_type: "api_key" | "sso_profile" | "oauth_token";
+  description: string;
+  is_active: boolean;
+  masked_value: string | null;
+  created_at: string | null;
+  assigned_agent_ids: string[];
+}
+
+export async function listSecrets(): Promise<AgentSecretEntry[]> {
+  const data = await fetchJSON(`${getBase()}/secrets`) as { secrets?: AgentSecretEntry[] };
+  return data.secrets ?? [];
+}
+
+export async function createSecret(payload: {
+  name: string;
+  key_name: string;
+  value: string;
+  secret_type?: "api_key" | "sso_profile" | "oauth_token";
+  description?: string;
+}): Promise<AgentSecretEntry> {
+  return fetchJSON(`${getBase()}/secrets`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }) as Promise<AgentSecretEntry>;
+}
+
+export async function updateSecret(id: number, payload: {
+  name?: string;
+  description?: string;
+  value?: string;
+  is_active?: boolean;
+}): Promise<AgentSecretEntry> {
+  return fetchJSON(`${getBase()}/secrets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  }) as Promise<AgentSecretEntry>;
+}
+
+export async function deleteSecret(id: number): Promise<void> {
+  await fetchJSON(`${getBase()}/secrets/${id}`, { method: "DELETE" });
+}
+
+export async function getAgentSecrets(agentId: string): Promise<AgentSecretEntry[]> {
+  const data = await fetchJSON(`${getBase()}/secrets/agent/${agentId}`) as { secrets?: AgentSecretEntry[] };
+  return data.secrets ?? [];
+}
+
+export async function assignSecret(agentId: string, secretId: number): Promise<void> {
+  await fetchJSON(`${getBase()}/secrets/agent/${agentId}/${secretId}`, { method: "POST" });
+}
+
+export async function unassignSecret(agentId: string, secretId: number): Promise<void> {
+  await fetchJSON(`${getBase()}/secrets/agent/${agentId}/${secretId}`, { method: "DELETE" });
+}

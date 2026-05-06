@@ -33,6 +33,7 @@ import {
   BarChart3,
   Info,
   X,
+  KeyRound,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -93,6 +94,7 @@ const navGroups: NavGroup[] = [
       { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
       { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
       { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+      { href: "/secrets", label: "Key Management", icon: KeyRound, simpleVisible: false },
       { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },
     ],
   },

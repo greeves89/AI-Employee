@@ -13,6 +13,7 @@ from app.config import AGENT_VERSION, settings
 from app.core.encryption import decrypt_token
 from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
+from app.models.agent_secret import AgentSecretAssignment, AgentSecret
 from app.models.mcp_server import McpServer
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.schedule import Schedule
@@ -564,6 +565,30 @@ class AgentManager:
                 env["MSGRAPH_ENABLED"] = "true"
         return env
 
+    async def _get_secrets_env(self, agent_id: str) -> dict[str, str]:
+        """Decrypt and inject KMS secrets assigned to this agent as env vars."""
+        result = await self.db.execute(
+            select(AgentSecretAssignment).where(AgentSecretAssignment.agent_id == agent_id)
+        )
+        assignments = result.scalars().all()
+        if not assignments:
+            return {}
+
+        secret_ids = [a.secret_id for a in assignments]
+        s_result = await self.db.execute(
+            select(AgentSecret).where(
+                AgentSecret.id.in_(secret_ids),
+                AgentSecret.is_active.is_(True),
+            )
+        )
+        env: dict[str, str] = {}
+        for secret in s_result.scalars().all():
+            try:
+                env[secret.key_name] = decrypt_token(secret.value_encrypted)
+            except Exception:
+                logger.warning("Failed to decrypt secret %s (%s)", secret.name, secret.key_name)
+        return env
+
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
@@ -845,6 +870,8 @@ class AgentManager:
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
+        secrets_env = await self._get_secrets_env(agent_id)
+
         if mode == "custom_llm" and agent.llm_config:
             from app.core.encryption import decrypt_token as _decrypt
             llm_cfg = agent.llm_config
@@ -864,6 +891,7 @@ class AgentManager:
                 "DEFAULT_MODEL": llm_cfg.get("model_name", model),
                 **mcp_env,
                 **integration_env,
+                **secrets_env,
             })
         else:
             agent_provider = config.get("model_provider")
@@ -874,6 +902,7 @@ class AgentManager:
                 **provider_env,
                 **mcp_env,
                 **integration_env,
+                **secrets_env,
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
@@ -1000,6 +1029,8 @@ class AgentManager:
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
+        secrets_env = await self._get_secrets_env(agent_id)
+
         if mode == "custom_llm" and agent.llm_config:
             from app.core.encryption import decrypt_token as _decrypt
             llm_cfg = agent.llm_config
@@ -1019,6 +1050,7 @@ class AgentManager:
                 "DEFAULT_MODEL": llm_cfg.get("model_name", model),
                 **mcp_env,
                 **integration_env,
+                **secrets_env,
             })
         else:
             agent_provider = config.get("model_provider")
@@ -1029,6 +1061,7 @@ class AgentManager:
                 **provider_env,
                 **mcp_env,
                 **integration_env,
+                **secrets_env,
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
