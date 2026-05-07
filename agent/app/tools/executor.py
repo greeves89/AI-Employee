@@ -90,6 +90,58 @@ def _get_allowed_categories() -> set[str] | None:
 
 _get_allowed_categories._cache = (None, 0.0)
 
+_POLICY_CACHE_TTL = 10  # seconds
+
+
+def _fetch_command_policies() -> list[dict]:
+    """Fetch command policies from the orchestrator API. Cached with TTL."""
+    now = time.time()
+    cached = _fetch_command_policies._cache
+    if cached and now < cached[1]:
+        return cached[0]
+
+    try:
+        import urllib.request as _req
+        import json as _json
+        url = f"{settings.orchestrator_url}/api/v1/command-policies/for-agent/{settings.agent_id}"
+        req = _req.Request(url, headers={"X-Agent-Token": settings.agent_token})
+        with _req.urlopen(req, timeout=3) as resp:
+            data = _json.loads(resp.read())
+        policies = data.get("policies", [])
+        _fetch_command_policies._cache = (policies, now + _POLICY_CACHE_TTL)
+        return policies
+    except Exception:
+        return []  # Fail open — don't block on orchestrator unavailability
+
+
+_fetch_command_policies._cache = (None, 0.0)
+
+
+def _evaluate_command_policies(command: str) -> tuple[str, str]:
+    """Evaluate a command against all active policies.
+
+    Returns (effect, reason). Effect is 'allow' if no policy matches.
+    Policies are checked in sort_order; first match wins.
+    """
+    policies = _fetch_command_policies()
+    if not policies:
+        return ("allow", "")
+
+    for policy in policies:
+        pattern = policy.get("pattern", "")
+        if not pattern:
+            continue
+        try:
+            if re.search(pattern, command, re.IGNORECASE):
+                return (
+                    policy.get("effect", "blocked"),
+                    f"{policy.get('name', 'Policy')}: {policy.get('description', pattern)}",
+                )
+        except re.error:
+            continue
+
+    return ("allow", "")
+
 # Tools safe to execute concurrently (read-only, no side effects)
 CONCURRENT_SAFE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
@@ -273,6 +325,19 @@ class ToolExecutor:
         command = params.get("command", "")
         if not command:
             return "Error: No command provided"
+
+        effect, reason = _evaluate_command_policies(command)
+        if effect == "blocked":
+            return (
+                f"[COMMAND BLOCKED] {reason}\n"
+                "This command matches a blocked pattern and cannot be executed."
+            )
+        if effect in ("high", "medium"):
+            return (
+                f"[COMMAND REQUIRES APPROVAL] {reason}\n"
+                f"Risk level: {effect}. You MUST call `request_approval` with "
+                f"this command and wait for user approval before executing."
+            )
 
         timeout = min(params.get("timeout", 30), 300)
 

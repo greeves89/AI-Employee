@@ -1025,6 +1025,60 @@ export async function deletePresetRule(level: string, ruleId: number): Promise<{
   });
 }
 
+// --- Command Policies ---
+
+export interface CommandPolicy {
+  id: number;
+  name: string;
+  pattern: string;
+  effect: "blocked" | "high" | "medium" | "allow";
+  scope: "global" | "agent";
+  agent_id: string | null;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function getCommandPolicies(): Promise<{ policies: CommandPolicy[] }> {
+  return fetchJSON(`${getBase()}/command-policies/`);
+}
+
+export async function createCommandPolicy(data: {
+  name: string;
+  pattern: string;
+  effect: string;
+  scope?: string;
+  agent_id?: string | null;
+  description?: string;
+  is_active?: boolean;
+  sort_order?: number;
+}): Promise<CommandPolicy> {
+  return fetchJSON(`${getBase()}/command-policies/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCommandPolicy(
+  id: number,
+  data: Partial<Omit<CommandPolicy, "id" | "created_at" | "updated_at">>,
+): Promise<CommandPolicy> {
+  return fetchJSON(`${getBase()}/command-policies/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCommandPolicy(id: number): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/command-policies/${id}`, { method: "DELETE" });
+}
+
+export async function getCommandPoliciesForAgent(agentId: string): Promise<{ policies: CommandPolicy[] }> {
+  return fetchJSON(`${getBase()}/command-policies/for-agent/${agentId}`);
+}
+
 // --- Event Triggers ---
 
 export interface EventTrigger {

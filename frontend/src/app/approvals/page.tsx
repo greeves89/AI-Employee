@@ -7,9 +7,10 @@ import {
   getPendingApprovals, approveCommand, denyCommand,
   getApprovalRules, createApprovalRule, updateApprovalRule, deleteApprovalRule,
   getLevelPresets, addPresetRule, deletePresetRule,
+  getCommandPolicies, createCommandPolicy, updateCommandPolicy, deleteCommandPolicy,
 } from "@/lib/api";
 import type { ApprovalRequest } from "@/lib/types";
-import type { ApprovalRule, LevelPreset, PresetRule } from "@/lib/api";
+import type { ApprovalRule, LevelPreset, PresetRule, CommandPolicy } from "@/lib/api";
 import {
   AlertCircle,
   ShieldAlert,
@@ -30,6 +31,7 @@ import {
   Layers,
   ChevronDown,
   ChevronRight,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +101,7 @@ const riskConfig = {
 };
 
 export default function ApprovalsPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "rules" | "presets">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "rules" | "presets" | "policies">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<ApprovalRequest | null>(null);
@@ -123,6 +125,12 @@ export default function ApprovalsPage() {
     category: "custom",
     threshold: "",
   });
+
+  // Command Policies state
+  const [policies, setPolicies] = useState<CommandPolicy[]>([]);
+  const [policiesLoading, setPoliciesLoading] = useState(false);
+  const [showPolicyForm, setShowPolicyForm] = useState(false);
+  const [policyDraft, setPolicyDraft] = useState({ name: "", pattern: "", effect: "blocked", description: "" });
 
   const loadApprovals = async () => {
     setIsLoading(true);
@@ -162,6 +170,7 @@ export default function ApprovalsPage() {
   useEffect(() => {
     if (activeTab === "rules") loadRules();
     if (activeTab === "presets") loadPresets();
+    if (activeTab === "policies") loadPolicies();
   }, [activeTab]);
 
   const loadPresets = async () => {
@@ -236,6 +245,53 @@ export default function ApprovalsPage() {
     }
   };
 
+  const loadPolicies = async () => {
+    setPoliciesLoading(true);
+    try {
+      const data = await getCommandPolicies();
+      setPolicies(data.policies);
+    } catch (error) {
+      console.error("Failed to load policies:", error);
+    } finally {
+      setPoliciesLoading(false);
+    }
+  };
+
+  const handleSavePolicy = async () => {
+    if (!policyDraft.name.trim() || !policyDraft.pattern.trim()) return;
+    try {
+      await createCommandPolicy({
+        name: policyDraft.name.trim(),
+        pattern: policyDraft.pattern.trim(),
+        effect: policyDraft.effect,
+        description: policyDraft.description.trim(),
+      });
+      setPolicyDraft({ name: "", pattern: "", effect: "blocked", description: "" });
+      setShowPolicyForm(false);
+      await loadPolicies();
+    } catch (error) {
+      console.error("Failed to save policy:", error);
+    }
+  };
+
+  const handleTogglePolicy = async (policy: CommandPolicy) => {
+    try {
+      await updateCommandPolicy(policy.id, { is_active: !policy.is_active });
+      await loadPolicies();
+    } catch (error) {
+      console.error("Failed to toggle policy:", error);
+    }
+  };
+
+  const handleDeletePolicy = async (id: number) => {
+    try {
+      await deleteCommandPolicy(id);
+      await loadPolicies();
+    } catch (error) {
+      console.error("Failed to delete policy:", error);
+    }
+  };
+
   const handleApprove = async (approvalId: string) => {
     await approveCommand(approvalId);
     await loadApprovals();
@@ -269,11 +325,11 @@ export default function ApprovalsPage() {
           </div>
         </div>
         <button
-          onClick={activeTab === "pending" ? loadApprovals : loadRules}
+          onClick={activeTab === "pending" ? loadApprovals : activeTab === "policies" ? loadPolicies : loadRules}
           className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
         >
           <RefreshCw
-            className={cn("h-4 w-4", (isLoading || rulesLoading) && "animate-spin")}
+            className={cn("h-4 w-4", (isLoading || rulesLoading || policiesLoading) && "animate-spin")}
           />
           Aktualisieren
         </button>
@@ -314,6 +370,18 @@ export default function ApprovalsPage() {
         >
           <Layers className="h-3.5 w-3.5" />
           Level-Presets
+        </button>
+        <button
+          onClick={() => setActiveTab("policies")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-all inline-flex items-center gap-1.5",
+            activeTab === "policies"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Shield className="h-3.5 w-3.5" />
+          Command Policies
         </button>
       </div>
 
@@ -772,6 +840,173 @@ export default function ApprovalsPage() {
                 );
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Command Policies Tab */}
+      {activeTab === "policies" && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-muted-foreground/60">
+              Regex-based command filtering rules. Policies are evaluated in sort order — first match wins.
+            </p>
+            <button
+              onClick={() => setShowPolicyForm(!showPolicyForm)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-all"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Policy
+            </button>
+          </div>
+
+          {showPolicyForm && (
+            <div className="rounded-xl border border-foreground/[0.08] bg-card/50 p-4 mb-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  value={policyDraft.name}
+                  onChange={(e) => setPolicyDraft({ ...policyDraft, name: e.target.value })}
+                  placeholder="Name (z.B. Block fork bombs)"
+                  className="rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
+                <input
+                  value={policyDraft.pattern}
+                  onChange={(e) => setPolicyDraft({ ...policyDraft, pattern: e.target.value })}
+                  placeholder="Regex pattern (z.B. rm\s+-rf)"
+                  className="rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={policyDraft.effect}
+                  onChange={(e) => setPolicyDraft({ ...policyDraft, effect: e.target.value })}
+                  className="rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+                >
+                  <option value="blocked">Blocked — always denied</option>
+                  <option value="high">High — requires approval</option>
+                  <option value="medium">Medium — approval recommended</option>
+                  <option value="allow">Allow — explicitly permitted</option>
+                </select>
+                <input
+                  value={policyDraft.description}
+                  onChange={(e) => setPolicyDraft({ ...policyDraft, description: e.target.value })}
+                  placeholder="Description (optional)"
+                  className="rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowPolicyForm(false); setPolicyDraft({ name: "", pattern: "", effect: "blocked", description: "" }); }}
+                  className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePolicy}
+                  disabled={!policyDraft.name.trim() || !policyDraft.pattern.trim()}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          {policiesLoading && policies.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+              <Loader2 className="h-6 w-6 animate-spin mb-3" />
+              <span className="text-sm">Loading policies...</span>
+            </div>
+          ) : policies.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+              <Shield className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground/50">No command policies configured</p>
+              <p className="text-[11px] text-muted-foreground/30 mt-1">
+                Add policies to filter dangerous bash commands
+              </p>
+            </div>
+          ) : (
+            <motion.div
+              className="space-y-2"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              {policies.map((policy) => {
+                const effectConfig: Record<string, { icon: typeof ShieldAlert; color: string; bg: string; label: string }> = {
+                  blocked: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-500/10", label: "Blocked" },
+                  high: { icon: AlertCircle, color: "text-orange-400", bg: "bg-orange-500/10", label: "High" },
+                  medium: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10", label: "Medium" },
+                  allow: { icon: ShieldCheck, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Allow" },
+                };
+                const ec = effectConfig[policy.effect] || effectConfig.blocked;
+                const EffectIcon = ec.icon;
+
+                return (
+                  <motion.div
+                    key={policy.id}
+                    variants={itemVariants}
+                    className={cn(
+                      "rounded-xl border bg-card/50 px-4 py-3 transition-all",
+                      policy.is_active ? "border-foreground/[0.08]" : "border-foreground/[0.04] opacity-50"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", ec.bg)}>
+                          <EffectIcon className={cn("h-4 w-4", ec.color)} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium truncate">{policy.name}</span>
+                            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", ec.bg, ec.color)}>
+                              {ec.label}
+                            </span>
+                            {policy.scope === "agent" && (
+                              <span className="text-[10px] text-muted-foreground/40 bg-foreground/[0.03] px-1.5 py-0.5 rounded">
+                                Agent: {policy.agent_id}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <code className="text-[11px] text-muted-foreground/50 font-mono truncate max-w-[300px]">
+                              {policy.pattern}
+                            </code>
+                            {policy.description && (
+                              <span className="text-[11px] text-muted-foreground/40 truncate">
+                                — {policy.description}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                        <button
+                          onClick={() => handleTogglePolicy(policy)}
+                          className={cn(
+                            "relative inline-flex h-5 w-11 items-center rounded-full transition-colors",
+                            policy.is_active ? "bg-primary" : "bg-foreground/10"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                              policy.is_active ? "translate-x-6" : "translate-x-1"
+                            )}
+                          />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePolicy(policy.id)}
+                          className="rounded-lg p-1.5 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
           )}
         </div>
       )}
