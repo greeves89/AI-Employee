@@ -66,6 +66,7 @@ def _template_to_dict(t: AgentTemplate) -> dict:
         "permissions": t.permissions or [],
         "integrations": t.integrations or [],
         "mcp_server_ids": t.mcp_server_ids or [],
+        "skill_ids": t.skill_ids or [],
         "knowledge_template": t.knowledge_template,
         "claude_md": t.claude_md or "",
         "is_builtin": t.is_builtin,
@@ -332,6 +333,26 @@ async def create_agent_from_template(
             update(Agent).where(Agent.id == agent.id).values(template_id=template.id)
         )
         await db.commit()
+
+        # Auto-assign template skills
+        if template.skill_ids:
+            from app.models.skill import Skill, AgentSkillAssignment
+            for skill_id in template.skill_ids:
+                skill = await db.get(Skill, skill_id)
+                if skill and skill.status == "active":
+                    existing = await db.scalar(
+                        select(AgentSkillAssignment).where(
+                            AgentSkillAssignment.agent_id == agent.id,
+                            AgentSkillAssignment.skill_id == skill_id,
+                        )
+                    )
+                    if not existing:
+                        db.add(AgentSkillAssignment(
+                            agent_id=agent.id,
+                            skill_id=skill_id,
+                            assigned_by="template",
+                        ))
+            await db.commit()
 
         metrics = await manager.get_agent_with_metrics(agent.id)
         return {**metrics, "template_id": template.id, "template_name": template.name}

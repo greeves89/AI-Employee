@@ -120,6 +120,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
           </button>
 
           <Dialog.Title className="sr-only">Agent Details</Dialog.Title>
+          <Dialog.Description className="sr-only">Agent performance statistics and task history</Dialog.Description>
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />

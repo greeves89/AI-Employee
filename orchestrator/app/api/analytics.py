@@ -344,8 +344,8 @@ async def get_agent_detail(
         sa_text("""
             SELECT date_trunc('day', created_at) AS day,
                    COUNT(id) AS total,
-                   COUNT(id) FILTER (WHERE status = 'completed') AS completed,
-                   COUNT(id) FILTER (WHERE status = 'failed') AS failed
+                   COUNT(id) FILTER (WHERE status = 'COMPLETED') AS completed,
+                   COUNT(id) FILTER (WHERE status = 'FAILED') AS failed
             FROM tasks
             WHERE agent_id = :agent_id AND created_at >= :since
             GROUP BY date_trunc('day', created_at)

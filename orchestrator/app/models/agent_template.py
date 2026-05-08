@@ -24,6 +24,7 @@ class AgentTemplate(Base, TimestampMixin):
     permissions: Mapped[list] = mapped_column(JSON, default=list)
     integrations: Mapped[list] = mapped_column(JSON, default=list)
     mcp_server_ids: Mapped[list] = mapped_column(JSON, default=list)
+    skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     knowledge_template: Mapped[str] = mapped_column(Text, default="")
     claude_md: Mapped[str] = mapped_column(Text, default="")
 
