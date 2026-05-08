@@ -849,7 +849,7 @@ def upgrade() -> None:
                 INSERT INTO skills (name, description, content, category, status, roles, paths,
                     manual_duration_seconds, usage_count, is_public, current_version,
                     improvement_status, created_at, updated_at)
-                VALUES (:name, :description, :content, :category, 'active', :roles, '[]',
+                VALUES (:name, :description, :content, :category, 'ACTIVE', :roles, '[]',
                     :manual_duration_seconds, 0, true, 1,
                     'none', NOW(), NOW())
                 ON CONFLICT (name) DO UPDATE SET
