@@ -31,6 +31,8 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
+    if getattr(user, "role", None) == "agent":
+        return [user.id]
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
     owned = await db.execute(

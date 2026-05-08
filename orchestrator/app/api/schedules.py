@@ -22,10 +22,16 @@ router = APIRouter(prefix="/schedules", tags=["schedules"])
 
 
 async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
-    """Return agent IDs owned by user, or None if admin (sees all)."""
+    """Return agent IDs owned by user, or None if admin (sees all).
+
+    When called by an agent token (role == "agent"), returns only that agent's
+    own ID — the user.id is the agent_id, not a user UUID in this case.
+    """
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
+    if getattr(user, "role", None) == "agent":
+        return [user.id]
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
     owned = await db.execute(
