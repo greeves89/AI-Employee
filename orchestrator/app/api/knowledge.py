@@ -3,7 +3,7 @@
 import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, or_, func, update
+from sqlalchemy import cast, select, or_, func, update, Text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -84,7 +84,7 @@ async def list_entries(
         )
     if tag:
         # JSON array contains check (PostgreSQL)
-        query = query.where(KnowledgeEntry.tags.contains([tag]))
+        query = query.where(cast(KnowledgeEntry.tags, Text).ilike(f'%"{tag}"%'))
 
     total_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(total_q)).scalar() or 0
@@ -424,7 +424,7 @@ async def agent_search(
             )
         )
     if tag:
-        query = query.where(KnowledgeEntry.tags.contains([tag]))
+        query = query.where(cast(KnowledgeEntry.tags, Text).ilike(f'%"{tag}"%'))
 
     query = query.order_by(KnowledgeEntry.updated_at.desc()).limit(limit)
     result = await db.execute(query)
