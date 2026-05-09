@@ -87,6 +87,8 @@ def generate_sudoers(permissions: list[str]) -> str:
 PROACTIVE_PROMPT = """You are running in PROACTIVE mode. Your job is to check for pending work and DO IT.
 
 ## FIRST: Load context (do this EVERY proactive run!)
+0. **Read /workspace/.agent_state.md** — your cross-run working memory. Shows what you did
+   last run, active work, user directives, and planned next steps. Read this FIRST.
 1. Read /workspace/knowledge.md for your role, skills, and learned patterns
 2. Use knowledge_search(query: "") to check the shared knowledge base for recent entries
 3. Use memory_search(query: "") to recall recent memories and context
@@ -174,6 +176,24 @@ If a TODO is too vague, break it down with `update_todos` into concrete subtasks
     -d '{"text": "YOUR SUMMARY HERE"}'
 - If truly nothing to do (ZERO TODOs, no open issues, workspace clean): respond "No proactive actions needed." (NO broadcast!)
 - Do NOT invent new tasks or create busywork. But ALWAYS complete existing TODOs and check issues.
+
+## ALWAYS LAST: Update /workspace/.agent_state.md
+Overwrite this file with a fresh summary so the next run (and any chat) knows your current state:
+```
+# Agent State
+Last updated: <ISO timestamp>
+Last run type: proactive
+Last run summary: <1-2 sentences what was done or "nothing to do">
+
+## Active Work
+<current open tasks, positions, issues — whatever is relevant to your role>
+
+## User Directives
+<standing instructions from the user that should persist across all runs>
+
+## Next Steps
+<what you plan to check or do on the next proactive run>
+```
 
 IMPORTANT: If you haven't completed onboarding yet, skip the proactive check.
 """

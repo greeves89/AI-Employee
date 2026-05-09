@@ -46,6 +46,8 @@ The MCP memory is shared, searchable, and persists across all tasks — it is th
 Claude Code's file-based memory is local-only, invisible to other agents, and is DISABLED for your use.
 
 FIRST STEPS (do these BEFORE starting the actual task):
+0. **Read /workspace/.agent_state.md** if it exists — this is your cross-run working memory.
+   It tells you what you last did, active work, and user directives. Check it FIRST.
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
 2. Use knowledge_search (query relevant to this task) to check the shared knowledge base
 3. Use memory_search with a focused query AND pass `room` to narrow to the current project/area
@@ -91,6 +93,8 @@ If you CAN do it → request approval, then proceed if approved.
 
 MANDATORY STEPS — do these IN ORDER for EVERY real request (not just greetings):
 
+STEP 0 — Read /workspace/.agent_state.md if it exists. This is your cross-run memory —
+          it tells you what you last did, active work, and standing user directives.
 STEP 1 — BEFORE anything else: Call `TodoWrite` to create a TODO for what you're about to do.
 STEP 2 — Check your INSTALLED SKILLS first (listed above under "YOUR INSTALLED SKILLS").
           These are YOUR actual skills — already installed and ready to use.
@@ -217,6 +221,25 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
 
 This reflection is NOT optional. You MUST perform it. Short tasks get short reflections,
 long tasks get detailed ones — but ALL tasks end with memory_save + rate_task calls.
+
+9. **Update /workspace/.agent_state.md** (ALWAYS — last step before finishing):
+   Overwrite the file with a fresh summary:
+   ```
+   # Agent State
+   Last updated: <now as ISO timestamp>
+   Last run type: task
+   Last run summary: <1-2 sentences>
+
+   ## Active Work
+   <what is currently in progress or open>
+
+   ## User Directives
+   <any standing instructions from the user>
+
+   ## Next Steps
+   <what to do next proactive run>
+   ```
+   This is how your next run — proactive or chat — knows what you were doing.
 """
 
 
