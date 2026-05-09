@@ -87,6 +87,10 @@ RUN mkdir -p /workspace && chown agent:agent /workspace
 # Create .claude directory for session persistence (volume mount inherits ownership)
 RUN mkdir -p /home/agent/.claude && chown -R agent:agent /home/agent/.claude
 
+# Global CLAUDE.md — disables file-based memory, enforces MCP memory + skill usage
+COPY claude-global.md /home/agent/.claude/CLAUDE.md
+RUN chown agent:agent /home/agent/.claude/CLAUDE.md
+
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1

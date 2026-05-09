@@ -15,6 +15,7 @@ from app.runner_hooks import (
     TASK_STARTUP_PREFIX,
     get_approval_rules_prefix,
     get_improvement_context,
+    get_marketplace_skill_suggestions,
     get_memory_preload,
     get_skill_preload,
     get_skills_context,
@@ -210,7 +211,8 @@ class LLMRunner:
             )
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
-            enhanced_prompt = TASK_STARTUP_PREFIX + prompt + SELF_IMPROVEMENT_SUFFIX
+            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
+            enhanced_prompt = TASK_STARTUP_PREFIX + marketplace_suggestions + prompt + SELF_IMPROVEMENT_SUFFIX
 
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=system_prompt),

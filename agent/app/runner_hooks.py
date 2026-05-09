@@ -39,6 +39,12 @@ Do NOT ask for approval for actions you cannot perform (e.g. "place an order onl
 shop integration). Instead, tell the user what you CAN do (research, find links, summarise options)
 and ask if they want that. Requesting approval for an impossible action wastes the user's time.
 
+🧠 MEMORY SYSTEM — IMPORTANT:
+Use ONLY the MCP memory tools: `memory_save` and `memory_search`.
+Do NOT use Claude Code's built-in /memory command or write to CLAUDE.md memory sections.
+The MCP memory is shared, searchable, and persists across all tasks — it is the ONE source of truth.
+Claude Code's file-based memory is local-only, invisible to other agents, and is DISABLED for your use.
+
 FIRST STEPS (do these BEFORE starting the actual task):
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
 2. Use knowledge_search (query relevant to this task) to check the shared knowledge base
@@ -396,6 +402,48 @@ def get_skills_context() -> str:
         "",
     ])
     return "\n".join(lines)
+
+
+def get_marketplace_skill_suggestions(task_hint: str) -> str:
+    """Search the marketplace for skills relevant to the task and inject as suggestions.
+
+    Called at task-start with a short summary of the task. This ensures the agent
+    sees matching marketplace skills even before it reads its first instruction line —
+    preventing the common failure mode where the agent forgets to call skill_search.
+    """
+    if not task_hint or len(task_hint.strip()) < 5:
+        return ""
+    try:
+        import urllib.parse
+        query = task_hint.strip()[:120]
+        qs = urllib.parse.urlencode({"q": query, "limit": 5, "semantic": "false"})
+        url = f"{settings.orchestrator_url}/api/v1/skills/agent/search?{qs}"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = _json.loads(response.read())
+
+        skills = data.get("skills", [])
+        if not skills:
+            return ""
+
+        lines = [
+            "",
+            "=== MARKETPLACE SKILLS MATCHING THIS TASK ===",
+            "These skills from the marketplace may be relevant. Install one with skill_install(skill_id=X) to use it.",
+        ]
+        for s in skills:
+            lines.append(f"  • [{s.get('id')}] {s['name']} — {s.get('description', '')}")
+        lines.extend([
+            "If none match, call skill_search with a more specific query or proceed without a skill.",
+            "=== END MARKETPLACE SUGGESTIONS ===",
+            "",
+        ])
+        return "\n".join(lines)
+    except Exception:
+        return ""
 
 
 def get_user_feedback() -> str:

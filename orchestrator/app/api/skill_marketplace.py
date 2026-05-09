@@ -830,14 +830,19 @@ async def agent_search_skills(
                 )
             )).scalar_one_or_none()
             if not existing:
-                db.add(SkillTaskUsage(
-                    skill_id=top_skill.id,
-                    task_id=resolved_task_id,
-                    agent_id=agent_id,
-                    skill_version=top_skill.current_version,
-                ))
-                top_skill.usage_count = (top_skill.usage_count or 0) + 1
-                await db.commit()
+                try:
+                    db.add(SkillTaskUsage(
+                        skill_id=top_skill.id,
+                        task_id=resolved_task_id,
+                        agent_id=agent_id,
+                        skill_version=top_skill.current_version,
+                    ))
+                    top_skill.usage_count = (top_skill.usage_count or 0) + 1
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    top_skill.usage_count = (top_skill.usage_count or 0) + 1
+                    await db.commit()
 
     return {"skills": [_to_response(s) for s in skills], "total": len(skills), "mode": search_mode}
 

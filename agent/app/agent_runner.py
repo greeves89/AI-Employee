@@ -11,6 +11,7 @@ from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     TASK_STARTUP_PREFIX,
     get_improvement_context,
+    get_marketplace_skill_suggestions,
     get_memory_preload,
     get_skill_preload,
     get_skills_context,
@@ -69,6 +70,7 @@ class AgentRunner:
             skills_ctx = get_skills_context()
             user_feedback = get_user_feedback()
             improvement_ctx = get_improvement_context()
+            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
             enhanced_prompt = (
                 task_id_line
                 + TASK_STARTUP_PREFIX
@@ -76,6 +78,7 @@ class AgentRunner:
                 + user_feedback
                 + skill_preload
                 + skills_ctx
+                + marketplace_suggestions
                 + improvement_ctx
                 + prompt
                 + SELF_IMPROVEMENT_SUFFIX
