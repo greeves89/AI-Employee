@@ -39,7 +39,7 @@ def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) ->
         startup_block = """
 FIRST STEPS (do these BEFORE responding to the user):
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
-2. Use knowledge_search (query relevant to this message) to check the shared knowledge base
+2. Use brain_search (query relevant to this message) to check the shared knowledge base
 3. Use memory_search with a focused query and room="chat:telegram" (or the project-room
    if the user is asking about a specific project). Room filters improve precision massively.
 4. Use list_todos to check for pending work items
@@ -48,7 +48,7 @@ Then respond to the user's message below with full context.
 """
     else:
         startup_block = """
-BEFORE responding: use knowledge_search and memory_search (with a room filter if you know
+BEFORE responding: use brain_search and memory_search (with a room filter if you know
 the project/area — e.g. room="chat:telegram" or "project:<name>/<area>") to check for
 relevant context.
 AFTER responding: if you learned something new, use memory_save with:
@@ -213,7 +213,7 @@ class ChatConsumer:
             return rules_prefix + (
                 "MANDATORY FIRST STEPS (do these BEFORE responding):\n"
                 "1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
-                "2. Use knowledge_search (query relevant to this message) for shared knowledge\n"
+                "2. Use brain_search (query relevant to this message) for shared knowledge\n"
                 "3. Use memory_search with a focused query AND a room filter\n"
                 "   (room=\"chat:webui\" for UI chats, or \"project:<name>/<area>\" if the user\n"
                 "   is asking about a specific project). Rooms improve retrieval precision massively.\n"
@@ -227,7 +227,7 @@ class ChatConsumer:
             )
         # Resumed session — MUST check knowledge/memory for context
         return rules_prefix + (
-            "BEFORE responding: use knowledge_search and memory_search to check for relevant context.\n"
+            "BEFORE responding: use brain_search and memory_search to check for relevant context.\n"
             "AFTER responding: if you learned something new, use memory_save (category: 'learning').\n\n"
             + text
         )

@@ -16,7 +16,7 @@ Behind you is a team of specialist agents who do the actual work.
 **NEVER create a task or delegate until you fully understand what the user wants.**
 
 When the user gives you a goal, you MUST:
-1. Search `memory_search` and `knowledge_search` for existing context
+1. Search `memory_search` and `brain_search` for existing context
 2. Identify what is UNCLEAR or AMBIGUOUS about the request
 3. Ask 3-5 focused clarifying questions in ONE message
 4. Wait for the user's answers
@@ -116,16 +116,16 @@ Each agent has their OWN workspace — you CANNOT read their files. Use task res
 - `memory_list` / `memory_delete` - List or remove memories
 
 ### Shared Knowledge Base
-- `knowledge_search` - Semantic search shared knowledge
-- `knowledge_read` - Read specific entry
-- `knowledge_write` - Write team-wide info (processes, decisions)
+- `brain_search` - Semantic search shared knowledge
+- `brain_get` - Read specific entry
+- `brain_contribute` - Write team-wide info (processes, decisions)
 
 ### Schedules
 - `create_schedule` / `list_schedules` / `manage_schedule`
 
 ## Knowledge Access
 - Read `/workspace/knowledge.md` at the START of every session
-- Search `knowledge_search` and `memory_search` before asking the user
+- Search `brain_search` and `memory_search` before asking the user
 - Save learnings after every completed goal
 
 ## What to Save in Memory (as OS Agent)
@@ -175,12 +175,12 @@ _PLATFORM_SECTION = (
     "- `notify_user` - Send a notification to the Web UI (high/urgent also goes to Telegram)\n"
     "- `request_approval` - Ask the user before irreversible actions (emails, deletions, purchases)\n\n"
     "**Shared Knowledge Base** (company-wide, Obsidian-style, SEMANTIC search):\n"
-    "- `knowledge_write` - Create/update a knowledge entry (all agents can read it!)\n"
-    "- `knowledge_search` - 🧠 SEMANTIC search: use natural-language questions\n"
+    "- `brain_contribute` - Create/update a knowledge entry (all agents can read it!)\n"
+    "- `brain_search` - 🧠 SEMANTIC search: use natural-language questions\n"
     "  Good: 'what is our API authentication approach?' — understands meaning\n"
     "  Good: 'what decisions did we make about pricing?'\n"
     "  Each result shows a % match score.\n"
-    "- `knowledge_read` - Read a specific entry by title (e.g. from a [[backlink]])\n"
+    "- `brain_get` - Read a specific entry by title (e.g. from a [[backlink]])\n"
     "- Use `[[Title]]` in content to link between entries, `#tags` for categorization\n"
     "- Write company info, project docs, decisions, processes, contacts here — NOT in personal memory\n\n"
     "**Schedules** (recurring automation):\n"
@@ -188,7 +188,7 @@ _PLATFORM_SECTION = (
     "- `list_schedules` / `manage_schedule` - View, pause, resume, or delete schedules\n\n"
     "### Memory vs Knowledge Base — USE BOTH STRATEGICALLY\n"
     "- **Memory** (`memory_save`) = YOUR personal notes. Only YOU can see them.\n"
-    "- **Knowledge Base** (`knowledge_write`) = SHARED with ALL agents + the user.\n\n"
+    "- **Knowledge Base** (`brain_contribute`) = SHARED with ALL agents + the user.\n\n"
     "**Use Knowledge Base (shared) for anything OTHER agents would benefit from:**\n"
     "- Company info, brand guidelines, tech stack decisions, API schemas\n"
     "- Project docs, team decisions, processes, compliance rules\n"
@@ -1136,7 +1136,7 @@ BUILTIN_TEMPLATES = [
             "Before acting, ensure you truly understand the goal:\n"
             "- What is the desired **end state**? (not just the action, but the outcome)\n"
             "- What are the **constraints**? (deadline, budget, quality bar, tech stack)\n"
-            "- What **context** exists? Search `memory_search` and `knowledge_search` first!\n"
+            "- What **context** exists? Search `memory_search` and `brain_search` first!\n"
             "- Is this a **new goal** or a continuation? Check `list_tasks` for related work.\n\n"
             "**You MUST ask the user clarifying questions when ANY of these are unclear:**\n"
             "- **WHAT exactly?** — What is the product/feature? What does it do? Who is it for?\n"
@@ -1212,7 +1212,7 @@ BUILTIN_TEMPLATES = [
             "After every goal completion:\n"
             "1. **`memory_save`** (category='learning') — What decomposition worked? What agents excelled?\n"
             "2. **`memory_save`** (category='procedure') — Save reusable plans for similar future goals\n"
-            "3. **`knowledge_write`** — Share team-wide insights (agent capabilities, failure patterns)\n"
+            "3. **`brain_contribute`** — Share team-wide insights (agent capabilities, failure patterns)\n"
             "4. Track agent performance mentally:\n"
             "   - Which agent is fast/reliable for which task type?\n"
             "   - Which agents need more detailed prompts?\n"
@@ -1262,9 +1262,9 @@ BUILTIN_TEMPLATES = [
             "- `memory_list` - List all memories (filter by category)\n"
             "- `memory_delete` - Remove outdated memories\n\n"
             "**Shared Knowledge Base** (company-wide, all agents can read):\n"
-            "- `knowledge_write` - Write team-wide info: processes, decisions, agent capabilities\n"
-            "- `knowledge_search` - Semantic search the shared knowledge base\n"
-            "- `knowledge_read` - Read a specific entry by title\n\n"
+            "- `brain_contribute` - Write team-wide info: processes, decisions, agent capabilities\n"
+            "- `brain_search` - Semantic search the shared knowledge base\n"
+            "- `brain_get` - Read a specific entry by title\n\n"
             "**Schedules** (recurring automation):\n"
             "- `create_schedule` - Set up recurring tasks (e.g. daily status checks)\n"
             "- `list_schedules` / `manage_schedule` - View, pause, resume, or delete schedules\n\n"
@@ -1306,7 +1306,7 @@ BUILTIN_TEMPLATES = [
             "After a goal is fully completed:\n"
             "1. `memory_save(category='learning')` — What worked in the decomposition? What agent excelled?\n"
             "2. `memory_save(category='procedure')` — Save the plan as a reusable template for similar goals\n"
-            "3. `knowledge_write` — If you learned something ALL agents should know (e.g. project conventions)\n"
+            "3. `brain_contribute` — If you learned something ALL agents should know (e.g. project conventions)\n"
             "4. `memory_save(category='fact')` — Update your model of each agent's strengths\n"
             "Never save code patterns or technical details — that's the worker agents' job.\n"
         ),

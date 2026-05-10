@@ -784,18 +784,34 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
-    # ── Knowledge Base (knowledge-server.mjs parity) ──
+    # ── Second Brain (full CRUD over the user's unified knowledge graph) ──
     {
         "type": "function",
         "function": {
-            "name": "knowledge_write",
-            "description": "Write to the shared knowledge base. Creates or updates an entry by title. ALL agents share this — use for company-wide info, project docs, decisions, processes. Use [[Title]] for backlinks, #tags for categorization.",
+            "name": "brain_search",
+            "description": "Semantic search across the user's Second Brain — the unified knowledge graph shared by ALL agents of this user. Returns entries ranked by similarity. Call this BEFORE starting any task to load context and BEFORE creating new entries to avoid duplicates.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string", "description": "Title of the knowledge entry (link target for [[backlinks]])"},
-                    "content": {"type": "string", "description": "Markdown content. Use [[Title]] for links, #tags for categorization."},
-                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
+                    "q": {"type": "string", "description": "Search query — what you're looking for."},
+                    "limit": {"type": "number", "description": "Max results (default 10, max 50)."},
+                    "include_memories": {"type": "boolean", "description": "Also search agent memories across user's agents (default false)."},
+                },
+                "required": ["q"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_contribute",
+            "description": "Add or update a node in the user's Second Brain (upsert by title). Use to share research, decisions, insights, processes with all other agents. Auto-links to semantically related entries.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Unique title (used as upsert key). Use [[Other Title]] in content for explicit links."},
+                    "content": {"type": "string", "description": "Markdown content."},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags (e.g. ['decision', 'research'])."},
                 },
                 "required": ["title", "content"],
             },
@@ -804,13 +820,26 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "knowledge_search",
-            "description": "Search the shared knowledge base using semantic search (understands meaning, not just keywords). Use BEFORE creating new entries to avoid duplicates.",
+            "name": "brain_get",
+            "description": "Fetch the full content of a single brain entry by id. Use after brain_search to read full content.",
+            "parameters": {
+                "type": "object",
+                "properties": {"id": {"type": "number", "description": "Entry id from brain_search/brain_list."}},
+                "required": ["id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_list",
+            "description": "Paginated list of brain entries (titles + tags only). Use to browse what's in the brain without fetching full content.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Natural-language question or topic"},
-                    "tag": {"type": "string", "description": "Optional tag filter"},
+                    "limit": {"type": "number", "description": "Max entries (default 50, max 200)."},
+                    "offset": {"type": "number", "description": "Pagination offset (default 0)."},
+                    "tag": {"type": "string", "description": "Optional tag filter."},
                 },
             },
         },
@@ -818,14 +847,44 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "knowledge_read",
-            "description": "Read a specific knowledge entry by its exact title.",
+            "name": "brain_update",
+            "description": "Update an existing brain entry by id. Re-embeds and re-links. Use for fixes/refinements.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string", "description": "Exact title of the entry"},
+                    "id": {"type": "number", "description": "Entry id to update."},
+                    "title": {"type": "string", "description": "New title (optional)."},
+                    "content": {"type": "string", "description": "New content (optional)."},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "New tags (optional)."},
                 },
-                "required": ["title"],
+                "required": ["id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_delete",
+            "description": "Delete a brain entry by id. Also removes its semantic links. Irreversible.",
+            "parameters": {
+                "type": "object",
+                "properties": {"id": {"type": "number", "description": "Entry id to delete."}},
+                "required": ["id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "brain_related",
+            "description": "Get semantically related entries for a given node (cosine similarity). Use for discovery: 'what else is connected to this?'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "number", "description": "Entry id to find neighbors for."},
+                    "limit": {"type": "number", "description": "Max related entries (default 10, max 50)."},
+                },
+                "required": ["id"],
             },
         },
     },

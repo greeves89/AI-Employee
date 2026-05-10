@@ -753,7 +753,7 @@ async def agent_search_skills(
     skills = []
     search_mode = "keyword"
 
-    # Semantic search: use pgvector cosine similarity (like knowledge_search)
+    # Semantic search: use pgvector cosine similarity (like brain_search)
     if q and semantic:
         try:
             from app.services.embedding_service import get_embedding_service

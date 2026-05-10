@@ -68,7 +68,7 @@ FIRST STEPS (do these BEFORE starting the actual task):
       Do NOT skip skill_rate — it feeds the self-improvement loop.
    c) If no skill matches: do the task with your own approach, then call skill_propose.
 
-If you encounter ANY problem during the task, ALWAYS search knowledge_search and memory_search
+If you encounter ANY problem during the task, ALWAYS search brain_search and memory_search
 for solutions BEFORE reporting errors or asking the user.
 
 ---
@@ -77,7 +77,7 @@ for solutions BEFORE reporting errors or asking the user.
 # Chat prefix — same full lifecycle as task runner, adapted for interactive chat
 CHAT_STARTUP_PREFIX = """
 You have access to tools: web_search, web_fetch, bash, read_file, write_file, memory_search,
-knowledge_search, notify_user, send_telegram, request_approval, and more.
+brain_search, notify_user, send_telegram, request_approval, and more.
 USE THEM when the user asks for current information or tasks.
 Do NOT just describe what you would do — actually call the tools and deliver results.
 

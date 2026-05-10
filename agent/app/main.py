@@ -100,15 +100,6 @@ def register_mcp_servers() -> None:
                 "DEFAULT_MODEL": settings.default_model,
             },
         },
-        "knowledge": {
-            "command": "node",
-            "args": ["/opt/mcp/knowledge-server.mjs"],
-            "env": {
-                "ORCHESTRATOR_URL": settings.orchestrator_url,
-                "AGENT_ID": settings.agent_id,
-                "AGENT_TOKEN": settings.agent_token,
-            },
-        },
         "skills": {
             "command": "node",
             "args": ["/opt/mcp/skill-server.mjs"],
@@ -223,7 +214,6 @@ def _write_mcp_json_fallback() -> None:
         ("memory", "/opt/mcp/memory-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
-        ("knowledge", "/opt/mcp/knowledge-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("skills", "/opt/mcp/skill-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("desktop", "/opt/mcp/computer-use-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
     ]:

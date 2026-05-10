@@ -145,6 +145,195 @@ async def get_related(
 
 # ── Agent-facing ───────────────────────────────────────────────────────────────
 
+async def _resolve_agent_user(auth: dict, db: AsyncSession) -> str | None:
+    from app.models.agent import Agent
+    agent = await db.get(Agent, auth["agent_id"])
+    return agent.user_id if agent else None
+
+
+@router.get("/agent/list")
+async def agent_brain_list(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    tag: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """List entries in the user's Second Brain (paginated)."""
+    user_id = await _resolve_agent_user(auth, db)
+    if not user_id:
+        return {"entries": [], "total": 0}
+
+    stmt = select(KnowledgeEntry).where(KnowledgeEntry.user_id == user_id)
+    if tag:
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import JSONB
+        stmt = stmt.where(cast(KnowledgeEntry.tags, JSONB).op("?")(tag))
+
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    rows = (await db.execute(stmt.order_by(KnowledgeEntry.updated_at.desc()).limit(limit).offset(offset))).scalars().all()
+
+    return {
+        "entries": [
+            {
+                "id": e.id,
+                "title": e.title,
+                "tags": e.tags or [],
+                "created_by": e.created_by,
+                "updated_at": e.updated_at.isoformat() if e.updated_at else None,
+            }
+            for e in rows
+        ],
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/agent/get/{entry_id}")
+async def agent_brain_get(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Fetch a single brain entry by id (must belong to agent's owner)."""
+    user_id = await _resolve_agent_user(auth, db)
+    entry = await db.get(KnowledgeEntry, entry_id)
+    if not entry or entry.user_id != user_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    # Bump access_count
+    entry.access_count = (entry.access_count or 0) + 1
+    await db.commit()
+
+    return {
+        "id": entry.id,
+        "title": entry.title,
+        "content": entry.content,
+        "tags": entry.tags or [],
+        "created_by": entry.created_by,
+        "updated_by": entry.updated_by,
+        "access_count": entry.access_count,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+        "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
+    }
+
+
+@router.put("/agent/update/{entry_id}")
+async def agent_brain_update(
+    entry_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Update an existing brain entry (must belong to agent's owner). Re-embeds + re-links."""
+    from sqlalchemy import text as sa_text
+
+    user_id = await _resolve_agent_user(auth, db)
+    entry = await db.get(KnowledgeEntry, entry_id)
+    if not entry or entry.user_id != user_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    if "title" in body:
+        title = (body["title"] or "").strip()
+        if not title:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail="title cannot be empty")
+        entry.title = title
+    if "content" in body:
+        entry.content = body["content"] or ""
+    if "tags" in body and isinstance(body["tags"], list):
+        entry.tags = body["tags"]
+    entry.updated_by = auth["agent_id"]
+
+    await db.commit()
+    await db.refresh(entry)
+
+    # Re-embed + re-link
+    try:
+        from app.services.embedding_service import get_embedding_service
+        from app.services.brain_linker import auto_link
+
+        svc = get_embedding_service()
+        if svc.enabled:
+            emb = await svc.embed(f"{entry.title}: {entry.content}")
+            if emb is not None:
+                await db.execute(
+                    sa_text("UPDATE knowledge_entries SET embedding = CAST(:emb AS vector) WHERE id = :id"),
+                    {"emb": str(emb), "id": entry.id},
+                )
+                await db.commit()
+                if user_id:
+                    await auto_link(entry.id, user_id, db)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"brain update embed/link failed: {e}")
+
+    return {"id": entry.id, "title": entry.title, "tags": entry.tags or [], "updated_by": entry.updated_by}
+
+
+@router.delete("/agent/delete/{entry_id}", status_code=200)
+async def agent_brain_delete(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Delete a brain entry (must belong to agent's owner)."""
+    from sqlalchemy import delete as sa_delete
+
+    user_id = await _resolve_agent_user(auth, db)
+    entry = await db.get(KnowledgeEntry, entry_id)
+    if not entry or entry.user_id != user_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    # Remove brain_links pointing to this entry
+    await db.execute(sa_delete(BrainLink).where(
+        or_(BrainLink.source_id == entry_id, BrainLink.target_id == entry_id)
+    ))
+    await db.delete(entry)
+    await db.commit()
+
+    return {"deleted": entry_id}
+
+
+@router.get("/agent/related/{entry_id}")
+async def agent_brain_related(
+    entry_id: int,
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Get semantically related entries for a brain node (must belong to agent's owner)."""
+    user_id = await _resolve_agent_user(auth, db)
+    entry = await db.get(KnowledgeEntry, entry_id)
+    if not entry or entry.user_id != user_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    links = (await db.execute(
+        select(BrainLink).where(
+            or_(BrainLink.source_id == entry_id, BrainLink.target_id == entry_id)
+        ).order_by(BrainLink.similarity.desc()).limit(limit)
+    )).scalars().all()
+
+    related = []
+    for lnk in links:
+        rid = lnk.target_id if lnk.source_id == entry_id else lnk.source_id
+        e = await db.get(KnowledgeEntry, rid)
+        if e:
+            related.append({
+                "id": e.id,
+                "title": e.title,
+                "tags": e.tags or [],
+                "similarity": round(float(lnk.similarity or 0), 4),
+            })
+
+    return {"entry_id": entry_id, "related": related, "total": len(related)}
+
+
 @router.get("/agent/search")
 async def agent_brain_search(
     q: str = Query(""),

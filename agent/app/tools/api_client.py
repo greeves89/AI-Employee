@@ -378,53 +378,122 @@ class OrchestratorAPIClient:
             return f"Approval {approval_id}: DENIED. Reason: {reason}"
         return f"Approval {approval_id}: Status is '{status}'."
 
-    # ── Knowledge Base (knowledge-server.mjs parity) ──
+    # ── Second Brain (full CRUD over the user's unified knowledge graph) ──
 
-    async def knowledge_write(self, params: dict) -> str:
-        """Write to the shared knowledge base (upsert by title)."""
+    async def brain_search(self, params: dict) -> str:
+        query: dict[str, Any] = {"q": params.get("q", ""), "limit": params.get("limit", 10)}
+        if params.get("include_memories"):
+            query["include_memories"] = "true"
+        result = await self._request("GET", "/brain/agent/search", params=query)
+        if isinstance(result, str):
+            return result
+        entries = result.get("entries", [])
+        memories = result.get("memories", [])
+        if not entries and not memories:
+            return f"No results in the Second Brain for \"{params.get('q', '')}\"."
+        mode = result.get("mode", "search")
+        lines = [f"[BRAIN — {mode} | {len(entries)} entries" + (f" + {len(memories)} memories" if memories else "") + "]", ""]
+        for e in entries:
+            sim = f" (sim: {e['similarity']})" if e.get("similarity") is not None else ""
+            lines.append(f"### {e['title']} (id: {e['id']}){sim}")
+            if e.get("tags"):
+                lines.append("Tags: " + ", ".join(e["tags"]))
+            content = (e.get("content") or "")[:600]
+            lines.append(content + ("…" if len(e.get("content") or "") > 600 else ""))
+            lines.append("")
+        if memories:
+            lines.append("---")
+            lines.append("### Related Memories (cross-agent)")
+            for m in memories:
+                lines.append(f"**[{m.get('agent_id')}/{m.get('category')}]** {m.get('key')}: {(m.get('content') or '')[:300]}")
+        return "\n".join(lines)
+
+    async def brain_contribute(self, params: dict) -> str:
         body = {
             "title": params.get("title", ""),
             "content": params.get("content", ""),
             "tags": params.get("tags", []),
         }
-        result = await self._request("POST", "/knowledge/agent/write", json=body)
+        result = await self._request("POST", "/brain/agent/contribute", json=body)
         if isinstance(result, str):
             return result
-        backlinks = result.get("backlinks", [])
-        bl = f", links to: [{', '.join(backlinks)}]" if backlinks else ""
-        return f"Knowledge saved: \"{result.get('title')}\" (id: {result.get('id')}, tags: [{', '.join(result.get('tags', []))}]{bl})"
+        return f"✅ Brain node saved: \"{result.get('title')}\" (id: {result.get('id')}). Auto-linking in progress."
 
-    async def knowledge_search(self, params: dict) -> str:
-        """Search the shared knowledge base (semantic + keyword fallback)."""
-        query: dict[str, Any] = {}
-        if params.get("query"):
-            query["q"] = params["query"]
+    async def brain_get(self, params: dict) -> str:
+        entry_id = params.get("id")
+        if entry_id is None:
+            return "Error: id is required"
+        result = await self._request("GET", f"/brain/agent/get/{int(entry_id)}")
+        if isinstance(result, str):
+            return result
+        lines = [f"### {result.get('title')} (id: {result.get('id')})"]
+        if result.get("tags"):
+            lines.append("Tags: " + ", ".join(result["tags"]))
+        if result.get("created_by"):
+            lines.append(f"Author: {result['created_by']}")
+        if result.get("updated_at"):
+            lines.append(f"Updated: {result['updated_at']}")
+        lines.append("")
+        lines.append(result.get("content") or "")
+        return "\n".join(lines)
+
+    async def brain_list(self, params: dict) -> str:
+        query: dict[str, Any] = {
+            "limit": params.get("limit", 50),
+            "offset": params.get("offset", 0),
+        }
         if params.get("tag"):
             query["tag"] = params["tag"]
-        result = await self._request("GET", "/knowledge/agent/search", params=query)
+        result = await self._request("GET", "/brain/agent/list", params=query)
         if isinstance(result, str):
             return result
         entries = result.get("entries", [])
-        if not entries:
-            return f"No knowledge entries found for \"{params.get('query', '')}\"."
-        mode = result.get("mode", "keyword")
-        lines = [f"Found {result.get('total', 0)} entries via {mode}:", ""]
+        lines = [f"[BRAIN LIST — {len(entries)} of {result.get('total', 0)} entries]", ""]
         for e in entries:
-            sim = f" [{e['similarity']*100:.0f}% match]" if e.get("similarity") else ""
-            lines.append(f"**{e['title']}**{sim} (tags: [{', '.join(e.get('tags', []))}])")
-            lines.append(e.get("content", "")[:300])
-            lines.append("---")
+            tags_str = " ".join(f"#{t}" for t in (e.get("tags") or []))
+            lines.append(f"- **{e['title']}** (id: {e['id']})" + (f" — {tags_str}" if tags_str else ""))
+        if not entries:
+            lines.append("(no entries)")
         return "\n".join(lines)
 
-    async def knowledge_read(self, params: dict) -> str:
-        """Read a specific knowledge entry by title."""
-        title = params.get("title", "")
-        if not title:
-            return "Error: title is required"
-        result = await self._request("GET", f"/knowledge/agent/read/{title}")
+    async def brain_update(self, params: dict) -> str:
+        entry_id = params.get("id")
+        if entry_id is None:
+            return "Error: id is required"
+        body: dict[str, Any] = {}
+        for key in ("title", "content", "tags"):
+            if key in params:
+                body[key] = params[key]
+        result = await self._request("PUT", f"/brain/agent/update/{int(entry_id)}", json=body)
         if isinstance(result, str):
             return result
-        return f"# {result.get('title')}\nTags: [{', '.join(result.get('tags', []))}]\n\n{result.get('content', '')}"
+        return f"✅ Brain entry {result.get('id')} updated: \"{result.get('title')}\". Re-linking in progress."
+
+    async def brain_delete(self, params: dict) -> str:
+        entry_id = params.get("id")
+        if entry_id is None:
+            return "Error: id is required"
+        result = await self._request("DELETE", f"/brain/agent/delete/{int(entry_id)}")
+        if isinstance(result, str):
+            return result
+        return f"🗑️  Brain entry {result.get('deleted')} deleted (and its links)."
+
+    async def brain_related(self, params: dict) -> str:
+        entry_id = params.get("id")
+        if entry_id is None:
+            return "Error: id is required"
+        query = {"limit": params.get("limit", 10)}
+        result = await self._request("GET", f"/brain/agent/related/{int(entry_id)}", params=query)
+        if isinstance(result, str):
+            return result
+        related = result.get("related", [])
+        lines = [f"[BRAIN RELATED — {len(related)} neighbors of entry {result.get('entry_id')}]", ""]
+        for r in related:
+            tags_str = " ".join(f"#{t}" for t in (r.get("tags") or []))
+            lines.append(f"- **{r['title']}** (id: {r['id']}, sim: {r['similarity']})" + (f" — {tags_str}" if tags_str else ""))
+        if not related:
+            lines.append("(no semantic neighbors yet — embedding may be missing)")
+        return "\n".join(lines)
 
     # ── Batch Tasks ──
 

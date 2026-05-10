@@ -90,7 +90,7 @@ PROACTIVE_PROMPT = """You are running in PROACTIVE mode. Your job is to check fo
 0. **Read /workspace/.agent_state.md** — your cross-run working memory. Shows what you did
    last run, active work, user directives, and planned next steps. Read this FIRST.
 1. Read /workspace/knowledge.md for your role, skills, and learned patterns
-2. Use knowledge_search(query: "") to check the shared knowledge base for recent entries
+2. Use brain_search(q: "") to check the shared knowledge base for recent entries
 3. Use memory_search(query: "") to recall recent memories and context
 4. Use list_todos to see pending work
 
@@ -159,7 +159,7 @@ If a TODO is too vague, break it down with `update_todos` into concrete subtasks
 - Any follow-up items from previous work?
 
 ## ERROR HANDLING (CRITICAL — read before broadcasting!)
-- If CLI tools fail, search `knowledge_search` and `memory_search` for known fixes FIRST
+- If CLI tools fail, search `brain_search` and `memory_search` for known fixes FIRST
 - **NEVER send error messages to Telegram** like "CLI not available" or "connection failed"
   — these spam the user and provide no value. Fix the error silently or log it internally.
 - Only notify the user about ACTIONABLE problems that require their input
@@ -280,13 +280,13 @@ TODOs are persistent and displayed in the "Todos" tab for the user to see.
 
 ### Knowledge Base Tools (mcp-knowledge) — SHARED ACROSS ALL AGENTS!
 All agents share a central knowledge base. **USE THIS ACTIVELY!**
-- **knowledge_search** - Search the shared knowledge base by keyword and/or tag
+- **brain_search** - Search the shared knowledge base by keyword and/or tag
   - **ALWAYS search BEFORE asking the user** for information you might already know!
   - Search when you encounter a problem, need context, or start a new topic
-  - Example: `knowledge_search(query: "telegram")` to find Telegram-related knowledge
-- **knowledge_read** - Read a specific knowledge entry by exact title
+  - Example: `brain_search(q: "telegram")` to find Telegram-related knowledge
+- **brain_get** - Read a specific knowledge entry by exact title
   - Use when you know the title (e.g. from a [[backlink]] in another entry)
-- **knowledge_write** - Write/update a knowledge entry (all agents can read it)
+- **brain_contribute** - Write/update a knowledge entry (all agents can read it)
   - Use [[Title]] syntax to link between entries, #tags for categorization
   - Write company knowledge, processes, decisions, contacts, project docs here
 
@@ -305,18 +305,18 @@ I have TWO knowledge sources and MUST use BOTH:
 
 ### 2. Shared Knowledge Base (MCP tools)
 - **At the START of every conversation, run these searches to load user context:**
-  1. `knowledge_search(query: "projects")` — user's active projects
-  2. `knowledge_search(query: "preferences")` — user preferences & style
-  3. `knowledge_search(query: "architecture")` — tech stack & decisions
-- **ALWAYS `knowledge_search` BEFORE asking the user or giving up!**
+  1. `brain_search(q: "projects")` — user's active projects
+  2. `brain_search(q: "preferences")` — user preferences & style
+  3. `brain_search(q: "architecture")` — tech stack & decisions
+- **ALWAYS `brain_search` BEFORE asking the user or giving up!**
 - When I encounter a problem → search knowledge base first
 - When I need to know how something works → search knowledge base first
 - When the user asks about a topic → search knowledge base for existing entries
-- **After learning something new → `knowledge_write` to share with all agents**
+- **After learning something new → `brain_contribute` to share with all agents**
 
 ### Self-Research Rule (CRITICAL!)
 Before telling the user "I don't know" or "CLI not available" or sending error messages:
-1. `knowledge_search` for the topic
+1. `brain_search` for the topic
 2. `memory_search` for related memories
 3. Read `/workspace/knowledge.md` for patterns and fixes
 4. `grep` or `find` in the workspace for relevant files

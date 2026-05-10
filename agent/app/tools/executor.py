@@ -32,8 +32,10 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     # External communication
     "send_telegram": "external_communication",
     "notify_user": "external_communication",
-    # Shared knowledge writes
-    "knowledge_write": "knowledge_write",
+    # Second Brain mutations (write category covers contribute/update/delete)
+    "brain_contribute": "knowledge_write",
+    "brain_update": "knowledge_write",
+    "brain_delete": "knowledge_write",
     # Package installation
     "install_package": "system_config",
 }
@@ -46,7 +48,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
     "git_status", "git_diff",
     "web_search", "web_fetch",
-    "knowledge_search", "knowledge_read",
+    "brain_search", "brain_get", "brain_list", "brain_related",
     "list_team", "list_tasks", "list_todos", "list_schedules",
     "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
     "send_message", "create_task",
@@ -95,14 +97,14 @@ CONCURRENT_SAFE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
     "git_status", "git_diff",
     "web_search", "web_fetch",
-    "memory_search", "knowledge_search", "list_team",
+    "memory_search", "brain_search", "brain_get", "brain_list", "brain_related", "list_team",
     "list_tasks", "list_todos", "list_schedules",
 })
 
 # Subset of concurrent-safe tools whose results are worth caching
 _CACHEABLE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
-    "memory_search", "knowledge_search", "list_team",
+    "memory_search", "brain_search", "brain_list", "list_team",
     "list_tasks", "list_todos", "list_schedules",
 })
 _CACHE_TTL_SECONDS = 120  # 2 minutes (tool result cache)

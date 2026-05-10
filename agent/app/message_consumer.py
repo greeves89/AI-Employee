@@ -279,7 +279,7 @@ class MessageConsumer:
                 context_prefix = rules_prefix + (
                     f"MANDATORY FIRST STEPS — do these BEFORE processing the message:\n"
                     f"1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
-                    f"2. Use knowledge_search (query relevant to this message) to check shared knowledge\n"
+                    f"2. Use brain_search (query relevant to this message) to check shared knowledge\n"
                     f"3. Use memory_search with a focused query AND room=\"agent:{from_name}\" (to find\n"
                     f"   previous context with this agent) OR a project room if this is about a specific\n"
                     f"   project. Room filters improve retrieval precision.\n\n"
