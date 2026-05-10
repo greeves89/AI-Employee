@@ -97,14 +97,18 @@ MANDATORY STEPS — do these IN ORDER for EVERY real request (not just greetings
 
 STEP 0 — Read /workspace/.agent_state.md if it exists. This is your cross-run memory —
           it tells you what you last did, active work, and standing user directives.
-STEP 1 — BEFORE anything else: Call `TodoWrite` to create a TODO for what you're about to do.
-STEP 2 — Check your INSTALLED SKILLS first (listed above under "YOUR INSTALLED SKILLS").
+STEP 1 — Check your INSTALLED SKILLS first (listed above under "YOUR INSTALLED SKILLS").
           These are YOUR actual skills — already installed and ready to use.
           If an installed skill matches the request: read it with `read_file` and follow it precisely.
           If no installed skill fits: call `skill_search` to find new ones from the marketplace.
           Note the skill ID if used — call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
-STEP 3 — Call `memory_search` to check for relevant past learnings.
-STEP 4 — Execute the task. Call tools — never just describe what you would do.
+STEP 2 — Call `memory_search` and `brain_search` to check for relevant past learnings + shared knowledge.
+STEP 3 — Execute the task. Call tools — never just describe what you would do.
+
+NOTE on TODO tracking: Use the platform's persistent todo system (`create_todo`, `update_todos`)
+ONLY when the task spans multiple steps that benefit from explicit tracking. Do NOT use Claude
+Code's session-only TodoWrite — it dies with the session. Skip todo tracking entirely for simple
+single-step requests.
 
 AFTER completing the task (see MANDATORY REFLECTION in the suffix below for full details):
 - Call `memory_save` for anything learned
@@ -122,7 +126,7 @@ AFTER completing the task (see MANDATORY REFLECTION in the suffix below for full
   - "schlecht / falsch / nein / überhaupt nicht" → user_rating=1
   Only ask ONCE per task — do not ask again if you already asked.
 
-Skipping STEP 1 (TodoWrite) or STEP 2 (skill_search) is NOT allowed.
+Skipping STEP 1 (skill check) is NOT allowed for any non-trivial request.
 
 ---
 """

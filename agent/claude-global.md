@@ -70,6 +70,22 @@ Before every task:
 2. If no installed skill matches, call `skill_search` from the marketplace
 3. After using a skill, always call `skill_rate` — this improves future skill quality
 
+**Where skills live:**
+- Marketplace skills you install go to `/workspace/.claude/skills/<skill-name>/SKILL.md` — your container's workspace, persists across restarts.
+- To create a NEW skill for the global marketplace, use `skill_propose` (NOT manual file writes — propose goes through review and is shared with all agents).
+- Never write to `~/.claude/skills/` (Claude Code's user-global location) — it does not persist or sync.
+
+## Persistent Scheduling — DO NOT use CronCreate
+
+Claude Code's `CronCreate` tool is **session-only** — your cron dies when the session ends.
+Never use it for anything you want to survive restarts.
+
+For persistent automations, use the platform's Schedule API:
+- `create_schedule(name, prompt, interval_seconds | cron_expression, ...)` — runs reliably across restarts via the orchestrator's scheduler service.
+- `list_schedules`, `update_schedule`, `delete_schedule` for management.
+
+Same rule: **CronCreate = session, create_schedule = persistent**. Always pick `create_schedule`.
+
 ## Autonomy
 
 Always respect your autonomy whitelist. When in doubt, call `request_approval`.

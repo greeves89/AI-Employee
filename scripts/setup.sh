@@ -109,6 +109,23 @@ until curl -sf http://localhost:8000/health >/dev/null 2>&1; do
 done
 ok "Orchestrator is ready"
 
+# ── 7b. Wait for embedding service (bge-m3 model, ~2.3 GB on first boot) ─────
+info "Waiting for embedding service (bge-m3, semantic search)..."
+info "First boot downloads the model — this takes 1–3 minutes."
+EMB_RETRIES=80  # 80 × 3s = 4 minutes max
+until docker exec ai-employee-orchestrator curl -sf http://embedding-service:8001/healthz >/dev/null 2>&1; do
+    EMB_RETRIES=$((EMB_RETRIES - 1))
+    if [ $EMB_RETRIES -le 0 ]; then
+        warn "Embedding service did not become ready in time. Semantic search will fall back to keyword."
+        warn "Check logs: docker compose logs embedding-service"
+        break
+    fi
+    sleep 3
+done
+if [ $EMB_RETRIES -gt 0 ]; then
+    ok "Embedding service ready (semantic search enabled)"
+fi
+
 # ── 8. Done ───────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════╗"

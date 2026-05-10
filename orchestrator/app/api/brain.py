@@ -485,27 +485,37 @@ async def backfill_brain_links(
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
 async def _brain_search(q: str, user_id: str | None, limit: int, db: AsyncSession) -> dict:
-    """Semantic search within a user's knowledge entries, keyword fallback."""
+    """Semantic search within a user's knowledge entries, keyword fallback.
+
+    user_id=None → admin search across all users (no user_id filter in SQL).
+    """
     from sqlalchemy import text as sa_text, update
 
-    if q and user_id:
+    if q:
         try:
             from app.services.embedding_service import get_embedding_service
             svc = get_embedding_service()
             if svc.enabled:
                 qvec = await svc.embed(q)
                 if qvec is not None:
+                    sql = """
+                        SELECT id, title, content, tags, created_by, updated_by,
+                               access_count, created_at, updated_at,
+                               1 - (embedding <=> CAST(:qvec AS vector)) AS similarity
+                        FROM knowledge_entries
+                        WHERE embedding IS NOT NULL
+                          {user_filter}
+                        ORDER BY embedding <=> CAST(:qvec AS vector)
+                        LIMIT :limit
+                    """
+                    params: dict = {"qvec": str(qvec), "limit": limit}
+                    user_filter = ""
+                    if user_id is not None:
+                        user_filter = "AND user_id = :uid"
+                        params["uid"] = user_id
                     rows = (await db.execute(
-                        sa_text("""
-                            SELECT id, title, content, tags, created_by, updated_by,
-                                   access_count, created_at, updated_at,
-                                   1 - (embedding <=> CAST(:qvec AS vector)) AS similarity
-                            FROM knowledge_entries
-                            WHERE embedding IS NOT NULL AND user_id = :uid
-                            ORDER BY embedding <=> CAST(:qvec AS vector)
-                            LIMIT :limit
-                        """),
-                        {"qvec": str(qvec), "uid": user_id, "limit": limit},
+                        sa_text(sql.format(user_filter=user_filter)),
+                        params,
                     )).mappings().all()
 
                     if rows:

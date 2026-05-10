@@ -11,6 +11,8 @@ OpenAI text-embedding-3-small on the MTEB benchmark (68.8 vs 62.3).
 """
 
 import logging
+import os
+import time
 from typing import Optional
 
 import httpx
@@ -20,41 +22,69 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-LOCAL_SERVICE_URL = "http://embedding-service:8001"
+# Configurable via env (override default container DNS)
+LOCAL_SERVICE_URL = os.environ.get("EMBEDDING_SERVICE_URL", "http://embedding-service:8001")
 EMBEDDING_DIM = 1024  # bge-m3 output dimension
 MAX_INPUT_LENGTH = 8000
-# OpenAI still uses 1536, but we truncate when falling back
-_OPENAI_DIM = 1536
+_AVAILABILITY_TTL = 30.0  # seconds — re-check service health every 30s
+_HEALTH_TIMEOUT = 5.0  # bge-m3 boot takes ~10s, give it a chance
 
 
 class EmbeddingService:
-    """Generates vector embeddings. Thread-safe, reusable."""
+    """Generates vector embeddings. Thread-safe, reusable.
+
+    Health is re-checked every _AVAILABILITY_TTL seconds, so a transient
+    failure (boot, restart, network hiccup) recovers automatically without
+    requiring an orchestrator restart.
+    """
 
     def __init__(self):
         self._local_client: httpx.AsyncClient | None = None
         self._openai_client: httpx.AsyncClient | None = None
         self._local_available: bool | None = None
+        self._local_checked_at: float = 0.0
+        self._fallback_count: int = 0  # how many times we silently degraded
+        self._success_count: int = 0
 
     @property
     def enabled(self) -> bool:
-        """Service is enabled if either the local embedding container OR OpenAI is configured."""
-        return True  # We always try; if both fail, caller handles the None response
+        """We always try the service; caller handles None as fallback signal."""
+        return True
+
+    @property
+    def stats(self) -> dict:
+        """Diagnostic stats — useful for /health endpoints."""
+        return {
+            "local_available": self._local_available,
+            "last_checked_seconds_ago": round(time.time() - self._local_checked_at, 1) if self._local_checked_at else None,
+            "successes": self._success_count,
+            "fallbacks": self._fallback_count,
+            "service_url": LOCAL_SERVICE_URL,
+        }
 
     async def _check_local_available(self) -> bool:
-        """Cache the local-service availability check."""
-        if self._local_available is not None:
+        """Health-check with TTL. Re-verifies every _AVAILABILITY_TTL seconds."""
+        now = time.time()
+        if self._local_available is not None and (now - self._local_checked_at) < _AVAILABILITY_TTL:
             return self._local_available
+
         try:
             client = await self._get_local_client()
-            resp = await client.get("/healthz", timeout=3.0)
-            self._local_available = resp.status_code == 200
-            if self._local_available:
-                logger.info("[Embedding] Local embedding service is UP (bge-m3)")
-            else:
-                logger.warning(f"[Embedding] Local service returned {resp.status_code}")
+            resp = await client.get("/healthz", timeout=_HEALTH_TIMEOUT)
+            new_state = resp.status_code == 200
+            # Log only on state transitions to avoid spam
+            if new_state != self._local_available:
+                if new_state:
+                    logger.info(f"[Embedding] Local service UP at {LOCAL_SERVICE_URL} (bge-m3)")
+                else:
+                    logger.warning(f"[Embedding] Local service returned HTTP {resp.status_code} — semantic search will fall back to keyword")
+            self._local_available = new_state
         except Exception as e:
+            if self._local_available is not False:
+                logger.warning(f"[Embedding] Local service unreachable at {LOCAL_SERVICE_URL}: {e} — semantic search will fall back to keyword (will retry in {_AVAILABILITY_TTL}s)")
             self._local_available = False
-            logger.info(f"[Embedding] Local service not reachable: {e}")
+        finally:
+            self._local_checked_at = now
         return self._local_available
 
     async def _get_local_client(self) -> httpx.AsyncClient:
@@ -93,15 +123,17 @@ class EmbeddingService:
                 client = await self._get_local_client()
                 resp = await client.post("/embed", json={"text": text})
                 if resp.status_code == 200:
+                    self._success_count += 1
                     return resp.json()["embedding"]
                 else:
                     logger.warning(f"[Embedding] Local service returned {resp.status_code}")
             except Exception as e:
                 logger.warning(f"[Embedding] Local call failed: {e}")
-                self._local_available = None  # re-check next time
+                self._local_available = None  # force re-check next call
 
         # 2. Cloud fallback would require dim conversion — skip for now.
         # We've committed to 1024-dim column in the DB, so we can't use OpenAI's 1536.
+        self._fallback_count += 1
         return None
 
     async def embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
