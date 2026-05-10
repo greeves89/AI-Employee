@@ -314,9 +314,10 @@ async def agent_write(
     await db.commit()
     await db.refresh(entry)
 
-    # Auto-embed for semantic search
+    # Auto-embed + Second Brain auto-link
     try:
         from app.services.embedding_service import get_embedding_service
+        from app.services.brain_linker import auto_link
         from sqlalchemy import text as sa_text
         svc = get_embedding_service()
         if svc.enabled:
@@ -328,9 +329,11 @@ async def agent_write(
                     {"emb": str(emb), "id": entry.id},
                 )
                 await db.commit()
+                if owner_user_id:
+                    await auto_link(entry.id, owner_user_id, db)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Failed to embed knowledge entry: {e}")
+        logging.getLogger(__name__).warning(f"Failed to embed/link knowledge entry: {e}")
 
     return _to_response(entry)
 

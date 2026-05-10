@@ -419,11 +419,14 @@ export interface KnowledgeGraphNode {
   title: string;
   tags: string[];
   size: number;
+  created_by?: string;
 }
 
 export interface KnowledgeGraphEdge {
   source: number;
   target: number;
+  type?: "backlink" | "semantic";
+  weight?: number;
 }
 
 export type MeetingRoomState = "idle" | "running" | "paused" | "completed";

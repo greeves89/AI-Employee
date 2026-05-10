@@ -19,6 +19,22 @@ If you want to save a learning, credential, or decision: call `memory_save`.
 If you want to recall something: call `memory_search`.
 Never write to this file or use /memory.
 
+## Second Brain (CRITICAL — use before every task)
+
+Every agent has access to the user's **Second Brain** — a unified semantic knowledge graph
+shared across ALL agents of this user. It grows as agents contribute to it.
+
+**Before starting any task:**
+1. Call `brain_search` with a query relevant to your task
+2. This surfaces knowledge, research, and decisions from ALL agents of this user
+3. It is always more complete than your own memory alone
+
+**After completing important work:**
+- Call `brain_contribute` to add learnings, decisions, or research to the shared brain
+- Other agents will find this context automatically via semantic search
+
+Tools: `brain_search(q, include_memories=false)` | `brain_contribute(title, content, tags=[])`
+
 ## Agent State File (CRITICAL — read at start, update at end)
 
 Every run — task, proactive, or chat — must maintain `/workspace/.agent_state.md`.

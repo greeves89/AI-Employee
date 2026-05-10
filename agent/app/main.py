@@ -144,6 +144,15 @@ def register_mcp_servers() -> None:
                 "AGENT_TOKEN": settings.agent_token,
             },
         },
+        "brain": {
+            "command": "node",
+            "args": ["/opt/mcp/brain-server.mjs"],
+            "env": {
+                "ORCHESTRATOR_URL": settings.orchestrator_url,
+                "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
+            },
+        },
     }
 
     for name, cfg in builtin_servers.items():

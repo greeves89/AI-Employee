@@ -49,7 +49,9 @@ FIRST STEPS (do these BEFORE starting the actual task):
 0. **Read /workspace/.agent_state.md** if it exists — this is your cross-run working memory.
    It tells you what you last did, active work, and user directives. Check it FIRST.
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
-2. Use knowledge_search (query relevant to this task) to check the shared knowledge base
+2. Use **brain_search** (query relevant to this task) to search the user's Second Brain —
+   the unified knowledge graph shared across ALL agents of this user. This surfaces context
+   from other agents, previous research, and semantically linked knowledge.
 3. Use memory_search with a focused query AND pass `room` to narrow to the current project/area
    (e.g. room="project:<repo-name>/<area>"). Rooms dramatically improve retrieval precision.
 4. Use list_todos to check for pending work items
@@ -182,17 +184,37 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    If this task had ZERO learnings, save one memory with key="current_task", tag_type="transient",
    content="task_clean_run: completed without issues" so we know you reflected.
 
-5. **Update knowledge.md**: Append to these sections in `/workspace/knowledge.md`:
+5. **Contribute to the Second Brain (brain_contribute — MANDATORY for meaningful work)**:
+   Call `brain_contribute` when this task produced ANY of the following:
+   - A **research finding** (market data, trend, analysis, external facts)
+   - A **decision with rationale** (why X was chosen over Y)
+   - A **working process or workflow** (steps that produced a good result)
+   - A **domain insight** (something non-obvious about a topic you now understand better)
+   - A **tool or API capability** discovered during the task
+
+   How to write good brain entries:
+   - **title**: short, searchable noun phrase (e.g. "CoinGecko API rate limits", "Monte Carlo trade sizing formula")
+   - **content**: 2-5 sentences. State the core fact, WHY it matters, and HOW to apply it.
+     Use `[[Other Entry Title]]` syntax to cross-reference related entries.
+   - **tags**: 2-4 specific tags (e.g. ["trading", "risk-management", "coinbase"])
+
+   ❌ Do NOT contribute: task completion confirmations, summaries of what you just did,
+      descriptions of code you wrote (that belongs in code comments), or ephemeral state.
+   ✅ DO contribute: knowledge that will help any agent of this user understand the domain better.
+
+   If this task had zero new knowledge to contribute, skip this step.
+
+6. **Update knowledge.md**: Append to these sections in `/workspace/knowledge.md`:
    - "## Learned Patterns" — new patterns that worked
    - "## Errors & Fixes" — errors + their fixes (so future-you doesn't repeat them)
    Format: `- <situation>: <what to do> (<why>)`
    Keep concise. This file is what you read at the START of every task.
 
-6. **Rate this task (MANDATORY)**: Call `rate_task` with:
+7. **Rate this task (MANDATORY)**: Call `rate_task` with:
    - rating: 1-5 (be honest — 3 means OK, 5 means truly excellent)
    - reflection: ONE sentence about what went well or what to do differently next time
 
-7. **Rate any skill you used (MANDATORY)**: If you used a skill from the marketplace (step 5
+8. **Rate any skill you used (MANDATORY)**: If you used a skill from the marketplace (step 5
    of FIRST STEPS), call `skill_rate` now with:
    - skill_id: the numeric ID of the skill
    - rating: 1-5 (how good was the task outcome?)
@@ -202,7 +224,7 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    This records both the rating AND the usage entry for analytics. The task_id links the usage
    to this specific task — without it the analytics data is incomplete.
 
-8. **Propose a skill (MANDATORY for reusable work)**: Did this task produce something reusable —
+9. **Propose a skill (MANDATORY for reusable work)**: Did this task produce something reusable —
    a workflow, a code pattern, a report template, a process, or any repeatable approach?
    YES → call `skill_propose` (MCP tool) with name, description, content, and category.
    NEVER write a SKILL.md file to disk — only `skill_propose` registers a skill in the marketplace.

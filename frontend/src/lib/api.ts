@@ -1519,6 +1519,10 @@ export async function getKnowledgeGraph(): Promise<{ nodes: KnowledgeGraphNode[]
   return fetchJSON(`${getBase()}/knowledge/graph`);
 }
 
+export async function getBrainGraph(): Promise<{ nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }> {
+  return fetchJSON(`${getBase()}/brain/graph`);
+}
+
 // Audit Logs
 export async function getAuditLogs(params?: {
   agent_id?: string;
