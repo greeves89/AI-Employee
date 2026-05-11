@@ -47,11 +47,23 @@ if ! grep -qE "^API_SECRET_KEY=.{32,}" .env; then
     ok "Generated API_SECRET_KEY"
 fi
 
-# Auto-generate ENCRYPTION_KEY if empty
-if grep -qE "^ENCRYPTION_KEY=\s*$" .env; then
-    ENC_KEY=$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode() + '=')")
-    sed -i.bak "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${ENC_KEY}|" .env && rm -f .env.bak
-    ok "Generated ENCRYPTION_KEY"
+# Auto-generate or repair ENCRYPTION_KEY — must be a valid Fernet key (44 base64 chars)
+CURRENT_ENC=$(grep -E "^ENCRYPTION_KEY=" .env | head -1 | cut -d'=' -f2-)
+NEED_REGEN=0
+if [ -z "$CURRENT_ENC" ]; then
+    NEED_REGEN=1
+elif ! python3 -c "from cryptography.fernet import Fernet; Fernet('$CURRENT_ENC'.encode())" 2>/dev/null; then
+    warn "Existing ENCRYPTION_KEY is invalid — regenerating. Any previously-encrypted secrets become unrecoverable."
+    NEED_REGEN=1
+fi
+if [ "$NEED_REGEN" = "1" ]; then
+    ENC_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    if grep -q "^ENCRYPTION_KEY=" .env; then
+        sed -i.bak "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${ENC_KEY}|" .env && rm -f .env.bak
+    else
+        echo "ENCRYPTION_KEY=${ENC_KEY}" >> .env
+    fi
+    ok "Generated valid ENCRYPTION_KEY (Fernet)"
 fi
 
 # Auto-generate DB_PASSWORD if still default
