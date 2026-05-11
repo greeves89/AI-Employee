@@ -34,6 +34,7 @@ import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
@@ -75,6 +76,8 @@ type TabKey = (typeof tabs)[number]["key"];
 export default function AgentDetailPage() {
   const params = useParams();
   const agentId = params.id as string;
+  const confirm = useConfirm();
+  const toast = useToast();
   const [agent, setAgent] = useState<Agent | null>(null);
   const { tasks } = useTasks(agentId);
   const [activeTab, setActiveTab] = useState<TabKey>("chat");
@@ -277,10 +280,17 @@ export default function AgentDetailPage() {
 }
 
 function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (agent: Agent) => void }) {
+  const confirm = useConfirm();
   const [updating, setUpdating] = useState(false);
 
   const handleUpdate = async () => {
-    if (!confirm("Update this agent to the latest version? The container will be recreated but all data (knowledge, files, sessions) will be preserved.")) return;
+    const ok = await confirm({
+      title: "Update this agent?",
+      message: "The container will be recreated, but all data (knowledge, files, sessions) will be preserved.",
+      variant: "warning",
+      confirmLabel: "Update",
+    });
+    if (!ok) return;
     setUpdating(true);
     try {
       const updated = await api.updateAgent(agentId);
@@ -1965,6 +1975,8 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
 type FileSortMode = "name" | "date" | "size";
 
 function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 0 }: { agentId: string; diskUsageMb?: number; diskLimitMb?: number; diskPercent?: number }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
@@ -2019,7 +2031,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
       await api.uploadFiles(agentId, "/workspace", files);
       await refreshAll();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Upload failed");
+      toast.error("Upload failed", e instanceof Error ? e.message : undefined);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2032,7 +2044,13 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   };
 
   const handleDelete = async (path: string, name: string) => {
-    if (!confirm(`"${name}" löschen?`)) return;
+    const ok = await confirm({
+      title: `"${name}" löschen?`,
+      message: "Diese Datei wird unwiderruflich entfernt.",
+      variant: "destructive",
+      confirmLabel: "Löschen",
+    });
+    if (!ok) return;
     try {
       await api.deleteFile(agentId, path);
       setTreeData((prev) => {
@@ -2045,7 +2063,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
       });
       if (selectedFile?.path === path) setSelectedFile(null);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Löschen fehlgeschlagen");
+      toast.error("Löschen fehlgeschlagen", e instanceof Error ? e.message : undefined);
     }
   };
 

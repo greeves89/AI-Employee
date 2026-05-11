@@ -13,6 +13,7 @@ import { Header } from "@/components/layout/header";
 import { TemplateManager } from "@/components/settings/template-manager";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Settings, ModelProvider } from "@/lib/types";
 
 // ── Model options per provider ──────────────────────────────
@@ -110,6 +111,7 @@ const PROVIDERS: {
 ];
 
 export default function SettingsPage() {
+  const confirm = useConfirm();
   const [settings, setSettings] = useState<Settings | null>(null);
   // Provider
   const [provider, setProvider] = useState<ModelProvider>("anthropic");
@@ -189,7 +191,13 @@ export default function SettingsPage() {
   };
 
   const handleRemoveLicense = async () => {
-    if (!confirm("License wirklich entfernen? Enterprise-Features werden deaktiviert.")) return;
+    const ok = await confirm({
+      title: "License entfernen?",
+      message: "Enterprise-Features werden deaktiviert.",
+      variant: "destructive",
+      confirmLabel: "Entfernen",
+    });
+    if (!ok) return;
     setLicenseBusy(true);
     try {
       await api.removeLicense();

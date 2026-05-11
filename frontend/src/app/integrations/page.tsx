@@ -10,6 +10,7 @@ import {
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
 import type { McpServerInfo, McpTool } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
@@ -22,6 +23,7 @@ const PROVIDER_ICONS: Record<string, typeof Mail> = {
 };
 
 export default function IntegrationsPage() {
+  const confirm = useConfirm();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -87,7 +89,13 @@ export default function IntegrationsPage() {
   };
 
   const handleDisconnect = async (provider: string) => {
-    if (!confirm(`Disconnect ${provider}? Agents using this integration will lose access.`)) return;
+    const ok = await confirm({
+      title: `Disconnect ${provider}?`,
+      message: "Agents using this integration will lose access.",
+      variant: "destructive",
+      confirmLabel: "Disconnect",
+    });
+    if (!ok) return;
     setDisconnecting(provider);
     try {
       await api.disconnectIntegration(provider);
@@ -333,6 +341,7 @@ export default function IntegrationsPage() {
 
 
 function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "error"; message: string }) => void }) {
+  const confirm = useConfirm();
   const [servers, setServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -390,7 +399,13 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("MCP Server entfernen? Agents muessen neu gestartet werden.")) return;
+    const ok = await confirm({
+      title: "MCP Server entfernen?",
+      message: "Agents müssen neu gestartet werden um die Änderung zu übernehmen.",
+      variant: "destructive",
+      confirmLabel: "Entfernen",
+    });
+    if (!ok) return;
     setDeleting(id);
     try {
       await api.deleteMcpServer(id);

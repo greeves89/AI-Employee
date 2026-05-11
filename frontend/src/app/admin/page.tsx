@@ -36,6 +36,7 @@ import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
@@ -52,6 +53,8 @@ const stateColors: Record<string, string> = {
 
 export default function AdminPage() {
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -134,7 +137,7 @@ export default function AdminPage() {
       await api.updateUser(u.id, { role: newRole });
       await fetchUsers();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update user");
+      toast.error("Failed to update user", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -147,7 +150,7 @@ export default function AdminPage() {
       await api.updateUser(u.id, { is_active: !u.is_active });
       await fetchUsers();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update user");
+      toast.error("Failed to update user", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -155,13 +158,19 @@ export default function AdminPage() {
 
   const handleDeleteUser = async (u: AdminUser) => {
     if (u.id === user?.id) return;
-    if (!confirm(`Delete user "${u.name}" (${u.email})? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete user "${u.name}"?`,
+      message: `${u.email} — this cannot be undone.`,
+      variant: "destructive",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     setActionLoading(u.id);
     try {
       await api.deleteUser(u.id);
       await fetchUsers();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete user");
+      toast.error("Failed to delete user", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -188,7 +197,13 @@ export default function AdminPage() {
   };
 
   const handleRemoveAgent = async (id: string) => {
-    if (!confirm("Remove this agent? This will stop and remove the container.")) return;
+    const ok = await confirm({
+      title: "Remove this agent?",
+      message: "The container will be stopped and removed. This action cannot be undone.",
+      variant: "destructive",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     setActionLoading(id);
     try {
       await api.removeAgent(id);
@@ -261,7 +276,13 @@ export default function AdminPage() {
   };
 
   const handleRevoke = async (agentId: string) => {
-    if (!confirm("Agent-Zuweisung entfernen? Container wird gestoppt.")) return;
+    const ok = await confirm({
+      title: "Agent-Zuweisung entfernen?",
+      message: "Der Container wird gestoppt und die Zuweisung aufgehoben.",
+      variant: "destructive",
+      confirmLabel: "Entfernen",
+    });
+    if (!ok) return;
     setActionLoading(agentId);
     try {
       await api.revokeAssignment(agentId);
@@ -1117,6 +1138,8 @@ function FeedbackTab({
   onUpdate: (feedback: Feedback) => void;
   onDelete: (id: number) => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<number | null>(null);
   const [noteText, setNoteText] = useState("");
@@ -1152,14 +1175,20 @@ function FeedbackTab({
       const result = await api.createGithubIssueFromFeedback(f.id);
       onUpdate(result.feedback);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to create issue");
+      toast.error("Failed to create GitHub issue", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleDelete = async (f: Feedback) => {
-    if (!confirm(`Feedback "${f.title}" wirklich loeschen?`)) return;
+    const ok = await confirm({
+      title: `Feedback "${f.title}" löschen?`,
+      message: "Das Feedback wird unwiderruflich entfernt.",
+      variant: "destructive",
+      confirmLabel: "Löschen",
+    });
+    if (!ok) return;
     setActionLoading(f.id);
     try {
       await api.deleteFeedback(f.id);

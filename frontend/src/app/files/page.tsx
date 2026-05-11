@@ -11,6 +11,7 @@ import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useToast } from "@/components/ui/dialog-provider";
 import type { FileEntry } from "@/lib/types";
 import {
   FilePreview, FilePreviewEmpty,
@@ -29,6 +30,7 @@ const stateColors: Record<string, string> = {
 type SortMode = "name" | "date" | "size";
 
 export default function FilesPage() {
+  const toast = useToast();
   const { agents } = useAgents();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
@@ -108,7 +110,7 @@ export default function FilesPage() {
       await api.uploadFiles(agentId, "/workspace", files);
       await loadDir(agentId, "/workspace");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Upload failed");
+      toast.error("Upload failed", e instanceof Error ? e.message : undefined);
     } finally {
       setUploading(null);
       if (fileInputRef.current) fileInputRef.current.value = "";

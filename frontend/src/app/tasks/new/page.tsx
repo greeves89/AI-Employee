@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useToast } from "@/components/ui/dialog-provider";
 
 const priorityOptions = [
   { value: 0, label: "Low", color: "text-zinc-400 border-zinc-500/20 bg-zinc-500/10" },
@@ -18,6 +19,7 @@ const priorityOptions = [
 
 export default function NewTaskPage() {
   const router = useRouter();
+  const toast = useToast();
   const { agents } = useAgents();
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -66,7 +68,7 @@ export default function NewTaskPage() {
       });
       router.push("/tasks");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to create task");
+      toast.error("Failed to create task", err instanceof Error ? err.message : undefined);
     } finally {
       setSubmitting(false);
     }

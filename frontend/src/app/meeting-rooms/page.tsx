@@ -24,6 +24,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Header } from "@/components/layout/header";
 import * as api from "@/lib/api";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { MeetingRoom, Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,8 @@ const STATE_COLORS: Record<string, string> = {
 
 export default function MeetingRoomsPage() {
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [rooms, setRooms] = useState<MeetingRoom[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,14 +125,20 @@ export default function MeetingRoomsPage() {
       setCustomStages([{ name: "Eröffnung", rounds: 1 }, { name: "Analyse", rounds: 2 }, { name: "Synthese", rounds: 1 }]);
       router.push(`/meeting-rooms/${room.id}`);
     } catch (e) {
-      alert(`Error: ${e}`);
+      toast.error("Meeting room creation failed", String(e));
     } finally {
       setCreating(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this meeting room?")) return;
+    const ok = await confirm({
+      title: "Delete this meeting room?",
+      message: "All session history will be permanently removed.",
+      variant: "destructive",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     setActionLoading(id);
     try {
       await api.deleteMeetingRoom(id);

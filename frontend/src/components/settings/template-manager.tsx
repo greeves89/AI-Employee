@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useConfirm } from "@/components/ui/dialog-provider";
 import type { AgentTemplate } from "@/lib/types";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
@@ -91,6 +92,7 @@ function templateToEditState(t: AgentTemplate): EditState {
 }
 
 export function TemplateManager({ isAdmin }: TemplateManagerProps) {
+  const confirm = useConfirm();
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -182,7 +184,13 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Template wirklich loeschen?")) return;
+    const ok = await confirm({
+      title: "Template löschen?",
+      message: "Diese Aktion kann nicht rückgängig gemacht werden.",
+      variant: "destructive",
+      confirmLabel: "Löschen",
+    });
+    if (!ok) return;
     try {
       await api.deleteTemplate(id);
       setMessage({ type: "success", text: "Template geloescht" });

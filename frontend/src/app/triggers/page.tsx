@@ -10,6 +10,7 @@ import { Header } from "@/components/layout/header";
 import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useToast } from "@/components/ui/dialog-provider";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -31,6 +32,7 @@ const EVENT_PRESETS: Record<string, string[]> = {
 };
 
 export default function TriggersPage() {
+  const toast = useToast();
   const [triggers, setTriggers] = useState<api.EventTrigger[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -77,7 +79,7 @@ export default function TriggersPage() {
         try {
           conditions = JSON.parse(conditionsJson);
         } catch {
-          alert("Payload conditions must be valid JSON");
+          toast.error("Invalid JSON", "Payload conditions must be valid JSON.");
           setCreating(false);
           return;
         }

@@ -10,10 +10,12 @@ import { CreateAgentModal } from "@/components/agents/create-agent-modal";
 import { AgentNetworkView } from "@/components/agents/agent-network-view";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useConfirm } from "@/components/ui/dialog-provider";
 type ViewMode = "grid" | "network";
 
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();
+  const confirm = useConfirm();
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -24,7 +26,13 @@ export default function AgentsPage() {
   const agentsNeedingUpdate = agents.filter((a) => a.update_available);
 
   const handleUpdateAll = async () => {
-    if (!confirm(`${agentsNeedingUpdate.length} Agent(s) auf die neueste Version aktualisieren?`)) return;
+    const ok = await confirm({
+      title: `${agentsNeedingUpdate.length} Agent(s) aktualisieren?`,
+      message: "Alle markierten Agents werden auf die neueste Version aktualisiert. Daten bleiben erhalten.",
+      variant: "warning",
+      confirmLabel: "Update",
+    });
+    if (!ok) return;
     setUpdatingAll(true);
     try {
       await Promise.all(agentsNeedingUpdate.map((a) => api.updateAgent(a.id)));
@@ -45,7 +53,13 @@ export default function AgentsPage() {
   };
 
   const handleStopAll = async () => {
-    if (!confirm("Alle Agents stoppen?")) return;
+    const ok = await confirm({
+      title: "Alle Agents stoppen?",
+      message: "Alle aktuell laufenden Agents werden gestoppt.",
+      variant: "warning",
+      confirmLabel: "Alle stoppen",
+    });
+    if (!ok) return;
     setStoppingAll(true);
     try {
       const running = agents.filter((a) => ["running", "idle", "working"].includes(a.state));
@@ -77,7 +91,13 @@ export default function AgentsPage() {
   };
 
   const handleRemove = async (id: string) => {
-    if (!confirm("Remove this agent? This will stop and remove the container.")) return;
+    const ok = await confirm({
+      title: "Remove this agent?",
+      message: "The container will be stopped and removed. This action cannot be undone.",
+      variant: "destructive",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     setActionLoading(id);
     try {
       await api.removeAgent(id);

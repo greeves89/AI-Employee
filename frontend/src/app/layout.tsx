@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthGuard } from "@/components/auth/auth-guard";
+import { DialogProvider } from "@/components/ui/dialog-provider";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -33,7 +34,9 @@ export default function RootLayout({
         )}
       >
         <ThemeProvider>
-          <AuthGuard>{children}</AuthGuard>
+          <DialogProvider>
+            <AuthGuard>{children}</AuthGuard>
+          </DialogProvider>
         </ThemeProvider>
       </body>
     </html>

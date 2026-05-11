@@ -22,6 +22,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Header } from "@/components/layout/header";
 import * as api from "@/lib/api";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { MeetingRoom, MeetingMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +74,8 @@ const AGENT_DOT_COLORS = [
 export default function MeetingRoomDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
   const roomId = params.id as string;
 
   const [room, setRoom] = useState<MeetingRoom | null>(null);
@@ -143,7 +146,7 @@ export default function MeetingRoomDetailPage() {
       setInitialMessage("");
       await fetchRoom();
     } catch (e) {
-      alert(`Error: ${e}`);
+      toast.error("Could not start meeting", String(e));
     } finally {
       setActionLoading(false);
     }
@@ -155,19 +158,25 @@ export default function MeetingRoomDetailPage() {
       await api.stopMeetingRoom(roomId);
       await fetchRoom();
     } catch (e) {
-      alert(`Error: ${e}`);
+      toast.error("Could not stop meeting", String(e));
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm("Delete this meeting room?")) return;
+    const ok = await confirm({
+      title: "Delete this meeting room?",
+      message: "All session history will be permanently removed.",
+      variant: "destructive",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.deleteMeetingRoom(roomId);
       router.push("/meeting-rooms");
     } catch (e) {
-      alert(`Error: ${e}`);
+      toast.error("Delete failed", String(e));
     }
   };
 

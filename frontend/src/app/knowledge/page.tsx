@@ -15,6 +15,7 @@ import {
   getBrainGraph,
 } from "@/lib/api";
 import type { KnowledgeEntry, KnowledgeTag, KnowledgeGraphNode, KnowledgeGraphEdge } from "@/lib/types";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 
 type ViewMode = "list" | "editor" | "graph";
 
@@ -34,6 +35,8 @@ export default function KnowledgePage() {
   const [graphData, setGraphData] = useState<{ nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] } | null>(null);
   const [previousView, setPreviousView] = useState<ViewMode>("list");
   const [graphPreview, setGraphPreview] = useState<KnowledgeEntry | null>(null);
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -101,16 +104,24 @@ export default function KnowledgePage() {
   }, [isNew, selectedEntry, editTitle, editContent, editTags, refresh]);
 
   const handleDelete = useCallback(async (id: number) => {
-    if (!confirm("Delete this entry?")) return;
+    const ok = await confirm({
+      title: "Delete this entry?",
+      message: "The knowledge entry will be permanently removed.",
+      variant: "destructive",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await deleteKnowledgeEntry(id);
       setViewMode("list");
       setSelectedEntry(null);
+      toast.success("Entry deleted");
       refresh();
     } catch (e) {
       console.error("Failed to delete:", e);
+      toast.error("Failed to delete entry");
     }
-  }, [refresh]);
+  }, [refresh, confirm, toast]);
 
   const openGraph = useCallback(async () => {
     try {
