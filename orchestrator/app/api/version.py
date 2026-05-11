@@ -149,7 +149,23 @@ GITHUB_CHANGELOG_URL = (
 
 
 async def _fetch_changelog_md(gh_token: str) -> str | None:
-    """Fetch CHANGELOG.md from GitHub."""
+    """Read CHANGELOG.md — prefer local file (baked into orchestrator image), fallback to GitHub."""
+    import pathlib
+
+    # 1. Local CHANGELOG.md (source of truth for self-hosted setups)
+    local_candidates = [
+        pathlib.Path("/CHANGELOG.md"),                                     # Docker: copied to image root
+        pathlib.Path(__file__).parent.parent.parent / "CHANGELOG.md",     # Local dev: repo root
+        pathlib.Path(__file__).parent.parent / "CHANGELOG.md",            # Fallback
+    ]
+    for p in local_candidates:
+        try:
+            if p.exists():
+                return p.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Local CHANGELOG.md read at {p} failed: {e}")
+
+    # 2. GitHub fallback (for installations without bundled CHANGELOG.md)
     headers = {"Accept": "text/plain"}
     if gh_token:
         headers["Authorization"] = f"Bearer {gh_token}"
@@ -159,7 +175,7 @@ async def _fetch_changelog_md(gh_token: str) -> str | None:
             if resp.status_code == 200:
                 return resp.text
     except Exception as e:
-        logger.debug(f"CHANGELOG.md fetch failed: {e}")
+        logger.debug(f"CHANGELOG.md GitHub fetch failed: {e}")
     return None
 
 

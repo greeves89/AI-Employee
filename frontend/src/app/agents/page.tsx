@@ -20,6 +20,7 @@ export default function AgentsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [stoppingAll, setStoppingAll] = useState(false);
+  const [startingAll, setStartingAll] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
   const [updatingAgent, setUpdatingAgent] = useState<string | null>(null);
 
@@ -67,6 +68,25 @@ export default function AgentsPage() {
       await refresh();
     } finally {
       setStoppingAll(false);
+    }
+  };
+
+  const handleStartAll = async () => {
+    const stopped = agents.filter((a) => ["stopped", "created", "error"].includes(a.state));
+    if (stopped.length === 0) return;
+    const ok = await confirm({
+      title: `${stopped.length} Agent(s) starten?`,
+      message: "Alle gestoppten Agents werden gestartet.",
+      variant: "default",
+      confirmLabel: "Alle starten",
+    });
+    if (!ok) return;
+    setStartingAll(true);
+    try {
+      await Promise.all(stopped.map((a) => api.startAgent(a.id)));
+      await refresh();
+    } finally {
+      setStartingAll(false);
     }
   };
 
@@ -147,6 +167,18 @@ export default function AgentsPage() {
               >
                 {updatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}
                 Update All ({agentsNeedingUpdate.length})
+              </button>
+            )}
+
+            {/* Start All */}
+            {agents.some((a) => ["stopped", "created", "error"].includes(a.state)) && (
+              <button
+                onClick={handleStartAll}
+                disabled={startingAll}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-all duration-200"
+              >
+                {startingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Start All
               </button>
             )}
 

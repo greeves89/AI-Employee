@@ -549,6 +549,13 @@ async def remove_agent(
         return {"status": "removed", "agent_id": agent_id}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(f"Failed to remove agent {agent_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to remove agent: {type(e).__name__}: {e}",
+        )
 
 
 @router.get("/{agent_id}/stats")

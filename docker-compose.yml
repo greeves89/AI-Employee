@@ -138,6 +138,7 @@ services:
     volumes:
       - ./orchestrator:/app
       - ./VERSION:/VERSION:ro
+      - ./CHANGELOG.md:/CHANGELOG.md:ro
       - ai-employee-shared:/shared
       - ${HOME}/.ai-employee:/host-auth:ro
     deploy:

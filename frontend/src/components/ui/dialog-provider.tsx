@@ -172,14 +172,15 @@ function ConfirmDialog({ pending, onClose }: { pending: PendingConfirm | null; o
               />
             </Dialog.Overlay>
             <Dialog.Content asChild>
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 8 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 8 }}
-                transition={{ duration: 0.18 }}
-                className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl shadow-black/40 outline-none"
-              >
-                <div className="p-6">
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                  transition={{ duration: 0.18 }}
+                  className="pointer-events-auto w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl shadow-black/40 outline-none"
+                >
+                  <div className="p-6">
                   <div className="flex items-start gap-4">
                     <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", style.iconBg)}>
                       <Icon className={cn("h-5 w-5", style.iconColor)} />
@@ -212,8 +213,9 @@ function ConfirmDialog({ pending, onClose }: { pending: PendingConfirm | null; o
                       {opts?.confirmLabel ?? style.defaultLabel}
                     </button>
                   </div>
-                </div>
-              </motion.div>
+                  </div>
+                </motion.div>
+              </div>
             </Dialog.Content>
           </Dialog.Portal>
         )}

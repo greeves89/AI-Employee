@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from docker.errors import APIError, NotFound
-from sqlalchemy import delete as sql_delete, select
+from sqlalchemy import delete as sql_delete, select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -1202,7 +1202,19 @@ class AgentManager:
             session_vol = config.get("session_volume")
             if session_vol:
                 self.docker.remove_volume(session_vol)
-        # Delete all schedules tied to this agent (FK constraint)
+        # Clear/delete FK references before deleting the agent
+        from app.models.task import Task
+        from app.models.task_rating import TaskRating
+
+        # Tasks: keep history but unlink (agent_id is nullable)
+        await self.db.execute(
+            sql_update(Task).where(Task.agent_id == agent_id).values(agent_id=None)
+        )
+        # Task ratings: delete (not nullable)
+        await self.db.execute(
+            sql_delete(TaskRating).where(TaskRating.agent_id == agent_id)
+        )
+        # Schedules: delete (already had FK constraint)
         await self.db.execute(
             sql_delete(Schedule).where(Schedule.agent_id == agent_id)
         )
