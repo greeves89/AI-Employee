@@ -718,15 +718,16 @@ class AgentManager:
             except Exception as e:
                 logger.warning(f"Could not initialize agent files: {e}")
         else:
-            # Custom LLM: full workspace setup (same as Claude Code for parity)
+            # Custom LLM: write as AGENT.md (model-agnostic name — CLAUDE.md is
+            # Claude Code convention and confuses GPT/Gemini/Llama users).
             try:
                 self.docker.write_file_in_container(
-                    container.id, "/workspace/CLAUDE.md", claude_md
+                    container.id, "/workspace/AGENT.md", claude_md
                 )
                 self.docker.write_file_in_container(
                     container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
                 )
-                logger.info(f"Initialized CLAUDE.md + knowledge.md for custom_llm agent {agent_id}")
+                logger.info(f"Initialized AGENT.md + knowledge.md for custom_llm agent {agent_id}")
             except Exception as e:
                 logger.warning(f"Could not initialize agent files: {e}")
 
@@ -960,15 +961,24 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not update team registry: {e}")
 
-        # 5b. Refresh CLAUDE.md with latest DEFAULT_CLAUDE_MD (picks up any updates)
+        # 5b. Refresh instructions file with latest DEFAULT_CLAUDE_MD (CLAUDE.md for
+        # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
             fresh_claude_md = DEFAULT_CLAUDE_MD.replace(
                 "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
             ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
-            self.docker.write_file_in_container(container.id, "/workspace/CLAUDE.md", fresh_claude_md)
+            mode = config.get("mode", "claude_code")
+            target_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+            self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
+            # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
+            if mode != "claude_code":
+                try:
+                    self.docker.exec_in_container(container.id, ["rm", "-f", "/workspace/CLAUDE.md"])
+                except Exception:
+                    pass
         except Exception as e:
-            logger.warning(f"Could not refresh CLAUDE.md for agent {agent_id}: {e}")
+            logger.warning(f"Could not refresh instructions file for agent {agent_id}: {e}")
 
         # 6. Update DB
         agent.container_id = container.id

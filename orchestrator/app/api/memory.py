@@ -622,7 +622,12 @@ async def list_agent_memories(
     if hasattr(user, "role"):
         from app.models.user import UserRole
         from app.models.agent import Agent
-        if user.role != UserRole.ADMIN:
+        # Agent calling for its own memories — allowed
+        if user.role == "agent":
+            if user.id != agent_id:
+                raise HTTPException(status_code=403, detail="Agent can only list its own memories")
+        elif user.role != UserRole.ADMIN:
+            # User caller: must own the agent
             agent_obj = await db.get(Agent, agent_id)
             if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
                 raise HTTPException(status_code=403, detail="Access denied")
