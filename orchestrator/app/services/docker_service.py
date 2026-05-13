@@ -161,23 +161,25 @@ class DockerService:
         }
 
     def get_workspace_disk_usage(self, container_id: str, limit_gb: float) -> dict | None:
-        """Return /workspace disk usage stats for a container."""
+        """Return /workspace disk usage stats for a container.
+
+        Uses `du -sm /workspace` so the number reflects ONLY the workspace
+        directory's actual size (excluding bind-mounts and other filesystems).
+        Percent is calculated against the configured quota limit, capped at 100%.
+        """
         try:
             container = self.client.containers.get(container_id)
             exit_code, output = container.exec_run(
-                ["df", "-BM", "--output=used,avail", "/workspace"],
+                ["du", "-sm", "--exclude=.cache", "/workspace"],
                 demux=True,
             )
             stdout = output[0].decode("utf-8", errors="replace") if output[0] else ""
-            lines = [l for l in stdout.strip().splitlines() if l.strip() and not l.startswith("Used")]
-            if not lines:
+            line = stdout.strip().splitlines()[0] if stdout.strip() else ""
+            if not line:
                 return None
-            parts = lines[0].split()
-            used_mb = float(parts[0].rstrip("M"))
-            avail_mb = float(parts[1].rstrip("M"))
-            limit_mb = limit_gb * 1024
-            total_mb = used_mb + avail_mb
-            disk_percent = round((used_mb / max(limit_mb, total_mb, 1)) * 100, 2)
+            used_mb = float(line.split()[0])
+            limit_mb = max(limit_gb * 1024, 1)
+            disk_percent = round(min(used_mb / limit_mb * 100, 100), 2)
             return {
                 "disk_usage_mb": round(used_mb, 2),
                 "disk_limit_mb": round(limit_mb, 2),

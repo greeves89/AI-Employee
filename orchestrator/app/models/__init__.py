@@ -31,6 +31,8 @@ from app.models.autonomy_preset_rule import AutonomyPresetRule
 from app.models.url_allowlist import UrlAllowlistTemplate, UrlAllowlistTemplateEntry, AgentUrlAllowlist
 from app.models.user_profile import UserProfile, UserProfileEvent
 from app.models.agent_secret import AgentSecret, AgentSecretAssignment, SecretType
+from app.models.user_mount_access import UserMountAccess
+from app.models.custom_role import CustomRole
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -54,4 +56,5 @@ __all__ = [
     "UrlAllowlistTemplate", "UrlAllowlistTemplateEntry", "AgentUrlAllowlist",
     "UserProfile", "UserProfileEvent",
     "AgentSecret", "AgentSecretAssignment", "SecretType",
+    "UserMountAccess", "CustomRole",
 ]

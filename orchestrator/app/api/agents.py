@@ -300,6 +300,7 @@ async def create_agent(
     data: AgentCreate,
     user=Depends(require_manager),
     manager: AgentManager = Depends(_get_agent_manager),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         # Validate: custom_llm mode requires llm_config
@@ -308,6 +309,35 @@ async def create_agent(
                 status_code=422,
                 detail="llm_config is required when mode is 'custom_llm'",
             )
+
+        # Role-based permission checks (skip for setup-mode anonymous user)
+        if user.id != "__anonymous__":
+            from app.core.permissions import (
+                get_effective_permissions,
+                can_use_llm_provider,
+            )
+            from sqlalchemy import select, func
+            from app.models.agent import Agent as _Agent
+
+            perms = await get_effective_permissions(user, db)
+            # 1) Max agents
+            max_agents = perms.get("max_agents")
+            if max_agents is not None:
+                count = (await db.execute(
+                    select(func.count(_Agent.id)).where(_Agent.user_id == user.id)
+                )).scalar() or 0
+                if count >= max_agents:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Agent-Limit erreicht ({max_agents}). Bitte einen bestehenden Agent löschen.",
+                    )
+            # 2) LLM provider
+            llm_type = data.llm_config.provider_type if data.llm_config else None
+            if not can_use_llm_provider(perms, llm_type):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                )
 
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
@@ -531,6 +561,58 @@ async def update_agent_budget(
         agent.budget_usd = body.budget_usd
         await db.commit()
         return {"agent_id": agent_id, "budget_usd": agent.budget_usd, "status": "updated"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.patch("/{agent_id}/idle-stop")
+async def update_agent_idle_stop(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set the per-agent idle-stop minutes (capped at the admin-global maximum).
+
+    Body: {"idle_stop_minutes": int | null}
+    null/0 → no per-agent override (still subject to global limit if set).
+    """
+    await _check_owner(agent_id, user, db)
+    from app.models.platform_settings import PlatformSettings
+
+    raw = body.get("idle_stop_minutes")
+    try:
+        minutes = int(raw) if raw not in (None, "") else 0
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="idle_stop_minutes must be an integer")
+    if minutes < 0:
+        raise HTTPException(status_code=422, detail="idle_stop_minutes must be >= 0")
+
+    # Cap at global admin maximum (if set)
+    ps = await db.get(PlatformSettings, "max_idle_minutes")
+    try:
+        global_max = int(ps.value) if ps and ps.value else 0
+    except Exception:
+        global_max = 0
+    if global_max > 0 and minutes > global_max:
+        raise HTTPException(
+            status_code=422,
+            detail=f"idle_stop_minutes ({minutes}) exceeds global maximum ({global_max})",
+        )
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        if minutes == 0:
+            cfg.pop("idle_stop_minutes", None)
+        else:
+            cfg["idle_stop_minutes"] = minutes
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {"agent_id": agent_id, "idle_stop_minutes": minutes if minutes > 0 else None}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -1169,14 +1251,34 @@ async def update_agent_mounts(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Assign volume mounts to an agent (labels from admin catalog) and restart."""
+    """Assign volume mounts to an agent (labels from admin catalog) and restart.
+
+    Non-admin users may only assign mounts they have been granted access to via
+    user_mount_access. Admins can assign any catalog mount.
+    """
     await _check_owner(agent_id, user, db)
     from app.core.mounts import parse_mount_catalog
+    from app.models.user import UserRole
+    from app.models.user_mount_access import UserMountAccess
+
     catalog = parse_mount_catalog(settings.agent_mount_catalog)
     new_mounts: list[str] = body.get("mounts", [])
     unknown = [m for m in new_mounts if m not in catalog]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
+
+    # Non-admin: enforce per-user grants
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        grants = (await db.execute(
+            select(UserMountAccess).where(UserMountAccess.user_id == user.id)
+        )).scalars().all()
+        granted_labels = {g.mount_label for g in grants}
+        denied = [m for m in new_mounts if m not in granted_labels]
+        if denied:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access in /admin → User → Mount Permissions.",
+            )
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}

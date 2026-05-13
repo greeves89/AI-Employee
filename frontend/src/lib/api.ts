@@ -156,6 +156,90 @@ export async function getAgentMountCatalog(): Promise<{ mounts: MountCatalogEntr
   return fetchJSON(`${getBase()}/settings/agent-mounts`);
 }
 
+export interface MountAccessGrant {
+  mount_label: string;
+  mode: "ro" | "rw";
+}
+
+export async function getUserMountAccess(userId: string): Promise<{ grants: MountAccessGrant[] }> {
+  return fetchJSON(`${getBase()}/settings/agent-mounts/access/${userId}`);
+}
+
+export async function setUserMountAccess(userId: string, grants: MountAccessGrant[]): Promise<{ user_id: string; grants: MountAccessGrant[] }> {
+  return fetchJSON(`${getBase()}/settings/agent-mounts/access/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify({ grants }),
+  });
+}
+
+export async function getIdleStopMax(): Promise<{ max_idle_minutes: number }> {
+  return fetchJSON(`${getBase()}/settings/idle-stop`);
+}
+
+export async function setIdleStopMax(max_idle_minutes: number): Promise<{ max_idle_minutes: number }> {
+  return fetchJSON(`${getBase()}/settings/idle-stop`, {
+    method: "PUT",
+    body: JSON.stringify({ max_idle_minutes }),
+  });
+}
+
+export async function setAgentIdleStop(agentId: string, idle_stop_minutes: number): Promise<{ agent_id: string; idle_stop_minutes: number | null }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/idle-stop`, {
+    method: "PATCH",
+    body: JSON.stringify({ idle_stop_minutes }),
+  });
+}
+
+export interface RolePermissions {
+  max_agents?: number | null;
+  template_ids?: number[] | null;
+  llm_providers?: string[] | null;
+  mount_labels?: string[] | null;
+  url_host_patterns?: string[] | null;
+  menu_paths?: string[] | null;
+}
+
+export interface CustomRole {
+  id: number;
+  name: string;
+  description: string | null;
+  permissions: RolePermissions;
+  is_system?: boolean;
+}
+
+export async function listRoles(): Promise<{ roles: CustomRole[] }> {
+  return fetchJSON(`${getBase()}/roles/`);
+}
+
+export async function createRole(name: string, description: string, permissions: RolePermissions): Promise<CustomRole> {
+  return fetchJSON(`${getBase()}/roles/`, {
+    method: "POST",
+    body: JSON.stringify({ name, description, permissions }),
+  });
+}
+
+export async function updateRole(id: number, body: { name?: string; description?: string; permissions?: RolePermissions }): Promise<CustomRole> {
+  return fetchJSON(`${getBase()}/roles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteRole(id: number): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/roles/${id}`, { method: "DELETE" });
+}
+
+export async function assignUserRole(userId: string, custom_role_id: number | null): Promise<{ user_id: string; custom_role_id: number | null }> {
+  return fetchJSON(`${getBase()}/roles/users/${userId}/assign`, {
+    method: "PUT",
+    body: JSON.stringify({ custom_role_id }),
+  });
+}
+
+export async function getMyPermissions(): Promise<{ permissions: RolePermissions; custom_role_id: number | null }> {
+  return fetchJSON(`${getBase()}/roles/me/permissions`);
+}
+
 export async function getAgentMounts(agentId: string): Promise<{ agent_id: string; mounts: string[] }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/mounts`);
 }

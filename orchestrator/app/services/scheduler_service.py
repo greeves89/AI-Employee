@@ -33,6 +33,7 @@ class SchedulerService:
         self.docker = docker_service
         self._gc_counter = 0
         self._feeds_counter = 0
+        self._idle_stop_counter = 0
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -51,6 +52,15 @@ class SchedulerService:
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
                     await self._gc_expired_tasks()
+                self._idle_stop_counter += 30
+                if self._idle_stop_counter >= 300:  # every 5 min
+                    self._idle_stop_counter = 0
+                    try:
+                        n = await self._stop_idle_agents()
+                        if n > 0:
+                            print(f"[Scheduler] IdleStop: stopped {n} idle agent(s)")
+                    except Exception as e:
+                        print(f"[Scheduler] IdleStop error: {e}")
                 self._feeds_counter += 30
                 if self._feeds_counter >= 300:  # every 5 min
                     self._feeds_counter = 0
@@ -203,6 +213,75 @@ class SchedulerService:
             f"[Scheduler] {schedule.name} triggered task {task.id}, "
             f"next run at {schedule.next_run_at.isoformat()}"
         )
+
+
+    async def _stop_idle_agents(self) -> int:
+        """Stop agents that have been idle longer than their configured limit.
+
+        Resolution:
+          - Global max via PlatformSettings key 'max_idle_minutes' (admin)
+          - Per-agent override via agent.config['idle_stop_minutes'] (user)
+          - Effective limit = min(per-agent, global). If neither set → no auto-stop.
+
+        Idle is measured via agent.updated_at (TimestampMixin bumps it on any DB
+        update — state changes, config edits, task assignments).
+        """
+        from datetime import datetime, timezone, timedelta
+        from sqlalchemy import select
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent, AgentState
+        from app.models.platform_settings import PlatformSettings
+
+        stopped = 0
+        async with async_session_factory() as db:
+            ps = await db.get(PlatformSettings, "max_idle_minutes")
+            try:
+                global_max = int(ps.value) if ps and ps.value else None
+            except Exception:
+                global_max = None
+            if global_max is not None and global_max <= 0:
+                global_max = None
+
+            running_states = (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING)
+            agents = (await db.execute(
+                select(Agent).where(Agent.state.in_(running_states))
+            )).scalars().all()
+
+            now = datetime.now(timezone.utc)
+            from app.core.agent_manager import AgentManager
+            if not self.docker:
+                return 0
+            mgr = AgentManager(db, self.docker)
+
+            for agent in agents:
+                cfg = agent.config or {}
+                per_agent = cfg.get("idle_stop_minutes")
+                try:
+                    per_agent = int(per_agent) if per_agent else None
+                except Exception:
+                    per_agent = None
+
+                candidates = [v for v in (per_agent, global_max) if v and v > 0]
+                if not candidates:
+                    continue
+                limit_min = min(candidates)
+
+                last_update = agent.updated_at
+                if last_update and last_update.tzinfo is None:
+                    last_update = last_update.replace(tzinfo=timezone.utc)
+                if not last_update:
+                    continue
+
+                idle_for = now - last_update
+                if idle_for > timedelta(minutes=limit_min):
+                    try:
+                        await mgr.stop_agent(agent.id)
+                        stopped += 1
+                        print(f"[IdleStop] {agent.id} ({agent.name}) idle for {idle_for} > {limit_min}min — stopped")
+                    except Exception as e:
+                        print(f"[IdleStop] Failed to stop {agent.id}: {e}")
+
+        return stopped
 
 
     async def _execute_meeting_schedule(self, db: AsyncSession, schedule: Schedule) -> None:

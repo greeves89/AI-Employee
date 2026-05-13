@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -25,6 +25,10 @@ class User(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.MEMBER)
+    # Optional override — if set, custom_role.permissions wins over the role enum defaults
+    custom_role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("custom_roles.id", ondelete="SET NULL"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sso_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     sso_subject: Mapped[str | None] = mapped_column(String, nullable=True)

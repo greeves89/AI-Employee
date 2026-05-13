@@ -37,6 +37,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
@@ -56,6 +57,7 @@ export default function AdminPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
+  const [mountUserId, setMountUserId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -442,6 +444,13 @@ export default function AdminPage() {
                               ) : (
                                 <ToggleLeft className="h-4 w-4" />
                               )}
+                            </button>
+                            <button
+                              onClick={() => setMountUserId(u.id)}
+                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              title="Mount-Permissions"
+                            >
+                              <Box className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u)}
@@ -860,6 +869,14 @@ export default function AdminPage() {
           </motion.div>
         </div>
       )}
+
+      {mountUserId && (
+        <MountPermissionsModal
+          userId={mountUserId}
+          userName={users.find((u) => u.id === mountUserId)?.name}
+          onClose={() => setMountUserId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -877,9 +894,39 @@ function BudgetTab({
   loading: boolean;
   onBudgetChange: (agentId: string, budget: number | null) => void;
 }) {
+  const toast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  // Idle-Stop global setting
+  const [idleMax, setIdleMax] = useState<number>(0);
+  const [idleEditValue, setIdleEditValue] = useState<string>("");
+  const [idleSaving, setIdleSaving] = useState(false);
+
+  useEffect(() => {
+    api.getIdleStopMax().then((r) => {
+      setIdleMax(r.max_idle_minutes);
+      setIdleEditValue(String(r.max_idle_minutes || 0));
+    }).catch(() => {});
+  }, []);
+
+  const handleIdleSave = async () => {
+    setIdleSaving(true);
+    try {
+      const minutes = parseInt(idleEditValue || "0", 10);
+      const r = await api.setIdleStopMax(minutes);
+      setIdleMax(r.max_idle_minutes);
+      toast.success(r.max_idle_minutes > 0
+        ? `Auto-Stop nach ${r.max_idle_minutes} min Idle aktiviert`
+        : "Auto-Stop deaktiviert"
+      );
+    } catch (e) {
+      toast.error("Konnte Idle-Stop nicht speichern", String(e));
+    } finally {
+      setIdleSaving(false);
+    }
+  };
 
   const totalCost = overview?.cost.total_usd ?? 0;
 
@@ -932,6 +979,38 @@ function BudgetTab({
 
   return (
     <div className="space-y-6">
+      {/* Idle-Stop Global Setting */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold mb-1">Auto-Stop Idle Agents</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
+              Globale Obergrenze. Agents die länger als X Minuten inaktiv sind, werden automatisch gestoppt.
+              User können nur <strong>kürzere</strong> Werte pro Agent setzen, niemals länger.
+              <span className="block mt-1 text-muted-foreground/60">0 = deaktiviert. Worker prüft alle 5 min.</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="number"
+              min={0}
+              max={10080}
+              value={idleEditValue}
+              onChange={(e) => setIdleEditValue(e.target.value)}
+              className="w-24 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm text-right focus:border-primary/30 focus:outline-none"
+            />
+            <span className="text-xs text-muted-foreground">min</span>
+            <button
+              onClick={handleIdleSave}
+              disabled={idleSaving || idleEditValue === String(idleMax)}
+              className="rounded-xl bg-primary px-3 py-2 text-xs font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-40"
+            >
+              {idleSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Speichern"}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Platform summary cards */}
       <div className="grid grid-cols-4 gap-4">
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">

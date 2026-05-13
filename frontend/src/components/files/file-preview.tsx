@@ -318,11 +318,16 @@ export function FilePreviewEmpty() {
     <>
       <div className="border-b border-foreground/[0.06] px-4 py-2.5 flex items-center gap-2">
         <FileText className="h-3.5 w-3.5 text-muted-foreground/50" />
-        <span className="text-xs text-muted-foreground/50">Datei auswaehlen</span>
+        <span className="text-xs text-muted-foreground/50">Dateivorschau</span>
       </div>
-      <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground/30">
+      <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground/40 px-6 text-center">
         <FileText className="h-10 w-10 mb-3" />
-        <span className="text-sm">Datei auswaehlen</span>
+        <p className="text-sm font-medium text-muted-foreground/60">Vorschau-Bereich</p>
+        <p className="text-xs mt-1.5 max-w-xs leading-relaxed">
+          Wähle links eine Datei aus, um sie hier anzuzeigen. Zum Hochladen nutze den
+          <span className="inline-flex items-center mx-1 text-primary/80 font-medium">Upload</span>
+          Button neben dem Agent-Namen.
+        </p>
       </div>
     </>
   );

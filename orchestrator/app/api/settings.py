@@ -155,17 +155,160 @@ async def update_settings(
 
 
 @router.get("/agent-mounts")
-async def get_agent_mount_catalog(user=Depends(require_auth)):
-    """Return the admin-defined mount catalog (safe view — host paths omitted)."""
+async def get_agent_mount_catalog(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the mount catalog FILTERED by the caller's per-user grants.
+
+    Admin sees the full catalog with their server-side modes (the source-of-truth).
+    Non-admin sees only labels granted via user_mount_access, with the
+    grant's `mode` (which may be downgraded to "ro" from the catalog's "rw").
+    """
     from app.core.mounts import parse_mount_catalog
+    from app.models.user import UserRole
+    from app.models.user_mount_access import UserMountAccess
+    from sqlalchemy import select
+
     catalog = parse_mount_catalog(settings.agent_mount_catalog)
-    return {
-        "mounts": [
-            {
-                "label": e.label,
-                "container_path": e.container_path,
-                "mode": e.mode,
-            }
-            for e in catalog.values()
-        ]
-    }
+
+    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+        # Admin: full catalog
+        return {
+            "mounts": [
+                {"label": e.label, "container_path": e.container_path, "mode": e.mode}
+                for e in catalog.values()
+            ]
+        }
+
+    # Non-admin: intersect with grants
+    grants = (await db.execute(
+        select(UserMountAccess).where(UserMountAccess.user_id == user.id)
+    )).scalars().all()
+    grant_by_label = {g.mount_label: g.mode for g in grants}
+
+    out = []
+    for label, entry in catalog.items():
+        if label not in grant_by_label:
+            continue
+        # Effective mode = stricter of catalog mode and grant mode (rw vs ro → ro wins)
+        eff_mode = "ro" if "ro" in (entry.mode, grant_by_label[label]) else "rw"
+        out.append({"label": label, "container_path": entry.container_path, "mode": eff_mode})
+    return {"mounts": out}
+
+
+# ── Admin endpoints: per-user mount access management ──
+
+@router.get("/agent-mounts/access/{user_id}")
+async def list_user_mount_access(
+    user_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: list mount grants for a specific user."""
+    from app.models.user import UserRole
+    from app.models.user_mount_access import UserMountAccess
+    from sqlalchemy import select
+
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    grants = (await db.execute(
+        select(UserMountAccess).where(UserMountAccess.user_id == user_id)
+    )).scalars().all()
+    return {"grants": [{"mount_label": g.mount_label, "mode": g.mode} for g in grants]}
+
+
+@router.put("/agent-mounts/access/{user_id}")
+async def set_user_mount_access(
+    user_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: replace the user's mount grants atomically.
+
+    Body: {"grants": [{"mount_label": "downloads", "mode": "rw"}, ...]}
+    Existing grants not in the list are removed.
+    """
+    from app.models.user import UserRole
+    from app.models.user_mount_access import UserMountAccess
+    from app.core.mounts import parse_mount_catalog
+    from sqlalchemy import delete as sql_delete
+    from fastapi import HTTPException
+
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    new_grants = body.get("grants", [])
+    if not isinstance(new_grants, list):
+        raise HTTPException(status_code=422, detail="grants must be a list")
+
+    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    valid_labels = set(catalog.keys())
+
+    # Validate
+    cleaned = []
+    for g in new_grants:
+        label = (g.get("mount_label") or "").strip()
+        mode = (g.get("mode") or "").strip()
+        if label not in valid_labels:
+            raise HTTPException(status_code=422, detail=f"unknown mount_label: {label}")
+        if mode not in ("ro", "rw"):
+            raise HTTPException(status_code=422, detail=f"invalid mode: {mode} (must be ro|rw)")
+        cleaned.append((label, mode))
+
+    # Atomic replace
+    await db.execute(sql_delete(UserMountAccess).where(UserMountAccess.user_id == user_id))
+    for label, mode in cleaned:
+        db.add(UserMountAccess(user_id=user_id, mount_label=label, mode=mode))
+    await db.commit()
+    return {"user_id": user_id, "grants": [{"mount_label": l, "mode": m} for l, m in cleaned]}
+
+
+# ── Idle-Stop settings (admin-global + per-agent capped) ──
+
+@router.get("/idle-stop")
+async def get_idle_stop_max(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the global max-idle-minutes (admin-set). 0/null = disabled."""
+    from app.models.platform_settings import PlatformSettings
+    ps = await db.get(PlatformSettings, "max_idle_minutes")
+    try:
+        val = int(ps.value) if ps and ps.value else 0
+    except Exception:
+        val = 0
+    return {"max_idle_minutes": val}
+
+
+@router.put("/idle-stop")
+async def set_idle_stop_max(
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: set the global max-idle-minutes (0 to disable)."""
+    from app.models.user import UserRole
+    from app.models.platform_settings import PlatformSettings
+    from fastapi import HTTPException
+
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    try:
+        minutes = int(body.get("max_idle_minutes", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="max_idle_minutes must be an integer")
+    if minutes < 0 or minutes > 60 * 24 * 7:  # 1 week cap
+        raise HTTPException(status_code=422, detail="max_idle_minutes must be in [0, 10080]")
+
+    ps = await db.get(PlatformSettings, "max_idle_minutes")
+    if ps:
+        ps.value = str(minutes)
+    else:
+        db.add(PlatformSettings(key="max_idle_minutes", value=str(minutes)))
+    await db.commit()
+    return {"max_idle_minutes": minutes}

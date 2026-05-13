@@ -289,6 +289,29 @@ async def create_agent_from_template(
     if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
         raise HTTPException(status_code=403, detail="This template is not published yet")
 
+    # Role-based permission checks (max_agents + allowed templates)
+    if user.id != "__anonymous__":
+        from app.core.permissions import get_effective_permissions, can_use_template
+        from sqlalchemy import func
+        from app.models.agent import Agent as _Agent
+
+        perms = await get_effective_permissions(user, db)
+        if not can_use_template(perms, template.id):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Template '{template.name}' ist für deine Rolle nicht erlaubt.",
+            )
+        max_agents = perms.get("max_agents")
+        if max_agents is not None:
+            count = (await db.execute(
+                select(func.count(_Agent.id)).where(_Agent.user_id == user.id)
+            )).scalar() or 0
+            if count >= max_agents:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Agent-Limit erreicht ({max_agents}).",
+                )
+
     agent_name = body.name or template.display_name
     uid = user.id if user.id != "__anonymous__" else None
 

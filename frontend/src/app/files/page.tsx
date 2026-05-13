@@ -361,24 +361,24 @@ export default function FilesPage() {
                           <span className="text-[12px] font-medium truncate flex-1 min-w-0 font-sans">
                             {agent.name}
                           </span>
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <div className="flex items-center gap-0.5 shrink-0">
                             <button
                               onClick={(e) => { e.stopPropagation(); handleUploadClick(agent.id); }}
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
-                              title="Upload"
+                              className="flex h-6 w-6 items-center justify-center rounded text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors"
+                              title="Datei hochladen"
                             >
                               {uploading === agent.id ? (
-                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
-                                <Upload className="h-2.5 w-2.5" />
+                                <Upload className="h-3 w-3" />
                               )}
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); refreshAgent(agent.id); }}
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 hover:text-foreground transition-colors"
-                              title="Refresh"
+                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                              title="Aktualisieren"
                             >
-                              <RefreshCw className="h-2.5 w-2.5" />
+                              <RefreshCw className="h-3 w-3" />
                             </button>
                           </div>
                           {isLoading && (
