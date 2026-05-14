@@ -1,14 +1,14 @@
 """user_mount_access: per-user RO/RW grants on AGENT_MOUNT_CATALOG labels
 
-Revision ID: b2c3d4e5f6g7
-Revises: a1b2c3d4e5f8
+Revision ID: p1a1a1a1a1a1
+Revises: a1b2c3d4e5f8, m1c3d4e5f6g7
 Create Date: 2026-05-13
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "p1a1a1a1a1a1"
-down_revision = ("a1b2c3d4e5f8", "c3d4e5f6g7h8")
+down_revision = ("a1b2c3d4e5f8", "m1c3d4e5f6g7")
 branch_labels = None
 depends_on = None
 
