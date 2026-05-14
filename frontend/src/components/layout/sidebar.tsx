@@ -44,6 +44,7 @@ import { UserMenu } from "./user-menu";
 import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
+import { getMyPermissions, type RolePermissions } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -111,6 +112,7 @@ export function Sidebar() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
   const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<RolePermissions | null>(null);
 
   useEffect(() => {
     fetch("https://api.github.com/repos/greeves89/AI-Employee")
@@ -118,6 +120,16 @@ export function Sidebar() {
       .then((d) => setStarCount(d.stargazers_count ?? null))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setPermissions(null);
+      return;
+    }
+    getMyPermissions()
+      .then((d) => setPermissions(d.permissions))
+      .catch(() => setPermissions(null));
+  }, [user?.id, user?.custom_role_id, user?.role]);
 
   useEffect(() => {
     if (!aboutOpen || aboutVersion) return;
@@ -144,8 +156,18 @@ export function Sidebar() {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // In collapsed mode, show all items (groups are irrelevant)
-  const allItems = navGroups.flatMap((g) => g.items);
+  const canSeePath = (href: string) => {
+    const allowed = permissions?.menu_paths;
+    if (!allowed) return true;
+    return allowed.some((path) => href === path || href.startsWith(`${path.replace(/\/$/, "")}/`));
+  };
+
+  const visibleGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => canSeePath(item.href)) }))
+    .filter((group) => group.items.length > 0);
+
+  // In collapsed mode, show all visible items (groups are irrelevant)
+  const allItems = visibleGroups.flatMap((g) => g.items);
 
   // Check if any item in a group is active
   const isGroupActive = (group: NavGroup) =>
@@ -216,7 +238,7 @@ export function Sidebar() {
           })
         ) : (
           // Expanded: grouped
-          navGroups.map((group) => {
+          visibleGroups.map((group) => {
             const isOpen = openGroups[group.key] ?? true;
             const hasActive = isGroupActive(group);
             return (

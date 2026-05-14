@@ -69,9 +69,33 @@ def parse_mount_catalog(raw: str) -> dict[str, MountEntry]:
     return catalog
 
 
-def resolve_agent_mounts(mount_labels: list[str], catalog: dict[str, MountEntry]) -> list[MountEntry]:
-    """Return the MountEntry list for the given labels, silently skipping unknown ones."""
-    return [catalog[label] for label in mount_labels if label in catalog]
+def _stricter_mode(catalog_mode: str, requested_mode: str | None) -> str:
+    """Return the effective Docker mount mode. read-only always wins over read-write."""
+    if catalog_mode == "ro" or requested_mode == "ro":
+        return "ro"
+    return "rw"
+
+
+def resolve_agent_mounts(
+    mount_labels: list[str],
+    catalog: dict[str, MountEntry],
+    mount_modes: dict[str, str] | None = None,
+) -> list[MountEntry]:
+    """Return MountEntry list for labels, applying optional per-agent mode caps."""
+    out: list[MountEntry] = []
+    mount_modes = mount_modes or {}
+    for label in mount_labels:
+        if label not in catalog:
+            continue
+        entry = catalog[label]
+        mode = _stricter_mode(entry.mode, mount_modes.get(label))
+        out.append(MountEntry(
+            label=entry.label,
+            host_path=entry.host_path,
+            container_path=entry.container_path,
+            mode=mode,
+        ))
+    return out
 
 
 def mounts_to_docker_volumes(mounts: list[MountEntry]) -> dict[str, dict]:

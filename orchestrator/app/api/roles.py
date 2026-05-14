@@ -56,6 +56,30 @@ async def create_role(body: dict, user=Depends(require_auth), db: AsyncSession =
     return {"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions}
 
 
+@router.put("/users/{user_id}/assign")
+async def assign_user_role(user_id: str, body: dict, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Assign a custom role to a user. Body: {"custom_role_id": int | null}"""
+    _require_admin(user)
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="user not found")
+    role_id = body.get("custom_role_id")
+    if role_id is not None:
+        r = await db.get(CustomRole, role_id)
+        if not r:
+            raise HTTPException(status_code=422, detail="role not found")
+    target.custom_role_id = role_id
+    await db.commit()
+    return {"user_id": user_id, "custom_role_id": role_id}
+
+
+@router.get("/me/permissions")
+async def my_permissions(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Return the effective permissions for the calling user."""
+    perms = await get_effective_permissions(user, db)
+    return {"permissions": perms, "custom_role_id": getattr(user, "custom_role_id", None)}
+
+
 @router.put("/{role_id}")
 async def update_role(role_id: int, body: dict, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
@@ -88,27 +112,3 @@ async def delete_role(role_id: int, user=Depends(require_auth), db: AsyncSession
     await db.delete(r)
     await db.commit()
     return {"deleted": role_id}
-
-
-@router.put("/users/{user_id}/assign")
-async def assign_user_role(user_id: str, body: dict, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Assign a custom role to a user. Body: {"custom_role_id": int | null}"""
-    _require_admin(user)
-    target = await db.get(User, user_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="user not found")
-    role_id = body.get("custom_role_id")
-    if role_id is not None:
-        r = await db.get(CustomRole, role_id)
-        if not r:
-            raise HTTPException(status_code=422, detail="role not found")
-    target.custom_role_id = role_id
-    await db.commit()
-    return {"user_id": user_id, "custom_role_id": role_id}
-
-
-@router.get("/me/permissions")
-async def my_permissions(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Return the effective permissions for the calling user."""
-    perms = await get_effective_permissions(user, db)
-    return {"permissions": perms, "custom_role_id": getattr(user, "custom_role_id", None)}

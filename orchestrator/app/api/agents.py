@@ -499,6 +499,14 @@ async def update_llm_config(
         agent = await manager._get_agent(agent_id)
         if agent.mode != "custom_llm":
             raise HTTPException(status_code=400, detail="Agent is not in custom_llm mode")
+        provider_type = body.provider_type or (agent.llm_config or {}).get("provider_type")
+        from app.core.permissions import get_effective_permissions, can_use_llm_provider
+        perms = await get_effective_permissions(user, db)
+        if not can_use_llm_provider(perms, provider_type):
+            raise HTTPException(
+                status_code=403,
+                detail=f"LLM-Provider '{provider_type}' ist für deine Rolle nicht erlaubt.",
+            )
 
         updated = await manager.update_llm_config(agent_id, body.model_dump(exclude_none=True))
         return {"agent_id": agent_id, "llm_config": updated}
@@ -517,6 +525,13 @@ async def update_agent_model(
     """Update the model provider and model for an agent."""
     await _check_owner(agent_id, user, db)
     try:
+        from app.core.permissions import get_effective_permissions, can_use_llm_provider
+        perms = await get_effective_permissions(user, db)
+        if not can_use_llm_provider(perms, body.model_provider):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Model-Provider '{body.model_provider}' ist für deine Rolle nicht erlaubt.",
+            )
         agent = await manager._get_agent(agent_id)
         agent.model = body.model
         config = dict(agent.config or {})
@@ -1268,22 +1283,47 @@ async def update_agent_mounts(
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
 
     # Non-admin: enforce per-user grants
+    effective_modes: dict[str, str] = {}
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        from app.core.permissions import get_effective_permissions
+
+        perms = await get_effective_permissions(user, db)
+        role_mount_labels = perms.get("mount_labels")
+        if role_mount_labels is not None:
+            role_denied = [m for m in new_mounts if m not in role_mount_labels]
+            if role_denied:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Mount(s) not allowed by role: {role_denied}",
+                )
+
         grants = (await db.execute(
             select(UserMountAccess).where(UserMountAccess.user_id == user.id)
         )).scalars().all()
-        granted_labels = {g.mount_label for g in grants}
+        grant_by_label = {g.mount_label: g.mode for g in grants}
+        granted_labels = set(grant_by_label)
         denied = [m for m in new_mounts if m not in granted_labels]
         if denied:
             raise HTTPException(
                 status_code=403,
                 detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access in /admin → User → Mount Permissions.",
             )
+        effective_modes = {
+            label: ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+            for label in new_mounts
+        }
+    else:
+        requested_modes = body.get("mount_modes") if isinstance(body.get("mount_modes"), dict) else {}
+        effective_modes = {
+            label: ("ro" if "ro" in (catalog[label].mode, requested_modes.get(label)) else "rw")
+            for label in new_mounts
+        }
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
         old_mounts = set(config.get("mounts", []))
         config["mounts"] = new_mounts
+        config["mount_modes"] = effective_modes
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
@@ -1293,7 +1333,7 @@ async def update_agent_mounts(
         if set(new_mounts) != old_mounts and agent.state == AgentState.RUNNING:
             await manager.restart_agent(agent_id)
 
-        return {"agent_id": agent_id, "mounts": new_mounts}
+        return {"agent_id": agent_id, "mounts": new_mounts, "mount_modes": effective_modes}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

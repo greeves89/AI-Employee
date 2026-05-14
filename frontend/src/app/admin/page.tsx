@@ -38,10 +38,11 @@ import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
+import { RolesPanel } from "@/components/admin/roles-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
-type Tab = "users" | "agents" | "assignments" | "feedback" | "budget";
+type Tab = "users" | "agents" | "assignments" | "roles" | "feedback" | "budget";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -299,6 +300,7 @@ export default function AdminPage() {
     { id: "users", label: "Users", icon: Users, count: users.length },
     { id: "agents", label: "All Agents", icon: Cpu, count: agents.length },
     { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
+    { id: "roles", label: "Rollen", icon: Shield },
     { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
     { id: "budget", label: "Budget", icon: DollarSign },
   ];
@@ -742,6 +744,17 @@ export default function AdminPage() {
                 }}
                 onDelete={(id) => {
                   setFeedbackItems((prev) => prev.filter((f) => f.id !== id));
+                }}
+              />
+            )}
+
+            {tab === "roles" && (
+              <RolesPanel
+                users={users}
+                onUserRoleAssigned={(userId, customRoleId) => {
+                  setUsers((prev) =>
+                    prev.map((u) => u.id === userId ? { ...u, custom_role_id: customRoleId } : u)
+                  );
                 }}
               />
             )}

@@ -14,7 +14,8 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "member";
+  role: "admin" | "manager" | "member" | "viewer";
+  custom_role_id?: number | null;
   is_active: boolean;
 }
 

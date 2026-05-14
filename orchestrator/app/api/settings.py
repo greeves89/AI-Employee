@@ -182,6 +182,10 @@ async def get_agent_mount_catalog(
         }
 
     # Non-admin: intersect with grants
+    from app.core.permissions import get_effective_permissions
+    perms = await get_effective_permissions(user, db)
+    role_mount_labels = perms.get("mount_labels")
+
     grants = (await db.execute(
         select(UserMountAccess).where(UserMountAccess.user_id == user.id)
     )).scalars().all()
@@ -190,6 +194,8 @@ async def get_agent_mount_catalog(
     out = []
     for label, entry in catalog.items():
         if label not in grant_by_label:
+            continue
+        if role_mount_labels is not None and label not in role_mount_labels:
             continue
         # Effective mode = stricter of catalog mode and grant mode (rw vs ro → ro wins)
         eff_mode = "ro" if "ro" in (entry.mode, grant_by_label[label]) else "rw"

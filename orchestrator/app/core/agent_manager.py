@@ -933,7 +933,7 @@ class AgentManager:
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = parse_mount_catalog(settings.agent_mount_catalog)
-        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog)
+        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
             image=settings.agent_image,
@@ -1101,7 +1101,7 @@ class AgentManager:
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = parse_mount_catalog(settings.agent_mount_catalog)
-        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog)
+        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
             image=settings.agent_image,

@@ -247,7 +247,7 @@ export async function getAgentMounts(agentId: string): Promise<{ agent_id: strin
 export async function updateAgentMounts(
   agentId: string,
   mounts: string[],
-): Promise<{ agent_id: string; mounts: string[] }> {
+): Promise<{ agent_id: string; mounts: string[]; mount_modes?: Record<string, "ro" | "rw"> }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/mounts`, {
     method: "PATCH",
     body: JSON.stringify({ mounts }),

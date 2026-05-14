@@ -466,6 +466,28 @@ async def check_url(
     Returns {"allowed": true/false, "reason": "..."}.
     If the agent has no allowlist entries, all URLs are allowed (fail-open).
     """
+    from app.core.permissions import get_effective_permissions
+    from app.models.agent import Agent
+    from app.models.user import User
+
+    agent = await db.get(Agent, agent_id)
+    if agent and agent.user_id:
+        owner = await db.get(User, agent.user_id)
+        if owner:
+            perms = await get_effective_permissions(owner, db)
+            role_patterns = perms.get("url_host_patterns")
+            if role_patterns is not None:
+                if not role_patterns:
+                    return {"allowed": False, "reason": "role_url_denied", "url": body.url}
+                role_allowed = any(url_matches_pattern(body.url, pattern) for pattern in role_patterns)
+                if not role_allowed:
+                    return {
+                        "allowed": False,
+                        "reason": "role_url_not_allowed",
+                        "url": body.url,
+                        "allowlist_count": len(role_patterns),
+                    }
+
     result = await db.execute(
         select(AgentUrlAllowlist).where(
             AgentUrlAllowlist.agent_id == agent_id,

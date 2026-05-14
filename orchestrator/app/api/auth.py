@@ -83,6 +83,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     role: str
+    custom_role_id: int | None = None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -380,13 +381,14 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
     if body.name is not None:
         target.name = body.name
     if body.role is not None:
-        if target.role == UserRole.ADMIN and body.role == "member":
+        new_role = UserRole(body.role)
+        if target.role == UserRole.ADMIN and new_role != UserRole.ADMIN:
             admin_count = await db.scalar(
                 select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
             )
             if admin_count <= 1:
                 raise HTTPException(status_code=400, detail="Cannot remove last admin")
-        target.role = UserRole(body.role)
+        target.role = new_role
     if body.is_active is not None:
         if target.id == current.id:
             raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
@@ -415,8 +417,9 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Name, email, and password are required")
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-    if role not in ("admin", "member"):
-        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'member'")
+    valid_roles = {r.value for r in UserRole}
+    if role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(valid_roles))}")
 
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
