@@ -43,7 +43,7 @@ Internet
 ```
 
 **Key security decisions:**
-- Docker socket is never exposed directly; a filtering proxy enforces an allowlist
+- The orchestrator connects to Docker via `tecnativa/docker-socket-proxy`, which restricts the Docker API surface (see [Docker Socket Access Matrix](#docker-socket-access-matrix) below)
 - Agents cannot use `--privileged`, `--pid=host`, `--network=host`, or dangerous mounts
 - All agent commands requiring elevated risk go through a user approval workflow
 - All sudo/sensitive commands are audit-logged to the database
@@ -75,8 +75,8 @@ Internet
 - [ ] Set `DOMAIN` and `ACME_EMAIL` in `.env`
 
 **Docker**
-- [ ] Docker socket NOT directly mounted to any application container
-- [ ] Docker proxy allowlist reviewed (`docker-proxy/allowlist.yml`)
+- [ ] Docker socket access reviewed per service (see [Docker Socket Access Matrix](#docker-socket-access-matrix))
+- [ ] `docker-socket-proxy` environment variables reviewed — only required API categories enabled
 - [ ] No containers running with `--privileged`
 - [ ] Resource limits set for all containers
 
@@ -130,6 +130,55 @@ sudo ufw enable
 
 ---
 
+## Docker Socket Access Matrix
+
+Not all services access the Docker socket equally. This matrix documents which services have Docker socket access, how they access it, and why.
+
+### Production Compose (`docker-compose.yml`)
+
+| Service | Docker Socket Access | Mount Mode | Via Proxy | Justification |
+|---------|---------------------|------------|-----------|---------------|
+| `docker-socket-proxy` | `/var/run/docker.sock` | `ro` (read-only) | N/A (is the proxy) | Mediates all Docker API access for the orchestrator. Uses `tecnativa/docker-socket-proxy` with explicit per-category env vars. |
+| `orchestrator` | `tcp://docker-socket-proxy:2375` | N/A (TCP) | **Yes** | Manages agent container lifecycle (create, start, stop, remove). Never touches the socket directly in production. |
+| `autoheal` | `/var/run/docker.sock` | `rw` | **No** | Restarts unhealthy containers (only those labeled `autoheal=true`). Only active in the `tunnel` profile. Accepted risk: privileged maintenance component with minimal scope. |
+| Agent containers | None | — | — | Agents have no Docker socket access. |
+
+### Community Compose (`docker-compose.community.yml`)
+
+| Service | Docker Socket Access | Mount Mode | Via Proxy | Note |
+|---------|---------------------|------------|-----------|------|
+| `orchestrator` | `/var/run/docker.sock` | `rw` | **No** | Direct mount for simplified local setup. **Less hardened** than production — acceptable for single-user local development only. |
+
+### Docker Apps (`docker_apps.py`)
+
+Docker App containers spawned by the orchestrator receive a direct Docker socket mount (`/var/run/docker.sock:rw`). This is required for Docker-in-Docker app functionality but represents elevated privilege. Governance: only admin users can create Docker Apps, and all Docker App operations are audit-logged.
+
+### `docker-socket-proxy` Permitted API Categories
+
+The proxy uses environment variables to control which Docker API categories are forwarded:
+
+| Category | Allowed | Reason |
+|----------|---------|--------|
+| `CONTAINERS` | Yes | Agent container lifecycle |
+| `IMAGES` | Yes | Pull agent images |
+| `VOLUMES` | Yes | Create agent workspaces |
+| `NETWORKS` | Yes | Attach agents to `agent-network` |
+| `EXEC` | Yes | Execute commands in agent containers |
+| `POST` | Yes | Required for create/start/stop operations |
+| `AUTH`, `SECRETS`, `SWARM`, `SERVICES`, `TASKS`, `NODES`, `PLUGINS`, `BUILD`, `COMMIT`, `CONFIGS`, `DISTRIBUTION`, `SESSION`, `SYSTEM` | **No** | Blocked — not needed for agent orchestration |
+
+### Monitoring Compose (`docker-compose.monitoring.yml`)
+
+cAdvisor mounts `/var/run/docker.sock:ro` (read-only) to collect container metrics. This is standard for container monitoring and is read-only.
+
+### Hardening Recommendations
+
+1. **autoheal**: Consider replacing with Docker's native `restart: unless-stopped` + healthcheck `start_period` if the autoheal profile is not needed. Alternatively, route autoheal through the socket proxy if feasible.
+2. **Community Compose**: Clearly document that this variant is for local/development use only and should never be used in production.
+3. **Docker Apps**: Limit allowed images via an allowlist; require approval rules for Docker App creation.
+
+---
+
 ## Secret Management
 
 ### Development
@@ -179,12 +228,12 @@ Agents run as isolated Docker containers with:
 
 ### What Agents Cannot Do
 
-The following are blocked at the Docker proxy level (`docker-proxy/allowlist.yml`):
+The following are blocked at the Docker proxy level (`tecnativa/docker-socket-proxy` + orchestrator-side validation in `docker_service.py`):
 - Creating containers with `--privileged`
 - Mounting the host Docker socket (`/var/run/docker.sock`)
 - Mounting sensitive host paths (`/etc`, `/root`, `/home`, `/proc`, `/sys`)
 - Using `--network=host` or `--pid=host`
-- Any container exec not in the allowlist
+- Docker API categories not needed for agent orchestration (swarm, secrets, plugins, build, etc.) are blocked at the proxy level
 
 ### Command Filtering
 

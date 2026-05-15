@@ -257,19 +257,18 @@ Each agent is a Docker container running Claude Code CLI with an MCP server side
 | `app/command_filter.py` | Block dangerous shell commands before execution |
 | `mcp/` | MCP server implementations |
 
-### Docker Proxy
+### Docker Socket Proxy
 
-**Location:** `docker-proxy/`
+**Image:** `tecnativa/docker-socket-proxy:latest`
+**Container:** `ai-employee-docker-proxy`
 
-An `aiohttp`-based HTTP proxy that sits between the orchestrator and the Docker socket.
+A third-party filtering proxy ([Tecnativa Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy)) that sits between the orchestrator and the Docker socket. The orchestrator connects via `DOCKER_HOST=tcp://docker-socket-proxy:2375` instead of mounting the socket directly.
 
-- `proxy_server.py` — Main proxy implementation
-- `allowlist.yml` — YAML allowlist of permitted API operations
+The proxy uses environment variables to control which Docker API categories are forwarded. Only the categories required for agent container lifecycle management are enabled (containers, images, volumes, networks, exec). All other categories (swarm, secrets, plugins, build, system, etc.) are blocked.
 
-Validates:
-- Only permitted API endpoints are forwarded (`/containers/create`, `/containers/{id}/start`, etc.)
-- No dangerous flags in container create requests (`Privileged`, `PidMode`, `NetworkMode=host`)
-- No sensitive host path mounts
+Additional validation happens orchestrator-side in `orchestrator/app/services/docker_service.py`, which rejects privileged containers, dangerous mounts, and restricted network modes before forwarding requests to the proxy.
+
+See `docs/SECURITY.md` → [Docker Socket Access Matrix] for the full per-service breakdown.
 
 ### MCP Servers
 
@@ -320,11 +319,11 @@ Host Machine
 │   ├── redis (6379) — NOT exposed externally
 │   ├── orchestrator (8000) — NOT exposed externally (via Traefik)
 │   ├── frontend (3000) — NOT exposed externally (via Traefik)
-│   └── docker-proxy (2375) — NOT exposed externally
+│   └── docker-socket-proxy (2375) — NOT exposed externally
 │
 ├── Docker Network: agent-network
 │   ├── orchestrator — bridge between internal and agent-network
-│   ├── docker-proxy — bridge between internal and agent-network
+│   ├── docker-socket-proxy — bridge between internal and agent-network
 │   └── agent-* (dynamic) — each spawned agent container
 │
 └── Host Network (Traefik only)
@@ -405,7 +404,7 @@ docker compose \
 Each agent runs in its own Docker container for isolation. This prevents agents from interfering with each other and allows resource limits to be enforced per agent. The tradeoff is higher overhead compared to a single multi-agent process.
 
 ### 2. Docker Socket Proxy (Not Direct Mount)
-Instead of mounting `/var/run/docker.sock` directly into the orchestrator, all Docker API calls go through a filtering proxy. This prevents the orchestrator from spawning privileged containers even if it were compromised.
+Instead of mounting `/var/run/docker.sock` directly into the orchestrator, production deployments route all Docker API calls through `tecnativa/docker-socket-proxy`. The proxy restricts which API categories are accessible (only containers, images, volumes, networks, exec). This prevents the orchestrator from performing dangerous operations (swarm management, plugin installation, system configuration) even if it were compromised. Note: the community/local compose variant mounts the socket directly for simplicity — see `docs/SECURITY.md` for the full access matrix.
 
 ### 3. Redis for Real-Time Communication
 Redis pub/sub is used for communication between the orchestrator WebSocket handler and agent containers. This allows horizontal scaling (multiple orchestrator instances) and decouples agent execution from HTTP request handling.
