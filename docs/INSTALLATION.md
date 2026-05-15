@@ -209,8 +209,8 @@ docker compose exec orchestrator env | grep -E "CLAUDE|ANTHROPIC"
 ```bash
 # Check Docker socket permissions
 ls -la /var/run/docker.sock
-# If using docker-proxy, check proxy logs:
-docker compose logs docker-proxy
+# Check docker-socket-proxy logs:
+docker compose logs docker-socket-proxy
 ```
 
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for more detailed debugging steps.

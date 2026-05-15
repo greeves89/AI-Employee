@@ -379,7 +379,7 @@ Default resource limits (from `docker-compose.yml`):
 | redis | 256 MB |
 | orchestrator | 512 MB |
 | frontend | 256 MB |
-| docker-proxy | 128 MB |
+| docker-socket-proxy | 64 MB |
 | traefik | 128 MB |
 
 Adjust in `docker-compose.yml` under `deploy.resources.limits`.

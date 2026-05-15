@@ -91,7 +91,7 @@ docker logs ai-employee-frontend --tail=30
 | `Error: Cannot find module` | Rebuild: `docker compose build frontend` |
 | Port 3000 already in use | Stop conflicting process: `lsof -i :3000` |
 
-### Docker Proxy fails to start
+### Docker Socket Proxy fails to start
 
 ```bash
 docker logs ai-employee-docker-proxy --tail=30
@@ -100,7 +100,7 @@ docker logs ai-employee-docker-proxy --tail=30
 | Error | Fix |
 |-------|-----|
 | `Permission denied: /var/run/docker.sock` | Add current user to docker group or run with sudo |
-| `FileNotFoundError: allowlist.yml` | Verify `docker-proxy/allowlist.yml` exists |
+| `Connection refused on port 2375` | Ensure `docker-socket-proxy` is running: `docker compose ps docker-socket-proxy` |
 
 ---
 
@@ -124,9 +124,9 @@ docker logs ai-employee-docker-proxy --tail=20
 
 | Cause | Fix |
 |-------|-----|
-| Docker socket not accessible | Verify proxy is running: `docker compose ps docker-proxy` |
+| Docker socket not accessible | Verify proxy is running: `docker compose ps docker-socket-proxy` |
 | Image not pulled | Pre-pull: `docker pull ghcr.io/anthropics/claude-code:latest` |
-| Allowlist blocking operation | Check proxy logs for "denied"; update `docker-proxy/allowlist.yml` if legitimate |
+| Proxy blocking operation | Check proxy logs for "denied"; review `docker-socket-proxy` env vars in `docker-compose.yml` to ensure the required API category is enabled |
 | Host out of memory | `docker stats --no-stream`; stop unused agents |
 
 ### Agent is stuck / not responding
