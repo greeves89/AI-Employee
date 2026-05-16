@@ -609,7 +609,7 @@ class AgentManager:
                 logger.warning("Failed to decrypt secret %s (%s)", secret.name, secret.key_name)
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
@@ -749,6 +749,7 @@ class AgentManager:
             mode=mode,
             llm_config=encrypted_llm_config,
             budget_usd=budget_usd,
+            budget_exceeded_action=budget_exceeded_action,
             browser_mode=browser_mode,
             autonomy_level=autonomy_level.lower(),
             config={
@@ -1285,6 +1286,26 @@ class AgentManager:
                 "tools_enabled": llm_cfg.get("tools_enabled", True),
             }
 
+        # Monthly spend (current calendar month) for budget display.
+        # Uses a separate session — this method runs concurrently per agent.
+        from app.db.session import async_session_factory
+        from app.models.task import Task as _Task
+        from sqlalchemy import func as _func
+        from datetime import datetime as _dt, timezone as _tz
+
+        _month_start = _dt.now(_tz.utc).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        async with async_session_factory() as _cost_session:
+            _cost_row = await _cost_session.execute(
+                select(_func.coalesce(_func.sum(_Task.cost_usd), 0)).where(
+                    _Task.agent_id == agent_id,
+                    _Task.cost_usd.isnot(None),
+                    _Task.created_at >= _month_start,
+                )
+            )
+            monthly_cost_usd = round(float(_cost_row.scalar() or 0), 4)
+
         result = {
             "id": agent.id,
             "name": agent.name,
@@ -1304,6 +1325,8 @@ class AgentManager:
             "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,
             "budget_usd": agent.budget_usd,
+            "budget_exceeded_action": agent.budget_exceeded_action,
+            "monthly_cost_usd": monthly_cost_usd,
             "browser_mode": agent.browser_mode,
             "autonomy_level": agent.autonomy_level or "l3",
             "webhook_enabled": agent.webhook_enabled,

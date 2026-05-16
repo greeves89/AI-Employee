@@ -8,6 +8,11 @@ from app.models.agent import AgentState
 AgentMode = Literal["claude_code", "custom_llm"]
 LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
 
+# What happens when an agent's monthly budget is exhausted:
+#   "haiku" = downgrade tasks to the cheap fallback model
+#   "stop"  = block new tasks and stop the agent
+BudgetExceededAction = Literal["haiku", "stop"]
+
 
 ThinkingMode = Literal["off", "auto", "on"]
 
@@ -55,6 +60,7 @@ class AgentCreate(BaseModel):
     integrations: list[str] | None = None
     permissions: list[str] | None = None
     budget_usd: float | None = None
+    budget_exceeded_action: BudgetExceededAction = "haiku"
     mode: AgentMode = "claude_code"
     llm_config: LLMConfig | None = None  # required when mode == "custom_llm"
     browser_mode: bool = False  # Enable Playwright browser control inside agent container
@@ -76,6 +82,8 @@ class AgentResponse(BaseModel):
     permissions: list[str] = []
     update_available: bool = False
     budget_usd: float | None = None
+    budget_exceeded_action: str = "haiku"
+    monthly_cost_usd: float = 0.0
     browser_mode: bool = False
     autonomy_level: str = "l3"
     webhook_enabled: bool = False

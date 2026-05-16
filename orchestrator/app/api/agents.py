@@ -18,7 +18,7 @@ from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
-from app.schemas.agent import AgentCreate, AgentListResponse, AgentModelUpdate, AgentResponse, KnowledgeResponse, KnowledgeUpdate, LLMConfigResponse, LLMConfigUpdate
+from app.schemas.agent import AgentCreate, AgentListResponse, AgentModelUpdate, AgentResponse, BudgetExceededAction, KnowledgeResponse, KnowledgeUpdate, LLMConfigResponse, LLMConfigUpdate
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -345,6 +345,7 @@ async def create_agent(
             name=data.name, model=data.model, role=data.role,
             integrations=data.integrations, permissions=data.permissions,
             user_id=uid, budget_usd=data.budget_usd,
+            budget_exceeded_action=data.budget_exceeded_action,
             mode=data.mode,
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
             browser_mode=data.browser_mode,
@@ -559,6 +560,7 @@ async def update_agent_model(
 
 class AgentBudgetUpdate(BaseModel):
     budget_usd: float | None  # None = unlimited
+    budget_exceeded_action: BudgetExceededAction | None = None
 
 
 @router.patch("/{agent_id}/budget")
@@ -569,13 +571,20 @@ async def update_agent_budget(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Set or clear the monthly budget cap for an agent (admin or owner)."""
+    """Set or clear the monthly budget cap + over-budget action (admin or owner)."""
     await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
         agent.budget_usd = body.budget_usd
+        if body.budget_exceeded_action is not None:
+            agent.budget_exceeded_action = body.budget_exceeded_action
         await db.commit()
-        return {"agent_id": agent_id, "budget_usd": agent.budget_usd, "status": "updated"}
+        return {
+            "agent_id": agent_id,
+            "budget_usd": agent.budget_usd,
+            "budget_exceeded_action": agent.budget_exceeded_action,
+            "status": "updated",
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

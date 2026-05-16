@@ -53,6 +53,8 @@ export interface Agent {
   permissions: string[];
   update_available: boolean;
   budget_usd: number | null;
+  budget_exceeded_action: "haiku" | "stop";
+  monthly_cost_usd: number;
   browser_mode: boolean;
   autonomy_level?: string;
   webhook_enabled?: boolean;

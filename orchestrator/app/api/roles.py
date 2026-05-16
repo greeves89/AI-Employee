@@ -73,6 +73,21 @@ async def assign_user_role(user_id: str, body: dict, user=Depends(require_auth),
     return {"user_id": user_id, "custom_role_id": role_id}
 
 
+@router.put("/users/{user_id}/budget")
+async def set_user_budget(user_id: str, body: dict, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Set the monthly spend cap across all of a user's agents.
+
+    Body: {"budget_usd": float | null}  (null = unlimited)
+    """
+    _require_admin(user)
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="user not found")
+    target.budget_usd = body.get("budget_usd")
+    await db.commit()
+    return {"user_id": user_id, "budget_usd": target.budget_usd}
+
+
 @router.get("/me/permissions")
 async def my_permissions(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Return the effective permissions for the calling user."""

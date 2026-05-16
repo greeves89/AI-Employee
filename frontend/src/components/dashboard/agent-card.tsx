@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug, Wallet } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -116,6 +116,16 @@ export function AgentCard({ agent }: AgentCardProps) {
                 Update
               </div>
             )}
+            {agent.budget_usd != null && agent.budget_usd > 0 && agent.monthly_cost_usd >= agent.budget_usd && (
+              <div className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium",
+                agent.budget_exceeded_action === "stop"
+                  ? "bg-red-500/10 text-red-400 border-red-500/20"
+                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+              )}>
+                {agent.budget_exceeded_action === "stop" ? "Budget gestoppt" : "Sparmodus"}
+              </div>
+            )}
             <div className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
               config.badge
@@ -176,6 +186,30 @@ export function AgentCard({ agent }: AgentCardProps) {
                 />
               </div>
             </div>
+
+            {agent.budget_usd != null && agent.budget_usd > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Wallet className="h-3 w-3" /> Budget / Monat
+                  </span>
+                  <span className="font-mono font-medium tabular-nums">
+                    ${agent.monthly_cost_usd.toFixed(2)} / ${agent.budget_usd.toFixed(2)}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-foreground/[0.06]">
+                  <div
+                    className={cn(
+                      "h-1.5 rounded-full transition-all duration-700 ease-out",
+                      agent.monthly_cost_usd >= agent.budget_usd
+                        ? "bg-gradient-to-r from-red-500 to-orange-400"
+                        : "bg-gradient-to-r from-violet-500 to-fuchsia-400"
+                    )}
+                    style={{ width: `${Math.min((agent.monthly_cost_usd / agent.budget_usd) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

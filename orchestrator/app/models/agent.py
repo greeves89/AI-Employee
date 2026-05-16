@@ -39,7 +39,13 @@ class Agent(Base, TimestampMixin):
         Integer, ForeignKey("agent_templates.id"), nullable=True, index=True
     )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
-    budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
+    budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited; monthly cap
+    # What to do when the monthly budget is exhausted:
+    #   "haiku" = downgrade all tasks to the cheap fallback model
+    #   "stop"  = block new tasks and stop the agent container
+    budget_exceeded_action: Mapped[str] = mapped_column(
+        String, default="haiku", server_default="haiku"
+    )
     browser_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     autonomy_level: Mapped[str] = mapped_column(String, default="l3", server_default="l3")
     # SHA-256 hex of the plaintext webhook token. Set by

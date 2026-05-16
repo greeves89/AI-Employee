@@ -910,6 +910,7 @@ function BudgetTab({
   const toast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editAction, setEditAction] = useState<"haiku" | "stop">("haiku");
   const [savingId, setSavingId] = useState<string | null>(null);
 
   // Idle-Stop global setting
@@ -945,15 +946,16 @@ function BudgetTab({
 
   // Sort: over-budget first, then by spend desc
   const sorted = [...agents].sort((a, b) => {
-    const aOver = a.budget_usd != null && a.total_cost_usd >= a.budget_usd;
-    const bOver = b.budget_usd != null && b.total_cost_usd >= b.budget_usd;
+    const aOver = a.budget_usd != null && a.monthly_cost_usd >= a.budget_usd;
+    const bOver = b.budget_usd != null && b.monthly_cost_usd >= b.budget_usd;
     if (aOver !== bOver) return aOver ? -1 : 1;
-    return b.total_cost_usd - a.total_cost_usd;
+    return b.monthly_cost_usd - a.monthly_cost_usd;
   });
 
   const handleEdit = (agent: Agent) => {
     setEditingId(agent.id);
     setEditValue(agent.budget_usd != null ? String(agent.budget_usd) : "");
+    setEditAction(agent.budget_exceeded_action ?? "haiku");
   };
 
   const handleSave = async (agentId: string) => {
@@ -961,7 +963,7 @@ function BudgetTab({
     try {
       const parsed = editValue.trim() === "" ? null : parseFloat(editValue);
       if (editValue.trim() !== "" && (isNaN(parsed!) || parsed! < 0)) return;
-      await api.updateAgentBudget(agentId, parsed);
+      await api.updateAgentBudget(agentId, parsed, editAction);
       onBudgetChange(agentId, parsed);
       setEditingId(null);
     } catch {
@@ -981,13 +983,13 @@ function BudgetTab({
 
   const agentsWithBudget = agents.filter((a) => a.budget_usd != null);
   const agentsOverBudget = agents.filter(
-    (a) => a.budget_usd != null && a.total_cost_usd >= a.budget_usd
+    (a) => a.budget_usd != null && a.monthly_cost_usd >= a.budget_usd
   );
   const agentsNearBudget = agents.filter(
     (a) =>
       a.budget_usd != null &&
-      a.total_cost_usd < a.budget_usd &&
-      a.total_cost_usd / a.budget_usd >= 0.75
+      a.monthly_cost_usd < a.budget_usd &&
+      a.monthly_cost_usd / a.budget_usd >= 0.75
   );
 
   return (
@@ -1070,7 +1072,7 @@ function BudgetTab({
         </div>
         <div className="divide-y divide-foreground/[0.04]">
           {sorted.map((agent) => {
-            const spent = agent.total_cost_usd || 0;
+            const spent = agent.monthly_cost_usd || 0;
             const limit = agent.budget_usd;
             const pct = limit != null && limit > 0 ? Math.min(spent / limit, 1) : null;
             const isOver = limit != null && spent >= limit;
@@ -1149,6 +1151,15 @@ function BudgetTab({
                           autoFocus
                         />
                       </div>
+                      <select
+                        value={editAction}
+                        onChange={(e) => setEditAction(e.target.value as "haiku" | "stop")}
+                        title="Aktion wenn Budget aufgebraucht"
+                        className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-[11px] outline-none"
+                      >
+                        <option value="haiku">→ Haiku</option>
+                        <option value="stop">→ Stop</option>
+                      </select>
                       <button
                         onClick={() => handleSave(agent.id)}
                         disabled={savingId === agent.id}

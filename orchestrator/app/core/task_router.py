@@ -21,6 +21,10 @@ TASK_EVICT_GRACE_SECONDS = int(300)
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
 
+# Cheap model an agent is downgraded to once its monthly budget is exhausted
+# (when budget_exceeded_action == "haiku").
+BUDGET_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
+
 _ID_ALPHABET = string.digits + string.ascii_lowercase
 
 
@@ -174,10 +178,6 @@ class TaskRouter:
         # Platform-wide budget check
         await self._check_platform_budget()
 
-        # Budget check: if task targets a specific agent, verify budget
-        if agent_id:
-            await self._check_agent_budget(agent_id)
-
         # Auto-assign if no agent specified
         if not agent_id:
             agent_id = await self.load_balancer.select_agent(priority=priority)
@@ -200,6 +200,10 @@ class TaskRouter:
                 await self.db.commit()
                 await self.db.refresh(task)
                 return task
+
+        # Budget enforcement: downgrades the model to Haiku or blocks+stops
+        # the agent once its (or its owner's) monthly budget is exhausted.
+        model = await self._apply_budget_policy(agent_id, model)
 
         # Create task in DB
         metadata = {}
@@ -628,40 +632,124 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"Could not trigger improvement engine for agent {agent_id}: {e}")
 
-    async def _check_agent_budget(self, agent_id: str) -> None:
-        """Raise ValueError if the agent has exceeded its budget."""
+    @staticmethod
+    def _month_start() -> datetime:
+        """First instant of the current UTC month."""
+        return datetime.now(timezone.utc).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+    async def _agent_monthly_cost(self, agent_id: str) -> float:
+        """Sum of task cost for one agent in the current calendar month."""
+        from sqlalchemy import func
+
+        result = await self.db.execute(
+            select(func.coalesce(func.sum(Task.cost_usd), 0)).where(
+                Task.agent_id == agent_id,
+                Task.cost_usd.isnot(None),
+                Task.created_at >= self._month_start(),
+            )
+        )
+        return float(result.scalar() or 0)
+
+    async def _user_monthly_cost(self, user_id: str) -> float:
+        """Sum of task cost across all of a user's agents this month."""
+        from sqlalchemy import func
         from app.models.agent import Agent
+
+        result = await self.db.execute(
+            select(func.coalesce(func.sum(Task.cost_usd), 0))
+            .select_from(Task)
+            .join(Agent, Task.agent_id == Agent.id)
+            .where(
+                Agent.user_id == user_id,
+                Task.cost_usd.isnot(None),
+                Task.created_at >= self._month_start(),
+            )
+        )
+        return float(result.scalar() or 0)
+
+    async def _apply_budget_policy(
+        self, agent_id: str, requested_model: str | None
+    ) -> str | None:
+        """Enforce monthly budgets. Returns the model the task should run with.
+
+        If the agent's monthly budget OR its owner's monthly cap is exhausted:
+          - action "haiku": returns the cheap fallback model
+          - action "stop":  stops the agent container and raises ValueError
+        """
+        from app.models.agent import Agent, AgentState
+        from app.models.user import User
 
         result = await self.db.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
-        if not agent or agent.budget_usd is None:
-            return  # No budget limit
+        if not agent:
+            return requested_model
 
-        total_cost = (agent.config or {}).get("total_cost_usd", 0)
-        if total_cost >= agent.budget_usd:
+        reason = ""
+
+        if agent.budget_usd is not None and agent.budget_usd > 0:
+            spent = await self._agent_monthly_cost(agent_id)
+            if spent >= agent.budget_usd:
+                reason = f"Agent budget exhausted (${spent:.2f}/${agent.budget_usd:.2f})"
+
+        if not reason and agent.user_id:
+            ures = await self.db.execute(select(User).where(User.id == agent.user_id))
+            owner = ures.scalar_one_or_none()
+            if owner and owner.budget_usd is not None and owner.budget_usd > 0:
+                user_spent = await self._user_monthly_cost(agent.user_id)
+                if user_spent >= owner.budget_usd:
+                    reason = (
+                        f"User budget exhausted "
+                        f"(${user_spent:.2f}/${owner.budget_usd:.2f})"
+                    )
+
+        if not reason:
+            return requested_model
+
+        if agent.budget_exceeded_action == "stop":
+            agent.state = AgentState.STOPPED
+            if self.docker and agent.container_id:
+                try:
+                    self.docker.stop_container(agent.container_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not stop over-budget agent {agent_id}: {e}"
+                    )
+            await self.db.commit()
             raise ValueError(
-                f"Agent '{agent.name}' budget exceeded (${total_cost:.2f}/${agent.budget_usd:.2f})"
+                f"{reason}. Agent '{agent.name}' stopped — raise the budget "
+                f"or wait for next month."
             )
 
+        # Default action: downgrade to the cheap fallback model.
+        logger.info(
+            f"[Budget] {reason} → agent {agent_id} downgraded to {BUDGET_FALLBACK_MODEL}"
+        )
+        return BUDGET_FALLBACK_MODEL
+
     async def _check_budget_thresholds(self, agent_id: str) -> None:
-        """After task completion, check if budget thresholds are reached."""
+        """After task completion, check if monthly budget thresholds are reached."""
         from app.models.agent import Agent
 
         result = await self.db.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
-        if not agent or agent.budget_usd is None:
+        if not agent or agent.budget_usd is None or agent.budget_usd <= 0:
             return
 
-        total_cost = (agent.config or {}).get("total_cost_usd", 0)
-        pct = total_cost / agent.budget_usd if agent.budget_usd > 0 else 0
+        total_cost = await self._agent_monthly_cost(agent_id)
+        pct = total_cost / agent.budget_usd
 
         if pct >= 1.0:
-            # Budget exceeded - send notification
+            consequence = (
+                "The agent has been stopped."
+                if agent.budget_exceeded_action == "stop"
+                else "New tasks now run on the cheap fallback model (Haiku)."
+            )
             await self._send_budget_notification(
                 agent, total_cost, "exceeded",
-                f"Agent '{agent.name}' has exceeded its budget "
-                f"(${total_cost:.2f}/${agent.budget_usd:.2f}). "
-                f"New tasks will be blocked until the budget is increased.",
+                f"Agent '{agent.name}' has exhausted its monthly budget "
+                f"(${total_cost:.2f}/${agent.budget_usd:.2f}). {consequence}",
             )
         elif pct >= 0.8:
             # Approaching budget

@@ -58,10 +58,11 @@ export async function createAgent(
   mode: AgentMode = "claude_code",
   llm_config?: LLMConfig,
   autonomy_level?: string,
+  budget_exceeded_action: "haiku" | "stop" = "haiku",
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
-    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level }),
+    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action }),
   });
 }
 
@@ -760,10 +761,11 @@ export async function getAdminOverview(): Promise<AdminOverview> {
 export async function updateAgentBudget(
   agentId: string,
   budgetUsd: number | null,
-): Promise<{ agent_id: string; budget_usd: number | null; status: string }> {
+  budgetExceededAction?: "haiku" | "stop",
+): Promise<{ agent_id: string; budget_usd: number | null; budget_exceeded_action: string; status: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/budget`, {
     method: "PATCH",
-    body: JSON.stringify({ budget_usd: budgetUsd }),
+    body: JSON.stringify({ budget_usd: budgetUsd, budget_exceeded_action: budgetExceededAction }),
   });
 }
 
@@ -825,10 +827,16 @@ export async function unpublishTemplate(templateId: number): Promise<AgentTempla
 export async function createAgentFromTemplate(
   templateId: number,
   name?: string,
+  budgetUsd?: number,
+  budgetExceededAction: "haiku" | "stop" = "haiku",
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/templates/${templateId}/create-agent`, {
     method: "POST",
-    body: JSON.stringify({ name: name || undefined }),
+    body: JSON.stringify({
+      name: name || undefined,
+      budget_usd: budgetUsd,
+      budget_exceeded_action: budgetExceededAction,
+    }),
   });
 }
 

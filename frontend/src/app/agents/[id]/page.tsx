@@ -56,22 +56,43 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
   created: { online: false, label: "Starting", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
 };
 
-const tabs = [
-  { key: "chat", label: "Chat", icon: MessageSquare, simpleVisible: true },
-  { key: "terminal", label: "Activity", icon: Activity, simpleVisible: false },
-  { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
-  { key: "files", label: "Files", icon: FolderOpen, simpleVisible: true },
-  { key: "apps", label: "Apps", icon: Container, simpleVisible: false },
-  { key: "history", label: "Task History", icon: History, simpleVisible: true },
-  { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
-  { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
-  { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
-  { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
-  { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: true },
-  { key: "settings", label: "Settings", icon: Settings, simpleVisible: false },
-] as const;
+// Sub-tabs are grouped under 6 top-level groups. Each group renders a
+// secondary "sub-reiter" bar when it has more than one entry.
+type SubKey =
+  | "chat" | "todos" | "terminal" | "history"
+  | "files" | "apps" | "computer-use"
+  | "knowledge" | "memory" | "skills"
+  | "settings" | "integrations";
 
-type TabKey = (typeof tabs)[number]["key"];
+type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2; simpleVisible: boolean };
+type TabGroup = { key: string; label: string; icon: typeof CheckCircle2; subs: SubTab[] };
+
+const tabGroups: TabGroup[] = [
+  { key: "chat", label: "Chat", icon: MessageSquare, subs: [
+    { key: "chat", label: "Chat", icon: MessageSquare, simpleVisible: true },
+  ] },
+  { key: "todos", label: "Todos", icon: ListTodo, subs: [
+    { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
+  ] },
+  { key: "activity", label: "Activity", icon: Activity, subs: [
+    { key: "terminal", label: "Live", icon: Activity, simpleVisible: false },
+    { key: "history", label: "Verlauf", icon: History, simpleVisible: true },
+  ] },
+  { key: "workspace", label: "Workspace", icon: FolderOpen, subs: [
+    { key: "files", label: "Files", icon: FolderOpen, simpleVisible: true },
+    { key: "apps", label: "Apps", icon: Container, simpleVisible: false },
+    { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: true },
+  ] },
+  { key: "wissen", label: "Wissen", icon: Brain, subs: [
+    { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
+    { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
+    { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+  ] },
+  { key: "settings", label: "Settings", icon: Settings, subs: [
+    { key: "settings", label: "Allgemein", icon: Settings, simpleVisible: false },
+    { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+  ] },
+];
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -80,13 +101,30 @@ export default function AgentDetailPage() {
   const toast = useToast();
   const [agent, setAgent] = useState<Agent | null>(null);
   const { tasks } = useTasks(agentId);
-  const [activeTab, setActiveTab] = useState<TabKey>("chat");
+  const [activeSub, setActiveSub] = useState<SubKey>("chat");
   const [restarting, setRestarting] = useState(false);
   const { simpleMode } = useSimpleMode();
 
-  const visibleTabs = simpleMode
-    ? tabs.filter((t) => t.simpleVisible)
-    : tabs;
+  // In simple mode keep only sub-tabs flagged simpleVisible, then drop empty groups.
+  const groupsForMode = useMemo(
+    () =>
+      tabGroups
+        .map((g) => ({
+          ...g,
+          subs: simpleMode ? g.subs.filter((s) => s.simpleVisible) : g.subs,
+        }))
+        .filter((g) => g.subs.length > 0),
+    [simpleMode],
+  );
+
+  const activeGroup =
+    groupsForMode.find((g) => g.subs.some((s) => s.key === activeSub)) ?? groupsForMode[0];
+
+  // If the active sub-tab is hidden (e.g. simple mode toggled), fall back.
+  useEffect(() => {
+    const exists = groupsForMode.some((g) => g.subs.some((s) => s.key === activeSub));
+    if (!exists && groupsForMode.length) setActiveSub(groupsForMode[0].subs[0].key);
+  }, [groupsForMode, activeSub]);
 
   useEffect(() => {
     const load = async () => {
@@ -215,7 +253,11 @@ export default function AgentDetailPage() {
 
         {/* Budget progress */}
         {agent.budget_usd != null && agent.budget_usd > 0 && (
-          <BudgetBar spent={agent.total_cost_usd ?? 0} budget={agent.budget_usd} />
+          <BudgetBar
+            spent={agent.monthly_cost_usd ?? 0}
+            budget={agent.budget_usd}
+            action={agent.budget_exceeded_action}
+          />
         )}
 
         {/* Update available banner */}
@@ -223,56 +265,83 @@ export default function AgentDetailPage() {
           <UpdateBanner agentId={agentId} onUpdated={(a) => setAgent(a)} />
         )}
 
-        {/* Pill tab switcher + current task indicator */}
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit overflow-x-auto">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
-                  activeTab === tab.key
-                    ? "bg-foreground/[0.08] text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
-                )}
+        {/* Grouped tab switcher (groups + sub-reiter) */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit overflow-x-auto">
+              {groupsForMode.map((group) => {
+                const Icon = group.icon;
+                const isActive = activeGroup?.key === group.key;
+                return (
+                  <button
+                    key={group.key}
+                    onClick={() => setActiveSub(group.subs[0].key)}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
+                      isActive
+                        ? "bg-foreground/[0.08] text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {group.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Current task indicator (inline) */}
+            {agent.current_task && (
+              <motion.div
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-2 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-1.5 max-w-xs"
               >
-                <Icon className="h-3.5 w-3.5" />
-                {tab.label}
-              </button>
-            );
-          })}
+                <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
+                <p className="text-[11px] font-medium text-blue-400 truncate">{agent.current_task}</p>
+              </motion.div>
+            )}
           </div>
 
-          {/* Current task indicator (inline) */}
-          {agent.current_task && (
-            <motion.div
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-2 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-1.5 max-w-xs"
-            >
-              <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
-              <p className="text-[11px] font-medium text-blue-400 truncate">{agent.current_task}</p>
-            </motion.div>
+          {/* Sub-reiter — only when the active group has more than one entry */}
+          {activeGroup && activeGroup.subs.length > 1 && (
+            <div className="flex gap-1 w-fit overflow-x-auto pl-1">
+              {activeGroup.subs.map((sub) => {
+                const Icon = sub.icon;
+                return (
+                  <button
+                    key={sub.key}
+                    onClick={() => setActiveSub(sub.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all duration-150",
+                      activeSub === sub.key
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.04]"
+                    )}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {sub.label}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 
         {/* Tab content */}
         <div className="flex-1 min-h-0 h-full">
-          {activeTab === "chat" && <AgentChat agentId={agentId} />}
-          {activeTab === "terminal" && <LiveTerminal agentId={agentId} />}
-          {activeTab === "todos" && <TodoTab agentId={agentId} />}
-          {activeTab === "files" && <FileBrowser agentId={agentId} diskUsageMb={diskUsageMb} diskLimitMb={diskLimitMb} diskPercent={diskPercent} />}
-          {activeTab === "apps" && <DockerAppsTab agentId={agentId} />}
-          {activeTab === "history" && <TaskHistory tasks={tasks} />}
-          {activeTab === "knowledge" && <KnowledgePanel agentId={agentId} />}
-          {activeTab === "memory" && <MemoryTab agentId={agentId} />}
-          {activeTab === "integrations" && <IntegrationSelector agentId={agentId} />}
-          {activeTab === "skills" && <SkillsTab agentId={agentId} />}
-          {activeTab === "computer-use" && <ComputerUseTab agentId={agentId} browserMode={agent.browser_mode} />}
-          {activeTab === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
+          {activeSub === "chat" && <AgentChat agentId={agentId} />}
+          {activeSub === "terminal" && <LiveTerminal agentId={agentId} />}
+          {activeSub === "todos" && <TodoTab agentId={agentId} />}
+          {activeSub === "files" && <FileBrowser agentId={agentId} diskUsageMb={diskUsageMb} diskLimitMb={diskLimitMb} diskPercent={diskPercent} />}
+          {activeSub === "apps" && <DockerAppsTab agentId={agentId} />}
+          {activeSub === "history" && <TaskHistory tasks={tasks} />}
+          {activeSub === "knowledge" && <KnowledgePanel agentId={agentId} />}
+          {activeSub === "memory" && <MemoryTab agentId={agentId} />}
+          {activeSub === "integrations" && <IntegrationSelector agentId={agentId} />}
+          {activeSub === "skills" && <SkillsTab agentId={agentId} />}
+          {activeSub === "computer-use" && <ComputerUseTab agentId={agentId} browserMode={agent.browser_mode} />}
+          {activeSub === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>
     </div>
@@ -369,7 +438,7 @@ function InfoCard({
   );
 }
 
-function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
+function BudgetBar({ spent, budget, action }: { spent: number; budget: number; action: "haiku" | "stop" }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const color =
     pct >= 100
@@ -387,7 +456,7 @@ function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
             <DollarSign className="h-3.5 w-3.5 text-amber-400" />
           </div>
-          <span className="text-[11px] font-medium text-muted-foreground">Budget</span>
+          <span className="text-[11px] font-medium text-muted-foreground">Budget / Monat</span>
         </div>
         <span className={cn("text-sm font-bold tabular-nums", labelColor)}>
           ${spent.toFixed(2)} / ${budget.toFixed(2)}
@@ -399,8 +468,15 @@ function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-right">
-        {pct.toFixed(0)}% used
+      <p className="text-[10px] text-muted-foreground/50 mt-1.5 flex items-center justify-between">
+        <span>
+          {pct >= 100
+            ? action === "stop"
+              ? "Budget aufgebraucht — Agent gestoppt"
+              : "Budget aufgebraucht — Sparmodus (Haiku)"
+            : `Bei Erschöpfung: ${action === "stop" ? "Agent stoppen" : "auf Haiku umschalten"}`}
+        </span>
+        <span>{pct.toFixed(0)}% genutzt</span>
       </p>
     </div>
   );

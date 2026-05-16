@@ -51,6 +51,8 @@ class TemplateUpdate(BaseModel):
 
 class CreateFromTemplate(BaseModel):
     name: str | None = None  # Override agent name
+    budget_usd: float | None = None  # Monthly budget cap (None = unlimited)
+    budget_exceeded_action: str = "haiku"  # "haiku" | "stop"
 
 
 def _template_to_dict(t: AgentTemplate) -> dict:
@@ -325,6 +327,8 @@ async def create_agent_from_template(
             integrations=template.integrations or [],
             permissions=template.permissions or [],
             user_id=uid,
+            budget_usd=body.budget_usd,
+            budget_exceeded_action=body.budget_exceeded_action,
         )
 
         if template.claude_md and agent.container_id:

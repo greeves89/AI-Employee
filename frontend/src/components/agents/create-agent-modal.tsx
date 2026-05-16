@@ -153,6 +153,7 @@ export function CreateAgentModal({
   const [role, setRole] = useState("");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [budgetUsd, setBudgetUsd] = useState<string>("");
+  const [budgetExceededAction, setBudgetExceededAction] = useState<"haiku" | "stop">("haiku");
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -273,7 +274,12 @@ export function CreateAgentModal({
       const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
 
       if (selectedTemplate && mode !== "custom_llm") {
-        await api.createAgentFromTemplate(selectedTemplate.id, name.trim() || undefined);
+        await api.createAgentFromTemplate(
+          selectedTemplate.id,
+          name.trim() || undefined,
+          parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
+          budgetExceededAction,
+        );
       } else if (mode === "custom_llm") {
         const llmConfig: LLMConfig = {
           provider_type: llmProvider,
@@ -294,6 +300,7 @@ export function CreateAgentModal({
           "custom_llm",
           llmConfig,
           autonomyLevel,
+          budgetExceededAction,
         );
       } else {
         await api.createAgent(
@@ -305,6 +312,7 @@ export function CreateAgentModal({
           "claude_code",
           undefined,
           autonomyLevel,
+          budgetExceededAction,
         );
       }
       setName("");
@@ -709,36 +717,6 @@ export function CreateAgentModal({
                             />
                           </div>
 
-                          {/* Budget */}
-                          <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              Budget (USD){" "}
-                              <span className="text-muted-foreground/40">
-                                (optional)
-                              </span>
-                            </label>
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground/50">$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={budgetUsd}
-                                onChange={(e) => setBudgetUsd(e.target.value)}
-                                placeholder="Unlimited"
-                                className={cn(
-                                  "w-full rounded-lg border border-foreground/[0.1] bg-background/80 pl-7 pr-4 py-2.5 text-sm outline-none transition-all tabular-nums",
-                                  mode === "custom_llm"
-                                    ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
-                                    : "focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
-                                )}
-                              />
-                            </div>
-                            <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              Max. Kosten fuer diesen Agent. Ohne Angabe: unbegrenzt.
-                            </p>
-                          </div>
-
                           {/* Autonomy Level */}
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -847,6 +825,57 @@ export function CreateAgentModal({
                             </p>
                           </div>
                         </>
+                      )}
+
+                      {/* Budget — available for both blank agents and templates */}
+                      {!simpleMode && (
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                            Budget pro Monat (USD){" "}
+                            <span className="text-muted-foreground/40">(optional)</span>
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground/50">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={budgetUsd}
+                              onChange={(e) => setBudgetUsd(e.target.value)}
+                              placeholder="Unlimited"
+                              className={cn(
+                                "w-full rounded-lg border border-foreground/[0.1] bg-background/80 pl-7 pr-4 py-2.5 text-sm outline-none transition-all tabular-nums",
+                                mode === "custom_llm"
+                                  ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                                  : "focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                              )}
+                            />
+                          </div>
+                          <p className="text-[11px] text-muted-foreground/50 mt-1">
+                            Max. Kosten pro Monat. Ohne Angabe: unbegrenzt. Reset am 1.
+                          </p>
+
+                          {budgetUsd && parseFloat(budgetUsd) > 0 && (
+                            <div className="mt-3">
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                                Wenn Budget aufgebraucht
+                              </label>
+                              <select
+                                value={budgetExceededAction}
+                                onChange={(e) => setBudgetExceededAction(e.target.value as "haiku" | "stop")}
+                                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                              >
+                                <option value="haiku">Sparmodus — auf Haiku umschalten</option>
+                                <option value="stop">Stoppen — Agent pausieren</option>
+                              </select>
+                              <p className="mt-1 text-[11px] text-muted-foreground/60">
+                                {budgetExceededAction === "haiku"
+                                  ? "Agent arbeitet weiter, aber mit dem guenstigen Haiku-Modell."
+                                  : "Agent wird gestoppt und nimmt keine neuen Tasks an."}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* Template info summary */}
