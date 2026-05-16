@@ -251,7 +251,7 @@ class SchedulerService:
             from app.core.agent_manager import AgentManager
             if not self.docker:
                 return 0
-            mgr = AgentManager(db, self.docker)
+            mgr = AgentManager(db, self.docker, self.redis)
 
             for agent in agents:
                 cfg = agent.config or {}
