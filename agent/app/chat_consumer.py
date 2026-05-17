@@ -30,6 +30,17 @@ def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) ->
     if callback_data:
         header += f" | callback: {callback_data} (query_id: {callback_query_id})"
 
+    # Voice-first: a spoken message gets a spoken reply (auto-TTS). Tell the
+    # agent to answer like a colleague on the phone — short, plain, no Markdown.
+    voice_hint = ""
+    if media_type in ("voice", "audio"):
+        voice_hint = (
+            "\n\nVOICE CONVERSATION: The user spoke to you and your reply will be "
+            "read aloud as a voice message. Answer CONCISELY and conversationally, "
+            "like a colleague on the phone — short sentences, no Markdown, no code "
+            "blocks, no bullet lists, no tables. Get to the point.\n"
+        )
+
     api_base = f"{orch_url}/api/v1/telegram"
     auth = f"-H 'X-Agent-ID: {agent_id}' -H 'Authorization: Bearer {agent_token}'"
 
@@ -69,7 +80,7 @@ AFTER the user gives feedback: if you used a marketplace skill, call skill_rate
 
 """
 
-    return f"""{header}
+    return f"""{header}{voice_hint}
 
 {startup_block}{text}
 

@@ -22,6 +22,26 @@ from telegram.ext import (
 
 from app.config import settings
 
+import re as _re
+
+_CODE_BLOCK = _re.compile(r"```.*?```", _re.DOTALL)
+_MD_PATTERNS = [
+    (_re.compile(r"`([^`]*)`"), r"\1"),                 # inline code
+    (_re.compile(r"\*\*([^*]+)\*\*"), r"\1"),           # bold
+    (_re.compile(r"\*([^*]+)\*"), r"\1"),               # italic
+    (_re.compile(r"^#{1,6}\s*", _re.MULTILINE), ""),    # headers
+    (_re.compile(r"\[([^\]]+)\]\([^)]+\)"), r"\1"),     # links → label
+    (_re.compile(r"^\s*[-*]\s+", _re.MULTILINE), ""),   # bullet markers
+]
+
+
+def _strip_markdown(text: str) -> str:
+    """Flatten Markdown to plain text so TTS doesn't read '*' / backticks aloud."""
+    t = _CODE_BLOCK.sub(" (Codeblock) ", text)
+    for pattern, repl in _MD_PATTERNS:
+        t = pattern.sub(repl, t)
+    return t.strip()
+
 
 class TelegramAgentBot:
     """A Telegram bot instance bound to a single AI Employee agent."""
@@ -398,6 +418,9 @@ class TelegramAgentBot:
                 "images": images,
             })
             await redis.lpush(f"agent:{self.agent_id}:chat", payload)
+            # Voice-first: a voice/audio message should get a voice reply.
+            if media_type in ("voice", "audio"):
+                await redis.setex(f"agent:{self.agent_id}:voicereply:{message_id}", 3600, "1")
             await redis.aclose()
             await update.effective_chat.send_action("typing")
         except Exception as e:
@@ -527,6 +550,7 @@ class TelegramAgentBot:
             await pubsub.subscribe(f"agent:{self.agent_id}:chat:response")
 
             response_buffer = ""
+            full_response = ""  # whole turn's text — for the voice-first reply
             last_flush = asyncio.get_event_loop().time()
 
             # Detect agent mode: custom_llm streams slower → flush per sentence
@@ -564,7 +588,9 @@ class TelegramAgentBot:
                         continue
 
                     if event_type == "text":
-                        response_buffer += str(event_data.get("text", ""))
+                        _chunk = str(event_data.get("text", ""))
+                        response_buffer += _chunk
+                        full_response += _chunk
 
                     elif event_type == "tool_call":
                         # Send whatever the agent wrote before the tool call
@@ -602,7 +628,9 @@ class TelegramAgentBot:
                                 try:
                                     td = json.loads(trailing["data"])
                                     if td.get("type") == "text":
-                                        response_buffer += str(td.get("data", {}).get("text", ""))
+                                        _t = str(td.get("data", {}).get("text", ""))
+                                        response_buffer += _t
+                                        full_response += _t
                                 except Exception:
                                     pass
                         # Flush remaining buffer
@@ -610,6 +638,10 @@ class TelegramAgentBot:
                             await self._send_chunked(chat_id, response_buffer.strip())
                         response_buffer = ""
                         last_flush = now
+
+                        # Voice-first: if the user spoke, reply with voice too.
+                        await self._maybe_send_voice_reply(chat_id, msg_id, full_response)
+                        full_response = ""
 
                         duration = event_data.get("duration_ms", 0)
                         turns = event_data.get("num_turns", 0)
@@ -653,3 +685,44 @@ class TelegramAgentBot:
         for i in range(0, len(text), 4000):
             chunk = text[i : i + 4000]
             await self.app.bot.send_message(chat_id=chat_id, text=chunk)
+
+    async def _maybe_send_voice_reply(self, chat_id: int, msg_id: str, text: str) -> None:
+        """Voice-first: if this message arrived as a voice/audio message, also
+        send the agent's reply back as a Telegram voice message (TTS).
+
+        The text reply is sent regardless (above) — voice is added on top so
+        the user keeps links/code while getting the spoken, colleague-like feel.
+        Best-effort: a failing TTS service never breaks the text response.
+        """
+        if not msg_id or not text.strip():
+            return
+
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            key = f"agent:{self.agent_id}:voicereply:{msg_id}"
+            if not await redis.get(key):
+                return
+            await redis.delete(key)
+        finally:
+            await redis.aclose()
+
+        spoken = _strip_markdown(text)[:4000]
+        if not spoken.strip():
+            return
+
+        try:
+            import io
+            import httpx
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    f"{settings.tts_service_url}/synthesize",
+                    json={"text": spoken, "language": "de"},
+                )
+                resp.raise_for_status()
+                audio = resp.content
+            if not audio:
+                return
+            await self.app.bot.send_chat_action(chat_id=chat_id, action="record_voice")
+            await self.app.bot.send_voice(chat_id=chat_id, voice=io.BytesIO(audio))
+        except Exception as e:
+            logging.getLogger(__name__).warning("Voice reply (TTS) failed: %s", e)
