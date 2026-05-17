@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     llm_system_prompt: str = ""
     llm_tools_enabled: bool = True
     llm_thinking_mode: str = "auto"  # "off", "auto", "on"
+    llm_api_version: str = ""  # Azure OpenAI api-version (e.g. 2024-10-21)
 
     # Custom MCP servers (JSON: {"name": "http://url"}) - used by both modes
     custom_mcp_servers: str = ""

@@ -43,6 +43,8 @@ class OpenAIProvider(BaseLLMProvider):
 
     def __init__(self, **kwargs):
         self.thinking_mode = kwargs.pop("thinking_mode", "auto")  # "off", "auto", "on"
+        self.is_azure = bool(kwargs.pop("is_azure", False))
+        self.api_version = kwargs.pop("api_version", "") or ""
         super().__init__(**kwargs)
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
@@ -51,6 +53,26 @@ class OpenAIProvider(BaseLLMProvider):
         model_lower = self.model_name.lower()
         return any(p in model_lower for p in _RESPONSES_API_PATTERNS)
 
+    def _azure_version(self) -> str:
+        """api-version for Azure requests (account value, else a sane default)."""
+        return self.api_version or "2024-10-21"
+
+    def _headers(self) -> dict:
+        """Auth headers — Azure OpenAI uses `api-key`, others `Bearer`."""
+        h = {"Content-Type": "application/json"}
+        if self.is_azure:
+            h["api-key"] = self.api_key
+        else:
+            h["Authorization"] = f"Bearer {self.api_key}"
+        return h
+
+    def _with_version(self, url: str, azure: bool) -> str:
+        """Append api-version for Azure URLs that don't already carry one."""
+        if azure and "api-version=" not in url:
+            sep = "&" if "?" in url else "?"
+            return f"{url}{sep}api-version={self._azure_version()}"
+        return url
+
     def _resolve_url(self) -> tuple[str, str]:
         """Determine the full URL and API format to use.
 
@@ -58,34 +80,27 @@ class OpenAIProvider(BaseLLMProvider):
         "chat", "responses", "legacy".
         """
         ep = self.api_endpoint.rstrip("/")
-        is_azure = ".openai.azure.com" in ep
+        azure = self.is_azure or ".openai.azure.com" in ep
 
-        # User specified the full path already
+        # User specified the full path already → respect it verbatim
         if ep.endswith("/chat/completions"):
-            return self._azure_query(ep, is_azure), "chat"
+            return self._with_version(ep, azure), "chat"
         if ep.endswith("/responses"):
-            return self._azure_query(ep, is_azure), "responses"
+            return self._with_version(ep, azure), "responses"
         if ep.endswith("/completions"):
-            return self._azure_query(ep, is_azure), "legacy"
+            return self._with_version(ep, azure), "legacy"
 
-        # Azure OpenAI: normalise a bare resource URL to the v1 API surface
-        # (https://<resource>.openai.azure.com/openai/v1/...).
-        if is_azure and "/openai/v1" not in ep:
-            root = ep.split(".openai.azure.com")[0] + ".openai.azure.com"
-            ep = f"{root}/openai/v1"
+        fmt = "responses" if self._is_responses_model() else "chat"
+        path = "responses" if fmt == "responses" else "chat/completions"
 
-        if self._is_responses_model():
-            return self._azure_query(f"{ep}/responses", is_azure), "responses"
+        if azure:
+            # Classic Azure OpenAI: the deployment name lives in the path.
+            # https://<res>.openai.azure.com/openai/deployments/<dep>/<path>?api-version=…
+            root = ep.split("/openai")[0].rstrip("/")
+            url = f"{root}/openai/deployments/{self.model_name}/{path}?api-version={self._azure_version()}"
+            return url, fmt
 
-        return self._azure_query(f"{ep}/chat/completions", is_azure), "chat"
-
-    @staticmethod
-    def _azure_query(url: str, is_azure: bool) -> str:
-        """Azure's v1 API surface needs an api-version query parameter."""
-        if is_azure and "api-version=" not in url:
-            sep = "&" if "?" in url else "?"
-            return f"{url}{sep}api-version=preview"
-        return url
+        return f"{ep}/{path}", fmt
 
     # ------------------------------------------------------------------ #
     # Main streaming entry point
@@ -119,10 +134,7 @@ class OpenAIProvider(BaseLLMProvider):
     ) -> AsyncIterator[LLMEvent]:
         """Stream via the OpenAI Responses API."""
         body = self._build_responses_body(messages, tools)
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         input_tokens = 0
         output_tokens = 0
@@ -307,10 +319,7 @@ class OpenAIProvider(BaseLLMProvider):
     ) -> AsyncIterator[LLMEvent]:
         """Stream via the Chat Completions API."""
         body = self._build_chat_body(messages, tools)
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
         async for event in self._stream_chat_with_body(url, headers, body):
             yield event
 
@@ -492,10 +501,7 @@ class OpenAIProvider(BaseLLMProvider):
     ) -> AsyncIterator[LLMEvent]:
         """Stream via the legacy Completions API."""
         body = self._build_legacy_body(messages)
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._headers()
 
         input_tokens = 0
         output_tokens = 0

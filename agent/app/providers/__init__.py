@@ -12,13 +12,15 @@ def create_provider(
     **kwargs,
 ) -> BaseLLMProvider:
     """Factory: create the right provider instance based on type."""
-    # Azure OpenAI speaks the OpenAI-compatible API (v1 surface) — same
-    # provider class; the Azure resource URL is the api_endpoint.
+    # Azure OpenAI speaks the OpenAI-compatible API — same provider class;
+    # the Azure resource URL is the api_endpoint. is_azure drives the
+    # classic deployment URL build (/openai/deployments/{model}/...).
     if provider_type in ("openai", "azure-openai", "azure", ""):
         return OpenAIProvider(
             api_endpoint=api_endpoint,
             api_key=api_key,
             model_name=model_name,
+            is_azure=provider_type in ("azure-openai", "azure"),
             **kwargs,
         )
     elif provider_type == "anthropic":
