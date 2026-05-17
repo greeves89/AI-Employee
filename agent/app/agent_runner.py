@@ -146,11 +146,15 @@ class AgentRunner:
 
                 if event.get("type") == "result":
                     result_text = event.get("result", "") or "\n".join(text_output)
+                    usage = event.get("usage", {}) or {}
                     result_data = {
                         "status": "completed",
                         "duration_ms": event.get("duration_ms"),
                         "num_turns": event.get("num_turns"),
-                        "cost_usd": event.get("cost_usd", 0),
+                        # CLI emits "total_cost_usd"; keep "cost_usd" as legacy fallback
+                        "cost_usd": event.get("total_cost_usd", event.get("cost_usd", 0)) or 0,
+                        "input_tokens": usage.get("input_tokens"),
+                        "output_tokens": usage.get("output_tokens"),
                         "result": result_text,
                     }
 
@@ -250,11 +254,14 @@ class AgentRunner:
             )
 
         elif event_type == "result":
+            _usage = event.get("usage", {}) or {}
             await self.log_publisher.publish(
                 task_id,
                 "result",
                 {
-                    "cost_usd": event.get("cost_usd", 0),
+                    "cost_usd": event.get("total_cost_usd", event.get("cost_usd", 0)) or 0,
+                    "input_tokens": _usage.get("input_tokens"),
+                    "output_tokens": _usage.get("output_tokens"),
                     "duration_ms": event.get("duration_ms", 0),
                     "num_turns": event.get("num_turns", 0),
                 },
