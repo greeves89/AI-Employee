@@ -24,6 +24,7 @@ const MENU_PATHS = [
   "/files",
   "/integrations",
   "/secrets",
+  "/ai-accounts",
   "/settings",
 ];
 

@@ -38,6 +38,22 @@ export interface LLMConfigResponse {
   tools_enabled: boolean;
 }
 
+export type AIAccountProviderType =
+  | "azure-openai" | "openai" | "anthropic" | "google" | "ollama" | "lm-studio";
+
+export interface AIAccount {
+  id: number;
+  name: string;
+  provider_type: AIAccountProviderType;
+  api_endpoint: string | null;
+  model_name: string;
+  extra: Record<string, unknown>;
+  is_active: boolean;
+  has_key: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -47,6 +63,7 @@ export interface Agent {
   model_provider: ModelProvider;
   mode: AgentMode;
   llm_config: LLMConfigResponse | null;
+  ai_account_id: number | null;
   role: string | null;
   onboarding_complete: boolean;
   integrations: string[];

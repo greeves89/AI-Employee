@@ -41,7 +41,7 @@ import {
   Globe,
 } from "lucide-react";
 import * as api from "@/lib/api";
-import type { AgentMode, AgentTemplate, LLMConfig, LLMProviderType, PermissionPackage } from "@/lib/types";
+import type { AgentMode, AgentTemplate, AIAccount, LLMConfig, LLMProviderType, PermissionPackage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
@@ -174,6 +174,8 @@ export function CreateAgentModal({
   const [llmSystemPrompt, setLlmSystemPrompt] = useState("");
   const [llmToolsEnabled, setLlmToolsEnabled] = useState(true);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [aiAccountId, setAiAccountId] = useState<number | null>(null);
+  const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
 
   // Load templates and permission packages on open
   useEffect(() => {
@@ -186,6 +188,8 @@ export function CreateAgentModal({
       setError(null);
       setMode("claude_code");
       setAutonomyLevel("l3");
+      setAiAccountId(null);
+      api.listAIAccounts(true).then(setAiAccounts).catch(() => setAiAccounts([]));
       setLlmProvider("openai");
       setLlmEndpoint("https://api.openai.com/v1");
       setLlmApiKey("");
@@ -255,8 +259,8 @@ export function CreateAgentModal({
   const handleCreate = async () => {
     if (!name.trim() && !selectedTemplate) return;
 
-    // Validate custom LLM fields
-    if (mode === "custom_llm") {
+    // Validate custom LLM fields (skipped when a reusable AI account is chosen)
+    if (mode === "custom_llm" && aiAccountId === null) {
       const noKeyRequired = PROVIDER_PRESETS[llmProvider]?.noKey;
       if (!noKeyRequired && !llmApiKey.trim()) {
         setError("API Key ist erforderlich");
@@ -279,6 +283,20 @@ export function CreateAgentModal({
           name.trim() || undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           budgetExceededAction,
+        );
+      } else if (mode === "custom_llm" && aiAccountId !== null) {
+        // Reusable, admin-managed AI account — no inline LLM config
+        await api.createAgent(
+          name.trim(),
+          undefined,
+          role.trim() || undefined,
+          selectedPermissions.length > 0 ? selectedPermissions : undefined,
+          parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
+          "custom_llm",
+          undefined,
+          autonomyLevel,
+          budgetExceededAction,
+          aiAccountId,
         );
       } else if (mode === "custom_llm") {
         const llmConfig: LLMConfig = {
@@ -552,6 +570,30 @@ export function CreateAgentModal({
                       {/* ===== CUSTOM LLM FIELDS (hidden in simple mode) ===== */}
                       {!simpleMode && mode === "custom_llm" && (
                         <>
+                          {/* AI-Account auswählen (admin-verwaltet, wiederverwendbar) */}
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                              AI-Account
+                            </label>
+                            <select
+                              value={aiAccountId ?? ""}
+                              onChange={(e) => setAiAccountId(e.target.value ? Number(e.target.value) : null)}
+                              className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                            >
+                              <option value="">Manuell konfigurieren</option>
+                              {aiAccounts.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.name} ({a.provider_type} · {a.model_name})
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-[11px] text-muted-foreground/50 mt-1">
+                              Vom Admin angelegten Modell-Zugang nutzen — oder unten manuell konfigurieren.
+                            </p>
+                          </div>
+
+                          {aiAccountId === null && (
+                          <>
                           {/* Provider */}
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -689,6 +731,8 @@ export function CreateAgentModal({
                               />
                             </button>
                           </div>
+                          </>
+                          )}
                         </>
                       )}
 

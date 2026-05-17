@@ -507,6 +507,60 @@ class AgentManager:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
         return env
 
+    async def _effective_llm_config(
+        self, ai_account_id: int | None, inline_llm_config: dict | None
+    ) -> dict | None:
+        """Resolve the effective custom-LLM config with a PLAINTEXT api_key.
+
+        A linked AIAccount (admin-managed, reusable) takes precedence over an
+        agent's inline llm_config. Returns None if neither is set.
+        """
+        from app.core.encryption import decrypt_token as _decrypt
+        from app.models.ai_account import AIAccount
+
+        if ai_account_id:
+            acc = await self.db.get(AIAccount, ai_account_id)
+            if acc:
+                extra = acc.extra or {}
+                return {
+                    "provider_type": acc.provider_type,
+                    "api_endpoint": acc.api_endpoint or "",
+                    "api_key": _decrypt(acc.api_key_encrypted) if acc.api_key_encrypted else "",
+                    "model_name": acc.model_name,
+                    "max_tokens": extra.get("max_tokens", 4096),
+                    "temperature": extra.get("temperature", 0.7),
+                    "system_prompt": extra.get("system_prompt", ""),
+                    "tools_enabled": extra.get("tools_enabled", True),
+                    "thinking_mode": extra.get("thinking_mode", "auto"),
+                    "api_version": extra.get("api_version", ""),
+                    "deployment": extra.get("deployment", ""),
+                }
+        if inline_llm_config:
+            cfg = dict(inline_llm_config)
+            if cfg.get("api_key_encrypted") and not cfg.get("api_key"):
+                cfg["api_key"] = _decrypt(cfg["api_key_encrypted"])
+            return cfg
+        return None
+
+    @staticmethod
+    def _llm_env(cfg: dict) -> dict[str, str]:
+        """Build the LLM_* container env vars from a resolved llm config dict."""
+        return {
+            "LLM_PROVIDER_TYPE": cfg.get("provider_type", ""),
+            "LLM_API_ENDPOINT": cfg.get("api_endpoint", "") or "",
+            "LLM_API_KEY": cfg.get("api_key", "") or "",
+            "LLM_MODEL_NAME": cfg.get("model_name", ""),
+            "LLM_MAX_TOKENS": str(cfg.get("max_tokens", 4096)),
+            "LLM_TEMPERATURE": str(cfg.get("temperature", 0.7)),
+            "LLM_SYSTEM_PROMPT": cfg.get("system_prompt", "") or "",
+            "LLM_TOOLS_ENABLED": str(cfg.get("tools_enabled", True)).lower(),
+            "LLM_THINKING_MODE": cfg.get("thinking_mode", "auto"),
+            # Azure OpenAI specifics (empty for other providers)
+            "LLM_API_VERSION": cfg.get("api_version", "") or "",
+            "LLM_DEPLOYMENT": cfg.get("deployment", "") or "",
+            "DEFAULT_MODEL": cfg.get("model_name", ""),
+        }
+
     async def _publish_event(self, agent_id: str, event_type: str, message: str) -> None:
         """Publish a lifecycle event to the agent's log channel."""
         try:
@@ -609,24 +663,33 @@ class AgentManager:
                 logger.warning("Failed to decrypt secret %s (%s)", secret.name, secret.key_name)
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
         session_volume = f"claude-session-{agent_id}"
         model = model or settings.default_model
 
-        # Encrypt API key for custom_llm before storing
+        # A linked AI account drives the custom-LLM mode (reusable, admin-managed).
+        if ai_account_id:
+            mode = "custom_llm"
+
+        # Resolve the effective LLM config (account takes precedence over inline).
+        effective_llm = await self._effective_llm_config(ai_account_id, llm_config)
+
+        # Encrypt API key for inline custom_llm config before storing.
+        # Account-linked agents store no inline config — the account is the source.
         encrypted_llm_config = None
-        if mode == "custom_llm" and llm_config:
+        if mode == "custom_llm" and not ai_account_id and llm_config:
             from app.core.encryption import encrypt_token
             encrypted_llm_config = dict(llm_config)
             if encrypted_llm_config.get("api_key"):
                 encrypted_llm_config["api_key_encrypted"] = encrypt_token(
                     encrypted_llm_config.pop("api_key")
                 )
+        if mode == "custom_llm" and effective_llm:
             # Use the custom model name as the display model
-            model = llm_config.get("model_name", model)
+            model = effective_llm.get("model_name", model)
 
         # Build environment based on mode
         env_vars: dict[str, str] = {
@@ -641,21 +704,12 @@ class AgentManager:
             "AUTONOMY_LEVEL": autonomy_level.lower(),
         }
 
-        if mode == "custom_llm" and llm_config:
+        if mode == "custom_llm" and effective_llm:
             # Custom LLM: LLM-specific env vars + integrations + MCP servers
             mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
             integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
             env_vars.update({
-                "LLM_PROVIDER_TYPE": llm_config["provider_type"],
-                "LLM_API_ENDPOINT": llm_config["api_endpoint"],
-                "LLM_API_KEY": llm_config["api_key"],
-                "LLM_MODEL_NAME": llm_config["model_name"],
-                "LLM_MAX_TOKENS": str(llm_config.get("max_tokens", 4096)),
-                "LLM_TEMPERATURE": str(llm_config.get("temperature", 0.7)),
-                "LLM_SYSTEM_PROMPT": llm_config.get("system_prompt", ""),
-                "LLM_TOOLS_ENABLED": str(llm_config.get("tools_enabled", True)).lower(),
-                "LLM_THINKING_MODE": llm_config.get("thinking_mode", "auto"),
-                "DEFAULT_MODEL": llm_config["model_name"],
+                **self._llm_env(effective_llm),
                 **mcp_env,
                 **integration_env,
             })
@@ -748,6 +802,7 @@ class AgentManager:
             model=model,
             mode=mode,
             llm_config=encrypted_llm_config,
+            ai_account_id=ai_account_id,
             budget_usd=budget_usd,
             budget_exceeded_action=budget_exceeded_action,
             browser_mode=browser_mode,
@@ -894,23 +949,12 @@ class AgentManager:
 
         secrets_env = await self._get_secrets_env(agent_id)
 
-        if mode == "custom_llm" and agent.llm_config:
-            from app.core.encryption import decrypt_token as _decrypt
-            llm_cfg = agent.llm_config
-            api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
+        effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config)
+        if mode == "custom_llm" and effective_llm:
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
-                "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
-                "LLM_API_ENDPOINT": llm_cfg.get("api_endpoint", ""),
-                "LLM_API_KEY": api_key,
-                "LLM_MODEL_NAME": llm_cfg.get("model_name", ""),
-                "LLM_MAX_TOKENS": str(llm_cfg.get("max_tokens", 4096)),
-                "LLM_TEMPERATURE": str(llm_cfg.get("temperature", 0.7)),
-                "LLM_SYSTEM_PROMPT": llm_cfg.get("system_prompt", ""),
-                "LLM_TOOLS_ENABLED": str(llm_cfg.get("tools_enabled", True)).lower(),
-                "LLM_THINKING_MODE": llm_cfg.get("thinking_mode", "auto"),
-                "DEFAULT_MODEL": llm_cfg.get("model_name", model),
+                **self._llm_env(effective_llm),
                 **mcp_env,
                 **integration_env,
                 **secrets_env,
@@ -1062,23 +1106,12 @@ class AgentManager:
 
         secrets_env = await self._get_secrets_env(agent_id)
 
-        if mode == "custom_llm" and agent.llm_config:
-            from app.core.encryption import decrypt_token as _decrypt
-            llm_cfg = agent.llm_config
-            api_key = _decrypt(llm_cfg["api_key_encrypted"]) if llm_cfg.get("api_key_encrypted") else ""
+        effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config)
+        if mode == "custom_llm" and effective_llm:
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
-                "LLM_PROVIDER_TYPE": llm_cfg.get("provider_type", ""),
-                "LLM_API_ENDPOINT": llm_cfg.get("api_endpoint", ""),
-                "LLM_API_KEY": api_key,
-                "LLM_MODEL_NAME": llm_cfg.get("model_name", ""),
-                "LLM_MAX_TOKENS": str(llm_cfg.get("max_tokens", 4096)),
-                "LLM_TEMPERATURE": str(llm_cfg.get("temperature", 0.7)),
-                "LLM_SYSTEM_PROMPT": llm_cfg.get("system_prompt", ""),
-                "LLM_TOOLS_ENABLED": str(llm_cfg.get("tools_enabled", True)).lower(),
-                "LLM_THINKING_MODE": llm_cfg.get("thinking_mode", "auto"),
-                "DEFAULT_MODEL": llm_cfg.get("model_name", model),
+                **self._llm_env(effective_llm),
                 **mcp_env,
                 **integration_env,
                 **secrets_env,
@@ -1327,6 +1360,7 @@ class AgentManager:
             "budget_usd": agent.budget_usd,
             "budget_exceeded_action": agent.budget_exceeded_action,
             "monthly_cost_usd": monthly_cost_usd,
+            "ai_account_id": agent.ai_account_id,
             "browser_mode": agent.browser_mode,
             "autonomy_level": agent.autonomy_level or "l3",
             "webhook_enabled": agent.webhook_enabled,

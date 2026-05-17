@@ -96,6 +96,7 @@ const navGroups: NavGroup[] = [
       { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
       { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
       { href: "/secrets", label: "Key Management", icon: KeyRound, simpleVisible: false },
+      { href: "/ai-accounts", label: "AI-Accounts", icon: Cpu, simpleVisible: false },
       { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },
     ],
   },

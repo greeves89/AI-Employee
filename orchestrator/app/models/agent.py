@@ -38,6 +38,11 @@ class Agent(Base, TimestampMixin):
     template_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("agent_templates.id"), nullable=True, index=True
     )
+    # Optional link to a reusable, admin-managed AI model account.
+    # When set, the agent uses that account's provider/credentials/model.
+    ai_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("ai_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited; monthly cap
     # What to do when the monthly budget is exhausted:

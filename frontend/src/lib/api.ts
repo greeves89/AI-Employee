@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -59,10 +59,11 @@ export async function createAgent(
   llm_config?: LLMConfig,
   autonomy_level?: string,
   budget_exceeded_action: "haiku" | "stop" = "haiku",
+  ai_account_id?: number,
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
-    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action }),
+    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action, ai_account_id }),
   });
 }
 
@@ -766,6 +767,49 @@ export async function updateAgentBudget(
   return fetchJSON(`${getBase()}/agents/${agentId}/budget`, {
     method: "PATCH",
     body: JSON.stringify({ budget_usd: budgetUsd, budget_exceeded_action: budgetExceededAction }),
+  });
+}
+
+// AI Accounts (admin-managed, reusable LLM model accounts)
+export interface AIAccountPayload {
+  name: string;
+  provider_type: string;
+  api_endpoint?: string | null;
+  api_key?: string | null;
+  model_name: string;
+  extra?: Record<string, unknown>;
+  is_active?: boolean;
+}
+
+export async function listAIAccounts(activeOnly = false): Promise<AIAccount[]> {
+  return fetchJSON(`${getBase()}/ai-accounts/?active_only=${activeOnly}`);
+}
+
+export async function createAIAccount(payload: AIAccountPayload): Promise<AIAccount> {
+  return fetchJSON(`${getBase()}/ai-accounts/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAIAccount(id: number, payload: Partial<AIAccountPayload>): Promise<AIAccount> {
+  return fetchJSON(`${getBase()}/ai-accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAIAccount(id: number): Promise<{ ok: boolean; id: number }> {
+  return fetchJSON(`${getBase()}/ai-accounts/${id}`, { method: "DELETE" });
+}
+
+export async function updateAgentAIAccount(
+  agentId: string,
+  aiAccountId: number,
+): Promise<{ agent_id: string; ai_account_id: number; status: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/ai-account`, {
+    method: "PATCH",
+    body: JSON.stringify({ ai_account_id: aiAccountId }),
   });
 }
 

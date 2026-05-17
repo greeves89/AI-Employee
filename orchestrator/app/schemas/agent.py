@@ -62,7 +62,8 @@ class AgentCreate(BaseModel):
     budget_usd: float | None = None
     budget_exceeded_action: BudgetExceededAction = "haiku"
     mode: AgentMode = "claude_code"
-    llm_config: LLMConfig | None = None  # required when mode == "custom_llm"
+    llm_config: LLMConfig | None = None  # custom_llm: inline config …
+    ai_account_id: int | None = None     # … or a reusable, admin-managed AI account
     browser_mode: bool = False  # Enable Playwright browser control inside agent container
     autonomy_level: str = "l3"
 
@@ -76,6 +77,7 @@ class AgentResponse(BaseModel):
     model_provider: str = "anthropic"
     mode: str = "claude_code"
     llm_config: LLMConfigResponse | None = None
+    ai_account_id: int | None = None
     role: str | None = None
     onboarding_complete: bool = False
     integrations: list[str] = []

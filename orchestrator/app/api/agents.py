@@ -303,12 +303,20 @@ async def create_agent(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        # Validate: custom_llm mode requires llm_config
-        if data.mode == "custom_llm" and not data.llm_config:
+        # Validate: custom_llm mode requires an inline llm_config OR an AI account
+        if data.mode == "custom_llm" and not data.llm_config and not data.ai_account_id:
             raise HTTPException(
                 status_code=422,
-                detail="llm_config is required when mode is 'custom_llm'",
+                detail="custom_llm mode requires either llm_config or ai_account_id",
             )
+        # An AI account implies custom_llm mode
+        if data.ai_account_id:
+            from app.models.ai_account import AIAccount
+            account = await db.get(AIAccount, data.ai_account_id)
+            if not account:
+                raise HTTPException(status_code=422, detail="AI account not found")
+            if not account.is_active:
+                raise HTTPException(status_code=422, detail="AI account is inactive")
 
         # Role-based permission checks (skip for setup-mode anonymous user)
         if user.id != "__anonymous__":
@@ -348,6 +356,7 @@ async def create_agent(
             budget_exceeded_action=data.budget_exceeded_action,
             mode=data.mode,
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
+            ai_account_id=data.ai_account_id,
             browser_mode=data.browser_mode,
             autonomy_level=data.autonomy_level,
         )
@@ -587,6 +596,47 @@ async def update_agent_budget(
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+
+class AgentAIAccountUpdate(BaseModel):
+    ai_account_id: int  # the AI account to connect this agent to
+
+
+@router.patch("/{agent_id}/ai-account")
+async def update_agent_ai_account(
+    agent_id: str,
+    body: AgentAIAccountUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Connect an agent to a (different) AI account and recreate its container."""
+    await _check_owner(agent_id, user, db)
+    from app.models.ai_account import AIAccount
+
+    account = await db.get(AIAccount, body.ai_account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="AI account not found")
+    if not account.is_active:
+        raise HTTPException(status_code=422, detail="AI account is inactive")
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.ai_account_id = account.id
+    agent.mode = "custom_llm"
+    agent.model = account.model_name
+    await db.commit()
+
+    # Recreate the container so the account's provider/credentials take effect.
+    try:
+        await manager.update_agent(agent_id)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"AI account set, but container recreate failed for {agent_id}: {e}")
+
+    return {"agent_id": agent_id, "ai_account_id": account.id, "status": "updated"}
 
 
 @router.patch("/{agent_id}/idle-stop")
