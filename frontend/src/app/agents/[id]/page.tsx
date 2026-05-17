@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
-import type { Agent, FileEntry, PermissionPackage } from "@/lib/types";
+import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
@@ -965,11 +965,38 @@ function AgentSettings({
   const [llmNewApiKey, setLlmNewApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
 
+  // AI-Account state (reusable, admin-managed model accounts)
+  const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
+  const [aiAcctSel, setAiAcctSel] = useState<number | null>(agent.ai_account_id ?? null);
+  const [aiAcctModel, setAiAcctModel] = useState<string>(agent.model ?? "");
+  const [aiAcctSaving, setAiAcctSaving] = useState(false);
+
   useEffect(() => {
     api.getPermissionPackages().then((data) => {
       setPackages(data.packages);
     }).catch(() => setPackages([]));
+    api.listAIAccounts(true).then(setAiAccounts).catch(() => setAiAccounts([]));
   }, []);
+
+  useEffect(() => {
+    setAiAcctSel(agent.ai_account_id ?? null);
+    setAiAcctModel(agent.model ?? "");
+  }, [agent.ai_account_id, agent.model]);
+
+  const handleAiAccountSave = async () => {
+    if (aiAcctSel === null) return;
+    setAiAcctSaving(true);
+    try {
+      await api.updateAgentAIAccount(agent.id, aiAcctSel, aiAcctModel || undefined);
+      const fresh = await api.getAgent(agent.id);
+      onUpdated(fresh as Agent);
+      setMessage({ type: "success", text: "AI-Account verbunden. Agent wurde neu gestartet." });
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Verbinden fehlgeschlagen" });
+    } finally {
+      setAiAcctSaving(false);
+    }
+  };
 
   useEffect(() => {
     setSelected(currentPermissions);
@@ -1341,12 +1368,83 @@ function AgentSettings({
       )}
 
       {/* LLM Configuration (custom_llm only) */}
-      {agent.mode === "custom_llm" && agent.llm_config && (
+      {agent.mode === "custom_llm" && (
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2">
               <Plug className="h-4 w-4 text-violet-400" />
-              <span className="text-sm font-medium">LLM-Konfiguration</span>
+              <span className="text-sm font-medium">AI-Account</span>
+              {agent.ai_account_id && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                  verbunden
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleAiAccountSave}
+              disabled={aiAcctSel === null || aiAcctSaving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-all"
+            >
+              {aiAcctSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Verbinden &amp; neu starten
+            </button>
+          </div>
+          <div className="p-5 space-y-3">
+            {aiAccounts.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground/70">
+                Keine AI-Accounts vorhanden.{" "}
+                <Link href="/ai-accounts" className="text-violet-400 hover:text-violet-300">
+                  Zuerst einen anlegen →
+                </Link>
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Account</label>
+                  <select
+                    value={aiAcctSel ?? ""}
+                    onChange={(e) => {
+                      const id = e.target.value ? Number(e.target.value) : null;
+                      setAiAcctSel(id);
+                      const acc = aiAccounts.find((a) => a.id === id);
+                      setAiAcctModel(acc?.models?.[0] ?? "");
+                    }}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50"
+                  >
+                    <option value="">— keiner —</option>
+                    {aiAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name} ({a.provider_type})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Modell</label>
+                  <select
+                    value={aiAcctModel}
+                    onChange={(e) => setAiAcctModel(e.target.value)}
+                    disabled={aiAcctSel === null}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50 disabled:opacity-40"
+                  >
+                    {(aiAccounts.find((a) => a.id === aiAcctSel)?.models ?? []).map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground/50">
+              Verbindet den Agent mit einem zentral verwalteten Modell-Zugang. Beim Speichern wird der Container neu erstellt.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {agent.mode === "custom_llm" && agent.llm_config && !agent.ai_account_id && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Plug className="h-4 w-4 text-violet-400" />
+              <span className="text-sm font-medium">LLM-Konfiguration (inline)</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-medium">
                 {providerLabel}
               </span>

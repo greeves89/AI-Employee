@@ -806,10 +806,11 @@ export async function deleteAIAccount(id: number): Promise<{ ok: boolean; id: nu
 export async function updateAgentAIAccount(
   agentId: string,
   aiAccountId: number,
+  model?: string,
 ): Promise<{ agent_id: string; ai_account_id: number; status: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/ai-account`, {
     method: "PATCH",
-    body: JSON.stringify({ ai_account_id: aiAccountId }),
+    body: JSON.stringify({ ai_account_id: aiAccountId, model }),
   });
 }
 
