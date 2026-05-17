@@ -53,9 +53,15 @@ class OpenAIProvider(BaseLLMProvider):
         model_lower = self.model_name.lower()
         return any(p in model_lower for p in _RESPONSES_API_PATTERNS)
 
-    def _azure_version(self) -> str:
-        """api-version for Azure requests (account value, else a sane default)."""
-        return self.api_version or "2024-10-21"
+    def _azure_version(self, fmt: str = "chat") -> str:
+        """api-version for Azure requests (account value, else a sane default).
+
+        The Responses API needs a recent preview; chat/completions is fine on
+        the stable GA version.
+        """
+        if self.api_version:
+            return self.api_version
+        return "2025-04-01-preview" if fmt == "responses" else "2024-10-21"
 
     def _headers(self) -> dict:
         """Auth headers — Azure OpenAI uses `api-key`, others `Bearer`."""
@@ -66,11 +72,11 @@ class OpenAIProvider(BaseLLMProvider):
             h["Authorization"] = f"Bearer {self.api_key}"
         return h
 
-    def _with_version(self, url: str, azure: bool) -> str:
+    def _with_version(self, url: str, azure: bool, fmt: str = "chat") -> str:
         """Append api-version for Azure URLs that don't already carry one."""
         if azure and "api-version=" not in url:
             sep = "&" if "?" in url else "?"
-            return f"{url}{sep}api-version={self._azure_version()}"
+            return f"{url}{sep}api-version={self._azure_version(fmt)}"
         return url
 
     def _resolve_url(self) -> tuple[str, str]:
@@ -82,13 +88,15 @@ class OpenAIProvider(BaseLLMProvider):
         ep = self.api_endpoint.rstrip("/")
         azure = self.is_azure or ".openai.azure.com" in ep
 
-        # User specified the full path already → respect it verbatim
+        # User specified the full path already → respect it verbatim.
+        # (Azure's /openai/responses surface — e.g. for GPT-5 codex on
+        # *.cognitiveservices.azure.com — is reached this way.)
         if ep.endswith("/chat/completions"):
-            return self._with_version(ep, azure), "chat"
+            return self._with_version(ep, azure, "chat"), "chat"
         if ep.endswith("/responses"):
-            return self._with_version(ep, azure), "responses"
+            return self._with_version(ep, azure, "responses"), "responses"
         if ep.endswith("/completions"):
-            return self._with_version(ep, azure), "legacy"
+            return self._with_version(ep, azure, "chat"), "legacy"
 
         if azure:
             # Classic Azure OpenAI: the deployment name lives in the path.
@@ -284,6 +292,7 @@ class OpenAIProvider(BaseLLMProvider):
         body: dict = {
             "model": self.model_name,
             "input": input_items,
+            "max_output_tokens": self.max_tokens,
             "stream": True,
         }
 
