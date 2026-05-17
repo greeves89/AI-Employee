@@ -90,16 +90,17 @@ class OpenAIProvider(BaseLLMProvider):
         if ep.endswith("/completions"):
             return self._with_version(ep, azure), "legacy"
 
-        fmt = "responses" if self._is_responses_model() else "chat"
-        path = "responses" if fmt == "responses" else "chat/completions"
-
         if azure:
             # Classic Azure OpenAI: the deployment name lives in the path.
-            # https://<res>.openai.azure.com/openai/deployments/<dep>/<path>?api-version=…
+            # This surface serves deployments via /chat/completions — the
+            # per-deployment /responses route is not exposed, so always
+            # use chat completions (GPT-5 reasoning params handled below).
             root = ep.split("/openai")[0].rstrip("/")
-            url = f"{root}/openai/deployments/{self.model_name}/{path}?api-version={self._azure_version()}"
-            return url, fmt
+            url = f"{root}/openai/deployments/{self.model_name}/chat/completions?api-version={self._azure_version()}"
+            return url, "chat"
 
+        fmt = "responses" if self._is_responses_model() else "chat"
+        path = "responses" if fmt == "responses" else "chat/completions"
         return f"{ep}/{path}", fmt
 
     # ------------------------------------------------------------------ #
@@ -472,10 +473,15 @@ class OpenAIProvider(BaseLLMProvider):
         body: dict = {
             "model": self.model_name,
             "messages": msg_payload,
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
             "stream": True,
         }
+        # GPT-5 / o-series / codex reasoning models require
+        # `max_completion_tokens` and reject a custom `temperature`.
+        if self._is_responses_model():
+            body["max_completion_tokens"] = self.max_tokens
+        else:
+            body["max_tokens"] = self.max_tokens
+            body["temperature"] = self.temperature
 
         if tools:
             body["tools"] = tools
