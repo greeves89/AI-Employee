@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.dependencies import require_auth
 from app.models.agent import Agent, AgentState
+from app.models.chat_message import ChatMessage
 from app.models.skill import Skill, SkillTaskUsage
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
@@ -47,6 +48,15 @@ async def get_overview(
         ).where(Task.created_at >= since)
     )
     task_row = task_result.one()
+
+    # Chat cost stats — assistant chat turns are billed too
+    chat_result = await db.execute(
+        select(func.sum(ChatMessage.cost_usd)).where(
+            ChatMessage.timestamp >= since,
+            ChatMessage.role == "assistant",
+        )
+    )
+    chat_cost = float(chat_result.scalar() or 0)
 
     completed_result = await db.execute(
         select(func.count(Task.id)).where(
@@ -103,7 +113,9 @@ async def get_overview(
         "total_tasks": total_tasks,
         "completed_tasks": completed,
         "success_rate_pct": success_rate,
-        "total_cost_usd": round(float(task_row.total_cost or 0), 4),
+        "total_cost_usd": round(float(task_row.total_cost or 0) + chat_cost, 4),
+        "total_task_cost_usd": round(float(task_row.total_cost or 0), 4),
+        "total_chat_cost_usd": round(chat_cost, 4),
         "avg_duration_ms": int(task_row.avg_duration_ms or 0),
         "total_time_saved_seconds": total_time_saved_seconds,
         "active_agents": active_agents,

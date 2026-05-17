@@ -154,6 +154,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     async def _save_chat_message(
         msg_agent_id: str, message_id: str, role: str,
         content: str = "", tool_calls: list | None = None, meta: dict | None = None,
+        cost_usd: float | None = None,
+        input_tokens: int | None = None, output_tokens: int | None = None,
     ):
         """Persist a chat message to the database."""
         session_id = _session["id"]
@@ -169,6 +171,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     content=content,
                     tool_calls=tool_calls,
                     meta=meta,
+                    cost_usd=cost_usd,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 ))
                 await db.commit()
         except Exception:
@@ -199,6 +204,15 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         "tool": str(edata.get("tool", "")),
                         "input": json.dumps(edata.get("input", {})),
                     })
+            elif etype == "image":
+                if mid not in _streaming_responses:
+                    _streaming_responses[mid] = {"content": "", "tool_calls": []}
+                data_str = str(edata.get("data", ""))
+                if data_str:
+                    _streaming_responses[mid].setdefault("images", []).append({
+                        "media_type": str(edata.get("media_type", "image/png")),
+                        "data": data_str,
+                    })
             elif etype == "error":
                 _pending_message_ids.discard(mid)
                 return ("error", mid, str(edata.get("message", "Unknown error")), None)
@@ -209,7 +223,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     "cost_usd": edata.get("cost_usd"),
                     "duration_ms": edata.get("duration_ms"),
                     "num_turns": edata.get("num_turns"),
+                    "input_tokens": edata.get("input_tokens"),
+                    "output_tokens": edata.get("output_tokens"),
                 }
+                if resp.get("images"):
+                    meta["presented_images"] = resp["images"]
                 return ("done", mid, resp, meta)
         except (json.JSONDecodeError, Exception):
             pass
@@ -242,11 +260,15 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                             await _save_chat_message(agent_id, result[1], "error", content=result[2])
                         elif result[0] == "done":
                             resp = result[2]
+                            meta = result[3] or {}
                             await _save_chat_message(
                                 agent_id, result[1], "assistant",
                                 content=resp.get("content", ""),
                                 tool_calls=resp.get("tool_calls") or None,
-                                meta=result[3],
+                                meta=meta,
+                                cost_usd=meta.get("cost_usd"),
+                                input_tokens=meta.get("input_tokens"),
+                                output_tokens=meta.get("output_tokens"),
                             )
 
                 await asyncio.sleep(0.01)
@@ -286,11 +308,15 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                             content = resp.get("content", "")
                             tool_calls = resp.get("tool_calls") or None
                             if content or tool_calls:  # Only save non-empty
+                                meta = result[3] or {}
                                 await _save_chat_message(
                                     agent_id, result[1], "assistant",
                                     content=content,
                                     tool_calls=tool_calls,
-                                    meta=result[3],
+                                    meta=meta,
+                                    cost_usd=meta.get("cost_usd"),
+                                    input_tokens=meta.get("input_tokens"),
+                                    output_tokens=meta.get("output_tokens"),
                                 )
                 await asyncio.sleep(0.05)
         except Exception:

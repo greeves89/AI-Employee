@@ -93,6 +93,38 @@ LOCAL_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "present_image",
+            "description": (
+                "Show an image FILE to the user — a chart, diagram, or picture you "
+                "generated (e.g. with matplotlib or Pillow) or processed. The image "
+                "is rendered inline in the chat UI. Set send_telegram=true to also "
+                "deliver it as a Telegram photo to the user. Generate the file "
+                "first (write it into the workspace with code), then call this with "
+                "its path. Supported: png, jpg, gif, webp; max 5 MB."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the image file to present, absolute or workspace-relative",
+                    },
+                    "caption": {
+                        "type": "string",
+                        "description": "Optional short caption shown with the image",
+                    },
+                    "send_telegram": {
+                        "type": "boolean",
+                        "description": "If true, also send the image to the user via Telegram (default false)",
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "write_file",
             "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. If the file ALREADY exists you must read_file it first — overwriting a file you haven't read is rejected.",
             "parameters": {

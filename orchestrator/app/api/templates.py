@@ -31,6 +31,7 @@ class TemplateCreate(BaseModel):
     permissions: list[str] = []
     integrations: list[str] = []
     mcp_server_ids: list[int] = []
+    skill_ids: list[int] = []
     knowledge_template: str = ""
     claude_md: str = ""
 
@@ -45,6 +46,7 @@ class TemplateUpdate(BaseModel):
     permissions: list[str] | None = None
     integrations: list[str] | None = None
     mcp_server_ids: list[int] | None = None
+    skill_ids: list[int] | None = None
     knowledge_template: str | None = None
     claude_md: str | None = None
 
@@ -155,6 +157,7 @@ async def create_template(
         permissions=body.permissions,
         integrations=body.integrations,
         mcp_server_ids=body.mcp_server_ids,
+        skill_ids=body.skill_ids,
         knowledge_template=body.knowledge_template,
         claude_md=body.claude_md,
         is_builtin=False,

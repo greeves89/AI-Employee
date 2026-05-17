@@ -557,7 +557,7 @@ async def lifespan(app: FastAPI):
                     for field in (
                         "display_name", "description", "role", "permissions",
                         "integrations", "knowledge_template", "claude_md",
-                        "icon", "category", "model",
+                        "icon", "category", "model", "skill_ids", "mcp_server_ids",
                     ):
                         source_val = tmpl_data.get(field)
                         if source_val is not None and getattr(existing, field) != source_val:

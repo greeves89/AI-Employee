@@ -461,6 +461,57 @@ class ToolExecutor:
         note = f"Image loaded ({source_label}, {len(data) // 1024} KB). Analyze its visual content above."
         return multimodal.encode_image_result(data, media_type, note)
 
+    async def _tool_present_image(self, params: dict) -> str:
+        """Show an image file to the user (chat UI + optionally Telegram).
+
+        Returns a sentinel-prefixed result; the chat handler detects it and
+        emits an ``image`` event so the UI renders it inline. The model also
+        sees the image (confirmation of what it presented).
+        """
+        from app import multimodal
+
+        path = (params.get("path") or "").strip()
+        caption = (params.get("caption") or "").strip()
+        send_telegram = bool(params.get("send_telegram", False))
+
+        if not path:
+            return "Error: path is required"
+        resolved = self._resolve_path(path)
+        if not os.path.isfile(resolved):
+            return f"Error: image file not found: {resolved}"
+        try:
+            with open(resolved, "rb") as f:
+                data = f.read()
+        except Exception as e:
+            return f"Error reading image: {e}"
+
+        media_type = multimodal.guess_media_type(resolved)
+        if not data:
+            return "Error: image is empty"
+        if media_type not in multimodal.SUPPORTED_MEDIA_TYPES:
+            return (
+                f"Error: unsupported image type '{media_type}'. "
+                f"Supported: {', '.join(sorted(multimodal.SUPPORTED_MEDIA_TYPES))}"
+            )
+        if len(data) > multimodal.MAX_IMAGE_BYTES:
+            return (
+                f"Error: image is {len(data) // 1024} KB, exceeds the "
+                f"{multimodal.MAX_IMAGE_BYTES // 1024 // 1024} MB limit. Resize it first."
+            )
+
+        telegram_note = ""
+        if send_telegram:
+            client = self._get_api_client()
+            tg_result = await client.send_telegram(
+                {"message": caption or "📊", "file_path": resolved}
+            )
+            telegram_note = f" Telegram: {tg_result}"
+
+        note = (caption or f"Presented {os.path.basename(resolved)}") + (
+            f" ({len(data) // 1024} KB)"
+        ) + telegram_note
+        return multimodal.encode_image_result(data, media_type, note)
+
     async def _tool_write_file(self, params: dict) -> str:
         """Write content to a file."""
         path = self._resolve_path(params.get("path", ""))

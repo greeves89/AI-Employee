@@ -45,14 +45,14 @@ interface ChatMessage {
   isQueued?: boolean;
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number };
   images?: ChatImage[];
 }
 
 interface ChatEvent {
   agent_id: string;
   message_id: string;
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image";
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -284,6 +284,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             }
             // Use message_id for user messages, response-{message_id} for assistant
             const displayId = m.role === "assistant" ? `response-${m.id}` : m.id;
+            const presented = (m.meta?.presented_images as ChatImage[] | undefined);
             return {
               id: displayId,
               role: m.role,
@@ -291,6 +292,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
               timestamp: m.timestamp,
               steps,
               meta: m.meta ?? undefined,
+              images: m.role === "assistant" && presented?.length ? presented : m.images,
             };
           });
           // Deduplicate by id+role
@@ -475,7 +477,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       );
 
       // Create assistant message if it doesn't exist yet
-      if (assistantIdx === -1 && (type === "text" || type === "tool_call" || type === "tool_result")) {
+      if (assistantIdx === -1 && (type === "text" || type === "tool_call" || type === "tool_result" || type === "image")) {
         // Remove the queued indicator for this message (if any)
         const queuedMsgId = `queued-${message_id}`;
         const withoutQueued = msgs.filter((m) => m.id !== queuedMsgId);
@@ -563,6 +565,16 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
           steps[tcIdx] = { ...tc, output: content, status: "done" };
         }
         msgs[assistantIdx] = { ...msgs[assistantIdx], steps };
+      } else if (type === "image") {
+        // Agent presented a generated/processed image via the present_image tool
+        if (assistantIdx !== -1) {
+          const imgs = [...(msgs[assistantIdx].images || [])];
+          const dataStr = String(data.data || "");
+          if (dataStr) {
+            imgs.push({ media_type: String(data.media_type || "image/png"), data: dataStr });
+          }
+          msgs[assistantIdx] = { ...msgs[assistantIdx], images: imgs };
+        }
       } else if (type === "queued") {
         // Show a temporary queued indicator that will be replaced once processing starts
         const queuedMsgId = `queued-${message_id}`;
@@ -608,6 +620,8 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             cost_usd: Number(data.cost_usd || 0),
             duration_ms: Number(data.duration_ms || 0),
             num_turns: Number(data.num_turns || 0),
+            input_tokens: Number(data.input_tokens || 0),
+            output_tokens: Number(data.output_tokens || 0),
           };
           // Mark all running tool calls as done
           const steps = (msgs[assistantIdx].steps || []).map((s) =>
@@ -1188,6 +1202,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
     return (
       <div className="pl-1 space-y-2">
         <MarkdownContent content={message.content} />
+        <PresentedImages images={message.images} />
         {message.meta && !simpleMode && <MetaBar meta={message.meta} />}
       </div>
     );
@@ -1232,7 +1247,33 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
         }
         return null;
       })}
+      <PresentedImages images={message.images} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
+    </div>
+  );
+}
+
+/* ─── Presented Images (present_image tool output) ──────────────────── */
+
+function PresentedImages({ images }: { images?: ChatImage[] }) {
+  if (!images || images.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {images.map((img, i) => (
+        <a
+          key={i}
+          href={`data:${img.media_type};base64,${img.data}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:${img.media_type};base64,${img.data}`}
+            alt={`Generiertes Bild ${i + 1}`}
+            className="max-h-96 rounded-lg border border-border object-contain cursor-zoom-in"
+          />
+        </a>
+      ))}
     </div>
   );
 }
@@ -1323,11 +1364,13 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
 
 /* ─── Meta Bar ──────────────────────────────────────────────────────── */
 
-function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number } }) {
+function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number } }) {
   const parts: string[] = [];
   if (meta.duration_ms) parts.push(`${(meta.duration_ms / 1000).toFixed(1)}s`);
   if (meta.cost_usd) parts.push(`$${meta.cost_usd.toFixed(4)}`);
   if (meta.num_turns) parts.push(`${meta.num_turns} turns`);
+  if (meta.input_tokens || meta.output_tokens)
+    parts.push(`${meta.input_tokens ?? 0} ↑ / ${meta.output_tokens ?? 0} ↓ tok`);
   if (parts.length === 0) return null;
 
   return (

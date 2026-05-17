@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.27.0"
+LABEL ai-employee.version="1.53.0"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -97,6 +97,9 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
 
 ENV PYTHONPATH=/opt/agent
 ENV PYTHONUNBUFFERED=1
+# Headless matplotlib for the present_image tool (no display in container)
+ENV MPLBACKEND=Agg
+ENV MPLCONFIGDIR=/tmp/mpl
 
 # Run as non-root user
 USER agent

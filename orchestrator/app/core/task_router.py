@@ -968,10 +968,10 @@ class TaskRouter:
                 telegram_text = (
                     f"{status_emoji} Delegierter Task {status}: {title}{cost_info}"
                 )
-                if self.redis.client:
+                if self.redis.client and delegator_agent_id:
                     await self.redis.client.publish(
-                        "telegram:send",
-                        json.dumps({"text": telegram_text}),
+                        f"agent:{delegator_agent_id}:telegram:send",
+                        json.dumps({"text": telegram_text, "agent_id": delegator_agent_id}),
                     )
             except Exception:
                 pass  # Telegram is best-effort

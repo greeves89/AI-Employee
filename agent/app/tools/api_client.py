@@ -591,21 +591,42 @@ class OrchestratorAPIClient:
         return f"Voice message sent via {provider} ({len(audio_bytes):,} bytes)"
 
     async def send_telegram(self, params: dict) -> str:
-        """Send a message or file to the user via Telegram."""
+        """Send a message or file to the user via Telegram.
+
+        Published to the per-agent channel `agent:{id}:telegram:send`, which the
+        agent's Telegram bot listens on and delivers to all authorized chats.
+        Files are read and base64-encoded so the orchestrator gets the bytes.
+        """
         import json as _json
+        import redis.asyncio as aioredis
+
         message = params.get("message", "")
         file_path = params.get("file_path")
+        payload: dict = {"text": message, "agent_id": self.agent_id}
 
-        # Send text via Redis pub/sub (same as notification system)
-        import redis.asyncio as aioredis
+        if file_path:
+            import base64
+            import mimetypes
+            import os
+
+            if not os.path.isfile(file_path):
+                return f"Error: file not found: {file_path}"
+            try:
+                with open(file_path, "rb") as f:
+                    raw = f.read()
+            except Exception as e:
+                return f"Error reading file: {e}"
+            if len(raw) > 20 * 1024 * 1024:
+                return f"Error: file too large ({len(raw) // 1024 // 1024} MB, Telegram limit is 20 MB)"
+            payload["file_b64"] = base64.b64encode(raw).decode("ascii")
+            payload["media_type"] = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+            payload["filename"] = os.path.basename(file_path)
+
         try:
             r = aioredis.from_url(settings.redis_url, decode_responses=True)
-            payload = {"text": message, "agent_id": self.agent_id}
-            if file_path:
-                payload["file_path"] = file_path
-            await r.publish("telegram:send", _json.dumps(payload))
+            await r.publish(f"agent:{self.agent_id}:telegram:send", _json.dumps(payload))
             await r.aclose()
-            return f"Telegram message sent" + (f" with file: {file_path}" if file_path else "")
+            return "Telegram message sent" + (f" with file: {file_path}" if file_path else "")
         except Exception as e:
             return f"Error sending Telegram message: {e}"
 

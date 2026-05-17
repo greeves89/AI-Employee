@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text
+from sqlalchemy import DateTime, Float, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -17,6 +17,9 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     tool_calls: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

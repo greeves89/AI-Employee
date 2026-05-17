@@ -54,6 +54,7 @@ class TelegramAgentBot:
         self.app: Application | None = None
         self._started = False
         self._response_listeners: dict[int, asyncio.Task] = {}
+        self._telegram_send_listener: asyncio.Task | None = None
 
     async def start(self) -> None:
         if self._started:
@@ -84,6 +85,8 @@ class TelegramAgentBot:
             allowed_updates=["message", "callback_query"],
         )
         self._started = True
+        # Listen for agent-initiated `send_telegram` tool calls (proactive pushes)
+        self._telegram_send_listener = asyncio.create_task(self._listen_telegram_send())
         print(f"[Telegram] Agent bot started: {self.agent_name} ({self.agent_id})")
 
     async def stop(self) -> None:
@@ -93,6 +96,9 @@ class TelegramAgentBot:
         for task in self._response_listeners.values():
             task.cancel()
         self._response_listeners.clear()
+        if self._telegram_send_listener:
+            self._telegram_send_listener.cancel()
+            self._telegram_send_listener = None
         try:
             await self.app.updater.stop()
             await self.app.stop()
@@ -536,6 +542,73 @@ class TelegramAgentBot:
                     pass
         finally:
             await redis.aclose()
+
+    async def _listen_telegram_send(self) -> None:
+        """Forward agent-initiated `send_telegram` tool calls to Telegram users.
+
+        The agent publishes to `agent:{id}:telegram:send`; this delivers the
+        message (and optional base64 file) to every authorized chat.
+        """
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe(f"agent:{self.agent_id}:telegram:send")
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    await self._deliver_telegram_send(json.loads(message["data"]))
+                except Exception as e:
+                    print(f"[Telegram] send_telegram delivery failed: {e}")
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            print(f"[Telegram] telegram:send listener error: {e}")
+        finally:
+            try:
+                await pubsub.aclose()
+                await redis.aclose()
+            except Exception:
+                pass
+
+    async def _deliver_telegram_send(self, data: dict) -> None:
+        """Send one agent-pushed message/file to all authorized chats."""
+        import base64
+        import io
+
+        if not self.app or not self._started:
+            return
+        text = (data.get("text") or "").strip()
+        file_b64 = data.get("file_b64")
+        media_type = data.get("media_type") or ""
+        filename = data.get("filename") or "file"
+        caption = (data.get("caption") or text or "")[:1024]
+
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            chat_ids = await redis.smembers(f"agent:{self.agent_id}:tg_auth")
+        finally:
+            await redis.aclose()
+
+        for cid in chat_ids:
+            try:
+                cid_int = int(cid)
+                if file_b64:
+                    raw = base64.b64decode(file_b64)
+                    bio = io.BytesIO(raw)
+                    bio.name = filename
+                    if media_type.startswith("image/"):
+                        await self.app.bot.send_photo(
+                            chat_id=cid_int, photo=bio, caption=caption or None
+                        )
+                    else:
+                        await self.app.bot.send_document(
+                            chat_id=cid_int, document=bio, caption=caption or None
+                        )
+                elif text:
+                    await self._send_chunked(cid_int, text)
+            except Exception as e:
+                print(f"[Telegram] send_telegram → chat {cid} failed: {e}")
 
     async def _listen_responses(self, chat_id: int) -> None:
         """Listen to agent chat responses and forward to Telegram with streaming.

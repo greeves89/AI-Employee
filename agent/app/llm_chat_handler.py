@@ -263,6 +263,8 @@ class LLMChatHandler:
         accumulated_tool_calls: list[dict] = []
         num_turns = 0
         max_turns = MAX_TURNS_PER_MESSAGE
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         try:
             while num_turns < max_turns:
@@ -303,6 +305,10 @@ class LLMChatHandler:
                         # Track actual token usage from API for context monitoring
                         if event.input_tokens:
                             self._last_input_tokens = event.input_tokens
+                        # Each turn is a separately-billed API call — sum every
+                        # turn's tokens for the message's total cost.
+                        total_input_tokens += event.input_tokens or 0
+                        total_output_tokens += event.output_tokens or 0
 
                     elif event.type == "error":
                         await self.log_publisher.publish_chat(
@@ -382,6 +388,18 @@ class LLMChatHandler:
 
                 for tc in turn_tool_calls:
                     result_text = results_map[tc["id"]]
+                    # present_image: stream the actual image to the chat UI
+                    if tc["name"] == "present_image" and multimodal.is_image_result(result_text):
+                        payload = multimodal.parse_image_result(result_text) or {}
+                        if payload.get("data"):
+                            await self.log_publisher.publish_chat(
+                                message_id, "image",
+                                {
+                                    "media_type": payload.get("media_type", "image/png"),
+                                    "data": payload["data"],
+                                    "caption": payload.get("note", ""),
+                                },
+                            )
                     await self.log_publisher.publish_chat(
                         message_id, "tool_result",
                         {"tool_use_id": tc["id"], "content": multimodal.log_summary(result_text)},
@@ -405,12 +423,17 @@ class LLMChatHandler:
             return result
 
         duration_ms = int((time.time() - start_time) * 1000)
+        from app.llm_runner import _estimate_cost
         result = {
             "status": "completed",
             "text": full_text,
             "duration_ms": duration_ms,
             "num_turns": num_turns,
-            "cost_usd": 0,
+            "cost_usd": _estimate_cost(
+                settings.llm_model_name, total_input_tokens, total_output_tokens
+            ),
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
             "tool_calls": accumulated_tool_calls or None,
         }
 

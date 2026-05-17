@@ -403,7 +403,12 @@ MULTIMODAL_CAPABILITY_NOTE = (
     "- Photos sent via Telegram are already attached to the message — just "
     "look at them.\n"
     "- Voice messages sent via Telegram are already transcribed to text for "
-    "you — never download or transcribe audio yourself."
+    "you — never download or transcribe audio yourself.\n"
+    "- To SHOW the user a visual (a chart, plot, diagram or generated picture), "
+    "generate the image file first — e.g. write a short Python script that uses "
+    "`matplotlib` or `Pillow` and saves a .png into the workspace — then call "
+    "`present_image` with the file path. It renders inline in the chat; pass "
+    "`send_telegram=true` to also deliver it as a Telegram photo."
 )
 
 

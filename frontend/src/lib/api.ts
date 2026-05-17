@@ -441,7 +441,15 @@ export interface ChatHistoryMessage {
   content: string;
   timestamp: string;
   toolCalls?: { tool: string; input: string }[];
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number };
+  meta?: {
+    cost_usd?: number;
+    duration_ms?: number;
+    num_turns?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    presented_images?: { media_type: string; data: string }[];
+  };
+  images?: { media_type: string; data: string }[];
   sessionId?: string;
 }
 

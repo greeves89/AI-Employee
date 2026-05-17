@@ -69,6 +69,11 @@ def _parse_image_result(text: str) -> dict | None:
         return None
 
 
+def parse_image_result(text: str) -> dict | None:
+    """Public: decode a sentinel image result to its {media_type,data,note} dict."""
+    return _parse_image_result(text)
+
+
 def image_block(media_type: str, data: str) -> dict:
     return {"type": "image", "media_type": media_type, "data": data}
 
