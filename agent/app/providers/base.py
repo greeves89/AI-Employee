@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 
@@ -118,6 +120,20 @@ class BaseLLMProvider(ABC):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.circuit_breaker = CircuitBreaker(name=model_name or "llm")
+        self._http: httpx.AsyncClient | None = None
+
+    @property
+    def http(self) -> httpx.AsyncClient:
+        """Lazy, self-healing HTTP client.
+
+        Recreated whenever it is missing or closed. When the user sends a
+        new message mid-response, the handler calls close() to interrupt the
+        in-flight request — without this, the next request would fail
+        permanently with "client has been closed". Here it just heals.
+        """
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
+        return self._http
 
     @abstractmethod
     async def _stream_completion_impl(
@@ -154,5 +170,11 @@ class BaseLLMProvider(ABC):
             yield event
 
     async def close(self) -> None:
-        """Clean up resources (HTTP clients, etc)."""
-        pass
+        """Close the HTTP client. Safe to call repeatedly — the `http`
+        property recreates it on next use."""
+        if self._http is not None and not self._http.is_closed:
+            try:
+                await self._http.aclose()
+            except Exception:
+                pass
+        self._http = None

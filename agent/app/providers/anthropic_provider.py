@@ -14,10 +14,6 @@ logger = logging.getLogger(__name__)
 class AnthropicProvider(BaseLLMProvider):
     """Provider for the Anthropic Messages API (claude models via direct API)."""
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
-
     async def _stream_completion_impl(
         self,
         messages: list[ChatMessage],
@@ -107,7 +103,7 @@ class AnthropicProvider(BaseLLMProvider):
         current_tool_json = ""
 
         try:
-            async with self._client.stream("POST", url, json=body, headers=headers) as response:
+            async with self.http.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code != 200:
                     error_body = await response.aread()
                     yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_body.decode()}")
@@ -176,6 +172,3 @@ class AnthropicProvider(BaseLLMProvider):
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
-
-    async def close(self) -> None:
-        await self._client.aclose()

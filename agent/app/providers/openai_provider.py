@@ -46,7 +46,6 @@ class OpenAIProvider(BaseLLMProvider):
         self.is_azure = bool(kwargs.pop("is_azure", False))
         self.api_version = kwargs.pop("api_version", "") or ""
         super().__init__(**kwargs)
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
     def _is_responses_model(self) -> bool:
         """Check if the model requires the Responses API."""
@@ -151,7 +150,7 @@ class OpenAIProvider(BaseLLMProvider):
         pending_calls: dict[str, dict] = {}
 
         try:
-            async with self._client.stream("POST", url, json=body, headers=headers) as response:
+            async with self.http.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code != 200:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
@@ -342,7 +341,7 @@ class OpenAIProvider(BaseLLMProvider):
         pending_tool_calls: dict[int, dict] = {}
 
         try:
-            async with self._client.stream("POST", url, json=body, headers=headers) as response:
+            async with self.http.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code == 400:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
@@ -350,7 +349,7 @@ class OpenAIProvider(BaseLLMProvider):
                     if correct_key:
                         wrong_key = "max_tokens" if correct_key == "max_completion_tokens" else "max_completion_tokens"
                         body[correct_key] = body.pop(wrong_key, body.get(correct_key))
-                        async with self._client.stream("POST", url, json=body, headers=headers) as retry:
+                        async with self.http.stream("POST", url, json=body, headers=headers) as retry:
                             if retry.status_code != 200:
                                 err = (await retry.aread()).decode("utf-8", errors="replace")
                                 yield LLMEvent(type="error", text=f"API error {retry.status_code}: {err}")
@@ -522,7 +521,7 @@ class OpenAIProvider(BaseLLMProvider):
         output_tokens = 0
 
         try:
-            async with self._client.stream("POST", url, json=body, headers=headers) as response:
+            async with self.http.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code != 200:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
@@ -585,6 +584,3 @@ class OpenAIProvider(BaseLLMProvider):
             parts.append(f"{prefix}: {content}")
         parts.append("Assistant:")
         return "\n\n".join(parts)
-
-    async def close(self) -> None:
-        await self._client.aclose()
