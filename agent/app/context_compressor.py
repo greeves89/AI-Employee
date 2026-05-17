@@ -58,16 +58,21 @@ COLLAPSE_MIN_REPEATS = 3
 # ─────────────────────────────────────────────────────────────────────────────
 
 def estimate_tokens(messages: list["ChatMessage"]) -> int:
-    """Rough token estimate: total chars / 4."""
+    """Rough token estimate: total chars / 4 (image blocks fixed at ~1.5k)."""
     total = 0
+    image_tokens = 0
     for m in messages:
         if isinstance(m.content, str) and m.content:
             total += len(m.content)
         elif isinstance(m.content, list):
-            total += sum(len(str(c)) for c in m.content)
+            for c in m.content:
+                if isinstance(c, dict) and c.get("type") == "image":
+                    image_tokens += 1500
+                else:
+                    total += len(str(c))
         if getattr(m, "tool_calls", None):
             total += len(json.dumps(m.tool_calls))
-    return total // 4
+    return total // 4 + image_tokens
 
 
 def compress_messages(

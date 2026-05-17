@@ -11,6 +11,28 @@ from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
 logger = logging.getLogger(__name__)
 
 
+def _to_anthropic_blocks(content) -> list[dict]:
+    """Convert generic content blocks (text/image) to Anthropic block format."""
+    blocks: list[dict] = []
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            blocks.append({"type": "text", "text": str(block)})
+        elif block.get("type") == "image":
+            blocks.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": block.get("media_type", "image/jpeg"),
+                    "data": block.get("data", ""),
+                },
+            })
+        elif block.get("type") == "text":
+            blocks.append({"type": "text", "text": block.get("text", "")})
+        else:
+            blocks.append(block)
+    return blocks
+
+
 class AnthropicProvider(BaseLLMProvider):
     """Provider for the Anthropic Messages API (claude models via direct API)."""
 
@@ -29,12 +51,19 @@ class AnthropicProvider(BaseLLMProvider):
             if msg.role == "system":
                 system_text = msg.content if isinstance(msg.content, str) else str(msg.content)
             elif msg.role == "tool":
+                # tool_result content may be plain text OR a list of blocks
+                # (image-aware tools). Anthropic accepts image blocks inside
+                # tool_result directly — Claude sees the image natively.
+                if isinstance(msg.content, list):
+                    tr_content: object = _to_anthropic_blocks(msg.content)
+                else:
+                    tr_content = msg.content if isinstance(msg.content, str) else str(msg.content)
                 conv_messages.append({
                     "role": "user",
                     "content": [{
                         "type": "tool_result",
                         "tool_use_id": msg.tool_call_id or "",
-                        "content": msg.content if isinstance(msg.content, str) else str(msg.content),
+                        "content": tr_content,
                     }],
                 })
             elif msg.role == "assistant" and msg.tool_calls:
@@ -66,7 +95,12 @@ class AnthropicProvider(BaseLLMProvider):
                     })
                 conv_messages.append({"role": "assistant", "content": blocks})
             else:
-                content = msg.content if isinstance(msg.content, str) else msg.content
+                # User/assistant messages — a list means generic content
+                # blocks (e.g. a Telegram photo attached to a user message).
+                if isinstance(msg.content, list):
+                    content: object = _to_anthropic_blocks(msg.content)
+                else:
+                    content = msg.content
                 conv_messages.append({"role": msg.role, "content": content})
 
         body: dict = {

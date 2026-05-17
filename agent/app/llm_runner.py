@@ -5,12 +5,13 @@ import json
 import logging
 import time
 
-from app import context_compressor
+from app import context_compressor, multimodal
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
 from app.runner_hooks import (
+    MULTIMODAL_CAPABILITY_NOTE,
     SELF_IMPROVEMENT_SUFFIX,
     TASK_STARTUP_PREFIX,
     get_approval_rules_prefix,
@@ -189,6 +190,7 @@ class LLMRunner:
             "You are a helpful AI coding assistant running in a Docker container. "
             "Your workspace is at /workspace. Use the available tools to complete tasks."
         )
+        base_system = base_system + MULTIMODAL_CAPABILITY_NOTE
 
         skills_ctx = get_skills_context()
 
@@ -337,14 +339,11 @@ class LLMRunner:
                     result = results_map[tc["id"]]
                     await self.log_publisher.publish(
                         task_id, "tool_result",
-                        {"tool_use_id": tc["id"], "content": result[:2000]},
+                        {"tool_use_id": tc["id"], "content": multimodal.log_summary(result)},
                     )
-                    messages.append(ChatMessage(
-                        role="tool",
-                        content=result,
-                        tool_call_id=tc["id"],
-                        name=tc["name"],
-                    ))
+                    messages.append(
+                        multimodal.tool_message(result, tc["id"], tc["name"])
+                    )
 
                 # Context compression: check after each tool round
                 window = self._get_context_window()

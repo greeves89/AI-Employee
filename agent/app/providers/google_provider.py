@@ -6,9 +6,18 @@ from typing import AsyncIterator
 
 import httpx
 
+from app import multimodal
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
 
 logger = logging.getLogger(__name__)
+
+
+def _gemini_image_parts(images: list[dict]) -> list[dict]:
+    """Generic image blocks → Gemini inlineData parts."""
+    return [
+        {"inlineData": {"mimeType": im.get("media_type", "image/jpeg"), "data": im.get("data", "")}}
+        for im in images
+    ]
 
 
 class GoogleProvider(BaseLLMProvider):
@@ -26,22 +35,33 @@ class GoogleProvider(BaseLLMProvider):
         system_instruction = None
         contents = []
         for msg in messages:
+            text, images = multimodal.split_blocks(msg.content)
             if msg.role == "system":
-                system_instruction = {"parts": [{"text": msg.content if isinstance(msg.content, str) else str(msg.content)}]}
+                system_instruction = {"parts": [{"text": text}]}
             elif msg.role == "user":
-                contents.append({"role": "user", "parts": [{"text": msg.content if isinstance(msg.content, str) else str(msg.content)}]})
+                parts: list[dict] = [{"text": text}] if text else []
+                parts.extend(_gemini_image_parts(images))
+                contents.append({"role": "user", "parts": parts or [{"text": ""}]})
             elif msg.role == "assistant":
-                contents.append({"role": "model", "parts": [{"text": msg.content if isinstance(msg.content, str) else str(msg.content)}]})
+                contents.append({"role": "model", "parts": [{"text": text}]})
             elif msg.role == "tool":
                 contents.append({
                     "role": "function",
                     "parts": [{
                         "functionResponse": {
                             "name": msg.name,
-                            "response": {"result": msg.content if isinstance(msg.content, str) else str(msg.content)},
+                            "response": {"result": text or ("[image attached below]" if images else "")},
                         }
                     }],
                 })
+                if images:
+                    contents.append({
+                        "role": "user",
+                        "parts": [
+                            {"text": "Image(s) returned by the previous tool call:"},
+                            *_gemini_image_parts(images),
+                        ],
+                    })
 
         body: dict = {
             "contents": contents,

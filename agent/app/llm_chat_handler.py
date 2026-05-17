@@ -5,7 +5,7 @@ import json
 import logging
 import time
 
-from app import context_compressor
+from app import context_compressor, multimodal
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
@@ -115,14 +115,21 @@ class LLMChatHandler:
 
         # Rough estimate: sum all message content lengths / 4
         total_chars = 0
+        image_tokens = 0
         for msg in self._history:
             if isinstance(msg.content, str) and msg.content:
                 total_chars += len(msg.content)
             elif isinstance(msg.content, list):
-                total_chars += sum(len(str(c)) for c in msg.content)
+                for c in msg.content:
+                    # Don't count base64 image data as text — a vision image
+                    # costs ~1.5k tokens regardless of byte size.
+                    if isinstance(c, dict) and c.get("type") == "image":
+                        image_tokens += 1500
+                    else:
+                        total_chars += len(str(c))
             if msg.tool_calls:
                 total_chars += len(json.dumps(msg.tool_calls))
-        return total_chars // 4
+        return total_chars // 4 + image_tokens
 
     def _needs_compaction(self) -> bool:
         """Check if the conversation needs compaction."""
@@ -212,27 +219,37 @@ class LLMChatHandler:
         return self._provider
 
     async def handle_message(
-        self, message_id: str, text: str, model: str | None = None
+        self,
+        message_id: str,
+        text: str,
+        model: str | None = None,
+        images: list[dict] | None = None,
     ) -> dict:
-        """Process a chat message with the custom LLM provider."""
+        """Process a chat message with the custom LLM provider.
+
+        ``images`` is an optional list of ``{"media_type", "data"}`` dicts
+        (base64) — e.g. a photo pasted in the Web UI or sent via Telegram.
+        Multimodal models see them directly.
+        """
         self.is_running = True
         start_time = time.time()
         provider = self._get_provider()
 
         # Build system message if this is the first message
         if not self._history:
-            from app.runner_hooks import get_skills_context
+            from app.runner_hooks import MULTIMODAL_CAPABILITY_NOTE, get_skills_context
             system_prompt = settings.llm_system_prompt or (
                 "You are a helpful AI coding assistant running in a Docker container. "
                 "Your workspace is at /workspace. Use the available tools to help the user."
             )
+            system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
             skills_ctx = get_skills_context()
             if skills_ctx:
                 system_prompt = system_prompt + "\n" + skills_ctx
             self._history.append(ChatMessage(role="system", content=system_prompt))
 
-        # Add user message to history
-        self._history.append(ChatMessage(role="user", content=text))
+        # Add user message to history (image-aware)
+        self._history.append(multimodal.user_message(text, images))
 
         # Context compaction: if approaching context limit, summarize first
         if self._needs_compaction():
@@ -368,14 +385,11 @@ class LLMChatHandler:
                     result_text = results_map[tc["id"]]
                     await self.log_publisher.publish_chat(
                         message_id, "tool_result",
-                        {"tool_use_id": tc["id"], "content": result_text[:2000]},
+                        {"tool_use_id": tc["id"], "content": multimodal.log_summary(result_text)},
                     )
-                    self._history.append(ChatMessage(
-                        role="tool",
-                        content=result_text,
-                        tool_call_id=tc["id"],
-                        name=tc["name"],
-                    ))
+                    self._history.append(
+                        multimodal.tool_message(result_text, tc["id"], tc["name"])
+                    )
 
                 # Mid-turn compaction: if a tool-heavy turn filled the context
                 if self._needs_compaction():

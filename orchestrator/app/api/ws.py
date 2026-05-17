@@ -332,7 +332,20 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 continue
 
             text = msg.get("text", "").strip()
-            if not text:
+
+            # Pasted/attached images: list of {media_type, data(base64)}.
+            # Keep only supported types within the 5 MB / 4-image budget.
+            images: list[dict] = []
+            _allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+            for img in (msg.get("images") or [])[:4]:
+                if not isinstance(img, dict):
+                    continue
+                data = img.get("data")
+                mt = img.get("media_type", "image/jpeg")
+                if data and mt in _allowed_types and (len(data) * 3 // 4) <= 5 * 1024 * 1024:
+                    images.append({"media_type": mt, "data": data})
+
+            if not text and not images:
                 continue
 
             # --- AgentGuard: Rate limiting ---
@@ -387,10 +400,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 "id": message_id,
                 "text": text,
                 "model": msg.get("model"),
+                "images": images,
             })
 
             # Save user message to DB
-            await _save_chat_message(agent_id, message_id, "user", content=text)
+            db_content = text or (f"[{len(images)} Bild(er) angehängt]" if images else "")
+            await _save_chat_message(agent_id, message_id, "user", content=db_content)
 
             # Only send session event when a NEW session was created
             # (not on every message - that caused duplicate chat tabs)

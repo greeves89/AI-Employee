@@ -62,6 +62,37 @@ LOCAL_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "view_image",
+            "description": (
+                "Look at an image so you can SEE and analyze its visual content "
+                "(photos, screenshots, charts, diagrams, scanned documents). The "
+                "image is shown directly to you — no OCR or shell tricks needed. "
+                "Provide exactly one of: path (an image file in the workspace), "
+                "file_id (a Telegram file_id from the message header), or url."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to an image file (jpg/png/gif/webp), absolute or workspace-relative",
+                    },
+                    "file_id": {
+                        "type": "string",
+                        "description": "A Telegram file_id — the image is fetched and shown to you directly",
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "A http(s) URL pointing to an image",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "write_file",
             "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does.",
             "parameters": {

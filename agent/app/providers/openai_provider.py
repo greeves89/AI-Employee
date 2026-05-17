@@ -19,9 +19,19 @@ from typing import AsyncIterator
 
 import httpx
 
+from app import multimodal
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
 
 logger = logging.getLogger(__name__)
+
+
+def _data_uri(img: dict) -> str:
+    return f"data:{img.get('media_type', 'image/jpeg')};base64,{img.get('data', '')}"
+
+
+def _chat_image_parts(images: list[dict]) -> list[dict]:
+    """Generic image blocks → OpenAI chat-completions image_url parts."""
+    return [{"type": "image_url", "image_url": {"url": _data_uri(im)}} for im in images]
 
 # Model-name substrings that require the Responses API instead of
 # Chat Completions. The GPT-5.x family ("gpt-5", "gpt-5.4", "gpt-5.4-mini",
@@ -253,16 +263,33 @@ class OpenAIProvider(BaseLLMProvider):
         input_items: list[dict] = []
 
         for msg in messages:
-            content = msg.content if isinstance(msg.content, str) else json.dumps(msg.content) if msg.content else ""
+            if isinstance(msg.content, list):
+                text, images = multimodal.split_blocks(msg.content)
+            else:
+                text = msg.content if isinstance(msg.content, str) else (json.dumps(msg.content) if msg.content else "")
+                images = []
+            content = text
+
             if msg.role == "system":
                 instructions = content
             elif msg.role == "tool":
-                # Tool results → function_call_output
+                # Tool results → function_call_output. Images can't ride
+                # inside function_call_output, so attach them as a follow-up
+                # user message with input_image parts.
                 input_items.append({
                     "type": "function_call_output",
                     "call_id": msg.tool_call_id or "",
-                    "output": content,
+                    "output": content or ("[image returned — see next message]" if images else ""),
                 })
+                if images:
+                    input_items.append({
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Image(s) returned by the previous tool call:"},
+                            *[{"type": "input_image", "image_url": _data_uri(im)} for im in images],
+                        ],
+                    })
             elif msg.role == "assistant":
                 if msg.tool_calls:
                     # Re-emit function calls so the API has context
@@ -281,11 +308,14 @@ class OpenAIProvider(BaseLLMProvider):
                         "content": [{"type": "output_text", "text": content}],
                     })
             else:
-                # user messages
+                # user messages — may carry attached images
+                user_content: list[dict] = [{"type": "input_text", "text": content}]
+                for im in images:
+                    user_content.append({"type": "input_image", "image_url": _data_uri(im)})
                 input_items.append({
                     "type": "message",
                     "role": "user",
-                    "content": [{"type": "input_text", "text": content}],
+                    "content": user_content,
                 })
 
         body: dict = {
@@ -465,11 +495,49 @@ class OpenAIProvider(BaseLLMProvider):
     def _build_chat_body(self, messages: list[ChatMessage], tools: list[dict] | None) -> dict:
         """Build request body for /chat/completions format."""
         msg_payload = []
+        # OpenAI tool messages cannot carry images and must follow the
+        # assistant tool_calls message contiguously. Tool-result images are
+        # therefore buffered and flushed as a user message once the run of
+        # tool messages ends.
+        deferred_images: list[dict] = []
+
+        def _flush_images():
+            if deferred_images:
+                msg_payload.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Image(s) returned by the preceding tool call(s):"},
+                        *_chat_image_parts(deferred_images),
+                    ],
+                })
+                deferred_images.clear()
+
         for msg in messages:
-            entry: dict = {"role": msg.role}
             if msg.role == "tool":
-                entry["content"] = msg.content if isinstance(msg.content, str) else json.dumps(msg.content)
-                entry["tool_call_id"] = msg.tool_call_id
+                text, images = multimodal.split_blocks(msg.content)
+                entry: dict = {
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id,
+                    "content": text or ("[image returned — see next message]" if images else ""),
+                }
+                if msg.name:
+                    entry["name"] = msg.name
+                msg_payload.append(entry)
+                deferred_images.extend(images)
+                continue
+
+            _flush_images()
+            entry = {"role": msg.role}
+            if isinstance(msg.content, list):
+                text, images = multimodal.split_blocks(msg.content)
+                if images:
+                    parts: list[dict] = []
+                    if text:
+                        parts.append({"type": "text", "text": text})
+                    parts.extend(_chat_image_parts(images))
+                    entry["content"] = parts
+                else:
+                    entry["content"] = text
             else:
                 entry["content"] = msg.content if msg.content is not None else ""
             if msg.name:
@@ -477,6 +545,8 @@ class OpenAIProvider(BaseLLMProvider):
             if msg.role == "assistant" and msg.tool_calls:
                 entry["tool_calls"] = msg.tool_calls
             msg_payload.append(entry)
+
+        _flush_images()
 
         body: dict = {
             "model": self.model_name,

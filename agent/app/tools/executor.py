@@ -45,7 +45,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "request_approval",
     "rate_task",
     "memory_save", "memory_search", "memory_list", "memory_delete",
-    "read_file", "list_files", "glob", "grep",
+    "read_file", "list_files", "glob", "grep", "view_image",
     "git_status", "git_diff",
     "web_search", "web_fetch",
     "brain_search", "brain_get", "brain_list", "brain_related",
@@ -94,7 +94,7 @@ _get_allowed_categories._cache = (None, 0.0)
 
 # Tools safe to execute concurrently (read-only, no side effects)
 CONCURRENT_SAFE_TOOLS = frozenset({
-    "read_file", "list_files", "glob", "grep",
+    "read_file", "list_files", "glob", "grep", "view_image",
     "git_status", "git_diff",
     "web_search", "web_fetch",
     "memory_search", "brain_search", "brain_get", "brain_list", "brain_related", "list_team",
@@ -339,6 +339,88 @@ class ToolExecutor:
             return content
         except Exception as e:
             return f"Error reading file: {e}"
+
+    async def _tool_view_image(self, params: dict) -> str:
+        """Load an image so the model can see it (vision).
+
+        Returns a sentinel-prefixed result the providers render as a real
+        image content block. Accepts a workspace path, a Telegram file_id,
+        or an http(s) URL.
+        """
+        from app import multimodal
+
+        path = (params.get("path") or "").strip()
+        file_id = (params.get("file_id") or "").strip()
+        url = (params.get("url") or "").strip()
+
+        data: bytes
+        media_type: str
+        source_label: str
+
+        try:
+            if path:
+                resolved = self._resolve_path(path)
+                if not os.path.isfile(resolved):
+                    return f"Error: image file not found: {resolved}"
+                with open(resolved, "rb") as f:
+                    data = f.read()
+                media_type = multimodal.guess_media_type(resolved)
+                source_label = os.path.basename(resolved)
+            elif file_id:
+                import httpx
+                api_url = f"{settings.orchestrator_url}/api/v1/telegram/get-file"
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.post(
+                        api_url,
+                        json={"file_id": file_id},
+                        headers={
+                            "X-Agent-ID": settings.agent_id,
+                            "Authorization": f"Bearer {settings.agent_token}",
+                        },
+                    )
+                if resp.status_code != 200:
+                    return f"Error: could not fetch Telegram file (HTTP {resp.status_code}): {resp.text[:300]}"
+                meta = resp.json()
+                import base64 as _b64
+                data = _b64.b64decode(meta.get("file_base64", ""))
+                media_type = multimodal.guess_media_type(meta.get("filename", ""))
+                source_label = meta.get("filename", "telegram image")
+            elif url:
+                if not url.startswith(("http://", "https://")):
+                    return "Error: url must start with http:// or https://"
+                blocked = await self._check_url_allowlist(url)
+                if blocked:
+                    return blocked
+                import httpx
+                async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                    resp = await client.get(url, headers={"User-Agent": "AI-Employee-Agent/1.0"})
+                if resp.status_code != 200:
+                    return f"Error: could not fetch image URL (HTTP {resp.status_code})"
+                data = resp.content
+                ct = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                media_type = ct if ct in multimodal.SUPPORTED_MEDIA_TYPES else multimodal.guess_media_type(url)
+                source_label = url
+            else:
+                return "Error: provide one of path, file_id, or url"
+        except Exception as e:
+            return f"Error loading image: {e}"
+
+        if not data:
+            return "Error: image is empty"
+        if media_type not in multimodal.SUPPORTED_MEDIA_TYPES:
+            return (
+                f"Error: unsupported image type '{media_type}'. "
+                f"Supported: {', '.join(sorted(multimodal.SUPPORTED_MEDIA_TYPES))}"
+            )
+        if len(data) > multimodal.MAX_IMAGE_BYTES:
+            return (
+                f"Error: image is {len(data) // 1024} KB, exceeds the "
+                f"{multimodal.MAX_IMAGE_BYTES // 1024 // 1024} MB limit. "
+                "Resize it first (e.g. with the bash tool + ImageMagick)."
+            )
+
+        note = f"Image loaded ({source_label}, {len(data) // 1024} KB). Analyze its visual content above."
+        return multimodal.encode_image_result(data, media_type, note)
 
     async def _tool_write_file(self, params: dict) -> str:
         """Write content to a file."""

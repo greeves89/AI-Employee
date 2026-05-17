@@ -31,6 +31,11 @@ interface ToolStep {
 
 type AssistantStep = TextStep | ToolStep;
 
+interface ChatImage {
+  media_type: string;
+  data: string; // base64 (no data: prefix)
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system" | "error";
@@ -41,6 +46,7 @@ interface ChatMessage {
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
   meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number };
+  images?: ChatImage[];
 }
 
 interface ChatEvent {
@@ -166,6 +172,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const pendingCountRef = useRef(0);
@@ -647,20 +654,29 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
 
   const sendMessage = useCallback(() => {
     const text = input.trim();
-    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const imgs = pendingImages;
+    if ((!text && imgs.length === 0) || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     const msgId = `user-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: msgId, role: "user", content: text, timestamp: new Date().toISOString() },
+      {
+        id: msgId,
+        role: "user",
+        content: text,
+        timestamp: new Date().toISOString(),
+        images: imgs.length > 0 ? imgs : undefined,
+      },
     ]);
     setMessageCount((c) => c + 1);
 
     wsRef.current.send(JSON.stringify({
       text,
+      images: imgs,
       session_id: activeSessionId || currentWsSessionId.current,
     }));
     setInput("");
+    setPendingImages([]);
     pendingCountRef.current += 1;
     setIsWaiting(true);
     inputRef.current?.focus();
@@ -668,11 +684,38 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
     setSessions((prev) =>
       prev.map((s) =>
         s.id === (activeSessionId || currentWsSessionId.current)
-          ? { ...s, preview: text.slice(0, 80) }
+          ? { ...s, preview: (text || "Bild").slice(0, 80) }
           : s
       )
     );
-  }, [input, activeSessionId]);
+  }, [input, pendingImages, activeSessionId]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (!item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      e.preventDefault();
+      if (file.size > 5 * 1024 * 1024) {
+        setMessages((prev) => [
+          ...prev,
+          { id: `img-err-${Date.now()}`, role: "error", content: "Bild zu groß (max. 5 MB).", timestamp: new Date().toISOString() },
+        ]);
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64 = result.split(",")[1];
+        if (base64) {
+          setPendingImages((prev) => [...prev, { media_type: file.type, data: base64 }].slice(0, 4));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
 
   const stopGeneration = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -981,6 +1024,27 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       {/* Input area */}
       <div className="border-t border-border p-4">
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handleFileUpload(e.target.files)} />
+        {pendingImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2.5">
+            {pendingImages.map((img, i) => (
+              <div key={i} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:${img.media_type};base64,${img.data}`}
+                  alt={`pasted ${i + 1}`}
+                  className="h-full w-full object-cover"
+                />
+                <button
+                  onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute right-0.5 top-0.5 rounded-full bg-black/70 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  title="Bild entfernen"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2.5">
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -995,7 +1059,8 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={connectionFailed ? "Agent not connected" : isWaiting ? "Agent arbeitet... (du kannst trotzdem schreiben)" : "Type a message... (Enter to send)"}
+            onPaste={handlePaste}
+            placeholder={connectionFailed ? "Agent not connected" : isWaiting ? "Agent arbeitet... (du kannst trotzdem schreiben)" : "Nachricht... (Bild mit Strg+V einfügen, Enter zum Senden)"}
             disabled={!isConnected}
             className="flex-1 resize-none rounded-xl border border-border bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-40 transition-all placeholder:text-muted-foreground/30"
             rows={1}
@@ -1011,7 +1076,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
           ) : (
             <button
               onClick={sendMessage}
-              disabled={!isConnected || !input.trim()}
+              disabled={!isConnected || (!input.trim() && pendingImages.length === 0)}
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
             >
               <Send className="h-4 w-4" />
@@ -1077,7 +1142,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
   }
 
   if (message.role === "user") {
-    return <UserMessage content={message.content} />;
+    return <UserMessage content={message.content} images={message.images} />;
   }
 
   // Assistant message - render as timeline of steps
@@ -1086,14 +1151,27 @@ function MessageRow({ message }: { message: ChatMessage }) {
 
 /* ─── User Message ──────────────────────────────────────────────────── */
 
-function UserMessage({ content }: { content: string }) {
+function UserMessage({ content, images }: { content: string; images?: ChatImage[] }) {
   return (
     <div className="flex items-start gap-3 pl-1">
       <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 dark:bg-blue-500/20 shrink-0 mt-0.5">
         <User className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
       </div>
-      <div className="text-sm text-foreground leading-relaxed pt-0.5">
-        {content}
+      <div className="text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
+        {images && images.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {images.map((img, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={`data:${img.media_type};base64,${img.data}`}
+                alt={`Bild ${i + 1}`}
+                className="max-h-48 rounded-lg border border-border object-contain"
+              />
+            ))}
+          </div>
+        )}
+        {content && <div>{content}</div>}
       </div>
     </div>
   );
