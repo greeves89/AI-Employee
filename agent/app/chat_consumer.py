@@ -74,6 +74,8 @@ RULES:
 - NEVER call api.telegram.org directly. You do NOT have the bot token.
 - Your plain text reply is AUTOMATICALLY forwarded to Telegram. No action needed for text.
 - To send files/voice/photos/videos, use the Orchestrator Telegram API below.
+- To DOWNLOAD a file the user sent you: you get a `file_id` in the header above —
+  pass it to the get-file endpoint below. Do NOT try to download from Telegram directly.
 - You have FULL access to all your MCP tools (memory, todos, notifications, orchestrator).
   Use them exactly as you would for Web UI messages! Save memories, create/update TODOs,
   read knowledge.md, and use notify_user — Telegram is just another input channel.
@@ -121,6 +123,16 @@ Set bot description:
   curl -X POST {api_base}/set-description {auth} \\
     -H 'Content-Type: application/json' \\
     -d '{{"description": "Dein KI-Assistent", "short_description": "KI Assistent"}}'
+
+Download a file the user sent you (use the file_id from the header above):
+  curl -X POST {api_base}/get-file {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"file_id": "THE_FILE_ID"}}'
+  # → returns {{"filename": "...", "size": N, "file_base64": "..."}}
+  # Save it, e.g.:
+  #   curl -s -X POST {api_base}/get-file {auth} -H 'Content-Type: application/json' \\
+  #     -d '{{"file_id": "THE_FILE_ID"}}' \\
+  #     | python3 -c 'import sys,json,base64; d=json.load(sys.stdin); open("/workspace/"+d["filename"],"wb").write(base64.b64decode(d["file_base64"])); print("saved", d["filename"])'
 
 Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-action, /edit-message, /pin-message, /answer-callback, GET /info, GET /get-commands"""
 

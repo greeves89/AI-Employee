@@ -189,6 +189,45 @@ async def get_bot_info(
     return await _tg_request(token, "getMe")
 
 
+class GetFileRequest(BaseModel):
+    file_id: str
+
+
+@router.post("/get-file")
+async def get_file(
+    body: GetFileRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a file a user sent to the bot, by its file_id.
+
+    The orchestrator holds the bot token, calls Telegram getFile, downloads
+    the bytes and returns them base64-encoded — the agent never needs the
+    token. Decode in the agent with: `echo "<file_base64>" | base64 -d > file`.
+    """
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    meta = await _tg_request(token, "getFile", {"file_id": body.file_id})
+    file_path = meta.get("file_path")
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Telegram returned no file_path")
+
+    url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File download failed (HTTP {resp.status_code})",
+            )
+        content = resp.content
+
+    return {
+        "filename": Path(file_path).name,
+        "size": len(content),
+        "file_base64": base64.b64encode(content).decode("ascii"),
+    }
+
+
 @router.post("/broadcast")
 async def broadcast(
     body: BroadcastRequest,
