@@ -1,9 +1,13 @@
 """Feedback API - users submit feedback, admins manage and create GitHub issues."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.session import get_db
 from app.dependencies import get_redis_service, require_admin, require_auth
 from app.models.feedback import Feedback, FeedbackCategory, FeedbackStatus
@@ -17,6 +21,7 @@ from app.services.oauth_service import OAuthService
 from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(f: Feedback) -> dict:
@@ -51,6 +56,41 @@ def _get_oauth_service(
     return OAuthService(db, redis)
 
 
+async def _send_feedback_webhook(feedback: Feedback) -> None:
+    """Forward newly created feedback to the configured external webhook.
+
+    The webhook is best-effort by design: feedback must stay saved in the app
+    even if n8n is unavailable, misconfigured, or slow.
+    """
+    if not settings.feedback_webhook_url:
+        return
+
+    category = (
+        feedback.category.value
+        if isinstance(feedback.category, FeedbackCategory)
+        else str(feedback.category or FeedbackCategory.GENERAL.value)
+    )
+    payload = {
+        "category": category,
+        "title": feedback.title,
+        "description": feedback.description or "",
+    }
+    headers = {"Content-Type": "application/json"}
+    if settings.feedback_webhook_api_key:
+        headers["apiKey"] = settings.feedback_webhook_api_key
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                settings.feedback_webhook_url,
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+    except Exception as e:
+        logger.warning("Feedback webhook delivery failed: %s", e)
+
+
 # --- User endpoints ---
 
 
@@ -71,6 +111,7 @@ async def create_feedback(
     db.add(feedback)
     await db.commit()
     await db.refresh(feedback)
+    await _send_feedback_webhook(feedback)
     return _to_response(feedback)
 
 
