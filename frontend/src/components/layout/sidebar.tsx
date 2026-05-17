@@ -12,7 +12,6 @@ import {
   ListTodo,
   FolderOpen,
   Plug,
-  Settings,
   Shield,
   Bot,
   Sun,
@@ -20,10 +19,8 @@ import {
   MessageSquarePlus,
   ShieldCheck,
   BookOpen,
-  HeartPulse,
   Sparkles,
   Zap,
-  ScrollText,
   Users,
   ChevronLeft,
   ChevronRight,
@@ -33,7 +30,6 @@ import {
   BarChart3,
   Info,
   X,
-  KeyRound,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -101,12 +97,9 @@ const navGroups: NavGroup[] = [
     key: "admin",
     adminOnly: true,
     items: [
+      // Settings, AI-Accounts, Key Management, Health & Audit Log are now
+      // tabs inside the Admin-Konsole — one entry instead of six.
       { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
-      { href: "/ai-accounts", label: "AI-Accounts", icon: Cpu, simpleVisible: false },
-      { href: "/secrets", label: "Key Management", icon: KeyRound, simpleVisible: false },
-      { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
-      { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
-      { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },
     ],
   },
 ];
@@ -122,6 +115,22 @@ export function Sidebar() {
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
   const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
+  // GitHub-star nudge: highlight the Star link at most once per calendar day.
+  const [starNudge, setStarNudge] = useState(false);
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      if (localStorage.getItem("star-nudge-day") !== today) {
+        localStorage.setItem("star-nudge-day", today);
+        setStarNudge(true);
+        const t = setTimeout(() => setStarNudge(false), 10000);
+        return () => clearTimeout(t);
+      }
+    } catch {
+      /* localStorage unavailable — skip the nudge */
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -324,7 +333,12 @@ export function Sidebar() {
               target="_blank"
               rel="noopener noreferrer"
               title="Star on GitHub"
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all"
+              className={cn(
+                "flex items-center justify-center h-9 w-9 rounded-xl transition-all hover:bg-yellow-500/10 hover:text-yellow-400",
+                starNudge
+                  ? "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/30 animate-pulse"
+                  : "text-muted-foreground"
+              )}
             >
               <Star className="h-4 w-4" />
             </a>
@@ -366,7 +380,12 @@ export function Sidebar() {
               href="https://github.com/greeves89/AI-Employee"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-yellow-500/10 hover:text-yellow-400 transition-all duration-150"
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl px-3 py-2 transition-all duration-150 hover:bg-yellow-500/10 hover:text-yellow-400",
+                starNudge
+                  ? "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/30 animate-pulse"
+                  : "text-muted-foreground"
+              )}
             >
               <Star className="h-4 w-4" />
               <span className="text-[13px] font-medium">Star on GitHub</span>
@@ -381,26 +400,6 @@ export function Sidebar() {
                 <span className="ml-auto text-[11px] font-mono text-muted-foreground/50">v{aboutVersion}</span>
               )}
             </button>
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className={cn(
-                  "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
-                  pathname.startsWith("/admin")
-                    ? "bg-accent text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                )}
-              >
-                <Shield className={cn(
-                  "h-4 w-4 transition-colors",
-                  pathname.startsWith("/admin") ? "text-amber-500" : "text-muted-foreground group-hover:text-amber-500"
-                )} />
-                Admin
-                {pathname.startsWith("/admin") && (
-                  <div className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
-                )}
-              </Link>
-            )}
             <UserMenu />
           </>
         )}
@@ -455,7 +454,7 @@ export function Sidebar() {
                 </div>
                 <div className="flex-1 overflow-y-auto px-6 py-4">
                   {aboutChangelog ? (
-                    <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06]">
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
                     </div>
                   ) : (

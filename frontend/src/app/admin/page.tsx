@@ -30,7 +30,17 @@ import {
   AlertTriangle,
   CheckCircle2,
   Edit3,
+  Settings as SettingsIcon,
+  KeyRound,
+  HeartPulse,
+  ScrollText,
 } from "lucide-react";
+
+import { SettingsView } from "@/app/settings/view";
+import { AIAccountsView } from "@/app/ai-accounts/view";
+import { SecretsView } from "@/app/secrets/view";
+import { HealthView } from "@/app/health/view";
+import { AuditView } from "@/app/audit/view";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
@@ -42,7 +52,13 @@ import { RolesPanel } from "@/components/admin/roles-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
-type Tab = "users" | "agents" | "assignments" | "roles" | "feedback" | "budget";
+type Tab =
+  | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
+  | "settings" | "ai-accounts" | "secrets" | "health" | "audit";
+
+// Tabs whose content is a full embedded page component (rendered without
+// their own <Header>). They don't depend on the admin page's own data load.
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "secrets", "health", "audit"];
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -303,6 +319,11 @@ export default function AdminPage() {
     { id: "roles", label: "Rollen", icon: Shield },
     { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
     { id: "budget", label: "Budget", icon: DollarSign },
+    { id: "settings", label: "Settings", icon: SettingsIcon },
+    { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
+    { id: "secrets", label: "Key Management", icon: KeyRound },
+    { id: "health", label: "Health", icon: HeartPulse },
+    { id: "audit", label: "Audit Log", icon: ScrollText },
   ];
 
   return (
@@ -348,7 +369,15 @@ export default function AdminPage() {
           })}
         </div>
 
-        {loading ? (
+        {EMBEDDED_TABS.includes(tab) ? (
+          <div>
+            {tab === "settings" && <SettingsView embedded />}
+            {tab === "ai-accounts" && <AIAccountsView embedded />}
+            {tab === "secrets" && <SecretsView embedded />}
+            {tab === "health" && <HealthView embedded />}
+            {tab === "audit" && <AuditView embedded />}
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
