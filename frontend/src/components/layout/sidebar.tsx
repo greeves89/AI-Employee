@@ -57,6 +57,7 @@ type NavGroup = {
   label: string;
   key: string;
   items: NavItem[];
+  adminOnly?: boolean;  // group only shown to admins
 };
 
 const navGroups: NavGroup[] = [
@@ -91,12 +92,20 @@ const navGroups: NavGroup[] = [
     key: "system",
     items: [
       { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
-      { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
-      { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
       { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
       { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
-      { href: "/secrets", label: "Key Management", icon: KeyRound, simpleVisible: false },
+    ],
+  },
+  {
+    label: "Admin",
+    key: "admin",
+    adminOnly: true,
+    items: [
+      { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
       { href: "/ai-accounts", label: "AI-Accounts", icon: Cpu, simpleVisible: false },
+      { href: "/secrets", label: "Key Management", icon: KeyRound, simpleVisible: false },
+      { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
+      { href: "/health", label: "Health", icon: HeartPulse, simpleVisible: false },
       { href: "/settings", label: "Settings", icon: Settings, simpleVisible: false },
     ],
   },
@@ -156,6 +165,7 @@ export function Sidebar() {
   };
 
   const visibleGroups = navGroups
+    .filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({ ...group, items: group.items.filter((item) => canSeePath(item.href)) }))
     .filter((group) => group.items.length > 0);
 
