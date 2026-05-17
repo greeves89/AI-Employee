@@ -109,18 +109,10 @@ export function Sidebar() {
   const isAdmin = user?.role === "admin";
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { collapsed, toggle } = useSidebarCollapsed();
-  const [starCount, setStarCount] = useState<number | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
   const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
-
-  useEffect(() => {
-    fetch("https://api.github.com/repos/greeves89/AI-Employee")
-      .then((r) => r.json())
-      .then((d) => setStarCount(d.stargazers_count ?? null))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -368,11 +360,6 @@ export function Sidebar() {
             >
               <Star className="h-4 w-4" />
               <span className="text-[13px] font-medium">Star on GitHub</span>
-              {starCount !== null && (
-                <span className="ml-auto text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">
-                  {starCount}
-                </span>
-              )}
             </a>
             <button
               onClick={() => setAboutOpen(true)}
