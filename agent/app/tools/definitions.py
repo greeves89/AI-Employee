@@ -94,7 +94,7 @@ LOCAL_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does.",
+            "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. If the file ALREADY exists you must read_file it first — overwriting a file you haven't read is rejected.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -138,7 +138,7 @@ LOCAL_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Perform an exact string replacement in a file. STRONGLY PREFER THIS over write_file for modifying existing files — it's token-efficient and safe. The old_string must match EXACTLY (including whitespace/indentation) and appear exactly once in the file (unless replace_all=true). Include enough surrounding context in old_string to make it unique.",
+            "description": "Perform an exact string replacement in a file. You MUST read_file the file first — editing a file you haven't read is rejected. STRONGLY PREFER THIS over write_file for modifying existing files — it's token-efficient and safe. The old_string must match EXACTLY (including whitespace/indentation) and appear exactly once in the file (unless replace_all=true). Include enough surrounding context in old_string to make it unique.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -168,7 +168,7 @@ LOCAL_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "multi_edit",
-            "description": "Apply multiple edits to a single file atomically. All edits succeed or all fail. Each edit is applied sequentially to the result of the previous one. Use when you need several related changes in one file.",
+            "description": "Apply multiple edits to a single file atomically. You MUST read_file the file first — editing a file you haven't read is rejected. All edits succeed or all fail. Each edit is applied sequentially to the result of the previous one. Use when you need several related changes in one file.",
             "parameters": {
                 "type": "object",
                 "properties": {

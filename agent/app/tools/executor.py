@@ -167,6 +167,42 @@ class ToolExecutor:
         self._mcp_client = None  # Lazy init for custom MCP servers
         self._cache = _ToolCache()
         self._semaphore = asyncio.Semaphore(settings.tool_max_concurrency)
+        # File-state tracking: realpath → mtime recorded when the agent reads
+        # (or writes) a file. Edits are gated on having an up-to-date read,
+        # so the model can't blindly overwrite a file it never looked at.
+        self._read_files: dict[str, float] = {}
+
+    def _record_file_state(self, resolved_path: str) -> None:
+        """Mark a file as freshly seen by the agent (after a read or a write)."""
+        try:
+            self._read_files[os.path.realpath(resolved_path)] = os.path.getmtime(resolved_path)
+        except OSError:
+            pass
+
+    def _check_editable(self, resolved_path: str) -> str | None:
+        """Return an error string if the agent may not edit this file yet.
+
+        A non-existent file is fine (it's a create). An existing file must
+        have been read first, and must not have changed since that read.
+        """
+        rp = os.path.realpath(resolved_path)
+        if not os.path.exists(rp):
+            return None  # creating a new file — no prior read required
+        recorded = self._read_files.get(rp)
+        if recorded is None:
+            return (
+                f"Error: you must read this file with read_file before "
+                f"modifying it: {resolved_path}"
+            )
+        try:
+            if abs(os.path.getmtime(rp) - recorded) > 1e-6:
+                return (
+                    f"Error: {resolved_path} changed since you last read it. "
+                    f"Call read_file on it again before modifying it."
+                )
+        except OSError:
+            pass
+        return None
 
     def _get_api_client(self):
         """Lazy-initialize the orchestrator API client."""
@@ -334,6 +370,9 @@ class ToolExecutor:
                 else:
                     content = f.read()
 
+            # Record that the agent has now seen this file — unlocks editing.
+            self._record_file_state(path)
+
             if len(content) > MAX_OUTPUT_CHARS:
                 content = content[:MAX_OUTPUT_CHARS] + f"\n... (truncated, {len(content)} total chars)"
             return content
@@ -427,10 +466,16 @@ class ToolExecutor:
         path = self._resolve_path(params.get("path", ""))
         content = params.get("content", "")
 
+        # Overwriting an existing file requires having read it first.
+        gate = self._check_editable(path)
+        if gate:
+            return gate
+
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
                 f.write(content)
+            self._record_file_state(path)
             return f"Successfully wrote {len(content)} chars to {path}"
         except Exception as e:
             return f"Error writing file: {e}"
@@ -493,6 +538,9 @@ class ToolExecutor:
             return f"Error: File not found: {path}"
         if not os.path.isfile(path):
             return f"Error: Not a file: {path}"
+        gate = self._check_editable(path)
+        if gate:
+            return gate
 
         try:
             with open(path, "r", errors="replace") as f:
@@ -514,6 +562,7 @@ class ToolExecutor:
             new_content = content.replace(old_string, new_string)
             with open(path, "w") as f:
                 f.write(new_content)
+            self._record_file_state(path)
 
             applied = count if replace_all else 1
             return f"Edited {path} ({applied} replacement{'s' if applied != 1 else ''})"
@@ -531,6 +580,9 @@ class ToolExecutor:
             return f"Error: File not found: {path}"
         if not os.path.isfile(path):
             return f"Error: Not a file: {path}"
+        gate = self._check_editable(path)
+        if gate:
+            return gate
 
         try:
             with open(path, "r", errors="replace") as f:
@@ -558,6 +610,7 @@ class ToolExecutor:
             # All edits succeeded — write atomically
             with open(path, "w") as f:
                 f.write(content)
+            self._record_file_state(path)
             return f"Applied {len(edits)} edits to {path}"
         except Exception as e:
             return f"Error in multi_edit: {e}"
