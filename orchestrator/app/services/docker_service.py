@@ -97,6 +97,9 @@ class DockerService:
             network=network,
             mem_limit=memory_limit,
             cpu_quota=cpu_quota,
+            # Headless Chrome (HyperFrames video rendering) needs >=256 MB of
+            # shared memory; Docker's 64 MB default makes Chrome crash mid-render.
+            shm_size="512m",
             restart_policy={"Name": "unless-stopped"},
             labels={"ai-employee.type": "agent"},
             # Zombie reaping: tini as PID 1 cleans up defunct child processes
