@@ -9,7 +9,7 @@ Auto-detection priority:
 1. If the endpoint URL explicitly ends with /chat/completions, /completions,
    or /responses → use that format.
 2. Otherwise, detect from model name:
-   - Models containing "codex" → Responses API (/responses)
+   - Codex models and the GPT-5.x family → Responses API (/responses)
    - Everything else → Chat Completions (/chat/completions)
 """
 
@@ -23,8 +23,10 @@ from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
 
 logger = logging.getLogger(__name__)
 
-# Models that require the Responses API
-_RESPONSES_API_PATTERNS = ("codex",)
+# Model-name substrings that require the Responses API instead of
+# Chat Completions. The GPT-5.x family ("gpt-5", "gpt-5.4", "gpt-5.4-mini",
+# Azure deployments named accordingly) is served via /responses.
+_RESPONSES_API_PATTERNS = ("codex", "gpt-5", "gpt5")
 
 def _extract_tokens_error(error_text: str) -> str | None:
     """Return the correct tokens param name if OpenAI tells us to use the other one."""
