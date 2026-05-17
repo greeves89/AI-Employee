@@ -126,11 +126,13 @@ Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-acti
 
 
 class ChatConsumer:
-    """Consumes chat messages from Redis queue and processes them via ChatHandler or LLMChatHandler.
+    """Consumes chat messages from the Redis queue and processes them via
+    ChatHandler / LLMChatHandler.
 
-    Supports message interruption: if a new message arrives while the agent is
-    working, the current CLI process is interrupted (SIGINT) and the new message
-    is processed immediately. The --resume flag preserves conversation context.
+    Live steering: messages that arrive while the agent is responding are NOT
+    interrupted. The handler pulls them in mid-flow (via `pending_drain`) and
+    folds them into the SAME conversation — just like a person adding a remark
+    while you're still working.
     """
 
     def __init__(self, agent_id: str):
@@ -141,8 +143,6 @@ class ChatConsumer:
         self.running = True
         self._handler = None  # ChatHandler or LLMChatHandler
         self._cancel_listener_task: asyncio.Task | None = None
-        self._queue_watcher_task: asyncio.Task | None = None
-        self._interrupt_event = asyncio.Event()
 
     async def _listen_for_cancel(self) -> None:
         """Listen on Redis PubSub for cancel signals and stop the handler."""
@@ -167,33 +167,26 @@ class ChatConsumer:
             await pubsub.aclose()
             await cancel_redis.aclose()
 
-    async def _watch_queue_for_interrupt(self) -> None:
-        """Monitor queue while handler is busy.
-
-        When a new message arrives, send SIGINT to the Claude CLI process.
-        SIGINT makes Claude CLI finish the CURRENT turn gracefully (no lost
-        output), then exit. The queued messages are processed as a follow-up
-        with --resume to preserve conversation context.
-
-        This means: the agent sees new messages after the current turn,
-        not after ALL turns of a multi-turn task.
+    async def _drain_pending(self) -> list[str]:
+        """Pop every queued chat message (oldest first) and return prepared
+        texts. The handler calls this mid-response to fold newly-arrived
+        messages into the running conversation. `/reset` is honored inline.
         """
-        watch_redis = aioredis.from_url(settings.redis_url, decode_responses=False)
-        try:
-            while self.running:
-                queue_len = await watch_redis.llen(self.queue_name)
-                if queue_len > 0 and self._handler and self._handler.is_running:
-                    # New message — finish current turn, then handle it
-                    self._interrupt_event.set()
-                    await self._handler.stop_current()  # SIGINT → finishes current turn
-                    return
-                await asyncio.sleep(0.3)
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-        finally:
-            await watch_redis.aclose()
+        texts: list[str] = []
+        if not self.redis:
+            return texts
+        while True:
+            queued = await self.redis.rpop(self.queue_name)
+            if queued is None:
+                break
+            qmsg = json.loads(queued)
+            if qmsg.get("text", "").strip() == "/reset":
+                if self._handler:
+                    await self._handler.reset_session()
+                texts.clear()
+                continue
+            texts.append(self._prepare_text(qmsg["text"], qmsg.get("telegram")))
+        return texts
 
     def _is_new_session(self) -> bool:
         """Check if the handler has no active session (first message)."""
@@ -271,71 +264,18 @@ class ChatConsumer:
                 # Mark as working while processing chat
                 await log_publisher.publish_status("working", f"chat:{message_id}")
 
-                # Reset interrupt event
-                self._interrupt_event.clear()
-
-                # Start queue watcher to detect new messages while we're busy
-                self._queue_watcher_task = asyncio.create_task(
-                    self._watch_queue_for_interrupt()
-                )
+                # Live steering: the handler pulls newly-arrived messages into
+                # the running conversation via this hook (no interruption).
+                if hasattr(self._handler, "pending_drain"):
+                    self._handler.pending_drain = self._drain_pending
 
                 try:
-                    # Process the chat message
                     await self._handler.handle_message(
                         message_id=message_id,
                         text=text,
                         model=model,
                     )
                 finally:
-                    # Stop queue watcher
-                    if self._queue_watcher_task and not self._queue_watcher_task.done():
-                        self._queue_watcher_task.cancel()
-                        try:
-                            await self._queue_watcher_task
-                        except asyncio.CancelledError:
-                            pass
-                    self._queue_watcher_task = None
-
-                    # If we were interrupted, drain all queued messages and
-                    # combine them into a single follow-up prompt so the agent
-                    # processes everything together (with --resume context).
-                    if self._interrupt_event.is_set():
-                        combined_texts = []
-                        combined_id = None
-                        combined_model = model
-                        while True:
-                            queued = await self.redis.rpop(self.queue_name)
-                            if queued is None:
-                                break
-                            qmsg = json.loads(queued)
-                            if qmsg["text"].strip() == "/reset":
-                                await self._handler.reset_session()
-                                combined_texts.clear()
-                                continue
-                            qtxt = self._prepare_text(
-                                qmsg["text"], qmsg.get("telegram")
-                            )
-                            combined_texts.append(qtxt)
-                            combined_id = combined_id or qmsg["id"]
-                            combined_model = qmsg.get("model") or combined_model
-
-                        if combined_texts:
-                            # Join all queued messages into one prompt
-                            follow_up = "\n\n".join(combined_texts)
-                            await log_publisher.publish_chat(
-                                combined_id, "system",
-                                {"message": "New messages received — continuing with full context..."},
-                            )
-                            await log_publisher.publish_status(
-                                "working", f"chat:{combined_id}"
-                            )
-                            await self._handler.handle_message(
-                                message_id=combined_id,
-                                text=follow_up,
-                                model=combined_model,
-                            )
-
-                    # Back to idle after response
                     await log_publisher.publish_status("idle")
 
             except aioredis.ConnectionError:
@@ -357,12 +297,6 @@ class ChatConsumer:
             self._cancel_listener_task.cancel()
             try:
                 await self._cancel_listener_task
-            except asyncio.CancelledError:
-                pass
-        if self._queue_watcher_task:
-            self._queue_watcher_task.cancel()
-            try:
-                await self._queue_watcher_task
             except asyncio.CancelledError:
                 pass
         if self.redis:

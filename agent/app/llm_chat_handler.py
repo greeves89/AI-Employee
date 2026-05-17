@@ -79,6 +79,9 @@ class LLMChatHandler:
         # Context tracking
         self._last_input_tokens: int = 0
         self._context_window: int = 0  # Resolved on first call
+        # Live steering: async callable returning list[str] of messages that
+        # arrived mid-response, to fold into the running conversation.
+        self.pending_drain = None
 
     def _get_context_window(self) -> int:
         """Resolve the context window size for the current model."""
@@ -242,9 +245,10 @@ class LLMChatHandler:
         full_text = ""
         accumulated_tool_calls: list[dict] = []
         num_turns = 0
+        max_turns = MAX_TURNS_PER_MESSAGE
 
         try:
-            while num_turns < MAX_TURNS_PER_MESSAGE:
+            while num_turns < max_turns:
                 num_turns += 1
                 has_tool_calls = False
                 turn_text = ""
@@ -308,6 +312,20 @@ class LLMChatHandler:
                     ))
 
                 if not has_tool_calls:
+                    # Live steering: before finishing, fold in any messages
+                    # that arrived while we were responding — same conversation.
+                    if self.pending_drain is not None:
+                        extra = await self.pending_drain()
+                        if extra:
+                            for t in extra:
+                                self._history.append(ChatMessage(role="user", content=t))
+                                full_text += f"\n\n[Neue Nachricht aufgenommen]\n"
+                            await self.log_publisher.publish_chat(
+                                message_id, "system",
+                                {"message": f"{len(extra)} neue Nachricht(en) aufgenommen — wird mitverarbeitet."},
+                            )
+                            max_turns = num_turns + MAX_TURNS_PER_MESSAGE
+                            continue
                     break
 
                 # Loop detection: check for repetitive tool call patterns
