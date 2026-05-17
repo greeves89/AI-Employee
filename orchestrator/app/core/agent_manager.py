@@ -525,22 +525,36 @@ class AgentManager:
             if acc:
                 extra = acc.extra or {}
                 models = acc.models or []
-                chosen = agent_model if (agent_model and agent_model in models) else (
-                    models[0] if models else (agent_model or "")
-                )
+                # Each model entry may be a dict {name, provider_type,
+                # api_endpoint} carrying its own surface, or a legacy string.
+                entry = None
+                for m in models:
+                    nm = m.get("name") if isinstance(m, dict) else m
+                    if nm == agent_model:
+                        entry = m
+                        break
+                if entry is None and models:
+                    entry = models[0]
+                if isinstance(entry, dict):
+                    mname = entry.get("name", "") or ""
+                    prov = entry.get("provider_type") or acc.provider_type
+                    endp = entry.get("api_endpoint") or acc.api_endpoint or ""
+                elif isinstance(entry, str):
+                    mname, prov, endp = entry, acc.provider_type, acc.api_endpoint or ""
+                else:
+                    mname, prov, endp = (agent_model or ""), acc.provider_type, acc.api_endpoint or ""
                 return {
-                    "provider_type": acc.provider_type,
-                    "api_endpoint": acc.api_endpoint or "",
+                    "provider_type": prov,
+                    "api_endpoint": endp,
                     "api_key": _decrypt(acc.api_key_encrypted) if acc.api_key_encrypted else "",
-                    "model_name": chosen,
+                    "model_name": mname,
                     "max_tokens": extra.get("max_tokens", 4096),
                     "temperature": extra.get("temperature", 0.7),
                     "system_prompt": extra.get("system_prompt", ""),
                     "tools_enabled": extra.get("tools_enabled", True),
                     "thinking_mode": extra.get("thinking_mode", "auto"),
                     "api_version": extra.get("api_version", ""),
-                    # For Azure OpenAI the deployment name is the model id
-                    "deployment": chosen,
+                    "deployment": mname,
                 }
         if inline_llm_config:
             cfg = dict(inline_llm_config)

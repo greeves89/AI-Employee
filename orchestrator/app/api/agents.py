@@ -319,7 +319,8 @@ async def create_agent(
                 raise HTTPException(status_code=422, detail="AI account is inactive")
             if not account.models:
                 raise HTTPException(status_code=422, detail="AI account has no models configured")
-            if data.model and data.model not in account.models:
+            _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+            if data.model and data.model not in _model_names:
                 raise HTTPException(
                     status_code=422,
                     detail=f"Model '{data.model}' is not offered by this AI account",
@@ -629,8 +630,9 @@ async def update_agent_ai_account(
         raise HTTPException(status_code=422, detail="AI account is inactive")
     if not account.models:
         raise HTTPException(status_code=422, detail="AI account has no models configured")
-    chosen_model = body.model or account.models[0]
-    if chosen_model not in account.models:
+    _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+    chosen_model = body.model or _model_names[0]
+    if chosen_model not in _model_names:
         raise HTTPException(
             status_code=422,
             detail=f"Model '{chosen_model}' is not offered by this AI account",

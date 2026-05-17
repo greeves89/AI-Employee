@@ -41,12 +41,18 @@ export interface LLMConfigResponse {
 export type AIAccountProviderType =
   | "azure-openai" | "openai" | "anthropic" | "google" | "ollama" | "lm-studio";
 
+export interface AIModel {
+  name: string;                       // model / Azure deployment name
+  provider_type: AIAccountProviderType; // which API the model speaks
+  api_endpoint: string;               // the endpoint/surface for this model
+}
+
 export interface AIAccount {
   id: number;
   name: string;
-  provider_type: AIAccountProviderType;
-  api_endpoint: string | null;
-  models: string[];
+  provider_type: AIAccountProviderType; // default for new model entries
+  api_endpoint: string | null;          // default for new model entries
+  models: AIModel[];
   extra: Record<string, unknown>;
   is_active: boolean;
   has_key: boolean;

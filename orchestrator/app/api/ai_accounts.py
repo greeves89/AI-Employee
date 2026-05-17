@@ -30,12 +30,34 @@ def _require_admin(user) -> None:
         raise HTTPException(status_code=403, detail="Admin only")
 
 
+class AIModelEntry(BaseModel):
+    name: str
+    provider_type: ProviderType
+    api_endpoint: str = ""
+
+
+def _normalize_models(raw: list, default_provider: str, default_endpoint: str | None) -> list[dict]:
+    """Accept model entries as objects or legacy plain strings → list of dicts."""
+    out: list[dict] = []
+    for m in raw or []:
+        if isinstance(m, str):
+            out.append({"name": m, "provider_type": default_provider,
+                        "api_endpoint": default_endpoint or ""})
+        elif isinstance(m, dict) and m.get("name"):
+            out.append({
+                "name": m["name"],
+                "provider_type": m.get("provider_type") or default_provider,
+                "api_endpoint": m.get("api_endpoint") or default_endpoint or "",
+            })
+    return out
+
+
 class AIAccountCreate(BaseModel):
     name: str
     provider_type: ProviderType
     api_endpoint: str | None = None
     api_key: str | None = None  # plaintext on input; stored encrypted
-    models: list[str] = []  # Azure OpenAI: deployment names
+    models: list[AIModelEntry] = []  # each model carries its own surface
     extra: dict = {}
 
 
@@ -44,7 +66,7 @@ class AIAccountUpdate(BaseModel):
     provider_type: ProviderType | None = None
     api_endpoint: str | None = None
     api_key: str | None = None  # only set to change it
-    models: list[str] | None = None
+    models: list[AIModelEntry] | None = None
     extra: dict | None = None
     is_active: bool | None = None
 
@@ -54,7 +76,7 @@ class AIAccountResponse(BaseModel):
     name: str
     provider_type: str
     api_endpoint: str | None
-    models: list[str]
+    models: list[dict]
     extra: dict
     is_active: bool
     has_key: bool
@@ -68,7 +90,7 @@ def _to_response(a: AIAccount) -> AIAccountResponse:
         name=a.name,
         provider_type=a.provider_type,
         api_endpoint=a.api_endpoint,
-        models=a.models or [],
+        models=_normalize_models(a.models or [], a.provider_type, a.api_endpoint),
         extra=a.extra or {},
         is_active=a.is_active,
         has_key=bool(a.api_key_encrypted),
@@ -116,7 +138,7 @@ async def create_ai_account(
         provider_type=body.provider_type,
         api_endpoint=body.api_endpoint,
         api_key_encrypted=encrypt_token(body.api_key) if body.api_key else None,
-        models=body.models or [],
+        models=[m.model_dump() for m in (body.models or [])],
         extra=body.extra or {},
     )
     db.add(account)
@@ -151,7 +173,7 @@ async def update_ai_account(
     if body.api_key:
         account.api_key_encrypted = encrypt_token(body.api_key)
     if body.models is not None:
-        account.models = body.models
+        account.models = [m.model_dump() for m in body.models]
     if body.extra is not None:
         account.extra = body.extra
     if body.is_active is not None:

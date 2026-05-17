@@ -583,7 +583,7 @@ export function CreateAgentModal({
                                 const id = e.target.value ? Number(e.target.value) : null;
                                 setAiAccountId(id);
                                 const acc = aiAccounts.find((a) => a.id === id);
-                                setAiAccountModel(acc?.models?.[0] ?? "");
+                                setAiAccountModel(acc?.models?.[0]?.name ?? "");
                               }}
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                             >
@@ -610,7 +610,7 @@ export function CreateAgentModal({
                                 className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                               >
                                 {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? []).map((m) => (
-                                  <option key={m} value={m}>{m}</option>
+                                  <option key={m.name} value={m.name}>{m.name}</option>
                                 ))}
                               </select>
                             </div>

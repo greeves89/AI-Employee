@@ -1407,7 +1407,7 @@ function AgentSettings({
                       const id = e.target.value ? Number(e.target.value) : null;
                       setAiAcctSel(id);
                       const acc = aiAccounts.find((a) => a.id === id);
-                      setAiAcctModel(acc?.models?.[0] ?? "");
+                      setAiAcctModel(acc?.models?.[0]?.name ?? "");
                     }}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50"
                   >
@@ -1426,7 +1426,7 @@ function AgentSettings({
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50 disabled:opacity-40"
                   >
                     {(aiAccounts.find((a) => a.id === aiAcctSel)?.models ?? []).map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                      <option key={m.name} value={m.name}>{m.name}</option>
                     ))}
                   </select>
                 </div>
