@@ -1,6 +1,7 @@
 from app.models.base import Base
 from app.models.agent import Agent, AgentState
 from app.models.task import Task, TaskStatus, TaskPriority
+from app.models.task_step import TaskStep
 from app.models.schedule import Schedule
 from app.models.chat_message import ChatMessage
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
@@ -36,7 +37,7 @@ from app.models.ai_account import AIAccount
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
-    "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
+    "TaskStep", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
     "AgentMemory", "AgentMemoryTag", "AgentMemoryLink", "Notification", "WebhookEvent", "McpServer",
     "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
     "AgentTodo", "TodoStatus",

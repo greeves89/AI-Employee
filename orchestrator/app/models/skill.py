@@ -24,7 +24,8 @@ class SkillStatus(str, enum.Enum):
 
 
 class SkillImprovementStatus(str, enum.Enum):
-    PROBATION = "probation"    # Recently auto-improved, awaiting validation
+    PENDING_REVIEW = "pending_review"  # Engine proposed an improvement, awaiting user approval
+    PROBATION = "probation"    # Approved & applied, awaiting A/B validation
     VALIDATED = "validated"    # Post-improvement ratings confirmed better
     ROLLED_BACK = "rolled_back"  # Post-improvement ratings were worse, content reverted
 
@@ -74,7 +75,19 @@ class Skill(Base, TimestampMixin):
     # A/B validation after auto-improvement
     improvement_status: Mapped[str | None] = mapped_column(
         String, nullable=True, default=None,
-    )  # NULL=normal, "probation"=awaiting validation, "validated", "rolled_back"
+    )  # NULL=normal, "pending_review", "probation", "validated", "rolled_back"
+    # Improvement proposal awaiting user review (set by the improvement engine).
+    # {old_content, old_description, suggested_content, suggested_description,
+    #  reason, avg_helpfulness_before, rated_count_before, generated_at}
+    improvement_proposal: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None,
+    )
+    improvement_proposed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+    )
+    improvement_review_reason: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None,
+    )  # "low_helpfulness" | "agent_feedback" | "manual_request"
     probation_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None,
     )

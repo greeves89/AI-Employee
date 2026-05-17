@@ -429,8 +429,9 @@ export default function SkillsPage() {
   const [agentSkills, setAgentSkills] = useState<AgentSkill[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"catalog" | "mine" | "pending">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "mine" | "pending" | "improvements">("catalog");
   const [pendingSkills, setPendingSkills] = useState<MarketplaceSkill[]>([]);
+  const [improvementSkills, setImprovementSkills] = useState<MarketplaceSkill[]>([]);
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -449,13 +450,15 @@ export default function SkillsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [catalogData, agentsData, pendingData] = await Promise.all([
+        const [catalogData, agentsData, pendingData, improvementData] = await Promise.all([
           api.getSkillCatalog(),
           api.getAgents(),
           api.getMarketplaceSkills({ status: "draft" }),
+          api.getPendingImprovements().catch(() => ({ skills: [] })),
         ]);
         setCatalog(catalogData.skills || []);
         setPendingSkills(pendingData.skills || []);
+        setImprovementSkills(improvementData.skills || []);
         const online = agentsData.agents.filter((a) =>
           ["running", "idle", "working"].includes(a.state)
         );
@@ -638,6 +641,7 @@ export default function SkillsPage() {
             { id: "catalog" as const, label: `Katalog (${catalog.length})` },
             { id: "mine" as const, label: `Meine Skills (${agentSkills.length})` },
             { id: "pending" as const, label: pendingSkills.length > 0 ? `✨ Ausstehend (${pendingSkills.length})` : "Ausstehend" },
+            { id: "improvements" as const, label: improvementSkills.length > 0 ? `🔧 Verbesserungen (${improvementSkills.length})` : "Verbesserungen" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -841,6 +845,84 @@ export default function SkillsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )
+        ) : activeTab === "improvements" ? (
+          /* Skill improvement proposals awaiting review */
+          improvementSkills.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <p className="text-sm">Keine Verbesserungsvorschläge</p>
+              <p className="text-xs mt-1 text-muted-foreground/60">
+                Die Improvement-Engine schlägt automatisch Verbesserungen für schlecht bewertete Skills vor — hier zur Freigabe.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {improvementSkills.map((skill) => {
+                const prop = skill.improvement_proposal;
+                return (
+                  <div
+                    key={skill.id}
+                    className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex flex-col gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{skill.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Grund: {skill.improvement_review_reason || "—"}
+                          {prop?.avg_helpfulness_before != null &&
+                            ` · Hilfreichkeit vorher ${prop.avg_helpfulness_before.toFixed(1)}/5 (${prop.rated_count_before ?? 0} Bewertungen)`}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[10px] rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400 px-2 py-0.5">
+                        Vorschlag
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-[10px] uppercase text-muted-foreground/60 mb-1">Aktuell</p>
+                        <div className="text-xs text-foreground/60 bg-foreground/[0.03] rounded-lg p-3 font-mono whitespace-pre-wrap max-h-64 overflow-y-auto border border-foreground/[0.05]">
+                          {prop?.old_content?.slice(0, 1200) || "(leer)"}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-emerald-400/70 mb-1">Vorgeschlagen</p>
+                        <div className="text-xs text-foreground/80 bg-emerald-500/[0.04] rounded-lg p-3 font-mono whitespace-pre-wrap max-h-64 overflow-y-auto border border-emerald-500/15">
+                          {prop?.suggested_content?.slice(0, 1200) || ""}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={async () => {
+                          setReviewing(skill.id);
+                          try {
+                            await api.rejectSkillImprovement(skill.id);
+                            setImprovementSkills((p) => p.filter((s) => s.id !== skill.id));
+                          } finally { setReviewing(null); }
+                        }}
+                        disabled={reviewing === skill.id}
+                        className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+                      >
+                        {reviewing === skill.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "✕"} Ablehnen
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setReviewing(skill.id);
+                          try {
+                            await api.approveSkillImprovement(skill.id);
+                            setImprovementSkills((p) => p.filter((s) => s.id !== skill.id));
+                          } finally { setReviewing(null); }
+                        }}
+                        disabled={reviewing === skill.id}
+                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                      >
+                        {reviewing === skill.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "✓"} Freigeben & validieren
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )
         ) : (

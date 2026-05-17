@@ -36,9 +36,28 @@ export default function TaskDetailPage() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [replaySteps, setReplaySteps] = useState<api.TaskStep[]>([]);
+  const [replayIndex, setReplayIndex] = useState(0);
+  const [replayLoaded, setReplayLoaded] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  // Load the persisted step history for time-travel replay
+  const loadReplay = useCallback(async () => {
+    setReplayLoading(true);
+    try {
+      const res = await api.getTaskSteps(taskId);
+      setReplaySteps(res.steps);
+      setReplayIndex(res.steps.length);
+      setReplayLoaded(true);
+    } catch {
+      setReplayLoaded(true);
+    } finally {
+      setReplayLoading(false);
+    }
+  }, [taskId]);
 
   // Fetch task data
   const loadTask = useCallback(async () => {
@@ -277,6 +296,70 @@ export default function TaskDetailPage() {
             )}
           </div>
         </div>}
+
+        {/* Step-Replay (time-travel) — for finished tasks */}
+        {!simpleMode && (task.status === "completed" || task.status === "failed") && (
+          <div className="rounded-xl border border-foreground/[0.06] bg-card/80 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+              <div className="flex items-center gap-2.5">
+                <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Schritt-Replay</span>
+              </div>
+              {!replayLoaded && (
+                <button
+                  onClick={loadReplay}
+                  disabled={replayLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] disabled:opacity-50 transition-colors"
+                >
+                  {replayLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  Replay laden
+                </button>
+              )}
+            </div>
+            {replayLoaded && (
+              <div className="p-5 space-y-3">
+                {replaySteps.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/50">
+                    Keine aufgezeichneten Schritte für diese Task (vor Einführung des Step-Trackings ausgeführt).
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={0}
+                        max={replaySteps.length}
+                        value={replayIndex}
+                        onChange={(e) => setReplayIndex(parseInt(e.target.value, 10))}
+                        className="flex-1 accent-blue-500"
+                      />
+                      <span className="text-[11px] tabular-nums text-muted-foreground/70 w-20 text-right">
+                        Schritt {replayIndex}/{replaySteps.length}
+                      </span>
+                    </div>
+                    <div className="h-[400px] overflow-y-auto rounded-lg bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
+                      {replaySteps.slice(0, replayIndex).map((s) => (
+                        <TaskLogLine
+                          key={s.sequence}
+                          event={{
+                            agent_id: "",
+                            task_id: taskId,
+                            type: s.type as LogEvent["type"],
+                            data: s.data,
+                            timestamp: s.timestamp || "",
+                          }}
+                        />
+                      ))}
+                      {replayIndex === 0 && (
+                        <p className="text-muted-foreground/40">Schieberegler bewegen, um die Ausführung Schritt für Schritt abzuspielen.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Timestamps */}
         <div className="flex items-center gap-6 text-[11px] text-muted-foreground/50">

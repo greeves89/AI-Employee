@@ -5,7 +5,7 @@ import json
 import logging
 import time
 
-from app import context_compressor, multimodal
+from app import context_compressor, model_registry, multimodal
 from app.loop_detector import LoopDetector
 from app.config import settings
 from app.log_publisher import LogPublisher
@@ -19,39 +19,6 @@ logger = logging.getLogger(__name__)
 
 MAX_TURNS_PER_MESSAGE = 20  # Max tool-use loops per chat message
 COMPACTION_THRESHOLD = 0.75  # Trigger compaction at 75% of context window
-
-# Context window sizes per model (tokens).
-# Claude Code CLI handles its own compaction — this is for custom LLM mode only.
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    # OpenAI
-    "gpt-4o": 128_000,
-    "gpt-4o-mini": 128_000,
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 8_192,
-    "gpt-3.5-turbo": 16_385,
-    "gpt-5": 1_000_000,
-    "o1": 200_000,
-    "o1-mini": 128_000,
-    "o3-mini": 200_000,
-    # Anthropic
-    "claude-opus-4-6": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5": 200_000,
-    # Google
-    "gemini-2.5-pro": 1_000_000,
-    "gemini-2.5-flash": 1_000_000,
-    "gemini-1.5-pro": 2_000_000,
-    "gemini-1.5-flash": 1_000_000,
-    # Local / open models (conservative defaults)
-    "llama": 8_192,
-    "mistral": 32_768,
-    "codestral": 32_768,
-    "deepseek": 128_000,
-    "qwen": 128_000,
-}
-
-DEFAULT_CONTEXT_WINDOW = 128_000  # Fallback if model not in table
-
 
 class LLMChatHandler:
     """Handles interactive chat sessions using custom LLM providers.
@@ -87,20 +54,10 @@ class LLMChatHandler:
         """Resolve the context window size for the current model."""
         if self._context_window > 0:
             return self._context_window
-
-        model = (settings.llm_model_name or "").lower()
-
-        # Exact match
-        for key, size in MODEL_CONTEXT_WINDOWS.items():
-            if key in model:
-                self._context_window = size
-                logger.info(f"[Context] Model '{model}' → context window {size:,} tokens")
-                return size
-
-        self._context_window = DEFAULT_CONTEXT_WINDOW
+        model = settings.llm_model_name or ""
+        self._context_window = model_registry.get_context_window(model)
         logger.info(
-            f"[Context] Model '{model}' not in table, "
-            f"using default {DEFAULT_CONTEXT_WINDOW:,} tokens"
+            f"[Context] Model '{model}' → context window {self._context_window:,} tokens"
         )
         return self._context_window
 

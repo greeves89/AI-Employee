@@ -454,29 +454,68 @@ async def _validate_probation_skills(db: AsyncSession) -> None:
     await db.flush()
 
 
+async def _generate_skill_improvement(
+    skill: Skill, avg_h: float, rated_count: int, model: str | None = None,
+) -> str | None:
+    """Call the LLM to rewrite a skill's content. Returns new content or None."""
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        return None
+    suggestion_model = model or _DEFAULTS["suggestion_model"]
+
+    prompt = (
+        f"You are a skill-content editor. The skill '{skill.name}' has a low "
+        f"helpfulness rating ({avg_h:.1f}/5 over {rated_count} rated uses).\n\n"
+        f"CURRENT CONTENT:\n{skill.content or '(empty)'}\n\n"
+        "Rewrite the skill content to be clearer, explicitly step-by-step, and "
+        "more actionable. Keep the same purpose. Make steps concrete, add short "
+        "examples where helpful. Output ONLY the rewritten markdown content — no "
+        "preamble, no explanation."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": suggestion_model,
+                    "max_tokens": 2048,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        resp.raise_for_status()
+        content = resp.json()["content"][0]["text"].strip()
+        return content or None
+    except Exception as exc:
+        logger.warning(f"[ImprovementEngine] Skill rewrite call failed for skill {skill.id}: {exc}")
+        return None
+
+
 async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
-    """Find skills with low helpfulness ratings and dispatch improvement tasks to agents.
+    """Find skills with low helpfulness ratings and create improvement *proposals*.
 
-    Triggered hourly. Only processes skills that haven't been improved in the last 24h
-    to avoid thrashing. Skills currently in probation are skipped.
+    Triggered hourly. The engine generates rewritten content via the LLM and
+    stores it as a proposal on the skill (`improvement_status = "pending_review"`).
+    A user must approve the proposal in the marketplace UI before it is applied —
+    nothing is overwritten automatically. Skills already pending review or in
+    probation, or improved within 24h, are skipped. Works for skills with no
+    assigned agent too (imported skills no longer fall through).
     """
-    import uuid
-    from app.models.skill import AgentSkillAssignment
-    from app.models.task import Task, TaskStatus
-
     thresholds = await _load_thresholds(db)
     min_usages = thresholds["min_skill_usages"]
     skill_threshold = thresholds["skill_threshold"]
 
     since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    # Find skills with enough rated usages and low avg helpfulness
     agg = (await db.execute(
         select(
             SkillTaskUsage.skill_id,
             func.count(SkillTaskUsage.id).label("rated_count"),
             func.avg(SkillTaskUsage.skill_helpfulness).label("avg_helpfulness"),
-            func.avg(SkillTaskUsage.agent_self_rating).label("avg_agent_rating"),
         )
         .where(SkillTaskUsage.skill_helpfulness.isnot(None))
         .group_by(SkillTaskUsage.skill_id)
@@ -492,106 +531,46 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
         select(Skill).where(Skill.id.in_(skill_ids), Skill.status == "active")
     )).scalars().all()}
 
-    # Get Redis for task dispatch
-    try:
-        from app.services.redis_service import RedisService
-        redis = RedisService(settings.redis_url)
-        await redis.connect()
-    except Exception as exc:
-        logger.warning(f"[ImprovementEngine] Cannot connect to Redis for skill improvement: {exc}")
-        return
+    for row in agg:
+        skill = skills.get(row.skill_id)
+        if not skill:
+            continue
+        # Skip if recently improved
+        if skill.updated_at and skill.updated_at.replace(tzinfo=timezone.utc) > since_24h:
+            continue
+        # Skip if already pending review or in probation
+        if skill.improvement_status in ("pending_review", "probation"):
+            continue
 
-    try:
-        for row in agg:
-            skill = skills.get(row.skill_id)
-            if not skill:
-                continue
+        avg_h = float(row.avg_helpfulness)
+        rated_count = int(row.rated_count)
 
-            # Skip if recently improved
-            if skill.updated_at and skill.updated_at.replace(tzinfo=timezone.utc) > since_24h:
-                logger.debug(f"[ImprovementEngine] Skill '{skill.name}' updated recently — skipping")
-                continue
+        new_content = await _generate_skill_improvement(skill, avg_h, rated_count)
+        if not new_content or new_content.strip() == (skill.content or "").strip():
+            logger.info(f"[ImprovementEngine] No usable rewrite for skill '{skill.name}' — skipping")
+            continue
 
-            # Skip if currently in probation (wait for validation first)
-            if skill.improvement_status == "probation":
-                logger.debug(f"[ImprovementEngine] Skill '{skill.name}' in probation — skipping")
-                continue
+        skill.improvement_status = "pending_review"
+        skill.improvement_review_reason = "low_helpfulness"
+        skill.improvement_proposed_at = datetime.now(timezone.utc)
+        skill.improvement_proposal = {
+            "old_content": skill.content or "",
+            "old_description": skill.description or "",
+            "suggested_content": new_content,
+            "suggested_description": skill.description or "",
+            "reason": "low_helpfulness",
+            "avg_helpfulness_before": avg_h,
+            "rated_count_before": rated_count,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        logger.info(
+            f"[ImprovementEngine] Improvement proposal created for skill "
+            f"'{skill.name}' (id={skill.id}) — awaiting user review"
+        )
+        # Notify users whose feedback triggered this proposal
+        await _notify_feedback_contributors(db, skill, avg_h, rated_count)
 
-            # Find an agent that has this skill assigned
-            agent_row = (await db.execute(
-                select(AgentSkillAssignment.agent_id)
-                .where(AgentSkillAssignment.skill_id == skill.id)
-                .limit(1)
-            )).scalar_one_or_none()
-
-            if not agent_row:
-                logger.warning(f"[ImprovementEngine] Skill '{skill.name}' has no assigned agents — cannot dispatch improvement task")
-                continue
-
-            agent_id = agent_row
-            avg_h = float(row.avg_helpfulness)
-            avg_r = float(row.avg_agent_rating or 0)
-            rated_count = int(row.rated_count)
-
-            logger.info(
-                f"[ImprovementEngine] Skill '{skill.name}' (id={skill.id}) needs improvement: "
-                f"avg_helpfulness={avg_h:.1f}, avg_rating={avg_r:.1f} over {rated_count} usages — "
-                f"dispatching improvement task to agent {agent_id}"
-            )
-
-            prompt = (
-                f"SYSTEM TASK — SKILL SELF-IMPROVEMENT\n\n"
-                f"The skill '{skill.name}' (id={skill.id}) has been rated with low helpfulness "
-                f"({avg_h:.1f}/5 average over {rated_count} rated usages, agent quality {avg_r:.1f}/5). "
-                f"Your job is to rewrite its content to be more actionable and effective.\n\n"
-                f"CURRENT SKILL CONTENT:\n{skill.content or '(empty)'}\n\n"
-                f"INSTRUCTIONS:\n"
-                f"1. Analyze why the current content might have low helpfulness ratings.\n"
-                f"2. Rewrite the skill content to be clearer, more step-by-step, and easier to follow.\n"
-                f"   - Make steps explicit and concrete (no vague instructions)\n"
-                f"   - Add examples where helpful\n"
-                f"   - Keep the same general purpose but improve quality\n"
-                f"3. Call skill_update(skill_id={skill.id}, content=<your improved content>, "
-                f"feedback='Auto-improvement: avg helpfulness was {avg_h:.1f}/5 over {rated_count} uses') "
-                f"to save the improved version.\n\n"
-                f"Do not ask for confirmation — just analyze and update the skill now."
-            )
-
-            task_id = uuid.uuid4().hex[:12]
-            task = Task(
-                id=task_id,
-                title=f"Auto-improve skill: {skill.name}",
-                prompt=prompt,
-                status=TaskStatus.QUEUED,
-                agent_id=agent_id,
-                metadata_={"source": "improvement_engine", "skill_id": skill.id},
-            )
-            db.add(task)
-
-            task_payload = json.dumps({
-                "id": task_id,
-                "prompt": prompt,
-                "title": f"Auto-improve skill: {skill.name}",
-                "model": None,
-                "priority": "low",
-            })
-
-            await redis.push_task(agent_id, task_payload)
-            logger.info(f"[ImprovementEngine] Improvement task {task_id} queued for agent {agent_id}")
-
-            # Notify users whose feedback triggered this improvement
-            await _notify_feedback_contributors(db, skill, avg_h, rated_count)
-
-            # Set probation status with pre-improvement metrics
-            skill.improvement_status = "probation"
-            skill.probation_started_at = datetime.now(timezone.utc)
-            skill.pre_improvement_avg_helpfulness = avg_h
-            skill.pre_improvement_rated_count = rated_count
-            skill.updated_at = datetime.now(timezone.utc)
-
-        await db.commit()
-    finally:
-        await redis.disconnect()
+    await db.commit()
 
 
 async def _send_trend_notification(

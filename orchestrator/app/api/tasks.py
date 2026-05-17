@@ -263,6 +263,41 @@ async def get_task(
     return TaskResponse.model_validate(task)
 
 
+@router.get("/{task_id}/steps")
+async def get_task_steps(
+    task_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the persisted per-step execution history of a task (time-travel replay)."""
+    from app.models.task_step import TaskStep
+
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if hasattr(user, "role"):
+        allowed = await _get_user_agent_ids(user, db)
+        if allowed is not None and task.agent_id not in allowed:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    steps = (await db.execute(
+        select(TaskStep).where(TaskStep.task_id == task_id).order_by(TaskStep.sequence.asc())
+    )).scalars().all()
+    return {
+        "task_id": task_id,
+        "total_steps": len(steps),
+        "steps": [
+            {
+                "sequence": s.sequence,
+                "type": s.event_type,
+                "data": s.event_data,
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+            }
+            for s in steps
+        ],
+    }
+
+
 @router.delete("/{task_id}")
 async def delete_task(
     task_id: str,

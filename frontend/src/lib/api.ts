@@ -287,6 +287,19 @@ export async function getTask(id: string): Promise<Task> {
   return fetchJSON(`${getBase()}/tasks/${id}`);
 }
 
+export interface TaskStep {
+  sequence: number;
+  type: string;
+  data: Record<string, unknown>;
+  timestamp: string | null;
+}
+
+export async function getTaskSteps(
+  id: string,
+): Promise<{ task_id: string; total_steps: number; steps: TaskStep[] }> {
+  return fetchJSON(`${getBase()}/tasks/${id}/steps`);
+}
+
 export async function createTask(data: {
   title: string;
   prompt: string;
@@ -1264,6 +1277,17 @@ export interface MarketplaceSkill {
   assigned_to_agent?: boolean;
   created_at: string | null;
   updated_at: string | null;
+  improvement_status?: string | null;
+  improvement_proposal?: {
+    old_content: string;
+    suggested_content: string;
+    reason: string;
+    avg_helpfulness_before?: number;
+    rated_count_before?: number;
+    generated_at?: string;
+  } | null;
+  improvement_proposed_at?: string | null;
+  improvement_review_reason?: string | null;
 }
 
 export async function getMarketplaceSkills(params?: {
@@ -1317,6 +1341,18 @@ export async function approveSkill(id: number): Promise<MarketplaceSkill> {
 
 export async function rejectSkill(id: number): Promise<MarketplaceSkill> {
   return fetchJSON(`${getBase()}/skills/marketplace/${id}/reject`, { method: "POST" });
+}
+
+export async function getPendingImprovements(): Promise<{ skills: MarketplaceSkill[] }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/improvements/pending`);
+}
+
+export async function approveSkillImprovement(id: number): Promise<{ id: number; improvement_status: string }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}/approve-improvement`, { method: "POST" });
+}
+
+export async function rejectSkillImprovement(id: number): Promise<{ id: number; improvement_status: string | null }> {
+  return fetchJSON(`${getBase()}/skills/marketplace/${id}/reject-improvement`, { method: "POST" });
 }
 
 export async function seedSkillsFromCrawler(): Promise<{ status: string; imported: number }> {
@@ -1963,4 +1999,38 @@ export async function assignSecret(agentId: string, secretId: number): Promise<v
 
 export async function unassignSecret(agentId: string, secretId: number): Promise<void> {
   await fetchJSON(`${getBase()}/secrets/agent/${agentId}/${secretId}`, { method: "DELETE" });
+}
+
+// Vertical packs (industry starter kits — issue #159)
+export interface VerticalPackSummary {
+  slug: string;
+  name: string;
+  description: string;
+  icon: string;
+  industry: string;
+  agent_count: number;
+}
+
+export interface VerticalPackDetail extends VerticalPackSummary {
+  agents: { name: string; display_name: string; description: string; available: boolean }[];
+  knowledge_entries: { title: string; tags: string[] }[];
+  demo_task: { title: string; prompt: string } | null;
+}
+
+export async function listVerticalPacks(): Promise<{ packs: VerticalPackSummary[] }> {
+  return fetchJSON(`${getBase()}/vertical-packs`);
+}
+
+export async function getVerticalPack(slug: string): Promise<VerticalPackDetail> {
+  return fetchJSON(`${getBase()}/vertical-packs/${slug}`);
+}
+
+export async function provisionVerticalPack(slug: string): Promise<{
+  status: string;
+  message: string;
+  agents: { id: string; name: string }[];
+  knowledge_created: number;
+  demo_task_id: string | null;
+}> {
+  return fetchJSON(`${getBase()}/vertical-packs/${slug}/provision`, { method: "POST" });
 }

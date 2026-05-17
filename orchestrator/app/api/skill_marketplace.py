@@ -7,6 +7,7 @@ from sqlalchemy import select, func, delete, cast, Text
 from sqlalchemy.ext.asyncio import AsyncSession
 import io
 import re
+from datetime import datetime, timezone
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
@@ -101,6 +102,10 @@ def _to_response(skill: Skill, assigned_agents: list[str] | None = None) -> dict
         "manual_duration_seconds": skill.manual_duration_seconds,
         "is_public": skill.is_public,
         "current_version": skill.current_version,
+        "improvement_status": skill.improvement_status,
+        "improvement_proposal": skill.improvement_proposal,
+        "improvement_proposed_at": skill.improvement_proposed_at.isoformat() if skill.improvement_proposed_at else None,
+        "improvement_review_reason": skill.improvement_review_reason,
         "assigned_agents": assigned_agents or [],
         "created_at": skill.created_at.isoformat() if skill.created_at else None,
         "updated_at": skill.updated_at.isoformat() if skill.updated_at else None,
@@ -357,6 +362,81 @@ async def reject_skill(
     skill.status = SkillStatus.ARCHIVED
     await db.commit()
     return {"id": skill_id, "status": "archived"}
+
+
+# --- Skill improvement proposal review ---
+
+@router.get("/marketplace/improvements/pending")
+async def list_pending_improvements(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all skills with an improvement proposal awaiting review."""
+    skills = (await db.execute(
+        select(Skill)
+        .where(Skill.improvement_status == "pending_review")
+        .order_by(Skill.improvement_proposed_at.desc())
+    )).scalars().all()
+    return {"skills": [_to_response(s) for s in skills]}
+
+
+@router.post("/marketplace/{skill_id}/approve-improvement")
+async def approve_improvement(
+    skill_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve a pending improvement proposal — applies it and starts A/B probation."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if skill.improvement_status != "pending_review" or not skill.improvement_proposal:
+        raise HTTPException(status_code=400, detail="No pending improvement to approve")
+
+    proposal = skill.improvement_proposal
+    # Snapshot the current (pre-improvement) content so a rollback is possible.
+    await _snapshot_version(
+        db, skill, created_by=f"user:{getattr(user, 'id', 'user')}",
+        change_reason="Pre-improvement snapshot (proposal approved)",
+    )
+
+    skill.content = proposal.get("suggested_content", skill.content)
+    if proposal.get("suggested_description"):
+        skill.description = proposal["suggested_description"]
+    skill.current_version = (skill.current_version or 1) + 1
+
+    # Enter A/B validation with pre-improvement metrics from the proposal.
+    skill.improvement_status = "probation"
+    skill.probation_started_at = datetime.now(timezone.utc)
+    skill.pre_improvement_avg_helpfulness = proposal.get("avg_helpfulness_before")
+    skill.pre_improvement_rated_count = proposal.get("rated_count_before")
+    skill.improvement_proposal = None
+    skill.improvement_proposed_at = None
+
+    await db.commit()
+    await db.refresh(skill)
+    await _generate_skill_embedding(db, skill)
+    return {"id": skill_id, "improvement_status": "probation"}
+
+
+@router.post("/marketplace/{skill_id}/reject-improvement")
+async def reject_improvement(
+    skill_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject a pending improvement proposal — discards it, skill content unchanged."""
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if skill.improvement_status != "pending_review":
+        raise HTTPException(status_code=400, detail="No pending improvement to reject")
+    skill.improvement_status = None
+    skill.improvement_proposal = None
+    skill.improvement_proposed_at = None
+    skill.improvement_review_reason = None
+    await db.commit()
+    return {"id": skill_id, "improvement_status": None}
 
 
 # --- Version history & rollback ---

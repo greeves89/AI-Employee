@@ -5,7 +5,7 @@ import json
 import logging
 import time
 
-from app import context_compressor, multimodal
+from app import context_compressor, model_registry, multimodal
 from app.loop_detector import LoopDetector
 from app.config import settings
 from app.log_publisher import LogPublisher
@@ -34,32 +34,6 @@ MAX_TURNS_HARD_CAP = 200
 # Trigger context compression at this fraction of the model's context window
 COMPACTION_THRESHOLD = 0.75
 
-# Context window sizes per model (tokens) — mirrors LLMChatHandler
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "gpt-4o": 128_000,
-    "gpt-4o-mini": 128_000,
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 8_192,
-    "gpt-3.5-turbo": 16_385,
-    "gpt-5": 1_000_000,
-    "o1": 200_000,
-    "o1-mini": 128_000,
-    "o3-mini": 200_000,
-    "claude-opus-4-6": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5": 200_000,
-    "gemini-2.5-pro": 1_000_000,
-    "gemini-2.5-flash": 1_000_000,
-    "gemini-1.5-pro": 2_000_000,
-    "gemini-1.5-flash": 1_000_000,
-    "llama": 8_192,
-    "mistral": 32_768,
-    "codestral": 32_768,
-    "deepseek": 128_000,
-    "qwen": 128_000,
-}
-DEFAULT_CONTEXT_WINDOW = 128_000
-
 TOOL_USAGE_RULES = """
 TOOL USAGE RULES (follow strictly):
 - To modify an existing file, use `edit_file` or `multi_edit` — NEVER use `write_file` unless creating a brand-new file. Full overwrites waste tokens and corrupt large files.
@@ -74,44 +48,12 @@ WORKFLOW:
 3. After writing code, run the build/tests via `bash` to validate. Never claim success on unverified code.
 """
 
-# Token pricing per 1M tokens (USD). Add entries as you use new models.
-# Format: (input_price_per_1m, output_price_per_1m)
-MODEL_PRICING: dict[str, tuple[float, float]] = {
-    # OpenAI
-    "gpt-4o": (2.50, 10.00),
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-4-turbo": (10.00, 30.00),
-    "gpt-5": (1.25, 10.00),
-    "o1": (15.00, 60.00),
-    "o1-mini": (3.00, 12.00),
-    "o3-mini": (1.10, 4.40),
-    # Anthropic
-    "claude-opus-4-6": (15.00, 75.00),
-    "claude-opus-4": (15.00, 75.00),
-    "claude-sonnet-4-6": (3.00, 15.00),
-    "claude-sonnet-4": (3.00, 15.00),
-    "claude-haiku-4-5": (1.00, 5.00),
-    # Google
-    "gemini-2.5-pro": (1.25, 10.00),
-    "gemini-2.5-flash": (0.30, 2.50),
-    "gemini-1.5-pro": (1.25, 5.00),
-    "gemini-1.5-flash": (0.075, 0.30),
-}
-
-
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Estimate USD cost based on token counts."""
-    # Try exact match, then prefix match (e.g. "gpt-4o-2024-08-06" -> "gpt-4o")
-    pricing = MODEL_PRICING.get(model)
-    if not pricing:
-        for known_model, prices in MODEL_PRICING.items():
-            if model.startswith(known_model):
-                pricing = prices
-                break
-    if not pricing:
-        return 0.0
-    in_price, out_price = pricing
-    return (input_tokens / 1_000_000) * in_price + (output_tokens / 1_000_000) * out_price
+    """Estimate USD cost based on token counts (delegates to the model registry).
+
+    Kept as a module-level function because llm_chat_handler imports it.
+    """
+    return model_registry.estimate_cost(model, input_tokens, output_tokens)
 
 
 class LLMRunner:
@@ -134,12 +76,7 @@ class LLMRunner:
         """Resolve the context window size for the current model."""
         if self._context_window > 0:
             return self._context_window
-        model = (settings.llm_model_name or "").lower()
-        for key, size in MODEL_CONTEXT_WINDOWS.items():
-            if key in model:
-                self._context_window = size
-                return size
-        self._context_window = DEFAULT_CONTEXT_WINDOW
+        self._context_window = model_registry.get_context_window(settings.llm_model_name or "")
         return self._context_window
 
     @staticmethod

@@ -363,6 +363,75 @@ async def _listen_chat_completions(redis: RedisService) -> None:
             await asyncio.sleep(1)
 
 
+async def _persist_task_steps(redis: RedisService) -> None:
+    """Persist per-step task execution events for time-travel replay (issue #54).
+
+    Subscribes to the global `agents:logs:all` channel and writes one TaskStep
+    row per event. The per-task sequence counter is kept in memory and seeded
+    from the DB on a miss so it survives an orchestrator restart mid-task.
+    """
+    from datetime import datetime as _dt
+
+    from app.db.session import async_session_factory
+    from app.models.task_step import TaskStep
+    from sqlalchemy import func as _func, select as _sel
+
+    pubsub = await redis.subscribe("agents:logs:all")
+    seq_cache: dict[str, int] = {}
+    logger.info("[StepPersist] Listening on agents:logs:all for task-step persistence")
+
+    while True:
+        try:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if not message or message["type"] != "message":
+                await asyncio.sleep(0.01)
+                continue
+            data = message["data"]
+            if isinstance(data, bytes):
+                data = data.decode("utf-8")
+            if isinstance(data, str):
+                data = json.loads(data)
+
+            task_id = data.get("task_id", "")
+            event_type = data.get("type", "")
+            if not task_id or not event_type:
+                continue
+
+            async with async_session_factory() as db:
+                if task_id not in seq_cache:
+                    existing_max = await db.scalar(
+                        _sel(_func.max(TaskStep.sequence)).where(TaskStep.task_id == task_id)
+                    )
+                    seq_cache[task_id] = (existing_max + 1) if existing_max is not None else 0
+                seq = seq_cache[task_id]
+
+                ts_raw = data.get("timestamp")
+                try:
+                    ts = _dt.fromisoformat(ts_raw) if ts_raw else _dt.now(timezone.utc)
+                except (ValueError, TypeError):
+                    ts = _dt.now(timezone.utc)
+
+                db.add(TaskStep(
+                    task_id=task_id,
+                    sequence=seq,
+                    event_type=event_type,
+                    event_data=data.get("data", {}),
+                    timestamp=ts,
+                ))
+                try:
+                    await db.commit()
+                    seq_cache[task_id] = seq + 1
+                except Exception:
+                    await db.rollback()  # FK miss (task not yet persisted) — skip
+
+            # A terminal event ends the task — drop its counter to bound memory.
+            if event_type in ("result", "error"):
+                seq_cache.pop(task_id, None)
+        except Exception as e:
+            print(f"[StepPersist] Error: {e}")
+            await asyncio.sleep(1)
+
+
 async def _persist_agent_messages(redis: RedisService) -> None:
     """Listen for inter-agent message events and persist them to DB."""
     from app.db.session import async_session_factory
@@ -709,6 +778,9 @@ async def lifespan(app: FastAPI):
     # Start chat completion persistence listener
     chat_persist_task = asyncio.create_task(_listen_chat_completions(app.state.redis))
 
+    # Start task-step persistence listener (time-travel replay, issue #54)
+    step_persist_task = asyncio.create_task(_persist_task_steps(app.state.redis))
+
     # Start third-party OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
 
@@ -796,6 +868,7 @@ async def lifespan(app: FastAPI):
     # Cleanup
     completion_task.cancel()
     chat_persist_task.cancel()
+    step_persist_task.cancel()
     oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
