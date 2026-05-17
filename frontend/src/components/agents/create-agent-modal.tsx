@@ -175,6 +175,7 @@ export function CreateAgentModal({
   const [llmToolsEnabled, setLlmToolsEnabled] = useState(true);
   const [showApiKey, setShowApiKey] = useState(false);
   const [aiAccountId, setAiAccountId] = useState<number | null>(null);
+  const [aiAccountModel, setAiAccountModel] = useState<string>("");
   const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
 
   // Load templates and permission packages on open
@@ -189,6 +190,7 @@ export function CreateAgentModal({
       setMode("claude_code");
       setAutonomyLevel("l3");
       setAiAccountId(null);
+      setAiAccountModel("");
       api.listAIAccounts(true).then(setAiAccounts).catch(() => setAiAccounts([]));
       setLlmProvider("openai");
       setLlmEndpoint("https://api.openai.com/v1");
@@ -288,7 +290,7 @@ export function CreateAgentModal({
         // Reusable, admin-managed AI account — no inline LLM config
         await api.createAgent(
           name.trim(),
-          undefined,
+          aiAccountModel || undefined,
           role.trim() || undefined,
           selectedPermissions.length > 0 ? selectedPermissions : undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
@@ -577,13 +579,18 @@ export function CreateAgentModal({
                             </label>
                             <select
                               value={aiAccountId ?? ""}
-                              onChange={(e) => setAiAccountId(e.target.value ? Number(e.target.value) : null)}
+                              onChange={(e) => {
+                                const id = e.target.value ? Number(e.target.value) : null;
+                                setAiAccountId(id);
+                                const acc = aiAccounts.find((a) => a.id === id);
+                                setAiAccountModel(acc?.models?.[0] ?? "");
+                              }}
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                             >
                               <option value="">Manuell konfigurieren</option>
                               {aiAccounts.map((a) => (
                                 <option key={a.id} value={a.id}>
-                                  {a.name} ({a.provider_type} · {a.model_name})
+                                  {a.name} ({a.provider_type})
                                 </option>
                               ))}
                             </select>
@@ -591,6 +598,23 @@ export function CreateAgentModal({
                               Vom Admin angelegten Modell-Zugang nutzen — oder unten manuell konfigurieren.
                             </p>
                           </div>
+
+                          {aiAccountId !== null && (
+                            <div>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                                Modell
+                              </label>
+                              <select
+                                value={aiAccountModel}
+                                onChange={(e) => setAiAccountModel(e.target.value)}
+                                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                              >
+                                {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? []).map((m) => (
+                                  <option key={m} value={m}>{m}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
 
                           {aiAccountId === null && (
                           <>

@@ -46,7 +46,7 @@ export interface AIAccount {
   name: string;
   provider_type: AIAccountProviderType;
   api_endpoint: string | null;
-  model_name: string;
+  models: string[];
   extra: Record<string, unknown>;
   is_active: boolean;
   has_key: boolean;

@@ -22,7 +22,9 @@ class AIAccount(Base):
     api_endpoint: Mapped[str | None] = mapped_column(String, nullable=True)
     # Fernet-encrypted; nullable for keyless providers (ollama, lm-studio)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    model_name: Mapped[str] = mapped_column(String, nullable=False)
+    # Model identifiers available on this account. For Azure OpenAI these are
+    # the deployment names. An agent picks one when it connects.
+    models: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     # Provider-specific extras: azure api_version/deployment, aws_region,
     # vertex_project, max_tokens, temperature, ...
     extra: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

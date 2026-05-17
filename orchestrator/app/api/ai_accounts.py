@@ -35,7 +35,7 @@ class AIAccountCreate(BaseModel):
     provider_type: ProviderType
     api_endpoint: str | None = None
     api_key: str | None = None  # plaintext on input; stored encrypted
-    model_name: str
+    models: list[str] = []  # Azure OpenAI: deployment names
     extra: dict = {}
 
 
@@ -44,7 +44,7 @@ class AIAccountUpdate(BaseModel):
     provider_type: ProviderType | None = None
     api_endpoint: str | None = None
     api_key: str | None = None  # only set to change it
-    model_name: str | None = None
+    models: list[str] | None = None
     extra: dict | None = None
     is_active: bool | None = None
 
@@ -54,7 +54,7 @@ class AIAccountResponse(BaseModel):
     name: str
     provider_type: str
     api_endpoint: str | None
-    model_name: str
+    models: list[str]
     extra: dict
     is_active: bool
     has_key: bool
@@ -68,7 +68,7 @@ def _to_response(a: AIAccount) -> AIAccountResponse:
         name=a.name,
         provider_type=a.provider_type,
         api_endpoint=a.api_endpoint,
-        model_name=a.model_name,
+        models=a.models or [],
         extra=a.extra or {},
         is_active=a.is_active,
         has_key=bool(a.api_key_encrypted),
@@ -116,7 +116,7 @@ async def create_ai_account(
         provider_type=body.provider_type,
         api_endpoint=body.api_endpoint,
         api_key_encrypted=encrypt_token(body.api_key) if body.api_key else None,
-        model_name=body.model_name,
+        models=body.models or [],
         extra=body.extra or {},
     )
     db.add(account)
@@ -150,8 +150,8 @@ async def update_ai_account(
         account.api_endpoint = body.api_endpoint
     if body.api_key:
         account.api_key_encrypted = encrypt_token(body.api_key)
-    if body.model_name is not None:
-        account.model_name = body.model_name
+    if body.models is not None:
+        account.models = body.models
     if body.extra is not None:
         account.extra = body.extra
     if body.is_active is not None:

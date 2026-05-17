@@ -776,7 +776,7 @@ export interface AIAccountPayload {
   provider_type: string;
   api_endpoint?: string | null;
   api_key?: string | null;
-  model_name: string;
+  models: string[];
   extra?: Record<string, unknown>;
   is_active?: boolean;
 }

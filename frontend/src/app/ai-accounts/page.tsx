@@ -30,14 +30,13 @@ type FormState = {
   provider_type: string;
   api_endpoint: string;
   api_key: string;
-  model_name: string;
+  models: string;       // comma-separated; for Azure these are deployment names
   api_version: string;
-  deployment: string;
 };
 
 const EMPTY_FORM: FormState = {
   name: "", provider_type: "azure-openai", api_endpoint: "",
-  api_key: "", model_name: "", api_version: "", deployment: "",
+  api_key: "", models: "", api_version: "",
 };
 
 function Toast({ type, message, onClose }: { type: "success" | "error"; message: string; onClose: () => void }) {
@@ -87,31 +86,30 @@ export default function AIAccountsPage() {
       provider_type: a.provider_type,
       api_endpoint: a.api_endpoint || "",
       api_key: "",
-      model_name: a.model_name,
+      models: (a.models || []).join(", "),
       api_version: String(extra.api_version || ""),
-      deployment: String(extra.deployment || ""),
     });
     setEditingId(a.id);
     setShowForm(true);
   };
 
   const save = async () => {
-    if (!form.name.trim() || !form.model_name.trim()) {
-      showToast("error", "Name und Modell sind Pflicht");
+    const modelList = form.models.split(",").map((m) => m.trim()).filter(Boolean);
+    if (!form.name.trim() || modelList.length === 0) {
+      showToast("error", "Name und mindestens ein Modell sind Pflicht");
       return;
     }
     setSaving(true);
     try {
       const extra: Record<string, unknown> = {};
-      if (form.provider_type === "azure-openai") {
-        if (form.api_version) extra.api_version = form.api_version;
-        if (form.deployment) extra.deployment = form.deployment;
+      if (form.provider_type === "azure-openai" && form.api_version) {
+        extra.api_version = form.api_version;
       }
       const payload = {
         name: form.name.trim(),
         provider_type: form.provider_type,
         api_endpoint: form.api_endpoint.trim() || null,
-        model_name: form.model_name.trim(),
+        models: modelList,
         extra,
         ...(form.api_key ? { api_key: form.api_key } : {}),
       };
@@ -199,16 +197,25 @@ export default function AIAccountsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Modell</label>
-                <input className={inputCls} value={form.model_name}
-                  onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                  placeholder="z.B. gpt-4o" />
-              </div>
-              <div>
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">API-Endpoint</label>
                 <input className={inputCls} value={form.api_endpoint}
                   onChange={(e) => setForm({ ...form, api_endpoint: e.target.value })}
                   placeholder="https://…" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
+                  Modelle <span className="text-muted-foreground/40">(kommagetrennt)</span>
+                </label>
+                <input className={inputCls} value={form.models}
+                  onChange={(e) => setForm({ ...form, models: e.target.value })}
+                  placeholder={form.provider_type === "azure-openai"
+                    ? "Deployment-Namen, z.B. gpt-4o, gpt-4o-mini, o1"
+                    : "z.B. gpt-4o, gpt-4o-mini"} />
+                <p className="text-[10px] text-muted-foreground/50 mt-1">
+                  {form.provider_type === "azure-openai"
+                    ? "Bei Azure: die Deployment-Namen. Der Agent wählt beim Verbinden eines davon."
+                    : "Der Agent wählt beim Verbinden eines dieser Modelle."}
+                </p>
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
@@ -219,20 +226,12 @@ export default function AIAccountsPage() {
                   placeholder="sk-… / Azure-Key" />
               </div>
               {form.provider_type === "azure-openai" && (
-                <>
-                  <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Azure api-version</label>
-                    <input className={inputCls} value={form.api_version}
-                      onChange={(e) => setForm({ ...form, api_version: e.target.value })}
-                      placeholder="2024-08-01-preview" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Azure Deployment</label>
-                    <input className={inputCls} value={form.deployment}
-                      onChange={(e) => setForm({ ...form, deployment: e.target.value })}
-                      placeholder="Deployment-Name" />
-                  </div>
-                </>
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Azure api-version</label>
+                  <input className={inputCls} value={form.api_version}
+                    onChange={(e) => setForm({ ...form, api_version: e.target.value })}
+                    placeholder="2024-08-01-preview" />
+                </div>
               )}
             </div>
             <div className="flex justify-end gap-2 pt-1">
@@ -273,7 +272,8 @@ export default function AIAccountsPage() {
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
-                    {a.model_name}{a.api_endpoint ? ` · ${a.api_endpoint}` : ""}
+                    {(a.models || []).join(", ") || "— keine Modelle —"}
+                    {a.api_endpoint ? ` · ${a.api_endpoint}` : ""}
                   </p>
                 </div>
                 <button onClick={() => toggleActive(a)} title={a.is_active ? "Deaktivieren" : "Aktivieren"}

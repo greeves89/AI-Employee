@@ -317,6 +317,13 @@ async def create_agent(
                 raise HTTPException(status_code=422, detail="AI account not found")
             if not account.is_active:
                 raise HTTPException(status_code=422, detail="AI account is inactive")
+            if not account.models:
+                raise HTTPException(status_code=422, detail="AI account has no models configured")
+            if data.model and data.model not in account.models:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Model '{data.model}' is not offered by this AI account",
+                )
 
         # Role-based permission checks (skip for setup-mode anonymous user)
         if user.id != "__anonymous__":
@@ -599,7 +606,8 @@ async def update_agent_budget(
 
 
 class AgentAIAccountUpdate(BaseModel):
-    ai_account_id: int  # the AI account to connect this agent to
+    ai_account_id: int       # the AI account to connect this agent to
+    model: str | None = None  # which model from the account (defaults to first)
 
 
 @router.patch("/{agent_id}/ai-account")
@@ -619,6 +627,14 @@ async def update_agent_ai_account(
         raise HTTPException(status_code=404, detail="AI account not found")
     if not account.is_active:
         raise HTTPException(status_code=422, detail="AI account is inactive")
+    if not account.models:
+        raise HTTPException(status_code=422, detail="AI account has no models configured")
+    chosen_model = body.model or account.models[0]
+    if chosen_model not in account.models:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Model '{chosen_model}' is not offered by this AI account",
+        )
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
@@ -626,7 +642,7 @@ async def update_agent_ai_account(
 
     agent.ai_account_id = account.id
     agent.mode = "custom_llm"
-    agent.model = account.model_name
+    agent.model = chosen_model
     await db.commit()
 
     # Recreate the container so the account's provider/credentials take effect.

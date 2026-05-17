@@ -508,12 +508,14 @@ class AgentManager:
         return env
 
     async def _effective_llm_config(
-        self, ai_account_id: int | None, inline_llm_config: dict | None
+        self, ai_account_id: int | None, inline_llm_config: dict | None,
+        agent_model: str | None = None,
     ) -> dict | None:
         """Resolve the effective custom-LLM config with a PLAINTEXT api_key.
 
         A linked AIAccount (admin-managed, reusable) takes precedence over an
-        agent's inline llm_config. Returns None if neither is set.
+        agent's inline llm_config. ``agent_model`` is the model the agent
+        picked from the account's model list. Returns None if neither is set.
         """
         from app.core.encryption import decrypt_token as _decrypt
         from app.models.ai_account import AIAccount
@@ -522,18 +524,23 @@ class AgentManager:
             acc = await self.db.get(AIAccount, ai_account_id)
             if acc:
                 extra = acc.extra or {}
+                models = acc.models or []
+                chosen = agent_model if (agent_model and agent_model in models) else (
+                    models[0] if models else (agent_model or "")
+                )
                 return {
                     "provider_type": acc.provider_type,
                     "api_endpoint": acc.api_endpoint or "",
                     "api_key": _decrypt(acc.api_key_encrypted) if acc.api_key_encrypted else "",
-                    "model_name": acc.model_name,
+                    "model_name": chosen,
                     "max_tokens": extra.get("max_tokens", 4096),
                     "temperature": extra.get("temperature", 0.7),
                     "system_prompt": extra.get("system_prompt", ""),
                     "tools_enabled": extra.get("tools_enabled", True),
                     "thinking_mode": extra.get("thinking_mode", "auto"),
                     "api_version": extra.get("api_version", ""),
-                    "deployment": extra.get("deployment", ""),
+                    # For Azure OpenAI the deployment name is the model id
+                    "deployment": chosen,
                 }
         if inline_llm_config:
             cfg = dict(inline_llm_config)
@@ -675,7 +682,7 @@ class AgentManager:
             mode = "custom_llm"
 
         # Resolve the effective LLM config (account takes precedence over inline).
-        effective_llm = await self._effective_llm_config(ai_account_id, llm_config)
+        effective_llm = await self._effective_llm_config(ai_account_id, llm_config, model)
 
         # Encrypt API key for inline custom_llm config before storing.
         # Account-linked agents store no inline config — the account is the source.
@@ -949,7 +956,7 @@ class AgentManager:
 
         secrets_env = await self._get_secrets_env(agent_id)
 
-        effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config)
+        effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config, agent.model)
         if mode == "custom_llm" and effective_llm:
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
@@ -1106,7 +1113,7 @@ class AgentManager:
 
         secrets_env = await self._get_secrets_env(agent_id)
 
-        effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config)
+        effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config, agent.model)
         if mode == "custom_llm" and effective_llm:
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
