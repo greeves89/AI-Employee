@@ -109,8 +109,16 @@ class AnthropicProvider(BaseLLMProvider):
             "max_tokens": self.max_tokens,
             "stream": True,
         }
+        # Prompt caching: the system prompt + tool definitions are large and
+        # static across every turn of a task. Marking them with cache_control
+        # lets Anthropic serve them from cache — big cost/latency win on
+        # multi-turn runs. The (changing) conversation after them is not cached.
         if system_text:
-            body["system"] = system_text
+            body["system"] = [{
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            }]
 
         # Convert OpenAI tool format to Anthropic format
         if tools:
@@ -122,6 +130,13 @@ class AnthropicProvider(BaseLLMProvider):
                     "description": func.get("description", ""),
                     "input_schema": func.get("parameters", {}),
                 })
+            if anthropic_tools:
+                # One cache breakpoint at the end of the tool list caches the
+                # whole static prefix (system + all tool definitions).
+                anthropic_tools[-1] = {
+                    **anthropic_tools[-1],
+                    "cache_control": {"type": "ephemeral"},
+                }
             body["tools"] = anthropic_tools
 
         headers = {

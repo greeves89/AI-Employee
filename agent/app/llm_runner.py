@@ -6,6 +6,7 @@ import logging
 import time
 
 from app import context_compressor, multimodal
+from app.loop_detector import LoopDetector
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
@@ -141,6 +142,19 @@ class LLMRunner:
         self._context_window = DEFAULT_CONTEXT_WINDOW
         return self._context_window
 
+    @staticmethod
+    def _compliance_gaps(tools_called: set[str], lightweight: bool) -> list[str]:
+        """Mandatory closing steps the agent skipped (enforced, not prompt-only).
+
+        Lightweight (chat-style) tasks don't require task reflection.
+        """
+        gaps: list[str] = []
+        if not lightweight and "rate_task" not in tools_called:
+            gaps.append("call rate_task to record this task's quality")
+        if "skill_install" in tools_called and "skill_rate" not in tools_called:
+            gaps.append("call skill_rate for the marketplace skill you installed")
+        return gaps
+
     async def _get_tools(self) -> list[dict] | None:
         """Get combined built-in + MCP tool definitions."""
         if not settings.llm_tools_enabled:
@@ -228,6 +242,9 @@ class LLMRunner:
         num_turns = 0
         full_text = ""
         accumulated_tool_calls: list[dict] = []
+        tools_called: set[str] = set()      # every tool name used this task
+        compliance_nudges = 0               # bounded: nudge missing closing steps once
+        loop_detector = LoopDetector()
 
         # Cap turns at settings.max_turns, but enforce hard ceiling
         max_turns = min(settings.max_turns, MAX_TURNS_HARD_CAP)
@@ -308,8 +325,45 @@ class LLMRunner:
                         tool_calls=tool_calls_content,
                     ))
 
+                tools_called.update(tc["name"] for tc in turn_tool_calls)
+
                 if not has_tool_calls:
+                    # Compliance gate: weak models tend to skip the mandatory
+                    # closing steps the prompt asks for (rate_task, skill_rate).
+                    # Enforce them in code — nudge once, then let the task end.
+                    missing = self._compliance_gaps(tools_called, lightweight)
+                    if missing and compliance_nudges < 1:
+                        compliance_nudges += 1
+                        messages.append(ChatMessage(
+                            role="user",
+                            content=(
+                                "[SYSTEM] You are about to finish, but you still MUST: "
+                                + "; ".join(missing)
+                                + ". Do this now using the tools, then give your final answer."
+                            ),
+                        ))
+                        await self.log_publisher.publish(
+                            task_id, "system",
+                            {"message": f"Compliance nudge — missing: {', '.join(missing)}"},
+                        )
+                        max_turns = num_turns + 4  # bounded room to comply
+                        continue
                     # No tool calls = response is complete
+                    break
+
+                # Loop detection — stop if the same tool call keeps repeating
+                for tc in turn_tool_calls:
+                    loop_detector.record(tc["name"], tc["input"])
+                if loop_detector.is_looping():
+                    loop_msg = (
+                        "Loop detected: the same tool call is repeating. "
+                        "Stopping to prevent runaway execution."
+                    )
+                    logger.warning(f"[Runner] {loop_msg}")
+                    full_text += f"\n\n[System: {loop_msg}]"
+                    await self.log_publisher.publish(
+                        task_id, "system", {"message": loop_msg}
+                    )
                     break
 
                 # Execute tool calls — parallelize concurrent-safe, serialize writes

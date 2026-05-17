@@ -6,6 +6,7 @@ import logging
 import time
 
 from app import context_compressor, multimodal
+from app.loop_detector import LoopDetector
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
@@ -17,7 +18,6 @@ from app.tools.mcp_client import MCPHTTPClient
 logger = logging.getLogger(__name__)
 
 MAX_TURNS_PER_MESSAGE = 20  # Max tool-use loops per chat message
-LOOP_DETECTION_WINDOW = 6   # Consecutive identical tool calls to detect as loop
 COMPACTION_THRESHOLD = 0.75  # Trigger compaction at 75% of context window
 
 # Context window sizes per model (tokens).
@@ -75,7 +75,7 @@ class LLMChatHandler:
         # Conversation history (in-memory, replaces --resume)
         self._history: list[ChatMessage] = []
         # Loop detection: track recent tool call signatures
-        self._recent_tool_sigs: list[str] = []
+        self._loop_detector = LoopDetector()
         # Context tracking
         self._last_input_tokens: int = 0
         self._context_window: int = 0  # Resolved on first call
@@ -256,7 +256,7 @@ class LLMChatHandler:
             await self._compact_history(message_id)
 
         # Reset loop detector for this message
-        self._recent_tool_sigs.clear()
+        self._loop_detector.reset()
 
         tools = await self._get_tools()
         full_text = ""
@@ -347,9 +347,8 @@ class LLMChatHandler:
 
                 # Loop detection: check for repetitive tool call patterns
                 for tc in turn_tool_calls:
-                    sig = f"{tc['name']}:{json.dumps(tc['input'], sort_keys=True)}"
-                    self._recent_tool_sigs.append(sig)
-                if self._detect_loop():
+                    self._loop_detector.record(tc["name"], tc["input"])
+                if self._loop_detector.is_looping():
                     loop_msg = (
                         "Loop detected: the same tool calls are repeating. "
                         "Stopping to prevent runaway execution."
@@ -426,21 +425,10 @@ class LLMChatHandler:
             await self._provider.close()
             self._provider = None
 
-    def _detect_loop(self) -> bool:
-        """Detect repetitive tool call patterns.
-
-        Returns True if the last LOOP_DETECTION_WINDOW tool calls all have
-        the same signature (same tool name + same arguments).
-        """
-        if len(self._recent_tool_sigs) < LOOP_DETECTION_WINDOW:
-            return False
-        window = self._recent_tool_sigs[-LOOP_DETECTION_WINDOW:]
-        return len(set(window)) == 1
-
     async def reset_session(self) -> None:
         """Reset conversation history."""
         self._history.clear()
-        self._recent_tool_sigs.clear()
+        self._loop_detector.reset()
         self._last_input_tokens = 0
         await self.log_publisher.publish_chat(
             "", "system", {"message": "Chat session reset"}
