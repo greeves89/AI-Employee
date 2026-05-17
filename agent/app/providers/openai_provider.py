@@ -58,21 +58,34 @@ class OpenAIProvider(BaseLLMProvider):
         "chat", "responses", "legacy".
         """
         ep = self.api_endpoint.rstrip("/")
+        is_azure = ".openai.azure.com" in ep
 
         # User specified the full path already
         if ep.endswith("/chat/completions"):
-            return ep, "chat"
+            return self._azure_query(ep, is_azure), "chat"
         if ep.endswith("/responses"):
-            return ep, "responses"
+            return self._azure_query(ep, is_azure), "responses"
         if ep.endswith("/completions"):
-            return ep, "legacy"
+            return self._azure_query(ep, is_azure), "legacy"
 
-        # Auto-detect from model name
+        # Azure OpenAI: normalise a bare resource URL to the v1 API surface
+        # (https://<resource>.openai.azure.com/openai/v1/...).
+        if is_azure and "/openai/v1" not in ep:
+            root = ep.split(".openai.azure.com")[0] + ".openai.azure.com"
+            ep = f"{root}/openai/v1"
+
         if self._is_responses_model():
-            return f"{ep}/responses", "responses"
+            return self._azure_query(f"{ep}/responses", is_azure), "responses"
 
-        # Default to chat completions
-        return f"{ep}/chat/completions", "chat"
+        return self._azure_query(f"{ep}/chat/completions", is_azure), "chat"
+
+    @staticmethod
+    def _azure_query(url: str, is_azure: bool) -> str:
+        """Azure's v1 API surface needs an api-version query parameter."""
+        if is_azure and "api-version=" not in url:
+            sep = "&" if "?" in url else "?"
+            return f"{url}{sep}api-version=preview"
+        return url
 
     # ------------------------------------------------------------------ #
     # Main streaming entry point
