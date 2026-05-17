@@ -106,7 +106,10 @@ class SkillTaskUsage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), index=True, nullable=False)
-    task_id: Mapped[str] = mapped_column(String, ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=False)
+    # Nullable: a skill can be used inside a task OR in a chat session.
+    task_id: Mapped[str | None] = mapped_column(String, ForeignKey("tasks.id", ondelete="CASCADE"), index=True, nullable=True)
+    chat_session_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="task")  # "task" | "chat"
     agent_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
 
     # Ratings — all optional, filled in progressively

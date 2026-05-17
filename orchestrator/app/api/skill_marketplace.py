@@ -625,6 +625,7 @@ async def agent_available_skills(
 class AgentRecordUsageBody(BaseModel):
     skill_id: int
     task_id: str | None = None
+    chat_session_id: str | None = None  # set instead of task_id when used in a chat
     helpfulness: int | None = None    # 1-5: how much did the skill help?
     rating: int | None = None         # 1-5: agent self-rating of task quality
     user_rating: int | None = None    # 1-5: user feedback interpreted by agent from chat
@@ -639,8 +640,9 @@ async def agent_record_skill_usage(
 ):
     """Agent records explicit skill usage — called from MCP skill_rate tool.
 
-    Upserts a SkillTaskUsage row (one per task+skill combo). Backfills timing from
-    the task record if available. Updates skill rolling averages.
+    Works both for tasks (keyed on task_id) and for chat sessions (no task).
+    Upserts a SkillTaskUsage row so a follow-up call carrying the user's
+    feedback rating updates the same record. Updates skill rolling averages.
     """
     agent_id = auth["agent_id"]
 
@@ -648,7 +650,8 @@ async def agent_record_skill_usage(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
 
-    task_id = body.task_id or "manual"
+    is_chat = not body.task_id
+    source = "chat" if is_chat else "task"
 
     # Resolve task timing — may be None if task is still running (backfilled later)
     task_duration_ms = None
@@ -664,14 +667,30 @@ async def agent_record_skill_usage(
                 agent_secs = task.duration_ms / 1000
                 time_saved_seconds = max(0, int(skill.manual_duration_seconds - agent_secs))
 
-    # Upsert: find existing record for this task+skill combo
-    existing = (await db.execute(
-        select(SkillTaskUsage).where(
-            SkillTaskUsage.task_id == task_id,
-            SkillTaskUsage.skill_id == body.skill_id,
-            SkillTaskUsage.agent_id == agent_id,
-        )
-    )).scalar_one_or_none()
+    # Upsert. For tasks: key on task_id+skill. For chat: there is no stable
+    # key, so update the most recent chat usage of this skill by this agent
+    # within the last 24h (the "use → wait for feedback → rate" follow-up).
+    if is_chat:
+        from datetime import datetime, timedelta, timezone
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        existing = (await db.execute(
+            select(SkillTaskUsage)
+            .where(
+                SkillTaskUsage.task_id.is_(None),
+                SkillTaskUsage.skill_id == body.skill_id,
+                SkillTaskUsage.agent_id == agent_id,
+                SkillTaskUsage.created_at >= cutoff,
+            )
+            .order_by(SkillTaskUsage.created_at.desc())
+        )).scalars().first()
+    else:
+        existing = (await db.execute(
+            select(SkillTaskUsage).where(
+                SkillTaskUsage.task_id == body.task_id,
+                SkillTaskUsage.skill_id == body.skill_id,
+                SkillTaskUsage.agent_id == agent_id,
+            )
+        )).scalar_one_or_none()
 
     is_new = existing is None
     if existing:
@@ -691,7 +710,9 @@ async def agent_record_skill_usage(
     else:
         usage = SkillTaskUsage(
             skill_id=body.skill_id,
-            task_id=task_id,
+            task_id=body.task_id,
+            chat_session_id=body.chat_session_id,
+            source=source,
             agent_id=agent_id,
             skill_helpfulness=body.helpfulness,
             agent_self_rating=body.rating,

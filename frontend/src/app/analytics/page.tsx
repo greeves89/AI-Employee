@@ -84,7 +84,9 @@ function ChartTooltipCustom({ active, payload, label }: any) {
       <p className="font-medium mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }}>
-          {p.name}: {typeof p.value === "number" ? p.value.toFixed(2) : p.value}
+          {p.name}: {typeof p.value === "number"
+            ? (Number.isInteger(p.value) ? p.value : p.value.toFixed(2))
+            : p.value}
         </p>
       ))}
     </div>
