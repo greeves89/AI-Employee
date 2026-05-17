@@ -37,10 +37,38 @@ class AnthropicProvider(BaseLLMProvider):
                     "role": "user",
                     "content": [{
                         "type": "tool_result",
-                        "tool_use_id": msg.tool_call_id,
+                        "tool_use_id": msg.tool_call_id or "",
                         "content": msg.content if isinstance(msg.content, str) else str(msg.content),
                     }],
                 })
+            elif msg.role == "assistant" and msg.tool_calls:
+                # An assistant turn that called tools must carry tool_use
+                # content blocks, else the following tool_result blocks are
+                # rejected ("no corresponding tool_use block").
+                blocks: list[dict] = []
+                if msg.content:
+                    txt = msg.content if isinstance(msg.content, str) else str(msg.content)
+                    if txt.strip():
+                        blocks.append({"type": "text", "text": txt})
+                for tc in msg.tool_calls:
+                    fn = tc.get("function", {}) or {}
+                    args = fn.get("arguments")
+                    if isinstance(args, dict):
+                        tool_input = args
+                    elif isinstance(args, str) and args:
+                        try:
+                            tool_input = json.loads(args)
+                        except json.JSONDecodeError:
+                            tool_input = {}
+                    else:
+                        tool_input = {}
+                    blocks.append({
+                        "type": "tool_use",
+                        "id": tc.get("id", ""),
+                        "name": fn.get("name", ""),
+                        "input": tool_input,
+                    })
+                conv_messages.append({"role": "assistant", "content": blocks})
             else:
                 content = msg.content if isinstance(msg.content, str) else msg.content
                 conv_messages.append({"role": msg.role, "content": content})
