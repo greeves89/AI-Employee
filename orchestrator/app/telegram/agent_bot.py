@@ -50,7 +50,7 @@ class TelegramAgentBot:
         )
         self.app.add_handler(
             MessageHandler(
-                (filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.VIDEO)
+                (filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.AUDIO | filters.VIDEO)
                 & ~filters.COMMAND,
                 self._handle_media,
             )
@@ -303,17 +303,28 @@ class TelegramAgentBot:
         media_type = "unknown"
         file_id = None
         caption = update.message.caption or ""
+        # An image to hand straight to the (multimodal) agent, if any.
+        image_file_id: str | None = None
+        image_mime: str = "image/jpeg"
 
         if update.message.photo:
             media_type = "photo"
             file_id = update.message.photo[-1].file_id  # Highest resolution
+            image_file_id = file_id
         elif update.message.document:
             media_type = "document"
             file_id = update.message.document.file_id
             caption = caption or update.message.document.file_name or ""
+            doc_mime = (update.message.document.mime_type or "").lower()
+            if doc_mime in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+                image_file_id = file_id
+                image_mime = doc_mime
         elif update.message.voice:
             media_type = "voice"
             file_id = update.message.voice.file_id
+        elif update.message.audio:
+            media_type = "audio"
+            file_id = update.message.audio.file_id
         elif update.message.video:
             media_type = "video"
             file_id = update.message.video.file_id
@@ -332,6 +343,50 @@ class TelegramAgentBot:
 
         text = f"[Telegram {media_type}] {caption}".strip() if caption else f"[Telegram {media_type} received, file_id: {file_id}]"
 
+        # Photos (and image documents) are downloaded here and handed to the
+        # agent directly as a vision image — no tool call, no token needed.
+        images: list[dict] = []
+        if image_file_id:
+            try:
+                import base64 as _b64
+                tg_file = await context.bot.get_file(image_file_id)
+                raw = bytes(await tg_file.download_as_bytearray())
+                if 0 < len(raw) <= 5 * 1024 * 1024:
+                    images.append({
+                        "media_type": image_mime,
+                        "data": _b64.b64encode(raw).decode("ascii"),
+                    })
+                    if not caption:
+                        text = "[Telegram photo] (see attached image)"
+            except Exception as e:
+                logging.getLogger(__name__).warning("Telegram image download failed: %s", e)
+
+        # Voice/audio messages are transcribed here (local faster-whisper) so
+        # the agent receives plain text — never raw audio it can't process.
+        if media_type in ("voice", "audio") and file_id:
+            try:
+                import httpx
+                tg_file = await context.bot.get_file(file_id)
+                raw = bytes(await tg_file.download_as_bytearray())
+                async with httpx.AsyncClient(timeout=120) as client:
+                    resp = await client.post(
+                        f"{settings.stt_service_url}/transcribe",
+                        files={"file": ("voice.ogg", raw, "audio/ogg")},
+                    )
+                resp.raise_for_status()
+                transcript = (resp.json().get("text") or "").strip()
+                if transcript:
+                    prefix = f"{caption}\n\n" if caption else ""
+                    text = f"{prefix}[Telegram-Sprachnachricht, transkribiert:]\n{transcript}"
+                else:
+                    text = "[Telegram-Sprachnachricht — leer oder unverständlich]"
+            except Exception as e:
+                logging.getLogger(__name__).warning("Voice transcription failed: %s", e)
+                text = (
+                    f"[Telegram {media_type}] Transkription fehlgeschlagen "
+                    f"(file_id: {file_id}). Du kannst die Datei per get-file laden."
+                )
+
         try:
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
             message_id = f"tg-{update.message.message_id}"
@@ -340,6 +395,7 @@ class TelegramAgentBot:
                 "text": text,
                 "model": None,
                 "telegram": tg_context,
+                "images": images,
             })
             await redis.lpush(f"agent:{self.agent_id}:chat", payload)
             await redis.aclose()

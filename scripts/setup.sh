@@ -138,6 +138,22 @@ if [ $EMB_RETRIES -gt 0 ]; then
     ok "Embedding service ready (semantic search enabled)"
 fi
 
+# ── 7c. Wait for STT service (faster-whisper model, ~480 MB on first boot) ──
+info "Waiting for STT service (faster-whisper, voice transcription)..."
+STT_RETRIES=60  # 60 × 3s = 3 minutes max
+until docker exec ai-employee-orchestrator curl -sf http://stt-service:8003/healthz >/dev/null 2>&1; do
+    STT_RETRIES=$((STT_RETRIES - 1))
+    if [ $STT_RETRIES -le 0 ]; then
+        warn "STT service did not become ready in time. Voice transcription may be delayed on first use."
+        warn "Check logs: docker compose logs stt-service"
+        break
+    fi
+    sleep 3
+done
+if [ $STT_RETRIES -gt 0 ]; then
+    ok "STT service ready (Telegram voice transcription enabled)"
+fi
+
 # ── 8. Done ───────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════╗"

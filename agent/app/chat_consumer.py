@@ -42,21 +42,30 @@ FIRST STEPS (do these BEFORE responding to the user):
 2. Use brain_search (query relevant to this message) to check the shared knowledge base
 3. Use memory_search with a focused query and room="chat:telegram" (or the project-room
    if the user is asking about a specific project). Room filters improve precision massively.
-4. Use list_todos to check for pending work items
+4. Use skill_search to check the marketplace for a skill that fits this request. If one
+   fits, skill_install it and FOLLOW its instructions instead of improvising.
+5. Use list_todos to check for pending work items
 Then respond to the user's message below with full context.
+
+AFTER the user gives feedback on your result: if you used a marketplace skill, call
+skill_rate (skill_id, helpfulness 1-5, rating 1-5, and user_rating interpreted from the
+user's words: 'super/perfekt'=5 … 'schlecht'=1). Omit task_id — this is a chat.
 
 """
     else:
         startup_block = """
 BEFORE responding: use brain_search and memory_search (with a room filter if you know
 the project/area — e.g. room="chat:telegram" or "project:<name>/<area>") to check for
-relevant context.
+relevant context. Also use skill_search — if a marketplace skill fits this request,
+skill_install it and follow it instead of improvising.
 AFTER responding: if you learned something new, use memory_save with:
   - category: 'learning'
   - room: "chat:telegram" (or a project room if the insight is project-specific)
   - tag_type: 'permanent' for lessons, 'transient' for in-progress state
   - tags: pick from task/code/decision/learning/error/correction/pattern/architecture/
           performance/security/user_preference/meta
+AFTER the user gives feedback: if you used a marketplace skill, call skill_rate
+(skill_id, helpfulness, rating, user_rating from their words). Omit task_id — this is a chat.
 
 """
 
@@ -76,6 +85,12 @@ RULES:
 - To send files/voice/photos/videos, use the Orchestrator Telegram API below.
 - To DOWNLOAD a file the user sent you: you get a `file_id` in the header above —
   pass it to the get-file endpoint below. Do NOT try to download from Telegram directly.
+- PHOTOS the user sends are attached to this message and shown to you directly —
+  just look at the image and describe/analyze it. No download needed.
+- To SEE any other image (one you downloaded, or an image URL), call the `view_image`
+  tool (path / file_id / url). Never use OCR or `strings` — you have real vision.
+- VOICE messages are already transcribed for you — the transcript is in the message
+  text above. Just respond to it. Never download or transcribe audio yourself.
 - You have FULL access to all your MCP tools (memory, todos, notifications, orchestrator).
   Use them exactly as you would for Web UI messages! Save memories, create/update TODOs,
   read knowledge.md, and use notify_user — Telegram is just another input channel.
@@ -222,20 +237,61 @@ class ChatConsumer:
                 "3. Use memory_search with a focused query AND a room filter\n"
                 "   (room=\"chat:webui\" for UI chats, or \"project:<name>/<area>\" if the user\n"
                 "   is asking about a specific project). Rooms improve retrieval precision massively.\n"
-                "4. Use list_todos to check for pending work items\n"
+                "4. Use skill_search to check the marketplace for a skill that fits this request.\n"
+                "   If one fits, skill_install it and FOLLOW its instructions instead of improvising.\n"
+                "5. Use list_todos to check for pending work items\n"
                 "AFTER responding: if you learned something new or the user corrected you,\n"
                 "use memory_save with category='learning', room=\"chat:webui\" (or project room),\n"
                 "tag_type='permanent' (or 'transient' for task state), and tags=['learning', ...].\n"
                 "If the server returns a 409 contradiction warning, re-call with override=true\n"
                 "only if you're confident the new content should replace the existing one.\n"
+                "AFTER the user gives feedback on your result: if you used a marketplace skill,\n"
+                "call skill_rate (skill_id, helpfulness 1-5, rating 1-5, and user_rating\n"
+                "interpreted from the user's words). Omit task_id — this is a chat.\n"
                 "Then respond to:\n\n" + text
             )
         # Resumed session — MUST check knowledge/memory for context
         return rules_prefix + (
-            "BEFORE responding: use brain_search and memory_search to check for relevant context.\n"
-            "AFTER responding: if you learned something new, use memory_save (category: 'learning').\n\n"
+            "BEFORE responding: use brain_search and memory_search to check for relevant context,\n"
+            "and skill_search — if a marketplace skill fits, skill_install it and follow it.\n"
+            "AFTER responding: if you learned something new, use memory_save (category: 'learning').\n"
+            "AFTER the user gives feedback: if you used a skill, call skill_rate with their rating\n"
+            "(skill_id, helpfulness, rating, user_rating; omit task_id — this is a chat).\n\n"
             + text
         )
+
+    def _save_images(self, message_id: str, images: list[dict]) -> list[str]:
+        """Decode base64 images to workspace files (for the CLI handler).
+
+        Returns the saved file paths. Best-effort — failures are skipped.
+        """
+        import base64
+        import os
+
+        ext_map = {
+            "image/jpeg": "jpg", "image/png": "png",
+            "image/gif": "gif", "image/webp": "webp",
+        }
+        out_dir = os.path.join(settings.workspace_dir, ".telegram_images")
+        saved: list[str] = []
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except Exception:
+            return saved
+        safe_id = message_id.replace("/", "_")
+        for i, img in enumerate(images):
+            data = img.get("data")
+            if not data:
+                continue
+            ext = ext_map.get(img.get("media_type", ""), "jpg")
+            path = os.path.join(out_dir, f"{safe_id}_{i}.{ext}")
+            try:
+                with open(path, "wb") as f:
+                    f.write(base64.b64decode(data))
+                saved.append(path)
+            except Exception:
+                continue
+        return saved
 
     async def start(self) -> None:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
@@ -265,6 +321,7 @@ class ChatConsumer:
                 text = msg["text"]
                 model = msg.get("model")
                 telegram_ctx = msg.get("telegram")
+                images = msg.get("images") or None
 
                 # Handle special commands
                 if text.strip() == "/reset":
@@ -272,6 +329,22 @@ class ChatConsumer:
                     continue
 
                 text = self._prepare_text(text, telegram_ctx)
+
+                # Images: the custom-LLM handler sees them natively. The
+                # Claude Code CLI handler can't take inline images, so save
+                # them to the workspace and point the agent at the files.
+                handle_kwargs: dict = {}
+                if images:
+                    if settings.agent_mode == "custom_llm":
+                        handle_kwargs["images"] = images
+                    else:
+                        saved = self._save_images(message_id, images)
+                        if saved:
+                            text += (
+                                "\n\n[Attached image(s) saved to the workspace — "
+                                "use the Read tool to view them:]\n"
+                                + "\n".join(saved)
+                            )
 
                 # Mark as working while processing chat
                 await log_publisher.publish_status("working", f"chat:{message_id}")
@@ -286,6 +359,7 @@ class ChatConsumer:
                         message_id=message_id,
                         text=text,
                         model=model,
+                        **handle_kwargs,
                     )
                 finally:
                     await log_publisher.publish_status("idle")

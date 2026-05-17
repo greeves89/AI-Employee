@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # Docker containers reach Mac host via host.docker.internal
     tts_service_url: str = "http://host.docker.internal:8002"
 
+    # Local STT service (faster-whisper) — transcribes Telegram voice messages.
+    # Runs as a compose service on the internal network.
+    stt_service_url: str = "http://stt-service:8003"
+
     # Security
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
@@ -99,6 +103,11 @@ class Settings(BaseSettings):
 
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures
+
+    # Feedback Webhook (optional)
+    # Sends newly submitted app feedback to an external workflow system.
+    feedback_webhook_url: str = ""
+    feedback_webhook_api_key: str = ""
 
     # GitHub API token for skill crawler (avoids 60 req/h rate limit → 5000 req/h)
     github_token: str = ""

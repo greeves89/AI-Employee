@@ -105,6 +105,8 @@ services:
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      FEEDBACK_WEBHOOK_URL: ${FEEDBACK_WEBHOOK_URL:-}
+      FEEDBACK_WEBHOOK_API_KEY: ${FEEDBACK_WEBHOOK_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
@@ -172,6 +174,28 @@ services:
           memory: 3G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - internal
+
+  stt-service:
+    build:
+      context: ./stt-service
+      dockerfile: Dockerfile
+    container_name: ai-employee-stt
+    # No port binding - only accessible via internal network
+    volumes:
+      - stt_models:/models
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -270,6 +294,7 @@ volumes:
   postgres_data:
   redis_data:
   embedding_models:
+  stt_models:
   ai-employee-shared:
     external: true
 

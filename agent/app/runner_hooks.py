@@ -392,6 +392,21 @@ def get_skill_preload() -> str:
         return ""
 
 
+MULTIMODAL_CAPABILITY_NOTE = (
+    "\n\n## Vision & Audio\n"
+    "You are multimodal — you can SEE images, not just read text.\n"
+    "- To look at an image (a file you downloaded, a screenshot, a chart, a "
+    "scanned document, an image URL, or a Telegram file_id), call the "
+    "`view_image` tool. The image is shown to you directly.\n"
+    "- NEVER try to 'read' an image with OCR, `strings`, `cat`, or other shell "
+    "tricks — just use `view_image` and look.\n"
+    "- Photos sent via Telegram are already attached to the message — just "
+    "look at them.\n"
+    "- Voice messages sent via Telegram are already transcribed to text for "
+    "you — never download or transcribe audio yourself."
+)
+
+
 def get_skills_context() -> str:
     """Scan installed skills from the workspace and inject as context.
 
