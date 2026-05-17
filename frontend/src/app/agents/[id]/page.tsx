@@ -193,9 +193,11 @@ export default function AgentDetailPage() {
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   {agent.mode === "custom_llm" ? <Plug className="h-3 w-3 text-violet-400" /> : <Hash className="h-3 w-3 text-violet-400" />}
                   <span className="text-violet-400 font-medium">
-                    {agent.mode === "custom_llm" && agent.llm_config
-                      ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
-                      : agent.model.split("-").slice(0, 2).join("-")}
+                    {agent.mode === "custom_llm" && agent.ai_account_id
+                      ? `${agent.ai_account_name ?? "AI-Account"} / ${agent.model}`
+                      : agent.mode === "custom_llm" && agent.llm_config
+                        ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
+                        : agent.model.split("-").slice(0, 2).join("-")}
                   </span>
                 </div>
               </div>
