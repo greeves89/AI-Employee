@@ -12,7 +12,9 @@ def create_provider(
     **kwargs,
 ) -> BaseLLMProvider:
     """Factory: create the right provider instance based on type."""
-    if provider_type in ("openai", ""):
+    # Azure OpenAI speaks the OpenAI-compatible API (v1 surface) — same
+    # provider class; the Azure resource URL is the api_endpoint.
+    if provider_type in ("openai", "azure-openai", "azure", ""):
         return OpenAIProvider(
             api_endpoint=api_endpoint,
             api_key=api_key,
