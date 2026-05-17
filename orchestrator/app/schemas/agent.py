@@ -78,6 +78,8 @@ class AgentResponse(BaseModel):
     mode: str = "claude_code"
     llm_config: LLMConfigResponse | None = None
     ai_account_id: int | None = None
+    ai_account_name: str | None = None
+    ai_account_provider: str | None = None
     role: str | None = None
     onboarding_complete: bool = False
     integrations: list[str] = []

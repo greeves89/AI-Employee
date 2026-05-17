@@ -64,6 +64,8 @@ export interface Agent {
   mode: AgentMode;
   llm_config: LLMConfigResponse | null;
   ai_account_id: number | null;
+  ai_account_name: string | null;
+  ai_account_provider: string | null;
   role: string | null;
   onboarding_complete: boolean;
   integrations: string[];

@@ -1346,6 +1346,17 @@ class AgentManager:
             )
             monthly_cost_usd = round(float(_cost_row.scalar() or 0), 4)
 
+        # Linked AI account name/provider for display (badge on the agent card)
+        ai_account_name = None
+        ai_account_provider = None
+        if agent.ai_account_id:
+            from app.models.ai_account import AIAccount as _AIAccount
+            async with async_session_factory() as _acc_session:
+                _acc = await _acc_session.get(_AIAccount, agent.ai_account_id)
+                if _acc:
+                    ai_account_name = _acc.name
+                    ai_account_provider = _acc.provider_type
+
         result = {
             "id": agent.id,
             "name": agent.name,
@@ -1368,6 +1379,8 @@ class AgentManager:
             "budget_exceeded_action": agent.budget_exceeded_action,
             "monthly_cost_usd": monthly_cost_usd,
             "ai_account_id": agent.ai_account_id,
+            "ai_account_name": ai_account_name,
+            "ai_account_provider": ai_account_provider,
             "browser_mode": agent.browser_mode,
             "autonomy_level": agent.autonomy_level or "l3",
             "webhook_enabled": agent.webhook_enabled,
