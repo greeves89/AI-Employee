@@ -25,18 +25,29 @@ const PROVIDER_COLORS: Record<string, string> = {
   "lm-studio": "bg-violet-500/10 text-violet-400 border-violet-500/20",
 };
 
+// Known models per provider — offered as quick-add. Azure has none (the user
+// names the deployments) and local providers depend on what's installed.
+const PROVIDER_MODELS: Record<string, string[]> = {
+  anthropic: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"],
+  openai: ["gpt-5.4", "gpt-5.4-mini", "gpt-4o", "gpt-4o-mini", "o3-mini"],
+  google: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+  "azure-openai": [],
+  ollama: [],
+  "lm-studio": [],
+};
+
 type FormState = {
   name: string;
   provider_type: string;
   api_endpoint: string;
   api_key: string;
-  models: string;       // comma-separated; for Azure these are deployment names
+  models: string[];     // for Azure: the deployment names
   api_version: string;
 };
 
 const EMPTY_FORM: FormState = {
   name: "", provider_type: "azure-openai", api_endpoint: "",
-  api_key: "", models: "", api_version: "",
+  api_key: "", models: [], api_version: "",
 };
 
 function Toast({ type, message, onClose }: { type: "success" | "error"; message: string; onClose: () => void }) {
@@ -61,6 +72,7 @@ export default function AIAccountsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [newModel, setNewModel] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
 
@@ -78,7 +90,7 @@ export default function AIAccountsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openCreate = () => { setForm(EMPTY_FORM); setEditingId(null); setShowForm(true); };
+  const openCreate = () => { setForm(EMPTY_FORM); setNewModel(""); setEditingId(null); setShowForm(true); };
   const openEdit = (a: AIAccount) => {
     const extra = a.extra || {};
     setForm({
@@ -86,15 +98,24 @@ export default function AIAccountsPage() {
       provider_type: a.provider_type,
       api_endpoint: a.api_endpoint || "",
       api_key: "",
-      models: (a.models || []).join(", "),
+      models: a.models || [],
       api_version: String(extra.api_version || ""),
     });
+    setNewModel("");
     setEditingId(a.id);
     setShowForm(true);
   };
 
+  const addModel = (m: string) => {
+    const v = m.trim();
+    if (v && !form.models.includes(v)) setForm((f) => ({ ...f, models: [...f.models, v] }));
+    setNewModel("");
+  };
+  const removeModel = (m: string) =>
+    setForm((f) => ({ ...f, models: f.models.filter((x) => x !== m) }));
+
   const save = async () => {
-    const modelList = form.models.split(",").map((m) => m.trim()).filter(Boolean);
+    const modelList = form.models.map((m) => m.trim()).filter(Boolean);
     if (!form.name.trim() || modelList.length === 0) {
       showToast("error", "Name und mindestens ein Modell sind Pflicht");
       return;
@@ -203,17 +224,60 @@ export default function AIAccountsPage() {
                   placeholder="https://…" />
               </div>
               <div className="col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
-                  Modelle <span className="text-muted-foreground/40">(kommagetrennt)</span>
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+                  Modelle
                 </label>
-                <input className={inputCls} value={form.models}
-                  onChange={(e) => setForm({ ...form, models: e.target.value })}
-                  placeholder={form.provider_type === "azure-openai"
-                    ? "Deployment-Namen, z.B. gpt-4o, gpt-4o-mini, o1"
-                    : "z.B. gpt-4o, gpt-4o-mini"} />
-                <p className="text-[10px] text-muted-foreground/50 mt-1">
+
+                {/* already-added models */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {form.models.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground/40 italic">Noch keine Modelle hinzugefügt</span>
+                  )}
+                  {form.models.map((m) => (
+                    <span key={m} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-1 text-[11px] font-medium">
+                      {m}
+                      <button type="button" onClick={() => removeModel(m)} className="hover:text-red-400">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* add a model manually (essential for Azure deployment names) */}
+                <div className="flex gap-2">
+                  <input
+                    className={inputCls}
+                    value={newModel}
+                    onChange={(e) => setNewModel(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addModel(newModel); } }}
+                    placeholder={form.provider_type === "azure-openai"
+                      ? "Azure Deployment-Name eintragen + Enter"
+                      : "Modellname eintragen + Enter"}
+                  />
+                  <button type="button" onClick={() => addModel(newModel)}
+                    className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-foreground/[0.06] px-3 py-2.5 text-sm hover:bg-foreground/[0.1]">
+                    <Plus className="h-4 w-4" /> Hinzufügen
+                  </button>
+                </div>
+
+                {/* quick-add known models for the provider */}
+                {(PROVIDER_MODELS[form.provider_type] || []).filter((m) => !form.models.includes(m)).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span className="text-[10px] text-muted-foreground/50 self-center">Bekannte Modelle:</span>
+                    {(PROVIDER_MODELS[form.provider_type] || [])
+                      .filter((m) => !form.models.includes(m))
+                      .map((m) => (
+                        <button key={m} type="button" onClick={() => addModel(m)}
+                          className="rounded-md border border-foreground/[0.1] px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/[0.25]">
+                          + {m}
+                        </button>
+                      ))}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground/50 mt-1.5">
                   {form.provider_type === "azure-openai"
-                    ? "Bei Azure: die Deployment-Namen. Der Agent wählt beim Verbinden eines davon."
+                    ? "Bei Azure: trag deine Deployment-Namen ein (wie im Azure-Portal benannt). Der Agent wählt beim Verbinden eines davon."
                     : "Der Agent wählt beim Verbinden eines dieser Modelle."}
                 </p>
               </div>

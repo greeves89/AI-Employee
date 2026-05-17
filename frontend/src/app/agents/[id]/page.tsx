@@ -1433,7 +1433,9 @@ function AgentSettings({
               </div>
             )}
             <p className="text-[11px] text-muted-foreground/50">
-              Verbindet den Agent mit einem zentral verwalteten Modell-Zugang. Beim Speichern wird der Container neu erstellt.
+              {!agent.ai_account_id && agent.llm_config
+                ? "Dieser Agent nutzt aktuell die manuelle LLM-Konfiguration (Karte unten). Wähle einen Account, um auf einen zentral verwalteten Zugang umzustellen — die manuelle Karte verschwindet dann."
+                : "Verbindet den Agent mit einem zentral verwalteten Modell-Zugang. Beim Speichern wird der Container neu erstellt."}
             </p>
           </div>
         </div>
