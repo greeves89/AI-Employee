@@ -11,6 +11,10 @@ from app.config import settings
 # Use localhost since the bot runs INSIDE the orchestrator container
 API_BASE = "http://127.0.0.1:8000/api/v1"
 
+# Service-auth header: dependencies.get_current_user accepts requests from
+# 127.0.0.1 with X-Internal-Secret == api_secret_key as the first admin user.
+INTERNAL_HEADERS = {"X-Internal-Secret": settings.api_secret_key}
+
 # Track which Telegram user chats with which agent
 _active_chats: dict[int, str] = {}  # chat_id -> agent_id
 _chat_listeners: dict[int, asyncio.Task] = {}  # chat_id -> listener task
@@ -36,7 +40,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=INTERNAL_HEADERS) as client:
         try:
             resp = await client.get(f"{API_BASE}/agents/")
             data = resp.json()
@@ -79,7 +83,7 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     prompt = " ".join(context.args)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=INTERNAL_HEADERS) as client:
         try:
             resp = await client.post(
                 f"{API_BASE}/tasks/",
@@ -107,7 +111,7 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=INTERNAL_HEADERS) as client:
         try:
             resp = await client.get(f"{API_BASE}/agents/")
             data = resp.json()
@@ -145,7 +149,7 @@ async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     # Otherwise show agent selection
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=INTERNAL_HEADERS) as client:
         try:
             resp = await client.get(f"{API_BASE}/agents/")
             data = resp.json()
@@ -231,7 +235,7 @@ async def _handle_rating_callback(query, data: str) -> None:
             return
 
         # Save rating via internal API
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers=INTERNAL_HEADERS) as client:
             resp = await client.post(
                 f"{API_BASE}/ratings/tasks/{task_id}/rate",
                 json={"rating": rating},

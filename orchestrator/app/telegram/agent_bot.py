@@ -248,8 +248,9 @@ class TelegramAgentBot:
             return
 
         import httpx
+        from app.telegram.handlers.commands import INTERNAL_HEADERS
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(headers=INTERNAL_HEADERS) as client:
                 resp = await client.get(f"http://127.0.0.1:8000/api/v1/agents/{self.agent_id}")
                 data = resp.json()
                 state = data.get("state", "unknown")
