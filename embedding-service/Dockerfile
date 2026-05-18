@@ -10,9 +10,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install deps first (better caching)
+# Install deps first (better caching).
+# torch is installed from the CPU-only PyTorch index — the default PyPI wheel
+# pulls ~2 GB of NVIDIA CUDA libraries this CPU-inference service never uses.
+# CPU-only keeps the image ~2 GB smaller and the build dramatically faster.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Model is downloaded at runtime into the mounted /models volume on first start.
 # This keeps the image small (~1 GB instead of 3.3 GB) and makes model changes easy.
