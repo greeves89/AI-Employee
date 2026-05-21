@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
 import { TemplateManager } from "@/components/settings/template-manager";
+import { VoiceSettings } from "@/components/settings/voice-settings";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -733,6 +734,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </div>
           </div>
         </section>
+
+        {/* ─── Voice Live-Sessions ─── */}
+        {isAdmin && <VoiceSettings />}
 
         {/* ─── License ─── */}
         {isAdmin && (
