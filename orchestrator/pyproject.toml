@@ -21,6 +21,9 @@ dependencies = [
     "pydantic[email]>=2.0",
     "PyYAML>=6.0",
     "croniter>=2.0",
+    # Voice live-session feature
+    "anthropic>=0.40",
+    "edge-tts>=6.1",
 ]
 
 [build-system]

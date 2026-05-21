@@ -46,6 +46,28 @@ class SettingsUpdate(BaseModel):
     improvement_min_skill_usages: int | None = None
     improvement_skill_threshold: float | None = None
     improvement_analysis_interval: int | None = None
+    # Voice live-session config
+    voice_stt_provider: str | None = None       # "faster_whisper" | "openai_whisper"
+    voice_tts_provider: str | None = None       # "edge_tts" | "elevenlabs"
+    voice_tts_voice: str | None = None          # voice id (e.g. "de-DE-KatjaNeural")
+    voice_llm_model: str | None = None          # e.g. "claude-haiku-4-5-20251001"
+    voice_language: str | None = None           # ISO code or None for auto-detect
+    voice_openai_api_key: str | None = None     # optional, secret
+    voice_elevenlabs_api_key: str | None = None # optional, secret
+
+
+class VoiceSettings(BaseModel):
+    stt_provider: str = "faster_whisper"
+    tts_provider: str = "edge_tts"
+    tts_voice: str = "de-DE-KatjaNeural"
+    llm_model: str = "claude-haiku-4-5-20251001"
+    language: str | None = None
+    available_stt: list[str] = []
+    available_tts: list[str] = []
+    available_llm: list[str] = []
+    available_voices: list[dict] = []
+    has_openai_key: bool = False
+    has_elevenlabs_key: bool = False
 
 
 class SettingsResponse(BaseModel):

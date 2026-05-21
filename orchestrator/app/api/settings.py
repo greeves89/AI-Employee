@@ -6,8 +6,10 @@ from app.config import settings
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
-from app.schemas.settings import SettingsResponse, SettingsUpdate
+from app.schemas.settings import SettingsResponse, SettingsUpdate, VoiceSettings
 from app.services.settings_service import SettingsService
+from app.services.voice_providers import get_active_voice_config
+from app.services.voice_providers.tts_edge import EDGE_VOICES
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -150,8 +152,46 @@ async def update_settings(
         if value is not None:
             await svc.set(field_name, str(value))
 
+    # Voice provider config
+    _VOICE_FIELDS = [
+        "voice_stt_provider", "voice_tts_provider", "voice_tts_voice",
+        "voice_llm_model", "voice_language",
+        "voice_openai_api_key", "voice_elevenlabs_api_key",
+    ]
+    for field_name in _VOICE_FIELDS:
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
+
     await db.commit()
     return {"status": "updated"}
+
+
+@router.get("/voice", response_model=VoiceSettings)
+async def get_voice_settings(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return active voice provider config + available choices for the admin UI."""
+    cfg = await get_active_voice_config(db)
+    svc = SettingsService(db)
+    # Currently only edge_tts exposes a curated voice list synchronously;
+    # ElevenLabs voices are fetched on-demand by the frontend when that
+    # provider is selected (requires an API key call).
+    voices = EDGE_VOICES if cfg["tts_provider"] == "edge_tts" else []
+    return VoiceSettings(
+        stt_provider=cfg["stt_provider"],
+        tts_provider=cfg["tts_provider"],
+        tts_voice=cfg["tts_voice"],
+        llm_model=cfg["llm_model"],
+        language=(await svc.get("voice_language")) or None,
+        available_stt=cfg["available_stt"],
+        available_tts=cfg["available_tts"],
+        available_llm=cfg["available_llm"],
+        available_voices=voices,
+        has_openai_key=cfg["has_openai_key"],
+        has_elevenlabs_key=cfg["has_elevenlabs_key"],
+    )
 
 
 @router.get("/agent-mounts")

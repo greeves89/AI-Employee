@@ -27,6 +27,9 @@ SECRET_KEYS = {
     "oauth_microsoft_client_secret",
     "oauth_apple_client_id",
     "oauth_apple_private_key",
+    # Voice provider API keys
+    "voice_openai_api_key",
+    "voice_elevenlabs_api_key",
 }
 
 # All settings keys that can be persisted
@@ -55,6 +58,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "improvement_min_skill_usages",
     "improvement_skill_threshold",
     "improvement_analysis_interval",
+    # Voice provider config
+    "voice_stt_provider",
+    "voice_tts_provider",
+    "voice_tts_voice",
+    "voice_llm_model",
+    "voice_language",
 }
 
 
