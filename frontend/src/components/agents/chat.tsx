@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import {
   Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
-  Paperclip, Loader2, Plus, MessageSquare, Gauge, Square,
+  Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -65,6 +65,7 @@ interface SessionTab {
 }
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
+import { VoiceSessionModal } from "./voice-session";
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
@@ -173,6 +174,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const pendingCountRef = useRef(0);
@@ -875,6 +877,13 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
 
   return (
     <div className="flex flex-col h-full min-h-0 rounded-xl border border-border bg-card/80 backdrop-blur-sm overflow-hidden">
+      {voiceOpen && (
+        <VoiceSessionModal
+          agentId={agentId}
+          agentName={agentId}
+          onClose={() => setVoiceOpen(false)}
+        />
+      )}
       {/* Session tabs */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
         <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
@@ -1067,6 +1076,14 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             title="Upload files"
           >
             {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={() => setVoiceOpen(true)}
+            disabled={!isConnected}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-all shrink-0"
+            title="Live-Sprachsession starten"
+          >
+            <Mic className="h-4 w-4" />
           </button>
           <textarea
             ref={inputRef}
