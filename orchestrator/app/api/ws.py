@@ -493,6 +493,126 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         await pubsub.aclose()
 
 
+@router.websocket("/agents/{agent_id}/voice")
+async def ws_agent_voice(
+    websocket: WebSocket, agent_id: str,
+    token: str | None = Query(None), ticket: str | None = Query(None),
+):
+    """Live voice session with an agent.
+
+    Client → server:
+      {"type":"audio_chunk","data":{"b64":"..."}}    — append audio to buffer
+      {"type":"commit","data":{"language":"de"}}     — end of utterance
+      {"type":"interrupt"}                            — barge-in, cancel TTS
+      {"type":"ping"}                                 — keepalive
+
+    Server → client:
+      {"type":"transcript","data":{"text":"..."}}    — STT result
+      {"type":"response","data":{"text":"..."}}      — final container response
+      {"type":"tts_start","data":{"tag":"ack|main"}}
+      {"type":"audio_chunk","data":{"tag":..,"mime":"audio/mpeg","b64":"..."}}
+      {"type":"tts_end","data":{"tag":...}}
+      {"type":"done","data":{}}                       — turn complete
+      {"type":"error","data":{"message":"..."}}
+    """
+    import base64
+    from app.services.voice_session import VoiceSession
+
+    if not _redis or not _redis.client:
+        await websocket.close(code=1011, reason="Redis not initialized")
+        return
+
+    if not await _authenticate_ws(websocket, token=token, ticket=ticket):
+        return
+
+    # Resolve user id from the ticket / token. We need it for the session.
+    # (Ticket was consumed in _authenticate_ws; re-fetch user separately.)
+    user_id = "unknown"
+    try:
+        async with async_session_factory() as db:
+            user = await get_current_user_ws(token, db) if token else None
+            if user:
+                user_id = str(user.id)
+    except Exception:
+        pass
+
+    # Verify agent container is alive
+    if _docker:
+        from app.models.agent import Agent
+        from sqlalchemy import select
+        try:
+            async with async_session_factory() as db:
+                agent = (await db.execute(
+                    select(Agent).where(Agent.id == agent_id)
+                )).scalar_one_or_none()
+                if not agent or not agent.container_id:
+                    await websocket.close(code=4004, reason="Agent not available")
+                    return
+                status = _docker.get_container_status(agent.container_id)
+                if status not in ("running", "created"):
+                    await websocket.close(code=4010, reason=f"Agent is {status}")
+                    return
+        except Exception:
+            pass
+
+    await websocket.accept()
+
+    session = VoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)
+    async with async_session_factory() as db:
+        await session.init(db)
+
+    async def pump_outbound():
+        try:
+            async for evt in session.outbound():
+                await websocket.send_text(json.dumps(evt))
+        except Exception:
+            pass
+
+    out_task = asyncio.create_task(pump_outbound())
+
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "ready",
+            "data": {"session_id": session.session_id},
+        }))
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            mtype = msg.get("type")
+            mdata = msg.get("data") or {}
+
+            if mtype == "audio_chunk":
+                b64 = mdata.get("b64", "")
+                if b64:
+                    try:
+                        session.push_audio_chunk(base64.b64decode(b64))
+                    except Exception:
+                        pass
+            elif mtype == "commit":
+                lang = mdata.get("language")
+                # Process turn in background so we keep accepting interrupts
+                asyncio.create_task(session.commit_turn(language=lang))
+            elif mtype == "interrupt":
+                await session.interrupt()
+            elif mtype == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}))
+            # unknown types: ignore
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("voice ws error")
+    finally:
+        await session.close()
+        out_task.cancel()
+        try:
+            await out_task
+        except asyncio.CancelledError:
+            pass
+
+
 @router.websocket("/notifications")
 async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
