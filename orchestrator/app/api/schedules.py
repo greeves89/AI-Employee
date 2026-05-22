@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth, require_auth_or_agent
+from app.dependencies import is_agent_principal, require_auth, require_auth_or_agent
 from app.models.schedule import Schedule
 from app.schemas.schedule import (
     ScheduleCreate,
@@ -24,13 +24,13 @@ router = APIRouter(prefix="/schedules", tags=["schedules"])
 async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     """Return agent IDs owned by user, or None if admin (sees all).
 
-    When called by an agent token (role == "agent"), returns only that agent's
+    When called by an agent token, returns only that agent's
     own ID — the user.id is the agent_id, not a user UUID in this case.
     """
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
-    if getattr(user, "role", None) == "agent":
+    if is_agent_principal(user):
         return [user.id]
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess

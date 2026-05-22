@@ -8,7 +8,7 @@ from app.core.load_balancer import LoadBalancer
 from app.core.pricing import estimate_prompt_cost
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_auth, require_auth_or_agent
+from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent
 from app.models.task import Task, TaskStatus
 from app.schemas.task import TaskBatchCreate, TaskBatchResponse, TaskCreate, TaskListResponse, TaskResponse
 from app.services.redis_service import RedisService
@@ -31,7 +31,7 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
-    if getattr(user, "role", None) == "agent":
+    if is_agent_principal(user):
         return [user.id]
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess

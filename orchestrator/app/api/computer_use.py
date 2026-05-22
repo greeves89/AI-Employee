@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db, require_auth, require_auth_or_agent
+from app.dependencies import get_db, is_agent_principal, require_auth, require_auth_or_agent
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ def init_computer_use(redis: RedisService) -> None:
 
 async def _resolve_caller_user_id(caller, db: AsyncSession) -> str | None:
     """Return the user_id for a caller (User object or agent SimpleNamespace)."""
-    if hasattr(caller, "role") and caller.role == "agent":
+    if is_agent_principal(caller):
         from sqlalchemy import select
         from app.models.agent import Agent
         agent = await db.scalar(select(Agent).where(Agent.id == caller.id))
@@ -307,7 +307,7 @@ async def send_command(
 
     # Agent-level restriction: if session is assigned to a specific agent, enforce it
     assigned_agent_id = session.get("agent_id")
-    if assigned_agent_id and hasattr(caller, "role") and caller.role == "agent":
+    if assigned_agent_id and is_agent_principal(caller):
         if str(caller.id) != str(assigned_agent_id):
             raise HTTPException(status_code=403, detail="This session is assigned to a different agent")
 

@@ -14,7 +14,7 @@ from app.config import settings
 from app.core.agent_manager import AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
-from app.dependencies import get_docker_service, get_redis_service, require_auth, require_auth_or_agent, require_manager, verify_agent_token
+from app.dependencies import get_docker_service, get_redis_service, is_agent_principal, require_auth, require_auth_or_agent, require_manager, verify_agent_token
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
@@ -74,8 +74,7 @@ async def get_team_directory(
     """Get the team directory - all agents with their roles and status."""
     from app.models.user import UserRole
     agents = await manager.list_agents()
-    is_agent_request = getattr(user, "role", None) == "agent"
-    if hasattr(user, "role") and user.role != UserRole.ADMIN and not is_agent_request:
+    if hasattr(user, "role") and user.role != UserRole.ADMIN and not is_agent_principal(user):
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
@@ -923,7 +922,7 @@ async def send_message_to_agent(
 ):
     """Send a message to an agent's chat queue (for inter-agent or external messaging)."""
     # Skip owner check for agent-to-agent messages
-    if getattr(user, "role", "") != "agent":
+    if not is_agent_principal(user):
         await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
@@ -946,7 +945,7 @@ async def send_message_to_agent(
             )
 
         # Rate-limit agent-to-agent messages: 20/min per (from, to) pair
-        if getattr(user, "role", "") == "agent" and body.from_agent_id:
+        if is_agent_principal(user) and body.from_agent_id:
             rate_key = f"rate:msg:{body.from_agent_id}:{agent_id}"
             current = await redis.client.incr(rate_key)
             if current == 1:

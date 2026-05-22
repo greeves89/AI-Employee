@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+from types import SimpleNamespace
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select, text as sa_text
@@ -12,6 +13,22 @@ from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
+
+
+class AgentPrincipal(SimpleNamespace):
+    """Authenticated agent caller.
+
+    Kept attribute-compatible with earlier pseudo-users (`id`, `role`) while
+    adding an explicit marker so endpoints do not confuse agents with users.
+    """
+
+    principal_type = "agent"
+    role = "agent"
+
+
+def is_agent_principal(principal) -> bool:
+    """Return True when the authenticated caller is an agent token."""
+    return getattr(principal, "principal_type", None) == "agent" or getattr(principal, "role", None) == "agent"
 
 
 def get_redis_service(request: Request) -> RedisService:
@@ -275,10 +292,8 @@ async def require_auth_or_agent(
     # Fall back to agent token
     try:
         agent_info = await verify_agent_token(request)
-        from types import SimpleNamespace
-        return SimpleNamespace(
+        return AgentPrincipal(
             id=agent_info["agent_id"],
-            role="agent",
             username=f"agent-{agent_info['agent_id']}",
         )
     except HTTPException:

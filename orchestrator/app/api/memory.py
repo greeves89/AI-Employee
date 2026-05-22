@@ -28,7 +28,7 @@ from app.core.memory_key_schema import (
 )
 from app.core.memory_scoring import ScoringInputs, final_score
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_auth, require_auth_or_agent, verify_agent_token
+from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent, verify_agent_token
 from app.models.memory import AgentMemory, AgentMemoryLink, AgentMemoryTag
 from app.services.redis_service import RedisService
 
@@ -623,7 +623,7 @@ async def list_agent_memories(
         from app.models.user import UserRole
         from app.models.agent import Agent
         # Agent calling for its own memories — allowed
-        if user.role == "agent":
+        if is_agent_principal(user):
             if user.id != agent_id:
                 raise HTTPException(status_code=403, detail="Agent can only list its own memories")
         elif user.role != UserRole.ADMIN:
