@@ -375,6 +375,12 @@ class OpenAIProvider(BaseLLMProvider):
                 if response.status_code == 400:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
+                    if "stream_options" in error_text:
+                        async for event in self._stream_chat_with_body(
+                            url, headers, self._without_stream_options(body)
+                        ):
+                            yield event
+                        return
                     correct_key = _extract_tokens_error(error_text)
                     if correct_key:
                         wrong_key = "max_tokens" if correct_key == "max_completion_tokens" else "max_completion_tokens"
@@ -382,6 +388,12 @@ class OpenAIProvider(BaseLLMProvider):
                         async with self.http.stream("POST", url, json=body, headers=headers) as retry:
                             if retry.status_code != 200:
                                 err = (await retry.aread()).decode("utf-8", errors="replace")
+                                if "stream_options" in err:
+                                    async for event in self._stream_chat_with_body(
+                                        url, headers, self._without_stream_options(body)
+                                    ):
+                                        yield event
+                                    return
                                 yield LLMEvent(type="error", text=f"API error {retry.status_code}: {err}")
                                 return
                             async for line in retry.aiter_lines():
@@ -552,6 +564,9 @@ class OpenAIProvider(BaseLLMProvider):
             "model": self.model_name,
             "messages": msg_payload,
             "stream": True,
+            # Required by OpenAI-compatible streaming APIs to emit the final
+            # usage chunk. Without it, budget tracking can undercount turns.
+            "stream_options": {"include_usage": True},
         }
         # GPT-5 / o-series / codex reasoning models require
         # `max_completion_tokens` and reject a custom `temperature`.
@@ -575,6 +590,12 @@ class OpenAIProvider(BaseLLMProvider):
         # "auto" = don't send the flag, let the model decide (hybrid)
 
         return body
+
+    @staticmethod
+    def _without_stream_options(body: dict) -> dict:
+        fallback = dict(body)
+        fallback.pop("stream_options", None)
+        return fallback
 
     # ------------------------------------------------------------------ #
     # Legacy Completions API (/v1/completions) - deprecated

@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.11] — 2026-05-23
+
+### Fixed
+- **OpenAI/Azure-compatible streaming cost tracking now requests usage metadata** — chat completions streams send `stream_options.include_usage = true`, so per-turn token accounting and budget meters can use the provider-reported final usage chunk instead of undercounting streamed calls.
+- **Usage fallback stays compatible with local/OpenAI-compatible backends** — if a backend rejects `stream_options`, the provider retries without it instead of failing the chat.
+
+### Verified
+- `python3 -m py_compile agent/app/providers/openai_provider.py` succeeds.
+
+---
+
 ## [1.55.10] — 2026-05-22
 
 ### Added
