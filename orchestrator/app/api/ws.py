@@ -1,6 +1,9 @@
 import asyncio
 import json
 import logging
+import mimetypes
+import os
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -22,6 +25,11 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 stream_manager: StreamManager | None = None
 _redis: RedisService | None = None
 _docker: DockerService | None = None
+
+_CHAT_ATTACHMENT_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".md",
+    ".zip", ".json", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".webp",
+}
 
 
 def init_stream_manager(redis: RedisService, docker: DockerService | None = None) -> StreamManager:
@@ -113,6 +121,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
+    agent_container_id: str | None = None
+
     # Check if agent container is alive before accepting
     if _docker:
         from app.models.agent import Agent
@@ -128,6 +138,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 if not agent.container_id:
                     await websocket.close(code=4010, reason="Agent has no container")
                     return
+                agent_container_id = agent.container_id
                 status = _docker.get_container_status(agent.container_id)
                 if status not in ("running", "created"):
                     await websocket.close(code=4010, reason=f"Agent container is {status}")
@@ -186,6 +197,44 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
     _ws_connected = True
 
+    def _auto_presented_files_from_text(content: str) -> list[dict]:
+        """Best-effort attachment fallback for agents that mention files but forget present_file."""
+        if not content or not _docker or not agent_container_id:
+            return []
+
+        found: list[dict] = []
+        seen: set[str] = set()
+        for match in re.finditer(r"/workspace/[^\s`'\"<>)\]}]+", content):
+            raw_path = match.group(0).rstrip(".,;:")
+            safe_path = os.path.normpath(raw_path)
+            if safe_path == "/workspace" or not safe_path.startswith("/workspace/"):
+                continue
+            _, ext = os.path.splitext(safe_path.lower())
+            if ext not in _CHAT_ATTACHMENT_EXTENSIONS or safe_path in seen:
+                continue
+            try:
+                code, output = _docker.exec_in_container(
+                    agent_container_id,
+                    ["stat", "-c", "%s|%F", safe_path],
+                )
+                if code != 0:
+                    continue
+                size_raw, kind = (output.strip().split("|", 1) + [""])[:2]
+                size = int(size_raw)
+                if "regular file" not in kind or size <= 0 or size > 50 * 1024 * 1024:
+                    continue
+                seen.add(safe_path)
+                found.append({
+                    "path": safe_path,
+                    "filename": os.path.basename(safe_path),
+                    "media_type": mimetypes.guess_type(safe_path)[0] or "application/octet-stream",
+                    "size": size,
+                    "caption": "Download",
+                })
+            except Exception:
+                logger.debug("auto-present file detection failed for %s", safe_path, exc_info=True)
+        return found
+
     def _process_event(raw_data: str):
         """Process a PubSub event for persistence tracking. Returns tuple on done/error, None otherwise."""
         nonlocal _streaming_responses, _seen_tool_ids, _pending_message_ids
@@ -235,6 +284,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             elif etype == "done":
                 _pending_message_ids.discard(mid)
                 resp = _streaming_responses.pop(mid, {})
+                auto_files = _auto_presented_files_from_text(str(resp.get("content", "")))
+                if auto_files:
+                    existing = {f.get("path") for f in resp.get("files", []) if isinstance(f, dict)}
+                    resp.setdefault("files", []).extend(
+                        f for f in auto_files if f.get("path") not in existing
+                    )
                 meta = {
                     "cost_usd": edata.get("cost_usd"),
                     "duration_ms": edata.get("duration_ms"),
