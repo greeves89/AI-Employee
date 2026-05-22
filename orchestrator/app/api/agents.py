@@ -74,7 +74,8 @@ async def get_team_directory(
     """Get the team directory - all agents with their roles and status."""
     from app.models.user import UserRole
     agents = await manager.list_agents()
-    if hasattr(user, "role") and user.role != UserRole.ADMIN:
+    is_agent_request = getattr(user, "role", None) == "agent"
+    if hasattr(user, "role") and user.role != UserRole.ADMIN and not is_agent_request:
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
