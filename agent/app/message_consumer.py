@@ -141,17 +141,21 @@ class MessageConsumer:
         except Exception as e:
             return f"[Error] {str(e)[:200]}"
 
-    async def _send_reply(self, to_agent_id: str, message: str) -> bool:
+    async def _send_reply(self, to_agent_id: str, message: str, reply_to: str | None = None) -> bool:
         """Send reply back to the sender agent via Redis queue + persist event."""
         try:
+            import uuid
+
             if not self.redis:
                 return False
             payload = {
-                "id": f"reply-{to_agent_id}-{self.agent_id}",
+                "id": uuid.uuid4().hex[:12],
                 "from_agent_id": self.agent_id,
                 "from_name": settings.agent_name,
                 "text": message,
                 "to_agent_id": to_agent_id,
+                "message_type": "response",
+                "reply_to": reply_to,
                 "is_reply": True,
             }
             # Push to recipient's message queue
@@ -331,7 +335,7 @@ class MessageConsumer:
                         })
                     else:
                         # New request — send response back
-                        sent = await self._send_reply(from_agent_id, response)
+                        sent = await self._send_reply(from_agent_id, response, reply_to=message_id)
                         if sent:
                             logger.info(f"[Message] Replied to {from_name}: {response[:80]}...")
                             await log_publisher.publish(message_id, "system", {

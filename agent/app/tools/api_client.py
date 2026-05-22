@@ -88,9 +88,49 @@ class OrchestratorAPIClient:
             return "No team members found."
         lines = []
         for a in agents:
-            status = a.get("status", "unknown")
+            status = a.get("state") or a.get("status", "unknown")
             lines.append(f"- {a.get('name', '?')} (id: {a.get('id')}, role: {a.get('role', 'none')}, status: {status})")
         return "\n".join(lines)
+
+    async def list_agent_messages(self, params: dict) -> str:
+        """List recent inter-agent messages involving this agent."""
+        minutes = str(params.get("minutes", 240))
+        result = await self._request("GET", "/agents/team/messages", params={"minutes": minutes})
+        if isinstance(result, str):
+            return result
+        messages = result.get("messages", [])
+        if not messages:
+            return f"No inter-agent messages in the last {minutes} minutes."
+        lines = [f"Recent inter-agent messages involving {self.agent_name}:"]
+        for msg in messages:
+            direction = "from" if msg.get("to") == self.agent_id else "to"
+            other = msg.get("from_name") if direction == "from" else msg.get("to")
+            text = (msg.get("text") or "").replace("\n", " ")
+            lines.append(
+                f"- {msg.get('timestamp', '?')} {direction} {other}: {text}"
+            )
+        return "\n".join(lines)
+
+    async def get_agent_conversation(self, params: dict) -> str:
+        """Read the conversation between this agent and another agent."""
+        other_id = params.get("agent_id", "")
+        if not other_id:
+            return "Error: agent_id is required"
+        result = await self._request(
+            "GET",
+            "/agents/team/conversation",
+            params={"agent_a": self.agent_id, "agent_b": other_id},
+        )
+        if isinstance(result, str):
+            return result
+        messages = result.get("messages", [])
+        if not messages:
+            return f"No conversation with {other_id} yet."
+        lines = [f"Conversation with {other_id}:"]
+        for msg in messages[-20:]:
+            text = (msg.get("text") or "").strip()
+            lines.append(f"[{msg.get('timestamp', '?')}] {msg.get('from_name') or msg.get('from_id')}: {text}")
+        return "\n\n".join(lines)
 
     async def send_message(self, params: dict) -> str:
         """Send a message to another agent."""

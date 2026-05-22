@@ -475,6 +475,41 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "list_agent_messages",
+            "description": "List recent inter-agent messages involving you. Use this when the user asks whether another agent contacted you, replied to you, or sent you a message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "description": "How far back to look in minutes (default: 240)",
+                        "default": 240,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_agent_conversation",
+            "description": "Read your conversation history with another agent. Use list_team to find the agent ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The other agent's ID",
+                    },
+                },
+                "required": ["agent_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "send_message",
             "description": "Send a message to another agent for coordination. Use list_team to find agent IDs.",
             "parameters": {

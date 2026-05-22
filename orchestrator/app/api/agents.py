@@ -101,12 +101,12 @@ async def get_team_directory(
 @router.get("/team/messages")
 async def get_agent_messages(
     minutes: int = 60,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Get recent inter-agent messages for visualization."""
     from datetime import timedelta
-    from sqlalchemy import select
+    from sqlalchemy import select, or_
 
     from app.models.agent_message import AgentMessage as AgentMessageModel
 
@@ -115,12 +115,16 @@ async def get_agent_messages(
     # Higher limit for longer time windows to get accurate connection counts
     fetch_limit = 2000 if minutes > 1440 else 500 if minutes > 360 else 100
 
-    result = await db.execute(
-        select(AgentMessageModel)
-        .where(AgentMessageModel.timestamp >= since)
-        .order_by(AgentMessageModel.timestamp.desc())
-        .limit(fetch_limit)
-    )
+    query = select(AgentMessageModel).where(AgentMessageModel.timestamp >= since)
+    if is_agent_principal(user):
+        query = query.where(
+            or_(
+                AgentMessageModel.from_agent_id == user.id,
+                AgentMessageModel.to_agent_id == user.id,
+            )
+        )
+    query = query.order_by(AgentMessageModel.timestamp.desc()).limit(fetch_limit)
+    result = await db.execute(query)
     messages = result.scalars().all()
 
     connections: dict[str, dict] = {}
@@ -161,13 +165,16 @@ async def get_agent_messages(
 async def get_agent_conversation(
     agent_a: str,
     agent_b: str,
-    user=Depends(require_auth),
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the full conversation between two specific agents."""
     from sqlalchemy import select, or_, and_
 
     from app.models.agent_message import AgentMessage as AgentMessageModel
+
+    if is_agent_principal(user) and user.id not in {agent_a, agent_b}:
+        raise HTTPException(status_code=403, detail="Agents may only read their own conversations")
 
     result = await db.execute(
         select(AgentMessageModel)

@@ -446,10 +446,13 @@ async def _persist_agent_messages(redis: RedisService) -> None:
                 data = json.loads(message["data"])
                 async with async_session_factory() as db:
                     db.add(AgentMessage(
+                        message_id=data.get("id") or data.get("message_id"),
                         from_agent_id=data.get("from_agent_id", ""),
                         from_agent_name=data.get("from_name", ""),
                         to_agent_id=data.get("to_agent_id", ""),
                         text=data.get("text", ""),
+                        message_type=data.get("message_type") or ("response" if data.get("is_reply") else "message"),
+                        reply_to=data.get("reply_to"),
                     ))
                     await db.commit()
         except Exception as e:

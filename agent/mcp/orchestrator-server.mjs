@@ -205,6 +205,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_agent_messages",
+      description:
+        "List recent inter-agent messages involving you. Use this when the user asks " +
+        "whether another agent contacted you, replied to you, or sent you a message.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          minutes: {
+            type: "number",
+            description: "How far back to look in minutes. Default: 240.",
+          },
+        },
+      },
+    },
+    {
+      name: "get_agent_conversation",
+      description:
+        "Read your conversation history with another agent. Use list_team to find the agent ID.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agent_id: {
+            type: "string",
+            description: "The other agent's ID.",
+          },
+        },
+        required: ["agent_id"],
+      },
+    },
+    {
       name: "send_message",
       description:
         "Send a structured message to another agent. The message will appear in their conversation " +
@@ -787,7 +817,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const lines = result.agents.map(
         (a) =>
-          `${a.name} (id: ${a.id}, role: ${a.role || "general"}, status: ${a.status})`
+          `${a.name} (id: ${a.id}, role: ${a.role || "general"}, status: ${a.state || a.status || "unknown"})`
       );
       return {
         content: [
@@ -796,6 +826,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Team (${result.agents.length} agents):\n\n${wrapData("agent-directory", lines.join("\n"))}`,
           },
         ],
+      };
+    }
+
+    case "list_agent_messages": {
+      const minutes = Number(args.minutes || 240);
+      const result = await apiCall(`/agents/team/messages?minutes=${encodeURIComponent(minutes)}`);
+      if (!result.messages || result.messages.length === 0) {
+        return {
+          content: [{ type: "text", text: `No inter-agent messages in the last ${minutes} minutes.` }],
+        };
+      }
+      const lines = result.messages.map((m) => {
+        const direction = m.to === AGENT_ID ? "from" : "to";
+        const other = direction === "from" ? m.from_name : m.to;
+        return `${m.timestamp} ${direction} ${other}: ${String(m.text || "").replace(/\n/g, " ")}`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Recent inter-agent messages involving ${AGENT_NAME}:\n\n${wrapData("agent-messages", lines.join("\n"))}`,
+        }],
+      };
+    }
+
+    case "get_agent_conversation": {
+      const result = await apiCall(
+        `/agents/team/conversation?agent_a=${encodeURIComponent(AGENT_ID)}&agent_b=${encodeURIComponent(args.agent_id)}`
+      );
+      if (!result.messages || result.messages.length === 0) {
+        return {
+          content: [{ type: "text", text: `No conversation with ${args.agent_id} yet.` }],
+        };
+      }
+      const lines = result.messages.slice(-20).map(
+        (m) => `[${m.timestamp}] ${m.from_name || m.from_id}: ${m.text}`
+      );
+      return {
+        content: [{
+          type: "text",
+          text: `Conversation with ${args.agent_id}:\n\n${wrapData("agent-conversation", lines.join("\n\n"))}`,
+        }],
       };
     }
 
