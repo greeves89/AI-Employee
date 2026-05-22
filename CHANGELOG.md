@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.10] — 2026-05-22
+
+### Added
+- **New AI-Employee web app icon assets** — added the generated agent/voice icon as Next.js `icon.png`, `apple-icon.png`, and a small favicon.
+
+### Verified
+- `npm run build` succeeds for the Next.js frontend and includes the new icon routes.
+
+---
+
 ## [1.55.9] — 2026-05-22
 
 ### Fixed
