@@ -911,6 +911,23 @@ class AgentMessage(BaseModel):
     reply_to: str | None = None  # message_id of message being replied to
 
 
+def _decode_redis_hash(data: dict) -> dict:
+    decoded = {}
+    for key, value in (data or {}).items():
+        k = key.decode("utf-8", errors="replace") if isinstance(key, bytes) else str(key)
+        v = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+        decoded[k] = v
+    return decoded
+
+
+def _is_busy_with_task(status: dict) -> bool:
+    state = str(status.get("state") or "")
+    current_task = str(status.get("current_task") or "")
+    if state != "working":
+        return False
+    return bool(current_task) and not current_task.startswith(("chat:", "msg:"))
+
+
 @router.post("/{agent_id}/message")
 async def send_message_to_agent(
     agent_id: str,
@@ -928,6 +945,9 @@ async def send_message_to_agent(
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
             raise HTTPException(status_code=400, detail="Agent has no container")
+
+        target_status = _decode_redis_hash(await redis.client.hgetall(f"agent:{agent_id}:status"))
+        target_busy = _is_busy_with_task(target_status)
 
         # --- AgentGuard: Check inter-agent messages for injection ---
         from_id = body.from_agent_id or "external"
@@ -995,7 +1015,14 @@ async def send_message_to_agent(
             "text": body.text[:100],
         }))
 
-        return {"status": "sent", "message_id": message_id, "to_agent": agent_id}
+        return {
+            "status": "deferred" if target_busy else "sent",
+            "message_id": message_id,
+            "to_agent": agent_id,
+            "target_state": target_status.get("state"),
+            "target_current_task": target_status.get("current_task"),
+            "will_reply_later": target_busy,
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

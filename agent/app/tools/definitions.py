@@ -1021,7 +1021,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "send_message_and_wait",
-            "description": "Send a message to another agent AND wait for their reply (up to 45s). Use when you need the answer in the current conversation.",
+            "description": "Send a message to another agent AND wait for their reply (up to 45s). Use when you need the answer in the current conversation. If the target agent is busy with a task, the message is queued and the tool returns immediately.",
             "parameters": {
                 "type": "object",
                 "properties": {

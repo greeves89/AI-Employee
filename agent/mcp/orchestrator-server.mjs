@@ -244,7 +244,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         "Send a message to another agent AND wait for their reply (up to 45 seconds). " +
         "Use this instead of send_message when you need the answer in the current conversation. " +
-        "The other agent must be online and processing messages for this to work.",
+        "If the other agent is busy with a task, the message is queued and this returns immediately.",
       inputSchema: {
         type: "object",
         properties: {
@@ -830,7 +830,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const sinceId = beforeMsgs.message ? beforeMsgs.message.id : 0;
 
       // Step 2: Send the message
-      await apiCall(`/agents/${args.agent_id}/message`, {
+      const sendResult = await apiCall(`/agents/${args.agent_id}/message`, {
         method: "POST",
         body: JSON.stringify({
           from_agent_id: AGENT_ID,
@@ -839,6 +839,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           message_type: args.message_type || "question",
         }),
       });
+
+      if (sendResult.will_reply_later) {
+        const task = sendResult.target_current_task
+          ? ` (current task: ${sendResult.target_current_task})`
+          : "";
+        return {
+          content: [{
+            type: "text",
+            text:
+              `Message queued for agent ${args.agent_id}. ` +
+              `They are currently busy${task}, so the reply will arrive later. ` +
+              `message_id: ${sendResult.message_id}`,
+          }],
+        };
+      }
 
       // Step 3: Poll for reply (up to 45s)
       const pollResult = await apiCall(

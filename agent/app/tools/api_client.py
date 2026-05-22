@@ -548,7 +548,14 @@ class OrchestratorAPIClient:
             "text": params.get("message", ""),
             "message_type": params.get("message_type", "question"),
         }
-        await self._request("POST", f"/agents/{target_id}/message", json=body)
+        send_result = await self._request("POST", f"/agents/{target_id}/message", json=body)
+        if isinstance(send_result, dict) and send_result.get("will_reply_later"):
+            current_task = send_result.get("target_current_task")
+            task_note = f" (current task: {current_task})" if current_task else ""
+            return (
+                f"Message queued for agent {target_id}. They are currently busy{task_note}, "
+                f"so the reply will arrive later. message_id: {send_result.get('message_id')}"
+            )
 
         # Poll for reply
         poll = await self._request("GET", "/agents/team/poll-reply", params={
