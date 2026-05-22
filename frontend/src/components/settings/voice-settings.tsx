@@ -225,12 +225,12 @@ export function VoiceSettings() {
           </Field>
 
           {/* Language */}
-          <Field label="Sprache (leer = Auto-Erkennung)">
+          <Field label="Sprache (Default = de, auto = Auto-Erkennung)">
             <input
               type="text"
               defaultValue={cfg.language || ""}
               onBlur={(e) => patch({ voice_language: e.target.value || "" })}
-              placeholder="de, en, fr, ..."
+              placeholder="de, en, fr, auto, ..."
               className="w-full rounded-md bg-background border border-foreground/10 px-3 py-2 text-sm"
             />
           </Field>

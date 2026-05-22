@@ -184,7 +184,7 @@ async def get_voice_settings(
         tts_provider=cfg["tts_provider"],
         tts_voice=cfg["tts_voice"],
         llm_model=cfg["llm_model"],
-        language=(await svc.get("voice_language")) or None,
+        language=cfg["language"],
         available_stt=cfg["available_stt"],
         available_tts=cfg["available_tts"],
         available_llm=cfg["available_llm"],

@@ -36,6 +36,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const playQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const voiceLanguageRef = useRef("de");
 
   // ── WebSocket connect ──────────────────────────────────────
   useEffect(() => {
@@ -49,6 +50,17 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
         });
         if (!tr.ok) throw new Error("ticket failed");
         const { ticket } = await tr.json();
+        try {
+          const cfg = await fetch(`${getBase()}/settings/voice`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (cfg.ok) {
+            const voice = await cfg.json();
+            voiceLanguageRef.current = voice.language || "de";
+          }
+        } catch {
+          voiceLanguageRef.current = "de";
+        }
         if (cancelled) return;
         const url = `${getWsUrl()}/agents/${agentId}/voice?ticket=${ticket}`;
         const ws = new WebSocket(url);
@@ -185,7 +197,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
     stopRecording();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(
-        JSON.stringify({ type: "commit", data: {} })
+        JSON.stringify({ type: "commit", data: { language: voiceLanguageRef.current } })
       );
       setState("processing");
     }

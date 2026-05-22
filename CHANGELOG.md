@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.9] — 2026-05-22
+
+### Fixed
+- **Live voice STT now defaults to German** — voice sessions use `de` when no language is supplied, avoiding Whisper auto-detect drifting into English on short German utterances.
+
+### Changed
+- **Webapp voice sessions now send the configured voice language** from `/settings/voice` with every commit.
+- **Voice settings language field now documents `de` as the default** and allows `auto` when automatic detection is explicitly wanted.
+
+### Verified
+- `python3 -m py_compile` succeeds for the touched orchestrator modules.
+- `npm run build` succeeds for the Next.js frontend.
+
+---
+
 ## [1.55.8] — 2026-05-22
 
 ### Added

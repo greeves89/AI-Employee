@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.redis_service import RedisService
 from app.services.voice_providers import get_llm, get_stt, get_tts
+from app.services.voice_providers.registry import DEFAULT_LANGUAGE
 from app.services.voice_providers.base import (
     STTProvider, TTSProvider, VoiceLLMProvider,
 )
@@ -77,6 +78,7 @@ class VoiceSession:
     _stt: STTProvider | None = None
     _tts: TTSProvider | None = None
     _llm: VoiceLLMProvider | None = None
+    _language: str = DEFAULT_LANGUAGE
 
     # Inbound audio buffer (raw bytes — usually webm/opus from the browser)
     _audio_buf: bytearray = field(default_factory=bytearray)
@@ -92,11 +94,13 @@ class VoiceSession:
         self._stt = await get_stt(db)
         self._tts = await get_tts(db)
         self._llm = await get_llm(db)
+        svc = SettingsService(db)
+        self._language = (await svc.get("voice_language")) or DEFAULT_LANGUAGE
         self._out_queue = asyncio.Queue(maxsize=128)
         logger.info(
-            "VoiceSession init agent=%s user=%s stt=%s tts=%s llm=%s",
+            "VoiceSession init agent=%s user=%s stt=%s tts=%s llm=%s language=%s",
             self.agent_id, self.user_id,
-            self._stt.name, self._tts.name, self._llm.name,
+            self._stt.name, self._tts.name, self._llm.name, self._language,
         )
 
     # ── Inbound: audio from the browser ──────────────────────────
@@ -149,9 +153,19 @@ class VoiceSession:
     async def commit_turn(self, language: str | None = None) -> None:
         """User finished speaking. Transcribe → delegate → speak response."""
         audio = self.reset_audio_buffer()
+        requested_language = (language or "").strip().lower()
+        default_language = (self._language or DEFAULT_LANGUAGE).strip().lower()
+        if requested_language == "auto":
+            stt_language = None
+        elif requested_language:
+            stt_language = requested_language
+        elif default_language == "auto":
+            stt_language = None
+        else:
+            stt_language = default_language
         logger.warning(
             "VoiceSession commit agent=%s session=%s audio=%d language=%s",
-            self.agent_id, self.session_id, len(audio), language,
+            self.agent_id, self.session_id, len(audio), stt_language,
         )
         if not audio:
             await self._emit({"type": "error", "data": {"message": "no audio"}})
@@ -168,7 +182,7 @@ class VoiceSession:
                 len(audio),
             )
             transcript = await asyncio.wait_for(
-                self._stt.transcribe(audio, language=language),  # type: ignore[union-attr]
+                self._stt.transcribe(audio, language=stt_language),  # type: ignore[union-attr]
                 timeout=35.0,
             )
             logger.warning(

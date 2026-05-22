@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 STT_PROVIDERS = ["faster_whisper", "openai_whisper"]
 TTS_PROVIDERS = ["edge_tts", "elevenlabs"]
 LLM_PROVIDERS = ["anthropic"]
+DEFAULT_LANGUAGE = "de"
 
 
 async def get_stt(db: AsyncSession) -> STTProvider:
@@ -63,6 +64,7 @@ async def get_active_voice_config(db: AsyncSession) -> dict:
         "tts_provider": (await svc.get("voice_tts_provider")) or "edge_tts",
         "tts_voice": (await svc.get("voice_tts_voice")) or EDGE_DEFAULT,
         "llm_model": (await svc.get("voice_llm_model")) or "claude-haiku-4-5-20251001",
+        "language": (await svc.get("voice_language")) or DEFAULT_LANGUAGE,
         "available_stt": STT_PROVIDERS,
         "available_tts": TTS_PROVIDERS,
         "available_llm": LLM_PROVIDERS,
