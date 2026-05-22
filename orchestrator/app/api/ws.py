@@ -136,6 +136,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             pass  # Allow connection attempt if check fails
 
     await websocket.accept()
+    await websocket.send_text(json.dumps({
+        "type": "ready",
+        "data": {"agent_id": agent_id},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }))
 
     # Subscribe to agent's chat response channel
     channel = f"agent:{agent_id}:chat:response"
@@ -585,7 +590,21 @@ async def ws_agent_voice(
             async for evt in session.outbound():
                 await websocket.send_text(json.dumps(evt))
         except Exception:
-            pass
+            logger.warning("voice outbound pump stopped agent=%s", agent_id, exc_info=True)
+
+    def _log_voice_turn_done(task: asyncio.Task) -> None:
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            logger.warning("voice turn cancelled agent=%s session=%s", agent_id, session.session_id)
+            return
+        if exc:
+            logger.error(
+                "voice turn crashed agent=%s session=%s",
+                agent_id,
+                session.session_id,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     out_task = asyncio.create_task(pump_outbound())
 
@@ -607,13 +626,27 @@ async def ws_agent_voice(
                 b64 = mdata.get("b64", "")
                 if b64:
                     try:
-                        session.push_audio_chunk(base64.b64decode(b64))
+                        chunk = base64.b64decode(b64)
+                        session.push_audio_chunk(chunk)
+                        logger.warning(
+                            "voice ws chunk agent=%s session=%s bytes=%d",
+                            agent_id,
+                            session.session_id,
+                            len(chunk),
+                        )
                     except Exception:
-                        pass
+                        logger.warning("voice ws invalid audio chunk agent=%s", agent_id, exc_info=True)
             elif mtype == "commit":
                 lang = mdata.get("language")
                 # Process turn in background so we keep accepting interrupts
-                asyncio.create_task(session.commit_turn(language=lang))
+                logger.warning(
+                    "voice ws commit agent=%s session=%s language=%s",
+                    agent_id,
+                    session.session_id,
+                    lang,
+                )
+                task = asyncio.create_task(session.commit_turn(language=lang))
+                task.add_done_callback(_log_voice_turn_done)
             elif mtype == "interrupt":
                 await session.interrupt()
             elif mtype == "ping":

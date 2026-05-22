@@ -1082,20 +1082,49 @@ async def get_chat_history(
     messages = result.scalars().all()
     # Return in chronological order (oldest first)
     messages = list(reversed(messages))
+
+    deduped = []
+    seen: set[tuple[str, str, str]] = set()
+    for msg in messages:
+        key = (msg.message_id or str(msg.id), msg.role, msg.content or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(msg)
+
+    def _normalise_tool_calls(tool_calls):
+        if not isinstance(tool_calls, list):
+            return tool_calls
+        normalised = []
+        for call in tool_calls:
+            if not isinstance(call, dict):
+                normalised.append(call)
+                continue
+            fixed = dict(call)
+            raw_input = fixed.get("input")
+            if isinstance(raw_input, str):
+                try:
+                    fixed["input"] = json.loads(raw_input)
+                except (json.JSONDecodeError, TypeError):
+                    fixed["input"] = {"raw": raw_input}
+            normalised.append(fixed)
+        return normalised
+
     return {
         "messages": [
             {
-                "id": msg.message_id or str(msg.id),
+                "id": str(msg.id),
+                "message_id": msg.message_id,
                 "role": msg.role,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
-                "toolCalls": msg.tool_calls,
+                "toolCalls": _normalise_tool_calls(msg.tool_calls),
                 "meta": msg.meta,
                 "sessionId": msg.session_id,
             }
-            for msg in messages
+            for msg in deduped
         ],
-        "has_more": len(messages) == limit,
+        "has_more": len(deduped) == limit,
     }
 
 

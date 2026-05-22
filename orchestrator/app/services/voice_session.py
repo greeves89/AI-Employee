@@ -103,7 +103,7 @@ class VoiceSession:
 
     def push_audio_chunk(self, data: bytes) -> None:
         self._audio_buf.extend(data)
-        logger.info(
+        logger.warning(
             "VoiceSession audio chunk agent=%s session=%s chunk=%d total=%d",
             self.agent_id, self.session_id, len(data), len(self._audio_buf),
         )
@@ -149,7 +149,7 @@ class VoiceSession:
     async def commit_turn(self, language: str | None = None) -> None:
         """User finished speaking. Transcribe → delegate → speak response."""
         audio = self.reset_audio_buffer()
-        logger.info(
+        logger.warning(
             "VoiceSession commit agent=%s session=%s audio=%d language=%s",
             self.agent_id, self.session_id, len(audio), language,
         )
@@ -160,17 +160,26 @@ class VoiceSession:
         # 1. Transcribe
         try:
             await self._emit({"type": "status", "data": {"message": "Transkribiere Audio..."}})
+            logger.warning(
+                "VoiceSession STT start agent=%s session=%s provider=%s audio=%d",
+                self.agent_id,
+                self.session_id,
+                getattr(self._stt, "name", "unknown"),
+                len(audio),
+            )
             transcript = await asyncio.wait_for(
                 self._stt.transcribe(audio, language=language),  # type: ignore[union-attr]
-                timeout=45.0,
+                timeout=35.0,
             )
-            logger.info(
-                "VoiceSession transcript agent=%s session=%s chars=%d",
-                self.agent_id, self.session_id, len(transcript),
+            logger.warning(
+                "VoiceSession STT done agent=%s session=%s chars=%d",
+                self.agent_id,
+                self.session_id,
+                len(transcript),
             )
         except asyncio.TimeoutError:
             logger.warning("STT timed out agent=%s session=%s", self.agent_id, self.session_id)
-            await self._emit({"type": "error", "data": {"message": "STT timeout"}})
+            await self._emit({"type": "error", "data": {"message": "Transkription hat zu lange gedauert."}})
             return
         except Exception as e:  # noqa: BLE001
             logger.exception("STT failed")
@@ -178,7 +187,8 @@ class VoiceSession:
             return
 
         if not transcript:
-            await self._emit({"type": "info", "data": {"message": "Nichts verstanden."}})
+            logger.warning("VoiceSession STT empty agent=%s session=%s", self.agent_id, self.session_id)
+            await self._emit({"type": "error", "data": {"message": "Ich konnte die Aufnahme nicht verstehen."}})
             return
 
         await self._emit({"type": "transcript", "data": {"text": transcript}})
