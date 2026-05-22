@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.8] — 2026-05-22
+
+### Added
+- **Webapp chat audio attachments now render as voice bubbles** — audio files presented by agents get a play/pause control, waveform-style progress, current time/duration, and a download button instead of a generic attachment card.
+
+### Verified
+- `npm run build` succeeds for the Next.js frontend.
+
+---
+
 ## [1.55.7] — 2026-05-22
 
 ### Changed

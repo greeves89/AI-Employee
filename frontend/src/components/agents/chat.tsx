@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, memo } from "react";
 import {
   Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
   Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
-  ChevronRight, CheckCircle2, XCircle, Clock, X,
+  ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -1347,25 +1347,162 @@ function PresentedFiles({ agentId, files }: { agentId: string; files?: ChatFile[
 
   return (
     <div className="space-y-2 pt-1">
-      {files.map((file, i) => (
-        <button
-          key={`${file.path}-${i}`}
-          type="button"
-          onClick={() => download(file)}
-          className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left hover:bg-muted/55 transition-colors"
-        >
-          <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
-            <span className="block text-xs text-muted-foreground">
-              {file.caption || file.media_type || "Attachment"}
-              {file.size ? ` · ${Math.max(1, Math.round(file.size / 1024))} KB` : ""}
+      {files.map((file, i) =>
+        isAudioFile(file) ? (
+          <AudioAttachment key={`${file.path}-${i}`} agentId={agentId} file={file} onDownload={() => download(file)} />
+        ) : (
+          <button
+            key={`${file.path}-${i}`}
+            type="button"
+            onClick={() => download(file)}
+            className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left hover:bg-muted/55 transition-colors"
+          >
+            <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
+              <span className="block text-xs text-muted-foreground">
+                {file.caption || file.media_type || "Attachment"}
+                {file.size ? ` · ${Math.max(1, Math.round(file.size / 1024))} KB` : ""}
+              </span>
             </span>
-          </span>
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
+function isAudioFile(file: ChatFile) {
+  if (file.media_type?.startsWith("audio/")) return true;
+  return /\.(mp3|m4a|wav|ogg|opus|aac|flac)$/i.test(file.filename || file.path);
+}
+
+function AudioAttachment({ agentId, file, onDownload }: { agentId: string; file: ChatFile; onDownload: () => void }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const ensureAudio = useCallback(async () => {
+    if (objectUrl) return objectUrl;
+    setLoading(true);
+    setError(null);
+    try {
+      const url = `${getApiUrl()}/api/v1/agents/${agentId}/files/download?path=${encodeURIComponent(file.path)}`;
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
+      const blob = await resp.blob();
+      const nextUrl = URL.createObjectURL(blob);
+      setObjectUrl(nextUrl);
+      return nextUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Audio konnte nicht geladen werden");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [agentId, file.path, objectUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
+
+  const toggle = useCallback(async () => {
+    const url = await ensureAudio();
+    if (!url) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+      return;
+    }
+    try {
+      await audio.play();
+      setPlaying(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Audio konnte nicht abgespielt werden");
+    }
+  }, [ensureAudio, playing]);
+
+  const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
+
+  return (
+    <div className="max-w-md rounded-2xl border border-blue-500/15 bg-blue-500/10 px-3 py-3">
+      {objectUrl && (
+        <audio
+          ref={audioRef}
+          src={objectUrl}
+          preload="metadata"
+          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime || 0)}
+          onEnded={() => {
+            setPlaying(false);
+            setCurrentTime(duration);
+          }}
+          className="hidden"
+        />
+      )}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={loading}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400 disabled:opacity-70"
+          aria-label={playing ? "Pause audio" : "Play audio"}
+        >
+          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-0.5" />}
         </button>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{file.caption || file.filename}</span>
+            <button
+              type="button"
+              onClick={onDownload}
+              className="shrink-0 rounded-md p-1 text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
+              aria-label="Download audio"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <Waveform seed={file.path} progress={progress} />
+          <div className="mt-1 flex justify-between text-[11px] tabular-nums text-muted-foreground">
+            <span>{formatAudioTime(currentTime)}</span>
+            <span>{duration > 0 ? formatAudioTime(duration) : file.size ? `${Math.max(1, Math.round(file.size / 1024))} KB` : "Voice"}</span>
+          </div>
+        </div>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function Waveform({ seed, progress }: { seed: string; progress: number }) {
+  const chars = seed.length ? Array.from(seed).map((ch) => ch.charCodeAt(0)) : [17];
+  const bars = Array.from({ length: 32 }, (_, i) => 22 + ((chars[i % chars.length] + i * 29) % 58));
+  const active = Math.floor(progress * bars.length);
+  return (
+    <div className="flex h-7 items-center gap-1">
+      {bars.map((height, i) => (
+        <span
+          key={i}
+          className={cn("w-1 rounded-full transition-colors", i <= active ? "bg-blue-400" : "bg-muted-foreground/25")}
+          style={{ height: `${height}%` }}
+        />
       ))}
     </div>
   );
+}
+
+function formatAudioTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const rounded = Math.round(seconds);
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
 }
 
 /* ─── Tool Call Block (Claude CLI Style) ────────────────────────────── */
