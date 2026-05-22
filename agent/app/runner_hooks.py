@@ -410,7 +410,7 @@ MULTIMODAL_CAPABILITY_NOTE = (
     "`present_image` with the file path. It renders inline in the chat; pass "
     "`send_telegram=true` to also deliver it as a Telegram photo.\n"
     "- To SHOW the user a generated deliverable (PDF, DOCX, XLSX, CSV, ZIP, "
-    "Markdown report, etc.), save it under `/workspace/transfer/` and then "
+    "Markdown report, audio file/voice note, etc.), save it under `/workspace/transfer/` and then "
     "call `present_file` with the file path. Do not only mention the path in "
     "text; `present_file` makes it downloadable in iOS, Telegram, and Web Chat."
 )

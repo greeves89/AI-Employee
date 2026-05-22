@@ -129,7 +129,7 @@ LOCAL_TOOLS: list[dict] = [
             "description": (
                 "Show a generated or prepared FILE to the user as a downloadable "
                 "attachment in the chat UI. Use this after creating PDFs, DOCX, "
-                "spreadsheets, ZIPs, or other deliverables in the workspace. "
+                "spreadsheets, ZIPs, audio files, or other deliverables in the workspace. "
                 "Generate the file first, then call this with its path."
             ),
             "parameters": {

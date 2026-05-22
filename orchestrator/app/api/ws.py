@@ -29,6 +29,7 @@ _docker: DockerService | None = None
 _CHAT_ATTACHMENT_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".md",
     ".zip", ".json", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".webp",
+    ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".flac",
 }
 
 
