@@ -6,6 +6,20 @@ import { getWsUrl, getBase } from "@/lib/config";
 
 type VoiceState = "connecting" | "ready" | "listening" | "processing" | "speaking" | "error";
 
+/** ArrayBuffer → base64 without spreading a typed array (build-safe). */
+function bufToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + CHUNK)),
+    );
+  }
+  return btoa(binary);
+}
+
 interface Props {
   agentId: string;
   agentName: string;
@@ -21,7 +35,6 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   const wsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const playQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // ── WebSocket connect ──────────────────────────────────────
@@ -57,7 +70,6 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
       cancelled = true;
       wsRef.current?.close();
       stopRecording();
-      audioCtxRef.current?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
@@ -107,18 +119,13 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
     }
   }, []);
 
-  // ── Audio playback (MP3 chunks queued + decoded sequentially) ─
+  // ── Audio playback ───────────────────────────────────────────
+  // MP3 chunks are queued and played sequentially via HTMLAudioElement,
+  // which tolerates MP3 fragments better than decodeAudioData.
   const playAudioChunk = useCallback((b64: string, mime: string) => {
     playQueueRef.current = playQueueRef.current.then(async () => {
       try {
-        if (!audioCtxRef.current) {
-          // @ts-expect-error vendor prefix
-          audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        const ctx = audioCtxRef.current!;
         const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-        // decodeAudioData needs a complete container, so we use HTMLAudioElement
-        // fallback which handles MP3 fragments more forgivingly.
         const blob = new Blob([bin], { type: mime });
         const url = URL.createObjectURL(blob);
         await new Promise<void>((res) => {
@@ -133,7 +140,6 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
           };
           void audio.play().catch(() => res());
         });
-        void ctx;
       } catch {
         // ignore single-chunk errors
       }
@@ -155,14 +161,14 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
         if (!e.data || e.data.size === 0) return;
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const buf = await e.data.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const b64 = bufToBase64(buf);
         wsRef.current.send(
           JSON.stringify({ type: "audio_chunk", data: { b64 } })
         );
       };
       rec.start(250); // chunk every 250ms
       setState("listening");
-    } catch (e) {
+    } catch {
       setError("Mikrofon-Zugriff verweigert");
       setState("error");
     }
