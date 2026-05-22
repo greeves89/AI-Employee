@@ -463,9 +463,30 @@ class TelegramAgentBot:
                         meta["responded_via"] = "telegram"
                         notif.meta = meta
                         notif.read = True
+                        approval_id = meta.get("approval_id")
+                        if approval_id:
+                            from app.models.command_approval import ApprovalStatus, CommandApproval
+                            approval = await db.scalar(
+                                select(CommandApproval).where(CommandApproval.id == int(approval_id))
+                            )
+                            if approval and approval.status == ApprovalStatus.PENDING:
+                                negative = choice.lower() in {
+                                    "deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"
+                                }
+                                approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
+                                approval.resolved_at = datetime.now(timezone.utc)
+                                approval.user_response = choice
                         await db.commit()
                 redis = aioredis.from_url(settings.redis_url, decode_responses=True)
                 await redis.set(f"approval:result:{notif_id}", choice, ex=3600)
+                if "approval_id" in locals() and approval_id:
+                    await redis.publish(f"approval:{approval_id}", json.dumps({
+                        "status": "denied" if choice.lower() in {
+                            "deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"
+                        } else "approved",
+                        "approval_id": str(approval_id),
+                        "reason": choice,
+                    }))
                 await redis.aclose()
                 await query.answer(f"✓ {choice}")
                 await query.edit_message_reply_markup(reply_markup=None)

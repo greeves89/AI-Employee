@@ -59,11 +59,55 @@ async def create_notification(
     })
     await redis.client.publish("notifications:live", event)
 
-    # Send Telegram for high/urgent priority
-    if body.priority in ("high", "urgent"):
+    target_channel = (body.meta or {}).get("target_channel", "webapp")
+
+    # Send Telegram when explicitly targeted, or for high/urgent fallback.
+    if target_channel in ("telegram", "all") or body.priority in ("high", "urgent"):
         await _send_telegram(body, redis, notif_id=notif.id)
 
+    # APNs push to the owning user's iOS devices when requested.
+    if target_channel in ("ios", "all"):
+        try:
+            from app.models.agent import Agent
+            from app.services.apns_service import push_to_user
+
+            agent = (await db.execute(
+                select(Agent).where(Agent.id == body.agent_id)
+            )).scalar_one_or_none()
+            if agent and agent.user_id:
+                await push_to_user(db, agent.user_id, body.title, body.message or body.title)
+        except Exception:  # noqa: BLE001
+            logger.exception("APNs push failed for notification")
+
     return _to_response(notif)
+
+
+class DeviceRegister(BaseModel):
+    token: str
+    platform: str = "ios"
+
+
+@router.post("/register-device")
+async def register_device(
+    body: DeviceRegister,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register (or refresh) an APNs device token for the current user."""
+    from app.models.device_token import DeviceToken
+
+    existing = (await db.execute(
+        select(DeviceToken).where(DeviceToken.token == body.token)
+    )).scalar_one_or_none()
+    if existing:
+        existing.user_id = str(user.id)
+        existing.platform = body.platform
+    else:
+        db.add(DeviceToken(
+            user_id=str(user.id), token=body.token, platform=body.platform
+        ))
+    await db.commit()
+    return {"status": "registered"}
 
 
 # --- UI-facing: list, count, mark read ---
@@ -125,12 +169,37 @@ async def respond_to_approval(
     meta["responded_by"] = user.id if user.id != "__anonymous__" else None
     notif.meta = meta
     notif.read = True
+
+    approval_id = meta.get("approval_id")
+    if approval_id:
+        try:
+            from app.models.command_approval import ApprovalStatus, CommandApproval
+
+            approval = await db.scalar(
+                select(CommandApproval).where(CommandApproval.id == int(approval_id))
+            )
+            if approval and approval.status == ApprovalStatus.PENDING:
+                negative = body.choice.lower() in {"deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"}
+                approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
+                approval.resolved_at = datetime.now(timezone.utc)
+                approval.user_response = body.choice
+        except Exception as e:
+            logger.warning(f"Could not update command approval {approval_id}: {e}")
     await db.commit()
 
     # Store result in Redis so waiting agent MCP call can pick it up
     try:
         if redis.client:
             await redis.client.set(f"approval:result:{notification_id}", body.choice, ex=3600)
+            if approval_id:
+                await redis.client.publish(
+                    f"approval:{approval_id}",
+                    json.dumps({
+                        "status": "denied" if body.choice.lower() in {"deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"} else "approved",
+                        "approval_id": str(approval_id),
+                        "reason": body.choice,
+                    }),
+                )
             await redis.client.publish(
                 f"approval:response:{notification_id}",
                 json.dumps({"choice": body.choice, "notification_id": notification_id}),

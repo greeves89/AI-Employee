@@ -342,6 +342,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                         "cost_usd": event_data.get("cost_usd"),
                         "duration_ms": event_data.get("duration_ms"),
                         "num_turns": event_data.get("num_turns"),
+                        "presented_files": event_data.get("presented_files"),
                     }
 
                     db.add(ChatMessage(

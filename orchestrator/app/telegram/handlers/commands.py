@@ -277,6 +277,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "id": message_id,
             "text": text,
             "model": None,
+            "source": "telegram",
+            "telegram": {
+                "chat_id": chat_id,
+                "username": update.effective_user.username if update.effective_user else "",
+                "first_name": update.effective_user.first_name if update.effective_user else "",
+            },
         })
         await redis.lpush(f"agent:{agent_id}:chat", payload)
         await redis.aclose()

@@ -115,6 +115,13 @@ class Settings(BaseSettings):
     # Skill file attachments — stored on shared Docker volume
     skill_files_root: str = "/shared/skill-files"
 
+    # APNs push notifications (iOS app)
+    apns_auth_key: str = ""      # contents of the .p8 file
+    apns_key_id: str = ""
+    apns_team_id: str = ""
+    apns_bundle_id: str = "com.da.ai-employee-ios.ai-employee-ios"
+    apns_sandbox: bool = True    # development builds use the sandbox gateway
+
     model_config = {"env_prefix": "", "case_sensitive": False}
 
 

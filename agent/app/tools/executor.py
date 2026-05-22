@@ -512,6 +512,35 @@ class ToolExecutor:
         ) + telegram_note
         return multimodal.encode_image_result(data, media_type, note)
 
+    async def _tool_present_file(self, params: dict) -> str:
+        """Show a workspace file to the user as a downloadable chat attachment."""
+        import mimetypes
+
+        path = (params.get("path") or "").strip()
+        caption = (params.get("caption") or "").strip()
+        if not path:
+            return "Error: path is required"
+        resolved = self._resolve_path(path)
+        if not os.path.isfile(resolved):
+            return f"Error: file not found: {resolved}"
+        try:
+            size = os.path.getsize(resolved)
+        except Exception as e:
+            return f"Error reading file: {e}"
+        if size <= 0:
+            return "Error: file is empty"
+        if size > 50 * 1024 * 1024:
+            return f"Error: file is {size // 1024 // 1024} MB, exceeds the 50 MB chat attachment limit"
+
+        payload = {
+            "path": resolved,
+            "filename": os.path.basename(resolved),
+            "media_type": mimetypes.guess_type(resolved)[0] or "application/octet-stream",
+            "size": size,
+            "caption": caption,
+        }
+        return "__AI_EMPLOYEE_PRESENT_FILE__" + json.dumps(payload)
+
     async def _tool_write_file(self, params: dict) -> str:
         """Write content to a file."""
         path = self._resolve_path(params.get("path", ""))

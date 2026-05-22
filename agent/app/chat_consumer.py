@@ -2,11 +2,19 @@
 
 import asyncio
 import json
+import logging
 
 import redis.asyncio as aioredis
 
 from app.config import settings
 from app.log_publisher import LogPublisher
+
+logger = logging.getLogger(__name__)
+
+# A single chat turn must never block the queue indefinitely. If a turn
+# (CLI subprocess / LLM call) hangs past this, it is aborted so the next
+# queued message can be processed.
+CHAT_TURN_TIMEOUT = 600  # seconds
 
 
 def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) -> str:
@@ -93,6 +101,7 @@ You ALREADY have the chat_id. Do NOT look it up. Do NOT call getUpdates.
 RULES:
 - NEVER call api.telegram.org directly. You do NOT have the bot token.
 - Your plain text reply is AUTOMATICALLY forwarded to Telegram. No action needed for text.
+- If you call notify_user for this conversation, set target_channel="telegram".
 - To send files/voice/photos/videos, use the Orchestrator Telegram API below.
 - To DOWNLOAD a file the user sent you: you get a `file_id` in the header above —
   pass it to the get-file endpoint below. Do NOT try to download from Telegram directly.
@@ -163,6 +172,52 @@ Download a file the user sent you (use the file_id from the header above):
 Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-action, /edit-message, /pin-message, /answer-callback, GET /info, GET /get-commands"""
 
 
+def _build_channel_prompt(text: str, source: str, is_new_session: bool) -> str:
+    """Wrap non-Telegram chat with source/channel context."""
+    channel = (source or "webapp").lower()
+    if channel in {"ios", "iphone", "ipad"}:
+        room = "chat:ios"
+        target = "ios"
+        label = "iOS app"
+    elif channel in {"webapp_voice", "voice"}:
+        room = "chat:webapp"
+        target = "webapp"
+        label = "webapp voice chat"
+    else:
+        room = "chat:webapp"
+        target = "webapp"
+        label = "webapp chat"
+
+    if is_new_session:
+        startup = (
+            "MANDATORY FIRST STEPS (do these BEFORE responding):\n"
+            "1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
+            "2. Use brain_search (query relevant to this message) for shared knowledge\n"
+            f"3. Use memory_search with a focused query AND room=\"{room}\" unless a project room is more precise\n"
+            "4. Use skill_search to check the marketplace for a skill that fits this request.\n"
+            "   If one fits, skill_install it and FOLLOW its instructions instead of improvising.\n"
+            "5. Use list_todos to check for pending work items\n"
+        )
+    else:
+        startup = (
+            "BEFORE responding: use brain_search, memory_search with a relevant room filter, "
+            "and skill_search if a marketplace skill might fit.\n"
+        )
+
+    return (
+        f"[CHAT CHANNEL] This message came from {label}. "
+        f"When you call notify_user for this conversation, set target_channel=\"{target}\". "
+        "Your normal chat answer is automatically returned to the same channel.\n\n"
+        f"{startup}"
+        "AFTER responding: if you learned something new, use memory_save with "
+        f"category='learning', room=\"{room}\" (or a project room), and useful tags.\n"
+        "AFTER the user gives feedback: if you used a skill, call skill_rate with their rating "
+        "(omit task_id — this is a chat).\n\n"
+        "Then respond to:\n\n"
+        f"{text}"
+    )
+
+
 class ChatConsumer:
     """Consumes chat messages from the Redis queue and processes them via
     ChatHandler / LLMChatHandler.
@@ -223,7 +278,13 @@ class ChatConsumer:
                     await self._handler.reset_session()
                 texts.clear()
                 continue
-            texts.append(self._prepare_text(qmsg["text"], qmsg.get("telegram")))
+            texts.append(
+                self._prepare_text(
+                    qmsg["text"],
+                    qmsg.get("telegram"),
+                    qmsg.get("source", "webapp"),
+                )
+            )
         return texts
 
     def _is_new_session(self) -> bool:
@@ -232,44 +293,14 @@ class ChatConsumer:
             return self._handler.session_id is None
         return True
 
-    def _prepare_text(self, text: str, telegram_ctx: dict | None) -> str:
+    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str = "webapp") -> str:
         """Prepare message text, adding Telegram context if present."""
         # Approval rules apply to all messages
         from app.runner_hooks import get_approval_rules_prefix
         rules_prefix = get_approval_rules_prefix()
         if telegram_ctx:
             return rules_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=self._is_new_session())
-        # For Web UI chat: also add startup instructions for new sessions
-        if self._is_new_session():
-            return rules_prefix + (
-                "MANDATORY FIRST STEPS (do these BEFORE responding):\n"
-                "1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns\n"
-                "2. Use brain_search (query relevant to this message) for shared knowledge\n"
-                "3. Use memory_search with a focused query AND a room filter\n"
-                "   (room=\"chat:webui\" for UI chats, or \"project:<name>/<area>\" if the user\n"
-                "   is asking about a specific project). Rooms improve retrieval precision massively.\n"
-                "4. Use skill_search to check the marketplace for a skill that fits this request.\n"
-                "   If one fits, skill_install it and FOLLOW its instructions instead of improvising.\n"
-                "5. Use list_todos to check for pending work items\n"
-                "AFTER responding: if you learned something new or the user corrected you,\n"
-                "use memory_save with category='learning', room=\"chat:webui\" (or project room),\n"
-                "tag_type='permanent' (or 'transient' for task state), and tags=['learning', ...].\n"
-                "If the server returns a 409 contradiction warning, re-call with override=true\n"
-                "only if you're confident the new content should replace the existing one.\n"
-                "AFTER the user gives feedback on your result: if you used a marketplace skill,\n"
-                "call skill_rate (skill_id, helpfulness 1-5, rating 1-5, and user_rating\n"
-                "interpreted from the user's words). Omit task_id — this is a chat.\n"
-                "Then respond to:\n\n" + text
-            )
-        # Resumed session — MUST check knowledge/memory for context
-        return rules_prefix + (
-            "BEFORE responding: use brain_search and memory_search to check for relevant context,\n"
-            "and skill_search — if a marketplace skill fits, skill_install it and follow it.\n"
-            "AFTER responding: if you learned something new, use memory_save (category: 'learning').\n"
-            "AFTER the user gives feedback: if you used a skill, call skill_rate with their rating\n"
-            "(skill_id, helpfulness, rating, user_rating; omit task_id — this is a chat).\n\n"
-            + text
-        )
+        return rules_prefix + _build_channel_prompt(text, source, self._is_new_session())
 
     def _save_images(self, message_id: str, images: list[dict]) -> list[str]:
         """Decode base64 images to workspace files (for the CLI handler).
@@ -332,6 +363,7 @@ class ChatConsumer:
                 text = msg["text"]
                 model = msg.get("model")
                 telegram_ctx = msg.get("telegram")
+                source = msg.get("source", "telegram" if telegram_ctx else "webapp")
                 images = msg.get("images") or None
 
                 # Handle special commands
@@ -339,7 +371,7 @@ class ChatConsumer:
                     await self._handler.reset_session()
                     continue
 
-                text = self._prepare_text(text, telegram_ctx)
+                text = self._prepare_text(text, telegram_ctx, source)
 
                 # Images: the custom-LLM handler sees them natively. The
                 # Claude Code CLI handler can't take inline images, so save
@@ -366,11 +398,34 @@ class ChatConsumer:
                     self._handler.pending_drain = self._drain_pending
 
                 try:
-                    await self._handler.handle_message(
-                        message_id=message_id,
-                        text=text,
-                        model=model,
-                        **handle_kwargs,
+                    # Watchdog: a hung turn (stuck CLI / network) must not
+                    # block the whole queue forever. Abort and move on.
+                    await asyncio.wait_for(
+                        self._handler.handle_message(
+                            message_id=message_id,
+                            text=text,
+                            model=model,
+                            **handle_kwargs,
+                        ),
+                        timeout=CHAT_TURN_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "Chat turn %s timed out after %ss — aborting",
+                        message_id, CHAT_TURN_TIMEOUT,
+                    )
+                    try:
+                        if hasattr(self._handler, "stop_current"):
+                            await self._handler.stop_current()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    await log_publisher.publish_chat(
+                        message_id, "error",
+                        {"message": "Die Antwort hat zu lange gedauert und "
+                                    "wurde abgebrochen. Bitte erneut versuchen."},
+                    )
+                    await log_publisher.publish_chat(
+                        message_id, "done", {"status": "timeout"}
                     )
                 finally:
                     await log_publisher.publish_status("idle")

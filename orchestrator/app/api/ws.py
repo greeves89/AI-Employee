@@ -213,6 +213,17 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         "media_type": str(edata.get("media_type", "image/png")),
                         "data": data_str,
                     })
+            elif etype == "file":
+                if mid not in _streaming_responses:
+                    _streaming_responses[mid] = {"content": "", "tool_calls": []}
+                if edata.get("path"):
+                    _streaming_responses[mid].setdefault("files", []).append({
+                        "path": str(edata.get("path", "")),
+                        "filename": str(edata.get("filename", "")),
+                        "media_type": str(edata.get("media_type", "application/octet-stream")),
+                        "size": int(edata.get("size") or 0),
+                        "caption": str(edata.get("caption", "")),
+                    })
             elif etype == "error":
                 _pending_message_ids.discard(mid)
                 return ("error", mid, str(edata.get("message", "Unknown error")), None)
@@ -228,6 +239,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 }
                 if resp.get("images"):
                     meta["presented_images"] = resp["images"]
+                if resp.get("files"):
+                    meta["presented_files"] = resp["files"]
                 return ("done", mid, resp, meta)
         except (json.JSONDecodeError, Exception):
             pass
@@ -422,16 +435,22 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Generate message ID and push to agent's chat queue
             message_id = uuid.uuid4().hex[:12]
             _pending_message_ids.add(message_id)
+            source = str(msg.get("source") or "webapp")
             chat_payload = json.dumps({
                 "id": message_id,
                 "text": text,
                 "model": msg.get("model"),
                 "images": images,
+                "source": source,
             })
 
             # Save user message to DB
             db_content = text or (f"[{len(images)} Bild(er) angehängt]" if images else "")
-            await _save_chat_message(agent_id, message_id, "user", content=db_content)
+            await _save_chat_message(
+                agent_id, message_id, "user",
+                content=db_content,
+                meta={"source": source},
+            )
 
             # Only send session event when a NEW session was created
             # (not on every message - that caused duplicate chat tabs)

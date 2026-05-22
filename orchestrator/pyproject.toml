@@ -24,6 +24,8 @@ dependencies = [
     # Voice live-session feature
     "anthropic>=0.40",
     "edge-tts>=6.1",
+    # APNs push — HTTP/2 for the Apple gateway
+    "h2>=4.1",
 ]
 
 [build-system]

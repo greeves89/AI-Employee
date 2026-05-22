@@ -283,8 +283,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (args.room) semParams.set("room", args.room);
           const semResult = await apiCall(`/memory/semantic-search?${semParams}`);
           if (semResult.memories && semResult.memories.length > 0) {
-            const mode = semResult.mode === "semantic" ? "semantic" : "keyword";
-            const modeLabel = mode === "semantic"
+            // The orchestrator returns `semantic_reranked` on success and
+            // `keyword_fallback` only when the embedding service is disabled.
+            const isSemantic = typeof semResult.mode === "string"
+              && semResult.mode.startsWith("semantic");
+            const modeLabel = isSemantic
               ? "🧠 semantic (vector-based, understanding meaning)"
               : "🔤 keyword (exact substring match — semantic unavailable)";
             const lines = semResult.memories.map(

@@ -30,6 +30,8 @@ SECRET_KEYS = {
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
+    # APNs auth key (.p8 contents)
+    "apns_auth_key",
 }
 
 # All settings keys that can be persisted
@@ -64,6 +66,11 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "voice_tts_voice",
     "voice_llm_model",
     "voice_language",
+    # APNs push config
+    "apns_key_id",
+    "apns_team_id",
+    "apns_bundle_id",
+    "apns_sandbox",
 }
 
 

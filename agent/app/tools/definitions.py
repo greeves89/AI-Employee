@@ -125,6 +125,32 @@ LOCAL_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "present_file",
+            "description": (
+                "Show a generated or prepared FILE to the user as a downloadable "
+                "attachment in the chat UI. Use this after creating PDFs, DOCX, "
+                "spreadsheets, ZIPs, or other deliverables in the workspace. "
+                "Generate the file first, then call this with its path."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file, absolute or workspace-relative",
+                    },
+                    "caption": {
+                        "type": "string",
+                        "description": "Optional short caption shown with the attachment",
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "write_file",
             "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. If the file ALREADY exists you must read_file it first — overwriting a file you haven't read is rejected.",
             "parameters": {
@@ -774,7 +800,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "notify_user",
-            "description": "Send a notification to the user (appears in Web UI and optionally Telegram). Use for status updates, completions, and alerts.",
+            "description": "Send a notification to the user. Set target_channel to the channel the user is currently using (webapp, ios, telegram) unless they asked otherwise.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -798,6 +824,12 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "enum": ["info", "warning", "error", "success"],
                         "default": "info",
                     },
+                    "target_channel": {
+                        "type": "string",
+                        "description": "Preferred delivery channel for this user notification",
+                        "enum": ["webapp", "ios", "telegram", "all"],
+                        "default": "webapp",
+                    },
                 },
                 "required": ["title", "message"],
             },
@@ -807,7 +839,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "request_approval",
-            "description": "Request user approval for an action. The user will see the request on the Approvals page and can approve or deny it. Returns an approval_id that you can later check with check_approval. Use before irreversible or important actions.",
+            "description": "Request user approval for an action or decision. The user sees it in Approvals and gets a channel-aware notification. Returns an approval_id that you can check with check_approval. Use before irreversible or important actions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -824,6 +856,12 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "context": {
                         "type": "string",
                         "description": "Additional context about why approval is needed",
+                    },
+                    "target_channel": {
+                        "type": "string",
+                        "description": "Preferred delivery channel for the approval prompt",
+                        "enum": ["webapp", "ios", "telegram", "all"],
+                        "default": "webapp",
                     },
                 },
                 "required": ["question"],

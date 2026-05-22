@@ -117,6 +117,13 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "id": message_id,
             "text": transcript,
             "model": None,
+            "source": "telegram",
+            "telegram": {
+                "chat_id": chat_id,
+                "username": update.effective_user.username if update.effective_user else "",
+                "first_name": update.effective_user.first_name if update.effective_user else "",
+                "media_type": "voice",
+            },
         })
         await redis.lpush(f"agent:{agent_id}:chat", payload)
         await redis.aclose()

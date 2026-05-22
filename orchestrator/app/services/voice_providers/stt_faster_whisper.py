@@ -15,7 +15,7 @@ class FasterWhisperSTT(STTProvider):
         self.service_url = (service_url or settings.stt_service_url).rstrip("/")
 
     async def transcribe(self, audio: bytes, language: str | None = None) -> str:
-        files = {"file": ("audio.webm", audio, "audio/webm")}
+        files = {"file": ("audio.m4a", audio, "audio/mp4")}
         data = {"language": language} if language else {}
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(

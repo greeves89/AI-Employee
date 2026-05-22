@@ -17,7 +17,18 @@ from app.tools.mcp_client import MCPHTTPClient
 
 logger = logging.getLogger(__name__)
 
-MAX_TURNS_PER_MESSAGE = 20  # Max tool-use loops per chat message
+# Tool-loop cap per chat message. Honors the admin-configured
+# "Max Turns per Task" setting (settings.max_turns); the constant is
+# only a fallback if that is somehow unset. A real agent stops on its
+# own long before the cap, and tight repeat-loops are caught separately
+# by LoopDetector — so the cap is just a runaway backstop.
+DEFAULT_MAX_TURNS = 100
+
+
+def _max_turns() -> int:
+    return settings.max_turns if settings.max_turns and settings.max_turns > 0 else DEFAULT_MAX_TURNS
+
+
 COMPACTION_THRESHOLD = 0.75  # Trigger compaction at 75% of context window
 
 class LLMChatHandler:
@@ -219,7 +230,7 @@ class LLMChatHandler:
         full_text = ""
         accumulated_tool_calls: list[dict] = []
         num_turns = 0
-        max_turns = MAX_TURNS_PER_MESSAGE
+        max_turns = _max_turns()
         total_input_tokens = 0
         total_output_tokens = 0
 
@@ -304,7 +315,7 @@ class LLMChatHandler:
                                 message_id, "system",
                                 {"message": f"{len(extra)} neue Nachricht(en) aufgenommen — wird mitverarbeitet."},
                             )
-                            max_turns = num_turns + MAX_TURNS_PER_MESSAGE
+                            max_turns = num_turns + _max_turns()
                             continue
                     break
 
@@ -357,9 +368,20 @@ class LLMChatHandler:
                                     "caption": payload.get("note", ""),
                                 },
                             )
+                    if tc["name"] == "present_file" and result_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__"):
+                        try:
+                            payload = json.loads(result_text.removeprefix("__AI_EMPLOYEE_PRESENT_FILE__"))
+                            await self.log_publisher.publish_chat(message_id, "file", payload)
+                        except Exception:
+                            pass
                     await self.log_publisher.publish_chat(
                         message_id, "tool_result",
-                        {"tool_use_id": tc["id"], "content": multimodal.log_summary(result_text)},
+                        {
+                            "tool_use_id": tc["id"],
+                            "content": "File presented to the user."
+                            if result_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__")
+                            else multimodal.log_summary(result_text),
+                        },
                     )
                     self._history.append(
                         multimodal.tool_message(result_text, tc["id"], tc["name"])

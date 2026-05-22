@@ -1342,8 +1342,10 @@ class AgentManager:
 
         # Monthly spend (current calendar month) for budget display.
         # Uses a separate session — this method runs concurrently per agent.
+        # Counts BOTH task runs and chat messages — chat is real spend too.
         from app.db.session import async_session_factory
         from app.models.task import Task as _Task
+        from app.models.chat_message import ChatMessage as _ChatMessage
         from sqlalchemy import func as _func
         from datetime import datetime as _dt, timezone as _tz
 
@@ -1351,14 +1353,23 @@ class AgentManager:
             day=1, hour=0, minute=0, second=0, microsecond=0
         )
         async with async_session_factory() as _cost_session:
-            _cost_row = await _cost_session.execute(
+            _task_cost = await _cost_session.execute(
                 select(_func.coalesce(_func.sum(_Task.cost_usd), 0)).where(
                     _Task.agent_id == agent_id,
                     _Task.cost_usd.isnot(None),
                     _Task.created_at >= _month_start,
                 )
             )
-            monthly_cost_usd = round(float(_cost_row.scalar() or 0), 4)
+            _chat_cost = await _cost_session.execute(
+                select(_func.coalesce(_func.sum(_ChatMessage.cost_usd), 0)).where(
+                    _ChatMessage.agent_id == agent_id,
+                    _ChatMessage.cost_usd.isnot(None),
+                    _ChatMessage.timestamp >= _month_start,
+                )
+            )
+            monthly_cost_usd = round(
+                float(_task_cost.scalar() or 0) + float(_chat_cost.scalar() or 0), 4
+            )
 
         # Linked AI account name/provider for display (badge on the agent card)
         ai_account_name = None

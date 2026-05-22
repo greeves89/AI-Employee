@@ -36,8 +36,17 @@ interface ChatImage {
   data: string; // base64 (no data: prefix)
 }
 
+interface ChatFile {
+  path: string;
+  filename: string;
+  media_type?: string;
+  size?: number;
+  caption?: string;
+}
+
 interface ChatMessage {
   id: string;
+  agentId?: string;
   role: "user" | "assistant" | "system" | "error";
   content: string;
   timestamp: string;
@@ -45,14 +54,15 @@ interface ChatMessage {
   isQueued?: boolean;
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; presented_files?: ChatFile[] };
   images?: ChatImage[];
+  files?: ChatFile[];
 }
 
 interface ChatEvent {
   agent_id: string;
   message_id: string;
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file";
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -287,14 +297,17 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             // Use message_id for user messages, response-{message_id} for assistant
             const displayId = m.role === "assistant" ? `response-${m.id}` : m.id;
             const presented = (m.meta?.presented_images as ChatImage[] | undefined);
+            const presentedFiles = (m.meta?.presented_files as ChatFile[] | undefined);
             return {
               id: displayId,
+              agentId,
               role: m.role,
               content: m.content,
               timestamp: m.timestamp,
               steps,
               meta: m.meta ?? undefined,
               images: m.role === "assistant" && presented?.length ? presented : m.images,
+              files: m.role === "assistant" && presentedFiles?.length ? presentedFiles : undefined,
             };
           });
           // Deduplicate by id+role
@@ -479,7 +492,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       );
 
       // Create assistant message if it doesn't exist yet
-      if (assistantIdx === -1 && (type === "text" || type === "tool_call" || type === "tool_result" || type === "image")) {
+      if (assistantIdx === -1 && (type === "text" || type === "tool_call" || type === "tool_result" || type === "image" || type === "file")) {
         // Remove the queued indicator for this message (if any)
         const queuedMsgId = `queued-${message_id}`;
         const withoutQueued = msgs.filter((m) => m.id !== queuedMsgId);
@@ -488,6 +501,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
 
         msgs.push({
           id: `response-${message_id}`,
+          agentId,
           role: "assistant",
           content: "",
           timestamp: event.timestamp,
@@ -576,6 +590,21 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             imgs.push({ media_type: String(data.media_type || "image/png"), data: dataStr });
           }
           msgs[assistantIdx] = { ...msgs[assistantIdx], images: imgs };
+        }
+      } else if (type === "file") {
+        if (assistantIdx !== -1) {
+          const files = [...(msgs[assistantIdx].files || [])];
+          const path = String(data.path || "");
+          if (path) {
+            files.push({
+              path,
+              filename: String(data.filename || path.split("/").pop() || "download"),
+              media_type: String(data.media_type || "application/octet-stream"),
+              size: Number(data.size || 0),
+              caption: String(data.caption || ""),
+            });
+          }
+          msgs[assistantIdx] = { ...msgs[assistantIdx], files };
         }
       } else if (type === "queued") {
         // Show a temporary queued indicator that will be replaced once processing starts
@@ -690,6 +719,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       text,
       images: imgs,
       session_id: activeSessionId || currentWsSessionId.current,
+      source: "webapp",
     }));
     setInput("");
     setPendingImages([]);
@@ -812,7 +842,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       ]);
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         const mention = `I just uploaded these files to /workspace: ${fileNames}. Please acknowledge them.`;
-        wsRef.current.send(JSON.stringify({ text: mention }));
+        wsRef.current.send(JSON.stringify({ text: mention, source: "webapp" }));
         setMessages((prev) => [
           ...prev,
           { id: `user-upload-${Date.now()}`, role: "user", content: mention, timestamp: new Date().toISOString() },
@@ -1220,6 +1250,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
       <div className="pl-1 space-y-2">
         <MarkdownContent content={message.content} />
         <PresentedImages images={message.images} />
+        <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
         {message.meta && !simpleMode && <MetaBar meta={message.meta} />}
       </div>
     );
@@ -1265,6 +1296,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
         return null;
       })}
       <PresentedImages images={message.images} />
+      <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
     </div>
   );
@@ -1290,6 +1322,47 @@ function PresentedImages({ images }: { images?: ChatImage[] }) {
             className="max-h-96 rounded-lg border border-border object-contain cursor-zoom-in"
           />
         </a>
+      ))}
+    </div>
+  );
+}
+
+function PresentedFiles({ agentId, files }: { agentId: string; files?: ChatFile[] }) {
+  if (!files || files.length === 0) return null;
+
+  const download = async (file: ChatFile) => {
+    const url = `${getApiUrl()}/api/v1/agents/${agentId}/files/download?path=${encodeURIComponent(file.path)}`;
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) return;
+    const blob = await resp.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = file.filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  return (
+    <div className="space-y-2 pt-1">
+      {files.map((file, i) => (
+        <button
+          key={`${file.path}-${i}`}
+          type="button"
+          onClick={() => download(file)}
+          className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left hover:bg-muted/55 transition-colors"
+        >
+          <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
+            <span className="block text-xs text-muted-foreground">
+              {file.caption || file.media_type || "Attachment"}
+              {file.size ? ` · ${Math.max(1, Math.round(file.size / 1024))} KB` : ""}
+            </span>
+          </span>
+        </button>
       ))}
     </div>
   );

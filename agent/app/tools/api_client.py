@@ -336,6 +336,9 @@ class OrchestratorAPIClient:
             "title": params.get("title", "Agent Notification"),
             "message": params.get("message", ""),
             "priority": params.get("priority", "normal"),
+            "meta": {
+                "target_channel": params.get("target_channel", "webapp"),
+            },
         }
         result = await self._request("POST", "/notifications/", json=body)
         if isinstance(result, str):
@@ -349,6 +352,7 @@ class OrchestratorAPIClient:
             "options": params.get("options", ["Yes", "No"]),
             "context": params.get("context", ""),
             "risk_level": "medium",
+            "target_channel": params.get("target_channel", "all"),
         }
         result = await self._request("POST", "/approvals/request", json=body)
         if isinstance(result, str):

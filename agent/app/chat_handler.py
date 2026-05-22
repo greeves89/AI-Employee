@@ -190,12 +190,28 @@ class ChatHandler:
                         )
 
                 elif event_type == "tool_result":
+                    content = event.get("content", "")
+                    marker_text = ""
+                    if isinstance(content, str):
+                        marker_text = content
+                    elif isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                                marker_text = block["text"]
+                                break
+                    if marker_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__"):
+                        try:
+                            payload = json.loads(marker_text.removeprefix("__AI_EMPLOYEE_PRESENT_FILE__"))
+                            await self.log_publisher.publish_chat(message_id, "file", payload)
+                        except Exception:
+                            pass
                     await self.log_publisher.publish_chat(
                         message_id,
                         "tool_result",
                         {
                             "tool_use_id": event.get("tool_use_id", ""),
-                            "content": event.get("content", ""),
+                            "content": "File presented to the user."
+                            if marker_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__") else content,
                         },
                     )
 

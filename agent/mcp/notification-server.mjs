@@ -16,6 +16,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import fs from "node:fs";
+import path from "node:path";
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_ID = process.env.AGENT_ID || "unknown";
@@ -23,6 +25,26 @@ const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 
 function wrapData(source, content) {
   return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
+}
+
+function guessMediaType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const types = {
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".zip": "application/zip",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+  };
+  return types[ext] || "application/octet-stream";
 }
 
 async function apiCall(path, options = {}) {
@@ -82,6 +104,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               "Notification type for visual styling. info=blue, warning=amber, " +
               "error=red, success=green. Default: info.",
           },
+          target_channel: {
+            type: "string",
+            enum: ["webapp", "ios", "telegram", "all"],
+            description:
+              "Preferred delivery channel. Use the current chat channel unless the user asks otherwise.",
+          },
         },
         required: ["title"],
       },
@@ -138,8 +166,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
               "Additional context to help the user decide (e.g. email body preview, file list, cost estimate).",
           },
+          target_channel: {
+            type: "string",
+            enum: ["webapp", "ios", "telegram", "all"],
+            description: "Preferred delivery channel for the approval prompt.",
+          },
         },
         required: ["question", "options"],
+      },
+    },
+    {
+      name: "present_file",
+      description:
+        "Show a generated or prepared file to the user as a downloadable chat attachment. " +
+        "Use this after creating PDFs, DOCX, spreadsheets, ZIPs, or other deliverables in /workspace.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path to the file, absolute or workspace-relative.",
+          },
+          caption: {
+            type: "string",
+            description: "Optional short caption shown with the attachment.",
+          },
+        },
+        required: ["path"],
       },
     },
   ],
@@ -159,6 +212,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           title: args.title,
           message: args.message || "",
           priority: args.priority || "normal",
+          meta: { target_channel: args.target_channel || "webapp" },
         }),
       });
       return {
@@ -198,10 +252,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const result = await apiCall("/approvals/request", {
         method: "POST",
         body: JSON.stringify({
-          tool: args.question,
-          input: { options: args.options || [] },
-          reasoning: args.context || "",
+          question: args.question,
+          options: args.options || ["Approve", "Deny"],
+          context: args.context || "",
           risk_level: "high",
+          target_channel: args.target_channel || "all",
         }),
       });
 
@@ -242,6 +297,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }],
         };
       }
+    }
+
+    case "present_file": {
+      const rawPath = String(args.path || "");
+      if (!rawPath) throw new Error("path is required");
+      const resolved = path.isAbsolute(rawPath)
+        ? rawPath
+        : path.resolve("/workspace", rawPath);
+      const workspace = path.resolve("/workspace");
+      if (!resolved.startsWith(workspace + path.sep) && resolved !== workspace) {
+        throw new Error("Only files inside /workspace can be presented");
+      }
+      const stat = fs.statSync(resolved);
+      if (!stat.isFile()) throw new Error(`Not a file: ${resolved}`);
+      if (stat.size <= 0) throw new Error("File is empty");
+      if (stat.size > 50 * 1024 * 1024) throw new Error("File exceeds the 50 MB chat attachment limit");
+      const payload = {
+        path: resolved,
+        filename: path.basename(resolved),
+        media_type: guessMediaType(resolved),
+        size: stat.size,
+        caption: args.caption || "",
+      };
+      return {
+        content: [{
+          type: "text",
+          text: "__AI_EMPLOYEE_PRESENT_FILE__" + JSON.stringify(payload),
+        }],
+      };
     }
 
     default:

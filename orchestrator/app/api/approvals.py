@@ -37,10 +37,14 @@ def _get_redis() -> RedisService | None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class ApprovalRequest(BaseModel):
-    tool: str
-    input: dict
-    reasoning: str
-    risk_level: str  # "low", "medium", "high", "blocked"
+    tool: str | None = None
+    input: dict | None = None
+    reasoning: str | None = None
+    risk_level: str = "medium"  # "low", "medium", "high", "blocked"
+    question: str | None = None
+    options: list[str] | None = None
+    context: str | None = None
+    target_channel: str = "all"
 
 
 class ApprovalDecision(BaseModel):
@@ -53,6 +57,7 @@ class ApprovalDecision(BaseModel):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _approval_to_dict(a: CommandApproval) -> dict:
+    meta = a.meta or {}
     return {
         "approval_id": str(a.id),
         "agent_id": a.agent_id,
@@ -60,7 +65,12 @@ def _approval_to_dict(a: CommandApproval) -> dict:
         "reasoning": a.description,
         "risk_level": a.risk_level,
         "status": a.status,
-        "meta": a.meta or {},
+        "input": meta.get("input") or {},
+        "question": meta.get("question"),
+        "options": meta.get("options"),
+        "context": meta.get("context"),
+        "target_channel": meta.get("target_channel"),
+        "meta": meta,
         "created_at": a.created_at.isoformat(),
         "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
         "user_response": a.user_response,
@@ -88,6 +98,19 @@ async def _publish_notification(redis: RedisService | None, notif: Notification)
     await redis.client.publish("notifications:live", event)
 
 
+async def _push_ios_for_agent(db: AsyncSession, agent_id: str, title: str, message: str) -> None:
+    try:
+        from app.services.apns_service import push_to_user
+
+        agent = (await db.execute(
+            select(Agent).where(Agent.id == agent_id)
+        )).scalar_one_or_none()
+        if agent and agent.user_id:
+            await push_to_user(db, agent.user_id, title, message or title)
+    except Exception:  # noqa: BLE001
+        logger.exception("APNs push failed for approval")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # AGENT ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -104,14 +127,25 @@ async def request_approval(
         logger.warning(f"Agent {agent_id} attempted blocked command: {body.tool}")
         raise HTTPException(status_code=403, detail="This command is forbidden and cannot be executed even with approval.")
 
+    is_question = bool(body.question and not body.tool)
+    approval_tool = body.tool or "user_decision"
+    reasoning = body.reasoning or body.context or body.question or ""
+    meta = {
+        "input": body.input or {},
+        "question": body.question,
+        "options": body.options or (["Approve", "Deny"] if is_question else None),
+        "context": body.context,
+        "target_channel": body.target_channel,
+    }
+
     # Persist to DB
     approval = CommandApproval(
         agent_id=agent_id,
-        command=body.tool,
-        description=body.reasoning,
+        command=approval_tool,
+        description=reasoning,
         risk_level=body.risk_level,
         status=ApprovalStatus.PENDING,
-        meta={"input": body.input},
+        meta=meta,
     )
     db.add(approval)
     await db.commit()
@@ -121,11 +155,19 @@ async def request_approval(
     notif = Notification(
         agent_id=agent_id,
         type="approval",
-        title=f"Approval required: {body.tool}",
-        message=body.reasoning,
+        title=f"Approval required: {approval_tool}",
+        message=reasoning,
         priority="high",
         action_url="/approvals",
-        meta={"approval_id": approval.id, "risk_level": body.risk_level, "input": body.input},
+        meta={
+            "approval_id": approval.id,
+            "risk_level": body.risk_level,
+            "input": body.input or {},
+            "question": body.question,
+            "options": meta["options"],
+            "context": body.context,
+            "target_channel": body.target_channel,
+        },
     )
     db.add(notif)
     await db.commit()
@@ -134,8 +176,8 @@ async def request_approval(
     redis = _get_redis()
     await _publish_notification(redis, notif)
 
-    # Also send Telegram for high/critical risk
-    if body.risk_level in ("high", "critical"):
+    # Also send channel-aware push/Telegram for approval requests.
+    if body.target_channel in ("telegram", "all") or body.risk_level in ("high", "critical"):
         try:
             from app.api.notifications import _send_telegram
             from app.api.notifications import NotificationCreate
@@ -147,20 +189,23 @@ async def request_approval(
                     message=notif.message,
                     priority="high",
                     action_url="/approvals",
+                    meta=notif.meta,
                 ),
                 redis,
                 notif_id=notif.id,
             )
         except Exception as e:
             logger.warning(f"Telegram notification failed for approval {approval.id}: {e}")
+    if body.target_channel in ("ios", "all"):
+        await _push_ios_for_agent(db, agent_id, notif.title, notif.message)
 
     audit_entry = AuditLog(
         agent_id=agent_id,
         approval_id=str(approval.id),
         event_type=AuditEventType.APPROVAL_REQUESTED,
-        command=body.tool,
+        command=approval_tool,
         outcome="pending",
-        meta={"risk_level": body.risk_level, "reasoning": body.reasoning, "input": body.input},
+        meta={"risk_level": body.risk_level, "reasoning": reasoning, **meta},
     )
     db.add(audit_entry)
     await db.commit()

@@ -461,6 +461,13 @@ export interface ChatHistoryMessage {
     input_tokens?: number;
     output_tokens?: number;
     presented_images?: { media_type: string; data: string }[];
+    presented_files?: {
+      path: string;
+      filename: string;
+      media_type?: string;
+      size?: number;
+      caption?: string;
+    }[];
   };
   images?: { media_type: string; data: string }[];
   sessionId?: string;

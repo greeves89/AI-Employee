@@ -103,6 +103,10 @@ class VoiceSession:
 
     def push_audio_chunk(self, data: bytes) -> None:
         self._audio_buf.extend(data)
+        logger.info(
+            "VoiceSession audio chunk agent=%s session=%s chunk=%d total=%d",
+            self.agent_id, self.session_id, len(data), len(self._audio_buf),
+        )
 
     def reset_audio_buffer(self) -> bytes:
         data = bytes(self._audio_buf)
@@ -145,13 +149,29 @@ class VoiceSession:
     async def commit_turn(self, language: str | None = None) -> None:
         """User finished speaking. Transcribe → delegate → speak response."""
         audio = self.reset_audio_buffer()
+        logger.info(
+            "VoiceSession commit agent=%s session=%s audio=%d language=%s",
+            self.agent_id, self.session_id, len(audio), language,
+        )
         if not audio:
             await self._emit({"type": "error", "data": {"message": "no audio"}})
             return
 
         # 1. Transcribe
         try:
-            transcript = await self._stt.transcribe(audio, language=language)  # type: ignore[union-attr]
+            await self._emit({"type": "status", "data": {"message": "Transkribiere Audio..."}})
+            transcript = await asyncio.wait_for(
+                self._stt.transcribe(audio, language=language),  # type: ignore[union-attr]
+                timeout=45.0,
+            )
+            logger.info(
+                "VoiceSession transcript agent=%s session=%s chars=%d",
+                self.agent_id, self.session_id, len(transcript),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("STT timed out agent=%s session=%s", self.agent_id, self.session_id)
+            await self._emit({"type": "error", "data": {"message": "STT timeout"}})
+            return
         except Exception as e:  # noqa: BLE001
             logger.exception("STT failed")
             await self._emit({"type": "error", "data": {"message": f"STT failed: {e}"}})
@@ -167,6 +187,7 @@ class VoiceSession:
         ack_task = asyncio.create_task(self._speak_quick_ack(transcript))
 
         # 3. Delegate to container agent via existing Redis chat queue
+        await self._emit({"type": "status", "data": {"message": "Frage Agent..."}})
         response_text = await self._delegate_to_container(transcript)
         await ack_task  # ensure ack finished speaking before final answer
 
@@ -180,6 +201,7 @@ class VoiceSession:
         spoken = await self._make_spoken(response_text)
 
         # 5. TTS streaming (cancellable for barge-in)
+        await self._emit({"type": "status", "data": {"message": "Erzeuge Sprachantwort..."}})
         self._tts_task = asyncio.create_task(self._stream_tts(spoken))
         try:
             await self._tts_task
@@ -213,7 +235,11 @@ class VoiceSession:
         assert self.redis and self.redis.client
         message_id = uuid.uuid4().hex[:12]
         chat_payload = json.dumps({
-            "id": message_id, "text": transcript, "model": None, "images": [],
+            "id": message_id,
+            "text": transcript,
+            "model": None,
+            "images": [],
+            "source": "webapp_voice",
         })
         channel = f"agent:{self.agent_id}:chat:response"
         pubsub = await self.redis.subscribe(channel)
