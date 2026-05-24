@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.12] — 2026-05-24
+
+### Fixed
+- **GitHub PAT secrets are now recognized even when named `GIT_PAT`** — agent startup maps `GITHUB_TOKEN`, `GH_TOKEN`, or `GIT_PAT` into the GitHub CLI/git auth setup.
+- **Secret assignment applies immediately to running agents** — assigning, unassigning, deleting, or rotating an active secret now refreshes affected agent containers automatically so the new environment is available without a manual update.
+
+### Verified
+- `python3 -m py_compile agent/app/main.py orchestrator/app/api/secrets.py` succeeds.
+
+---
+
 ## [1.55.11] — 2026-05-23
 
 ### Fixed

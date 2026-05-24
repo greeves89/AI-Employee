@@ -13,13 +13,24 @@ from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agent_manager import AgentManager
 from app.core.encryption import decrypt_token, encrypt_token
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent_secret import AgentSecret, AgentSecretAssignment, SecretType
+from app.services.docker_service import DockerService
+from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/secrets", tags=["secrets"])
+
+
+def _get_agent_manager(
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+    redis: RedisService = Depends(get_redis_service),
+) -> AgentManager:
+    return AgentManager(db, docker, redis)
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +76,33 @@ def _serialize(s: AgentSecret, include_mask: bool = True) -> dict:
     }
 
 
+async def _refresh_agents_for_secret(
+    db: AsyncSession,
+    manager: AgentManager,
+    secret_id: int,
+    agent_ids: list[str] | None = None,
+) -> dict:
+    if agent_ids is None:
+        result = await db.execute(
+            select(AgentSecretAssignment.agent_id).where(
+                AgentSecretAssignment.secret_id == secret_id
+            )
+        )
+        agent_ids = list(result.scalars().all())
+
+    refreshed: list[str] = []
+    warnings: list[str] = []
+    for agent_id in sorted(set(agent_ids)):
+        try:
+            await manager.update_agent(agent_id)
+            refreshed.append(agent_id)
+        except Exception as exc:
+            logger.warning("Could not refresh agent %s after secret change: %s", agent_id, exc)
+            warnings.append(f"{agent_id}: {exc}")
+
+    return {"refreshed_agent_ids": refreshed, "warnings": warnings}
+
+
 # ---------------------------------------------------------------------------
 # Secret CRUD
 # ---------------------------------------------------------------------------
@@ -105,11 +143,13 @@ async def update_secret(
     body: SecretUpdate,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
 
+    should_refresh = body.value is not None or body.is_active is not None
     if body.name is not None:
         secret.name = body.name
     if body.description is not None:
@@ -121,7 +161,10 @@ async def update_secret(
 
     await db.commit()
     await db.refresh(secret)
-    return _serialize(secret)
+    response = _serialize(secret)
+    if should_refresh:
+        response["refresh"] = await _refresh_agents_for_secret(db, manager, secret_id)
+    return response
 
 
 @router.delete("/{secret_id}", status_code=204)
@@ -129,12 +172,21 @@ async def delete_secret(
     secret_id: int,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
+    result = await db.execute(
+        select(AgentSecretAssignment.agent_id).where(
+            AgentSecretAssignment.secret_id == secret_id
+        )
+    )
+    agent_ids = list(result.scalars().all())
     await db.delete(secret)
     await db.commit()
+    if agent_ids:
+        await _refresh_agents_for_secret(db, manager, secret_id, agent_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +219,7 @@ async def assign_secret(
     secret_id: int,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
@@ -179,11 +232,13 @@ async def assign_secret(
         )
     )
     if existing.scalar_one_or_none():
-        return {"ok": True, "message": "Already assigned"}
+        refresh = await _refresh_agents_for_secret(db, manager, secret_id, [agent_id])
+        return {"ok": True, "message": "Already assigned", "refresh": refresh}
 
     db.add(AgentSecretAssignment(agent_id=agent_id, secret_id=secret_id))
     await db.commit()
-    return {"ok": True}
+    refresh = await _refresh_agents_for_secret(db, manager, secret_id, [agent_id])
+    return {"ok": True, "refresh": refresh}
 
 
 @router.delete("/agent/{agent_id}/{secret_id}", status_code=204)
@@ -192,6 +247,7 @@ async def unassign_secret(
     secret_id: int,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     await db.execute(
         delete(AgentSecretAssignment).where(
@@ -200,3 +256,4 @@ async def unassign_secret(
         )
     )
     await db.commit()
+    await _refresh_agents_for_secret(db, manager, secret_id, [agent_id])

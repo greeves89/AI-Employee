@@ -234,10 +234,17 @@ def _write_mcp_json_fallback() -> None:
 
 
 def setup_github_credentials() -> None:
-    """If GITHUB_TOKEN env is set, configure git and gh CLI for authentication."""
-    token = os.environ.get("GITHUB_TOKEN", "")
+    """Configure git/gh authentication from an assigned GitHub token secret."""
+    token = (
+        os.environ.get("GITHUB_TOKEN")
+        or os.environ.get("GH_TOKEN")
+        or os.environ.get("GIT_PAT")
+        or ""
+    )
     if not token:
         return
+    os.environ.setdefault("GITHUB_TOKEN", token)
+    os.environ.setdefault("GH_TOKEN", token)
 
     agent_name = settings.agent_name or settings.agent_id
 
