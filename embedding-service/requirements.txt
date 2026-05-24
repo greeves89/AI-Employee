@@ -1,6 +1,6 @@
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
-sentence-transformers==3.3.1
+sentence-transformers==5.5.1
 pydantic==2.10.3
 # NOTE: torch is installed separately in the Dockerfile from the CPU-only
 # PyTorch index — the default PyPI wheel bundles ~2 GB of NVIDIA CUDA
