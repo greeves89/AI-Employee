@@ -682,6 +682,10 @@ class AgentManager:
                 env[secret.key_name] = decrypt_token(secret.value_encrypted)
             except Exception:
                 logger.warning("Failed to decrypt secret %s (%s)", secret.name, secret.key_name)
+        github_token = env.get("GITHUB_TOKEN") or env.get("GH_TOKEN") or env.get("GIT_PAT")
+        if github_token:
+            env.setdefault("GITHUB_TOKEN", github_token)
+            env.setdefault("GH_TOKEN", github_token)
         return env
 
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:

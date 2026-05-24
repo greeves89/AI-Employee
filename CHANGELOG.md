@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.13] — 2026-05-24
+
+### Fixed
+- **GitHub PAT aliases are now injected at container level** — assigned `GIT_PAT`, `GH_TOKEN`, or `GITHUB_TOKEN` secrets are normalized to both `GH_TOKEN` and `GITHUB_TOKEN`, so `gh`, shell commands, git helpers, and the agent process all see the same token.
+
+### Verified
+- `python3 -m py_compile orchestrator/app/core/agent_manager.py` succeeds.
+
+---
+
 ## [1.55.12] — 2026-05-24
 
 ### Fixed
