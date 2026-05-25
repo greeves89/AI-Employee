@@ -25,6 +25,9 @@ class TaskConsumer:
         if settings.agent_mode == "custom_llm":
             from app.llm_runner import LLMRunner
             self._runner = LLMRunner(log_publisher)
+        elif settings.agent_mode == "codex_cli":
+            from app.codex_runner import CodexAgentRunner
+            self._runner = CodexAgentRunner(log_publisher)
         else:
             from app.agent_runner import AgentRunner
             self._runner = AgentRunner(log_publisher)

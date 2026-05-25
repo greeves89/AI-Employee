@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.models.agent import AgentState
 
-AgentMode = Literal["claude_code", "custom_llm"]
+AgentMode = Literal["claude_code", "codex_cli", "custom_llm"]
 LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
 
 # What happens when an agent's monthly budget is exhausted:

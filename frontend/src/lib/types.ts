@@ -14,7 +14,7 @@ export type TaskStatus =
   | "failed"
   | "cancelled";
 
-export type AgentMode = "claude_code" | "custom_llm";
+export type AgentMode = "claude_code" | "codex_cli" | "custom_llm";
 export type LLMProviderType = "openai" | "anthropic" | "google" | "ollama" | "lm-studio";
 
 export interface LLMConfig {
@@ -180,7 +180,7 @@ export interface Schedule {
   updated_at: string;
 }
 
-export type ModelProvider = "anthropic" | "bedrock" | "vertex" | "foundry";
+export type ModelProvider = "anthropic" | "bedrock" | "vertex" | "foundry" | "codex";
 
 export interface AuditLog {
   id: number;
@@ -216,6 +216,7 @@ export interface Settings {
   has_bedrock: boolean;
   has_vertex: boolean;
   has_foundry: boolean;
+  has_codex_oauth: boolean;
   aws_region: string;
   vertex_region: string;
   foundry_resource: string;

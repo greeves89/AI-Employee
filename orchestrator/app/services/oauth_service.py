@@ -349,6 +349,71 @@ class OAuthService:
         logger.info("Stored PAT for %s (account: %s, user: %s)", provider_name, account_label, user_id)
         return integration
 
+    async def store_auth_json(
+        self, provider_name: str, auth_json: str, user_id: str | None = None
+    ) -> OAuthIntegration:
+        """Store a CLI auth JSON blob, encrypted as an integration token.
+
+        Codex' ChatGPT sign-in is managed by the Codex CLI. The stable handoff
+        for agents is the CLI's auth.json, not a generic OAuth redirect flow.
+        """
+        if provider_name != "codex":
+            raise ValueError("auth_json storage is only supported for codex")
+
+        try:
+            parsed = json.loads(auth_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid auth.json: {exc}") from exc
+
+        if not isinstance(parsed, dict):
+            raise ValueError("Invalid auth.json: expected a JSON object")
+        if parsed.get("auth_mode") != "chatgpt":
+            raise ValueError("Codex auth.json must use auth_mode='chatgpt'")
+        tokens = parsed.get("tokens")
+        if not isinstance(tokens, dict) or not tokens.get("access_token"):
+            raise ValueError("Codex auth.json is missing tokens.access_token")
+
+        provider_enum = OAuthProvider(provider_name)
+        result = await self.db.execute(
+            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
+        )
+        integration = result.scalar_one_or_none()
+
+        account_label = None
+        id_token = tokens.get("id_token")
+        if isinstance(id_token, str) and "." in id_token:
+            try:
+                payload = id_token.split(".")[1]
+                padded = payload + "=" * (-len(payload) % 4)
+                decoded = json.loads(base64.urlsafe_b64decode(padded))
+                account_label = decoded.get("email") or decoded.get("name")
+            except Exception:
+                account_label = None
+
+        if integration:
+            integration.access_token_encrypted = encrypt_token(json.dumps(parsed))
+            integration.refresh_token_encrypted = None
+            integration.expires_at = None
+            integration.scopes = "chatgpt codex_cli"
+            integration.account_label = account_label or integration.account_label
+            integration.token_type = "auth_json"
+        else:
+            integration = OAuthIntegration(
+                provider=provider_enum,
+                user_id=user_id,
+                access_token_encrypted=encrypt_token(json.dumps(parsed)),
+                refresh_token_encrypted=None,
+                token_type="auth_json",
+                scopes="chatgpt codex_cli",
+                account_label=account_label,
+            )
+            self.db.add(integration)
+
+        await self.db.commit()
+        await self.db.refresh(integration)
+        logger.info("Stored Codex auth.json (account: %s, user: %s)", account_label, user_id)
+        return integration
+
     async def disconnect(self, provider_name: str, user_id: str | None = None) -> None:
         """Remove an OAuth integration."""
         provider_enum = OAuthProvider(provider_name)
@@ -387,6 +452,7 @@ class OAuthService:
         for name, provider in PROVIDERS.items():
             integration = connected.get(name)
             is_pat_provider = provider.token_exchange_method == "pat_or_oauth"
+            is_auth_json_provider = provider.token_exchange_method == "auth_json"
             integrations.append({
                 "provider": name,
                 "display_name": provider.display_name,
@@ -396,8 +462,8 @@ class OAuthService:
                 "account_label": integration.account_label if integration else None,
                 "expires_at": integration.expires_at.isoformat() if integration and integration.expires_at else None,
                 "scopes": integration.scopes if integration else " ".join(provider.scopes),
-                "available": is_pat_provider or is_provider_available(provider),
-                "auth_type": "pat" if is_pat_provider else "oauth",
+                "available": is_pat_provider or is_auth_json_provider or is_provider_available(provider),
+                "auth_type": "auth_json" if is_auth_json_provider else ("pat" if is_pat_provider else "oauth"),
                 "per_user": name in PER_USER_PROVIDERS,
             })
         return integrations

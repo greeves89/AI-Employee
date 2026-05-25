@@ -16,6 +16,7 @@ from app.models.chat_message import ChatMessage
 from app.security.agent_guard import chat_rate_limiter, check_chat_message, notify_security_block
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ _CHAT_ATTACHMENT_EXTENSIONS = {
     ".zip", ".json", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".webp",
     ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".flac",
 }
+_active_chat_websockets: dict[str, WebSocket] = {}
 
 
 def init_stream_manager(redis: RedisService, docker: DockerService | None = None) -> StreamManager:
@@ -70,6 +72,7 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticke
     if ticket and _redis and _redis.client:
         user_id = await _redis.client.getdel(f"ws:ticket:{ticket}")
         if user_id:
+            websocket.state.user_id = str(user_id)
             return True
         await websocket.close(code=4001, reason="Invalid or expired ticket")
         return False
@@ -84,6 +87,7 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticke
             if not user:
                 await websocket.close(code=4001, reason="Invalid or expired token")
                 return False
+            websocket.state.user_id = str(user.id)
     except Exception:
         await websocket.close(code=4001, reason="Authentication failed")
         return False
@@ -148,6 +152,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             pass  # Allow connection attempt if check fails
 
     await websocket.accept()
+    connection_key = f"{getattr(websocket.state, 'user_id', 'anonymous')}:{agent_id}:chat"
+    previous = _active_chat_websockets.get(connection_key)
+    if previous and previous is not websocket:
+        try:
+            await previous.close(code=4000, reason="Replaced by a newer chat connection")
+        except Exception:
+            pass
+    _active_chat_websockets[connection_key] = websocket
     await websocket.send_text(json.dumps({
         "type": "ready",
         "data": {"agent_id": agent_id},
@@ -162,6 +174,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     _streaming_responses: dict[str, dict] = {}
     # Track seen tool_use_ids to prevent duplicate persistence
     _seen_tool_ids: set[str] = set()
+    _forwarded_file_keys: set[tuple[str, str]] = set()
     # Track messages sent but not yet completed (for drain)
     _pending_message_ids: set[str] = set()
     # Session tracking - defer session creation until first message
@@ -180,60 +193,109 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             return  # Don't save without a valid session
         try:
             async with async_session_factory() as db:
-                db.add(ChatMessage(
-                    agent_id=msg_agent_id,
-                    session_id=session_id,
-                    message_id=message_id,
-                    role=role,
-                    content=content,
-                    tool_calls=tool_calls,
-                    meta=meta,
-                    cost_usd=cost_usd,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                ))
+                existing = await db.scalar(
+                    select(ChatMessage)
+                    .where(ChatMessage.agent_id == msg_agent_id)
+                    .where(ChatMessage.session_id == session_id)
+                    .where(ChatMessage.message_id == message_id)
+                    .where(ChatMessage.role == role)
+                    .order_by(ChatMessage.id.asc())
+                    .limit(1)
+                )
+                if existing:
+                    existing.content = content or existing.content
+                    existing.tool_calls = tool_calls or existing.tool_calls
+                    merged_meta = dict(existing.meta or {})
+                    for key, value in (meta or {}).items():
+                        if value is not None:
+                            merged_meta[key] = value
+                    existing.meta = merged_meta or None
+                    existing.cost_usd = cost_usd if cost_usd is not None else existing.cost_usd
+                    existing.input_tokens = input_tokens if input_tokens is not None else existing.input_tokens
+                    existing.output_tokens = output_tokens if output_tokens is not None else existing.output_tokens
+                else:
+                    db.add(ChatMessage(
+                        agent_id=msg_agent_id,
+                        session_id=session_id,
+                        message_id=message_id,
+                        role=role,
+                        content=content,
+                        tool_calls=tool_calls,
+                        meta=meta,
+                        cost_usd=cost_usd,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    ))
                 await db.commit()
         except Exception:
             pass  # Don't break chat if DB write fails
 
     _ws_connected = True
 
+    def _file_attachment_payload(path: str, caption: str = "Download") -> dict | None:
+        if not path or not _docker or not agent_container_id:
+            return None
+        safe_path = os.path.normpath(path.rstrip(".,;:"))
+        if safe_path == "/workspace" or not safe_path.startswith("/workspace/"):
+            return None
+        _, ext = os.path.splitext(safe_path.lower())
+        if ext not in _CHAT_ATTACHMENT_EXTENSIONS:
+            return None
+        try:
+            code, output = _docker.exec_in_container(
+                agent_container_id,
+                ["stat", "-c", "%s|%F", safe_path],
+            )
+            if code != 0:
+                return None
+            size_raw, kind = (output.strip().split("|", 1) + [""])[:2]
+            size = int(size_raw)
+            if "regular file" not in kind or size <= 0 or size > 50 * 1024 * 1024:
+                return None
+            return {
+                "path": safe_path,
+                "filename": os.path.basename(safe_path),
+                "media_type": mimetypes.guess_type(safe_path)[0] or "application/octet-stream",
+                "size": size,
+                "caption": caption or "Download",
+            }
+        except Exception:
+            logger.debug("auto-present file detection failed for %s", safe_path, exc_info=True)
+            return None
+
     def _auto_presented_files_from_text(content: str) -> list[dict]:
         """Best-effort attachment fallback for agents that mention files but forget present_file."""
-        if not content or not _docker or not agent_container_id:
+        if not content:
             return []
-
         found: list[dict] = []
         seen: set[str] = set()
         for match in re.finditer(r"/workspace/[^\s`'\"<>)\]}]+", content):
-            raw_path = match.group(0).rstrip(".,;:")
-            safe_path = os.path.normpath(raw_path)
-            if safe_path == "/workspace" or not safe_path.startswith("/workspace/"):
+            payload = _file_attachment_payload(match.group(0), "Download")
+            if payload and payload["path"] not in seen:
+                seen.add(payload["path"])
+                found.append(payload)
+        return found
+
+    def _auto_presented_files_from_tool_calls(tool_calls: list[dict] | None) -> list[dict]:
+        """Attachment fallback when present_file tool results are not emitted by the CLI stream."""
+        found: list[dict] = []
+        seen: set[str] = set()
+        for call in tool_calls or []:
+            tool = str(call.get("tool", ""))
+            if "present_file" not in tool:
                 continue
-            _, ext = os.path.splitext(safe_path.lower())
-            if ext not in _CHAT_ATTACHMENT_EXTENSIONS or safe_path in seen:
-                continue
+            raw_input = call.get("input") or "{}"
             try:
-                code, output = _docker.exec_in_container(
-                    agent_container_id,
-                    ["stat", "-c", "%s|%F", safe_path],
-                )
-                if code != 0:
-                    continue
-                size_raw, kind = (output.strip().split("|", 1) + [""])[:2]
-                size = int(size_raw)
-                if "regular file" not in kind or size <= 0 or size > 50 * 1024 * 1024:
-                    continue
-                seen.add(safe_path)
-                found.append({
-                    "path": safe_path,
-                    "filename": os.path.basename(safe_path),
-                    "media_type": mimetypes.guess_type(safe_path)[0] or "application/octet-stream",
-                    "size": size,
-                    "caption": "Download",
-                })
+                payload_in = json.loads(raw_input) if isinstance(raw_input, str) else dict(raw_input)
             except Exception:
-                logger.debug("auto-present file detection failed for %s", safe_path, exc_info=True)
+                continue
+            payload = _file_attachment_payload(
+                str(payload_in.get("path") or ""),
+                str(payload_in.get("caption") or "Download"),
+            )
+            if payload and payload["path"] not in seen:
+                seen.add(payload["path"])
+                found.append(payload)
         return found
 
     def _process_event(raw_data: str):
@@ -286,6 +348,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 _pending_message_ids.discard(mid)
                 resp = _streaming_responses.pop(mid, {})
                 auto_files = _auto_presented_files_from_text(str(resp.get("content", "")))
+                auto_files.extend(_auto_presented_files_from_tool_calls(resp.get("tool_calls")))
                 if auto_files:
                     existing = {f.get("path") for f in resp.get("files", []) if isinstance(f, dict)}
                     resp.setdefault("files", []).extend(
@@ -319,6 +382,36 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     data = message["data"]
                     if isinstance(data, bytes):
                         data = data.decode("utf-8")
+                    try:
+                        _event_for_forward = json.loads(data)
+                        if _event_for_forward.get("type") == "file":
+                            _forwarded_file_keys.add((
+                                str(_event_for_forward.get("message_id", "")),
+                                str((_event_for_forward.get("data") or {}).get("path", "")),
+                            ))
+                    except Exception:
+                        pass
+
+                    # Track for persistence
+                    result = _process_event(data)
+                    if result and result[0] == "done":
+                        meta = result[3] or {}
+                        for file_payload in meta.get("presented_files") or []:
+                            file_key = (str(result[1]), str(file_payload.get("path", "")))
+                            if file_key in _forwarded_file_keys:
+                                continue
+                            _forwarded_file_keys.add(file_key)
+                            if not _ws_connected:
+                                break
+                            try:
+                                await websocket.send_text(json.dumps({
+                                    "type": "file",
+                                    "message_id": result[1],
+                                    "data": file_payload,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }))
+                            except Exception:
+                                _ws_connected = False
 
                     # Forward to WebSocket if still connected
                     if _ws_connected:
@@ -327,8 +420,6 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         except Exception:
                             _ws_connected = False
 
-                    # Track for persistence
-                    result = _process_event(data)
                     if result:
                         if result[0] == "error":
                             await _save_chat_message(agent_id, result[1], "error", content=result[2])
@@ -562,6 +653,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     except Exception:
         _ws_connected = False
     finally:
+        if _active_chat_websockets.get(connection_key) is websocket:
+            _active_chat_websockets.pop(connection_key, None)
         forward_task.cancel()
         try:
             await forward_task

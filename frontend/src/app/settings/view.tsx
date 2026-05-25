@@ -6,7 +6,7 @@ import {
   Key, MessageSquare, Save, Loader2,
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
-  ExternalLink, Copy, LogIn, Info, ChevronRight,
+  ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -50,6 +50,11 @@ const MODEL_OPTIONS: Record<ModelProvider, { value: string; label: string; tier:
     { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
     { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
     { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Legacy" },
+  ],
+  codex: [
+    { value: "gpt-5.5", label: "GPT-5.5", tier: "Codex" },
+    { value: "gpt-5.4", label: "GPT-5.4", tier: "Codex" },
+    { value: "gpt-5-codex", label: "GPT-5 Codex", tier: "Codex" },
   ],
 };
 
@@ -109,6 +114,15 @@ const PROVIDERS: {
     bgColor: "bg-sky-500/10 border-sky-500/20",
     description: "Microsoft Azure managed deployment",
   },
+  {
+    id: "codex",
+    label: "OpenAI Codex",
+    short: "Codex",
+    icon: Sparkles,
+    color: "text-emerald-400",
+    bgColor: "bg-emerald-500/10 border-emerald-500/20",
+    description: "Codex CLI via ChatGPT subscription login",
+  },
 ];
 
 export function SettingsView({ embedded = false }: { embedded?: boolean }) {
@@ -153,6 +167,15 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [claudeCode, setClaudeCode] = useState("");
   const [claudeLoginLoading, setClaudeLoginLoading] = useState(false);
   const [claudeLoginError, setClaudeLoginError] = useState("");
+  // Codex ChatGPT login
+  const [codexLoginOpen, setCodexLoginOpen] = useState(false);
+  const [codexAuthJson, setCodexAuthJson] = useState("");
+  const [codexDeviceSessionId, setCodexDeviceSessionId] = useState("");
+  const [codexDeviceUrl, setCodexDeviceUrl] = useState("");
+  const [codexDeviceCode, setCodexDeviceCode] = useState("");
+  const [codexDeviceStatus, setCodexDeviceStatus] = useState<api.DeviceAuthStatus["status"] | "idle">("idle");
+  const [codexLoginLoading, setCodexLoginLoading] = useState(false);
+  const [codexLoginError, setCodexLoginError] = useState("");
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -238,6 +261,37 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setDefaultModel(MODEL_OPTIONS[provider][0].value);
     }
   }, [provider, defaultModel]);
+
+  useEffect(() => {
+    if (!codexLoginOpen || !codexDeviceSessionId || codexDeviceStatus !== "pending") return;
+
+    const timer = window.setInterval(async () => {
+      try {
+        const status = await api.getDeviceAuthStatus("codex", codexDeviceSessionId);
+        setCodexDeviceStatus(status.status);
+        if (status.status === "connected") {
+          window.clearInterval(timer);
+          setCodexLoginOpen(false);
+          setCodexAuthJson("");
+          setCodexDeviceSessionId("");
+          setCodexDeviceUrl("");
+          setCodexDeviceCode("");
+          await api.updateSettings({ model_provider: "codex", default_model: defaultModel });
+          setProvider("codex");
+          setMessage("Codex Login erfolgreich! Bot nutzt jetzt die ChatGPT/Codex-Session.");
+          const s = await api.getSettings();
+          setSettings(s);
+        } else if (status.status === "error" || status.status === "expired" || status.status === "cancelled") {
+          window.clearInterval(timer);
+          setCodexLoginError(status.error || `Codex Login ${status.status}`);
+        }
+      } catch (e) {
+        setCodexLoginError(e instanceof Error ? e.message : "Codex Login Status konnte nicht gelesen werden");
+      }
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [codexLoginOpen, codexDeviceSessionId, codexDeviceStatus, defaultModel]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -342,6 +396,63 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
+  const handleCodexLogin = async () => {
+    setCodexLoginLoading(true);
+    setCodexLoginError("");
+    setCodexAuthJson("");
+    try {
+      const session = await api.startDeviceAuth("codex");
+      setCodexDeviceSessionId(session.session_id);
+      setCodexDeviceUrl(session.verification_uri);
+      setCodexDeviceCode(session.user_code);
+      setCodexDeviceStatus("pending");
+      setCodexLoginOpen(true);
+      window.open(session.verification_uri, "_blank");
+    } catch (e) {
+      setCodexLoginError(e instanceof Error ? e.message : "Codex device login failed");
+      setCodexLoginOpen(true);
+    } finally {
+      setCodexLoginLoading(false);
+    }
+  };
+
+  const handleCodexAuthSubmit = async () => {
+    if (!codexAuthJson.trim()) return;
+    setCodexLoginLoading(true);
+    setCodexLoginError("");
+    try {
+      await api.saveAuthJson("codex", codexAuthJson.trim());
+      await api.updateSettings({ model_provider: "codex", default_model: defaultModel });
+      setProvider("codex");
+      setCodexLoginOpen(false);
+      setCodexAuthJson("");
+      setMessage("Codex Login erfolgreich! Bot nutzt jetzt die ChatGPT/Codex-Session.");
+      const s = await api.getSettings();
+      setSettings(s);
+    } catch (e) {
+      setCodexLoginError(e instanceof Error ? e.message : "Codex auth import failed");
+    } finally {
+      setCodexLoginLoading(false);
+    }
+  };
+
+  const handleCodexCancel = async () => {
+    if (codexDeviceSessionId && codexDeviceStatus === "pending") {
+      try {
+        await api.cancelDeviceAuth("codex", codexDeviceSessionId);
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+    setCodexLoginOpen(false);
+    setCodexAuthJson("");
+    setCodexLoginError("");
+    setCodexDeviceSessionId("");
+    setCodexDeviceUrl("");
+    setCodexDeviceCode("");
+    setCodexDeviceStatus("idle");
+  };
+
   // Provider status helpers
   const providerConfigured = (p: ModelProvider): boolean => {
     if (!settings) return false;
@@ -349,6 +460,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     if (p === "bedrock") return settings.has_bedrock;
     if (p === "vertex") return settings.has_vertex;
     if (p === "foundry") return settings.has_foundry;
+    if (p === "codex") return settings.has_codex_oauth;
     return false;
   };
 
@@ -374,7 +486,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           </div>
 
           {/* Provider Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-4">
             {PROVIDERS.map((p) => {
               const Icon = p.icon;
               const active = provider === p.id;
@@ -418,7 +530,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     <p className="text-[10px] text-muted-foreground/50 leading-tight mt-0.5">
                       {p.id === "anthropic" ? "Direct API" :
                        p.id === "bedrock" ? "AWS" :
-                       p.id === "vertex" ? "Google Cloud" : "Azure"}
+                       p.id === "vertex" ? "Google Cloud" :
+                       p.id === "codex" ? "ChatGPT" : "Azure"}
                     </p>
                   </div>
                 </button>
@@ -518,6 +631,41 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                           OAuth Session aktiv
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* OpenAI Codex */}
+              {provider === "codex" && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-2 p-1 rounded-lg bg-foreground/[0.03]">
+                    <div className="rounded-md bg-background shadow-sm px-3 py-2 text-xs font-medium text-foreground">
+                      <span className="flex items-center justify-center gap-1.5">
+                        <Sparkles className="h-3 w-3" />
+                        ChatGPT Login
+                      </span>
+                      <span className="block text-center text-[10px] opacity-50 mt-0.5">
+                        Nutzt deine Codex/ChatGPT Subscription, keinen API-Key
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCodexLogin}
+                    disabled={codexLoginLoading}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-all duration-200"
+                  >
+                    {codexLoginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                    Mit ChatGPT/Codex einloggen
+                  </button>
+                  <p className="text-[10px] text-muted-foreground/40">
+                    Öffnet den ChatGPT Device-Login im Browser. Nach der Autorisierung speichert der
+                    Orchestrator die Codex-Session verschlüsselt und stellt sie Agent-Containern als CODEX_HOME bereit.
+                  </p>
+                  {settings?.has_codex_oauth && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Codex ChatGPT Session aktiv
                     </div>
                   )}
                 </div>
@@ -1173,6 +1321,95 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 </button>
                 <button
                   onClick={() => { setClaudeLoginOpen(false); setClaudeCode(""); setClaudeLoginError(""); }}
+                  className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* ─── Codex ChatGPT Device Auth Modal ─── */}
+        {codexLoginOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-xl rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
+            >
+              <h3 className="text-base font-semibold mb-1">Mit ChatGPT/Codex einloggen</h3>
+              <p className="text-xs text-muted-foreground/60 mb-4">
+                Öffne den Link, gib den Code ein und autorisiere Codex. Danach übernimmt der Orchestrator
+                die Session automatisch.
+              </p>
+
+              {codexDeviceSessionId && (
+                <div className="space-y-3 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground/60">Code</span>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(codexDeviceCode)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Kopieren
+                    </button>
+                  </div>
+                  <div className="rounded-lg bg-background px-4 py-3 text-center font-mono text-2xl font-semibold tracking-widest text-emerald-400">
+                    {codexDeviceCode}
+                  </div>
+                  <a
+                    href={codexDeviceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-all"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    ChatGPT Login öffnen
+                  </a>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Warte auf Autorisierung...
+                  </div>
+                </div>
+              )}
+
+              <details className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
+                <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                  Fallback: auth.json manuell importieren
+                </summary>
+                <textarea
+                  value={codexAuthJson}
+                  onChange={(e) => setCodexAuthJson(e.target.value)}
+                  placeholder='{"auth_mode":"chatgpt","tokens":{...}}'
+                  rows={7}
+                  className="mt-3 w-full rounded-lg border border-foreground/[0.08] bg-background px-3.5 py-3 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25 resize-none"
+                />
+              </details>
+
+              {codexLoginError && (
+                <p className="text-xs text-red-400 mt-2 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {codexLoginError}
+                </p>
+              )}
+
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={handleCodexAuthSubmit}
+                  disabled={codexLoginLoading || !codexAuthJson.trim()}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
+                >
+                  {codexLoginLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Fallback speichern
+                </button>
+                <button
+                  onClick={handleCodexCancel}
                   className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
                 >
                   Abbrechen

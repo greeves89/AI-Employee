@@ -205,3 +205,121 @@ async def store_pat(
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- CLI auth.json integrations (Codex ChatGPT Login) ---
+
+
+class AuthJsonRequest(BaseModel):
+    auth_json: str
+
+
+class CodexDeviceStartResponse(BaseModel):
+    session_id: str
+    verification_uri: str
+    user_code: str
+    expires_at: str
+    status: str
+
+
+class CodexDeviceStatusResponse(BaseModel):
+    session_id: str
+    status: str
+    expires_at: str
+    verification_uri: str | None = None
+    user_code: str | None = None
+    account_label: str | None = None
+    error: str | None = None
+
+
+@router.post("/{provider}/auth-json")
+async def store_auth_json(
+    provider: str,
+    body: AuthJsonRequest,
+    user=Depends(require_admin),
+    service: OAuthService = Depends(_get_oauth_service),
+):
+    """Store a CLI auth.json blob for providers such as Codex.
+
+    Admin only: this grants agent containers access to the platform-level
+    ChatGPT/Codex session.
+    """
+    try:
+        integration = await service.store_auth_json(provider, body.auth_json)
+        if provider == "codex":
+            from app.services.codex_auth_service import CodexAuthService
+            await CodexAuthService().sync_auth_json()
+        return {
+            "status": "connected",
+            "provider": provider,
+            "account_label": integration.account_label,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{provider}/device-auth/start", response_model=CodexDeviceStartResponse)
+async def start_device_auth(
+    provider: str,
+    user=Depends(require_admin),
+):
+    """Start a CLI-backed device-code login flow.
+
+    Codex currently exposes ChatGPT sign-in through its CLI. The orchestrator
+    runs `codex login --device-auth`, returns the verification URL/code, then
+    stores the generated auth.json encrypted after the browser authorization.
+    """
+    if provider != "codex":
+        raise HTTPException(status_code=400, detail="Device auth is only supported for codex")
+
+    try:
+        from app.services.codex_device_auth_service import codex_device_auth_service
+        session = await codex_device_auth_service.start()
+        return CodexDeviceStartResponse(
+            session_id=session.id,
+            verification_uri=session.verification_uri,
+            user_code=session.code,
+            expires_at=session.expires_at.isoformat(),
+            status=session.status,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{provider}/device-auth/{session_id}", response_model=CodexDeviceStatusResponse)
+async def get_device_auth_status(
+    provider: str,
+    session_id: str,
+    user=Depends(require_admin),
+):
+    if provider != "codex":
+        raise HTTPException(status_code=400, detail="Device auth is only supported for codex")
+
+    from app.services.codex_device_auth_service import codex_device_auth_service
+    session = await codex_device_auth_service.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Device auth session not found")
+
+    return CodexDeviceStatusResponse(
+        session_id=session.id,
+        status=session.status,
+        expires_at=session.expires_at.isoformat(),
+        verification_uri=session.verification_uri if session.status == "pending" else None,
+        user_code=session.code if session.status == "pending" else None,
+        account_label=session.account_label,
+        error=session.error,
+    )
+
+
+@router.delete("/{provider}/device-auth/{session_id}")
+async def cancel_device_auth(
+    provider: str,
+    session_id: str,
+    user=Depends(require_admin),
+):
+    if provider != "codex":
+        raise HTTPException(status_code=400, detail="Device auth is only supported for codex")
+
+    from app.services.codex_device_auth_service import codex_device_auth_service
+    cancelled = await codex_device_auth_service.cancel(session_id)
+    return {"status": "cancelled" if cancelled else "not_found", "provider": provider}

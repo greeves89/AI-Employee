@@ -22,6 +22,47 @@ const TYPE_COLORS: Record<string, string> = {
   oauth_token: "bg-amber-500/10 text-amber-400 border-amber-500/20",
 };
 
+const TYPE_COPY = {
+  api_key: {
+    namePlaceholder: "GitHub PAT",
+    envPlaceholder: "GIT_PAT",
+    valueLabel: "API Key",
+    valuePlaceholder: "ghp_... / sk-... / token...",
+    descriptionPlaceholder: "Injected into assigned agent containers as an environment variable",
+  },
+  sso_profile: {
+    namePlaceholder: "Supabase SSO Profile",
+    envPlaceholder: "SSO_PROFILE_SUPABASE",
+    valueLabel: "SSO Profile / Secret",
+    valuePlaceholder:
+      '{\n  "provider": "supabase",\n  "server_url": "https://example.com",\n  "token": "paste-secret-here"\n}',
+    descriptionPlaceholder: "SSO credentials/profile used by assigned agents to authenticate against a server",
+  },
+  oauth_token: {
+    namePlaceholder: "OpenAI OAuth Token",
+    envPlaceholder: "OPENAI_OAUTH_TOKEN",
+    valueLabel: "OAuth Token / Auth JSON",
+    valuePlaceholder: "Paste OAuth token or auth JSON...",
+    descriptionPlaceholder: "OAuth token or auth payload injected into assigned agent containers",
+  },
+} as const;
+
+function normalizeEnvName(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function defaultEnvName(name: string, type: keyof typeof TYPE_COPY) {
+  const normalized = normalizeEnvName(name);
+  if (!normalized) return "";
+  if (type === "sso_profile" && !normalized.startsWith("SSO_")) return `SSO_PROFILE_${normalized}`;
+  if (type === "oauth_token" && !normalized.includes("OAUTH")) return `${normalized}_OAUTH_TOKEN`;
+  return normalized;
+}
+
 function Toast({ type, message, onClose }: { type: "success" | "error"; message: string; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -51,6 +92,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     secret_type: "api_key" as "api_key" | "sso_profile" | "oauth_token",
     description: "",
   });
+  const [keyNameTouched, setKeyNameTouched] = useState(false);
   const [editForm, setEditForm] = useState<{ name: string; description: string; value: string; is_active: boolean }>({
     name: "", description: "", value: "", is_active: true,
   });
@@ -80,6 +122,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
       showToast("success", "Secret created");
       setShowCreate(false);
       setForm({ name: "", key_name: "", value: "", secret_type: "api_key", description: "" });
+      setKeyNameTouched(false);
       await load();
     } catch {
       showToast("error", "Failed to create secret");
@@ -139,6 +182,8 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     showToast("success", `Copied env-var name: ${s.key_name}`);
   }
 
+  const createCopy = TYPE_COPY[form.secret_type];
+
   return (
     <div className={embedded ? "" : "flex flex-col h-screen bg-background"}>
       {!embedded && <Header title="Key Management" subtitle="Encrypted API keys, SSO profiles and OAuth tokens" />}
@@ -168,55 +213,88 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 mb-4">
             <h2 className="text-sm font-semibold mb-4">New Secret</h2>
             <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 flex flex-col gap-1">
+                <label className="text-[11px] font-medium text-muted-foreground/70">Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["api_key", "sso_profile", "oauth_token"] as const).map(type => {
+                    const { label, Icon } = TYPE_LABELS[type];
+                    const selected = form.secret_type === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setForm(p => {
+                            const next = { ...p, secret_type: type };
+                            if (!keyNameTouched) next.key_name = defaultEnvName(p.name, type);
+                            return next;
+                          });
+                        }}
+                        className={cn(
+                          "flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-left text-sm transition-colors",
+                          selected
+                            ? "border-primary/50 bg-primary/10 text-foreground"
+                            : "border-foreground/[0.08] bg-foreground/[0.02] text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <Icon size={15} />
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[11px] font-medium text-muted-foreground/70">Name</label>
                 <input
-                  placeholder="Azure AI Search Key"
+                  placeholder={createCopy.namePlaceholder}
                   value={form.name}
-                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                  onChange={e => {
+                    const name = e.target.value;
+                    setForm(p => ({
+                      ...p,
+                      name,
+                      key_name: keyNameTouched ? p.key_name : defaultEnvName(name, p.secret_type),
+                    }));
+                  }}
                   className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm"
                 />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[11px] font-medium text-muted-foreground/70">Env-Var Name</label>
                 <input
-                  placeholder="AZURE_AI_SEARCH_KEY"
+                  placeholder={createCopy.envPlaceholder}
                   value={form.key_name}
-                  onChange={e => setForm(p => ({ ...p, key_name: e.target.value.toUpperCase().replace(/\s/g, "_") }))}
+                  onChange={e => {
+                    setKeyNameTouched(true);
+                    setForm(p => ({ ...p, key_name: normalizeEnvName(e.target.value) }));
+                  }}
                   className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Value</label>
-                <input
-                  type="password"
-                  placeholder="sk-..."
+              <div className="col-span-2 flex flex-col gap-1">
+                <label className="text-[11px] font-medium text-muted-foreground/70">{createCopy.valueLabel}</label>
+                <textarea
+                  rows={form.secret_type === "api_key" ? 3 : 7}
+                  placeholder={createCopy.valuePlaceholder}
                   value={form.value}
                   onChange={e => setForm(p => ({ ...p, value: e.target.value }))}
-                  className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
+                  className="resize-y rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono leading-relaxed"
                 />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Type</label>
-                <select
-                  value={form.secret_type}
-                  onChange={e => setForm(p => ({ ...p, secret_type: e.target.value as typeof p.secret_type }))}
-                  className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm"
-                >
-                  <option value="api_key">API Key</option>
-                  <option value="sso_profile">SSO Profile</option>
-                  <option value="oauth_token">OAuth Token</option>
-                </select>
               </div>
               <div className="col-span-2 flex flex-col gap-1">
                 <label className="text-[11px] font-medium text-muted-foreground/70">Description (optional)</label>
                 <input
-                  placeholder="Used for Azure AI Search queries"
+                  placeholder={createCopy.descriptionPlaceholder}
                   value={form.description}
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm"
                 />
               </div>
+              <p className="col-span-2 text-[11px] leading-relaxed text-muted-foreground/60">
+                Assigned agents receive the secret value as <span className="font-mono text-muted-foreground">{form.key_name || createCopy.envPlaceholder}</span>.
+                The model should use the variable name in tools/scripts and must not print the secret value.
+              </p>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowCreate(false)} className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]">

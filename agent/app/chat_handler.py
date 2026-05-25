@@ -110,6 +110,36 @@ class ChatHandler:
         stream_had_error = False
         accumulated_tool_calls: list[dict] = []  # Track tool calls for persistence
         stderr_lines: list[str] = []  # Collect stderr concurrently
+        seen_file_payloads: set[str] = set()
+
+        async def _publish_present_file_if_marker(marker_text: str) -> bool:
+            if not marker_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__"):
+                return False
+            payload_raw = marker_text.removeprefix("__AI_EMPLOYEE_PRESENT_FILE__")
+            if payload_raw in seen_file_payloads:
+                return True
+            try:
+                payload = json.loads(payload_raw)
+                seen_file_payloads.add(payload_raw)
+                await self.log_publisher.publish_chat(message_id, "file", payload)
+            except Exception:
+                logger.debug("Could not parse present_file payload", exc_info=True)
+            return True
+
+        def _first_text_from_tool_result_content(content) -> str:
+            if isinstance(content, str):
+                return content
+            if isinstance(content, dict):
+                if isinstance(content.get("text"), str):
+                    return content["text"]
+                if "content" in content:
+                    return _first_text_from_tool_result_content(content["content"])
+            if isinstance(content, list):
+                for block in content:
+                    text = _first_text_from_tool_result_content(block)
+                    if text:
+                        return text
+            return ""
 
         async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
             """Read stderr concurrently so it's not lost when process exits."""
@@ -191,29 +221,38 @@ class ChatHandler:
 
                 elif event_type == "tool_result":
                     content = event.get("content", "")
-                    marker_text = ""
-                    if isinstance(content, str):
-                        marker_text = content
-                    elif isinstance(content, list):
-                        for block in content:
-                            if isinstance(block, dict) and isinstance(block.get("text"), str):
-                                marker_text = block["text"]
-                                break
-                    if marker_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__"):
-                        try:
-                            payload = json.loads(marker_text.removeprefix("__AI_EMPLOYEE_PRESENT_FILE__"))
-                            await self.log_publisher.publish_chat(message_id, "file", payload)
-                        except Exception:
-                            pass
+                    marker_text = _first_text_from_tool_result_content(content)
+                    is_present_file = await _publish_present_file_if_marker(marker_text)
                     await self.log_publisher.publish_chat(
                         message_id,
                         "tool_result",
                         {
                             "tool_use_id": event.get("tool_use_id", ""),
                             "content": "File presented to the user."
-                            if marker_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__") else content,
+                            if is_present_file else content,
                         },
                     )
+
+                elif event_type == "user":
+                    # Claude Code stream-json may emit MCP tool results as a
+                    # synthetic user message with content blocks of type
+                    # "tool_result" instead of a top-level tool_result event.
+                    message = event.get("message", {})
+                    for block in message.get("content", []):
+                        if not isinstance(block, dict) or block.get("type") != "tool_result":
+                            continue
+                        content = block.get("content", "")
+                        marker_text = _first_text_from_tool_result_content(content)
+                        is_present_file = await _publish_present_file_if_marker(marker_text)
+                        await self.log_publisher.publish_chat(
+                            message_id,
+                            "tool_result",
+                            {
+                                "tool_use_id": block.get("tool_use_id", ""),
+                                "content": "File presented to the user."
+                                if is_present_file else content,
+                            },
+                        )
 
                 elif event_type == "result":
                     if event.get("is_error"):

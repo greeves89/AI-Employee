@@ -716,6 +716,13 @@ async def lifespan(app: FastAPI):
     token_svc.write_initial_token()
     logger.info("Claude token initialized (background sync every 2 min from Keychain file)")
 
+    try:
+        from app.services.codex_auth_service import CodexAuthService
+        if await CodexAuthService().sync_auth_json():
+            logger.info("Codex auth initialized from encrypted DB session")
+    except Exception as e:
+        logger.warning(f"Could not initialize Codex auth: {e}")
+
     # Initialize services
     app.state.redis = RedisService(settings.redis_url)
     await app.state.redis.connect()

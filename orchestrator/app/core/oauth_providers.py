@@ -117,6 +117,20 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
         client_id_setting="oauth_anthropic_client_id",
         client_secret_setting="",  # Public client — no secret needed
     ),
+    "codex": OAuthProviderConfig(
+        name="codex",
+        display_name="OpenAI Codex",
+        icon="Sparkles",
+        description="Codex CLI ChatGPT Login — eigene Bot-Session",
+        authorization_url="",
+        token_url="",
+        userinfo_url=None,
+        scopes=["chatgpt", "codex_cli"],
+        supports_refresh=True,
+        token_exchange_method="auth_json",
+        client_id_setting="",  # Codex CLI owns the ChatGPT sign-in flow.
+        client_secret_setting="",
+    ),
     "apple": OAuthProviderConfig(
         name="apple",
         display_name="Apple",

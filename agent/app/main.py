@@ -274,6 +274,30 @@ def setup_vertex_credentials() -> None:
     print(f"[Agent] Wrote GCP credentials to {creds_path}")
 
 
+def setup_codex_auth() -> None:
+    """Materialize Codex auth from the shared volume into CODEX_HOME."""
+    import shutil
+
+    source = "/shared/.codex/auth.json"
+    codex_home = os.environ.get("CODEX_HOME", "/home/agent/.codex")
+    target = os.path.join(codex_home, "auth.json")
+    os.environ["CODEX_HOME"] = codex_home
+    if settings.openai_api_key or os.environ.get("OPENAI_API_KEY"):
+        os.makedirs(codex_home, exist_ok=True)
+        print("[Agent] Codex API key auth configured from environment")
+        return
+    if not os.path.exists(source):
+        print("[Agent] WARN: Codex auth not found at /shared/.codex/auth.json")
+        return
+    try:
+        os.makedirs(codex_home, exist_ok=True)
+        shutil.copyfile(source, target)
+        os.chmod(target, 0o600)
+        print(f"[Agent] Codex auth configured at {target}")
+    except Exception as e:
+        print(f"[Agent] WARN: Failed to configure Codex auth: {e}")
+
+
 def _copy_skill_to_workspace(skill_name: str, target_dir: str) -> None:
     """Find a skill installed by npx in /tmp and copy it to the workspace skills dir."""
     import glob
@@ -403,6 +427,10 @@ async def main() -> None:
         # Built-in orchestrator API tools are always available
         from app.tools.definitions import ORCHESTRATOR_TOOL_NAMES
         print(f"[Agent {agent_id}] {len(ORCHESTRATOR_TOOL_NAMES)} orchestrator API tools available")
+    elif mode == "codex_cli":
+        setup_github_credentials()
+        setup_codex_auth()
+        print(f"[Agent {agent_id}] Codex CLI mode configured")
     else:
         # Claude Code mode: full setup (MCP servers, credentials, etc.)
         setup_vertex_credentials()

@@ -412,7 +412,12 @@ MULTIMODAL_CAPABILITY_NOTE = (
     "- To SHOW the user a generated deliverable (PDF, DOCX, XLSX, CSV, ZIP, "
     "Markdown report, audio file/voice note, etc.), save it under `/workspace/transfer/` and then "
     "call `present_file` with the file path. Do not only mention the path in "
-    "text; `present_file` makes it downloadable in iOS, Telegram, and Web Chat."
+    "text; `present_file` makes it downloadable in iOS, Telegram, and Web Chat.\n"
+    "- If the user asks to send, upload, attach, share, open, download, or show "
+    "an existing file (German examples: 'schick', 'sende', 'Datei', 'PDF', "
+    "'MP3', 'Podcast', 'Folge', 'Download'), find the best matching/newest file "
+    "under `/workspace/transfer/` and call `present_file`. Never answer with "
+    "only a path or description when a matching file exists."
 )
 
 

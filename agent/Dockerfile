@@ -29,6 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Claude Code CLI globally (pin version for reproducibility)
 RUN npm install -g @anthropic-ai/claude-code@2.1.114
 
+# Install OpenAI Codex CLI for ChatGPT-subscription backed agents
+RUN npm install -g @openai/codex
+
 # Install Hyperframes CLI for agent video rendering
 RUN npm install -g hyperframes
 
@@ -86,6 +89,7 @@ RUN mkdir -p /workspace && chown agent:agent /workspace
 
 # Create .claude directory for session persistence (volume mount inherits ownership)
 RUN mkdir -p /home/agent/.claude && chown -R agent:agent /home/agent/.claude
+RUN mkdir -p /home/agent/.codex && chown -R agent:agent /home/agent/.codex
 
 # Global CLAUDE.md — disables file-based memory, enforces MCP memory + skill usage
 COPY claude-global.md /home/agent/.claude/CLAUDE.md

@@ -24,6 +24,10 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
     )
     anthropic_integration = result.scalar_one_or_none()
     has_oauth_token = anthropic_integration is not None or bool(settings.claude_code_oauth_token)
+    codex_result = await db.execute(
+        select(OAuthIntegration).where(OAuthIntegration.provider == OAuthProvider.CODEX)
+    )
+    codex_integration = codex_result.scalar_one_or_none()
 
     if has_api_key:
         auth_method = "api_key"
@@ -49,6 +53,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         has_bedrock=bool(settings.aws_access_key_id and settings.aws_secret_access_key),
         has_vertex=bool(settings.vertex_project_id and settings.vertex_credentials_json),
         has_foundry=bool(settings.foundry_api_key and settings.foundry_resource),
+        has_codex_oauth=codex_integration is not None,
         aws_region=settings.aws_region,
         vertex_region=settings.vertex_region,
         foundry_resource=settings.foundry_resource,

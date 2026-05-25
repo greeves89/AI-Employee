@@ -85,6 +85,7 @@ class SettingsResponse(BaseModel):
     has_bedrock: bool
     has_vertex: bool
     has_foundry: bool
+    has_codex_oauth: bool = False
     aws_region: str
     vertex_region: str
     foundry_resource: str

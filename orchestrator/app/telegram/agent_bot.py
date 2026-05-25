@@ -53,7 +53,7 @@ class TelegramAgentBot:
         self.auth_key = auth_key
         self.app: Application | None = None
         self._started = False
-        self._response_listeners: dict[int, asyncio.Task] = {}
+        self._response_listeners: dict[str, asyncio.Task] = {}
         self._telegram_send_listener: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -64,6 +64,7 @@ class TelegramAgentBot:
 
         self.app.add_handler(CommandHandler("start", self._cmd_start))
         self.app.add_handler(CommandHandler("auth", self._cmd_auth))
+        self.app.add_handler(CommandHandler("agent", self._cmd_agent))
         self.app.add_handler(CommandHandler("stop", self._cmd_stop))
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(
@@ -181,15 +182,62 @@ class TelegramAgentBot:
         chat_id = update.effective_chat.id
         if await self._is_authorized(chat_id):
             await self._deauthorize(chat_id)
-            if chat_id in self._response_listeners:
-                self._response_listeners[chat_id].cancel()
-                del self._response_listeners[chat_id]
+            for key in [k for k in self._response_listeners if k.startswith(f"{chat_id}:")]:
+                self._response_listeners[key].cancel()
+                del self._response_listeners[key]
             await update.message.reply_text(
                 "Chat beendet. Du wurdest abgemeldet.\n"
                 "Nutze /auth <KEY> um dich erneut zu autorisieren."
             )
         else:
             await update.message.reply_text("Du bist nicht autorisiert.")
+
+    async def _cmd_agent(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Switch this Telegram chat to a target agent for future messages."""
+        chat_id = update.effective_chat.id
+        if not await self._is_authorized(chat_id):
+            await update.message.reply_text("Autorisiere dich zuerst mit /auth <KEY>")
+            return
+
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent
+        from sqlalchemy import select
+
+        query = " ".join(context.args).strip()
+        async with async_session_factory() as db:
+            agents = (await db.execute(select(Agent))).scalars().all()
+
+        if not query:
+            lines = ["Ziel-Agent waehlen mit /agent <Name oder ID>:", ""]
+            for agent in agents:
+                lines.append(f"- {agent.name} ({agent.id})")
+            await update.message.reply_text("\n".join(lines))
+            return
+
+        query_l = query.lower()
+        selected = next(
+            (
+                agent for agent in agents
+                if agent.id.lower().startswith(query_l) or agent.name.lower() == query_l
+            ),
+            None,
+        )
+        if not selected:
+            selected = next((agent for agent in agents if query_l in agent.name.lower()), None)
+        if not selected:
+            await update.message.reply_text(f"Keinen Agent gefunden fuer: {query}")
+            return
+
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await redis.setex(f"telegram:chat:{chat_id}:active_agent", 86400, selected.id)
+        finally:
+            await redis.aclose()
+        self._start_listener(chat_id, selected.id)
+        await update.message.reply_text(
+            f"Telegram-Ziel gesetzt: {selected.name} ({selected.id}).\n"
+            "Deine naechsten Nachrichten gehen an diesen Agent."
+        )
 
     async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id
@@ -234,12 +282,20 @@ class TelegramAgentBot:
         text = update.message.text
         user = update.effective_user
 
-        # Ensure response listener is running
-        self._start_listener(chat_id)
+        target_agent_id = await self._active_target_agent_id(chat_id)
+        print(
+            f"[Telegram] inbound text chat={chat_id} gateway={self.agent_id} "
+            f"target={target_agent_id} message={update.message.message_id}"
+        )
+
+        # Ensure response listener is running for the target agent
+        self._start_listener(chat_id, target_agent_id)
 
         # Build Telegram context so the agent knows the source and can reply directly
         tg_context = {
             "source": "telegram",
+            "gateway_agent_id": self.agent_id,
+            "target_agent_id": target_agent_id,
             "chat_id": chat_id,
             "message_id": update.message.message_id,
             "user_id": user.id if user else None,
@@ -249,7 +305,7 @@ class TelegramAgentBot:
         }
 
         # Wake up agent if stopped (auto-lifecycle), with user-visible status messages
-        woke_up = await self._ensure_agent_running(update)
+        woke_up = await self._ensure_agent_running(update, target_agent_id)
 
         # Send message to agent via Redis
         try:
@@ -261,7 +317,7 @@ class TelegramAgentBot:
                 "model": None,
                 "telegram": tg_context,
             })
-            await redis.lpush(f"agent:{self.agent_id}:chat", payload)
+            await redis.lpush(f"agent:{target_agent_id}:chat", payload)
             await redis.aclose()
 
             await update.effective_chat.send_action("typing")
@@ -270,7 +326,21 @@ class TelegramAgentBot:
         except Exception as e:
             await update.message.reply_text(f"Fehler beim Senden: {e}")
 
-    async def _ensure_agent_running(self, update: Update) -> bool:
+    async def _active_target_agent_id(self, chat_id: int) -> str:
+        """Return the agent Telegram replies should currently go to.
+
+        When another agent uses this bot as a fallback outbound channel, the
+        fallback sender stores a short-lived chat->agent route. Replies then go
+        back to that agent instead of the bot-owning gateway agent.
+        """
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            target = await redis.get(f"telegram:chat:{chat_id}:active_agent")
+            return target or self.agent_id
+        finally:
+            await redis.aclose()
+
+    async def _ensure_agent_running(self, update: Update, target_agent_id: str | None = None) -> bool:
         """If this agent's container is stopped, wake it up. Returns True if we had to wake.
 
         Sends user-visible messages: "Agent fährt hoch, einen Moment!" then "Agent hochgefahren!"
@@ -286,7 +356,7 @@ class TelegramAgentBot:
             docker = DockerService()
 
             async with async_session_factory() as db:
-                agent = await db.scalar(select(Agent).where(Agent.id == self.agent_id))
+                agent = await db.scalar(select(Agent).where(Agent.id == (target_agent_id or self.agent_id)))
                 if not agent:
                     return False
 
@@ -307,7 +377,7 @@ class TelegramAgentBot:
 
                 # Needs waking — tell user and start
                 await update.message.reply_text("⏳ Agent fährt hoch, einen Moment...")
-                ok = await wake_agent(db, docker, self.agent_id, wait=True, timeout=20)
+                ok = await wake_agent(db, docker, target_agent_id or self.agent_id, wait=True, timeout=20)
                 return ok
         except Exception as e:
             logging.getLogger(__name__).warning(f"Telegram wake-up failed: {e}")
@@ -323,7 +393,12 @@ class TelegramAgentBot:
             return
 
         user = update.effective_user
-        self._start_listener(chat_id)
+        target_agent_id = await self._active_target_agent_id(chat_id)
+        print(
+            f"[Telegram] inbound media chat={chat_id} gateway={self.agent_id} "
+            f"target={target_agent_id} message={update.message.message_id}"
+        )
+        self._start_listener(chat_id, target_agent_id)
 
         # Determine media type and file_id
         media_type = "unknown"
@@ -357,6 +432,8 @@ class TelegramAgentBot:
 
         tg_context = {
             "source": "telegram",
+            "gateway_agent_id": self.agent_id,
+            "target_agent_id": target_agent_id,
             "chat_id": chat_id,
             "message_id": update.message.message_id,
             "user_id": user.id if user else None,
@@ -423,10 +500,10 @@ class TelegramAgentBot:
                 "telegram": tg_context,
                 "images": images,
             })
-            await redis.lpush(f"agent:{self.agent_id}:chat", payload)
+            await redis.lpush(f"agent:{target_agent_id}:chat", payload)
             # Voice-first: a voice/audio message should get a voice reply.
             if media_type in ("voice", "audio"):
-                await redis.setex(f"agent:{self.agent_id}:voicereply:{message_id}", 3600, "1")
+                await redis.setex(f"agent:{target_agent_id}:voicereply:{message_id}", 3600, "1")
             await redis.aclose()
             await update.effective_chat.send_action("typing")
         except Exception as e:
@@ -530,12 +607,14 @@ class TelegramAgentBot:
 
     # --- Response listener ---
 
-    def _start_listener(self, chat_id: int) -> None:
-        if chat_id in self._response_listeners:
-            if not self._response_listeners[chat_id].done():
+    def _start_listener(self, chat_id: int, target_agent_id: str | None = None) -> None:
+        listen_agent_id = target_agent_id or self.agent_id
+        key = f"{chat_id}:{listen_agent_id}"
+        if key in self._response_listeners:
+            if not self._response_listeners[key].done():
                 return
-        self._response_listeners[chat_id] = asyncio.create_task(
-            self._listen_responses(chat_id)
+        self._response_listeners[key] = asyncio.create_task(
+            self._listen_responses(chat_id, listen_agent_id)
         )
 
     async def send_to_all_authorized(self, text: str, reply_markup=None) -> None:
@@ -631,7 +710,7 @@ class TelegramAgentBot:
             except Exception as e:
                 print(f"[Telegram] send_telegram → chat {cid} failed: {e}")
 
-    async def _listen_responses(self, chat_id: int) -> None:
+    async def _listen_responses(self, chat_id: int, listen_agent_id: str | None = None) -> None:
         """Listen to agent chat responses and forward to Telegram with streaming.
 
         Only forwards responses to Telegram-originated messages (tg- prefix).
@@ -641,7 +720,8 @@ class TelegramAgentBot:
         try:
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
             pubsub = redis.pubsub()
-            await pubsub.subscribe(f"agent:{self.agent_id}:chat:response")
+            agent_id = listen_agent_id or self.agent_id
+            await pubsub.subscribe(f"agent:{agent_id}:chat:response")
 
             response_buffer = ""
             full_response = ""  # whole turn's text — for the voice-first reply
@@ -654,7 +734,7 @@ class TelegramAgentBot:
                 from app.models.agent import Agent
                 from sqlalchemy import select
                 async with async_session_factory() as _db:
-                    _agent = (await _db.execute(select(Agent).where(Agent.id == self.agent_id))).scalar_one_or_none()
+                    _agent = (await _db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
                     _is_local_llm = _agent and _agent.mode == "custom_llm"
             except Exception:
                 pass

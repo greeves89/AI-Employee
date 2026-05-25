@@ -25,6 +25,23 @@ from app.services.redis_service import RedisService
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+def _mode_for_ai_account_provider(provider_type: str | None, requested_mode: str = "custom_llm") -> str:
+    provider = (provider_type or "").lower()
+    if provider == "anthropic":
+        return "claude_code"
+    if provider == "openai":
+        return "codex_cli"
+    return requested_mode if requested_mode in {"claude_code", "codex_cli"} else "custom_llm"
+
+
+def _model_provider_for_agent_mode(mode: str, provider_type: str | None = None) -> str:
+    if mode == "codex_cli":
+        return "codex"
+    if mode == "claude_code":
+        return "anthropic"
+    return (provider_type or settings.model_provider or "anthropic")
+
+
 def _get_agent_manager(
     db: AsyncSession = Depends(get_db),
     docker: DockerService = Depends(get_docker_service),
@@ -310,13 +327,17 @@ async def create_agent(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        account_provider_type = None
+
         # Validate: custom_llm mode requires an inline llm_config OR an AI account
         if data.mode == "custom_llm" and not data.llm_config and not data.ai_account_id:
             raise HTTPException(
                 status_code=422,
                 detail="custom_llm mode requires either llm_config or ai_account_id",
             )
-        # An AI account implies custom_llm mode
+
+        # An AI account drives the harness: Anthropic -> Claude Code,
+        # OpenAI -> Codex CLI, local/other APIs -> custom harness.
         if data.ai_account_id:
             from app.models.ai_account import AIAccount
             account = await db.get(AIAccount, data.ai_account_id)
@@ -326,6 +347,7 @@ async def create_agent(
                 raise HTTPException(status_code=422, detail="AI account is inactive")
             if not account.models:
                 raise HTTPException(status_code=422, detail="AI account has no models configured")
+            account_provider_type = account.provider_type
             _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
             if data.model and data.model not in _model_names:
                 raise HTTPException(
@@ -355,7 +377,7 @@ async def create_agent(
                         detail=f"Agent-Limit erreicht ({max_agents}). Bitte einen bestehenden Agent löschen.",
                     )
             # 2) LLM provider
-            llm_type = data.llm_config.provider_type if data.llm_config else None
+            llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
             if not can_use_llm_provider(perms, llm_type):
                 raise HTTPException(
                     status_code=403,
@@ -369,7 +391,7 @@ async def create_agent(
             integrations=data.integrations, permissions=data.permissions,
             user_id=uid, budget_usd=data.budget_usd,
             budget_exceeded_action=data.budget_exceeded_action,
-            mode=data.mode,
+            mode=_mode_for_ai_account_provider(account_provider_type, data.mode),
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
             ai_account_id=data.ai_account_id,
             browser_mode=data.browser_mode,
@@ -649,9 +671,14 @@ async def update_agent_ai_account(
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    mode = _mode_for_ai_account_provider(account.provider_type)
+    config = dict(agent.config or {})
+    config["model_provider"] = _model_provider_for_agent_mode(mode, account.provider_type)
+
     agent.ai_account_id = account.id
-    agent.mode = "custom_llm"
+    agent.mode = mode
     agent.model = chosen_model
+    agent.config = config
     await db.commit()
 
     # Recreate the container so the account's provider/credentials take effect.
@@ -1762,6 +1789,7 @@ class TelegramSendMessage(BaseModel):
 async def send_telegram_message(
     agent_id: str,
     body: TelegramSendMessage,
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Send a direct Telegram message to all authorized users of this agent.
 
@@ -1781,8 +1809,40 @@ async def send_telegram_message(
                 redis = aioredis.from_url(settings.redis_url, decode_responses=True)
                 sent_to = await redis.scard(f"agent:{agent_id}:tg_auth")
                 await redis.aclose()
+            if sent_to == 0:
+                # Fallback for agents without their own Telegram bot: deliver through
+                # any running per-agent bot that already has authorized chats.
+                import redis.asyncio as aioredis
+                redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+                try:
+                    for fallback_agent_id, fallback_bot in list(getattr(tg_manager, "_bots", {}).items()):
+                        if not fallback_bot or not fallback_bot._started:
+                            continue
+                        count = await redis.scard(f"agent:{fallback_agent_id}:tg_auth")
+                        if count <= 0:
+                            continue
+                        for cid in await redis.smembers(f"agent:{fallback_agent_id}:tg_auth"):
+                            await redis.setex(f"telegram:chat:{cid}:active_agent", 86400, agent_id)
+                        prefix = ""
+                        if fallback_agent_id != agent_id:
+                            try:
+                                agent = await manager._get_agent(agent_id)
+                                prefix = f"*{agent.name}:*\n"
+                            except Exception:
+                                prefix = f"*Agent {agent_id}:*\n"
+                        await fallback_bot.send_to_all_authorized(prefix + body.message)
+                        sent_to = count
+                        break
+                finally:
+                    await redis.aclose()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    if sent_to == 0:
+        raise HTTPException(
+            status_code=503,
+            detail="No running Telegram bot with authorized chats is available",
+        )
 
     return {"agent_id": agent_id, "sent_to": sent_to}
 

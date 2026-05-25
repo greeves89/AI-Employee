@@ -103,6 +103,12 @@ RULES:
 - Your plain text reply is AUTOMATICALLY forwarded to Telegram. No action needed for text.
 - If you call notify_user for this conversation, set target_channel="telegram".
 - To send files/voice/photos/videos, use the Orchestrator Telegram API below.
+- If the user asks you to send, upload, attach, share, or show a file
+  (German examples: "schick", "sende", "Datei", "PDF", "MP3", "Podcast",
+  "Folge", "Download"), you MUST deliver the file as an attachment with the
+  Telegram API. Do not only describe the file or mention its path. If the file
+  already exists, find the best matching/newest file under /workspace/transfer/
+  and send it. If there is no matching file, say clearly where you searched.
 - To DOWNLOAD a file the user sent you: you get a `file_id` in the header above —
   pass it to the get-file endpoint below. Do NOT try to download from Telegram directly.
 - PHOTOS the user sends are attached to this message and shown to you directly —
@@ -209,6 +215,13 @@ def _build_channel_prompt(text: str, source: str, is_new_session: bool) -> str:
         f"When you call notify_user for this conversation, set target_channel=\"{target}\". "
         "Your normal chat answer is automatically returned to the same channel.\n\n"
         f"{startup}"
+        "FILE DELIVERY RULE: If the user asks you to send, upload, attach, share, "
+        "open, download, or show a file (German examples: 'schick', 'sende', "
+        "'Datei', 'PDF', 'MP3', 'Podcast', 'Folge', 'Download'), you MUST deliver "
+        "the file as a chat attachment. If the file already exists, find the best "
+        "matching/newest file under /workspace/transfer/ and call present_file "
+        "with that path. Do not only describe the file or mention its path. If no "
+        "matching file exists, say clearly where you searched.\n"
         "AFTER responding: if you learned something new, use memory_save with "
         f"category='learning', room=\"{room}\" (or a project room), and useful tags.\n"
         "AFTER the user gives feedback: if you used a skill, call skill_rate with their rating "
@@ -343,6 +356,9 @@ class ChatConsumer:
         if settings.agent_mode == "custom_llm":
             from app.llm_chat_handler import LLMChatHandler
             self._handler = LLMChatHandler(log_publisher)
+        elif settings.agent_mode == "codex_cli":
+            from app.codex_runner import CodexChatHandler
+            self._handler = CodexChatHandler(log_publisher)
         else:
             from app.chat_handler import ChatHandler
             self._handler = ChatHandler(log_publisher)

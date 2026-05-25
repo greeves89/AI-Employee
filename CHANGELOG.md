@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.14] — 2026-05-25
+
+### Added
+- **OpenAI Codex provider foundation** — adds Codex/ChatGPT OAuth provider metadata, device-auth service plumbing, a `codex_cli` runner path, migration coverage, and harness mapping tests so OpenAI subscription-backed agents can be wired alongside Claude Code.
+- **Unified account/harness UX groundwork** — expands agent creation and settings API types so Anthropic, OpenAI/Codex, LM Studio, and related account modes can map to the correct container harness instead of being treated as generic API-key-only providers.
+- **SSO Profile secret creation UI** — Key Management now has a first-class SSO Profile creation mode with dedicated copy, examples, JSON-friendly input, and automatic env-var naming such as `SSO_PROFILE_SUPABASE`.
+
+### Changed
+- **Assigned secrets remain container env vars** — assigned KMS secrets continue to be injected into agent containers by env-var name, with clearer UI guidance that agents should reference variables rather than expose secret values.
+- **Chat and Telegram reliability polish** — improves channel prompts, message handling, websocket behavior, and Telegram file/audio flows so iOS/Web/Telegram chats behave more consistently during long-running agent turns.
+
+### Fixed
+- **Agent auth and file-delivery edge cases** — tightens OAuth/Codex setup paths, Telegram agent bot handling, and chat attachment/event handling after the iOS/Web/Telegram file-delivery work.
+
+### Verified
+- `python3 -m py_compile` succeeds for the touched agent and orchestrator modules.
+- `npm run build` succeeds for the Next.js frontend.
+- `python3 -m pytest orchestrator/tests/test_agent_harness_mapping.py -q` was attempted but local `pytest` is not installed on this machine.
+
+---
+
 ## [1.55.13] — 2026-05-24
 
 ### Fixed

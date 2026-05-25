@@ -15,6 +15,7 @@ class OAuthProvider(str, enum.Enum):
     APPLE = "apple"
     GITHUB = "github"
     ANTHROPIC = "anthropic"
+    CODEX = "codex"
 
 
 # Providers where each user has their own token (vs. global/admin token)

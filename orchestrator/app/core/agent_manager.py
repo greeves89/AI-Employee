@@ -456,6 +456,48 @@ class AgentManager:
         self.redis = redis
 
     @staticmethod
+    def _mode_for_ai_provider(provider_type: str | None, requested_mode: str = "custom_llm") -> str:
+        """Map account provider to the harness that should run it."""
+        provider = (provider_type or "").lower()
+        if provider == "anthropic":
+            return "claude_code"
+        if provider == "openai":
+            return "codex_cli"
+        return requested_mode if requested_mode in {"claude_code", "codex_cli"} else "custom_llm"
+
+    @staticmethod
+    def _model_provider_for_mode(mode: str, effective_llm: dict | None = None) -> str:
+        provider = (effective_llm or {}).get("provider_type")
+        if mode == "codex_cli":
+            return "codex"
+        if mode == "claude_code":
+            return "anthropic"
+        return provider or settings.model_provider
+
+    @staticmethod
+    def _cli_account_env(mode: str, effective_llm: dict | None) -> dict[str, str]:
+        """Expose API-key based accounts to CLI harnesses."""
+        if not effective_llm:
+            return {}
+        provider = (effective_llm.get("provider_type") or "").lower()
+        api_key = effective_llm.get("api_key") or ""
+        model = effective_llm.get("model_name") or ""
+
+        if mode == "claude_code" and provider == "anthropic":
+            env = {"DEFAULT_MODEL": model}
+            if api_key:
+                env["ANTHROPIC_API_KEY"] = api_key
+            return env
+
+        if mode == "codex_cli" and provider == "openai":
+            env = {"CODEX_HOME": "/home/agent/.codex", "DEFAULT_MODEL": model}
+            if api_key:
+                env["OPENAI_API_KEY"] = api_key
+            return env
+
+        return {}
+
+    @staticmethod
     def _build_provider_env(agent_provider: str | None = None) -> dict[str, str]:
         """Build environment variables for the active model provider.
 
@@ -467,6 +509,9 @@ class AgentManager:
         - ``foundry``: CLAUDE_CODE_USE_FOUNDRY + Azure Foundry credentials
         """
         provider = agent_provider or settings.model_provider
+
+        if provider == "codex":
+            return {"CODEX_HOME": "/home/agent/.codex"}
 
         if provider == "bedrock":
             env: dict[str, str] = {"CLAUDE_CODE_USE_BEDROCK": "1"}
@@ -695,9 +740,14 @@ class AgentManager:
         session_volume = f"claude-session-{agent_id}"
         model = model or settings.default_model
 
-        # A linked AI account drives the custom-LLM mode (reusable, admin-managed).
+        # A linked AI account drives the harness choice:
+        # Anthropic -> Claude Code, OpenAI -> Codex CLI, everything else -> custom harness.
         if ai_account_id:
-            mode = "custom_llm"
+            from app.models.ai_account import AIAccount
+            account = await self.db.get(AIAccount, ai_account_id)
+            mode = self._mode_for_ai_provider(account.provider_type if account else None, mode)
+        elif mode == "claude_code" and settings.model_provider == "codex":
+            mode = "codex_cli"
 
         # Resolve the effective LLM config (account takes precedence over inline).
         effective_llm = await self._effective_llm_config(ai_account_id, llm_config, model)
@@ -741,8 +791,11 @@ class AgentManager:
         else:
             # Claude Code: standard provider env + MCP + integrations
             # Per-agent provider from config, fallback to global
-            agent_provider = None  # Will be set from DB config after agent is created
-            provider_env = self._build_provider_env(agent_provider)
+            model_provider = self._model_provider_for_mode(mode, effective_llm)
+            provider_env = {
+                **self._build_provider_env(model_provider),
+                **self._cli_account_env(mode, effective_llm),
+            }
             mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
             integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
             env_vars.update({
@@ -836,6 +889,7 @@ class AgentManager:
                 "session_volume": session_volume,
                 "role": role or "",
                 "onboarding_complete": False if mode == "claude_code" else True,
+                "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "permissions": agent_permissions,
                 "agent_version": AGENT_VERSION,
@@ -959,6 +1013,8 @@ class AgentManager:
         model = agent.model or settings.default_model
         container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
         mode = agent.mode or "claude_code"
+        if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
+            mode = "codex_cli"
 
         env_vars: dict[str, str] = {
             "AGENT_ID": agent_id,
@@ -985,8 +1041,11 @@ class AgentManager:
                 **secrets_env,
             })
         else:
-            agent_provider = config.get("model_provider")
-            provider_env = self._build_provider_env(agent_provider)
+            agent_provider = self._model_provider_for_mode(mode, effective_llm)
+            provider_env = {
+                **self._build_provider_env(agent_provider),
+                **self._cli_account_env(mode, effective_llm),
+            }
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({
@@ -1038,7 +1097,7 @@ class AgentManager:
             fresh_claude_md = DEFAULT_CLAUDE_MD.replace(
                 "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
             ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
-            mode = config.get("mode", "claude_code")
+            mode = agent.mode or config.get("mode", "claude_code")
             target_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
             self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
@@ -1116,6 +1175,8 @@ class AgentManager:
         role = config.get("role", "")
         model = agent.model or settings.default_model
         mode = agent.mode or "claude_code"
+        if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
+            mode = "codex_cli"
 
         env_vars: dict[str, str] = {
             "AGENT_ID": agent_id,
@@ -1132,6 +1193,11 @@ class AgentManager:
         secrets_env = await self._get_secrets_env(agent_id)
 
         effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config, agent.model)
+        if agent.ai_account_id:
+            mode = self._mode_for_ai_provider(effective_llm.get("provider_type") if effective_llm else None, mode)
+            agent.mode = mode
+            config["model_provider"] = self._model_provider_for_mode(mode, effective_llm)
+
         if mode == "custom_llm" and effective_llm:
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
@@ -1142,8 +1208,11 @@ class AgentManager:
                 **secrets_env,
             })
         else:
-            agent_provider = config.get("model_provider")
-            provider_env = self._build_provider_env(agent_provider)
+            agent_provider = self._model_provider_for_mode(mode, effective_llm)
+            provider_env = {
+                **self._build_provider_env(agent_provider),
+                **self._cli_account_env(mode, effective_llm),
+            }
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
             env_vars.update({

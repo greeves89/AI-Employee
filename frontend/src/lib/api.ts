@@ -552,6 +552,47 @@ export async function savePatToken(provider: string, token: string): Promise<{ s
   });
 }
 
+export async function saveAuthJson(provider: string, authJson: string): Promise<{ status: string; provider: string; account_label?: string }> {
+  return fetchJSON(`${getBase()}/integrations/${provider}/auth-json`, {
+    method: "POST",
+    body: JSON.stringify({ auth_json: authJson }),
+  });
+}
+
+export interface DeviceAuthStart {
+  session_id: string;
+  verification_uri: string;
+  user_code: string;
+  expires_at: string;
+  status: string;
+}
+
+export interface DeviceAuthStatus {
+  session_id: string;
+  status: "pending" | "connected" | "error" | "expired" | "cancelled";
+  expires_at: string;
+  verification_uri?: string | null;
+  user_code?: string | null;
+  account_label?: string | null;
+  error?: string | null;
+}
+
+export async function startDeviceAuth(provider: string): Promise<DeviceAuthStart> {
+  return fetchJSON(`${getBase()}/integrations/${provider}/device-auth/start`, {
+    method: "POST",
+  });
+}
+
+export async function getDeviceAuthStatus(provider: string, sessionId: string): Promise<DeviceAuthStatus> {
+  return fetchJSON(`${getBase()}/integrations/${provider}/device-auth/${sessionId}`);
+}
+
+export async function cancelDeviceAuth(provider: string, sessionId: string): Promise<{ status: string; provider: string }> {
+  return fetchJSON(`${getBase()}/integrations/${provider}/device-auth/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
 // Per-agent MCP servers
 export async function getAgentMcpServers(agentId: string): Promise<{ agent_id: string; mcp_servers: number[] | null }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/mcp-servers`);

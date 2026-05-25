@@ -96,12 +96,26 @@ class MessageConsumer:
         """Run Claude CLI with the prompt and return the text response."""
         import os
 
-        cmd = ["claude", "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
-        if model and model != "default":
-            cmd.extend(["--model", model])
+        if settings.agent_mode == "codex_cli":
+            cmd = [
+                "codex", "exec",
+                "--json",
+                "--skip-git-repo-check",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "-C", settings.workspace_dir,
+            ]
+            if model and model != "default":
+                cmd.extend(["-m", model])
+            cmd.append(prompt)
+        else:
+            cmd = ["claude", "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
+            if model and model != "default":
+                cmd.extend(["--model", model])
 
         env = os.environ.copy()
-        if settings.anthropic_api_key:
+        if settings.agent_mode == "codex_cli":
+            env.setdefault("CODEX_HOME", "/home/agent/.codex")
+        elif settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
         else:
             oauth_token = get_oauth_token()
@@ -123,7 +137,20 @@ class MessageConsumer:
 
             if stdout:
                 try:
-                    data = json.loads(stdout.decode("utf-8", errors="replace"))
+                    decoded = stdout.decode("utf-8", errors="replace")
+                    if settings.agent_mode == "codex_cli":
+                        parts = []
+                        for line in decoded.splitlines():
+                            try:
+                                ev = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            for key in ("text", "message", "result", "output_text"):
+                                val = ev.get(key)
+                                if isinstance(val, str):
+                                    parts.append(val)
+                        return "".join(parts)[:2000] or decoded[:500]
+                    data = json.loads(decoded)
                     return data.get("result", data.get("text", stdout.decode()[:500]))
                 except json.JSONDecodeError:
                     return stdout.decode("utf-8", errors="replace")[:500]

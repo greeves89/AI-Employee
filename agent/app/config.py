@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     tool_max_concurrency: int = 10  # Max parallel concurrent-safe tool calls (TOOL_MAX_CONCURRENCY)
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""
+    openai_api_key: str = ""
     workspace_dir: str = "/workspace"
     orchestrator_url: str = "http://orchestrator:8000"
 

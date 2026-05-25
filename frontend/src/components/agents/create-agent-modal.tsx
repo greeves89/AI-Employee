@@ -27,7 +27,9 @@ import {
   Plug,
   Eye,
   EyeOff,
+  Key,
   ShieldAlert,
+  Sparkles,
   GitPullRequest,
   TestTube2,
   Share2,
@@ -41,7 +43,7 @@ import {
   Globe,
 } from "lucide-react";
 import * as api from "@/lib/api";
-import type { AgentMode, AgentTemplate, AIAccount, LLMConfig, LLMProviderType, PermissionPackage } from "@/lib/types";
+import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
@@ -132,6 +134,32 @@ const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noK
   },
 };
 
+type AccountOption =
+  | { id: "oauth:claude"; label: string; subtitle: string; provider: "anthropic"; harness: "Claude Code"; mode: "claude_code"; accountId: null; connected: boolean }
+  | { id: "oauth:codex"; label: string; subtitle: string; provider: "openai"; harness: "Codex CLI"; mode: "codex_cli"; accountId: null; connected: boolean }
+  | { id: `account:${number}`; label: string; subtitle: string; provider: AIAccountProviderType; harness: string; mode: AgentMode; accountId: number; connected: boolean };
+
+function modeForAccountProvider(provider: string): AgentMode {
+  if (provider === "anthropic") return "claude_code";
+  if (provider === "openai") return "codex_cli";
+  return "custom_llm";
+}
+
+function harnessForAccountProvider(provider: string): string {
+  if (provider === "anthropic") return "Claude Code";
+  if (provider === "openai") return "Codex CLI";
+  if (provider === "google") return "Custom Harness";
+  if (provider === "ollama" || provider === "lm-studio") return "Local Harness";
+  return "Custom Harness";
+}
+
+function firstModelName(account?: AIAccount): string {
+  const first = account?.models?.[0];
+  if (!first) return "";
+  if (typeof first === "string") return first;
+  return first.name;
+}
+
 interface CreateAgentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -177,6 +205,8 @@ export function CreateAgentModal({
   const [aiAccountId, setAiAccountId] = useState<number | null>(null);
   const [aiAccountModel, setAiAccountModel] = useState<string>("");
   const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [selectedAccountKey, setSelectedAccountKey] = useState<string>("oauth:claude");
 
   // Load templates and permission packages on open
   useEffect(() => {
@@ -191,6 +221,15 @@ export function CreateAgentModal({
       setAutonomyLevel("l3");
       setAiAccountId(null);
       setAiAccountModel("");
+      setSelectedAccountKey("oauth:claude");
+      setSettings(null);
+      api.getSettings().then((data) => {
+        setSettings(data);
+        if (data.has_codex_oauth && !(data.has_oauth_token || data.has_api_key)) {
+          setSelectedAccountKey("oauth:codex");
+          setMode("codex_cli");
+        }
+      }).catch(() => setSettings(null));
       api.listAIAccounts(true).then(setAiAccounts).catch(() => setAiAccounts([]));
       setLlmProvider("openai");
       setLlmEndpoint("https://api.openai.com/v1");
@@ -258,6 +297,54 @@ export function CreateAgentModal({
     }
   };
 
+  const accountOptions: AccountOption[] = [
+    {
+      id: "oauth:claude",
+      label: "Claude",
+      subtitle: "OAuth/API aus Settings",
+      provider: "anthropic",
+      harness: "Claude Code",
+      mode: "claude_code",
+      accountId: null,
+      connected: Boolean(settings?.has_oauth_token || settings?.has_api_key),
+    },
+    {
+      id: "oauth:codex",
+      label: "OpenAI Codex",
+      subtitle: "ChatGPT OAuth aus Settings",
+      provider: "openai",
+      harness: "Codex CLI",
+      mode: "codex_cli",
+      accountId: null,
+      connected: Boolean(settings?.has_codex_oauth),
+    },
+    ...aiAccounts.map((account): AccountOption => {
+      const mode = modeForAccountProvider(account.provider_type);
+      return {
+        id: `account:${account.id}` as const,
+        label: account.name,
+        subtitle: `${account.provider_type} API${account.has_key ? "" : " (ohne Key)"}`,
+        provider: account.provider_type,
+        harness: harnessForAccountProvider(account.provider_type),
+        mode,
+        accountId: account.id,
+        connected: account.is_active,
+      };
+    }),
+  ];
+
+  const selectAccountOption = (option: AccountOption) => {
+    setSelectedAccountKey(option.id);
+    setMode(option.mode);
+    setAiAccountId(option.accountId);
+    if (option.accountId !== null) {
+      const acc = aiAccounts.find((a) => a.id === option.accountId);
+      setAiAccountModel(firstModelName(acc));
+    } else {
+      setAiAccountModel("");
+    }
+  };
+
   const handleCreate = async () => {
     if (!name.trim() && !selectedTemplate) return;
 
@@ -279,26 +366,37 @@ export function CreateAgentModal({
     try {
       const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
 
-      if (selectedTemplate && mode !== "custom_llm") {
+      if (aiAccountId !== null) {
+        await api.createAgent(
+          name.trim() || selectedTemplate?.name || "agent",
+          aiAccountModel || undefined,
+          role.trim() || selectedTemplate?.role || undefined,
+          selectedPermissions.length > 0 ? selectedPermissions : selectedTemplate?.permissions,
+          parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
+          mode,
+          undefined,
+          autonomyLevel,
+          budgetExceededAction,
+          aiAccountId,
+        );
+      } else if (selectedTemplate && mode === "claude_code") {
         await api.createAgentFromTemplate(
           selectedTemplate.id,
           name.trim() || undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           budgetExceededAction,
         );
-      } else if (mode === "custom_llm" && aiAccountId !== null) {
-        // Reusable, admin-managed AI account — no inline LLM config
+      } else if (mode === "codex_cli") {
         await api.createAgent(
-          name.trim(),
-          aiAccountModel || undefined,
-          role.trim() || undefined,
-          selectedPermissions.length > 0 ? selectedPermissions : undefined,
+          name.trim() || selectedTemplate?.name || "codex-agent",
+          "gpt-5.5",
+          role.trim() || selectedTemplate?.role || undefined,
+          selectedPermissions.length > 0 ? selectedPermissions : selectedTemplate?.permissions,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
-          "custom_llm",
+          "codex_cli",
           undefined,
           autonomyLevel,
           budgetExceededAction,
-          aiAccountId,
         );
       } else if (mode === "custom_llm") {
         const llmConfig: LLMConfig = {
@@ -487,61 +585,92 @@ export function CreateAgentModal({
                         </div>
                       )}
 
-                      {/* Mode Selector (hidden in simple mode) */}
+                      {/* Account Selector (hidden in simple mode) */}
                       {!simpleMode && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-2.5">
-                          Agent-Modus
+                          Account & Harness
                         </label>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {accountOptions.map((option) => {
+                              const Icon = option.mode === "codex_cli" ? Sparkles : option.mode === "claude_code" ? Zap : Plug;
+                              const selected = selectedAccountKey === option.id;
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => selectAccountOption(option)}
+                                  className={cn(
+                                    "flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200",
+                                    selected
+                                      ? option.mode === "codex_cli"
+                                        ? "border-emerald-500/50 bg-emerald-500/[0.08] ring-1 ring-emerald-500/20"
+                                        : option.mode === "custom_llm"
+                                        ? "border-violet-500/50 bg-violet-500/[0.08] ring-1 ring-violet-500/20"
+                                        : "border-primary/50 bg-primary/[0.08] ring-1 ring-primary/20"
+                                      : "border-foreground/[0.08] hover:border-foreground/[0.15] hover:bg-foreground/[0.02]"
+                                  )}
+                                >
+                                  <div className={cn(
+                                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                    selected
+                                      ? option.mode === "codex_cli"
+                                        ? "bg-emerald-500/20 text-emerald-400"
+                                        : option.mode === "custom_llm"
+                                        ? "bg-violet-500/20 text-violet-400"
+                                        : "bg-primary/20 text-primary"
+                                      : "bg-foreground/[0.06] text-muted-foreground"
+                                  )}>
+                                    <Icon className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <p className="truncate text-sm font-medium">{option.label}</p>
+                                      <span className={cn(
+                                        "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
+                                        option.connected ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
+                                      )}>
+                                        {option.connected ? "ready" : "setup"}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground/70">{option.subtitle}</p>
+                                    <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">
+                                      {option.harness}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
                             <button
                               type="button"
-                              onClick={() => setMode("claude_code")}
+                              onClick={() => {
+                                setSelectedAccountKey("manual");
+                                setMode("custom_llm");
+                                setAiAccountId(null);
+                                setAiAccountModel("");
+                              }}
                               className={cn(
                                 "flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200",
-                                mode === "claude_code"
-                                  ? "border-primary/50 bg-primary/[0.08] ring-1 ring-primary/20"
-                                  : "border-foreground/[0.08] hover:border-foreground/[0.15] hover:bg-foreground/[0.02]"
-                              )}
-                            >
-                              <div className={cn(
-                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                                mode === "claude_code" ? "bg-primary/20 text-primary" : "bg-foreground/[0.06] text-muted-foreground"
-                              )}>
-                                <Zap className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium">Claude Code</p>
-                                <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                                  Voll ausgestatteter Coding-Agent mit CLI, MCP Tools und Knowledge
-                                </p>
-                              </div>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setMode("custom_llm")}
-                              className={cn(
-                                "flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200",
-                                mode === "custom_llm"
+                                selectedAccountKey === "manual"
                                   ? "border-violet-500/50 bg-violet-500/[0.08] ring-1 ring-violet-500/20"
-                                  : "border-foreground/[0.08] hover:border-foreground/[0.15] hover:bg-foreground/[0.02]"
+                                  : "border-dashed border-foreground/[0.12] hover:border-foreground/[0.2] hover:bg-foreground/[0.02]"
                               )}
                             >
-                              <div className={cn(
-                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                                mode === "custom_llm" ? "bg-violet-500/20 text-violet-400" : "bg-foreground/[0.06] text-muted-foreground"
-                              )}>
-                                <Plug className="h-5 w-5" />
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">
+                                <Key className="h-5 w-5" />
                               </div>
                               <div>
-                                <p className="text-sm font-medium">Custom LLM</p>
-                                <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                                  Eigener LLM-Provider mit vollem Tool-Set und Proactive Mode
+                                <p className="text-sm font-medium">Einmalig manuell</p>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                                  Nur fuer Tests. Besser dauerhaft unter AI Accounts speichern.
                                 </p>
+                                <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">Custom Harness</p>
                               </div>
                             </button>
                           </div>
+                          <p className="mt-2 text-[11px] text-muted-foreground/55">
+                            Claude und OpenAI nutzen automatisch ihre CLI-Harnesses. Google, Ollama und LM Studio laufen aktuell ueber den Custom Harness.
+                          </p>
                         </div>
                       )}
 
@@ -562,6 +691,8 @@ export function CreateAgentModal({
                               ? `z.B. my-${selectedTemplate.name}`
                               : mode === "custom_llm"
                               ? "z.B. gpt-coder, gemini-researcher..."
+                              : mode === "codex_cli"
+                              ? "z.B. codex-dev, codex-researcher..."
                               : "z.B. dev-agent, researcher, writer..."
                           }
                           autoFocus
@@ -570,54 +701,8 @@ export function CreateAgentModal({
                       </div>
 
                       {/* ===== CUSTOM LLM FIELDS (hidden in simple mode) ===== */}
-                      {!simpleMode && mode === "custom_llm" && (
+                      {!simpleMode && mode === "custom_llm" && aiAccountId === null && (
                         <>
-                          {/* AI-Account auswählen (admin-verwaltet, wiederverwendbar) */}
-                          <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              AI-Account
-                            </label>
-                            <select
-                              value={aiAccountId ?? ""}
-                              onChange={(e) => {
-                                const id = e.target.value ? Number(e.target.value) : null;
-                                setAiAccountId(id);
-                                const acc = aiAccounts.find((a) => a.id === id);
-                                setAiAccountModel(acc?.models?.[0]?.name ?? "");
-                              }}
-                              className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
-                            >
-                              <option value="">Manuell konfigurieren</option>
-                              {aiAccounts.map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {a.name} ({a.provider_type})
-                                </option>
-                              ))}
-                            </select>
-                            <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              Vom Admin angelegten Modell-Zugang nutzen — oder unten manuell konfigurieren.
-                            </p>
-                          </div>
-
-                          {aiAccountId !== null && (
-                            <div>
-                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                                Modell
-                              </label>
-                              <select
-                                value={aiAccountModel}
-                                onChange={(e) => setAiAccountModel(e.target.value)}
-                                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
-                              >
-                                {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? []).map((m) => (
-                                  <option key={m.name} value={m.name}>{m.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
-
-                          {aiAccountId === null && (
-                          <>
                           {/* Provider */}
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -755,9 +840,25 @@ export function CreateAgentModal({
                               />
                             </button>
                           </div>
-                          </>
-                          )}
                         </>
+                      )}
+
+                      {!simpleMode && aiAccountId !== null && (
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                            Modell
+                          </label>
+                          <select
+                            value={aiAccountModel}
+                            onChange={(e) => setAiAccountModel(e.target.value)}
+                            className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                          >
+                            {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? []).map((m) => {
+                              const name = typeof m === "string" ? m : m.name;
+                              return <option key={name} value={name}>{name}</option>;
+                            })}
+                          </select>
+                        </div>
                       )}
 
                       {/* ===== SHARED FIELDS (both modes, no template, hidden in simple mode) ===== */}
@@ -780,10 +881,24 @@ export function CreateAgentModal({
                                 "w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none transition-all",
                                 mode === "custom_llm"
                                   ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                                  : mode === "codex_cli"
+                                  ? "focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20"
                                   : "focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
                               )}
                             />
                           </div>
+
+                          {mode === "codex_cli" && (
+                            <div className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
+                              <Key className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                              <div>
+                                <p className="text-xs font-medium text-emerald-300">Nutzt OpenAI Codex</p>
+                                <p className="mt-0.5 text-[11px] text-emerald-200/70">
+                                  Voraussetzung: In Settings ist OpenAI Codex verbunden. Der Agent startet im Modus codex_cli.
+                                </p>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Autonomy Level */}
                           <div>
