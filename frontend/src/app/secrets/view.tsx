@@ -93,8 +93,15 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     description: "",
   });
   const [keyNameTouched, setKeyNameTouched] = useState(false);
-  const [editForm, setEditForm] = useState<{ name: string; description: string; value: string; is_active: boolean }>({
-    name: "", description: "", value: "", is_active: true,
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    description: string;
+    value: string;
+    is_active: boolean;
+    secret_type: "api_key" | "sso_profile" | "oauth_token";
+    key_name: string;
+  }>({
+    name: "", description: "", value: "", is_active: true, secret_type: "api_key", key_name: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -146,7 +153,14 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
 
   function startEdit(s: AgentSecretEntry) {
     setEditingId(s.id);
-    setEditForm({ name: s.name, description: s.description, value: "", is_active: s.is_active });
+    setEditForm({
+      name: s.name,
+      description: s.description,
+      value: "",
+      is_active: s.is_active,
+      secret_type: s.secret_type,
+      key_name: s.key_name,
+    });
   }
 
   async function handleUpdate(id: number) {
@@ -325,11 +339,20 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
               const { label, Icon } = TYPE_LABELS[s.secret_type] ?? { label: s.secret_type, Icon: KeyRound };
               const isEditing = editingId === s.id;
               const revealed = revealedIds.has(s.id);
+              const editCopy = TYPE_COPY[editForm.secret_type] ?? TYPE_COPY.api_key;
 
               return (
                 <div key={s.id} className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
                   {isEditing ? (
                     <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium", TYPE_COLORS[editForm.secret_type])}>
+                          {TYPE_LABELS[editForm.secret_type]?.label ?? editForm.secret_type}
+                        </span>
+                        <span className="text-xs text-muted-foreground/50">
+                          Value is encrypted. Leave replacement empty to keep the current secret.
+                        </span>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-medium text-muted-foreground/70">Name</label>
@@ -340,14 +363,31 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           />
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground/70">New Value (leave blank to keep)</label>
+                          <label className="text-[11px] font-medium text-muted-foreground/70">Env-Var Name</label>
                           <input
-                            type="password"
-                            placeholder="New value…"
+                            value={editForm.key_name}
+                            readOnly
+                            className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3.5 py-2.5 text-sm font-mono text-muted-foreground"
+                          />
+                        </div>
+                        <div className="col-span-2 flex flex-col gap-1">
+                          <label className="text-[11px] font-medium text-muted-foreground/70">
+                            Replace {editCopy.valueLabel} (leave blank to keep)
+                          </label>
+                          <textarea
+                            rows={editForm.secret_type === "api_key" ? 3 : 8}
+                            placeholder={editCopy.valuePlaceholder}
                             value={editForm.value}
                             onChange={e => setEditForm(p => ({ ...p, value: e.target.value }))}
-                            className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
+                            className="resize-y rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono leading-relaxed"
                           />
+                          {editForm.secret_type === "sso_profile" && (
+                            <p className="text-[11px] leading-relaxed text-muted-foreground/60">
+                              For SSO profiles, store all runtime details here as JSON, for example server URL/IP,
+                              issuer, audience, token, and optional headers. The assigned agent can read it from
+                              <span className="font-mono text-muted-foreground"> ${editForm.key_name}</span>.
+                            </p>
+                          )}
                         </div>
                         <div className="col-span-2 flex flex-col gap-1">
                           <label className="text-[11px] font-medium text-muted-foreground/70">Description</label>

@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.15] — 2026-05-25
+
+### Fixed
+- **SSO Profile editing now uses the correct UI** — existing SSO profile secrets open with their type badge, read-only env-var name, JSON-friendly replacement textarea, and SSO-specific guidance instead of the old API-key-style single-line value field.
+
+### Verified
+- `npm run build` succeeds for the Next.js frontend.
+
+---
+
 ## [1.55.14] — 2026-05-25
 
 ### Added
