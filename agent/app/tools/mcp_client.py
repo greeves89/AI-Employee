@@ -5,6 +5,8 @@ external MCP servers. These are configured per-agent via CUSTOM_MCP_SERVERS
 env var (JSON: {"server-name": "http://url"}).
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -29,6 +31,8 @@ class MCPHTTPClient:
         self._servers: dict[str, str] = {}
         # tool_name -> (server_name, original_tool_name)
         self._tool_registry: dict[str, tuple[str, str]] = {}
+        # server_name -> MCP session id, for stateful Streamable HTTP servers
+        self._session_ids: dict[str, str] = {}
         # Discovered tool definitions (OpenAI format)
         self._tool_definitions: list[dict] = []
         self._initialized = False
@@ -44,6 +48,36 @@ class MCPHTTPClient:
                 self._servers = servers
         except (json.JSONDecodeError, TypeError):
             logger.warning("Could not parse CUSTOM_MCP_SERVERS env var")
+
+    @staticmethod
+    def _mcp_headers(session_id: str | None = None) -> dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        if session_id:
+            headers["mcp-session-id"] = session_id
+        return headers
+
+    @staticmethod
+    def _parse_response(resp: httpx.Response) -> dict[str, Any] | list[Any] | None:
+        content_type = resp.headers.get("content-type", "")
+        if "text/event-stream" in content_type:
+            for line in resp.text.splitlines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload:
+                    continue
+                try:
+                    return json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+            return None
+        try:
+            return resp.json()
+        except Exception:
+            return None
 
     async def discover_tools(self) -> list[dict]:
         """Discover tools from all configured MCP servers.
@@ -86,10 +120,23 @@ class MCPHTTPClient:
                 "clientInfo": {"name": "ai-employee-agent", "version": "1.0"},
             },
         }
-        resp = await self._client.post(url, json=init_request)
+        resp = await self._client.post(url, headers=self._mcp_headers(), json=init_request)
         if resp.status_code != 200:
-            logger.warning(f"MCP init failed for {server_name}: {resp.status_code}")
+            logger.warning(f"MCP init failed for {server_name}: {resp.status_code} {resp.text[:300]}")
             return []
+
+        session_id = resp.headers.get("mcp-session-id")
+        if session_id:
+            self._session_ids[server_name] = session_id
+        init_data = self._parse_response(resp)
+        if not isinstance(init_data, dict) or "result" not in init_data:
+            logger.warning(f"MCP init returned invalid response for {server_name}")
+            return []
+
+        await self._client.post(url, headers=self._mcp_headers(session_id), json={
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+        })
 
         # Then: List tools
         list_request = {
@@ -98,12 +145,15 @@ class MCPHTTPClient:
             "method": "tools/list",
             "params": {},
         }
-        resp = await self._client.post(url, json=list_request)
+        resp = await self._client.post(url, headers=self._mcp_headers(session_id), json=list_request)
         if resp.status_code != 200:
-            logger.warning(f"MCP tools/list failed for {server_name}: {resp.status_code}")
+            logger.warning(f"MCP tools/list failed for {server_name}: {resp.status_code} {resp.text[:300]}")
             return []
 
-        result = resp.json()
+        result = self._parse_response(resp)
+        if not isinstance(result, dict):
+            logger.warning(f"MCP tools/list returned invalid response for {server_name}")
+            return []
         mcp_tools = result.get("result", {}).get("tools", [])
 
         # Convert MCP tool format to OpenAI function-calling format
@@ -142,6 +192,7 @@ class MCPHTTPClient:
             return f"Error: MCP server '{server_name}' not found"
 
         url = server_url.rstrip("/")
+        session_id = self._session_ids.get(server_name)
         call_request = {
             "jsonrpc": "2.0",
             "id": 3,
@@ -153,11 +204,13 @@ class MCPHTTPClient:
         }
 
         try:
-            resp = await self._client.post(url, json=call_request)
+            resp = await self._client.post(url, headers=self._mcp_headers(session_id), json=call_request)
             if resp.status_code != 200:
                 return f"MCP tool error {resp.status_code}: {resp.text[:500]}"
 
-            result = resp.json()
+            result = self._parse_response(resp)
+            if not isinstance(result, dict):
+                return "MCP error: invalid response"
 
             # Check for JSON-RPC error
             if "error" in result:

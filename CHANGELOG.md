@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.19] — 2026-05-26
+
+### Fixed
+- **Custom HTTP MCP servers now support streamable HTTP handshakes** — the agent MCP client sends the required `Accept: application/json, text/event-stream` header, parses SSE responses, preserves `mcp-session-id`, and sends the initialized notification before listing or calling tools. This fixes `MCP init failed ... 406` for n8n/MyBoardy-style MCP endpoints.
+
+### Verified
+- `python3 -m py_compile agent/app/tools/mcp_client.py`
+- Live discovery against `MyBoardyMCP` returns 3 tools.
+- Rebuilt `ai-employee-agent:latest` and recreated `MyAzureAgent`; logs show `Discovered 3 custom MCP tools` with no 406.
+
+---
+
 ## [1.55.18] — 2026-05-26
 
 ### Changed
