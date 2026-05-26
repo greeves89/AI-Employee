@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.21] — 2026-05-26
+
+### Changed
+- **GitHub issue cleanup groundwork merged** — brought the Trading Analyst template test coverage from `feat/issue-156-trading-agent-template` into `main`, so issue #156 can be closed against verified code.
+- **Docker socket proxy security docs synchronized** — merged the documentation cleanup from `docs/issue-160-security-docs-docker-proxy`, removing stale custom `docker-proxy/allowlist.yml` guidance and documenting the current `tecnativa/docker-socket-proxy` plus `autoheal` socket behavior.
+
+### Verified
+- `uv run --project orchestrator --with pytest pytest orchestrator/tests/test_trading_template.py orchestrator/tests/test_task_steps.py` — 30 passed.
+- Documentation scan no longer finds active `docker-proxy/allowlist.yml` guidance.
+
+---
+
 ## [1.55.20] — 2026-05-26
 
 ### Fixed
