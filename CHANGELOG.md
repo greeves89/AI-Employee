@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.18] — 2026-05-26
+
+### Changed
+- **App icon simplified further** — removed the blue connector strokes from the iOS app icon and web favicon for a cleaner Lucide-like mark.
+
+### Verified
+- `npm run build` succeeds for the Next.js frontend.
+
+---
+
 ## [1.55.17] — 2026-05-26
 
 ### Changed
