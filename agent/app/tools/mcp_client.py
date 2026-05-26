@@ -79,6 +79,34 @@ class MCPHTTPClient:
         except Exception:
             return None
 
+    @staticmethod
+    def _normalize_tool_schema(schema: Any) -> dict[str, Any]:
+        """Return an OpenAI-compatible JSON object schema for function parameters."""
+        if not isinstance(schema, dict):
+            return {"type": "object", "properties": {}, "additionalProperties": True}
+
+        allowed_keys = {
+            "type",
+            "properties",
+            "required",
+            "additionalProperties",
+            "description",
+            "title",
+            "enum",
+            "items",
+            "anyOf",
+            "oneOf",
+            "allOf",
+        }
+        normalized = {k: v for k, v in schema.items() if k in allowed_keys}
+        if normalized.get("type") != "object":
+            normalized["type"] = "object"
+        if not isinstance(normalized.get("properties"), dict):
+            normalized["properties"] = {}
+        if "required" in normalized and not isinstance(normalized["required"], list):
+            normalized.pop("required", None)
+        return normalized
+
     async def discover_tools(self) -> list[dict]:
         """Discover tools from all configured MCP servers.
 
@@ -170,7 +198,7 @@ class MCPHTTPClient:
                 "function": {
                     "name": prefixed_name,
                     "description": f"[MCP: {server_name}] {tool.get('description', '')}",
-                    "parameters": tool.get("inputSchema", {"type": "object", "properties": {}}),
+                    "parameters": self._normalize_tool_schema(tool.get("inputSchema")),
                 },
             })
 

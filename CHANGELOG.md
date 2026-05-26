@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.20] — 2026-05-26
+
+### Fixed
+- **Custom MCP tool schemas are normalized before reaching LLM providers** — MCP tools with missing, `null`, or non-OpenAI-compatible `inputSchema` values now fall back to a valid JSON Schema object. This fixes Azure/OpenAI errors like `Invalid schema for function 'mcp_MyBoardyMCP_web_search'`.
+
+### Verified
+- `python3 -m py_compile agent/app/tools/mcp_client.py`
+- Live `MyBoardyMCP` discovery validates all 3 tool schemas as JSON object parameters.
+- Rebuilt `ai-employee-agent:latest` and recreated `MyAzureAgent`.
+
+---
+
 ## [1.55.19] — 2026-05-26
 
 ### Fixed
