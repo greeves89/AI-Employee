@@ -30,6 +30,7 @@ import { ProactiveToggle } from "@/components/agents/proactive-toggle";
 import { DockerAppsTab } from "@/components/agents/docker-apps-tab";
 import { SkillsTab } from "@/components/agents/skills-tab";
 import { ComputerUseTab } from "@/components/agents/computer-use-tab";
+import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -62,7 +63,7 @@ type SubKey =
   | "chat" | "todos" | "terminal" | "history"
   | "files" | "apps" | "computer-use"
   | "knowledge" | "memory" | "skills"
-  | "settings" | "integrations";
+  | "settings" | "integrations" | "command-policies";
 
 type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2; simpleVisible: boolean };
 type TabGroup = { key: string; label: string; icon: typeof CheckCircle2; subs: SubTab[] };
@@ -91,6 +92,7 @@ const tabGroups: TabGroup[] = [
   { key: "settings", label: "Settings", icon: Settings, subs: [
     { key: "settings", label: "Allgemein", icon: Settings, simpleVisible: false },
     { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+    { key: "command-policies", label: "Command Policies", icon: ShieldAlert, simpleVisible: false },
   ] },
 ];
 
@@ -341,6 +343,7 @@ export default function AgentDetailPage() {
           {activeSub === "knowledge" && <KnowledgePanel agentId={agentId} />}
           {activeSub === "memory" && <MemoryTab agentId={agentId} />}
           {activeSub === "integrations" && <IntegrationSelector agentId={agentId} />}
+          {activeSub === "command-policies" && <CommandPoliciesTab agentId={agentId} />}
           {activeSub === "skills" && <SkillsTab agentId={agentId} />}
           {activeSub === "computer-use" && <ComputerUseTab agentId={agentId} browserMode={agent.browser_mode} />}
           {activeSub === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}

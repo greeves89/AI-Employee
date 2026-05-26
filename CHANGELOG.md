@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.22] — 2026-05-26
+
+### Added
+- **DB-backed Command Policy Engine shipped (#155)** — bash command governance now lives in `command_policies` with global rules plus per-agent overrides. Seeded defaults replace the old hardcoded `command_filter.py` pattern lists.
+- **Command Policy UI** — admins can manage global policies under Approvals → Command Policies; agent detail settings now show inherited global rules and editable agent overrides.
+
+### Changed
+- **Bash enforcement moved into runtime execution** — `agent/app/tools/executor.py` checks DB policies before shell execution. `blocked` policies deny immediately; `medium` and `high` policies create an approval request and execute only after approval.
+- **Bash approval MCP aligned with the same policy source** — the sidecar no longer imports the removed Python command filter and uses the orchestrator policy endpoint with agent-token auth.
+
+### Verified
+- `python3 -m py_compile orchestrator/app/api/command_policies.py orchestrator/app/models/command_policy.py agent/app/tools/executor.py`
+- `cd orchestrator && uv run --with alembic alembic heads`
+- `node --check agent/mcp/bash-approval-server.mjs`
+- `uv run --project agent --with pytest pytest agent/tests/test_command_policies.py` — 2 passed.
+- `cd frontend && npm run build`
+
+---
+
 ## [1.55.21] — 2026-05-26
 
 ### Changed

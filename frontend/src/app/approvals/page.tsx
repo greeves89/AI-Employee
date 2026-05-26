@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ApprovalModal } from "@/components/agents/approval-modal";
+import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import {
   getPendingApprovals, approveCommand, denyCommand,
   getApprovalRules, createApprovalRule, updateApprovalRule, deleteApprovalRule,
@@ -99,7 +100,7 @@ const riskConfig = {
 };
 
 export default function ApprovalsPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "rules" | "presets">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<ApprovalRequest | null>(null);
@@ -251,6 +252,12 @@ export default function ApprovalsPage() {
     setIsModalOpen(true);
   };
 
+  const refreshCurrentTab = () => {
+    if (activeTab === "pending") loadApprovals();
+    if (activeTab === "rules") loadRules();
+    if (activeTab === "presets") loadPresets();
+  };
+
   return (
     <div className="px-8 py-8 max-w-6xl mx-auto">
       {/* Header */}
@@ -269,7 +276,7 @@ export default function ApprovalsPage() {
           </div>
         </div>
         <button
-          onClick={activeTab === "pending" ? loadApprovals : loadRules}
+          onClick={refreshCurrentTab}
           className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
         >
           <RefreshCw
@@ -315,7 +322,21 @@ export default function ApprovalsPage() {
           <Layers className="h-3.5 w-3.5" />
           Level-Presets
         </button>
+        <button
+          onClick={() => setActiveTab("command-policies")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-all inline-flex items-center gap-1.5",
+            activeTab === "command-policies"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <ShieldAlert className="h-3.5 w-3.5" />
+          Command Policies
+        </button>
       </div>
+
+      {activeTab === "command-policies" && <CommandPoliciesTab />}
 
       {/* Rules Tab */}
       {activeTab === "rules" && (

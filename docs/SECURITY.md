@@ -83,7 +83,7 @@ Internet
 **Application**
 - [ ] Change default Grafana admin password on first login
 - [ ] Confirm `--dangerously-skip-permissions` flag is NOT in use
-- [ ] Review agent command blocklist (`agent/app/command_filter.py`)
+- [ ] Review DB-backed command policies in Admin → Approvals → Command Policies
 - [ ] Enable audit logging (enabled by default)
 
 ---
@@ -244,7 +244,7 @@ Dangerous shell commands are blocked before execution:
 - Fork bombs
 - Reverse shells (common patterns)
 
-Review/update the blocklist: `agent/app/command_filter.py`
+Review/update command policies in Admin → Approvals → Command Policies. Agent-specific overrides are available on each agent's Settings → Command Policies tab.
 
 ---
 
@@ -395,7 +395,7 @@ Beyond the default infrastructure alerts (`monitoring/alerts.yml`), consider:
 docker logs ai-employee-orchestrator 2>&1 | grep -i "auth.*fail\|unauthorized\|403"
 
 # Blocked commands
-docker logs ai-employee-orchestrator 2>&1 | grep -i "blocked\|command_filter"
+docker logs ai-employee-orchestrator 2>&1 | grep -i "blocked\|command policy\|approval"
 
 # Docker proxy rejections
 docker logs ai-employee-docker-proxy 2>&1 | grep -i "denied\|blocked\|forbidden"

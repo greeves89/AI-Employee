@@ -16,6 +16,7 @@ from app.models.agent_access import AgentAccess
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.models.feedback import Feedback, FeedbackStatus, FeedbackCategory
 from app.models.command_approval import CommandApproval, ApprovalStatus
+from app.models.command_policy import CommandPolicy
 from app.models.audit_log import AuditLog, AuditEventType
 from app.models.knowledge import KnowledgeEntry
 from app.models.brain import BrainLink
@@ -42,7 +43,7 @@ __all__ = [
     "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
     "AgentTodo", "TodoStatus",
     "Feedback", "FeedbackStatus", "FeedbackCategory",
-    "CommandApproval", "ApprovalStatus",
+    "CommandApproval", "ApprovalStatus", "CommandPolicy",
     "AuditLog", "AuditEventType",
     "KnowledgeEntry", "BrainLink",
     "AgentMessage",

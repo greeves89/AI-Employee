@@ -4,7 +4,7 @@
  * Bash Approval MCP Server
  * 
  * Intercepts bash commands and enforces approval workflow:
- * 1. Analyzes command risk using command_filter.py
+ * 1. Analyzes command risk using DB-backed command policies
  * 2. Blocks forbidden commands immediately
  * 3. Requests approval for risky commands from orchestrator
  * 4. Polls for user decision
@@ -25,6 +25,9 @@ const execAsync = promisify(exec);
 const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://orchestrator:8000";
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 const AGENT_ID = process.env.AGENT_ID || "";
+const COMMAND_POLICY_CACHE_TTL_MS = 10000;
+
+let commandPolicyCache = { expiresAt: 0, policies: [] };
 
 const server = new Server(
   {
@@ -39,19 +42,55 @@ const server = new Server(
 );
 
 /**
- * Analyze command risk using command_filter.py
+ * Analyze command risk using DB-backed command policies.
  */
 async function analyzeCommand(command) {
   try {
-    const { stdout } = await execAsync(
-      `python3 -c "import sys; sys.path.insert(0, '/app'); from app.command_filter import analyze_command; risk, reason = analyze_command('${command.replace(/'/g, "\\'")}'); print(risk + '::' + reason)"`
-    );
-    const [risk_level, reason] = stdout.trim().split("::");
-    return { risk_level, reason };
+    const policies = await fetchCommandPolicies();
+    for (const policy of policies) {
+      const pattern = policy.pattern || "";
+      if (!pattern) continue;
+      try {
+        if (new RegExp(pattern, "im").test(command)) {
+          const effect = ["blocked", "high", "medium", "allow"].includes(policy.effect)
+            ? policy.effect
+            : "blocked";
+          if (effect === "allow") {
+            return { risk_level: "low", reason: policy.description || policy.name || pattern };
+          }
+          return { risk_level: effect, reason: policy.description || policy.name || pattern };
+        }
+      } catch (error) {
+        console.error(`Invalid command policy regex "${pattern}":`, error);
+      }
+    }
+    return { risk_level: "low", reason: "No command policy matched" };
   } catch (error) {
     console.error("Command analysis failed:", error);
-    return { risk_level: "medium", reason: "Analysis failed - defaulting to medium risk" };
+    return { risk_level: "low", reason: "Policy lookup failed - allowing command" };
   }
+}
+
+async function fetchCommandPolicies() {
+  const now = Date.now();
+  if (commandPolicyCache.expiresAt > now) {
+    return commandPolicyCache.policies;
+  }
+  const response = await fetch(`${ORCHESTRATOR_URL}/api/v1/command-policies/for-agent/${AGENT_ID}`, {
+    headers: {
+      "Authorization": `Bearer ${AGENT_TOKEN}`,
+      "X-Agent-ID": AGENT_ID,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Policy fetch failed: HTTP ${response.status}`);
+  }
+  const data = await response.json();
+  commandPolicyCache = {
+    expiresAt: now + COMMAND_POLICY_CACHE_TTL_MS,
+    policies: Array.isArray(data.policies) ? data.policies : [],
+  };
+  return commandPolicyCache.policies;
 }
 
 /**
@@ -63,12 +102,14 @@ async function requestApproval(command, reasoning, risk_level) {
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${AGENT_TOKEN}`,
+      "X-Agent-ID": AGENT_ID,
     },
     body: JSON.stringify({
-      tool: "Bash",
+      tool: "bash",
       input: { command },
       reasoning,
       risk_level,
+      target_channel: "all",
     }),
   });
 
@@ -90,6 +131,7 @@ async function waitForApproval(approvalId, maxWaitSeconds = 300) {
     const response = await fetch(`${ORCHESTRATOR_URL}/api/v1/approvals/check/${approvalId}`, {
       headers: {
         "Authorization": `Bearer ${AGENT_TOKEN}`,
+        "X-Agent-ID": AGENT_ID,
       },
     });
 
@@ -104,7 +146,7 @@ async function waitForApproval(approvalId, maxWaitSeconds = 300) {
     }
     
     if (status.status === "denied") {
-      return { approved: false, reason: status.deny_reason };
+      return { approved: false, reason: status.user_response || status.reason };
     }
 
     // Check timeout

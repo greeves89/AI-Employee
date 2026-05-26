@@ -254,7 +254,7 @@ Each agent is a Docker container running Claude Code CLI with an MCP server side
 | `app/agent_runner.py` | Main loop: subscribe to Redis, run Claude, stream results |
 | `app/chat_handler.py` | Handle chat messages, maintain conversation context |
 | `app/task_consumer.py` | Consume async tasks from Redis queue |
-| `app/command_filter.py` | Block dangerous shell commands before execution |
+| `app/tools/executor.py` | Execute tools and enforce DB-backed command policies before shell execution |
 | `mcp/` | MCP server implementations |
 
 ### Docker Socket Proxy

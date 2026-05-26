@@ -1215,6 +1215,61 @@ export async function deleteApprovalRule(id: number): Promise<{ status: string }
   return fetchJSON(`${getBase()}/approval-rules/${id}`, { method: "DELETE" });
 }
 
+// --- Command Policies ---
+
+export type CommandPolicyEffect = "blocked" | "high" | "medium" | "allow";
+export type CommandPolicyScope = "global" | "agent";
+
+export interface CommandPolicy {
+  id: number;
+  name: string;
+  pattern: string;
+  effect: CommandPolicyEffect;
+  scope: CommandPolicyScope;
+  agent_id: string | null;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CommandPolicyInput {
+  name: string;
+  pattern: string;
+  effect: CommandPolicyEffect;
+  scope: CommandPolicyScope;
+  agent_id?: string | null;
+  description?: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export async function getCommandPolicies(): Promise<{ policies: CommandPolicy[] }> {
+  return fetchJSON(`${getBase()}/command-policies/`);
+}
+
+export async function createCommandPolicy(data: CommandPolicyInput): Promise<CommandPolicy> {
+  return fetchJSON(`${getBase()}/command-policies/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCommandPolicy(
+  id: number,
+  data: Partial<CommandPolicyInput>,
+): Promise<CommandPolicy> {
+  return fetchJSON(`${getBase()}/command-policies/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCommandPolicy(id: number): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/command-policies/${id}`, { method: "DELETE" });
+}
+
 export async function addPresetRule(
   level: string,
   data: { name: string; description: string; category: string; sort_order?: number },
