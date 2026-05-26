@@ -607,13 +607,14 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
           msgs[assistantIdx] = { ...msgs[assistantIdx], files };
         }
       } else if (type === "queued") {
-        // Show a temporary queued indicator that will be replaced once processing starts
+        // The agent drains pending chat messages mid-turn, so this is a live
+        // steering acknowledgement rather than a "wait until later" state.
         const queuedMsgId = `queued-${message_id}`;
         if (!msgs.some((m) => m.id === queuedMsgId)) {
           msgs.push({
             id: queuedMsgId,
             role: "system",
-            content: "⏳ Message queued — agent is finishing its current response...",
+            content: "Message received — steering current agent turn",
             timestamp: event.timestamp,
             isQueued: true,
           });
@@ -1179,7 +1180,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
         <div className="text-center py-1">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-[10px] text-amber-500/80">
             <Clock className="h-3 w-3" />
-            Message queued — agent will respond after current task
+            Message received — steering current agent turn
           </span>
         </div>
       );

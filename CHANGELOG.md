@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.17] — 2026-05-26
+
+### Changed
+- **App icon simplified** — refreshed the iOS app icon and web favicon with the minimal chip/chat mark and removed the extra ready-dot accent.
+- **Live chat steering copy clarified** — web chat now describes mid-turn messages as steering the current agent turn instead of implying the user must wait for the current task to finish.
+
+### Verified
+- `npm run build` succeeds for the Next.js frontend.
+
+---
+
 ## [1.55.16] — 2026-05-26
 
 ### Changed

@@ -626,7 +626,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         "message_id": message_id,
                         "type": "queued",
                         "data": {
-                            "message": "Agent is busy — your message will be processed next.",
+                            "message": "Agent is working — your message was added to the current turn.",
                             "queue_position": int(queue_depth),
                         },
                         "timestamp": datetime.now(timezone.utc).isoformat(),
