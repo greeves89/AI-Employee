@@ -1,17 +1,33 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle, ArrowUpCircle } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
-import { CreateAgentModal } from "@/components/agents/create-agent-modal";
-import { AgentNetworkView } from "@/components/agents/agent-network-view";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 type ViewMode = "grid" | "network";
+
+const CreateAgentModal = dynamic(
+  () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
+  { ssr: false },
+);
+
+const AgentNetworkView = dynamic(
+  () => import("@/components/agents/agent-network-view").then((m) => m.AgentNetworkView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/50 p-8 text-sm text-muted-foreground">
+        Loading network view...
+      </div>
+    ),
+  },
+);
 
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();

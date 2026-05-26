@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.16] — 2026-05-26
+
+### Changed
+- **Agents page loads less JavaScript up front** — the heavy create-agent modal and network graph are now lazy-loaded only when opened/selected, reducing the `/agents` route bundle and making the page become interactive faster.
+
+### Verified
+- `npm run build` succeeds for the Next.js frontend.
+- Public `/agents` route and `/api/v1/health` respond successfully after deployment.
+
+---
+
 ## [1.55.15] — 2026-05-25
 
 ### Fixed
