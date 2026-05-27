@@ -32,6 +32,7 @@ jobs:
         run: |
           pip install pyinstaller rumps pystray \
             pyautogui Pillow websockets \
+            pyobjc-framework-AVFoundation \
             pyobjc-framework-ApplicationServices \
             pyobjc-framework-Cocoa
 

@@ -22,6 +22,10 @@ import platform
 import sys
 import threading
 import ssl
+import asyncio
+import base64
+import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -151,6 +155,12 @@ def api_session_status(base_url, token, session_id) -> dict:
     return _api("GET", base_url, f"/api/v1/computer-use/sessions/{session_id}/status", token)
 
 
+def api_list_agents(base_url, token) -> list[dict]:
+    body = _api("GET", base_url, "/api/v1/agents/", token)
+    agents = body.get("agents") if isinstance(body, dict) else None
+    return agents if isinstance(agents, list) else []
+
+
 ENSURE_OK        = "ok"
 ENSURE_NEEDS_LOGIN = "needs_login"
 ENSURE_ERROR     = "error"
@@ -176,6 +186,9 @@ def ensure_session(cfg: dict) -> str:
         return ENSURE_OK
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
+            cfg["token"] = ""
+            cfg["session"] = ""
+            save_config(cfg)
             return ENSURE_NEEDS_LOGIN
         return ENSURE_ERROR
     except Exception:
@@ -208,8 +221,8 @@ def start_bridge(cfg):
     with _bridge_lock:
         if _bridge_thread and _bridge_thread.is_alive():
             return True
-        if not cfg.get("token") or not cfg.get("session"):
-            _status = "error: not configured"
+        if not cfg.get("url") or not cfg.get("token") or not cfg.get("session"):
+            _status = "error: nicht eingerichtet"
             return False
         _bridge_stop.clear()
         _bridge_thread = threading.Thread(
@@ -252,12 +265,24 @@ def _run_bridge_thread(url, token, session_id):
         _status = "connecting"
         asyncio.run(bridge_module.run(url=url, token=token,
                                       session_id=session_id, stop_event=_bridge_stop))
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            _status = "error: neu anmelden"
+        else:
+            _status = f"error: HTTP {e.code}"
     except Exception as e:
-        _status = f"error: {e}"
+        msg = str(e).strip() or e.__class__.__name__
+        if "Unauthorized" in msg or "1008" in msg:
+            _status = "error: neu anmelden"
+        elif "Session not found" in msg:
+            _status = "error: session abgelaufen"
+        else:
+            _status = f"error: {msg}"
         import traceback, logging
         logging.getLogger(__name__).error(f"Bridge error:\n{traceback.format_exc()}")
     finally:
-        _status = "disconnected"
+        if _bridge_stop.is_set():
+            _status = "disconnected"
 
 
 # ── Module-level AppKit handler classes (ObjC class names must be unique) ─────
@@ -678,17 +703,25 @@ def show_status_window(cfg: dict) -> None:
     _appkit_handlers_init()
     from AppKit import NSApp, NSColor, NSMakeRect, NSVisualEffectView
 
-    W = 500
-    PAD = 32
-    COL = 118   # label column width
+    W = 620
+    H = 470
+    PAD = 34
+    COL = 126
     VAL_X = PAD + COL + 14
     VAL_W = W - VAL_X - PAD
 
     server_state = {}
+    server_error = ""
     try:
         if cfg.get("url") and cfg.get("token") and cfg.get("session"):
             server_state = api_session_status(cfg["url"], cfg["token"], cfg["session"])
-    except Exception:
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            server_error = "Neu anmelden"
+        else:
+            server_error = f"Serverfehler HTTP {e.code}"
+    except Exception as e:
+        server_error = str(e).strip() or e.__class__.__name__
         server_state = {}
 
     state = _status
@@ -696,23 +729,19 @@ def show_status_window(cfg: dict) -> None:
     if server_connected:
         dot_color, state_text, badge_color = (0.13, 0.76, 0.37, 1), "Verbunden", "green"
     elif state == "connecting":
-        dot_color, state_text, badge_color = (1.0, 0.62, 0.04, 1), "Lokal gestartet, Server wartet", "amber"
+        dot_color, state_text, badge_color = (1.0, 0.62, 0.04, 1), "Verbinde mit Server", "amber"
+    elif server_error:
+        dot_color, state_text, badge_color = (0.94, 0.27, 0.27, 1), server_error, "red"
     else:
-        dot_color, state_text, badge_color = (0.6, 0.6, 0.6, 1), state.replace("error: ", ""), "gray"
+        text = state.replace("error: ", "")
+        color = (0.94, 0.27, 0.27, 1) if state.startswith("error:") else (0.6, 0.6, 0.6, 1)
+        dot_color, state_text, badge_color = color, text, "red" if state.startswith("error:") else "gray"
     dot_col = NSColor.colorWithSRGBRed_green_blue_alpha_(*dot_color)
 
     caps = cfg.get("allowed_capabilities", [])
     cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
     caps_str = ", ".join(cap_map.get(c, c) for c in caps) if caps else "Keine"
     paths = cfg.get("allowed_paths", [])
-
-    # Build rows top-down, track y from top
-    HEADER_H  = 104
-    ROW_H     = 28
-    CAPS_H    = 44 if len(caps_str) > 40 else 28
-    PATH_H    = 16 * len(paths) + 12 if paths else 0
-    FOOTER_H  = 70
-    H = HEADER_H + ROW_H * 4 + CAPS_H + (12 + PATH_H if paths else 0) + FOOTER_H
 
     panel = _make_panel("AI Employee Status", W, H)
     cv = panel.contentView()
@@ -733,35 +762,34 @@ def show_status_window(cfg: dict) -> None:
         "Live-Verbindung zwischen diesem Mac und AI Employee.",
         "network",
         PAD,
-        H - 92,
+        H - 94,
         W - 2 * PAD,
     )
 
-    card_x, card_y = PAD, 70
-    card_w, card_h = W - 2 * PAD, H - 178
+    card_x, card_y = PAD, 76
+    card_w, card_h = W - 2 * PAD, 290
     _card(cv, card_x, card_y, card_w, card_h)
 
-    _badge(cv, f"● {state_text}", card_x + 20, card_y + card_h - 38, badge_color)
+    _badge(cv, f"● {state_text}", card_x + 22, card_y + card_h - 42, badge_color)
 
-    y = card_y + card_h - 56
+    y = card_y + card_h - 66
 
-    def row(lbl, val, h=ROW_H, val_color=None):
+    def row(lbl, val, h=34, val_color=None):
         nonlocal y
         y -= h
-        _label(cv, lbl, card_x + 20, y, COL, h-2, size=12, muted=True)
-        _label(cv, val, VAL_X, y, VAL_W, h-2, size=12, color=val_color)
+        _label(cv, lbl, card_x + 24, y + 7, COL, 18, size=12, muted=True)
+        _label(cv, val, VAL_X, y + 7, VAL_W, max(18, h - 8), size=12, color=val_color)
 
     row("Verbindung", state_text, val_color=dot_col)
     row("Version",    f"Bridge v{BRIDGE_VERSION}")
     row("Server",     cfg.get("url") or "—")
     row("Session",    (cfg.get("session") or "—")[:16])
-    row("Erlaubt",    caps_str, h=CAPS_H)
+    row("Erlaubt",    caps_str, h=58)
 
     if paths:
-        y -= 8
+        y -= 4
         _separator(cv, card_x + 20, y, card_w - 40)
-        y -= 6
-        row("Ordner", "\n".join(paths), h=PATH_H + 8)
+        row("Ordner", "\n".join(paths), h=min(70, 18 * len(paths) + 18))
 
     close_btn = _button(cv, "Schliessen", W - PAD - 110, 22, 110, key="\r")
 
@@ -771,6 +799,224 @@ def show_status_window(cfg: dict) -> None:
 
     NSApp.runModalForWindow_(panel)
     panel.close()
+
+
+# ── Interaction Bar / Voice Mode ─────────────────────────────────────────────
+
+_voice_state: dict = {}
+
+
+def _voice_ws_url(base_url: str, agent_id: str, token: str) -> str:
+    ws_base = base_url.rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
+    q = urllib.parse.urlencode({"token": token})
+    return f"{ws_base}/api/v1/ws/agents/{agent_id}/voice?{q}"
+
+
+def _play_audio_b64(b64: str, suffix: str = ".mp3") -> None:
+    try:
+        raw = base64.b64decode(b64)
+        fd, path = tempfile.mkstemp(prefix="aiemp-voice-", suffix=suffix)
+        with os.fdopen(fd, "wb") as f:
+            f.write(raw)
+        subprocess.Popen(["afplay", path])
+    except Exception:
+        pass
+
+
+def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
+    async def _runner():
+        import websockets
+
+        url = _voice_ws_url(cfg["url"], agent_id, cfg["token"])
+        async with websockets.connect(url, ping_interval=20) as ws:
+            _voice_state["ws"] = ws
+            _voice_state["loop"] = asyncio.get_running_loop()
+            on_event("ready", "Bereit")
+            async for raw in ws:
+                try:
+                    evt = json.loads(raw)
+                except Exception:
+                    continue
+                typ = evt.get("type")
+                data = evt.get("data") or {}
+                if typ == "ready":
+                    on_event("ready", "Bereit")
+                elif typ == "transcript":
+                    on_event("processing", f"Du: {data.get('text', '')}")
+                elif typ == "response":
+                    on_event("response", str(data.get("text", "")))
+                elif typ == "tts_start":
+                    on_event("speaking", "Antwort wird gesprochen")
+                elif typ == "audio_chunk":
+                    mime = str(data.get("mime") or "audio/mpeg")
+                    suffix = ".mp3" if "mpeg" in mime or "mp3" in mime else ".audio"
+                    _play_audio_b64(str(data.get("b64") or ""), suffix=suffix)
+                elif typ == "done":
+                    on_event("ready", "Bereit")
+                elif typ == "error":
+                    on_event("error", str(data.get("message") or "Voice-Fehler"))
+
+    def _thread():
+        try:
+            asyncio.run(_runner())
+        except Exception as e:
+            on_event("error", str(e).strip() or e.__class__.__name__)
+
+    _voice_state["thread"] = threading.Thread(target=_thread, daemon=True)
+    _voice_state["thread"].start()
+
+
+def _voice_send_audio_file(path: str, language: str = "de") -> None:
+    ws = _voice_state.get("ws")
+    loop = _voice_state.get("loop")
+    if not ws or not loop:
+        return
+    try:
+        raw = Path(path).read_bytes()
+        b64 = base64.b64encode(raw).decode()
+    except Exception:
+        return
+
+    async def _send():
+        await ws.send(json.dumps({"type": "audio_chunk", "data": {"b64": b64}}))
+        await ws.send(json.dumps({"type": "commit", "data": {"language": language}}))
+
+    asyncio.run_coroutine_threadsafe(_send(), loop)
+
+
+def show_interaction_bar(cfg: dict) -> None:
+    if not _appkit_available():
+        return
+    if not cfg.get("url") or not cfg.get("token"):
+        show_setup_dialog(cfg)
+        return
+
+    _appkit_handlers_init()
+    from AppKit import NSApp, NSColor, NSMakeRect, NSObject, NSPanel, NSWindowStyleMaskBorderless
+    from AppKit import NSBackingStoreBuffered, NSVisualEffectView
+    from AVFoundation import (
+        AVAudioQualityMedium,
+        AVAudioRecorder,
+        AVEncoderAudioQualityKey,
+        AVFormatIDKey,
+        AVNumberOfChannelsKey,
+        AVSampleRateKey,
+        NSURL,
+    )
+
+    W, H = 720, 120
+    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, W, H), NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
+    panel.setReleasedWhenClosed_(False)
+    panel.setLevel_(24)
+    try:
+        frame = panel.screen().visibleFrame()
+        panel.setFrameOrigin_((frame.origin.x + (frame.size.width - W) / 2, frame.origin.y + 24))
+    except Exception:
+        panel.center()
+
+    cv = panel.contentView()
+    backdrop = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+    backdrop.setMaterial_(3)
+    backdrop.setState_(1)
+    backdrop.setWantsLayer_(True)
+    backdrop.layer().setCornerRadius_(24)
+    backdrop.layer().setBorderWidth_(1)
+    backdrop.layer().setBorderColor_(NSColor.separatorColor().CGColor())
+    cv.addSubview_(backdrop)
+
+    agents = []
+    try:
+        agents = api_list_agents(cfg["url"], cfg["token"])
+    except Exception:
+        agents = []
+    first_agent = cfg.get("voice_agent_id") or (str(agents[0].get("id")) if agents else "")
+
+    agent_f = _input(cv, 24, 70, 170, "Agent ID", value=first_agent)
+    status = _label(cv, "Bereit", 212, 75, 300, 18, size=12, muted=True)
+    transcript = _label(cv, "", 212, 44, 420, 22, size=13)
+    response = _label(cv, "", 212, 18, 420, 20, size=12, muted=True)
+    connect_btn = _button(cv, "Verbinden", 24, 30, 96, 34)
+    record_btn = _button(cv, "Aufnehmen", 128, 30, 96, 34)
+    close_btn = _button(cv, "×", W - 48, 42, 28, 28)
+
+    state = {"recorder": None, "path": "", "connected": False}
+
+    class VoiceHandler(NSObject):
+        def connect_(self, _sender):
+            agent_id = agent_f.stringValue().strip()
+            if not agent_id:
+                status.setStringValue_("Agent ID fehlt")
+                return
+            cfg["voice_agent_id"] = agent_id
+            save_config(cfg)
+            status.setStringValue_("Verbinde Voice...")
+
+            def on_event(kind, text):
+                def _apply():
+                    if kind in {"ready", "speaking", "processing", "error"}:
+                        status.setStringValue_(text[:120])
+                    elif kind == "response":
+                        response.setStringValue_(text[:220])
+                try:
+                    status.performSelectorOnMainThread_withObject_waitUntilDone_(
+                        "setStringValue:", text[:120], False)
+                    if kind == "response":
+                        response.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:", text[:220], False)
+                except Exception:
+                    _apply()
+
+            _start_voice_ws(cfg, agent_id, on_event)
+            state["connected"] = True
+
+        def record_(self, sender):
+            if not state["connected"]:
+                self.connect_(sender)
+            if state["recorder"] is None:
+                path = str(Path(tempfile.gettempdir()) / "aiemp-voice.m4a")
+                settings = {
+                    AVFormatIDKey: 1633772320,  # kAudioFormatMPEG4AAC
+                    AVSampleRateKey: 16000.0,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderAudioQualityKey: AVAudioQualityMedium,
+                }
+                url = NSURL.fileURLWithPath_(path)
+                result = AVAudioRecorder.alloc().initWithURL_settings_error_(url, settings, None)
+                rec = result[0] if isinstance(result, tuple) else result
+                if not rec:
+                    status.setStringValue_("Mikrofon konnte nicht gestartet werden")
+                    return
+                rec.record()
+                state["recorder"] = rec
+                state["path"] = path
+                sender.setTitle_("Stop")
+                status.setStringValue_("Höre zu...")
+            else:
+                state["recorder"].stop()
+                state["recorder"] = None
+                sender.setTitle_("Aufnehmen")
+                status.setStringValue_("Sende an Agent...")
+                transcript.setStringValue_("Transkribiere...")
+                _voice_send_audio_file(state["path"], language="de")
+
+        def close_(self, _sender):
+            try:
+                ws = _voice_state.get("ws")
+                loop = _voice_state.get("loop")
+                if ws and loop:
+                    asyncio.run_coroutine_threadsafe(ws.close(), loop)
+            except Exception:
+                pass
+            panel.close()
+
+    handler = VoiceHandler.alloc().init()
+    _voice_state["handler"] = handler
+    _voice_state["panel"] = panel
+    connect_btn.setTarget_(handler); connect_btn.setAction_("connect:")
+    record_btn.setTarget_(handler); record_btn.setAction_("record:")
+    close_btn.setTarget_(handler); close_btn.setAction_("close:")
+    panel.makeKeyAndOrderFront_(None)
 
 
 # ── Windows/Linux dialogs (customtkinter — dark, modern) ──────────────────────
@@ -1093,30 +1339,68 @@ def run_macos(cfg: dict) -> None:
 
     class BridgeApp(rumps.App):
         def __init__(self):
-            super().__init__("⬡", quit_button=None)
+            super().__init__("AI Employee", quit_button=None)
             self.cfg = load_config()
             self._needs_login = False
+            self._connecting = False
             self._update_icon()
             if self.cfg.get("auto_connect") and self.cfg.get("token") and self.cfg.get("session"):
                 threading.Thread(target=self._connect, daemon=True).start()
 
         def _update_icon(self):
-            self.title = "🟢" if is_running() else "⬡"
+            if is_running():
+                self.title = "●"
+            elif _status == "connecting" or self._connecting:
+                self.title = "◐"
+            else:
+                self.title = "○"
+            self._sync_menu()
+
+        def _sync_menu(self):
+            connected = is_running()
+            connecting = _status == "connecting" or self._connecting
+            configured = bool(self.cfg.get("url") and self.cfg.get("token") and self.cfg.get("session"))
+            try:
+                self.menu["Status:"] = "Status: " + (
+                    "verbunden" if connected else
+                    "verbinde..." if connecting else
+                    _status.replace("error: ", "") if _status != "disconnected" else
+                    "nicht verbunden"
+                )
+            except Exception:
+                pass
+            for title, enabled in {
+                "Verbinden": configured and not connected and not connecting,
+                "Trennen": connected or connecting,
+                "Berechtigungen…": configured,
+                "Interaction Bar": configured,
+                "Status": True,
+                "AI-Employee öffnen": bool(self.cfg.get("url")),
+            }.items():
+                try:
+                    self.menu[title].enabled = enabled
+                except Exception:
+                    pass
 
         def _connect(self):
             global _status
+            self._connecting = True
+            self._update_icon()
             result = ensure_session(self.cfg)
             if result == ENSURE_NEEDS_LOGIN:
                 _status = "error: token abgelaufen — bitte neu anmelden"
+                self._connecting = False
                 self._update_icon()
                 # Signal main thread to open settings
                 self._needs_login = True
                 return
             if result != ENSURE_OK:
                 _status = "error: server nicht erreichbar"
+                self._connecting = False
                 self._update_icon()
                 return
             start_bridge(self.cfg)
+            self._connecting = False
             self._update_icon()
 
         @rumps.clicked("Verbinden")
@@ -1134,12 +1418,20 @@ def run_macos(cfg: dict) -> None:
             show_permissions_dialog(self.cfg)
             self.cfg = load_config()
 
+        @rumps.clicked("Interaction Bar")
+        def on_interaction_bar(self, _):
+            show_interaction_bar(self.cfg)
+
         @rumps.clicked("Einstellungen…")
         def on_settings(self, _):
             updated = show_setup_dialog(self.cfg)
             if updated:
                 self.cfg = updated
                 save_config(updated)
+                if self.cfg.get("auto_connect"):
+                    threading.Thread(target=self._connect, daemon=True).start()
+                else:
+                    self._update_icon()
 
         @rumps.clicked("Status")
         def on_status(self, _):

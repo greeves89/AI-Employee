@@ -22,6 +22,7 @@ a = Analysis(
         'pyscreeze',
         'websockets',
         'ApplicationServices',
+        'AVFoundation',
         'AppKit',
         'Quartz',
         'tkinter',
