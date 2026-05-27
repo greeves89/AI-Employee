@@ -85,5 +85,6 @@ app = BUNDLE(
         'CFBundleName': 'AI-Employee Bridge',
         'NSAccessibilityUsageDescription': 'Required for desktop automation (click, type, read UI elements)',
         'NSScreenCaptureUsageDescription': 'Required to take screenshots for the AI agent',
+        'NSMicrophoneUsageDescription': 'Required for voice mode so you can speak with your AI agent',
     },
 )
