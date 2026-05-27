@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.54.0"
+LABEL ai-employee.version="1.55.19"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI globally (pin version for reproducibility)
-RUN npm install -g @anthropic-ai/claude-code@2.1.114
+RUN npm install -g @anthropic-ai/claude-code@2.1.144
 
 # Install OpenAI Codex CLI for ChatGPT-subscription backed agents
 RUN npm install -g @openai/codex

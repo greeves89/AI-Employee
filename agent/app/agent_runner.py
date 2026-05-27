@@ -109,6 +109,8 @@ class AgentRunner:
         result_data: dict = {"status": "completed"}
         stderr_lines: list[str] = []
         text_output: list[str] = []
+        presented_files: list[dict] = []
+        seen_file_paths: set[str] = set()
 
         async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
             """Read stderr concurrently so it's not lost when process exits."""
@@ -137,6 +139,14 @@ class AgentRunner:
 
             async for event in self._stream_output(self._process):
                 await self._process_event(task_id, event)
+
+                for payload in self._present_file_payloads_from_event(event):
+                    path = str(payload.get("path") or "")
+                    if not path or path in seen_file_paths:
+                        continue
+                    seen_file_paths.add(path)
+                    presented_files.append(payload)
+                    await self._mirror_present_file_to_chat(task_id, payload)
 
                 # Collect assistant text output
                 if event.get("type") == "assistant":
@@ -184,6 +194,15 @@ class AgentRunner:
         finally:
             self.is_running = False
             self._process = None
+
+        if presented_files:
+            result_data.setdefault("presented_files", []).extend(presented_files)
+            await self._publish_scheduler_chat_completion(
+                task_id=task_id,
+                presented_files=presented_files,
+                final_text=str(result_data.get("result") or "\n".join(text_output)).strip(),
+                result_data=result_data,
+            )
 
         return result_data
 
@@ -271,6 +290,103 @@ class AgentRunner:
             await self.log_publisher.publish(
                 task_id, "raw", {"text": event.get("text", "")}
             )
+
+    @staticmethod
+    def _first_text_blocks(content) -> list[str]:
+        """Return all text-ish values from Claude tool_result content blocks."""
+        found: list[str] = []
+        if isinstance(content, str):
+            found.append(content)
+        elif isinstance(content, dict):
+            text = content.get("text")
+            if isinstance(text, str):
+                found.append(text)
+            if "content" in content:
+                found.extend(AgentRunner._first_text_blocks(content["content"]))
+        elif isinstance(content, list):
+            for block in content:
+                found.extend(AgentRunner._first_text_blocks(block))
+        return found
+
+    @staticmethod
+    def _parse_present_file_marker(content) -> dict | None:
+        """Extract a present_file payload from MCP marker content."""
+        marker = "__AI_EMPLOYEE_PRESENT_FILE__"
+        for text in AgentRunner._first_text_blocks(content):
+            stripped = text.strip()
+            if not stripped.startswith(marker):
+                continue
+            try:
+                payload = json.loads(stripped.removeprefix(marker))
+            except (json.JSONDecodeError, TypeError):
+                return None
+            return payload if isinstance(payload, dict) else None
+        return None
+
+    def _present_file_payloads_from_event(self, event: dict) -> list[dict]:
+        """Find present_file marker payloads in Claude task-stream events.
+
+        Claude Code can emit MCP tool results either as top-level
+        `tool_result` events or as synthetic `user` messages containing
+        `tool_result` blocks. The chat path already handles both; task/scheduler
+        execution needs the same coverage so files land in chat history.
+        """
+        event_type = event.get("type")
+        payloads: list[dict] = []
+
+        if event_type == "tool_result":
+            payload = self._parse_present_file_marker(event.get("content"))
+            if payload:
+                payloads.append(payload)
+
+        if event_type == "user":
+            message = event.get("message", {})
+            for block in message.get("content", []) or []:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                payload = self._parse_present_file_marker(block.get("content"))
+                if payload:
+                    payloads.append(payload)
+
+        return payloads
+
+    async def _mirror_present_file_to_chat(self, task_id: str, payload: dict) -> None:
+        """Publish a live chat file event for scheduler/task present_file output."""
+        try:
+            await self.log_publisher.publish_chat(task_id, "file", payload)
+        except Exception:
+            logger.warning("Failed to mirror present_file to chat channel", exc_info=True)
+
+    async def _publish_scheduler_chat_completion(
+        self,
+        task_id: str,
+        presented_files: list[dict],
+        final_text: str,
+        result_data: dict,
+    ) -> None:
+        """Persist scheduler/task file output through the chat completion path."""
+        try:
+            from datetime import datetime, timezone
+
+            payload = {
+                "agent_id": self.log_publisher.agent_id,
+                "message_id": task_id,
+                "type": "done",
+                "source": "scheduler",
+                "data": {
+                    "text": final_text,
+                    "presented_files": presented_files,
+                    "cost_usd": result_data.get("cost_usd"),
+                    "duration_ms": result_data.get("duration_ms"),
+                    "num_turns": result_data.get("num_turns"),
+                    "input_tokens": result_data.get("input_tokens"),
+                    "output_tokens": result_data.get("output_tokens"),
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            await self.log_publisher.redis.publish("chat:completions", json.dumps(payload))
+        except Exception:
+            logger.warning("Failed to publish scheduler chat completion", exc_info=True)
 
     async def interrupt(self) -> None:
         """Interrupt the currently running task."""

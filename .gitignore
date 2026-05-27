@@ -47,7 +47,11 @@ orchestrator/data/
 .agents/
 .augment/
 .bob/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/claude-security-guidance.md
+!.claude/security-patterns.json
+.claude/*.local.md
 .codebuddy/
 .commandcode/
 .continue/

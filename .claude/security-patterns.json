@@ -1,0 +1,30 @@
+[
+  {
+    "name": "hardcoded-openai-or-anthropic-key",
+    "pattern": "(sk-(live|proj|ant|svcacct)-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{32,})",
+    "message": "Potential hardcoded AI provider key. Store it in Key Management or encrypted OAuth/account storage.",
+    "severity": "high",
+    "reminder": "Do not commit provider API keys. Use encrypted secrets and per-agent env injection."
+  },
+  {
+    "name": "hardcoded-aws-access-key",
+    "pattern": "AKIA[0-9A-Z]{16}",
+    "message": "Potential hardcoded AWS access key.",
+    "severity": "high",
+    "reminder": "Use encrypted Key Management secrets or workload identity, never checked-in credentials."
+  },
+  {
+    "name": "approval-bypass-language",
+    "pattern": "(skip|bypass|disable).{0,40}(approval|command policy|autonomy whitelist)",
+    "message": "Potential approval or command-policy bypass.",
+    "severity": "medium",
+    "reminder": "Approval and command policy checks are core safety controls and must not be bypassed."
+  },
+  {
+    "name": "direct-sql-formatting",
+    "pattern": "(execute|text)\\(f[\"'].*(SELECT|INSERT|UPDATE|DELETE|DROP)",
+    "message": "Potential direct SQL string interpolation.",
+    "severity": "medium",
+    "reminder": "Use SQLAlchemy ORM or bound parameters for database queries."
+  }
+]

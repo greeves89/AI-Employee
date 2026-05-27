@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.23] — 2026-05-27
+
+### Added
+- **Claude security guidance plugin defaults** — the agent image now pins Claude Code `2.1.144`, and the repo ships project-level `.claude` settings, security guidance, and JSON custom patterns so fresh installs enable the official security-guidance plugin without relying on local machine state.
+
+### Fixed
+- **Scheduled `present_file` deliveries now reach chat history** — scheduler/task runs parse `present_file` MCP markers from both top-level `tool_result` events and Claude synthetic `user/tool_result` blocks, mirror files to the live chat channel, and persist scheduler-originated file messages in a visible `scheduler` chat session.
+- **Scheduler file sessions are visible to apps** — chat session previews now include assistant-only file deliveries so iOS/Web clients can discover scheduled attachments after reopening.
+
+### Verified
+- `uv run --project agent --with pytest pytest agent/tests/test_present_file_marker.py -q` succeeds.
+- `python3 -m py_compile agent/app/agent_runner.py orchestrator/app/main.py orchestrator/app/api/agents.py` succeeds.
+
+---
+
 ## [1.55.22] — 2026-05-26
 
 ### Added

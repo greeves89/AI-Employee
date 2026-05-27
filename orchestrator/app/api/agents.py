@@ -1084,7 +1084,8 @@ async def get_chat_sessions(
     result = await db.execute(query)
     sessions = result.all()
 
-    # Get first user message per session for preview
+    # Get first useful preview per session. Scheduler-originated file deliveries
+    # can be assistant-only, so do not hide them as phantom sessions.
     previews = {}
     for s in sessions:
         preview_q = (
@@ -1097,12 +1098,32 @@ async def get_chat_sessions(
         )
         r = await db.execute(preview_q)
         row = r.scalar_one_or_none()
-        previews[s.session_id] = (row or "")[:80]
+        preview = row or ""
+        if not preview:
+            assistant_q = (
+                select(ChatMessage.content, ChatMessage.meta)
+                .where(ChatMessage.agent_id == agent_id)
+                .where(ChatMessage.session_id == s.session_id)
+                .where(ChatMessage.role == "assistant")
+                .order_by(ChatMessage.id.desc())
+                .limit(1)
+            )
+            ar = await db.execute(assistant_q)
+            assistant_row = ar.first()
+            if assistant_row:
+                preview = assistant_row[0] or ""
+                meta = assistant_row[1] or {}
+                files = meta.get("presented_files") if isinstance(meta, dict) else None
+                if not preview and files:
+                    first_file = files[0] if isinstance(files, list) and files else {}
+                    if isinstance(first_file, dict):
+                        preview = first_file.get("filename") or first_file.get("path") or ""
+        previews[s.session_id] = preview[:80]
 
     # Filter out phantom sessions (no user messages, only empty assistant entries)
     valid_sessions = [
         s for s in sessions
-        if previews.get(s.session_id) or s.message_count > 1
+        if previews.get(s.session_id) or s.message_count > 1 or s.session_id == "scheduler"
     ]
     # Fall back to all sessions if filtering removed everything
     if not valid_sessions:
