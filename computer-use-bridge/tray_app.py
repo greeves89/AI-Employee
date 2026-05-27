@@ -871,9 +871,45 @@ def _play_audio_b64(b64: str, suffix: str = ".mp3") -> None:
         fd, path = tempfile.mkstemp(prefix="aiemp-voice-", suffix=suffix)
         with os.fdopen(fd, "wb") as f:
             f.write(raw)
-        subprocess.Popen(["afplay", path])
+        proc = subprocess.Popen(["afplay", path])
+        _voice_state["player"] = proc
     except Exception:
         pass
+
+
+def _stop_voice_playback() -> None:
+    proc = _voice_state.get("player")
+    if proc:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    _voice_state["player"] = None
+
+
+def _speak_edge_tts(text: str, voice: str = "de-DE-KatjaNeural") -> None:
+    text = " ".join((text or "").split())
+    if not text:
+        return
+
+    def _thread():
+        try:
+            _stop_voice_playback()
+            fd, path = tempfile.mkstemp(prefix="aiemp-edge-tts-", suffix=".mp3")
+            os.close(fd)
+
+            async def _save():
+                import edge_tts
+                communicate = edge_tts.Communicate(text[:1200], voice)
+                await communicate.save(path)
+
+            asyncio.run(_save())
+            proc = subprocess.Popen(["afplay", path])
+            _voice_state["player"] = proc
+        except Exception as e:
+            app_log.error("Edge TTS failed: %s", e)
+
+    threading.Thread(target=_thread, daemon=True).start()
 
 
 def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
@@ -901,6 +937,8 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
                 elif typ == "tts_start":
                     on_event("speaking", "Antwort wird gesprochen")
                 elif typ == "audio_chunk":
+                    if _voice_state.get("local_edge_tts"):
+                        continue
                     mime = str(data.get("mime") or "audio/mpeg")
                     suffix = ".mp3" if "mpeg" in mime or "mp3" in mime else ".audio"
                     _play_audio_b64(str(data.get("b64") or ""), suffix=suffix)
@@ -937,6 +975,22 @@ def _voice_send_audio_file(path: str, language: str = "de") -> None:
     asyncio.run_coroutine_threadsafe(_send(), loop)
 
 
+def _voice_send_interrupt() -> None:
+    ws = _voice_state.get("ws")
+    loop = _voice_state.get("loop")
+    _stop_voice_playback()
+    if not ws or not loop:
+        return
+
+    async def _send():
+        await ws.send(json.dumps({"type": "interrupt"}))
+
+    try:
+        asyncio.run_coroutine_threadsafe(_send(), loop)
+    except Exception:
+        pass
+
+
 def show_interaction_bar(cfg: dict) -> None:
     if not _appkit_available():
         return
@@ -945,8 +999,8 @@ def show_interaction_bar(cfg: dict) -> None:
         return
 
     _appkit_handlers_init()
-    from AppKit import NSApp, NSColor, NSMakeRect, NSObject, NSPanel, NSWindowStyleMaskBorderless
-    from AppKit import NSBackingStoreBuffered, NSVisualEffectView
+    from AppKit import NSColor, NSMakeRect, NSObject, NSPanel, NSWindowStyleMaskBorderless
+    from AppKit import NSBackingStoreBuffered, NSButton, NSView, NSVisualEffectView
     from AVFoundation import (
         AVAudioQualityMedium,
         AVAudioRecorder,
@@ -957,7 +1011,33 @@ def show_interaction_bar(cfg: dict) -> None:
         NSURL,
     )
 
-    W, H = 620, 74
+    def color(r, g, b, a=1.0):
+        return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a)
+
+    def pill(parent, x, y, w, h, bg, border=None, radius=18):
+        view = NSView.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+        view.setWantsLayer_(True)
+        view.layer().setCornerRadius_(radius)
+        view.layer().setBackgroundColor_(bg.CGColor())
+        if border:
+            view.layer().setBorderWidth_(1)
+            view.layer().setBorderColor_(border.CGColor())
+        parent.addSubview_(view)
+        return view
+
+    def flat_button(parent, title, x, y, w, h, bg, fg=None, radius=16):
+        btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+        btn.setTitle_(title)
+        btn.setBordered_(False)
+        btn.setWantsLayer_(True)
+        btn.layer().setCornerRadius_(radius)
+        btn.layer().setBackgroundColor_(bg.CGColor())
+        if fg:
+            btn.setContentTintColor_(fg)
+        parent.addSubview_(btn)
+        return btn
+
+    W, H = 760, 86
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, W, H), NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
     panel.setReleasedWhenClosed_(False)
@@ -973,9 +1053,9 @@ def show_interaction_bar(cfg: dict) -> None:
     backdrop.setMaterial_(3)
     backdrop.setState_(1)
     backdrop.setWantsLayer_(True)
-    backdrop.layer().setCornerRadius_(24)
+    backdrop.layer().setCornerRadius_(28)
     backdrop.layer().setBorderWidth_(1)
-    backdrop.layer().setBorderColor_(NSColor.separatorColor().CGColor())
+    backdrop.layer().setBorderColor_(color(1, 1, 1, 0.16).CGColor())
     cv.addSubview_(backdrop)
 
     agents = []
@@ -985,16 +1065,19 @@ def show_interaction_bar(cfg: dict) -> None:
         agents = []
     first_agent = cfg.get("voice_agent_id") or (str(agents[0].get("id")) if agents else "")
 
-    _label(cv, "AI Employee", 22, 40, 110, 18, size=12, bold=True)
-    agent_f = _input(cv, 130, 36, 120, "Agent ID", value=first_agent)
-    status = _label(cv, "Bereit", 266, 43, 190, 16, size=11, muted=True)
-    transcript = _label(cv, "", 266, 18, 270, 18, size=12)
+    pill(cv, 16, 16, W - 32, H - 32, color(0.04, 0.05, 0.07, 0.40), color(1, 1, 1, 0.10), radius=22)
+    _label(cv, "AI Employee", 32, 50, 110, 18, size=12, bold=True, color=color(1, 1, 1, 0.92))
+    _label(cv, "Voice Layer", 32, 29, 110, 16, size=11, color=color(1, 1, 1, 0.52))
+    agent_f = _input(cv, 154, 31, 112, "Agent ID", value=first_agent)
+    status = _label(cv, "Bereit", 286, 51, 270, 16, size=11, color=color(0.63, 0.70, 0.80, 1))
+    transcript = _label(cv, "Drücke Speech und sprich.", 286, 28, 300, 18, size=12, color=color(1, 1, 1, 0.86))
     response = _label(cv, "", 0, 0, 1, 1, size=1, muted=True)
-    connect_btn = _button(cv, "Connect", W - 248, 25, 78, 30)
-    record_btn = _button(cv, "●", W - 162, 18, 44, 44)
-    close_btn = _button(cv, "×", W - 58, 25, 30, 30)
+    connect_btn = flat_button(cv, "Connect", W - 304, 27, 82, 32, color(1, 1, 1, 0.14), color(1, 1, 1, 0.90))
+    record_btn = flat_button(cv, "Speech", W - 214, 22, 112, 42, color(0.06, 0.46, 0.98, 1), color(1, 1, 1, 1), radius=21)
+    close_btn = flat_button(cv, "×", W - 86, 28, 32, 32, color(1, 1, 1, 0.12), color(1, 1, 1, 0.72))
 
     state = {"recorder": None, "path": "", "connected": False}
+    _voice_state["local_edge_tts"] = True
 
     class VoiceHandler(NSObject):
         def connect_(self, _sender):
@@ -1018,6 +1101,9 @@ def show_interaction_bar(cfg: dict) -> None:
                     if kind == "response":
                         response.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:", text[:220], False)
+                        transcript.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:", "Antwort wird gesprochen", False)
+                        _speak_edge_tts(text, cfg.get("edge_tts_voice", "de-DE-KatjaNeural"))
                 except Exception:
                     _apply()
 
@@ -1028,6 +1114,7 @@ def show_interaction_bar(cfg: dict) -> None:
             if not state["connected"]:
                 self.connect_(sender)
             if state["recorder"] is None:
+                _voice_send_interrupt()
                 path = str(Path(tempfile.gettempdir()) / "aiemp-voice.m4a")
                 settings = {
                     AVFormatIDKey: 1633772320,  # kAudioFormatMPEG4AAC
@@ -1044,12 +1131,13 @@ def show_interaction_bar(cfg: dict) -> None:
                 rec.record()
                 state["recorder"] = rec
                 state["path"] = path
-                sender.setTitle_("■")
+                sender.setTitle_("Stop")
                 status.setStringValue_("Höre zu...")
+                transcript.setStringValue_("Ich höre.")
             else:
                 state["recorder"].stop()
                 state["recorder"] = None
-                sender.setTitle_("●")
+                sender.setTitle_("Speech")
                 status.setStringValue_("Sende an Agent...")
                 transcript.setStringValue_("Transkribiere...")
                 _voice_send_audio_file(state["path"], language="de")
@@ -1062,6 +1150,7 @@ def show_interaction_bar(cfg: dict) -> None:
                     asyncio.run_coroutine_threadsafe(ws.close(), loop)
             except Exception:
                 pass
+            _stop_voice_playback()
             panel.close()
 
     handler = VoiceHandler.alloc().init()

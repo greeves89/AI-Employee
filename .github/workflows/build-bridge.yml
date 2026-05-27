@@ -31,7 +31,7 @@ jobs:
         working-directory: computer-use-bridge
         run: |
           pip install pyinstaller rumps pystray \
-            pyautogui Pillow websockets \
+            pyautogui Pillow websockets edge-tts \
             pyobjc-framework-AVFoundation \
             pyobjc-framework-ApplicationServices \
             pyobjc-framework-Cocoa
@@ -177,7 +177,7 @@ jobs:
       - name: Install dependencies
         working-directory: computer-use-bridge
         run: |
-          pip install pyinstaller pystray pyautogui Pillow websockets customtkinter
+          pip install pyinstaller pystray pyautogui Pillow websockets edge-tts customtkinter
 
       - name: Set bridge version
         shell: pwsh
