@@ -17,6 +17,7 @@ Tray menu:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import sys
@@ -45,6 +46,24 @@ try:
     from _version import BRIDGE_VERSION
 except ImportError:
     BRIDGE_VERSION = "dev"
+
+def _setup_app_logging() -> logging.Logger:
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    try:
+        log_dir = os.path.expanduser("~/Library/Logs/ai-employee")
+        if sys.platform != "darwin":
+            log_dir = os.path.join(os.path.expanduser("~"), ".ai-employee", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        handler = logging.FileHandler(os.path.join(log_dir, "bridge.log"))
+        handler.setFormatter(logging.Formatter("[%(asctime)s] [Tray] %(message)s"))
+        logger.addHandler(handler)
+    except Exception:
+        pass
+    return logger
+
+
+app_log = _setup_app_logging()
 
 # ── Capability metadata ────────────────────────────────────────────────────────
 
@@ -280,6 +299,7 @@ def _run_bridge_thread(url, token, session_id):
     global _status
     import asyncio
     try:
+        app_log.info("Bridge thread starting session=%s url=%s", session_id, url)
         if getattr(sys, "frozen", False):
             bundle_contents = Path(sys.executable).parent.parent
             for candidate in ["Frameworks", "Resources", "MacOS"]:
@@ -310,9 +330,10 @@ def _run_bridge_thread(url, token, session_id):
             _status = "error: session abgelaufen"
         else:
             _status = f"error: {msg}"
-        import traceback, logging
-        logging.getLogger(__name__).error(f"Bridge error:\n{traceback.format_exc()}")
+        import traceback
+        app_log.error("Bridge error:\n%s", traceback.format_exc())
     finally:
+        app_log.info("Bridge thread stopped status=%s", _status)
         if _bridge_stop.is_set():
             _status = "disconnected"
 

@@ -28,8 +28,33 @@ from typing import Any
 
 import websockets
 
-logging.basicConfig(level=logging.INFO, format="[Bridge] %(message)s")
+def _setup_logging() -> logging.Logger:
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("[%(asctime)s] [Bridge] %(message)s")
+
+    if not logging.getLogger().handlers:
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        logging.getLogger().addHandler(console)
+        logging.getLogger().setLevel(logging.INFO)
+
+    try:
+        log_dir = os.path.expanduser("~/Library/Logs/ai-employee")
+        if platform.system() != "Darwin":
+            log_dir = os.path.join(os.path.expanduser("~"), ".ai-employee", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(os.path.join(log_dir, "bridge.log"))
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except Exception:
+        pass
+
+    return logger
+
+
 log = logging.getLogger(__name__)
+log = _setup_logging()
 
 try:
     from _version import BRIDGE_VERSION
@@ -381,8 +406,15 @@ class Bridge:
         self.ws_url = ws_url
         self.token = token
         self.session_id = session_id
-        self.dispatcher = CommandDispatcher()
+        self.dispatcher: CommandDispatcher | None = None
         self._running = False
+
+    def _ensure_dispatcher(self) -> CommandDispatcher:
+        if self.dispatcher is None:
+            log.info("Initializing desktop control")
+            self.dispatcher = CommandDispatcher()
+            log.info("Desktop control ready")
+        return self.dispatcher
 
     async def connect(self) -> None:
         if not self.session_id:
@@ -397,9 +429,10 @@ class Bridge:
         headers = {"Authorization": f"Bearer {self.token}"}
         log.info(f"Connecting to {url}")
 
-        async for ws in websockets.connect(url, additional_headers=headers, ping_interval=30):
+        async for ws in websockets.connect(url, additional_headers=headers, ping_interval=30, open_timeout=15):
             self._running = True
             try:
+                log.info("WebSocket connected")
                 # Announce capabilities
                 caps = {
                     "type": "hello",
@@ -411,6 +444,14 @@ class Bridge:
                 }
                 await ws.send(json.dumps(caps))
                 log.info(f"Connected. Waiting for commands... (platform: {platform.system()})")
+                try:
+                    self._ensure_dispatcher()
+                except Exception as e:
+                    log.exception("Desktop control initialization failed")
+                    await ws.send(json.dumps({
+                        "type": "bridge_error",
+                        "error": f"desktop_control_unavailable: {e}",
+                    }))
 
                 async for raw in ws:
                     await self._handle_message(ws, raw)
@@ -438,7 +479,7 @@ class Bridge:
             log.info(f"Command [{cmd_id}]: {command.get('action')} {command.get('params', {})}")
 
             result = await asyncio.get_event_loop().run_in_executor(
-                None, self.dispatcher.dispatch, command
+                None, self._ensure_dispatcher().dispatch, command
             )
             response = {"type": "result", "id": cmd_id, "result": result}
             await ws.send(json.dumps(response))
