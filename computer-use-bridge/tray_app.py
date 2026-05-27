@@ -904,7 +904,7 @@ def show_interaction_bar(cfg: dict) -> None:
         NSURL,
     )
 
-    W, H = 720, 120
+    W, H = 620, 74
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, W, H), NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
     panel.setReleasedWhenClosed_(False)
@@ -932,13 +932,14 @@ def show_interaction_bar(cfg: dict) -> None:
         agents = []
     first_agent = cfg.get("voice_agent_id") or (str(agents[0].get("id")) if agents else "")
 
-    agent_f = _input(cv, 24, 70, 170, "Agent ID", value=first_agent)
-    status = _label(cv, "Bereit", 212, 75, 300, 18, size=12, muted=True)
-    transcript = _label(cv, "", 212, 44, 420, 22, size=13)
-    response = _label(cv, "", 212, 18, 420, 20, size=12, muted=True)
-    connect_btn = _button(cv, "Verbinden", 24, 30, 96, 34)
-    record_btn = _button(cv, "Aufnehmen", 128, 30, 96, 34)
-    close_btn = _button(cv, "×", W - 48, 42, 28, 28)
+    _label(cv, "AI Employee", 22, 40, 110, 18, size=12, bold=True)
+    agent_f = _input(cv, 130, 36, 120, "Agent ID", value=first_agent)
+    status = _label(cv, "Bereit", 266, 43, 190, 16, size=11, muted=True)
+    transcript = _label(cv, "", 266, 18, 270, 18, size=12)
+    response = _label(cv, "", 0, 0, 1, 1, size=1, muted=True)
+    connect_btn = _button(cv, "Connect", W - 248, 25, 78, 30)
+    record_btn = _button(cv, "●", W - 162, 18, 44, 44)
+    close_btn = _button(cv, "×", W - 58, 25, 30, 30)
 
     state = {"recorder": None, "path": "", "connected": False}
 
@@ -990,12 +991,12 @@ def show_interaction_bar(cfg: dict) -> None:
                 rec.record()
                 state["recorder"] = rec
                 state["path"] = path
-                sender.setTitle_("Stop")
+                sender.setTitle_("■")
                 status.setStringValue_("Höre zu...")
             else:
                 state["recorder"].stop()
                 state["recorder"] = None
-                sender.setTitle_("Aufnehmen")
+                sender.setTitle_("●")
                 status.setStringValue_("Sende an Agent...")
                 transcript.setStringValue_("Transkribiere...")
                 _voice_send_audio_file(state["path"], language="de")
@@ -1370,7 +1371,7 @@ def run_macos(cfg: dict) -> None:
             except Exception:
                 pass
             for title, enabled in {
-                "Verbinden": configured and not connected and not connecting,
+                "Verbinden": not connected and not connecting,
                 "Trennen": connected or connecting,
                 "Berechtigungen…": configured,
                 "Interaction Bar": configured,
@@ -1405,7 +1406,7 @@ def run_macos(cfg: dict) -> None:
 
         @rumps.clicked("Verbinden")
         def on_connect(self, _):
-            if not self.cfg.get("token"):
+            if not self.cfg.get("url") or not self.cfg.get("token"):
                 self.on_settings(None); return
             threading.Thread(target=self._connect, daemon=True).start()
 

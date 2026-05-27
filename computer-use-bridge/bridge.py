@@ -10,6 +10,8 @@ Usage:
 Or set env vars:
     AI_EMPLOYEE_URL=wss://... AI_EMPLOYEE_TOKEN=... python bridge.py
 """
+from __future__ import annotations
+
 import argparse
 import asyncio
 import base64
