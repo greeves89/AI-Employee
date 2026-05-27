@@ -36,7 +36,11 @@ IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
 CONFIG_FILE = Path.home() / ".ai_employee_bridge.json"
-BRIDGE_VERSION = "1.55.23"
+
+try:
+    from _version import BRIDGE_VERSION
+except ImportError:
+    BRIDGE_VERSION = "dev"
 
 # ── Capability metadata ────────────────────────────────────────────────────────
 

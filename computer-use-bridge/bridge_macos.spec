@@ -1,7 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for macOS .app bundle
+from pathlib import Path
 
 block_cipher = None
+bridge_version = Path('../VERSION').read_text().strip()
 
 a = Analysis(
     ['tray_app.py'],
@@ -9,6 +11,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('bridge.py', '.'),   # bundle bridge.py next to executable
+        ('_version.py', '.'),
     ],
     hiddenimports=[
         'rumps',
@@ -73,7 +76,8 @@ app = BUNDLE(
         'NSAppleScriptEnabled': False,
         'LSUIElement': True,           # hide from Dock (menu bar only)
         'NSHighResolutionCapable': True,
-        'CFBundleShortVersionString': '1.0.0',
+        'CFBundleShortVersionString': bridge_version,
+        'CFBundleVersion': bridge_version,
         'CFBundleName': 'AI-Employee Bridge',
         'NSAccessibilityUsageDescription': 'Required for desktop automation (click, type, read UI elements)',
         'NSScreenCaptureUsageDescription': 'Required to take screenshots for the AI agent',

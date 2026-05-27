@@ -35,17 +35,18 @@ jobs:
             pyobjc-framework-ApplicationServices \
             pyobjc-framework-Cocoa
 
-      - name: Build .app with PyInstaller
-        working-directory: computer-use-bridge
-        run: |
-          pyinstaller bridge_macos.spec --noconfirm --clean
-
       - name: Set bridge artifact version
         id: bridge_version
         run: |
           VERSION="$(tr -d '[:space:]' < VERSION)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "dmg_name=AI-Employee-Bridge-v$VERSION.dmg" >> "$GITHUB_OUTPUT"
+          printf '"""Generated during the bridge release build."""\n\nBRIDGE_VERSION = "%s"\n' "$VERSION" > computer-use-bridge/_version.py
+
+      - name: Build .app with PyInstaller
+        working-directory: computer-use-bridge
+        run: |
+          pyinstaller bridge_macos.spec --noconfirm --clean
 
       - name: Check Apple signing secrets
         id: apple_signing
@@ -128,12 +129,25 @@ jobs:
             --wait
           xcrun stapler staple "${{ steps.bridge_version.outputs.dmg_name }}"
 
+      - name: Create legacy DMG alias
+        run: |
+          cp -f "${{ steps.bridge_version.outputs.dmg_name }}" AI-Employee-Bridge.dmg
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: AI-Employee-Bridge-macOS
-          path: ${{ steps.bridge_version.outputs.dmg_name }}
+          path: |
+            ${{ steps.bridge_version.outputs.dmg_name }}
+            AI-Employee-Bridge.dmg
           retention-days: 30
+
+      - name: Remove stale bridge release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete-asset bridge-latest "${{ steps.bridge_version.outputs.dmg_name }}" --repo "$GITHUB_REPOSITORY" -y || true
+          gh release delete-asset bridge-latest "AI-Employee-Bridge.dmg" --repo "$GITHUB_REPOSITORY" -y || true
 
       - name: Publish to bridge-latest release
         uses: softprops/action-gh-release@v2
@@ -142,7 +156,9 @@ jobs:
           name: "Bridge — Latest Build"
           prerelease: true
           make_latest: false
-          files: ${{ steps.bridge_version.outputs.dmg_name }}
+          files: |
+            ${{ steps.bridge_version.outputs.dmg_name }}
+            AI-Employee-Bridge.dmg
 
   build-windows:
     name: Windows (.exe)
@@ -162,6 +178,17 @@ jobs:
         run: |
           pip install pyinstaller pystray pyautogui Pillow websockets customtkinter
 
+      - name: Set bridge version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $lines = @(
+            '"""Generated during the bridge release build."""',
+            '',
+            "BRIDGE_VERSION = `"$version`""
+          )
+          Set-Content -Path computer-use-bridge\_version.py -Value $lines -Encoding UTF8
+
       - name: Build .exe with PyInstaller
         working-directory: computer-use-bridge
         run: |
@@ -180,6 +207,17 @@ jobs:
           name: AI-Employee-Bridge-Windows
           path: AI-Employee-Bridge-Windows.zip
           retention-days: 30
+
+      - name: Remove stale bridge release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete-asset bridge-latest "AI-Employee-Bridge-Windows.zip" --repo "$env:GITHUB_REPOSITORY" -y
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "No stale Windows bridge asset to remove."
+            $global:LASTEXITCODE = 0
+          }
+        shell: pwsh
 
       - name: Publish to bridge-latest release
         uses: softprops/action-gh-release@v2

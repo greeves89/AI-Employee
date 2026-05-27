@@ -1,7 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for Windows .exe
+from pathlib import Path
 
 block_cipher = None
+bridge_version = Path('../VERSION').read_text().strip()
 
 from PyInstaller.utils.hooks import collect_all
 ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
@@ -10,7 +12,7 @@ a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
     binaries=ctk_binaries,
-    datas=[('bridge.py', '.')] + ctk_datas,
+    datas=[('bridge.py', '.'), ('_version.py', '.')] + ctk_datas,
     hiddenimports=[
         'pystray',
         'pystray._win32',

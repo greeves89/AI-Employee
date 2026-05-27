@@ -29,7 +29,10 @@ import websockets
 logging.basicConfig(level=logging.INFO, format="[Bridge] %(message)s")
 log = logging.getLogger(__name__)
 
-BRIDGE_VERSION = "1.55.23"
+try:
+    from _version import BRIDGE_VERSION
+except ImportError:
+    BRIDGE_VERSION = "dev"
 
 # ── Platform checks ──────────────────────────────────────────────────────────
 
