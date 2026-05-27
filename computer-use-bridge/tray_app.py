@@ -155,6 +155,24 @@ def api_session_status(base_url, token, session_id) -> dict:
     return _api("GET", base_url, f"/api/v1/computer-use/sessions/{session_id}/status", token)
 
 
+def api_list_sessions(base_url, token) -> list[dict]:
+    body = _api("GET", base_url, "/api/v1/computer-use/sessions", token)
+    sessions = body.get("sessions") if isinstance(body, dict) else None
+    return sessions if isinstance(sessions, list) else []
+
+
+def pick_waiting_session(base_url, token) -> str:
+    sessions = api_list_sessions(base_url, token)
+    waiting = [
+        s for s in sessions
+        if s.get("session_id") and s.get("status") == "waiting_for_bridge"
+    ]
+    if not waiting:
+        return ""
+    waiting.sort(key=lambda s: float(s.get("created_at") or 0), reverse=True)
+    return str(waiting[0]["session_id"])
+
+
 def api_list_agents(base_url, token) -> list[dict]:
     body = _api("GET", base_url, "/api/v1/agents/", token)
     agents = body.get("agents") if isinstance(body, dict) else None
@@ -172,6 +190,20 @@ def ensure_session(cfg: dict) -> str:
         return ENSURE_NEEDS_LOGIN
     sid = cfg.get("session", "")
     caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
+    try:
+        waiting_sid = pick_waiting_session(url, token)
+        if waiting_sid and waiting_sid != sid:
+            sid = waiting_sid
+            cfg["session"] = sid
+            save_config(cfg)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            cfg["token"] = ""
+            cfg["session"] = ""
+            save_config(cfg)
+            return ENSURE_NEEDS_LOGIN
+    except Exception:
+        pass
     if sid and api_session_exists(url, token, sid):
         try:
             api_update_capabilities(url, token, sid, caps)
@@ -1371,12 +1403,14 @@ def run_macos(cfg: dict) -> None:
             except Exception:
                 pass
             for title, enabled in {
-                "Verbinden": not connected and not connecting,
+                "Verbinden": not connected,
                 "Trennen": connected or connecting,
-                "Berechtigungen…": configured,
-                "Interaction Bar": configured,
+                "Berechtigungen…": True,
+                "Interaction Bar": True,
                 "Status": True,
-                "AI-Employee öffnen": bool(self.cfg.get("url")),
+                "Einstellungen…": True,
+                "AI-Employee öffnen": True,
+                "Beenden": True,
             }.items():
                 try:
                     self.menu[title].enabled = enabled
