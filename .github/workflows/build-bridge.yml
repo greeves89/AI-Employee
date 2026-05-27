@@ -7,6 +7,8 @@ on:
       - feat/issue-70-computer-use
     paths:
       - "computer-use-bridge/**"
+      - ".github/workflows/build-bridge.yml"
+      - "VERSION"
   release:
     types: [published]
   workflow_dispatch:
@@ -38,8 +40,26 @@ jobs:
         run: |
           pyinstaller bridge_macos.spec --noconfirm --clean
 
+      - name: Set bridge artifact version
+        id: bridge_version
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=AI-Employee-Bridge-v$VERSION.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Check Apple signing secrets
+        id: apple_signing
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE_P12_BASE64" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Import Developer ID certificate
-        if: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+        if: steps.apple_signing.outputs.available == 'true'
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -57,7 +77,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
       - name: Codesign .app
-        if: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+        if: steps.apple_signing.outputs.available == 'true'
         working-directory: computer-use-bridge
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -84,35 +104,35 @@ jobs:
             -srcfolder dmg_stage \
             -ov \
             -format UDZO \
-            "../AI-Employee-Bridge.dmg"
+            "../${{ steps.bridge_version.outputs.dmg_name }}"
 
       - name: Codesign .dmg
-        if: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+        if: steps.apple_signing.outputs.available == 'true'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
-          codesign --force --sign "$APPLE_SIGNING_IDENTITY" "AI-Employee-Bridge.dmg"
-          codesign --verify --verbose=2 "AI-Employee-Bridge.dmg"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" "${{ steps.bridge_version.outputs.dmg_name }}"
+          codesign --verify --verbose=2 "${{ steps.bridge_version.outputs.dmg_name }}"
 
       - name: Notarize .dmg
-        if: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+        if: steps.apple_signing.outputs.available == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
-          xcrun notarytool submit "AI-Employee-Bridge.dmg" \
+          xcrun notarytool submit "${{ steps.bridge_version.outputs.dmg_name }}" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --wait
-          xcrun stapler staple "AI-Employee-Bridge.dmg"
+          xcrun stapler staple "${{ steps.bridge_version.outputs.dmg_name }}"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: AI-Employee-Bridge-macOS
-          path: AI-Employee-Bridge.dmg
+          path: ${{ steps.bridge_version.outputs.dmg_name }}
           retention-days: 30
 
       - name: Publish to bridge-latest release
@@ -122,7 +142,7 @@ jobs:
           name: "Bridge — Latest Build"
           prerelease: true
           make_latest: false
-          files: AI-Employee-Bridge.dmg
+          files: ${{ steps.bridge_version.outputs.dmg_name }}
 
   build-windows:
     name: Windows (.exe)
