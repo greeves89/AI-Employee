@@ -109,6 +109,8 @@ class AgentRunner:
         result_data: dict = {"status": "completed"}
         stderr_lines: list[str] = []
         text_output: list[str] = []
+        presented_files: list[dict] = []  # collected from `present_file` markers
+        seen_file_paths: set[str] = set()
 
         async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
             """Read stderr concurrently so it's not lost when process exits."""
@@ -143,6 +145,15 @@ class AgentRunner:
                     for block in event.get("message", {}).get("content", []):
                         if block.get("type") == "text" and block.get("text"):
                             text_output.append(block["text"])
+
+                # Capture `present_file` deliveries so we can mirror them to the
+                # chat channel (live + persisted) — see _maybe_emit_present_file.
+                if event.get("type") == "tool_result":
+                    marker_payload = self._parse_present_file_marker(event.get("content"))
+                    if marker_payload and marker_payload.get("path") not in seen_file_paths:
+                        presented_files.append(marker_payload)
+                        seen_file_paths.add(marker_payload.get("path", ""))
+                        await self._mirror_present_file_to_chat(task_id, marker_payload)
 
                 if event.get("type") == "result":
                     result_text = event.get("result", "") or "\n".join(text_output)
@@ -184,6 +195,15 @@ class AgentRunner:
         finally:
             self.is_running = False
             self._process = None
+
+        if presented_files:
+            result_data.setdefault("presented_files", []).extend(presented_files)
+            await self._publish_scheduler_chat_completion(
+                task_id=task_id,
+                presented_files=presented_files,
+                final_text="\n".join(text_output).strip(),
+                result_data=result_data,
+            )
 
         return result_data
 
@@ -271,6 +291,80 @@ class AgentRunner:
             await self.log_publisher.publish(
                 task_id, "raw", {"text": event.get("text", "")}
             )
+
+    @staticmethod
+    def _parse_present_file_marker(content) -> dict | None:
+        """Extracts a present_file payload from a tool_result content blob.
+
+        The MCP server returns `__AI_EMPLOYEE_PRESENT_FILE__<json>` either as the
+        whole result string or wrapped in `[{"type":"text","text":"..."}]`.
+        """
+        marker = "__AI_EMPLOYEE_PRESENT_FILE__"
+
+        def _extract(text: str) -> dict | None:
+            if not text or not text.startswith(marker):
+                return None
+            try:
+                return json.loads(text.removeprefix(marker))
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+        if isinstance(content, str):
+            return _extract(content)
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    payload = _extract(str(block.get("text", "")))
+                    if payload:
+                        return payload
+        return None
+
+    async def _mirror_present_file_to_chat(self, task_id: str, payload: dict) -> None:
+        """Push a `file` event onto the agent chat channel so iOS/Web see the
+        attachment live, regardless of whether the task ran from the chat or
+        scheduler queue.
+        """
+        try:
+            await self.log_publisher.publish_chat(task_id, "file", payload)
+        except Exception:
+            logger.warning("Failed to mirror present_file to chat channel", exc_info=True)
+
+    async def _publish_scheduler_chat_completion(
+        self,
+        task_id: str,
+        presented_files: list[dict],
+        final_text: str,
+        result_data: dict,
+    ) -> None:
+        """Synthesise a chat:completions event for scheduler-originated tasks so
+        the orchestrator persists a chat_message row with the file attachments.
+
+        Distinguished by `source="scheduler"`. The orchestrator's
+        _listen_chat_completions handler creates a `session_id="scheduler"` row
+        when no matching user-message exists, avoiding interference with the
+        normal chat flow.
+        """
+        try:
+            from datetime import datetime, timezone
+
+            payload = {
+                "agent_id": self.log_publisher.agent_id,
+                "message_id": task_id,
+                "type": "done",
+                "source": "scheduler",
+                "data": {
+                    "text": final_text,
+                    "presented_files": presented_files,
+                    "cost_usd": result_data.get("cost_usd"),
+                    "duration_ms": result_data.get("duration_ms"),
+                    "input_tokens": result_data.get("input_tokens"),
+                    "output_tokens": result_data.get("output_tokens"),
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            await self.log_publisher.redis.publish("chat:completions", json.dumps(payload))
+        except Exception:
+            logger.warning("Failed to publish scheduler chat completion", exc_info=True)
 
     async def interrupt(self) -> None:
         """Interrupt the currently running task."""

@@ -303,6 +303,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                 agent_id = data.get("agent_id", "")
                 message_id = data.get("message_id", "")
                 event_data = data.get("data", {})
+                source = data.get("source", "chat")
 
                 if not agent_id or not message_id:
                     continue
@@ -323,7 +324,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     if existing:
                         continue  # Already saved by WebSocket handler
 
-                    # Look up session_id from the user message
+                    # Look up session_id from the user message (chat flow only)
                     user_msg = await db.scalar(
                         sel(ChatMessage).where(
                             ChatMessage.agent_id == agent_id,
@@ -331,11 +332,18 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                             ChatMessage.role == "user",
                         )
                     )
-                    if not user_msg:
+
+                    if user_msg:
+                        session_id = user_msg.session_id
+                    elif source == "scheduler":
+                        # Scheduler-originated tasks have no user message — drop them
+                        # into a dedicated `scheduler` session so iOS history shows
+                        # the file delivery (see issue #180).
+                        session_id = "scheduler"
+                    else:
                         print(f"[ChatPersist] No user message found for {message_id}, skipping")
                         continue
 
-                    session_id = user_msg.session_id
                     content = str(event_data.get("text", ""))
                     tool_calls = event_data.get("tool_calls")
                     meta = {
@@ -343,7 +351,10 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                         "duration_ms": event_data.get("duration_ms"),
                         "num_turns": event_data.get("num_turns"),
                         "presented_files": event_data.get("presented_files"),
+                        "source": source if source != "chat" else None,
                     }
+                    # Remove keys with None values for cleaner JSON
+                    meta = {k: v for k, v in meta.items() if v is not None}
 
                     db.add(ChatMessage(
                         agent_id=agent_id,
@@ -357,7 +368,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     await db.commit()
                     print(
                         f"[ChatPersist] Saved response for {message_id} "
-                        f"(agent={agent_id}, session={session_id})"
+                        f"(agent={agent_id}, session={session_id}, source={source})"
                     )
         except Exception as e:
             print(f"[ChatPersist] Error: {e}")
