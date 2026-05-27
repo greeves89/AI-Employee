@@ -29,6 +29,8 @@ import websockets
 logging.basicConfig(level=logging.INFO, format="[Bridge] %(message)s")
 log = logging.getLogger(__name__)
 
+BRIDGE_VERSION = "1.55.23"
+
 # ── Platform checks ──────────────────────────────────────────────────────────
 
 IS_MAC = platform.system() == "Darwin"
@@ -397,6 +399,7 @@ class Bridge:
                 caps = {
                     "type": "hello",
                     "platform": platform.system(),
+                    "bridge_version": BRIDGE_VERSION,
                     "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
                                      "open_app", "get_clipboard", "set_clipboard", "find_element", "wait_for_element"],
                     "ax_tree_available": IS_MAC,

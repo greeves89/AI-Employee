@@ -1838,6 +1838,7 @@ export interface ComputerUseSession {
   created_at: number;
   action_count: number;
   platform: string;
+  bridge_version?: string | null;
   capabilities: string[];
   allowed_capabilities: string[];
   last_disconnected_at: number | null;

@@ -43,7 +43,7 @@ import {
   updateSessionCapabilities,
   type ComputerUseSession,
 } from "@/lib/api";
-import { getApiUrl } from "@/lib/config";
+import { getApiUrl, getBase } from "@/lib/config";
 
 interface Props {
   agentId: string;
@@ -135,6 +135,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
   const [browserMode, setBrowserMode] = useState(initialBrowserMode);
   const [togglingBrowser, setTogglingBrowser] = useState(false);
   const [showInstall, setShowInstall] = useState(false);
+  const [bridgeVersion, setBridgeVersion] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -152,6 +153,20 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
     const t = setInterval(refresh, 3000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  useEffect(() => {
+    async function loadBridgeVersion() {
+      try {
+        const res = await fetch(`${getBase()}/version/`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setBridgeVersion(data.current ?? data.version ?? null);
+      } catch {
+        // ignore
+      }
+    }
+    loadBridgeVersion();
+  }, []);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -341,6 +356,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
                 key={session.session_id}
                 session={session}
                 wsBase={wsBase}
+                expectedBridgeVersion={bridgeVersion}
                 onDelete={handleDelete}
                 onCapabilitiesChange={handleCapabilitiesChange}
               />
@@ -409,17 +425,20 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
 function SessionCard({
   session,
   wsBase,
+  expectedBridgeVersion,
   onDelete,
   onCapabilitiesChange,
 }: {
   session: ComputerUseSession;
   wsBase: string;
+  expectedBridgeVersion: string | null;
   onDelete: (id: string) => void;
   onCapabilitiesChange: (id: string, caps: string[]) => void;
 }) {
   const bridgeStale = session.bridge_last_seen_at !== null && (Date.now() / 1000 - session.bridge_last_seen_at) > 20;
   const isConnected = session.status === "connected" && !bridgeStale;
   const wsUrl = `${wsBase}/ws/computer-use/bridge?session_id=${session.session_id}`;
+  const visibleBridgeVersion = session.bridge_version || expectedBridgeVersion;
 
   const [copiedWs, setCopiedWs] = useState(false);
   const [liveView, setLiveView] = useState(false);
@@ -508,6 +527,11 @@ function SessionCard({
               {session.platform && session.platform !== "unknown" && (
                 <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground font-medium">
                   {session.platform}
+                </span>
+              )}
+              {visibleBridgeVersion && (
+                <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground font-medium">
+                  Bridge v{visibleBridgeVersion}
                 </span>
               )}
             </div>

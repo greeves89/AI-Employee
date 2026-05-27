@@ -110,6 +110,7 @@ def _session_view(sid: str, s: dict) -> dict:
         "allowed_capabilities": sorted(s.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
         "last_disconnected_at": s.get("last_disconnected_at"),
         "bridge_last_seen_at": s.get("bridge_last_seen_at"),
+        "bridge_version": s.get("bridge_version"),
         "agent_id": s.get("agent_id"),
     }
 
@@ -396,6 +397,7 @@ async def get_session_status(
         "last_disconnected_at": session.get("last_disconnected_at"),
         "allowed_capabilities": sorted(session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
         "platform": session.get("platform"),
+        "bridge_version": session.get("bridge_version"),
         "action_count": session["action_count"],
     }
 
@@ -537,9 +539,15 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                     future.set_result(result)
 
             elif msg_type == "hello":
-                logger.info(f"Bridge hello: caps={msg.get('capabilities')} platform={msg.get('platform')}")
+                logger.info(
+                    "Bridge hello: caps=%s platform=%s version=%s",
+                    msg.get("capabilities"),
+                    msg.get("platform"),
+                    msg.get("bridge_version"),
+                )
                 session["capabilities"] = msg.get("capabilities", [])
                 session["platform"] = msg.get("platform", "unknown")
+                session["bridge_version"] = msg.get("bridge_version")
 
             elif msg_type == "pong":
                 pass  # bridge_last_seen_at already updated above

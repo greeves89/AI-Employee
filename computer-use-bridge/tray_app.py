@@ -14,6 +14,8 @@ Tray menu:
   • Verbinden / Trennen
   • Beenden
 """
+from __future__ import annotations
+
 import json
 import os
 import platform
@@ -34,6 +36,7 @@ IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
 CONFIG_FILE = Path.home() / ".ai_employee_bridge.json"
+BRIDGE_VERSION = "1.55.23"
 
 # ── Capability metadata ────────────────────────────────────────────────────────
 
@@ -71,6 +74,28 @@ def save_config(cfg: dict) -> None:
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
 
 
+def normalize_bridge_url(value: str):
+    """Accept either a server URL or the full bridge websocket URL from the UI."""
+    raw = value.strip().rstrip("/")
+    if not raw:
+        return "", None
+
+    parsed = urllib.parse.urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return raw, None
+
+    qs = urllib.parse.parse_qs(parsed.query)
+    session_id = (qs.get("session_id") or [None])[0]
+
+    scheme = parsed.scheme
+    if scheme == "wss":
+        scheme = "https"
+    elif scheme == "ws":
+        scheme = "http"
+
+    return f"{scheme}://{parsed.netloc}", session_id
+
+
 # ── HTTP helpers ───────────────────────────────────────────────────────────────
 
 def _api(method, base_url, path, token, body=None):
@@ -79,7 +104,7 @@ def _api(method, base_url, path, token, body=None):
     req = urllib.request.Request(url, data=data, method=method,
                                  headers={"Content-Type": "application/json",
                                           "Authorization": f"Bearer {token}",
-                                          "User-Agent": "AI-Employee-Bridge/1.0"})
+                                          "User-Agent": f"AI-Employee-Bridge/{BRIDGE_VERSION}"})
     with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
         return json.loads(r.read())
 
@@ -89,7 +114,7 @@ def api_login(base_url, email, password):
     data = json.dumps({"email": email, "password": password}).encode()
     req = urllib.request.Request(url, data=data,
                                  headers={"Content-Type": "application/json",
-                                          "User-Agent": "AI-Employee-Bridge/1.0"})
+                                          "User-Agent": f"AI-Employee-Bridge/{BRIDGE_VERSION}"})
     with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
         return json.loads(r.read())["access_token"]
 
@@ -153,9 +178,16 @@ def ensure_session(cfg: dict) -> str:
         return ENSURE_ERROR
 
 
-def login_and_prepare(base_url, email, password, caps):
+def login_and_prepare(base_url, email, password, caps, requested_session_id=None):
     token = api_login(base_url, email, password)
-    session_id, _ = api_create_session(base_url, token, caps)
+    if requested_session_id and api_session_exists(base_url, token, requested_session_id):
+        session_id = requested_session_id
+        try:
+            api_update_capabilities(base_url, token, session_id, caps)
+        except Exception:
+            pass
+    else:
+        session_id, _ = api_create_session(base_url, token, caps)
     return token, session_id
 
 
@@ -248,7 +280,8 @@ def _appkit_handlers_init():
 
             def save_(self, _s):
                 st = _setup_state
-                url   = st["url_f"].stringValue().strip().rstrip("/")
+                url_input = st["url_f"].stringValue()
+                url, requested_session = normalize_bridge_url(url_input)
                 email = st["em_f"].stringValue().strip()
                 pw    = st["pw_f"].stringValue()
                 if not url or not email or not pw:
@@ -260,7 +293,7 @@ def _appkit_handlers_init():
                 def _do():
                     try:
                         caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
-                        token, sid = login_and_prepare(url, email, pw, caps)
+                        token, sid = login_and_prepare(url, email, pw, caps, requested_session)
                         st["result_box"][0] = {
                             "url": url, "token": token, "session": sid,
                             "auto_connect": bool(st["auto_chk"].state()),
@@ -517,8 +550,8 @@ def show_setup_dialog(cfg: dict) -> dict | None:
 
     inner_x = card_x + 22
     input_w = card_w - 44
-    _label(cv, "Server", inner_x, card_y + card_h - 50, input_w, 16, size=11, bold=True, muted=True)
-    url_f  = _input(cv, inner_x, card_y + card_h - 82, input_w, "https://agents.example.com", value=cfg.get("url",""))
+    _label(cv, "Bridge Connection URL oder Server", inner_x, card_y + card_h - 50, input_w, 16, size=11, bold=True, muted=True)
+    url_f  = _input(cv, inner_x, card_y + card_h - 82, input_w, "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
 
     _label(cv, "E-Mail", inner_x, card_y + card_h - 124, input_w, 16, size=11, bold=True, muted=True)
     em_f   = _input(cv, inner_x, card_y + card_h - 156, input_w, "name@example.com")
@@ -675,7 +708,7 @@ def show_status_window(cfg: dict) -> None:
     CAPS_H    = 44 if len(caps_str) > 40 else 28
     PATH_H    = 16 * len(paths) + 12 if paths else 0
     FOOTER_H  = 70
-    H = HEADER_H + ROW_H * 3 + CAPS_H + (12 + PATH_H if paths else 0) + FOOTER_H
+    H = HEADER_H + ROW_H * 4 + CAPS_H + (12 + PATH_H if paths else 0) + FOOTER_H
 
     panel = _make_panel("AI Employee Status", W, H)
     cv = panel.contentView()
@@ -715,6 +748,7 @@ def show_status_window(cfg: dict) -> None:
         _label(cv, val, VAL_X, y, VAL_W, h-2, size=12, color=val_color)
 
     row("Verbindung", state_text, val_color=dot_col)
+    row("Version",    f"Bridge v{BRIDGE_VERSION}")
     row("Server",     cfg.get("url") or "—")
     row("Session",    (cfg.get("session") or "—")[:16])
     row("Erlaubt",    caps_str, h=CAPS_H)
@@ -779,7 +813,7 @@ def _show_setup_tkinter(cfg):
         e.pack(padx=24)
         return e
 
-    url_f = field("SERVER URL", "https://agents.example.com", value=cfg.get("url",""))
+    url_f = field("BRIDGE URL ODER SERVER", "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
     em_f  = field("E-MAIL",    "name@example.com")
     pw_f  = field("PASSWORT",  "••••••••", secure=True)
 
@@ -797,7 +831,8 @@ def _show_setup_tkinter(cfg):
     def on_cancel(): root.destroy()
 
     def on_save():
-        url   = url_f.get().strip().rstrip("/")
+        url_input = url_f.get()
+        url, requested_session = normalize_bridge_url(url_input)
         email = em_f.get().strip()
         pw    = pw_f.get()
         if not url or not email or not pw:
@@ -806,7 +841,7 @@ def _show_setup_tkinter(cfg):
         caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
         def _do():
             try:
-                token, sid = login_and_prepare(url, email, pw, caps)
+                token, sid = login_and_prepare(url, email, pw, caps, requested_session)
                 result.update({"url":url,"token":token,"session":sid,"auto_connect":bool(auto_var.get()),
                                "allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
@@ -937,7 +972,7 @@ def _show_status_tkinter(cfg):
 
     root = ctk.CTk()
     root.title("AI-Employee Bridge — Status")
-    root.geometry("420x320")
+    root.geometry("420x340")
     root.resizable(False, False)
 
     ctk.CTkLabel(root, text="Bridge Status", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w", padx=24, pady=(24,2))
@@ -950,6 +985,7 @@ def _show_status_tkinter(cfg):
         ctk.CTkLabel(r, text=val, text_color=val_color or "white", anchor="w", font=ctk.CTkFont(size=12)).pack(side="left", fill="x", expand=True)
 
     row("Verbindung", f"{dot}  {state_text}", val_color=dot_col)
+    row("Version",    f"Bridge v{BRIDGE_VERSION}")
     row("Server",     cfg.get("url") or "—")
     row("Session",    (cfg.get("session") or "—")[:16])
 
@@ -978,7 +1014,7 @@ def _show_setup_plain_tkinter(cfg):
     result = {}
     root = tk.Tk(); root.title("AI-Employee Bridge"); root.geometry("440x280")
     f = ttk.Frame(root, padding=16); f.pack(fill="both", expand=True)
-    ttk.Label(f, text="Server URL:").grid(row=0, column=0, sticky="w", pady=3)
+    ttk.Label(f, text="Bridge URL / Server:").grid(row=0, column=0, sticky="w", pady=3)
     url_v = tk.StringVar(value=cfg.get("url","")); ttk.Entry(f, textvariable=url_v, width=36).grid(row=0, column=1)
     ttk.Label(f, text="E-Mail:").grid(row=1, column=0, sticky="w", pady=3)
     em_v = tk.StringVar(); ttk.Entry(f, textvariable=em_v, width=36).grid(row=1, column=1)
@@ -988,12 +1024,13 @@ def _show_setup_plain_tkinter(cfg):
     ttk.Checkbutton(f, text="Automatisch verbinden", variable=auto_v).grid(row=3, column=0, columnspan=2, sticky="w")
     sv = tk.StringVar(); ttk.Label(f, textvariable=sv).grid(row=4, column=0, columnspan=2, sticky="w")
     def save():
-        url, em, pw = url_v.get().strip().rstrip("/"), em_v.get().strip(), pw_v.get()
+        url, requested_session = normalize_bridge_url(url_v.get())
+        em, pw = em_v.get().strip(), pw_v.get()
         if not url or not em or not pw: sv.set("Felder ausfüllen!"); return
         sv.set("Verbinde…"); root.update()
         def _do():
             try:
-                t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+                t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), requested_session)
                 result.update({"url":url,"token":t,"session":s,"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
             except Exception as e:
@@ -1035,6 +1072,7 @@ def _show_status_plain_tkinter(cfg):
     f = ttk.Frame(root, padding=16); f.pack(fill="both", expand=True)
     state = _status
     ttk.Label(f, text="● Verbunden" if state=="connected" else f"● {state}").pack(anchor="w")
+    ttk.Label(f, text=f"Version: Bridge v{BRIDGE_VERSION}").pack(anchor="w")
     ttk.Label(f, text=f"Server: {cfg.get('url','—')}").pack(anchor="w")
     ttk.Label(f, text=f"Session: {cfg.get('session','—')}").pack(anchor="w")
     ttk.Button(f, text="Schließen", command=root.destroy).pack(anchor="e", pady=8)
