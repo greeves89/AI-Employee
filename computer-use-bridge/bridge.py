@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import platform
+import ssl
 import sys
 import threading
 import time
@@ -27,6 +28,10 @@ import urllib.parse
 from typing import Any
 
 import websockets
+
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
 
 def _setup_logging() -> logging.Logger:
     logger = logging.getLogger(__name__)
@@ -427,9 +432,16 @@ class Bridge:
         query = urllib.parse.urlencode({"session_id": self.session_id, "token": self.token})
         url = f"{self.ws_url}/ws/computer-use/bridge?{query}"
         headers = {"Authorization": f"Bearer {self.token}"}
+        ssl_context = _ssl_ctx if url.startswith("wss://") else None
         log.info(f"Connecting to {url}")
 
-        async for ws in websockets.connect(url, additional_headers=headers, ping_interval=30, open_timeout=15):
+        async for ws in websockets.connect(
+            url,
+            additional_headers=headers,
+            ping_interval=30,
+            open_timeout=15,
+            ssl=ssl_context,
+        ):
             self._running = True
             try:
                 log.info("WebSocket connected")
