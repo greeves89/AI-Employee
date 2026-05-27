@@ -118,6 +118,10 @@ def api_session_exists(base_url, token, session_id) -> bool:
         return False
 
 
+def api_session_status(base_url, token, session_id) -> dict:
+    return _api("GET", base_url, f"/api/v1/computer-use/sessions/{session_id}/status", token)
+
+
 ENSURE_OK        = "ok"
 ENSURE_NEEDS_LOGIN = "needs_login"
 ENSURE_ERROR     = "error"
@@ -209,7 +213,7 @@ def _run_bridge_thread(url, token, session_id):
         if str(bridge_dir) not in sys.path:
             sys.path.insert(0, str(bridge_dir))
         import bridge as bridge_module
-        _status = "connected"
+        _status = "connecting"
         asyncio.run(bridge_module.run(url=url, token=token,
                                       session_id=session_id, stop_event=_bridge_stop))
     except Exception as e:
@@ -408,6 +412,56 @@ def _separator(cv, x, y, w):
     cv.addSubview_(box)
 
 
+def _card(cv, x, y, w, h, radius=16):
+    from AppKit import NSColor, NSMakeRect, NSVisualEffectView
+    card = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+    card.setMaterial_(3)
+    card.setState_(1)
+    card.setWantsLayer_(True)
+    card.layer().setCornerRadius_(radius)
+    card.layer().setBorderWidth_(1)
+    card.layer().setBorderColor_(NSColor.separatorColor().CGColor())
+    cv.addSubview_(card)
+    return card
+
+
+def _header(cv, title, subtitle, symbol, x, y, w):
+    from AppKit import NSColor, NSImage, NSImageView, NSMakeRect, NSVisualEffectView
+    icon_bg = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(x, y - 4, 52, 52))
+    icon_bg.setMaterial_(3)
+    icon_bg.setState_(1)
+    icon_bg.setWantsLayer_(True)
+    icon_bg.layer().setCornerRadius_(14)
+    icon_bg.layer().setBackgroundColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(0.08, 0.34, 0.78, 0.18).CGColor())
+    cv.addSubview_(icon_bg)
+
+    icon = NSImageView.alloc().initWithFrame_(NSMakeRect(x + 12, y + 8, 28, 28))
+    icon.setImage_(NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, title))
+    icon.setContentTintColor_(NSColor.systemBlueColor())
+    cv.addSubview_(icon)
+
+    _label(cv, title, x + 68, y + 26, w - 68, 28, size=22, bold=True)
+    _label(cv, subtitle, x + 68, y + 6, w - 68, 18, size=12, muted=True)
+
+
+def _badge(cv, text, x, y, color_name="blue"):
+    from AppKit import NSTextField, NSFont, NSColor
+    colors = {
+        "green": (0.13, 0.76, 0.37, 1),
+        "amber": (1.0, 0.62, 0.04, 1),
+        "red": (1.0, 0.27, 0.23, 1),
+        "blue": (0.14, 0.48, 1.0, 1),
+        "gray": (0.55, 0.55, 0.58, 1),
+    }
+    r, g, b, a = colors.get(color_name, colors["blue"])
+    lbl = NSTextField.labelWithString_(text)
+    lbl.setFont_(NSFont.systemFontOfSize_(12))
+    lbl.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a))
+    lbl.setFrame_(((x, y), (220, 20)))
+    cv.addSubview_(lbl)
+    return lbl
+
+
 def _risk_badge(cv, risk, x, y):
     from AppKit import NSTextField, NSFont, NSColor
     COLORS = {"gering": (0.13, 0.76, 0.37, 1), "mittel": (1.0, 0.62, 0.04, 1), "hoch": (1.0, 0.27, 0.23, 1)}
@@ -429,33 +483,53 @@ def show_setup_dialog(cfg: dict) -> dict | None:
         return _show_setup_tkinter(cfg)
 
     _appkit_handlers_init()
-    from AppKit import NSApp
+    from AppKit import NSApp, NSMakeRect, NSVisualEffectView
 
-    W, H = 480, 390
-    panel = _make_panel("AI-Employee — Einstellungen", W, H)
+    W, H = 560, 470
+    panel = _make_panel("AI Employee", W, H)
     cv = panel.contentView()
-    PAD = 24
+    PAD = 32
 
-    _label(cv, "AI-Employee Bridge",    PAD, H-50, W-2*PAD, 28, size=17, bold=True)
-    _label(cv, "Verbinde diesen Mac mit deinem AI-Employee Server.",
-           PAD, H-72, W-2*PAD, 18, size=12, muted=True)
-    _separator(cv, PAD, H-82, W-2*PAD)
+    try:
+        panel.setTitlebarAppearsTransparent_(True)
+    except Exception:
+        pass
 
-    _label(cv, "SERVER URL", PAD, H-108, 120, 14, size=10, bold=True, muted=True)
-    url_f  = _input(cv, PAD, H-136, W-2*PAD, "https://agents.example.com", value=cfg.get("url",""))
+    backdrop = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+    backdrop.setBlendingMode_(0)
+    backdrop.setMaterial_(3)
+    backdrop.setState_(1)
+    cv.addSubview_positioned_relativeTo_(backdrop, -1, None)
 
-    _label(cv, "E-MAIL", PAD, H-168, 80, 14, size=10, bold=True, muted=True)
-    em_f   = _input(cv, PAD, H-196, W-2*PAD, "name@example.com")
+    _header(
+        cv,
+        "AI Employee",
+        "Desktop-App und sichere Computer-Use Bridge fuer deinen Mac.",
+        "cpu",
+        PAD,
+        H - 92,
+        W - 2 * PAD,
+    )
 
-    _label(cv, "PASSWORT", PAD, H-228, 100, 14, size=10, bold=True, muted=True)
-    pw_f   = _input(cv, PAD, H-256, W-2*PAD, "••••••••", secure=True)
+    card_x, card_y = PAD, 72
+    card_w, card_h = W - 2 * PAD, 290
+    _card(cv, card_x, card_y, card_w, card_h)
 
-    _separator(cv, PAD, H-270, W-2*PAD)
-    auto_chk   = _checkbox(cv, "Beim Start automatisch verbinden",
-                           PAD, H-298, W-2*PAD, cfg.get("auto_connect", True))
-    status_lbl = _label(cv, "", PAD, H-324, W-2*PAD, 18, size=12, muted=True)
-    cancel_btn = _button(cv, "Abbrechen",            PAD,       16, 100, key="\x1b")
-    save_btn   = _button(cv, "Anmelden & Verbinden", W-PAD-180, 16, 180, key="\r")
+    inner_x = card_x + 22
+    input_w = card_w - 44
+    _label(cv, "Server", inner_x, card_y + card_h - 50, input_w, 16, size=11, bold=True, muted=True)
+    url_f  = _input(cv, inner_x, card_y + card_h - 82, input_w, "https://agents.example.com", value=cfg.get("url",""))
+
+    _label(cv, "E-Mail", inner_x, card_y + card_h - 124, input_w, 16, size=11, bold=True, muted=True)
+    em_f   = _input(cv, inner_x, card_y + card_h - 156, input_w, "name@example.com")
+
+    _label(cv, "Passwort", inner_x, card_y + card_h - 198, input_w, 16, size=11, bold=True, muted=True)
+    pw_f   = _input(cv, inner_x, card_y + card_h - 230, input_w, "Passwort", secure=True)
+
+    auto_chk = _checkbox(cv, "Beim Start automatisch verbinden", inner_x, card_y + 22, input_w, cfg.get("auto_connect", True))
+    status_lbl = _label(cv, "", PAD, 46, W-2*PAD, 18, size=12, muted=True)
+    cancel_btn = _button(cv, "Abbrechen", PAD, 20, 110, key="\x1b")
+    save_btn = _button(cv, "Anmelden & Verbinden", W-PAD-190, 20, 190, key="\r")
 
     result_box = [None]
     _setup_state.update(dict(url_f=url_f, em_f=em_f, pw_f=pw_f, auto_chk=auto_chk,
@@ -477,57 +551,73 @@ def show_permissions_dialog(cfg: dict) -> None:
         return _show_permissions_tkinter(cfg)
 
     _appkit_handlers_init()
-    from AppKit import (NSApp, NSScrollView, NSTextView, NSMakeRect, NSFont)
+    from AppKit import (NSApp, NSScrollView, NSTextView, NSMakeRect, NSFont, NSVisualEffectView)
 
-    W, H = 540, 700
-    panel = _make_panel("AI-Employee — Berechtigungen", W, H)
+    W, H = 600, 720
+    panel = _make_panel("AI Employee Berechtigungen", W, H)
     cv = panel.contentView()
-    PAD = 24
+    PAD = 32
 
-    _label(cv, "Berechtigungen", PAD, H-46, W-2*PAD, 26, size=17, bold=True)
-    _label(cv, "Was darf der Agent auf diesem Mac tun?",
-           PAD, H-68, W-2*PAD, 18, size=12, muted=True)
-    _separator(cv, PAD, H-78, W-2*PAD)
+    try:
+        panel.setTitlebarAppearsTransparent_(True)
+    except Exception:
+        pass
+
+    backdrop = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+    backdrop.setBlendingMode_(0)
+    backdrop.setMaterial_(3)
+    backdrop.setState_(1)
+    cv.addSubview_positioned_relativeTo_(backdrop, -1, None)
+
+    _header(
+        cv,
+        "Berechtigungen",
+        "Lege fest, was Agents auf diesem Mac tun duerfen.",
+        "hand.raised",
+        PAD,
+        H - 92,
+        W - 2 * PAD,
+    )
 
     cap_checks = {}
     current_caps = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
-    y = H - 78
+    caps_x, caps_y, caps_w, caps_h = PAD, 238, W - 2 * PAD, 380
+    _card(cv, caps_x, caps_y, caps_w, caps_h)
+    y = caps_y + caps_h - 18
     for cap in CAPABILITY_META:
-        y -= 54
-        chk = _checkbox(cv, cap["label"], PAD, y+28, 240, cap["id"] in current_caps)
+        y -= 49
+        chk = _checkbox(cv, cap["label"], caps_x + 20, y+22, 250, cap["id"] in current_caps)
         chk.setFont_(NSFont.boldSystemFontOfSize_(13))
         cap_checks[cap["id"]] = chk
-        _label(cv, cap["desc"], PAD+20, y+10, 280, 16, size=11, muted=True)
-        _risk_badge(cv, cap["risk"], W-PAD, y+28)
+        _label(cv, cap["desc"], caps_x + 40, y+5, 340, 16, size=11, muted=True)
+        _risk_badge(cv, cap["risk"], caps_x + caps_w - 20, y+22)
 
-    _separator(cv, PAD, y-8, W-2*PAD)
-
-    folder_y = y - 32
-    _label(cv, "ORDNER-ZUGRIFF", PAD, folder_y, 200, 14, size=10, bold=True, muted=True)
-    _label(cv, "(Shell-Befehle sind auf diese Ordner beschränkt)",
-           PAD+145, folder_y, W-PAD-165, 14, size=10, muted=True)
+    folder_card_x, folder_card_y = PAD, 92
+    folder_card_w, folder_card_h = W - 2 * PAD, 124
+    _card(cv, folder_card_x, folder_card_y, folder_card_w, folder_card_h)
+    _label(cv, "Ordner-Zugriff", folder_card_x + 20, folder_card_y + folder_card_h - 32, 180, 18, size=13, bold=True)
+    _label(cv, "Shell-Befehle sind auf diese Ordner beschraenkt.",
+           folder_card_x + 150, folder_card_y + folder_card_h - 30, folder_card_w - 170, 16, size=11, muted=True)
 
     paths = list(cfg.get("allowed_paths", []))
-    list_y, list_h = folder_y - 24, 80
+    list_x, list_y, list_w, list_h = folder_card_x + 20, folder_card_y + 18, folder_card_w - 170, 62
 
-    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(PAD, list_y - list_h, W-2*PAD, list_h))
+    scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(list_x, list_y, list_w, list_h))
     scroll.setHasVerticalScroller_(True)
     scroll.setBorderType_(2)
-    tv = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, W-2*PAD-4, list_h))
+    tv = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, list_w - 4, list_h))
     tv.setEditable_(False)
     tv.setFont_(NSFont.userFixedPitchFontOfSize_(12))
     tv.setString_("\n".join(paths) if paths else "(keine Ordner definiert)")
     scroll.setDocumentView_(tv)
     cv.addSubview_(scroll)
 
-    btn_y = list_y - list_h - 4
-    add_btn = _button(cv, "+ Hinzufügen", PAD,       btn_y - 28, 120)
-    del_btn = _button(cv, "– Entfernen",  PAD+128,   btn_y - 28, 110)
+    add_btn = _button(cv, "+ Hinzufuegen", folder_card_x + folder_card_w - 132, folder_card_y + 56, 112)
+    del_btn = _button(cv, "Entfernen", folder_card_x + folder_card_w - 132, folder_card_y + 22, 112)
 
-    _separator(cv, PAD, 56, W-2*PAD)
-    status_lbl = _label(cv, "", PAD, 38, W-2*PAD-140, 16, size=11, muted=True)
-    cancel_btn = _button(cv, "Abbrechen", PAD,        16, 100, key="\x1b")
-    save_btn   = _button(cv, "Speichern", W-PAD-110,  16, 110, key="\r")
+    status_lbl = _label(cv, "", PAD, 52, W-2*PAD-140, 16, size=11, muted=True)
+    cancel_btn = _button(cv, "Abbrechen", PAD, 20, 110, key="\x1b")
+    save_btn   = _button(cv, "Speichern", W-PAD-120, 20, 120, key="\r")
 
     _perms_state.update(dict(cap_checks=cap_checks, paths=paths, tv=tv,
                              status_lbl=status_lbl, cfg=cfg))
@@ -549,21 +639,29 @@ def show_status_window(cfg: dict) -> None:
         return _show_status_tkinter(cfg)
 
     _appkit_handlers_init()
-    from AppKit import NSApp, NSColor
+    from AppKit import NSApp, NSColor, NSMakeRect, NSVisualEffectView
 
-    W = 420
-    PAD = 24
-    COL = 110   # label column width
-    VAL_X = PAD + COL + 12
+    W = 500
+    PAD = 32
+    COL = 118   # label column width
+    VAL_X = PAD + COL + 14
     VAL_W = W - VAL_X - PAD
 
+    server_state = {}
+    try:
+        if cfg.get("url") and cfg.get("token") and cfg.get("session"):
+            server_state = api_session_status(cfg["url"], cfg["token"], cfg["session"])
+    except Exception:
+        server_state = {}
+
     state = _status
-    if state == "connected":
-        dot_color, state_text = (0.13, 0.76, 0.37, 1), "● Verbunden"
+    server_connected = bool(server_state.get("bridge_connected"))
+    if server_connected:
+        dot_color, state_text, badge_color = (0.13, 0.76, 0.37, 1), "Verbunden", "green"
     elif state == "connecting":
-        dot_color, state_text = (1.0, 0.62, 0.04, 1), "● Verbinde…"
+        dot_color, state_text, badge_color = (1.0, 0.62, 0.04, 1), "Lokal gestartet, Server wartet", "amber"
     else:
-        dot_color, state_text = (0.6, 0.6, 0.6, 1), "● " + state.replace("error: ", "")
+        dot_color, state_text, badge_color = (0.6, 0.6, 0.6, 1), state.replace("error: ", ""), "gray"
     dot_col = NSColor.colorWithSRGBRed_green_blue_alpha_(*dot_color)
 
     caps = cfg.get("allowed_capabilities", [])
@@ -571,27 +669,49 @@ def show_status_window(cfg: dict) -> None:
     caps_str = ", ".join(cap_map.get(c, c) for c in caps) if caps else "Keine"
     paths = cfg.get("allowed_paths", [])
 
-    # Build rows top→down, track y from top
-    HEADER_H  = 64   # title + separator
+    # Build rows top-down, track y from top
+    HEADER_H  = 104
     ROW_H     = 28
     CAPS_H    = 44 if len(caps_str) > 40 else 28
     PATH_H    = 16 * len(paths) + 12 if paths else 0
-    FOOTER_H  = 60   # separator + button
+    FOOTER_H  = 70
     H = HEADER_H + ROW_H * 3 + CAPS_H + (12 + PATH_H if paths else 0) + FOOTER_H
 
-    panel = _make_panel("AI-Employee Bridge — Status", W, H)
+    panel = _make_panel("AI Employee Status", W, H)
     cv = panel.contentView()
+    try:
+        panel.setTitlebarAppearsTransparent_(True)
+    except Exception:
+        pass
 
-    y = H - 38
-    _label(cv, "Bridge Status", PAD, y, W - 2*PAD, 22, size=17, bold=True)
-    y -= 26
-    _separator(cv, PAD, y, W - 2*PAD)
-    y -= 10
+    backdrop = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+    backdrop.setBlendingMode_(0)
+    backdrop.setMaterial_(3)
+    backdrop.setState_(1)
+    cv.addSubview_positioned_relativeTo_(backdrop, -1, None)
+
+    _header(
+        cv,
+        "Bridge Status",
+        "Live-Verbindung zwischen diesem Mac und AI Employee.",
+        "network",
+        PAD,
+        H - 92,
+        W - 2 * PAD,
+    )
+
+    card_x, card_y = PAD, 70
+    card_w, card_h = W - 2 * PAD, H - 178
+    _card(cv, card_x, card_y, card_w, card_h)
+
+    _badge(cv, f"● {state_text}", card_x + 20, card_y + card_h - 38, badge_color)
+
+    y = card_y + card_h - 56
 
     def row(lbl, val, h=ROW_H, val_color=None):
         nonlocal y
         y -= h
-        _label(cv, lbl, PAD, y, COL, h-2, size=12, muted=True)
+        _label(cv, lbl, card_x + 20, y, COL, h-2, size=12, muted=True)
         _label(cv, val, VAL_X, y, VAL_W, h-2, size=12, color=val_color)
 
     row("Verbindung", state_text, val_color=dot_col)
@@ -600,13 +720,12 @@ def show_status_window(cfg: dict) -> None:
     row("Erlaubt",    caps_str, h=CAPS_H)
 
     if paths:
-        y -= 12
-        _separator(cv, PAD, y, W - 2*PAD)
-        y -= 4
+        y -= 8
+        _separator(cv, card_x + 20, y, card_w - 40)
+        y -= 6
         row("Ordner", "\n".join(paths), h=PATH_H + 8)
 
-    _separator(cv, PAD, 52, W - 2*PAD)
-    close_btn = _button(cv, "Schließen", W - PAD - 100, 16, 100, key="\r")
+    close_btn = _button(cv, "Schliessen", W - PAD - 110, 22, 110, key="\r")
 
     h = _status_state["_handler"]
     close_btn.setTarget_(h)

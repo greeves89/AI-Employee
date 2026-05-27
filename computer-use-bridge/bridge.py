@@ -21,6 +21,7 @@ import platform
 import sys
 import threading
 import time
+import urllib.parse
 from typing import Any
 
 import websockets
@@ -204,7 +205,7 @@ class CommandDispatcher:
                 depth = params.get("max_depth", 6)
                 return {"ax_tree": get_ax_tree(app, depth)}
 
-            elif action == "click":
+            elif action in ("click", "mouse_click"):
                 self._ctrl.click(
                     params["x"], params["y"],
                     button=params.get("button", "left"),
@@ -220,11 +221,15 @@ class CommandDispatcher:
                 self._ctrl.key_press(params["keys"])
                 return {"ok": True}
 
-            elif action == "scroll":
+            elif action == "hotkey":
+                self._ctrl.key_press(params["keys"])
+                return {"ok": True}
+
+            elif action in ("scroll", "mouse_scroll"):
                 self._ctrl.scroll(params["x"], params["y"], params.get("amount", 3))
                 return {"ok": True}
 
-            elif action == "move":
+            elif action in ("move", "mouse_move"):
                 self._ctrl.move(params["x"], params["y"])
                 return {"ok": True}
 
@@ -234,12 +239,21 @@ class CommandDispatcher:
                 return {"ok": True}
 
             elif action == "open_app":
-                app = params["app"]
+                app = params.get("app") or params["name"]
                 import subprocess
                 subprocess.Popen(["open", "-a", app])
                 return {"ok": True, "app": app}
 
-            elif action == "get_clipboard":
+            elif action == "close_app":
+                app = params.get("app") or params["name"]
+                import subprocess
+                if IS_MAC:
+                    subprocess.run(["osascript", "-e", f'tell application "{app}" to quit'], check=False)
+                elif IS_WIN:
+                    subprocess.run(["taskkill", "/IM", app, "/F"], check=False)
+                return {"ok": True, "app": app}
+
+            elif action in ("get_clipboard", "clipboard_read"):
                 if IS_MAC:
                     import subprocess
                     result = subprocess.run(["pbpaste"], capture_output=True, text=True)
@@ -250,7 +264,7 @@ class CommandDispatcher:
                     return {"text": result.stdout.strip()}
                 return {"error": "Clipboard read not supported on this platform"}
 
-            elif action == "set_clipboard":
+            elif action in ("set_clipboard", "clipboard_write"):
                 text = params["text"]
                 if IS_MAC:
                     import subprocess
@@ -371,7 +385,8 @@ class Bridge:
                 "then pass the session ID with --session <id>."
             )
 
-        url = f"{self.ws_url}/ws/computer-use/bridge?session_id={self.session_id}"
+        query = urllib.parse.urlencode({"session_id": self.session_id, "token": self.token})
+        url = f"{self.ws_url}/ws/computer-use/bridge?{query}"
         headers = {"Authorization": f"Bearer {self.token}"}
         log.info(f"Connecting to {url}")
 
