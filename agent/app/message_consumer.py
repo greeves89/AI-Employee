@@ -125,6 +125,7 @@ class MessageConsumer:
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,

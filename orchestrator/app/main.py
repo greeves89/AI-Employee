@@ -343,7 +343,12 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                         print(f"[ChatPersist] No user message found for {message_id}, skipping")
                         continue
 
-                    content = str(event_data.get("text", ""))
+                    content = str(
+                        event_data.get("text")
+                        or event_data.get("content")
+                        or event_data.get("result")
+                        or ""
+                    )
                     tool_calls = event_data.get("tool_calls")
                     meta = {
                         "cost_usd": event_data.get("cost_usd"),

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.24] — 2026-05-27
+
+### Fixed
+- **OpenAI Codex agents no longer stall in chat** — Codex CLI subprocesses now run with stdin closed so `codex exec` cannot wait forever for additional terminal input inside agent containers.
+- **Codex chat completion fallback** — WebSocket and background chat persistence now read final text from `text`, `content`, or `result`, so Codex `done` events still clear the client spinner and persist the assistant reply even if a streaming text event is missed.
+
+### Verified
+- `python3 -m py_compile agent/app/codex_runner.py agent/app/message_consumer.py orchestrator/app/api/ws.py orchestrator/app/main.py` succeeds.
+- Direct container test: `codex exec --json ... "Bitte antworte nur mit OK" </dev/null` returns an `agent_message`.
+
+---
+
 ## [1.55.23] — 2026-05-27
 
 ### Added

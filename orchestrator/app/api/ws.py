@@ -347,6 +347,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             elif etype == "done":
                 _pending_message_ids.discard(mid)
                 resp = _streaming_responses.pop(mid, {})
+                final_text = (
+                    edata.get("text")
+                    or edata.get("content")
+                    or edata.get("result")
+                    or ""
+                )
+                if final_text and not resp.get("content"):
+                    resp["content"] = str(final_text)
                 auto_files = _auto_presented_files_from_text(str(resp.get("content", "")))
                 auto_files.extend(_auto_presented_files_from_tool_calls(resp.get("tool_calls")))
                 if auto_files:
