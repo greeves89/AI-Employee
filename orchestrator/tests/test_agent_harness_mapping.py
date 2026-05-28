@@ -4,6 +4,7 @@ import unittest
 
 from app.api.agents import _mode_for_ai_account_provider, _model_provider_for_agent_mode
 from app.core.agent_manager import AgentManager
+from app.services.docker_service import _session_bind_path
 
 
 class AgentHarnessMappingTests(unittest.TestCase):
@@ -51,6 +52,16 @@ class AgentHarnessMappingTests(unittest.TestCase):
         )
         self.assertEqual(AgentManager._cli_account_env("codex_cli", anthropic_cfg), {})
         self.assertEqual(AgentManager._cli_account_env("claude_code", openai_cfg), {})
+
+    def test_codex_cli_session_mount_uses_codex_home(self):
+        self.assertEqual(
+            _session_bind_path({"AGENT_MODE": "codex_cli"}),
+            "/home/agent/.codex",
+        )
+        self.assertEqual(
+            _session_bind_path({"AGENT_MODE": "claude_code"}),
+            "/home/agent/.claude",
+        )
 
 
 if __name__ == "__main__":

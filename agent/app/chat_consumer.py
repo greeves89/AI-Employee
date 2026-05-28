@@ -11,10 +11,26 @@ from app.log_publisher import LogPublisher
 
 logger = logging.getLogger(__name__)
 
-# A single chat turn must never block the queue indefinitely. If a turn
-# (CLI subprocess / LLM call) hangs past this, it is aborted so the next
-# queued message can be processed.
-CHAT_TURN_TIMEOUT = 600  # seconds
+DEFAULT_CHAT_TURN_TIMEOUT = 600  # seconds
+DEFAULT_CODEX_CHAT_TURN_TIMEOUT = 1800  # seconds
+
+
+def _chat_turn_timeout() -> int:
+    """Return the watchdog timeout for one chat turn.
+
+    A single chat turn must never block the queue indefinitely. Codex CLI gets
+    a longer default because `codex exec` performs its own internal tool loop
+    before returning a final result.
+    """
+    if settings.agent_mode == "codex_cli":
+        codex_timeout = int(settings.codex_chat_turn_timeout_seconds or 0)
+        if codex_timeout > 0:
+            return codex_timeout
+        return max(
+            int(settings.chat_turn_timeout_seconds or DEFAULT_CHAT_TURN_TIMEOUT),
+            DEFAULT_CODEX_CHAT_TURN_TIMEOUT,
+        )
+    return int(settings.chat_turn_timeout_seconds or DEFAULT_CHAT_TURN_TIMEOUT)
 
 
 def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) -> str:
@@ -413,6 +429,7 @@ class ChatConsumer:
                 if hasattr(self._handler, "pending_drain"):
                     self._handler.pending_drain = self._drain_pending
 
+                timeout = _chat_turn_timeout()
                 try:
                     # Watchdog: a hung turn (stuck CLI / network) must not
                     # block the whole queue forever. Abort and move on.
@@ -423,12 +440,12 @@ class ChatConsumer:
                             model=model,
                             **handle_kwargs,
                         ),
-                        timeout=CHAT_TURN_TIMEOUT,
+                        timeout=timeout,
                     )
                 except asyncio.TimeoutError:
                     logger.error(
                         "Chat turn %s timed out after %ss — aborting",
-                        message_id, CHAT_TURN_TIMEOUT,
+                        message_id, timeout,
                     )
                     try:
                         if hasattr(self._handler, "stop_current"):

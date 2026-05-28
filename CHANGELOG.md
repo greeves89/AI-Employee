@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.32] — 2026-05-27
+
+### Fixed
+- **Cloudflare tunnel flap-loop no longer goes undetected** — the `cloudflared` healthcheck now calls the local `/ready` endpoint via the metrics server instead of `tunnel info`, so autoheal restarts the container when edge connections drop. Caused today's 1033 outage on `agents.future-app.de`. Metrics port pinned to `20241` via `TUNNEL_METRICS` env; check runs every 30s. Tunnel profile only — community installs without `--profile tunnel` are unaffected.
+- **Codex chat turns no longer get killed by the 10-minute watchdog** — `codex exec` legitimately runs longer than Claude Code on tool-heavy turns. New `CODEX_CHAT_TURN_TIMEOUT_SECONDS` (default 1800) and `CHAT_TURN_TIMEOUT_SECONDS` (default 600) settings; Codex agents use the higher default automatically.
+- **Codex session state now survives container recreate** — the agent harness mount path is mode-aware: `codex_cli` binds the session volume at `/home/agent/.codex`, Claude Code keeps `/home/agent/.claude`.
+- **Codex auth.json readable by the non-root agent user** — the shared auth file is now `chown`ed to the agent container UID/GID (default `1000:1000`, overridable via `AGENT_CONTAINER_UID`/`GID`) so Codex CLI can read it without world-readable permissions.
+
+### Changed
+- **Codex event extraction** — the runner now emits `tool_result` events (not just `tool_call`) and recognises `command_execution` payloads, so the chat UI reflects shell output from Codex turns.
+
+### Verified
+- `python3 -m py_compile agent/app/codex_runner.py agent/app/chat_consumer.py agent/app/config.py orchestrator/app/services/codex_auth_service.py orchestrator/app/services/docker_service.py` succeeds.
+- 7/7 active agents recreated with new image via `AgentManager.update_agent` — volumes preserved, all healthy.
+- `docker exec ai-employee-cloudflared cloudflared tunnel --metrics 127.0.0.1:20241 ready` returns exit 0; `curl https://agents.future-app.de/health` returns 200.
+
+---
+
+## [1.55.25] — [1.55.31] — 2026-05-27
+
+Bridge-only release range; backfilled retroactively. No core orchestrator/agent changes.
+
+### Added
+- **Bridge voice interaction layer** (1.55.25 → 1.55.27) — compact interaction bar with voice mode plus Edge-TTS speech output.
+
+### Fixed
+- **Bridge session attach** waits for the orchestrator session to be ready before connecting (1.55.26).
+- **Bridge WebSocket SSL** connection negotiation and startup logging (1.55.28, 1.55.29).
+- **Bridge microphone privacy description** for macOS prompts (1.55.30).
+- **Telegram bot startup** now retries after transient failures instead of hard-failing the orchestrator boot (1.55.31).
+
+---
+
 ## [1.55.24] — 2026-05-27
 
 ### Fixed

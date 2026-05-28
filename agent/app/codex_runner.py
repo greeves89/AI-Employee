@@ -3,6 +3,7 @@
 Runs OpenAI Codex through the CLI using a ChatGPT/Codex auth.json mounted by
 the orchestrator into /shared/.codex/auth.json.
 """
+from __future__ import annotations
 
 import asyncio
 import json
@@ -78,9 +79,30 @@ def _extract_content_text(content: list) -> str:
     return "".join(parts)
 
 
-def _extract_tool_call(event: dict) -> tuple[str, dict] | None:
-    item = event.get("item") if isinstance(event.get("item"), dict) else event
+def _event_item(event: dict) -> dict:
+    """Return the nested Codex item/payload if present."""
+    item = event.get("item")
+    if isinstance(item, dict):
+        return item
+    payload = event.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return event
+
+
+def _extract_tool_call(event: dict) -> tuple[str, dict, str] | None:
+    item = _event_item(event)
+    event_type = str(event.get("type", "")).lower()
     typ = str(item.get("type", event.get("type", ""))).lower()
+    status = str(item.get("status", "")).lower()
+
+    if event_type.endswith("completed") or status in {"completed", "failed"}:
+        return None
+
+    if typ == "command_execution":
+        command = item.get("command") or item.get("cmd") or ""
+        return "bash", {"cmd": str(command)}, str(item.get("id") or event.get("id") or "")
+
     if "tool" not in typ and "function_call" not in typ:
         return None
     name = item.get("name") or item.get("tool") or item.get("call_name")
@@ -92,7 +114,38 @@ def _extract_tool_call(event: dict) -> tuple[str, dict] | None:
             args = json.loads(args)
         except json.JSONDecodeError:
             args = {"raw": args}
-    return str(name), args if isinstance(args, dict) else {"raw": args}
+    return (
+        str(name),
+        args if isinstance(args, dict) else {"raw": args},
+        str(item.get("id") or event.get("id") or ""),
+    )
+
+
+def _extract_tool_result(event: dict) -> tuple[str, str] | None:
+    item = _event_item(event)
+    event_type = str(event.get("type", "")).lower()
+    typ = str(item.get("type", "")).lower()
+    status = str(item.get("status", "")).lower()
+
+    if not (event_type.endswith("completed") or status in {"completed", "failed"}):
+        return None
+
+    if typ == "command_execution":
+        output = item.get("aggregated_output")
+        if output is None:
+            output = item.get("output") or ""
+        exit_code = item.get("exit_code")
+        if exit_code is not None:
+            output = f"{output}\n(exit code: {exit_code})" if output else f"(exit code: {exit_code})"
+        return str(item.get("id") or event.get("id") or ""), str(output)
+
+    if "tool" in typ or "function_call" in typ:
+        result = item.get("result") or item.get("output") or item.get("content") or ""
+        if not isinstance(result, str):
+            result = json.dumps(result, ensure_ascii=False)
+        return str(item.get("id") or event.get("id") or ""), result
+
+    return None
 
 
 class CodexAgentRunner:
@@ -183,13 +236,24 @@ class CodexAgentRunner:
 
                 tool_call = _extract_tool_call(event)
                 if tool_call:
-                    name, args = tool_call
+                    name, args, tool_id = tool_call
                     await _publish(
                         self.log_publisher,
                         stream,
                         target_id,
                         "tool_call",
-                        {"tool_use_id": event.get("id", ""), "tool": name, "input": args},
+                        {"tool_use_id": tool_id, "tool": name, "input": args},
+                    )
+
+                tool_result = _extract_tool_result(event)
+                if tool_result:
+                    tool_id, output = tool_result
+                    await _publish(
+                        self.log_publisher,
+                        stream,
+                        target_id,
+                        "tool_result",
+                        {"tool_use_id": tool_id, "content": output},
                     )
 
                 if str(event.get("type", "")).endswith("completed"):

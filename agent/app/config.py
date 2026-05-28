@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     llm_thinking_mode: str = "auto"  # "off", "auto", "on"
     llm_api_version: str = ""  # Azure OpenAI api-version (e.g. 2024-10-21)
 
+    # Chat watchdogs. Codex CLI can legitimately spend a long time in a
+    # single `codex exec` turn while still streaming tool activity; default 0
+    # disables the hard wall-clock timeout for Codex chats.
+    chat_turn_timeout_seconds: int = 600
+    codex_chat_turn_timeout_seconds: int = 0
+
     # Custom MCP servers (JSON: {"name": "http://url"}) - used by both modes
     custom_mcp_servers: str = ""
 

@@ -31,6 +31,13 @@ if _SECCOMP_PROFILE is None:
     )
 
 
+def _session_bind_path(environment: dict | None) -> str:
+    """Return the CLI session directory for the agent harness."""
+    if (environment or {}).get("AGENT_MODE") == "codex_cli":
+        return "/home/agent/.codex"
+    return "/home/agent/.claude"
+
+
 class DockerService:
     """Wraps Docker SDK for container management.
 
@@ -70,7 +77,10 @@ class DockerService:
 
         volumes = {volume_name: {"bind": "/workspace", "mode": "rw"}}
         if session_volume_name:
-            volumes[session_volume_name] = {"bind": "/home/agent/.claude", "mode": "rw"}
+            volumes[session_volume_name] = {
+                "bind": _session_bind_path(environment),
+                "mode": "rw",
+            }
         if shared_volume_name:
             volumes[shared_volume_name] = {"bind": "/shared", "mode": "rw"}
         # Admin-defined bind mounts (host_path → {bind: container_path, mode: ro|rw})
