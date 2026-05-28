@@ -5,6 +5,7 @@ Loads all configured bots on startup.
 """
 
 import uuid
+import asyncio
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,7 @@ class TelegramBotManager:
 
     def __init__(self):
         self._bots: dict[str, TelegramAgentBot] = {}  # agent_id -> bot
+        self._retry_tasks: dict[str, asyncio.Task] = {}
 
     async def start_bot(self, agent_id: str, agent_name: str, bot_token: str, auth_key: str) -> None:
         """Start a Telegram bot for an agent."""
@@ -28,12 +30,16 @@ class TelegramBotManager:
         try:
             await bot.start()
             self._bots[agent_id] = bot
+            self._retry_tasks.pop(agent_id, None)
         except Exception as e:
             print(f"[Telegram] Failed to start bot for {agent_name}: {e}")
             raise
 
     async def stop_bot(self, agent_id: str) -> None:
         """Stop the Telegram bot for an agent."""
+        retry_task = self._retry_tasks.pop(agent_id, None)
+        if retry_task and retry_task is not asyncio.current_task():
+            retry_task.cancel()
         if agent_id in self._bots:
             await self._bots[agent_id].stop()
             del self._bots[agent_id]
@@ -62,7 +68,26 @@ class TelegramBotManager:
                 try:
                     await self.start_bot(agent.id, agent.name, bot_token, auth_key)
                 except Exception as e:
-                    print(f"[Telegram] Skipping bot for {agent.name}: {e}")
+                    print(f"[Telegram] Bot for {agent.name} not started yet: {e}")
+                    self._schedule_retry(agent.id, agent.name, bot_token, auth_key)
+
+    def _schedule_retry(self, agent_id: str, agent_name: str, bot_token: str, auth_key: str) -> None:
+        """Retry bot startup after transient network or Telegram API failures."""
+        if agent_id in self._retry_tasks:
+            return
+
+        async def retry_loop() -> None:
+            delay = 15
+            while agent_id not in self._bots:
+                await asyncio.sleep(delay)
+                try:
+                    await self.start_bot(agent_id, agent_name, bot_token, auth_key)
+                    return
+                except Exception as e:
+                    print(f"[Telegram] Retry failed for {agent_name}: {e}")
+                    delay = min(delay * 2, 300)
+
+        self._retry_tasks[agent_id] = asyncio.create_task(retry_loop())
 
 
 def generate_auth_key() -> str:
