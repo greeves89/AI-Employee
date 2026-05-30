@@ -120,7 +120,7 @@ async def test_bucket_usage_reports_correctly(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_eviction_marks_superseded_at(db: AsyncSession):
+async def test_eviction_marks_evicted_at(db: AsyncSession):
     drop = _add(db, content="D" * 1600, importance=1)
     await db.commit()
 
@@ -128,4 +128,27 @@ async def test_eviction_marks_superseded_at(db: AsyncSession):
     await db.commit()
     await db.refresh(drop)
     assert drop.id in evicted
-    assert drop.superseded_at is not None
+    assert drop.evicted_at is not None
+    # Eviction MUST NOT touch superseded_by — that would conflict with the
+    # dedup audit chain. The evicted_at column is the eviction marker.
+    assert drop.superseded_by is None
+    assert drop.superseded_at is None
+
+
+@pytest.mark.asyncio
+async def test_already_evicted_items_dont_count_toward_budget(db: AsyncSession):
+    """An evicted row must be invisible to subsequent enforce() calls."""
+    old = _add(db, content="X" * 1600, importance=1)
+    await db.commit()
+    # First enforce: should evict the big low-importance row (over 1500 budget).
+    await enforce(db, agent_id="a1", room="r1", category="preference")
+    await db.commit()
+    await db.refresh(old)
+    assert old.evicted_at is not None
+
+    # Now adding a fresh row should NOT see the evicted one in the count.
+    new = _add(db, content="N" * 200, importance=3)
+    await db.commit()
+    usage = await bucket_usage(db, "a1", "r1", "preference")
+    assert usage["chars"] == 200
+    assert usage["count"] == 1

@@ -1,15 +1,21 @@
 """Memory caps — Hermes-inspired hard limits on memory bucket size.
 
-Each (agent_id, room) bucket has a CHAR_BUDGET. When a new memory is saved
-and the bucket exceeds the budget, the LOWEST-IMPORTANCE non-pinned memories
-are superseded (marked superseded_by=NULL with superseded_at=now) until the
+Each (agent_id, room, category) bucket has a CHAR_BUDGET. When a new
+memory is saved and the bucket exceeds the budget, the LOWEST-IMPORTANCE
+non-pinned memories are EVICTED (marked `evicted_at=now`) until the
 bucket fits.
+
+Eviction is distinct from supersession:
+  * superseded_by points at a *replacement* row.
+  * evicted_at means the row was dropped without replacement.
+Every active-memory query MUST filter both:
+  `superseded_by IS NULL AND evicted_at IS NULL`
 
 Pinned memories (confidence >= 1.5 OR importance == 5) are exempt.
 
-This mirrors how Hermes hard-caps USER.md (1375 chars) and MEMORY.md (2200
-chars) — except instead of editing in place, we use the existing supersede
-audit trail so nothing is ever lost.
+This mirrors how Hermes hard-caps USER.md (1375 chars) and MEMORY.md
+(2200 chars) — except instead of editing in place, we use a dedicated
+eviction marker so nothing is ever lost from the audit trail.
 """
 
 from __future__ import annotations
@@ -69,6 +75,7 @@ async def enforce(
                 AgentMemory.category == category if category else True,
                 AgentMemory.room == room if room is not None else AgentMemory.room.is_(None),
                 AgentMemory.superseded_by.is_(None),
+                AgentMemory.evicted_at.is_(None),
             )
         )
         .order_by(AgentMemory.importance.asc(), AgentMemory.created_at.asc())
@@ -86,8 +93,7 @@ async def enforce(
             break
         if _is_pinned(m):
             continue
-        m.superseded_by = None  # no replacement — pure eviction
-        m.superseded_at = now
+        m.evicted_at = now
         total_chars -= len(m.content or "")
         evicted.append(m.id)
 
@@ -111,6 +117,7 @@ async def bucket_usage(
                 AgentMemory.category == category if category else True,
                 AgentMemory.room == room if room is not None else AgentMemory.room.is_(None),
                 AgentMemory.superseded_by.is_(None),
+                AgentMemory.evicted_at.is_(None),
             )
         )
     )

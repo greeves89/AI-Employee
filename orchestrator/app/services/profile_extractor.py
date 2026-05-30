@@ -92,6 +92,7 @@ async def extract_profile(db: AsyncSession, user_id: str) -> UserProfile:
             AgentMemory.agent_id.in_(agent_ids),
             AgentMemory.category.in_(["preference", "learning", "correction", "decision"]),
             AgentMemory.superseded_by.is_(None),
+            AgentMemory.evicted_at.is_(None),
         ).order_by(AgentMemory.updated_at.desc()).limit(200)
     )
     memories = result.scalars().all()

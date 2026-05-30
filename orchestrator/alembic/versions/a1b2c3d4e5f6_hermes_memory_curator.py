@@ -30,8 +30,19 @@ def upgrade() -> None:
     )
     op.create_index("ix_skills_last_used_at", "skills", ["last_used_at"])
 
+    # Memory caps: a NULL evicted_at means "active"; a non-NULL value means
+    # the row was dropped by memory_caps.enforce(). Consumers must filter
+    # `superseded_by IS NULL AND evicted_at IS NULL` to see active memories.
+    op.add_column(
+        "agent_memories",
+        sa.Column("evicted_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index("ix_agent_memories_evicted_at", "agent_memories", ["evicted_at"])
+
 
 def downgrade() -> None:
+    op.drop_index("ix_agent_memories_evicted_at", table_name="agent_memories")
+    op.drop_column("agent_memories", "evicted_at")
     op.drop_index("ix_skills_last_used_at", table_name="skills")
     op.drop_column("skills", "curator_notes")
     op.drop_column("skills", "last_used_at")

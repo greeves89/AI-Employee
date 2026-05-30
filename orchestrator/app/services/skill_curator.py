@@ -59,8 +59,17 @@ class SkillCurator:
 
         report = CuratorReport([], [], [], 0)
 
+        # Hands off any skill currently mid-A/B-test: the improvement_engine
+        # is authoritative for those until it validates or rolls back.
+        protected_states = ("pending_review", "probation")
         result = await self.db.execute(
-            select(Skill).where(Skill.status.in_([SkillStatus.ACTIVE, SkillStatus.STALE]))
+            select(Skill).where(
+                Skill.status.in_([SkillStatus.ACTIVE, SkillStatus.STALE]),
+                or_(
+                    Skill.improvement_status.is_(None),
+                    Skill.improvement_status.notin_(protected_states),
+                ),
+            )
         )
         skills = list(result.scalars().all())
         report.scanned = len(skills)

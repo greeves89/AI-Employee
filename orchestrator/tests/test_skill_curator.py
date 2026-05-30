@@ -120,6 +120,45 @@ async def test_dry_run_does_not_persist(db: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_probation_skill_is_protected(db: AsyncSession):
+    """Skills mid-A/B-test must not be touched by the curator."""
+    protected = _mk(db, name="prob", status=SkillStatus.ACTIVE,
+                    last_used_days_ago=STALE_THRESHOLD_DAYS + 10,
+                    usage_count=5, avg_rating=1.0)
+    protected.improvement_status = "probation"
+    await db.commit()
+
+    report = await SkillCurator(db).run()
+    assert report.scanned == 0  # excluded from the scan
+    await db.refresh(protected)
+    assert protected.status == SkillStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_pending_review_skill_is_protected(db: AsyncSession):
+    pending = _mk(db, name="pr", status=SkillStatus.ACTIVE,
+                  last_used_days_ago=STALE_THRESHOLD_DAYS + 1)
+    pending.improvement_status = "pending_review"
+    await db.commit()
+
+    report = await SkillCurator(db).run()
+    assert report.scanned == 0
+
+
+@pytest.mark.asyncio
+async def test_validated_skill_is_not_protected(db: AsyncSession):
+    """Validated improvements are done — curator can act normally."""
+    validated = _mk(db, name="val", status=SkillStatus.ACTIVE,
+                    last_used_days_ago=STALE_THRESHOLD_DAYS + 1)
+    validated.improvement_status = "validated"
+    await db.commit()
+
+    report = await SkillCurator(db).run()
+    assert report.scanned == 1
+    assert len(report.moved_to_stale) == 1
+
+
+@pytest.mark.asyncio
 async def test_touch_refreshes_stale_on_use(db: AsyncSession):
     skill = _mk(db, name="g", status=SkillStatus.STALE,
                 last_used_days_ago=STALE_THRESHOLD_DAYS + 1)

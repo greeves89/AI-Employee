@@ -120,6 +120,7 @@ async def _find_similar_memory(
           AND key = :key
           AND embedding IS NOT NULL
           AND superseded_by IS NULL
+          AND evicted_at IS NULL
         ORDER BY embedding <=> CAST(:query_vec AS vector)
         LIMIT 1
         """
@@ -205,6 +206,7 @@ async def save_memory(
                     AgentMemory.agent_id == body.agent_id,
                     AgentMemory.key == body.key,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                     AgentMemory.room == body.room if body.room else AgentMemory.room.is_(None),
                 )
             )
@@ -262,6 +264,7 @@ async def save_memory(
                     AgentMemory.key == body.key,
                     AgentMemory.content == body.content,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                 )
             )
             .order_by(AgentMemory.created_at.desc())
@@ -297,6 +300,7 @@ async def save_memory(
                     AgentMemory.key == body.key,
                     AgentMemory.content == body.content,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                 )
             )
             .order_by(AgentMemory.created_at.desc())
@@ -385,7 +389,12 @@ async def semantic_search_memories(
         result = await db.execute(
             select(AgentMemory)
             .where(AgentMemory.agent_id == agent_id)
-            .where(AgentMemory.superseded_by.is_(None))
+            .where(
+                and_(
+                    AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
+                )
+            )
             .where(
                 or_(
                     AgentMemory.content.ilike(f"%{q}%"),
@@ -423,6 +432,7 @@ async def semantic_search_memories(
         WHERE agent_id = :agent_id
           AND embedding IS NOT NULL
           AND superseded_by IS NULL
+          AND evicted_at IS NULL
           {room_clause}
         ORDER BY embedding <=> CAST(:query_vec AS vector)
         LIMIT :limit

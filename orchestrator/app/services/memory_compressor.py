@@ -63,6 +63,7 @@ class MemoryCompressor:
                     AgentMemory.agent_id == agent_id,
                     AgentMemory.room == room,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                 )
             )
             .order_by(AgentMemory.importance.desc(), AgentMemory.created_at.desc())
