@@ -12,7 +12,13 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deleteMemory, getAgentMemories, updateMemory } from "@/lib/api";
+import {
+  deleteMemory,
+  getAgentMemories,
+  getMemoryBucketUsage,
+  updateMemory,
+  type BucketUsage,
+} from "@/lib/api";
 import type { AgentMemory } from "@/lib/types";
 
 const CATEGORIES = [
@@ -85,6 +91,10 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
 
   return (
     <div className="space-y-4">
+      <MemoryBucketBar
+        agentId={agentId}
+        category={activeCategory === "all" ? null : activeCategory}
+      />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -255,6 +265,63 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function MemoryBucketBar({
+  agentId,
+  category,
+}: {
+  agentId: string;
+  category: string | null;
+}) {
+  const [usage, setUsage] = useState<BucketUsage | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMemoryBucketUsage(agentId, { category })
+      .then((u) => {
+        if (!cancelled) setUsage(u);
+      })
+      .catch(() => {
+        if (!cancelled) setUsage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, category]);
+
+  if (!usage || usage.budget === 0) return null;
+
+  const pct = Math.min(100, Math.round(usage.utilization * 100));
+  const tone =
+    pct >= 90
+      ? "bg-red-500"
+      : pct >= 70
+      ? "bg-amber-500"
+      : "bg-emerald-500";
+  const label = category ? `${category}` : "all categories";
+
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-3 text-xs">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-muted-foreground">
+          Memory budget · <span className="font-medium text-foreground">{label}</span>
+        </span>
+        <span className="font-mono text-muted-foreground">
+          {usage.chars.toLocaleString()} / {usage.budget.toLocaleString()} chars · {usage.count} items
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className={cn("h-full transition-all", tone)} style={{ width: `${pct}%` }} />
+      </div>
+      {pct >= 90 && (
+        <div className="mt-1.5 text-red-400">
+          Bucket near cap — lowest-importance entries will be auto-evicted on the next save.
         </div>
       )}
     </div>

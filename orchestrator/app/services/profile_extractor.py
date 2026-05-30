@@ -38,6 +38,11 @@ DIMENSION_KEYWORDS = {
 
 CONFIDENCE_DECAY_RATE = 0.02
 
+# Honcho-style peer card: a compact cross-agent user snapshot.
+PEER_CARD_MAX_CHARS = 2200          # matches Hermes MEMORY.md cap
+PEER_CARD_MIN_CONFIDENCE = 0.8      # only "very confident" facts make it in
+PEER_CARD_MIN_IMPORTANCE = 3        # filter out trivial entries
+
 
 async def get_or_create_profile(db: AsyncSession, user_id: str) -> UserProfile:
     result = await db.execute(
@@ -148,6 +153,13 @@ async def extract_profile(db: AsyncSession, user_id: str) -> UserProfile:
     await db.flush()
     logger.info("Extracted profile for user %s: v%d, %d dimensions, %d events",
                 user_id, profile.profile_version, len(dims), len(events))
+
+    # Refresh the peer card in the same pass so it never drifts behind
+    # the dimensions. Caller will commit.
+    try:
+        await extract_peer_card(db, user_id)
+    except Exception as e:
+        logger.warning("peer_card refresh failed for user %s: %s", user_id, e)
     return profile
 
 
@@ -216,10 +228,99 @@ async def delete_dimension(
     return profile
 
 
+async def extract_peer_card(db: AsyncSession, user_id: str) -> UserProfile:
+    """Build a compact cross-agent peer card and persist it on the profile.
+
+    Honcho-inspired: pulls high-confidence memories across ALL of the
+    user's agents, deduplicates by content prefix, and packs the most
+    important ones into a hard-capped 2200-char card. Inject the card
+    into every agent's system prompt so they all share the same picture
+    of the user.
+    """
+    profile = await get_or_create_profile(db, user_id)
+    agent_ids = await _get_user_agents(db, user_id)
+    if not agent_ids:
+        return profile
+
+    result = await db.execute(
+        select(AgentMemory).where(
+            AgentMemory.agent_id.in_(agent_ids),
+            AgentMemory.category.in_(["preference", "learning", "correction", "decision"]),
+            AgentMemory.superseded_by.is_(None),
+            AgentMemory.evicted_at.is_(None),
+            AgentMemory.confidence >= PEER_CARD_MIN_CONFIDENCE,
+            AgentMemory.importance >= PEER_CARD_MIN_IMPORTANCE,
+        )
+        .order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc())
+        .limit(300)
+    )
+    memories = list(result.scalars().all())
+
+    seen_prefixes: set[str] = set()
+    facts: list[dict] = []
+    chars_used = 0
+    for m in memories:
+        text = (m.content or "").strip()
+        if not text:
+            continue
+        # Dedupe near-duplicates by their first 80 chars.
+        prefix = text[:80].lower()
+        if prefix in seen_prefixes:
+            # Same fact came from another agent — credit it but skip the dup.
+            for f in facts:
+                if f["text"].lower().startswith(prefix) and m.agent_id not in f["agents"]:
+                    f["agents"].append(m.agent_id)
+            continue
+        # Hard cap: stop adding facts once we'd overflow.
+        fact_len = len(text) + 4  # "- " + "\n" overhead
+        if chars_used + fact_len > PEER_CARD_MAX_CHARS:
+            break
+        seen_prefixes.add(prefix)
+        facts.append({
+            "text": text,
+            "confidence": float(m.confidence or 0.8),
+            "agents": [m.agent_id],
+            "category": m.category,
+        })
+        chars_used += fact_len
+
+    profile.peer_card = {
+        "facts": facts,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "chars": chars_used,
+        "max_chars": PEER_CARD_MAX_CHARS,
+        "source_agent_count": len(agent_ids),
+    }
+    profile.peer_card_synced_at = datetime.now(timezone.utc)
+    await db.commit()
+    return profile
+
+
+def render_peer_card(profile: UserProfile) -> str:
+    """Render the peer card as markdown for system-prompt injection."""
+    card = profile.peer_card if isinstance(profile.peer_card, dict) else None
+    facts = (card or {}).get("facts") or []
+    if not facts:
+        return ""
+    lines = ["## Shared User Profile (peer card)\n"]
+    for f in facts:
+        agents = ", ".join(f.get("agents", []))
+        lines.append(f"- {f['text']}  _(via {agents})_")
+    return "\n".join(lines)
+
+
 def generate_profile_summary(profile: UserProfile) -> str:
     """Generate a natural-language summary for injection into agent system prompts."""
-    if not profile.dimensions:
+    if not profile.dimensions and not (profile.peer_card or {}).get("facts"):
         return ""
+
+    sections: list[str] = []
+    peer = render_peer_card(profile)
+    if peer:
+        sections.append(peer)
+
+    if not profile.dimensions:
+        return "\n\n".join(sections)
 
     lines = ["## User Profile (auto-learned preferences)\n"]
     for dim_name, entries in profile.dimensions.items():
@@ -240,4 +341,6 @@ def generate_profile_summary(profile: UserProfile) -> str:
             lines.append(f"- **{k}**: {val} (confidence: {conf})")
         lines.append("")
 
-    return "\n".join(lines) if len(lines) > 1 else ""
+    if len(lines) > 1:
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)

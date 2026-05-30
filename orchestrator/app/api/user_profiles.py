@@ -10,9 +10,11 @@ from app.dependencies import require_auth
 from app.models.user_profile import UserProfile, UserProfileEvent
 from app.services.profile_extractor import (
     delete_dimension,
+    extract_peer_card,
     extract_profile,
     generate_profile_summary,
     get_or_create_profile,
+    render_peer_card,
     update_dimension,
 )
 
@@ -106,6 +108,39 @@ async def get_my_profile_summary(
     profile = await get_or_create_profile(db, user.id)
     await db.commit()
     return {"summary": generate_profile_summary(profile)}
+
+
+@router.get("/me/peer-card")
+async def get_my_peer_card(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return the current Honcho-inspired peer card for the user.
+
+    The card is a compact (<=2200 chars) cross-agent snapshot built
+    from high-confidence memories across all of the user's agents.
+    """
+    profile = await get_or_create_profile(db, user.id)
+    await db.commit()
+    return {
+        "peer_card": profile.peer_card,
+        "rendered": render_peer_card(profile),
+        "synced_at": profile.peer_card_synced_at.isoformat() if profile.peer_card_synced_at else None,
+    }
+
+
+@router.post("/me/peer-card/refresh")
+async def refresh_my_peer_card(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Re-extract the peer card from the user's cross-agent memories."""
+    profile = await extract_peer_card(db, user.id)
+    return {
+        "peer_card": profile.peer_card,
+        "rendered": render_peer_card(profile),
+        "synced_at": profile.peer_card_synced_at.isoformat() if profile.peer_card_synced_at else None,
+    }
 
 
 @router.get("/me/events")

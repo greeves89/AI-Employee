@@ -39,8 +39,20 @@ def upgrade() -> None:
     )
     op.create_index("ix_agent_memories_evicted_at", "agent_memories", ["evicted_at"])
 
+    # Honcho-inspired peer card: compact cross-agent user snapshot.
+    op.add_column(
+        "user_profiles",
+        sa.Column("peer_card", sa.JSON(), nullable=True),
+    )
+    op.add_column(
+        "user_profiles",
+        sa.Column("peer_card_synced_at", sa.DateTime(timezone=True), nullable=True),
+    )
+
 
 def downgrade() -> None:
+    op.drop_column("user_profiles", "peer_card_synced_at")
+    op.drop_column("user_profiles", "peer_card")
     op.drop_index("ix_agent_memories_evicted_at", table_name="agent_memories")
     op.drop_column("agent_memories", "evicted_at")
     op.drop_index("ix_skills_last_used_at", table_name="skills")
