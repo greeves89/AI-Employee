@@ -313,6 +313,18 @@ async def save_memory(
     except Exception:
         await db.rollback()
 
+    # --- Step 4b: enforce per-bucket char budget (Hermes-style cap) ----------
+    try:
+        from app.services.memory_caps import enforce as _enforce_caps
+        await _enforce_caps(
+            db, agent_id=body.agent_id, room=body.room, category=body.category,
+        )
+        await db.commit()
+    except Exception as cap_err:
+        import logging
+        logging.getLogger(__name__).warning("memory_caps enforce failed: %s", cap_err)
+        await db.rollback()
+
     # --- Step 5: embedding (fire-and-forget, don't block response) -----------
     try:
         from app.services.embedding_service import get_embedding_service
@@ -685,6 +697,23 @@ async def delete_memory(memory_id: int, user=Depends(require_auth), db: AsyncSes
     await db.delete(memory)
     await db.commit()
     return {"deleted": memory_id}
+
+
+@router.get("/bucket-usage/{agent_id}")
+async def get_bucket_usage(
+    agent_id: str,
+    room: str | None = Query(None, description="Room path, e.g. project:ai-employee"),
+    category: str | None = Query(None, description="Memory category filter"),
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return character-budget usage for an (agent, room, category) bucket.
+
+    Powers the memory-bloat indicator in the dashboard. Inspired by Hermes'
+    hard caps on USER.md / MEMORY.md.
+    """
+    from app.services.memory_caps import bucket_usage
+    return await bucket_usage(db, agent_id, room, category)
 
 
 @router.get("/room-summary/{agent_id}")
