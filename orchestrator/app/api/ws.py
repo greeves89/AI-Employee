@@ -208,7 +208,29 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     merged_meta = dict(existing.meta or {})
                     for key, value in (meta or {}).items():
                         if value is not None:
-                            merged_meta[key] = value
+                            if key == "presented_files":
+                                existing_files = merged_meta.get("presented_files") or []
+                                new_files = value or []
+                                if not isinstance(existing_files, list):
+                                    existing_files = []
+                                if not isinstance(new_files, list):
+                                    new_files = []
+                                seen_paths = {
+                                    str(item.get("path", ""))
+                                    for item in existing_files
+                                    if isinstance(item, dict)
+                                }
+                                merged_files = list(existing_files)
+                                for item in new_files:
+                                    if not isinstance(item, dict):
+                                        continue
+                                    path = str(item.get("path", ""))
+                                    if path and path not in seen_paths:
+                                        seen_paths.add(path)
+                                        merged_files.append(item)
+                                merged_meta[key] = merged_files
+                            else:
+                                merged_meta[key] = value
                     existing.meta = merged_meta or None
                     existing.cost_usd = cost_usd if cost_usd is not None else existing.cost_usd
                     existing.input_tokens = input_tokens if input_tokens is not None else existing.input_tokens
@@ -402,6 +424,19 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
                     # Track for persistence
                     result = _process_event(data)
+                    try:
+                        _event_for_persist = json.loads(data)
+                    except Exception:
+                        _event_for_persist = {}
+                    if _event_for_persist.get("type") == "file":
+                        mid = str(_event_for_persist.get("message_id", ""))
+                        file_payload = _event_for_persist.get("data") or {}
+                        if mid and isinstance(file_payload, dict) and file_payload.get("path"):
+                            await _save_chat_message(
+                                agent_id, mid, "assistant",
+                                content=str(file_payload.get("caption") or ""),
+                                meta={"presented_files": [file_payload]},
+                            )
                     if result and result[0] == "done":
                         meta = result[3] or {}
                         for file_payload in meta.get("presented_files") or []:
