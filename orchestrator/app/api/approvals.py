@@ -98,7 +98,13 @@ async def _publish_notification(redis: RedisService | None, notif: Notification)
     await redis.client.publish("notifications:live", event)
 
 
-async def _push_ios_for_agent(db: AsyncSession, agent_id: str, title: str, message: str) -> None:
+async def _push_ios_for_agent(
+    db: AsyncSession,
+    agent_id: str,
+    title: str,
+    message: str,
+    data: dict | None = None,
+) -> None:
     try:
         from app.services.apns_service import push_to_user
 
@@ -106,7 +112,7 @@ async def _push_ios_for_agent(db: AsyncSession, agent_id: str, title: str, messa
             select(Agent).where(Agent.id == agent_id)
         )).scalar_one_or_none()
         if agent and agent.user_id:
-            await push_to_user(db, agent.user_id, title, message or title)
+            await push_to_user(db, agent.user_id, title, message or title, data=data)
     except Exception:  # noqa: BLE001
         logger.exception("APNs push failed for approval")
 
@@ -197,7 +203,20 @@ async def request_approval(
         except Exception as e:
             logger.warning(f"Telegram notification failed for approval {approval.id}: {e}")
     if body.target_channel in ("ios", "all"):
-        await _push_ios_for_agent(db, agent_id, notif.title, notif.message)
+        await _push_ios_for_agent(
+            db,
+            agent_id,
+            notif.title,
+            notif.message,
+            data={
+                "notification_id": str(notif.id),
+                "agent_id": agent_id,
+                "type": "approval",
+                "action_url": "/approvals",
+                "approval_id": str(approval.id),
+                "meta": notif.meta or {},
+            },
+        )
 
     audit_entry = AuditLog(
         agent_id=agent_id,

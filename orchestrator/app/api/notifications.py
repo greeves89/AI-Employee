@@ -75,7 +75,13 @@ async def create_notification(
                 select(Agent).where(Agent.id == body.agent_id)
             )).scalar_one_or_none()
             if agent and agent.user_id:
-                await push_to_user(db, agent.user_id, body.title, body.message or body.title)
+                await push_to_user(
+                    db,
+                    agent.user_id,
+                    body.title,
+                    body.message or body.title,
+                    data=_push_payload(notif),
+                )
         except Exception:  # noqa: BLE001
             logger.exception("APNs push failed for notification")
 
@@ -334,3 +340,25 @@ def _to_response(n: Notification) -> dict:
         "meta": n.meta,
         "created_at": n.created_at.isoformat() if n.created_at else "",
     }
+
+
+def _push_payload(n: Notification) -> dict:
+    meta = n.meta or {}
+    payload = {
+        "notification_id": str(n.id),
+        "agent_id": n.agent_id,
+        "type": n.type,
+        "action_url": n.action_url or "",
+        "meta": meta,
+    }
+    if isinstance(meta, dict):
+        task_id = meta.get("task_id")
+        session_id = meta.get("session_id")
+        message_id = meta.get("message_id")
+        if task_id:
+            payload["task_id"] = str(task_id)
+        if session_id:
+            payload["session_id"] = str(session_id)
+        if message_id:
+            payload["message_id"] = str(message_id)
+    return payload

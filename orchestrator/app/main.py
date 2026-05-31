@@ -309,7 +309,10 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     continue
 
                 from app.db.session import async_session_factory
+                from app.models.agent import Agent
                 from app.models.chat_message import ChatMessage
+                from app.models.notification import Notification
+                from app.services.apns_service import push_to_user
                 from sqlalchemy import select as sel
 
                 async with async_session_factory() as db:
@@ -368,7 +371,41 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                         tool_calls=tool_calls,
                         meta=meta,
                     ))
+                    agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
+                    title = agent.name if agent else "AI Employee"
+                    body = _chat_notification_body(content, meta)
+                    notif = Notification(
+                        agent_id=agent_id,
+                        type="info",
+                        title=title,
+                        message=body,
+                        priority="normal",
+                        action_url=f"/agents/{agent_id}",
+                        meta={
+                            "type": "chat_message",
+                            "agent_id": agent_id,
+                            "session_id": session_id,
+                            "message_id": message_id,
+                        },
+                    )
+                    db.add(notif)
                     await db.commit()
+                    await db.refresh(notif)
+                    await redis.client.publish(
+                        "notifications:live",
+                        json.dumps({
+                            "type": "notification",
+                            "data": _notification_response(notif),
+                        }),
+                    )
+                    if agent and agent.user_id:
+                        await push_to_user(
+                            db,
+                            agent.user_id,
+                            title,
+                            body,
+                            data=_notification_push_payload(notif),
+                        )
                     print(
                         f"[ChatPersist] Saved response for {message_id} "
                         f"(agent={agent_id}, session={session_id}, source={source})"
@@ -376,6 +413,48 @@ async def _listen_chat_completions(redis: RedisService) -> None:
         except Exception as e:
             print(f"[ChatPersist] Error: {e}")
             await asyncio.sleep(1)
+
+
+def _chat_notification_body(content: str, meta: dict) -> str:
+    files = meta.get("presented_files")
+    if isinstance(files, list) and files:
+        count = len(files)
+        return "Neue Datei erhalten" if count == 1 else f"{count} neue Dateien erhalten"
+    text = " ".join((content or "").split())
+    if not text:
+        return "Neue Nachricht erhalten"
+    return text[:197] + "..." if len(text) > 200 else text
+
+
+def _notification_response(notif) -> dict:
+    return {
+        "id": notif.id,
+        "agent_id": notif.agent_id,
+        "type": notif.type,
+        "title": notif.title,
+        "message": notif.message,
+        "priority": notif.priority,
+        "read": notif.read,
+        "action_url": notif.action_url,
+        "meta": notif.meta,
+        "created_at": notif.created_at.isoformat() if notif.created_at else "",
+    }
+
+
+def _notification_push_payload(notif) -> dict:
+    meta = notif.meta or {}
+    payload = {
+        "notification_id": str(notif.id),
+        "agent_id": notif.agent_id,
+        "type": notif.type,
+        "action_url": notif.action_url or "",
+        "meta": meta,
+    }
+    if isinstance(meta, dict):
+        for key in ("task_id", "session_id", "message_id"):
+            if meta.get(key):
+                payload[key] = str(meta[key])
+    return payload
 
 
 async def _persist_task_steps(redis: RedisService) -> None:

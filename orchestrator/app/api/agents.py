@@ -10,8 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.core.agent_manager import AgentManager
+from app.config import AGENT_VERSION, settings
+from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, is_agent_principal, require_auth, require_auth_or_agent, require_manager, verify_agent_token
@@ -292,6 +292,7 @@ async def poll_reply(
 
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
+    lite: bool = False,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
@@ -310,6 +311,47 @@ async def list_agents(
             a for a in agents
             if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
         ]
+
+    if lite:
+        agent_responses = []
+        for agent in agents:
+            config = agent.config or {}
+            safe_config = {
+                "role": config.get("role", ""),
+                "integrations": config.get("integrations", []),
+                "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
+                "proactive": config.get("proactive"),
+            }
+            agent_responses.append(AgentResponse(
+                id=agent.id,
+                name=agent.name,
+                container_id=agent.container_id,
+                state=agent.state,
+                model=agent.model or "",
+                model_provider=config.get("model_provider", settings.model_provider),
+                mode=agent.mode or "claude_code",
+                role=config.get("role", ""),
+                onboarding_complete=config.get("onboarding_complete", False),
+                integrations=config.get("integrations", []),
+                permissions=config.get("permissions", DEFAULT_PERMISSIONS),
+                update_available=config.get("agent_version") != AGENT_VERSION,
+                budget_usd=agent.budget_usd,
+                budget_exceeded_action=agent.budget_exceeded_action,
+                monthly_cost_usd=0.0,
+                browser_mode=agent.browser_mode,
+                autonomy_level=agent.autonomy_level or "l3",
+                webhook_enabled=agent.webhook_enabled,
+                webhook_token=agent.webhook_token,
+                total_cost_usd=config.get("total_cost_usd", 0.0),
+                user_id=agent.user_id,
+                created_at=agent.created_at,
+                updated_at=agent.updated_at,
+                config=safe_config,
+                current_task="",
+                queue_depth=0,
+            ))
+        return AgentListResponse(agents=agent_responses, total=len(agent_responses))
+
     # Run sequentially — AsyncSession does not support concurrent queries
     # on the same connection (asyncpg: "another operation is in progress").
     metrics_list = []

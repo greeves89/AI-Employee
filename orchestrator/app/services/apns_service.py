@@ -49,7 +49,13 @@ class APNsService:
         return cls._token
 
     @classmethod
-    async def send(cls, device_token: str, title: str, body: str) -> bool:
+    async def send(
+        cls,
+        device_token: str,
+        title: str,
+        body: str,
+        data: dict | None = None,
+    ) -> bool:
         if not cls.configured():
             return False
         host = (
@@ -63,6 +69,8 @@ class APNsService:
                 "sound": "default",
             }
         }
+        if data:
+            payload.update(data)
         headers = {
             "authorization": f"bearer {cls._provider_token()}",
             "apns-topic": settings.apns_bundle_id,
@@ -84,7 +92,11 @@ class APNsService:
 
 
 async def push_to_user(
-    db: AsyncSession, user_id: str, title: str, body: str
+    db: AsyncSession,
+    user_id: str,
+    title: str,
+    body: str,
+    data: dict | None = None,
 ) -> None:
     """Send an alert to every device the user has registered. Best-effort."""
     if not user_id or not APNsService.configured():
@@ -93,4 +105,4 @@ async def push_to_user(
         select(DeviceToken).where(DeviceToken.user_id == user_id)
     )
     for dt in rows.scalars().all():
-        await APNsService.send(dt.token, title, body)
+        await APNsService.send(dt.token, title, body, data=data)

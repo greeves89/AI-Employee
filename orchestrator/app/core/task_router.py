@@ -393,6 +393,8 @@ class TaskRouter:
         # Request user rating via notification + Telegram inline keyboard
         if task.status == TaskStatus.COMPLETED:
             await self._request_task_rating(task, agent_id)
+        elif task.status == TaskStatus.FAILED:
+            await self._notify_failed_task(task, agent_id)
 
     async def _update_agent_metrics(self, agent_id: str, result_data: dict) -> None:
         """Track agent performance metrics for learning insights."""
@@ -797,11 +799,98 @@ class TaskRouter:
                 meta={"type": "rating_request", "task_id": task.id},
             )
             self.db.add(notif)
+            await self.db.commit()
+            await self.db.refresh(notif)
+            await self._publish_notification(notif)
+            await self._push_notification_to_agent_user(notif, agent_id)
 
             # Send Telegram inline keyboard with star ratings
             await self._send_rating_keyboard(task)
         except Exception as e:
             logger.warning(f"Could not send rating request for task {task.id}: {e}")
+
+    async def _notify_failed_task(self, task: Task, agent_id: str | None) -> None:
+        """Notify the user when a task failed and deep-link to the result."""
+        try:
+            from app.models.notification import Notification
+
+            message = task.error or f"Task \"{task.title}\" ist fehlgeschlagen."
+            notif = Notification(
+                agent_id=agent_id or "system",
+                type="error",
+                title="Task fehlgeschlagen",
+                message=str(message)[:240],
+                priority="high",
+                action_url=f"/tasks/{task.id}",
+                meta={"type": "task_failed", "task_id": task.id},
+            )
+            self.db.add(notif)
+            await self.db.commit()
+            await self.db.refresh(notif)
+            await self._publish_notification(notif)
+            await self._push_notification_to_agent_user(notif, agent_id)
+        except Exception as e:
+            logger.warning(f"Could not send failure notification for task {task.id}: {e}")
+
+    async def _publish_notification(self, notif) -> None:
+        if not self.redis or not self.redis.client:
+            return
+        event = json.dumps({
+            "type": "notification",
+            "data": self._notification_response(notif),
+        })
+        await self.redis.client.publish("notifications:live", event)
+
+    async def _push_notification_to_agent_user(
+        self,
+        notif,
+        agent_id: str | None,
+    ) -> None:
+        if not agent_id:
+            return
+        try:
+            from app.models.agent import Agent
+            from app.services.apns_service import push_to_user
+
+            agent = await self.db.scalar(select(Agent).where(Agent.id == agent_id))
+            if not agent or not agent.user_id:
+                return
+            await push_to_user(
+                self.db,
+                agent.user_id,
+                notif.title,
+                notif.message or notif.title,
+                data=self._notification_push_payload(notif),
+            )
+        except Exception:
+            logger.exception("APNs push failed for task notification")
+
+    def _notification_push_payload(self, notif) -> dict:
+        meta = notif.meta or {}
+        payload = {
+            "notification_id": str(notif.id),
+            "agent_id": notif.agent_id,
+            "type": notif.type,
+            "action_url": notif.action_url or "",
+            "meta": meta,
+        }
+        if isinstance(meta, dict) and meta.get("task_id"):
+            payload["task_id"] = str(meta["task_id"])
+        return payload
+
+    def _notification_response(self, notif) -> dict:
+        return {
+            "id": notif.id,
+            "agent_id": notif.agent_id,
+            "type": notif.type,
+            "title": notif.title,
+            "message": notif.message,
+            "priority": notif.priority,
+            "read": notif.read,
+            "action_url": notif.action_url,
+            "meta": notif.meta,
+            "created_at": notif.created_at.isoformat() if notif.created_at else "",
+        }
 
     async def _check_platform_budget(self) -> None:
         """Raise ValueError if the platform-wide spending limit is exceeded."""
