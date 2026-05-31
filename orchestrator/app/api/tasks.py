@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,12 +50,20 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
 async def list_tasks(
     status: TaskStatus | None = None,
     agent_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
 ):
     agent_ids = await _get_user_agent_ids(user, db) if hasattr(user, "role") else None
-    tasks = await router_.list_tasks(status=status, agent_id=agent_id, agent_ids=agent_ids)
+    tasks = await router_.list_tasks(
+        status=status,
+        agent_id=agent_id,
+        agent_ids=agent_ids,
+        limit=limit,
+        offset=offset,
+    )
     return TaskListResponse(
         tasks=[TaskResponse.model_validate(t) for t in tasks],
         total=len(tasks),

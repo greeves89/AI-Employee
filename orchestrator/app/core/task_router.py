@@ -457,6 +457,8 @@ class TaskRouter:
         status: TaskStatus | None = None,
         agent_id: str | None = None,
         agent_ids: list[str] | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[Task]:
         query = select(Task).order_by(Task.created_at.desc())
         if status:
@@ -465,6 +467,7 @@ class TaskRouter:
             query = query.where(Task.agent_id == agent_id)
         elif agent_ids is not None:
             query = query.where(Task.agent_id.in_(agent_ids))
+        query = query.offset(offset).limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
