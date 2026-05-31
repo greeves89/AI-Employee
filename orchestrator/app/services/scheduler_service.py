@@ -231,6 +231,7 @@ class SchedulerService:
         from app.db.session import async_session_factory
         from app.models.agent import Agent, AgentState
         from app.models.platform_settings import PlatformSettings
+        from app.models.task import Task, TaskStatus
 
         stopped = 0
         async with async_session_factory() as db:
@@ -254,6 +255,32 @@ class SchedulerService:
             mgr = AgentManager(db, self.docker, self.redis)
 
             for agent in agents:
+                if agent.state == AgentState.WORKING:
+                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — DB state is WORKING")
+                    continue
+
+                try:
+                    live_status = await self.redis.get_agent_status(agent.id)
+                except Exception:
+                    live_status = {}
+                live_state = live_status.get("state")
+                current_task = live_status.get("current_task")
+                if live_state == "working" or current_task:
+                    print(
+                        f"[IdleStop] Skip {agent.id} ({agent.name}) — "
+                        f"live state={live_state!r} current_task={current_task!r}"
+                    )
+                    continue
+
+                active_task = (await db.execute(
+                    select(Task.id)
+                    .where(Task.agent_id == agent.id, Task.status == TaskStatus.RUNNING)
+                    .limit(1)
+                )).scalar_one_or_none()
+                if active_task:
+                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — task {active_task} is still RUNNING")
+                    continue
+
                 cfg = agent.config or {}
                 per_agent = cfg.get("idle_stop_minutes")
                 try:
