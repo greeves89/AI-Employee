@@ -1111,7 +1111,7 @@ async def get_chat_sessions(
 ):
     """List all chat sessions for an agent."""
     await _check_owner(agent_id, user, db)
-    from sqlalchemy import func, distinct
+    from sqlalchemy import func
     query = (
         select(
             ChatMessage.session_id,
@@ -1126,41 +1126,61 @@ async def get_chat_sessions(
     result = await db.execute(query)
     sessions = result.all()
 
-    # Get first useful preview per session. Scheduler-originated file deliveries
-    # can be assistant-only, so do not hide them as phantom sessions.
-    previews = {}
-    for s in sessions:
-        preview_q = (
-            select(ChatMessage.content)
-            .where(ChatMessage.agent_id == agent_id)
-            .where(ChatMessage.session_id == s.session_id)
-            .where(ChatMessage.role == "user")
-            .order_by(ChatMessage.id.asc())
-            .limit(1)
-        )
-        r = await db.execute(preview_q)
-        row = r.scalar_one_or_none()
-        preview = row or ""
-        if not preview:
-            assistant_q = (
-                select(ChatMessage.content, ChatMessage.meta)
-                .where(ChatMessage.agent_id == agent_id)
-                .where(ChatMessage.session_id == s.session_id)
-                .where(ChatMessage.role == "assistant")
-                .order_by(ChatMessage.id.desc())
-                .limit(1)
+    session_ids = [s.session_id for s in sessions]
+    previews = {session_id: "" for session_id in session_ids}
+    if session_ids:
+        user_preview = (
+            select(
+                ChatMessage.session_id.label("session_id"),
+                ChatMessage.content.label("content"),
+                func.row_number()
+                .over(partition_by=ChatMessage.session_id, order_by=ChatMessage.id.asc())
+                .label("row_num"),
             )
-            ar = await db.execute(assistant_q)
-            assistant_row = ar.first()
-            if assistant_row:
-                preview = assistant_row[0] or ""
-                meta = assistant_row[1] or {}
-                files = meta.get("presented_files") if isinstance(meta, dict) else None
-                if not preview and files:
-                    first_file = files[0] if isinstance(files, list) and files else {}
-                    if isinstance(first_file, dict):
-                        preview = first_file.get("filename") or first_file.get("path") or ""
-        previews[s.session_id] = preview[:80]
+            .where(ChatMessage.agent_id == agent_id)
+            .where(ChatMessage.session_id.in_(session_ids))
+            .where(ChatMessage.role == "user")
+            .subquery()
+        )
+        user_preview_result = await db.execute(
+            select(user_preview.c.session_id, user_preview.c.content)
+            .where(user_preview.c.row_num == 1)
+        )
+        for session_id, content in user_preview_result.all():
+            previews[session_id] = (content or "")[:80]
+
+        assistant_preview = (
+            select(
+                ChatMessage.session_id.label("session_id"),
+                ChatMessage.content.label("content"),
+                ChatMessage.meta.label("meta"),
+                func.row_number()
+                .over(partition_by=ChatMessage.session_id, order_by=ChatMessage.id.desc())
+                .label("row_num"),
+            )
+            .where(ChatMessage.agent_id == agent_id)
+            .where(ChatMessage.session_id.in_(session_ids))
+            .where(ChatMessage.role == "assistant")
+            .subquery()
+        )
+        assistant_preview_result = await db.execute(
+            select(
+                assistant_preview.c.session_id,
+                assistant_preview.c.content,
+                assistant_preview.c.meta,
+            )
+            .where(assistant_preview.c.row_num == 1)
+        )
+        for session_id, content, meta in assistant_preview_result.all():
+            if previews.get(session_id):
+                continue
+            preview = content or ""
+            files = meta.get("presented_files") if isinstance(meta, dict) else None
+            if not preview and files:
+                first_file = files[0] if isinstance(files, list) and files else {}
+                if isinstance(first_file, dict):
+                    preview = first_file.get("filename") or first_file.get("path") or ""
+            previews[session_id] = preview[:80]
 
     # Filter out phantom sessions (no user messages, only empty assistant entries)
     valid_sessions = [
@@ -1201,9 +1221,12 @@ async def get_chat_history(
         query = query.where(ChatMessage.session_id == session_id)
     if before_id is not None:
         query = query.where(ChatMessage.id < before_id)
-    query = query.order_by(ChatMessage.id.desc()).limit(limit)
+    query = query.order_by(ChatMessage.id.desc()).limit(limit + 1)
     result = await db.execute(query)
-    messages = result.scalars().all()
+    fetched_messages = result.scalars().all()
+    has_more = len(fetched_messages) > limit
+    messages = fetched_messages[:limit]
+    next_before_id = min((msg.id for msg in messages), default=None)
     # Return in chronological order (oldest first)
     messages = list(reversed(messages))
 
@@ -1248,7 +1271,8 @@ async def get_chat_history(
             }
             for msg in deduped
         ],
-        "has_more": len(deduped) == limit,
+        "has_more": has_more,
+        "next_before_id": next_before_id,
     }
 
 
