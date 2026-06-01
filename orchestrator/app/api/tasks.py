@@ -185,6 +185,51 @@ async def estimate_task_cost(
     )
 
 
+class TaskSummaryResponse(BaseModel):
+    active: int
+    completed: int
+    failed: int
+    cancelled: int
+    total: int
+    total_cost_usd: float
+
+
+@router.get("/summary", response_model=TaskSummaryResponse)
+async def get_task_summary(
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compact aggregate task stats for mobile dashboards."""
+    agent_ids = await _get_user_agent_ids(user, db) if hasattr(user, "role") else None
+    query = select(
+        Task.status,
+        func.count(Task.id).label("count"),
+        func.coalesce(func.sum(Task.cost_usd), 0).label("cost"),
+    ).group_by(Task.status)
+    if agent_ids is not None:
+        query = query.where(Task.agent_id.in_(agent_ids))
+
+    result = await db.execute(query)
+    counts = {status: 0 for status in TaskStatus}
+    total_cost = 0.0
+    for row in result.all():
+        counts[row.status] = int(row.count or 0)
+        total_cost += float(row.cost or 0)
+
+    active = counts[TaskStatus.PENDING] + counts[TaskStatus.QUEUED] + counts[TaskStatus.RUNNING]
+    completed = counts[TaskStatus.COMPLETED]
+    failed = counts[TaskStatus.FAILED]
+    cancelled = counts[TaskStatus.CANCELLED]
+    return TaskSummaryResponse(
+        active=active,
+        completed=completed,
+        failed=failed,
+        cancelled=cancelled,
+        total=sum(counts.values()),
+        total_cost_usd=round(total_cost, 4),
+    )
+
+
 class AgentCostEntry(BaseModel):
     agent_id: str
     agent_name: str
