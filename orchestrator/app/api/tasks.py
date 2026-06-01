@@ -52,6 +52,7 @@ async def list_tasks(
     agent_id: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    lite: bool = Query(default=False),
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
@@ -64,10 +65,13 @@ async def list_tasks(
         limit=limit,
         offset=offset,
     )
-    return TaskListResponse(
-        tasks=[TaskResponse.model_validate(t) for t in tasks],
-        total=len(tasks),
-    )
+    responses = [TaskResponse.model_validate(t) for t in tasks]
+    if lite:
+        for task in responses:
+            task.prompt = task.prompt[:240]
+            task.result = None
+            task.error = None
+    return TaskListResponse(tasks=responses, total=len(responses))
 
 
 @router.post("/", response_model=TaskResponse, status_code=201)
