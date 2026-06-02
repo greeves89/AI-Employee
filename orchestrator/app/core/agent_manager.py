@@ -262,7 +262,7 @@ I have persistent long-term memory that survives across ALL conversations and ta
 - **list_tasks** - List tasks assigned to me (filter by status)
 - **list_team** - See all team members with roles and status
 - **send_message** - Send a text message to another agent
-- **create_schedule** - Create a recurring task schedule
+- **create_schedule** - Create a recurring task schedule; use cron_expression for exact wall-clock times and interval_seconds for relative intervals
 - **list_schedules** - List all recurring schedules
 - **manage_schedule** - Pause, resume, or delete a schedule
 

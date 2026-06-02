@@ -298,8 +298,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "create_schedule",
       description:
-        "Create a recurring schedule that automatically runs a task at regular intervals. " +
-        "Use this for monitoring, periodic reports, data syncing, or any recurring work.",
+        "Create a recurring schedule that automatically runs a task. " +
+        "Use cron_expression for wall-clock schedules like daily reports, or interval_seconds for simple intervals.",
       inputSchema: {
         type: "object",
         properties: {
@@ -316,10 +316,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             minimum: 60,
             description:
               "Interval between runs in seconds. Examples: 3600=hourly, 86400=daily, 604800=weekly. " +
-              "Minimum: 60 seconds.",
+              "Minimum: 60 seconds. Prefer cron_expression for exact times like every day at 06:00.",
+          },
+          cron_expression: {
+            type: "string",
+            description:
+              "Optional cron expression for wall-clock schedules. Examples: '0 6 * * *'=every day at 06:00, " +
+              "'*/15 * * * *'=every 15 minutes, '0 9 * * 1'=Mondays at 09:00. " +
+              "Use this instead of interval_seconds when the time of day matters.",
           },
         },
-        required: ["name", "prompt", "interval_seconds"],
+        required: ["name", "prompt"],
       },
     },
     {
@@ -383,7 +390,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           schedule_id: {
-            type: "number",
+            type: "string",
             description: "ID of the schedule to manage.",
           },
           action: {
@@ -952,21 +959,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "create_schedule": {
+      if (!args.interval_seconds && !args.cron_expression) {
+        throw new Error("Provide either interval_seconds or cron_expression.");
+      }
+      const body = {
+        name: args.name,
+        prompt: args.prompt,
+        agent_id: AGENT_ID,
+        model: DEFAULT_MODEL,
+      };
+      if (args.cron_expression) {
+        body.cron_expression = args.cron_expression;
+        body.interval_seconds = 0;
+      } else {
+        body.interval_seconds = args.interval_seconds;
+      }
       const result = await apiCall("/schedules/", {
         method: "POST",
-        body: JSON.stringify({
-          name: args.name,
-          prompt: args.prompt,
-          interval_seconds: args.interval_seconds,
-          agent_id: AGENT_ID,
-          model: DEFAULT_MODEL,
-        }),
+        body: JSON.stringify(body),
       });
+      const timing = result.cron_expression
+        ? `cron: ${result.cron_expression}`
+        : `interval: ${result.interval_seconds}s`;
+      const nextRun = result.next_run_at ? `, next: ${result.next_run_at}` : "";
       return {
         content: [
           {
             type: "text",
-            text: `Schedule created: "${result.name}" (id: ${result.id}, interval: ${result.interval_seconds}s).`,
+            text: `Schedule created: "${result.name}" (id: ${result.id}, ${timing}${nextRun}).`,
           },
         ],
       };
@@ -1008,8 +1028,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       const lines = result.schedules.map(
-        (s) =>
-          `[${s.active ? "active" : "paused"}] #${s.id}: ${s.name} (every ${s.interval_seconds}s)`
+        (s) => {
+          const status = (s.enabled ?? s.active) ? "active" : "paused";
+          const timing = s.cron_expression
+            ? `cron ${s.cron_expression}`
+            : `every ${s.interval_seconds}s`;
+          const next = s.next_run_at ? `, next ${s.next_run_at}` : "";
+          return `[${status}] #${s.id}: ${s.name} (${timing}${next})`;
+        }
       );
       return {
         content: [

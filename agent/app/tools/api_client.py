@@ -151,17 +151,31 @@ class OrchestratorAPIClient:
 
     async def create_schedule(self, params: dict) -> str:
         """Create a recurring schedule."""
+        cron_expression = params.get("cron_expression")
+        interval_seconds = params.get("interval_seconds")
+        if not cron_expression and not interval_seconds:
+            return "Error: provide either cron_expression or interval_seconds"
         body = {
             "name": params.get("name", "Agent Schedule"),
             "prompt": params.get("prompt", ""),
-            "interval_seconds": max(params.get("interval_seconds", 3600), 60),
             "agent_id": self.agent_id,
             "model": params.get("model"),
         }
+        if cron_expression:
+            body["cron_expression"] = cron_expression
+            body["interval_seconds"] = 0
+        else:
+            body["interval_seconds"] = max(int(interval_seconds), 60)
         result = await self._request("POST", "/schedules/", json=body)
         if isinstance(result, str):
             return result
-        return f"Schedule created: {result.get('name')} (id: {result.get('id')}, interval: {result.get('interval_seconds')}s)"
+        timing = (
+            f"cron: {result.get('cron_expression')}"
+            if result.get("cron_expression")
+            else f"interval: {result.get('interval_seconds')}s"
+        )
+        next_run = f", next: {result.get('next_run_at')}" if result.get("next_run_at") else ""
+        return f"Schedule created: {result.get('name')} (id: {result.get('id')}, {timing}{next_run})"
 
     async def list_schedules(self, params: dict) -> str:
         """List all schedules for this agent."""
@@ -173,8 +187,14 @@ class OrchestratorAPIClient:
             return "No schedules found."
         lines = []
         for s in schedules:
-            active = "active" if s.get("active") else "paused"
-            lines.append(f"- {s.get('name', '?')} ({active}, every {s.get('interval_seconds', '?')}s, id: {s.get('id')})")
+            active = "active" if s.get("enabled", s.get("active", False)) else "paused"
+            timing = (
+                f"cron {s.get('cron_expression')}"
+                if s.get("cron_expression")
+                else f"every {s.get('interval_seconds', '?')}s"
+            )
+            next_run = f", next {s.get('next_run_at')}" if s.get("next_run_at") else ""
+            lines.append(f"- {s.get('name', '?')} ({active}, {timing}{next_run}, id: {s.get('id')})")
         return "\n".join(lines)
 
     async def manage_schedule(self, params: dict) -> str:

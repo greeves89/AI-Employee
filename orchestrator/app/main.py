@@ -314,6 +314,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                 from app.models.notification import Notification
                 from app.services.apns_service import push_to_user
                 from sqlalchemy import select as sel
+                from sqlalchemy.exc import IntegrityError
 
                 async with async_session_factory() as db:
                     # Check if assistant response already persisted (by WS handler)
@@ -389,7 +390,11 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                         },
                     )
                     db.add(notif)
-                    await db.commit()
+                    try:
+                        await db.commit()
+                    except IntegrityError:
+                        await db.rollback()
+                        continue
                     await db.refresh(notif)
                     await redis.client.publish(
                         "notifications:live",

@@ -4,7 +4,8 @@
 #
 # Commands:
 #   create-task <title> <prompt> [priority]       - Create a new task for myself
-#   create-schedule <name> <prompt> <interval>     - Create a recurring schedule
+#   create-schedule <name> <prompt> <interval>     - Create an interval schedule
+#   create-cron <name> <prompt> <cron>             - Create a wall-clock cron schedule
 #   send-message <agent_id> <message>              - Send message to another agent
 #   list-team                                      - List all agents in the team
 #   list-tasks [status]                            - List my tasks
@@ -55,6 +56,18 @@ case "${1:-help}" in
     curl -s -X POST "$API/schedules/" \
       -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
       -d "{\"name\": $ESCAPED_NAME, \"prompt\": $ESCAPED_PROMPT, \"interval_seconds\": $INTERVAL, \"agent_id\": \"$AGENT_ID\", \"model\": \"$MODEL\"}"
+    ;;
+
+  create-cron)
+    NAME="${2:?Usage: ai-team create-cron <name> <prompt> <cron_expression>}"
+    PROMPT="${3:?Usage: ai-team create-cron <name> <prompt> <cron_expression>}"
+    CRON="${4:?Usage: ai-team create-cron <name> <prompt> <cron_expression>}"
+    ESCAPED_NAME=$(echo "$NAME" | json_escape)
+    ESCAPED_PROMPT=$(echo "$PROMPT" | json_escape)
+    ESCAPED_CRON=$(echo "$CRON" | json_escape)
+    curl -s -X POST "$API/schedules/" \
+      -H "Content-Type: application/json" "${AUTH_HEADERS[@]}" \
+      -d "{\"name\": $ESCAPED_NAME, \"prompt\": $ESCAPED_PROMPT, \"interval_seconds\": 0, \"cron_expression\": $ESCAPED_CRON, \"agent_id\": \"$AGENT_ID\", \"model\": \"$MODEL\"}"
     ;;
 
   send-message)

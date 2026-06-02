@@ -533,7 +533,10 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "create_schedule",
-            "description": "Create a recurring schedule that executes a prompt at regular intervals (min 60 seconds).",
+            "description": (
+                "Create a recurring schedule. Use cron_expression for exact wall-clock times "
+                "like daily reports; use interval_seconds only for simple intervals."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -543,15 +546,18 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "The prompt to execute each interval",
+                        "description": "The prompt to execute each run",
                     },
                     "interval_seconds": {
                         "type": "integer",
-                        "description": "Interval in seconds (minimum 60)",
-                        "default": 3600,
+                        "description": "Optional interval in seconds (minimum 60). Prefer cron_expression for exact times.",
+                    },
+                    "cron_expression": {
+                        "type": "string",
+                        "description": "Optional cron expression, e.g. '0 6 * * *' for every day at 06:00.",
                     },
                 },
-                "required": ["name", "prompt", "interval_seconds"],
+                "required": ["name", "prompt"],
             },
         },
     },

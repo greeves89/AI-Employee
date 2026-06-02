@@ -122,6 +122,8 @@ Each agent has their OWN workspace — you CANNOT read their files. Use task res
 
 ### Schedules
 - `create_schedule` / `list_schedules` / `manage_schedule`
+- Use `cron_expression` for wall-clock automation (for example `0 6 * * *` for daily at 06:00).
+- Use `interval_seconds` only for relative intervals where drift is acceptable.
 
 ## Knowledge Access
 - Read `/workspace/knowledge.md` at the START of every session
@@ -184,7 +186,7 @@ _PLATFORM_SECTION = (
     "- Use `[[Title]]` in content to link between entries, `#tags` for categorization\n"
     "- Write company info, project docs, decisions, processes, contacts here — NOT in personal memory\n\n"
     "**Schedules** (recurring automation):\n"
-    "- `create_schedule` - Set up recurring tasks (e.g. daily reports, hourly checks)\n"
+    "- `create_schedule` - Set up recurring tasks; use `cron_expression` for exact wall-clock times (e.g. daily reports at 06:00) and `interval_seconds` only for relative intervals\n"
     "- `list_schedules` / `manage_schedule` - View, pause, resume, or delete schedules\n\n"
     "### Memory vs Knowledge Base — USE BOTH STRATEGICALLY\n"
     "- **Memory** (`memory_save`) = YOUR personal notes. Only YOU can see them.\n"
@@ -1266,7 +1268,7 @@ BUILTIN_TEMPLATES = [
             "- `brain_search` - Semantic search the shared knowledge base\n"
             "- `brain_get` - Read a specific entry by title\n\n"
             "**Schedules** (recurring automation):\n"
-            "- `create_schedule` - Set up recurring tasks (e.g. daily status checks)\n"
+            "- `create_schedule` - Set up recurring tasks; use `cron_expression` for exact wall-clock times and `interval_seconds` only for relative intervals\n"
             "- `list_schedules` / `manage_schedule` - View, pause, resume, or delete schedules\n\n"
             "### What to Save in Memory (as OS Agent)\n"
             "Your memories should focus on ORCHESTRATION, not code:\n"
