@@ -463,6 +463,11 @@ class ChatConsumer:
                 finally:
                     await log_publisher.publish_status("idle")
 
+            except aioredis.TimeoutError:
+                # BRPOP is our idle wait for new chat messages. Treat Redis
+                # read timeouts during that wait as "nothing arrived", not as a
+                # user-visible chat failure.
+                continue
             except aioredis.ConnectionError:
                 await asyncio.sleep(2)
             except Exception as e:

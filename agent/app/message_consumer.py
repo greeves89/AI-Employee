@@ -376,6 +376,11 @@ class MessageConsumer:
 
                 await log_publisher.publish_status("idle")
 
+            except aioredis.TimeoutError:
+                # BRPOP is used as a polling wait. Some Redis client/network
+                # combinations surface an idle read wait as TimeoutError instead
+                # of returning None; keep the consumer alive and quiet.
+                continue
             except aioredis.ConnectionError:
                 await asyncio.sleep(2)
             except Exception as e:

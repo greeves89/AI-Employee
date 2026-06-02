@@ -103,6 +103,10 @@ class TaskConsumer:
                 # Update status back to idle
                 await log_publisher.publish_status("idle")
 
+            except aioredis.TimeoutError:
+                # BRPOP is used as a polling wait. Do not turn idle Redis read
+                # timeouts into failed tasks.
+                continue
             except aioredis.ConnectionError:
                 # Redis connection lost, wait and retry
                 await asyncio.sleep(2)
