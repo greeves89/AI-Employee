@@ -142,10 +142,10 @@ class SchedulerService:
             for schedule in schedules:
                 try:
                     await self._execute_schedule(db, router, schedule, now)
+                    await db.commit()
                 except Exception as e:
+                    await db.rollback()
                     print(f"[Scheduler] Failed to execute schedule {schedule.id}: {e}")
-
-            await db.commit()
 
     async def _execute_schedule(
         self,
@@ -199,10 +199,8 @@ class SchedulerService:
             priority=schedule.priority,
             agent_id=schedule.agent_id,
             model=schedule.model,
+            metadata={"schedule_id": schedule.id},
         )
-
-        # Tag the task with schedule_id for completion tracking
-        task.metadata_ = {**(task.metadata_ or {}), "schedule_id": schedule.id}
 
         # Advance schedule
         schedule.last_run_at = now

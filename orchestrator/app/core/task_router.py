@@ -172,6 +172,7 @@ class TaskRouter:
         model: str | None = None,
         parent_task_id: str | None = None,
         created_by_agent: str | None = None,
+        metadata: dict | None = None,
     ) -> Task:
         task_id = _make_task_id()
 
@@ -181,11 +182,22 @@ class TaskRouter:
         # Auto-assign if no agent specified
         if not agent_id:
             agent_id = await self.load_balancer.select_agent(priority=priority)
+            if agent_id and not await self._agent_exists(agent_id):
+                logger.warning(
+                    "Load balancer selected stale agent %s; pruning Redis status and retrying",
+                    agent_id,
+                )
+                if self.redis.client:
+                    await self.redis.client.delete(f"agent:{agent_id}:status")
+                agent_id = await self.load_balancer.select_agent(priority=priority)
+                if agent_id and not await self._agent_exists(agent_id):
+                    logger.warning("Load balancer retry also selected invalid agent %s", agent_id)
+                    agent_id = None
             if not agent_id:
                 # No agents available - create task as pending
-                metadata = {}
+                task_metadata = dict(metadata or {})
                 if created_by_agent:
-                    metadata["created_by_agent"] = created_by_agent
+                    task_metadata["created_by_agent"] = created_by_agent
                 task = Task(
                     id=task_id,
                     title=title,
@@ -194,21 +206,38 @@ class TaskRouter:
                     priority=priority,
                     model=model,
                     parent_task_id=parent_task_id,
-                    metadata_=metadata or None,
+                    metadata_=task_metadata or {},
                 )
                 self.db.add(task)
                 await self.db.commit()
                 await self.db.refresh(task)
                 return task
 
+        if not await self._agent_exists(agent_id):
+            logger.warning("Cannot route task %s to missing agent %s", task_id, agent_id)
+            task = Task(
+                id=task_id,
+                title=title,
+                prompt=prompt,
+                status=TaskStatus.PENDING,
+                priority=priority,
+                model=model,
+                parent_task_id=parent_task_id,
+                metadata_=dict(metadata or {}),
+            )
+            self.db.add(task)
+            await self.db.commit()
+            await self.db.refresh(task)
+            return task
+
         # Budget enforcement: downgrades the model to Haiku or blocks+stops
         # the agent once its (or its owner's) monthly budget is exhausted.
         model = await self._apply_budget_policy(agent_id, model)
 
         # Create task in DB
-        metadata = {}
+        task_metadata = dict(metadata or {})
         if created_by_agent:
-            metadata["created_by_agent"] = created_by_agent
+            task_metadata["created_by_agent"] = created_by_agent
         task = Task(
             id=task_id,
             title=title,
@@ -218,7 +247,7 @@ class TaskRouter:
             agent_id=agent_id,
             model=model,
             parent_task_id=parent_task_id,
-            metadata_=metadata or None,
+            metadata_=task_metadata or {},
             started_at=datetime.now(timezone.utc),
         )
         self.db.add(task)
@@ -258,6 +287,14 @@ class TaskRouter:
 
         await self.db.refresh(task)
         return task
+
+    async def _agent_exists(self, agent_id: str | None) -> bool:
+        if not agent_id:
+            return False
+        from app.models.agent import Agent
+
+        existing = await self.db.scalar(select(Agent.id).where(Agent.id == agent_id))
+        return existing is not None
 
     async def _publish_activity(self, agent_id: str, message: str) -> None:
         """Publish an activity event to the agent's log channel + history."""
@@ -396,6 +433,74 @@ class TaskRouter:
         elif task.status == TaskStatus.FAILED:
             await self._notify_failed_task(task, agent_id)
 
+    async def _recover_task_completion_from_steps(self, task: Task) -> bool:
+        """Recover a missed task completion from persisted step history.
+
+        Agent task completion is delivered via Redis Pub/Sub, which is not
+        durable. The per-step stream is persisted separately, so if the
+        completion event is missed during an orchestrator reload/restart we can
+        still reconstruct the terminal state before marking the task as lost.
+        """
+        from app.models.task_step import TaskStep
+
+        result = await self.db.execute(
+            select(TaskStep)
+            .where(TaskStep.task_id == task.id)
+            .order_by(TaskStep.timestamp.desc())
+            .limit(200)
+        )
+        steps = list(result.scalars().all())
+        if not steps:
+            return False
+
+        latest_result = next((s for s in steps if s.event_type == "result"), None)
+        latest_error = next((s for s in steps if s.event_type == "error"), None)
+        latest_text = next((s for s in steps if s.event_type == "text"), None)
+        latest_failed_system = next(
+            (
+                s for s in steps
+                if s.event_type == "system"
+                and str((s.event_data or {}).get("message", "")).startswith("Task failed:")
+            ),
+            None,
+        )
+
+        if latest_result:
+            event_data = dict(latest_result.event_data or {})
+            text_data = (latest_text.event_data or {}) if latest_text else {}
+            await self.handle_task_completion({
+                "task_id": task.id,
+                "agent_id": task.agent_id,
+                "status": "completed",
+                "result": text_data.get("text"),
+                "cost_usd": event_data.get("cost_usd"),
+                "input_tokens": event_data.get("input_tokens"),
+                "output_tokens": event_data.get("output_tokens"),
+                "duration_ms": event_data.get("duration_ms"),
+                "num_turns": event_data.get("num_turns"),
+            })
+            logger.info(f"Recovered completed RUNNING task {task.id} from persisted task_steps")
+            return True
+
+        failure_step = latest_error or latest_failed_system
+        if failure_step:
+            event_data = failure_step.event_data or {}
+            message = (
+                event_data.get("message")
+                or event_data.get("error")
+                or json.dumps(event_data)[:500]
+            )
+            await self.handle_task_completion({
+                "task_id": task.id,
+                "agent_id": task.agent_id,
+                "status": "failed",
+                "error": message,
+            })
+            logger.info(f"Recovered failed RUNNING task {task.id} from persisted task_steps")
+            return True
+
+        return False
+
     async def _update_agent_metrics(self, agent_id: str, result_data: dict) -> None:
         """Track agent performance metrics for learning insights."""
         from app.models.agent import Agent
@@ -513,6 +618,9 @@ class TaskRouter:
             task.status = TaskStatus.FAILED
             task.error = "Task lost during orchestrator restart (completion event missed)"
             task.completed_at = datetime.now(timezone.utc)
+            task.notified = True
+            if not task.retain:
+                task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)
             recovered += 1
             logger.info(f"Recovered stale QUEUED task {task.id} (agent: {task.agent_id})")
 
@@ -532,9 +640,16 @@ class TaskRouter:
                 if agent_status.get("state") == "working" and agent_status.get("current_task") == task.id:
                     continue  # Agent is still working
 
+            if await self._recover_task_completion_from_steps(task):
+                recovered += 1
+                continue
+
             task.status = TaskStatus.FAILED
             task.error = "Task lost - agent stopped responding"
             task.completed_at = datetime.now(timezone.utc)
+            task.notified = True
+            if not task.retain:
+                task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)
             recovered += 1
             logger.info(f"Recovered stale RUNNING task {task.id} (agent: {task.agent_id})")
 

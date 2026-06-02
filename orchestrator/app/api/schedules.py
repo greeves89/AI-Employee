@@ -166,6 +166,7 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent)
             priority=schedule.priority,
             agent_id=schedule.agent_id,
             model=schedule.model,
+            metadata={"schedule_id": schedule.id, "manual_trigger": True},
         )
 
         now = datetime.now(timezone.utc)
