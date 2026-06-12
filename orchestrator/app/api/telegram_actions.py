@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 import redis.asyncio as aioredis
@@ -43,10 +43,10 @@ async def _get_bot_token(agent_id: str, db: AsyncSession) -> str:
     return token
 
 
-async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None) -> dict:
+async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None, timeout: int = 30) -> dict:
     """Make a request to the Telegram Bot API."""
     url = f"{TG_API.format(token=token)}/{method}"
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         if files:
             resp = await client.post(url, data=data or {}, files=files)
         else:
@@ -357,6 +357,129 @@ async def send_document(
         data["reply_markup"] = json.dumps(body.reply_markup)
     files = {"document": (body.filename, doc_bytes, "application/octet-stream")}
     return await _tg_request(token, "sendDocument", data, files=files)
+
+
+@router.post("/send-document-upload")
+async def send_document_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a document via multipart upload (no base64, supports up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    fname = filename or file.filename or "file"
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    files = {"document": (fname, content, file.content_type or "application/octet-stream")}
+    return await _tg_request(token, "sendDocument", data, files=files, timeout=120)
+
+
+@router.post("/send-audio-upload")
+async def send_audio_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    title: str = Form(None),
+    performer: str = Form(None),
+    duration: int = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send an audio file via multipart upload — shows Telegram's audio player (up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    fname = filename or file.filename or "audio.mp3"
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    if title:
+        data["title"] = title
+    if performer:
+        data["performer"] = performer
+    if duration:
+        data["duration"] = str(duration)
+    files = {"audio": (fname, content, file.content_type or "audio/mpeg")}
+    return await _tg_request(token, "sendAudio", data, files=files, timeout=120)
+
+
+@router.post("/send-voice-upload")
+async def send_voice_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    caption: str = Form(None),
+    duration: int = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a voice message via multipart upload — file must be OGG/OPUS (up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if duration:
+        data["duration"] = str(duration)
+    files = {"voice": (file.filename or "voice.ogg", content, "audio/ogg")}
+    return await _tg_request(token, "sendVoice", data, files=files, timeout=120)
+
+
+@router.post("/send-photo-upload")
+async def send_photo_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a photo via multipart upload (up to 10 MB visible, 50 MB file)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    files = {"photo": (file.filename or "photo.jpg", content, file.content_type or "image/jpeg")}
+    return await _tg_request(token, "sendPhoto", data, files=files, timeout=120)
+
+
+@router.post("/send-video-upload")
+async def send_video_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    duration: int = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a video via multipart upload (up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    fname = filename or file.filename or "video.mp4"
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    if duration:
+        data["duration"] = str(duration)
+    files = {"video": (fname, content, file.content_type or "video/mp4")}
+    return await _tg_request(token, "sendVideo", data, files=files, timeout=120)
 
 
 @router.post("/send-video")

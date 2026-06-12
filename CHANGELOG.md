@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.33] — 2026-06-12
+
+### Fixed
+- **Telegram file uploads no longer fail for large files** — agents previously used `base64 -w0 file` shell substitution in curl JSON bodies, which hits Linux's ARG_MAX (~2 MB) and caused HTTP 500 for any file over ~500 KB. All file-sending endpoints now use multipart binary upload (`curl -F`) instead of base64 JSON.
+- **50 MB file size support** — new multipart upload endpoints (`/send-document-upload`, `/send-audio-upload`, `/send-voice-upload`, `/send-photo-upload`, `/send-video-upload`) accept binary files up to Telegram's 50 MB API limit. Caddy reverse proxy explicitly permits 55 MB request bodies. Upload timeout raised to 120 s.
+- **Proper audio player for MP3 files** — new `/send-audio-upload` endpoint uses Telegram's `sendAudio` method instead of `sendDocument`, so MP3/audio files appear with a native Telegram audio player (title, performer, seek bar) rather than as a plain file attachment.
+
+### Changed
+- `_tg_request` timeout is now configurable per call; file upload calls use 120 s, text calls keep 30 s default.
+- System prompt updated — agents now use multipart curl commands for all file types. Base64 curl commands removed.
+
 ## [1.55.32] — 2026-05-27
 
 ### Fixed

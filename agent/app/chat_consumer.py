@@ -140,31 +140,41 @@ RULES:
 
 ORCHESTRATOR TELEGRAM API (use these curl commands):
 
+IMPORTANT — File sending: ALWAYS use the multipart-upload endpoints below (no base64!).
+They support up to 50 MB and work for any file size.
+
 Send a document/file to the user:
-  curl -X POST {api_base}/send-document {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "document_base64": "'$(base64 -w0 /path/to/file)'", "filename": "report.pdf"}}'
+  curl -X POST {api_base}/send-document-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/file;filename=report.pdf"
+
+Send an MP3/audio file (shows Telegram audio player with title):
+  curl -X POST {api_base}/send-audio-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/podcast.mp3;filename=podcast.mp3" \\
+    -F "title=Morgen-Podcast" \\
+    -F "performer=AI Agent"
 
 Send a voice message (MUST be OGG OPUS — convert with ffmpeg first):
   ffmpeg -i input.mp3 -c:a libopus -b:a 64k output.ogg
-  curl -X POST {api_base}/send-voice {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "voice_base64": "'$(base64 -w0 output.ogg)'"}}'
+  curl -X POST {api_base}/send-voice-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@output.ogg"
 
 Send a photo (from file):
-  curl -X POST {api_base}/send-photo {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "photo_base64": "'$(base64 -w0 /path/to/image.jpg)'"}}'
+  curl -X POST {api_base}/send-photo-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/image.jpg"
 
-Send a photo (from URL):
+Send a photo (from URL — still use JSON for URL-only):
   curl -X POST {api_base}/send-photo {auth} \\
     -H 'Content-Type: application/json' \\
     -d '{{"chat_id": {chat_id}, "photo_url": "https://example.com/img.jpg"}}'
 
 Send a video:
-  curl -X POST {api_base}/send-video {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "video_base64": "'$(base64 -w0 /path/to/video.mp4)'"}}'
+  curl -X POST {api_base}/send-video-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/video.mp4;filename=video.mp4"
 
 Send a text message with inline keyboard:
   curl -X POST {api_base}/send-message {auth} \\
