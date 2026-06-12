@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.34] — 2026-06-12
+
+### Changed
+- **Per-channel Claude sessions** — iOS, Telegram and each webapp tab now get their own independent Claude Code session instead of sharing one. Messages from different channels no longer bleed into each other's conversation context.
+- **Session resume after restarts** — Claude session IDs are persisted in Redis (7-day TTL). When the agent container restarts, each channel resumes its conversation via `--resume` automatically. iOS reconnects land in the same session without starting over.
+- **Source-aware live steering** — mid-response message folding (`pending_drain`) now only folds messages from the same source channel; messages from other channels are re-queued correctly.
+- **Cancel scoped to active channel** — the cancel signal now stops only the handler that is currently processing, not a shared handler.
+
 ## [1.55.33] — 2026-06-12
 
 ### Fixed

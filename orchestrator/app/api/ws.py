@@ -637,6 +637,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 "model": msg.get("model"),
                 "images": images,
                 "source": source,
+                "chat_session_id": _session["id"],
             })
 
             # Save user message to DB
