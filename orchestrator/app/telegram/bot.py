@@ -28,6 +28,7 @@ class TelegramBot:
         self.app: Application | None = None
         self._started = False
         self._rating_listener: asyncio.Task | None = None
+        self._notification_listener: asyncio.Task | None = None
 
     async def start(self) -> None:
         if not settings.telegram_bot_token or self._started:
@@ -76,11 +77,16 @@ class TelegramBot:
 
         # Start listening for rating request messages from task_router
         self._rating_listener = asyncio.create_task(self._listen_rating_requests())
+        # Start listening for ad-hoc notifications (schedule failures, alerts, …)
+        self._notification_listener = asyncio.create_task(self._listen_notifications())
 
     async def stop(self) -> None:
         if self._rating_listener:
             self._rating_listener.cancel()
             self._rating_listener = None
+        if self._notification_listener:
+            self._notification_listener.cancel()
+            self._notification_listener = None
         if self.app and self._started:
             try:
                 await self.app.updater.stop()
@@ -97,6 +103,45 @@ class TelegramBot:
                 text=message,
                 parse_mode="Markdown",
             )
+
+    async def _listen_notifications(self) -> None:
+        """Forward ad-hoc Telegram notifications published on Redis.
+
+        Channel: `telegram:notification`
+        Payload: {"text": "...", "parse_mode": "Markdown" | None,
+                  "chat_id": <optional override>}
+
+        Used by task_router._alert_schedule_failure and any other
+        orchestrator path that needs to notify the operator without
+        coupling to python-telegram-bot.
+        """
+        import redis.asyncio as aioredis
+
+        try:
+            redis_client = aioredis.from_url(settings.redis_url)
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe("telegram:notification")
+            logger.info("[Telegram] Listening for notifications on Redis")
+
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    data = json.loads(message["data"])
+                    chat_id = data.get("chat_id") or settings.telegram_chat_id
+                    if not chat_id or not self.app:
+                        continue
+                    await self.app.bot.send_message(
+                        chat_id=int(chat_id),
+                        text=data.get("text", ""),
+                        parse_mode=data.get("parse_mode"),
+                    )
+                except Exception as e:
+                    logger.warning(f"[Telegram] Failed to send notification: {e}")
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.error(f"[Telegram] Notification listener error: {e}")
 
     async def _listen_rating_requests(self) -> None:
         """Listen for rating request messages from task_router via Redis PubSub."""
