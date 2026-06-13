@@ -594,6 +594,7 @@ async def _user_memory_search(q: str, user_id: str | None, limit: int, db: Async
                         WHERE a.user_id = :uid
                           AND am.embedding IS NOT NULL
                           AND am.superseded_by IS NULL
+                          AND am.evicted_at IS NULL
                         ORDER BY am.embedding <=> CAST(:qvec AS vector)
                         LIMIT :limit
                     """),

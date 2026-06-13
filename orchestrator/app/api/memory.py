@@ -120,6 +120,7 @@ async def _find_similar_memory(
           AND key = :key
           AND embedding IS NOT NULL
           AND superseded_by IS NULL
+          AND evicted_at IS NULL
         ORDER BY embedding <=> CAST(:query_vec AS vector)
         LIMIT 1
         """
@@ -205,6 +206,7 @@ async def save_memory(
                     AgentMemory.agent_id == body.agent_id,
                     AgentMemory.key == body.key,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                     AgentMemory.room == body.room if body.room else AgentMemory.room.is_(None),
                 )
             )
@@ -262,6 +264,7 @@ async def save_memory(
                     AgentMemory.key == body.key,
                     AgentMemory.content == body.content,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                 )
             )
             .order_by(AgentMemory.created_at.desc())
@@ -297,6 +300,7 @@ async def save_memory(
                     AgentMemory.key == body.key,
                     AgentMemory.content == body.content,
                     AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
                 )
             )
             .order_by(AgentMemory.created_at.desc())
@@ -311,6 +315,18 @@ async def save_memory(
         await _apply_tags_and_links(db, new_mem, body.tags, body.links)
         await db.commit()
     except Exception:
+        await db.rollback()
+
+    # --- Step 4b: enforce per-bucket char budget (Hermes-style cap) ----------
+    try:
+        from app.services.memory_caps import enforce as _enforce_caps
+        await _enforce_caps(
+            db, agent_id=body.agent_id, room=body.room, category=body.category,
+        )
+        await db.commit()
+    except Exception as cap_err:
+        import logging
+        logging.getLogger(__name__).warning("memory_caps enforce failed: %s", cap_err)
         await db.rollback()
 
     # --- Step 5: embedding (fire-and-forget, don't block response) -----------
@@ -373,7 +389,12 @@ async def semantic_search_memories(
         result = await db.execute(
             select(AgentMemory)
             .where(AgentMemory.agent_id == agent_id)
-            .where(AgentMemory.superseded_by.is_(None))
+            .where(
+                and_(
+                    AgentMemory.superseded_by.is_(None),
+                    AgentMemory.evicted_at.is_(None),
+                )
+            )
             .where(
                 or_(
                     AgentMemory.content.ilike(f"%{q}%"),
@@ -411,6 +432,7 @@ async def semantic_search_memories(
         WHERE agent_id = :agent_id
           AND embedding IS NOT NULL
           AND superseded_by IS NULL
+          AND evicted_at IS NULL
           {room_clause}
         ORDER BY embedding <=> CAST(:query_vec AS vector)
         LIMIT :limit
@@ -685,6 +707,23 @@ async def delete_memory(memory_id: int, user=Depends(require_auth), db: AsyncSes
     await db.delete(memory)
     await db.commit()
     return {"deleted": memory_id}
+
+
+@router.get("/bucket-usage/{agent_id}")
+async def get_bucket_usage(
+    agent_id: str,
+    room: str | None = Query(None, description="Room path, e.g. project:ai-employee"),
+    category: str | None = Query(None, description="Memory category filter"),
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return character-budget usage for an (agent, room, category) bucket.
+
+    Powers the memory-bloat indicator in the dashboard. Inspired by Hermes'
+    hard caps on USER.md / MEMORY.md.
+    """
+    from app.services.memory_caps import bucket_usage
+    return await bucket_usage(db, agent_id, room, category)
 
 
 @router.get("/room-summary/{agent_id}")
