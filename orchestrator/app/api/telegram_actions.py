@@ -82,6 +82,28 @@ class SendMessageRequest(BaseModel):
     disable_notification: bool = False
 
 
+class SendRichMessageRequest(BaseModel):
+    """Bot API 10.1 (June 2026): block-structured rich messages.
+
+    `rich_message` mirrors the `InputRichMessage` shape from the Bot API. The
+    common case is `{"blocks": [...]}` where each block is one of the
+    documented Rich* block types (section_heading, paragraph, table, list,
+    details, map, audio, photo, video, preformatted, …) carrying inline
+    rich-text spans.
+
+    We forward verbatim so callers can use the full Bot API surface without
+    having to redeploy the orchestrator each time Telegram adds a block type.
+    """
+
+    chat_id: int | str
+    rich_message: dict
+    business_connection_id: str | None = None
+    message_thread_id: int | None = None
+    reply_parameters: dict | None = None
+    reply_markup: dict | None = None
+    disable_notification: bool = False
+
+
 class SendVoiceRequest(BaseModel):
     chat_id: int | str
     voice_base64: str  # base64-encoded OGG/OPUS audio
@@ -283,6 +305,35 @@ async def send_message(
     if body.disable_notification:
         data["disable_notification"] = True
     return await _tg_request(token, "sendMessage", data)
+
+
+@router.post("/send-rich-message")
+async def send_rich_message(
+    body: SendRichMessageRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a block-structured rich message (Bot API 10.1, June 2026).
+
+    Supports real headings, tables, interactive checklists, math expressions,
+    inline maps and audio — i.e. everything `parse_mode=HTML` cannot reach.
+    The `rich_message` field is forwarded as-is to Telegram's
+    `sendRichMessage`, so new block types added upstream work without an
+    orchestrator change.
+    """
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    data: dict = {"chat_id": body.chat_id, "rich_message": body.rich_message}
+    if body.business_connection_id:
+        data["business_connection_id"] = body.business_connection_id
+    if body.message_thread_id is not None:
+        data["message_thread_id"] = body.message_thread_id
+    if body.reply_parameters:
+        data["reply_parameters"] = body.reply_parameters
+    if body.reply_markup:
+        data["reply_markup"] = body.reply_markup
+    if body.disable_notification:
+        data["disable_notification"] = True
+    return await _tg_request(token, "sendRichMessage", data)
 
 
 @router.post("/send-voice")
