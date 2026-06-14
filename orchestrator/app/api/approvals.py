@@ -239,6 +239,25 @@ async def request_approval(
         },
     )
 
+    # Publish to agent's chat WS so approval appears inline in the chat
+    if redis and redis.client:
+        try:
+            ws_event = json.dumps({
+                "type": "approval_request",
+                "data": {
+                    "approval_id": str(approval.id),
+                    "notification_id": str(notif.id),
+                    "question": body.question or reasoning,
+                    "tool": body.tool,
+                    "risk_level": body.risk_level,
+                    "options": meta.get("options") or ["Approve", "Deny"],
+                    "reasoning": reasoning,
+                }
+            })
+            await redis.client.publish(f"agent:{agent_id}:chat:response", ws_event)
+        except Exception as e:
+            logger.warning(f"Failed to publish approval to chat WS: {e}")
+
     audit_entry = AuditLog(
         agent_id=agent_id,
         approval_id=str(approval.id),
