@@ -176,6 +176,24 @@ class SendAnimationRequest(BaseModel):
     reply_markup: dict | None = None
 
 
+class SendRichMessageRequest(BaseModel):
+    """Bot API 10.1 — sendRichMessage with block-level content.
+
+    blocks: list of RichBlock* objects as defined in the Telegram Bot API 10.1 docs.
+    Passed through as-is so Telegram validates the schema server-side.
+
+    Supported block types (RichBlock*):
+      Paragraph, SectionHeading, Preformatted, Table, List, BlockQuotation,
+      PullQuotation, Collage, Slideshow, Details, Map,
+      Animation, Audio, Photo, Video, VoiceNote, Thinking
+    """
+    chat_id: int | str
+    blocks: list[dict]          # InputRichMessage blocks — raw, forwarded to Telegram
+    reply_markup: dict | None = None
+    reply_to_message_id: int | None = None
+    disable_notification: bool = False
+
+
 # --- Endpoints ---
 
 
@@ -283,6 +301,50 @@ async def send_message(
     if body.disable_notification:
         data["disable_notification"] = True
     return await _tg_request(token, "sendMessage", data)
+
+
+@router.post("/send-rich-message")
+async def send_rich_message(
+    body: SendRichMessageRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a rich message using Telegram Bot API 10.1 sendRichMessage.
+
+    Forwards blocks as InputRichMessage to Telegram unchanged.
+    Telegram validates block types server-side.
+    """
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    data: dict = {
+        "chat_id": str(body.chat_id),
+        "rich_message": json.dumps({"blocks": body.blocks}),
+    }
+    if body.reply_markup:
+        data["reply_markup"] = json.dumps(body.reply_markup)
+    if body.reply_to_message_id:
+        data["reply_to_message_id"] = body.reply_to_message_id
+    if body.disable_notification:
+        data["disable_notification"] = True
+    return await _tg_request(token, "sendRichMessage", data)
+
+
+@router.post("/send-rich-message-draft")
+async def send_rich_message_draft(
+    body: SendRichMessageRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a partial rich message (sendRichMessageDraft) — for progressive rendering."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    data: dict = {
+        "chat_id": str(body.chat_id),
+        "rich_message": json.dumps({"blocks": body.blocks}),
+    }
+    if body.reply_markup:
+        data["reply_markup"] = json.dumps(body.reply_markup)
+    if body.reply_to_message_id:
+        data["reply_to_message_id"] = body.reply_to_message_id
+    return await _tg_request(token, "sendRichMessageDraft", data)
 
 
 @router.post("/send-voice")

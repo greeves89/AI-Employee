@@ -201,6 +201,25 @@ Download a file the user sent you (use the file_id from the header above):
   #     -d '{{"file_id": "THE_FILE_ID"}}' \\
   #     | python3 -c 'import sys,json,base64; d=json.load(sys.stdin); open("/workspace/"+d["filename"],"wb").write(base64.b64decode(d["file_base64"])); print("saved", d["filename"])'
 
+Send a rich message (Telegram Bot API 10.1 — headings, tables, LaTeX, checklists, maps, audio):
+  curl -X POST {api_base}/send-rich-message {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "blocks": [
+      {{"@type": "richBlockSectionHeading", "title": {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "My Heading"}}]}}}},
+      {{"@type": "richBlockParagraph", "text": {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Body text here."}}]}}}},
+      {{"@type": "richBlockTable", "caption": {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Table"}}]}}, "cells": [[{{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Col A"}}]}}, {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Col B"}}]}}]]}}
+    ]}}'
+
+  Stream partial rich message (progressive render while building content):
+  curl -X POST {api_base}/send-rich-message-draft {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "blocks": [...]}}'
+
+  Available block types (@type): richBlockParagraph, richBlockSectionHeading,
+  richBlockPreformatted, richBlockTable, richBlockList, richBlockBlockQuotation,
+  richBlockPullQuotation, richBlockMap, richBlockAudio, richBlockPhoto,
+  richBlockVideo, richBlockAnimation, richBlockVoiceNote, richBlockDetails
+
 Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-action, /edit-message, /pin-message, /answer-callback, GET /info, GET /get-commands"""
 
 

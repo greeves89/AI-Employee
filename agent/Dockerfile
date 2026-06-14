@@ -75,6 +75,7 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
 
 COPY app/ ./app/
+RUN chmod -R a+rX /opt/agent/app/
 
 # Install ai-team CLI helper (allows agents to call orchestrator API)
 COPY scripts/ai-team /usr/local/bin/ai-team

@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.35] — 2026-06-14
+
+### Added
+- **Telegram Bot API 10.1 rich messages** — new endpoints `/send-rich-message` and `/send-rich-message-draft` wrapping `sendRichMessage` / `sendRichMessageDraft`. Accepts an array of `RichBlock*` objects (Paragraph, SectionHeading, Preformatted, Table, List, BlockQuotation, Map, Audio, Photo, Video etc.) and forwards them as `InputRichMessage` to Telegram. Blocks are validated server-side by Telegram.
+- System prompt updated with rich message curl examples and all supported block types.
+- **Agent Dockerfile** — `chmod -R a+rX /opt/agent/app/` added after COPY to fix PermissionError when macOS-sourced files have mode 700.
+
 ## [1.55.34] — 2026-06-12
 
 ### Changed
