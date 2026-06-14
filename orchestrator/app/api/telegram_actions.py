@@ -177,18 +177,17 @@ class SendAnimationRequest(BaseModel):
 
 
 class SendRichMessageRequest(BaseModel):
-    """Bot API 10.1 — sendRichMessage with block-level content.
+    """Bot API 10.1 — sendRichMessage.
 
-    blocks: list of RichBlock* objects as defined in the Telegram Bot API 10.1 docs.
-    Passed through as-is so Telegram validates the schema server-side.
+    Provide content as either `markdown` (CommonMark) or `html` (Telegram HTML subset).
+    Telegram parses it server-side and renders headings, tables, LaTeX, checklists, etc.
 
-    Supported block types (RichBlock*):
-      Paragraph, SectionHeading, Preformatted, Table, List, BlockQuotation,
-      PullQuotation, Collage, Slideshow, Details, Map,
-      Animation, Audio, Photo, Video, VoiceNote, Thinking
+    Exactly one of markdown / html must be set.
     """
     chat_id: int | str
-    blocks: list[dict]          # InputRichMessage blocks — raw, forwarded to Telegram
+    markdown: str | None = None   # CommonMark source
+    html: str | None = None       # Telegram HTML subset
+    skip_entity_detection: bool = False
     reply_markup: dict | None = None
     reply_to_message_id: int | None = None
     disable_notification: bool = False
@@ -303,6 +302,20 @@ async def send_message(
     return await _tg_request(token, "sendMessage", data)
 
 
+def _build_rich_message_payload(body: SendRichMessageRequest) -> dict:
+    """Build the InputRichMessage dict from request body."""
+    if not body.markdown and not body.html:
+        raise HTTPException(status_code=422, detail="Provide markdown or html content")
+    rm: dict = {}
+    if body.markdown:
+        rm["markdown"] = body.markdown
+    else:
+        rm["html"] = body.html
+    if body.skip_entity_detection:
+        rm["skip_entity_detection"] = True
+    return rm
+
+
 @router.post("/send-rich-message")
 async def send_rich_message(
     body: SendRichMessageRequest,
@@ -311,13 +324,13 @@ async def send_rich_message(
 ):
     """Send a rich message using Telegram Bot API 10.1 sendRichMessage.
 
-    Forwards blocks as InputRichMessage to Telegram unchanged.
-    Telegram validates block types server-side.
+    Pass CommonMark `markdown` or Telegram HTML as `html`.
+    Telegram parses it and renders headings, tables, LaTeX, checklists, maps, etc.
     """
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data: dict = {
         "chat_id": str(body.chat_id),
-        "rich_message": {"blocks": body.blocks},
+        "rich_message": _build_rich_message_payload(body),
     }
     if body.reply_markup:
         data["reply_markup"] = body.reply_markup
@@ -338,7 +351,7 @@ async def send_rich_message_draft(
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data: dict = {
         "chat_id": str(body.chat_id),
-        "rich_message": {"blocks": body.blocks},
+        "rich_message": _build_rich_message_payload(body),
     }
     if body.reply_markup:
         data["reply_markup"] = body.reply_markup

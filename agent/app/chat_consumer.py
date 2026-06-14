@@ -202,23 +202,20 @@ Download a file the user sent you (use the file_id from the header above):
   #     | python3 -c 'import sys,json,base64; d=json.load(sys.stdin); open("/workspace/"+d["filename"],"wb").write(base64.b64decode(d["file_base64"])); print("saved", d["filename"])'
 
 Send a rich message (Telegram Bot API 10.1 — headings, tables, LaTeX, checklists, maps, audio):
+  Pass CommonMark markdown in the "markdown" field — Telegram renders it natively with
+  headings, tables, code blocks, checkboxes, LaTeX math, etc.
   curl -X POST {api_base}/send-rich-message {auth} \\
     -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "blocks": [
-      {{"@type": "richBlockSectionHeading", "title": {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "My Heading"}}]}}}},
-      {{"@type": "richBlockParagraph", "text": {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Body text here."}}]}}}},
-      {{"@type": "richBlockTable", "caption": {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Table"}}]}}, "cells": [[{{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Col A"}}]}}, {{"@type": "richText", "texts": [{{"@type": "richTextPlain", "text": "Col B"}}]}}]]}}
-    ]}}'
+    -d '{{"chat_id": {chat_id}, "markdown": "## My Heading\\n\\nBody text here.\\n\\n| Col A | Col B |\\n|-------|-------|\\n| 1     | 2     |\\n\\n- [x] Done\\n- [ ] Todo\\n\\n$$E=mc^2$$"}}'
 
   Stream partial rich message (progressive render while building content):
   curl -X POST {api_base}/send-rich-message-draft {auth} \\
     -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "blocks": [...]}}'
+    -d '{{"chat_id": {chat_id}, "markdown": "## Draft heading\\n\\nContent so far..."}}'
 
-  Available block types (@type): richBlockParagraph, richBlockSectionHeading,
-  richBlockPreformatted, richBlockTable, richBlockList, richBlockBlockQuotation,
-  richBlockPullQuotation, richBlockMap, richBlockAudio, richBlockPhoto,
-  richBlockVideo, richBlockAnimation, richBlockVoiceNote, richBlockDetails
+  You can also pass raw Telegram HTML via the "html" field instead of "markdown".
+  Supported markdown features: headings (##), tables, fenced code, checklists (- [x]),
+  LaTeX math ($$...$$), blockquotes, bold, italic, strikethrough, links.
 
 Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-action, /edit-message, /pin-message, /answer-callback, GET /info, GET /get-commands"""
 
