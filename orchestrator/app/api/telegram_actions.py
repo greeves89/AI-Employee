@@ -316,11 +316,11 @@ async def send_rich_message(
     """
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data: dict = {
-        "chat_id": str(body.chat_id),
-        "rich_message": json.dumps({"blocks": body.blocks}),
+        "chat_id": body.chat_id,
+        "rich_message": {"blocks": body.blocks},
     }
     if body.reply_markup:
-        data["reply_markup"] = json.dumps(body.reply_markup)
+        data["reply_markup"] = body.reply_markup
     if body.reply_to_message_id:
         data["reply_to_message_id"] = body.reply_to_message_id
     if body.disable_notification:
@@ -337,11 +337,11 @@ async def send_rich_message_draft(
     """Stream a partial rich message (sendRichMessageDraft) — for progressive rendering."""
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data: dict = {
-        "chat_id": str(body.chat_id),
-        "rich_message": json.dumps({"blocks": body.blocks}),
+        "chat_id": body.chat_id,
+        "rich_message": {"blocks": body.blocks},
     }
     if body.reply_markup:
-        data["reply_markup"] = json.dumps(body.reply_markup)
+        data["reply_markup"] = body.reply_markup
     if body.reply_to_message_id:
         data["reply_to_message_id"] = body.reply_to_message_id
     return await _tg_request(token, "sendRichMessageDraft", data)
