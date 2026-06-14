@@ -738,6 +738,125 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed templates: {e}")
 
+    # Seed builtin skills (feierabend, morning_briefing, daily_log_check)
+    try:
+        from app.db.session import async_session_factory as _sf_skills
+        from app.models.skill import Skill, SkillStatus, SkillCategory
+        from sqlalchemy import select as _sel_skills
+
+        _BUILTIN_SKILLS = [
+            {
+                "name": "feierabend",
+                "description": "End-of-day skill: summarises the daily log, marks open items, updates agent state. Run when the workday ends.",
+                "category": SkillCategory.ROUTINE if hasattr(SkillCategory, "ROUTINE") else "routine",
+                "content": """\
+# Feierabend Skill
+
+Use this at the end of every workday to close out the daily log.
+
+## Steps
+
+1. Read today's daily log:
+```bash
+cat /workspace/daily/$(date +%Y-%m-%d).md 2>/dev/null || echo "(no entries today)"
+```
+
+2. Write a clean summary + open items section **at the bottom** of today's log:
+```bash
+DATE=$(date +%Y-%m-%d)
+cat >> /workspace/daily/${DATE}.md << 'FEIERABEND'
+
+## Summary
+<2-3 sentences: what was accomplished today>
+
+## Open Items
+- [ ] <unfinished task 1>
+- [ ] <unfinished task 2>
+FEIERABEND
+```
+
+3. Update `/workspace/.agent_state.md` — set **Next Steps** to the open items from above.
+
+4. Confirm to the user: "Feierabend! Tageslog unter /workspace/daily/DATE.md abgeschlossen. N offene Punkte für morgen gespeichert."
+
+## Rules
+- Never mark something as done if it wasn't actually completed.
+- If there are no open items, say so explicitly — don't invent tasks.
+- Keep the summary factual and short.
+""",
+            },
+            {
+                "name": "morning_briefing",
+                "description": "Start-of-day skill: reads the last 5 daily logs, lists all open items, and presents a focused briefing for the new day.",
+                "category": SkillCategory.ROUTINE if hasattr(SkillCategory, "ROUTINE") else "routine",
+                "content": """\
+# Morning Briefing Skill
+
+Run this at the start of every workday before taking any user requests.
+
+## Steps
+
+1. Check open items from the last 5 days:
+```bash
+ls /workspace/daily/*.md 2>/dev/null | sort | tail -5 | while read f; do
+  echo "=== $(basename $f) ==="; grep -A 30 "## Open Items" "$f" 2>/dev/null || echo "(no open items)"; echo
+done
+```
+
+2. Read today's knowledge context:
+```bash
+cat /workspace/knowledge.md 2>/dev/null | head -60
+```
+
+3. Call `brain_search` with a query about recent work and priorities.
+
+4. Call `memory_search` with room matching the active channel.
+
+5. Present a compact briefing to the user:
+```
+Guten Morgen! Hier dein Briefing:
+
+**Offene Punkte aus den letzten Tagen:**
+- [ ] <item from day X>
+- [ ] <item from day Y>
+
+**Heutiger Fokus:** <1 sentence based on agent_state.md Next Steps>
+
+Womit sollen wir starten?
+```
+
+## Rules
+- Skip days with no log file (don't error, just continue).
+- List only genuinely open items (not already completed ones).
+- Keep the briefing concise — max 10 open items, group by topic if needed.
+""",
+            },
+        ]
+
+        async with _sf_skills() as db:
+            for skill_data in _BUILTIN_SKILLS:
+                existing = await db.scalar(
+                    _sel_skills(Skill).where(Skill.name == skill_data["name"])
+                )
+                if not existing:
+                    db.add(Skill(
+                        name=skill_data["name"],
+                        description=skill_data["description"],
+                        content=skill_data["content"],
+                        category=skill_data["category"],
+                        status=SkillStatus.ACTIVE,
+                        created_by="builtin",
+                    ))
+                else:
+                    # Always sync builtin skill content
+                    existing.description = skill_data["description"]
+                    existing.content = skill_data["content"]
+                    existing.status = SkillStatus.ACTIVE
+            await db.commit()
+        logger.info(f"Seeded/synced {len(_BUILTIN_SKILLS)} builtin skills")
+    except Exception as e:
+        logger.warning(f"Failed to seed builtin skills: {e}")
+
     # Load persisted settings from DB
     try:
         from app.db.session import async_session_factory as _sf
