@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.55.36] — 2026-06-14
+
+### Fixed
+- **sendRichMessage double-serialization** — `rich_message` was passed as `json.dumps(...)` string and then re-serialized by httpx `json=data`, causing Telegram to receive a string instead of an object. Now passed as plain dict so httpx serializes the full structure correctly in one pass.
+
 ## [1.55.35] — 2026-06-14
 
 ### Added
