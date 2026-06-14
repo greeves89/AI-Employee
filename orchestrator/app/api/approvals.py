@@ -182,41 +182,62 @@ async def request_approval(
     redis = _get_redis()
     await _publish_notification(redis, notif)
 
-    # Also send channel-aware push/Telegram for approval requests.
-    if body.target_channel in ("telegram", "all") or body.risk_level in ("high", "critical"):
-        try:
-            from app.api.notifications import _send_telegram
-            from app.api.notifications import NotificationCreate
-            await _send_telegram(
-                NotificationCreate(
-                    agent_id=agent_id,
-                    type="approval",
-                    title=notif.title,
-                    message=notif.message,
-                    priority="high",
-                    action_url="/approvals",
-                    meta=notif.meta,
-                ),
-                redis,
-                notif_id=notif.id,
-            )
-        except Exception as e:
-            logger.warning(f"Telegram notification failed for approval {approval.id}: {e}")
-    if body.target_channel in ("ios", "all"):
-        await _push_ios_for_agent(
-            db,
-            agent_id,
-            notif.title,
-            notif.message,
-            data={
-                "notification_id": str(notif.id),
-                "agent_id": agent_id,
-                "type": "approval",
-                "action_url": "/approvals",
-                "approval_id": str(approval.id),
-                "meta": notif.meta or {},
-            },
+    # Fetch agent name for richer notification text
+    agent_name = agent_id
+    try:
+        _agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+        if _agent:
+            agent_name = _agent.name or agent_id
+    except Exception:
+        pass
+
+    # Build a human-readable approval message
+    risk_emoji = {"low": "🟡", "medium": "🟠", "high": "🔴", "critical": "🚨"}.get(body.risk_level, "⚠️")
+    tg_lines = [f"{risk_emoji} *Approval nötig — {agent_name}*"]
+    if body.question:
+        tg_lines.append(f"\n❓ {body.question}")
+    if body.tool and body.tool != "user_decision":
+        tg_lines.append(f"🔧 Tool: `{body.tool}`")
+    if reasoning:
+        tg_lines.append(f"\n{reasoning}")
+    tg_lines.append(f"\n_Risiko: {body.risk_level}_")
+    tg_message = "\n".join(tg_lines)
+
+    # Always notify Telegram — every approval is time-sensitive
+    try:
+        from app.api.notifications import _send_telegram, NotificationCreate
+        await _send_telegram(
+            NotificationCreate(
+                agent_id=agent_id,
+                type="approval",
+                title=notif.title,
+                message=tg_message,
+                priority="high",
+                action_url="/approvals",
+                meta=notif.meta,
+            ),
+            redis,
+            notif_id=notif.id,
         )
+    except Exception as e:
+        logger.warning(f"Telegram notification failed for approval {approval.id}: {e}")
+
+    # Always notify iOS via APNs — every approval needs immediate attention
+    await _push_ios_for_agent(
+        db,
+        agent_id,
+        f"{risk_emoji} {agent_name}: Approval nötig",
+        body.question or reasoning or notif.title,
+        data={
+            "notification_id": str(notif.id),
+            "agent_id": agent_id,
+            "type": "approval",
+            "action_url": "/approvals",
+            "approval_id": str(approval.id),
+            "approval_screen": "true",
+            "meta": notif.meta or {},
+        },
+    )
 
     audit_entry = AuditLog(
         agent_id=agent_id,
