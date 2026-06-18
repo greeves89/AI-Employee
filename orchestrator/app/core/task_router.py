@@ -544,7 +544,12 @@ class TaskRouter:
         agent.config = config
 
     async def _update_schedule_stats(self, schedule_id: str, result_data: dict) -> None:
-        """Update schedule success/fail counts after task completion."""
+        """Update schedule success/fail counts after task completion.
+
+        On failure: publish a Telegram alert so the owner finds out immediately
+        instead of discovering hours later that a recurring job (e.g. morning
+        podcast) silently dropped a run.
+        """
         from app.models.schedule import Schedule
 
         result = await self.db.execute(
@@ -558,6 +563,34 @@ class TaskRouter:
             schedule.success_count += 1
         else:
             schedule.fail_count += 1
+            await self._alert_schedule_failure(schedule, result_data)
+
+    async def _alert_schedule_failure(self, schedule, result_data: dict) -> None:
+        """Publish a high-priority Telegram alert when a scheduled run fails.
+
+        Uses a Redis pub/sub channel (`telegram:notification`) so the alert
+        flows through the existing single-bot pipeline without coupling
+        task_router to python-telegram-bot. Falls back silently if Redis is
+        unavailable — losing an alert is better than crashing the task path.
+        """
+        try:
+            if not self.redis or not self.redis.client:
+                return
+            error = (result_data.get("error") or "").strip()
+            error_snippet = (error[:200] + "…") if len(error) > 200 else error
+            text_lines = [
+                f"⚠️ Schedule failed: *{schedule.name}*",
+                f"ID: `{schedule.id}` · fail_count={schedule.fail_count}",
+            ]
+            if error_snippet:
+                text_lines.append(f"Error: {error_snippet}")
+            text_lines.append(f"Next run: {schedule.next_run_at.isoformat() if schedule.next_run_at else '—'}")
+            payload = {"text": "\n".join(text_lines), "parse_mode": "Markdown"}
+            await self.redis.client.publish(
+                "telegram:notification", json.dumps(payload)
+            )
+        except Exception as e:
+            logger.warning(f"Could not publish schedule failure alert: {e}")
 
     async def list_tasks(
         self,
