@@ -46,6 +46,7 @@ import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { useAuthStore } from "@/lib/auth";
 
 const PERMISSION_ICON_MAP: Record<string, React.ElementType> = {
   package: Package,
@@ -188,6 +189,9 @@ export function CreateAgentModal({
 
   // Mode selection
   const [mode, setMode] = useState<AgentMode>("claude_code");
+  // Only admins may type an arbitrary custom provider/model; normal users pick from
+  // the available AI-Accounts (group-filtered) or connected OAuth harnesses.
+  const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
 
   // Autonomy level
   const [autonomyLevel, setAutonomyLevel] = useState("l3");
@@ -592,7 +596,9 @@ export function CreateAgentModal({
                           Account & Harness
                         </label>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {accountOptions.map((option) => {
+                            {/* Only show harnesses that are actually available:
+                                connected OAuth (Claude/Codex) + active AI-Accounts. */}
+                            {accountOptions.filter((o) => o.connected).map((option) => {
                               const Icon = option.mode === "codex_cli" ? Sparkles : option.mode === "claude_code" ? Zap : Plug;
                               const selected = selectedAccountKey === option.id;
                               return (
@@ -700,8 +706,8 @@ export function CreateAgentModal({
                         />
                       </div>
 
-                      {/* ===== CUSTOM LLM FIELDS (hidden in simple mode) ===== */}
-                      {!simpleMode && mode === "custom_llm" && aiAccountId === null && (
+                      {/* ===== CUSTOM LLM FIELDS (admins only; users pick an AI-Account) ===== */}
+                      {!simpleMode && isAdmin && mode === "custom_llm" && aiAccountId === null && (
                         <>
                           {/* Provider */}
                           <div>

@@ -364,7 +364,9 @@ async def list_agents(
 @router.post("/", response_model=AgentResponse, status_code=201)
 async def create_agent(
     data: AgentCreate,
-    user=Depends(require_manager),
+    # Any authenticated user may create agents; the per-role max_agents limit
+    # (enforced below) governs how many — VIEWER roles have a limit of 0.
+    user=Depends(require_auth),
     manager: AgentManager = Depends(_get_agent_manager),
     db: AsyncSession = Depends(get_db),
 ):
