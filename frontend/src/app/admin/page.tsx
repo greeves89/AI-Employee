@@ -114,7 +114,7 @@ export default function AdminPage() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const { agents: a } = await api.getAgents();
+      const { agents: a } = await api.getAgents("all");
       setAgents(a);
     } catch {
       // ignore

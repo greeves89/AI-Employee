@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.63.2] — 2026-06-24
+
+### Fixed
+- **Persönliche Agents-Seite (Seitenmenü) zeigt nur eigene Agents — auch für Admins.** Bisher sah ein Admin im Seitenmenü → Agents ALLE Agents (auch die anderer User). Jetzt ist die Liste „own"-scoped (eigene + ungebundene + geteilte). Der globale Blick bleibt die **Admin-Konsole → All Agents** (`scope=all`). Neuer Query-Param `GET /agents/?scope=own|all`.
+
 ## [1.63.0] — 2026-06-24
 
 ### Added

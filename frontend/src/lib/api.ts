@@ -41,8 +41,8 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
 }
 
 // Agents
-export async function getAgents(): Promise<{ agents: Agent[]; total: number }> {
-  return fetchJSON(`${getBase()}/agents/`);
+export async function getAgents(scope: "own" | "all" = "own"): Promise<{ agents: Agent[]; total: number }> {
+  return fetchJSON(`${getBase()}/agents/?scope=${scope}`);
 }
 
 export async function getAgent(id: string): Promise<Agent> {

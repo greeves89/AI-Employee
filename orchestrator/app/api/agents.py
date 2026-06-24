@@ -293,6 +293,7 @@ async def poll_reply(
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
     lite: bool = False,
+    scope: str = "own",
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
@@ -300,8 +301,11 @@ async def list_agents(
     from app.models.user import UserRole
 
     agents = await manager.list_agents()
-    # Non-admins only see their own agents (+ unowned + shared via AgentAccess)
-    if user.role != UserRole.ADMIN:
+    # Personal view (default): everyone — INCLUDING admins — sees only their own
+    # agents (+ unowned + shared). The global "all agents" view is the Admin-Konsole,
+    # which passes scope=all (admins only).
+    is_admin = getattr(user, "role", None) == UserRole.ADMIN
+    if not (is_admin and scope == "all"):
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
