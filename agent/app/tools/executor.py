@@ -370,7 +370,9 @@ class ToolExecutor:
         if not command:
             return "Error: No command provided"
 
-        timeout = min(params.get("timeout", 30), 300)
+        # Default 120s (was 30s — too short for video renders, builds, installs),
+        # hard cap 600s. The model can request a longer timeout up to the cap.
+        timeout = min(params.get("timeout", 120), 600)
         policy_effect, policy_reason = await _evaluate_command_policy(command)
         if policy_effect == "blocked":
             return (
@@ -420,7 +422,12 @@ class ToolExecutor:
                 process.kill()
             except ProcessLookupError:
                 pass
-            return f"Error: Command timed out after {timeout}s"
+            hint = (
+                f" If this was a long-running build/render that just needs more time, "
+                f"re-run it with a higher timeout, e.g. timeout={min(timeout * 2, 600)} (max 600s)."
+                if timeout < 600 else ""
+            )
+            return f"Error: Command timed out after {timeout}s.{hint}"
 
     async def _request_command_policy_approval(
         self,

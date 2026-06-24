@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     agent_image: str = "ai-employee-agent:latest"
     agent_network: str = "ai-employee-network"
     max_agents: int = 10
-    agent_memory_limit: str = "4g"
+    agent_memory_limit: str = "8g"  # 8g: video renders/builds need >4g (4g forces low-memory render, 1 worker, slow)
     agent_cpu_quota: int = 200000  # 2 CPUs
     agent_workspace_size_gb: float = 10.0
     # Admin-defined mount catalog: newline-separated entries

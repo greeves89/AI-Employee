@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.66.0] — 2026-06-24
+
+### Fixed
+- **Lange Befehle (Video-Render, Builds, Installs) wurden nach 30 s abgewürgt.** Der Bash-Tool-Default-Timeout war **30 s** — ein HyperFrames-Render dauert aber ~76 s (Low-Memory, 1 Worker) → „Command timed out", der Agent dachte „geht nicht" und brach ab. **Default jetzt 120 s, Max 600 s** (Modell kann pro Befehl höher anfordern); Timeout-Fehlermeldung weist auf höheren Timeout hin.
+- **Agent-Memory 4g → 8g.** Mit 4 GB erzwingt der Renderer „low-memory profile" (1 Worker, langsam). 8 GB nutzt mehr Worker → schnellere, zuverlässigere Renders. Greift bei Agent-Recreate/Update.
+
 ## [1.65.1] — 2026-06-24
 
 ### Fixed
