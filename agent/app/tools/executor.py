@@ -590,11 +590,18 @@ class ToolExecutor:
 
         if not data:
             return "Error: image is empty"
-        if media_type not in multimodal.SUPPORTED_MEDIA_TYPES:
+        # Normalize to a guaranteed-supported format from the REAL bytes (not the
+        # filename/header). SVG → PNG, other raster → PNG. On failure, return a
+        # tool error so the agent continues instead of 400-ing the next LLM call.
+        normalized = multimodal.normalize_image(data)
+        if normalized is None:
             return (
-                f"Error: unsupported image type '{media_type}'. "
-                f"Supported: {', '.join(sorted(multimodal.SUPPORTED_MEDIA_TYPES))}"
+                f"Error: '{source_label}' is not a usable image for vision — the bytes are "
+                f"not png/jpeg/gif/webp and could not be converted (likely an SVG that failed "
+                f"to render, an HTML error page, or a corrupt file). Skip it, or fetch/convert "
+                f"a JPG/PNG version (e.g. with the bash tool). Continuing without this image."
             )
+        data, media_type = normalized
         if len(data) > multimodal.MAX_IMAGE_BYTES:
             return (
                 f"Error: image is {len(data) // 1024} KB, exceeds the "
@@ -629,14 +636,16 @@ class ToolExecutor:
         except Exception as e:
             return f"Error reading image: {e}"
 
-        media_type = multimodal.guess_media_type(resolved)
         if not data:
             return "Error: image is empty"
-        if media_type not in multimodal.SUPPORTED_MEDIA_TYPES:
+        normalized = multimodal.normalize_image(data)
+        if normalized is None:
             return (
-                f"Error: unsupported image type '{media_type}'. "
-                f"Supported: {', '.join(sorted(multimodal.SUPPORTED_MEDIA_TYPES))}"
+                f"Error: '{os.path.basename(resolved)}' is not a usable image (bytes are not "
+                f"png/jpeg/gif/webp and could not be converted). Convert it to PNG/JPG first "
+                f"(e.g. with the bash tool), then present that."
             )
+        data, media_type = normalized
         if len(data) > multimodal.MAX_IMAGE_BYTES:
             return (
                 f"Error: image is {len(data) // 1024} KB, exceeds the "

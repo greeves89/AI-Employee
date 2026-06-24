@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.68.1] — 2026-06-24
+
+### Fixed
+- **Ein einzelnes nicht-unterstütztes Bild (z.B. SVG-Logo) killte die ganze Task mit `API error 400: invalid_image_format`.** Beim Video-/Präsentations-Bau lud der Agent Bilder aus dem Netz; `view_image` bestimmte den Bildtyp nur aus der **Dateiendung/Content-Type** (`default="image/jpeg"`), nicht aus dem echten Inhalt. Eine `logo.svg` wurde so als „image/jpeg" an die Vision-API geschickt → 400 → Abbruch der kompletten Aufgabe. Behoben mit zwei Schichten:
+  - **Tool-Ebene** (`view_image`/`present_image`): echtes Format aus **Magic-Bytes** erkennen, **SVG → PNG rastern** (cairosvg + libcairo2 — Logos werden so sogar nutzbar), andere Rasterformate (bmp/tiff/ico/…) via Pillow → PNG. Lässt sich ein Bild nicht nutzen (HTML-Fehlerseite, korrupt) → **Tool gibt einen Text-Fehler zurück und der Agent macht weiter**, statt abzustürzen.
+  - **Provider-Ebene** (Sicherheitsnetz): vor jedem OpenAI/Azure-Call werden alle Bild-Blöcke **re-gesnifft**; mismatchte/unsupported Blöcke werden **gedroppt** (und falsch gelabelte echte Bilder korrigiert) — egal aus welcher Quelle, ein kaputtes Bild kann nie wieder die ganze Completion 400en.
+  - Neue Dependency `cairosvg>=2.7` im Agent-Image.
+
+---
+
 ## [1.68.0] — 2026-06-24
 
 ### Added
