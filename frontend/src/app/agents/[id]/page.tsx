@@ -581,43 +581,105 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
 }
 
 function AgentSecondBrains({ agentId }: { agentId: string }) {
-  const [brains, setBrains] = useState<SecondBrain[]>([]);
+  const [allBrains, setAllBrains] = useState<SecondBrain[]>([]);
+  const [catalog, setCatalog] = useState<import("@/lib/api").MountCatalogEntry[]>([]);
+  const [assigned, setAssigned] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [browsing, setBrowsing] = useState<SecondBrain | null>(null);
 
   useEffect(() => {
-    Promise.all([api.getAgentMounts(agentId), api.listSecondBrains()])
-      .then(([m, all]) => {
-        const labels = new Set(m.mounts ?? []);
-        setBrains(all.filter((b) => labels.has(b.label)));
+    Promise.all([api.getAgentMountCatalog(), api.getAgentMounts(agentId), api.listSecondBrains()])
+      .then(([cat, ag, all]) => {
+        setCatalog((cat.mounts ?? []).filter((e) => e.label.startsWith("brain-")));
+        setAssigned(ag.mounts ?? []);
+        setAllBrains(all);
       })
-      .catch(() => setBrains([]))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [agentId]);
 
+  const brainByLabel = (label: string) => allBrains.find((b) => b.label === label);
+  const toggle = (label: string) => {
+    setAssigned((prev) => (prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]));
+    setSaved(false);
+  };
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.updateAgentMounts(agentId, assigned); // preserves non-brain mounts (kept in `assigned`)
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <div className="h-20 animate-pulse rounded-xl bg-foreground/[0.04]" />;
-  if (brains.length === 0)
+  if (catalog.length === 0)
     return (
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-6 text-center text-sm text-muted-foreground">
-        Diesem Agent ist kein Second Brain zugewiesen. Ein Admin weist Brains über die Rolle/Gruppe oder die Mount-Rechte zu.
+        Für diesen Agenten sind (noch) keine Second Brains freigegeben. Ein Admin gibt sie unter
+        <b> Admin → Rollen → Mountshares</b> (pro Gruppe) oder <b>Admin → Users → Mount-Rechte</b> (pro Person) frei.
       </div>
     );
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">Zugewiesene Second Brains — klicken zum Ansehen / Bearbeiten der Inhalte.</p>
-      {brains.map((b) => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Aktiviere ein Second Brain, um dem Agenten Zugriff zu geben. Änderungen starten den Agenten neu.
+        </p>
         <button
-          key={b.id}
-          onClick={() => setBrowsing(b)}
-          className="flex w-full items-center gap-3 rounded-xl border border-foreground/[0.06] bg-card/80 p-4 text-left hover:bg-foreground/[0.04]"
+          onClick={save}
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
-          <Brain className="h-4 w-4 shrink-0 text-primary" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{b.name}</p>
-            <p className="truncate text-[11px] text-muted-foreground/60">{b.container_path} · {b.default_mode}</p>
-          </div>
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : null}
+          {saved ? "Gespeichert & Neustart" : "Speichern & Neu starten"}
         </button>
-      ))}
+      </div>
+
+      <div className="space-y-2">
+        {catalog.map((entry) => {
+          const enabled = assigned.includes(entry.label);
+          const b = brainByLabel(entry.label);
+          return (
+            <div
+              key={entry.label}
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-all",
+                enabled ? "border-blue-500/20 bg-blue-500/5" : "border-foreground/[0.06] bg-card/80 hover:bg-foreground/[0.04]"
+              )}
+            >
+              <button onClick={() => toggle(entry.label)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <div className={cn(
+                  "h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-all",
+                  enabled ? "bg-blue-500 border-blue-500" : "border-foreground/[0.25]"
+                )}>
+                  {enabled && <Check className="h-2.5 w-2.5 text-white" />}
+                </div>
+                <Brain className={cn("h-4 w-4 shrink-0", enabled ? "text-blue-400" : "text-muted-foreground/50")} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{b?.name ?? entry.label}</p>
+                  <p className="truncate text-[11px] text-muted-foreground/60 font-mono">{entry.container_path} · {entry.mode}</p>
+                </div>
+              </button>
+              {b && (
+                <button
+                  onClick={() => setBrowsing(b)}
+                  className="shrink-0 rounded-lg border border-foreground/[0.1] px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
+                >
+                  Inhalt
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
       {browsing && <BrainBrowser brain={browsing} onClose={() => setBrowsing(null)} />}
     </div>
   );
