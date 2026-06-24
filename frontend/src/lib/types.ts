@@ -68,6 +68,7 @@ export interface SecondBrain {
   slug: string;
   container_path: string;   // where it mounts in agents, e.g. /mnt/brains/it_operations
   default_mode: "ro" | "rw";
+  standard: "freeform" | "wikimedia" | "it_support";
   description: string | null;
   is_active: boolean;
   created_at: string;

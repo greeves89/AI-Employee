@@ -32,16 +32,45 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/brains", tags=["brains"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-_INDEX_TEMPLATE = (
-    "# {name} — Second Brain\n\n"
-    "Geteilte Wissensablage der Abteilung **{name}** (Wikimedia-artig).\n\n"
-    "## Konventionen\n"
-    "- Eine `.md` pro Thema, sprechender Dateiname, Schlagworte/Fehlercodes im Klartext.\n"
-    "- Verlinkung zwischen Artikeln mit `[[Titel]]`.\n"
-    "- Ordner nach Bereich (z.B. `Drucker/`, `Netzwerk/`, `Zugaenge/`).\n\n"
-    "## Index\n"
-    "- (hier Artikel verlinken)\n"
+
+# Vault formatting standards scaffolded on creation.
+STANDARDS = ("freeform", "wikimedia", "it_support")
+
+_INDEX = {
+    "freeform": "# {name} — Second Brain\n\nGeteilte Wissensablage. Frei organisierbar.\n\n## Index\n- (Artikel hier verlinken)\n",
+    "wikimedia": "# {name} — Second Brain\n\nGeteilte Wissensablage (Wikimedia-Stil). Siehe `CONVENTIONS.md`.\n\n## Index\n- (Artikel mit `[[Titel]]` verlinken)\n",
+    "it_support": "# {name} — IT-Support Wissensbasis\n\nRunbooks & Loesungen, sortiert nach Bereich. Siehe `CONVENTIONS.md` und die Vorlage `Drucker/_template.md`.\n\n## Bereiche\n- [[Drucker]]\n- [[Netzwerk]]\n- [[Zugaenge]]\n- [[Software]]\n- [[Hardware]]\n",
+}
+
+_CONVENTIONS = {
+    "freeform": "# Konventionen\n\nKeine erzwungene Struktur. Sprechende Dateinamen, Querverweise mit `[[Titel]]`, Schlagworte/Fehlercodes im Klartext (damit `grep` sie findet).\n",
+    "wikimedia": "# Konventionen (Wikimedia-Stil)\n\n- Eine `.md` pro Thema, sprechender Dateiname.\n- Themen-Ordner; `index.md` verlinkt die Artikel.\n- Querverweise mit `[[Titel]]`.\n- Schlagworte/Fehlercodes im Klartext (fuer `grep`).\n",
+    "it_support": "# Konventionen (IT-Support / Runbooks)\n\n- Ordner nach Bereich: `Drucker/`, `Netzwerk/`, `Zugaenge/`, `Software/`, `Hardware/`.\n- Ein Artikel pro Problem/Fehlercode; Dateiname = Fehlercode oder kurzes Symptom.\n- **Artikel-Struktur** (siehe `Drucker/_template.md`): `## Symptom` -> `## Ursache` -> `## Loesung` (Schritt-fuer-Schritt) -> `## Hinweise`.\n- Fehlercodes/Modelle/Hostnamen IM KLARTEXT (damit `grep` exakt trifft).\n- Querverweise mit `[[Titel]]`.\n",
+}
+
+_FOLDERS = {
+    "freeform": [],
+    "wikimedia": [],
+    "it_support": ["Drucker", "Netzwerk", "Zugaenge", "Software", "Hardware"],
+}
+
+_IT_TEMPLATE = (
+    "# <Fehlercode oder kurzes Symptom>\n\n"
+    "## Symptom\n<Was meldet/sieht der Nutzer? Fehlercode im Klartext.>\n\n"
+    "## Ursache\n<Woran liegt es?>\n\n"
+    "## Loesung\n1. <Schritt>\n2. <Schritt>\n\n"
+    "## Hinweise\n<Edge-Cases, verwandte Artikel [[...]]>\n"
 )
+
+
+def _seed_file(path: str, content: str, mode: int = 0o666) -> None:
+    if not os.path.exists(path):
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            os.chmod(path, mode)
+        except OSError as e:
+            log.warning("Could not write %s: %s", path, e)
 
 
 def _require_admin(user) -> None:
@@ -55,12 +84,14 @@ def _slugify(raw: str) -> str:
     return s.strip("-_")
 
 
-def _provision_vault(host_path: str, name: str) -> None:
-    """Create the vault dir, init a LOCAL git repo (no remote) and seed index.md.
+def _provision_vault(host_path: str, name: str, standard: str = "freeform") -> None:
+    """Create the vault dir, scaffold it per the chosen standard (folders +
+    index.md + CONVENTIONS.md), and init a LOCAL git repo (no remote).
 
     Best-effort: a missing ``git`` binary or a non-writable base must not break
     brain creation — the mount still works, only file history is unavailable.
     """
+    standard = standard if standard in STANDARDS else "freeform"
     base = os.path.realpath(settings.secondbrain_base)
     real = os.path.realpath(host_path)
     if real != base and not real.startswith(base + os.sep):
@@ -68,20 +99,24 @@ def _provision_vault(host_path: str, name: str) -> None:
     os.makedirs(real, exist_ok=True)
     # The orchestrator runs as root but agent containers run as a non-root user
     # (uid 1000). Make the vault writable by the agent so rw brains work, and the
-    # seeded index.md editable. .git stays root-owned (the host auto-commit timer
+    # seeded files editable. .git stays root-owned (the host auto-commit timer
     # runs as root). World-writable is acceptable for an internal shared vault.
     try:
         os.chmod(real, 0o777)
     except OSError as e:
         log.warning("Could not chmod vault %s: %s", real, e)
-    index = os.path.join(real, "index.md")
-    if not os.path.exists(index):
+    # Scaffold folders for the standard
+    for folder in _FOLDERS.get(standard, []):
+        d = os.path.join(real, folder)
+        os.makedirs(d, exist_ok=True)
         try:
-            with open(index, "w", encoding="utf-8") as fh:
-                fh.write(_INDEX_TEMPLATE.format(name=name))
-            os.chmod(index, 0o666)
-        except OSError as e:
-            log.warning("Could not write index.md for vault %s: %s", real, e)
+            os.chmod(d, 0o777)
+        except OSError:
+            pass
+    _seed_file(os.path.join(real, "index.md"), _INDEX[standard].format(name=name))
+    _seed_file(os.path.join(real, "CONVENTIONS.md"), _CONVENTIONS[standard])
+    if standard == "it_support":
+        _seed_file(os.path.join(real, "Drucker", "_template.md"), _IT_TEMPLATE)
     if not os.path.isdir(os.path.join(real, ".git")):
         try:
             env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
@@ -113,6 +148,7 @@ class BrainCreate(BaseModel):
     name: str
     slug: str | None = None
     default_mode: str = "rw"  # "ro" | "rw"
+    standard: str = "freeform"  # freeform | wikimedia | it_support
     description: str | None = None
 
 
@@ -130,6 +166,7 @@ class BrainResponse(BaseModel):
     slug: str
     container_path: str  # host_path is intentionally NOT exposed
     default_mode: str
+    standard: str
     description: str | None
     is_active: bool
     created_at: datetime
@@ -140,6 +177,7 @@ def _to_response(b: SecondBrain) -> BrainResponse:
     return BrainResponse(
         id=b.id, label=b.label, name=b.name, slug=b.slug,
         container_path=b.container_path, default_mode=b.default_mode,
+        standard=getattr(b, "standard", "freeform") or "freeform",
         description=b.description, is_active=b.is_active,
         created_at=b.created_at, updated_at=b.updated_at,
     )
@@ -177,11 +215,12 @@ async def create_brain(
     host_path = f"{settings.secondbrain_base.rstrip('/')}/{slug}"
     container_path = f"{settings.secondbrain_container_base.rstrip('/')}/{slug}"
 
+    standard = body.standard if body.standard in STANDARDS else "freeform"
     brain = SecondBrain(
         label=label, name=body.name.strip(), slug=slug,
         host_path=host_path, container_path=container_path,
-        default_mode=body.default_mode, description=body.description,
-        created_by=str(user.id),
+        default_mode=body.default_mode, standard=standard,
+        description=body.description, created_by=str(user.id),
     )
     db.add(brain)
     try:
@@ -191,7 +230,7 @@ async def create_brain(
         raise HTTPException(status_code=409, detail="A brain with this name/slug already exists")
     await db.refresh(brain)
 
-    _provision_vault(host_path, brain.name)
+    _provision_vault(host_path, brain.name, standard)
     await _audit(db, AuditEventType.BRAIN_CREATED, brain, user.id)
     return _to_response(brain)
 
@@ -240,3 +279,97 @@ async def delete_brain(
     await db.delete(brain)
     await db.commit()
     return {"ok": True, "id": brain_id}
+
+
+# ── Vault file browser (admin-only): view + edit the Markdown content ──
+
+def _vault_path(brain: SecondBrain, rel_path: str) -> str:
+    """Resolve a vault-relative path to an absolute host path, jailed to the vault
+    and never touching the .git directory."""
+    base = os.path.realpath(brain.host_path)
+    target = os.path.realpath(os.path.join(base, (rel_path or "").lstrip("/")))
+    if target != base and not target.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="path escapes the vault")
+    if ".git" in os.path.relpath(target, base).split(os.sep):
+        raise HTTPException(status_code=400, detail=".git is not accessible")
+    return target
+
+
+class BrainFileWrite(BaseModel):
+    path: str
+    content: str
+
+
+@router.get("/{brain_id}/tree")
+async def brain_tree(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Flat, sorted list of folders + files in the vault (excluding .git)."""
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    base = os.path.realpath(brain.host_path)
+    entries: list[dict] = []
+    if os.path.isdir(base):
+        for root, dirs, files in os.walk(base):
+            dirs[:] = sorted(d for d in dirs if d != ".git")
+            for d in dirs:
+                rel = os.path.relpath(os.path.join(root, d), base)
+                entries.append({"path": rel, "name": d, "type": "dir"})
+            for f in sorted(files):
+                rel = os.path.relpath(os.path.join(root, f), base)
+                entries.append({"path": rel, "name": f, "type": "file"})
+    entries.sort(key=lambda e: e["path"].lower())
+    return {"entries": entries, "standard": getattr(brain, "standard", "freeform")}
+
+
+@router.get("/{brain_id}/file")
+async def brain_read_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    target = _vault_path(brain, path)
+    if not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail="File not found")
+    if os.path.getsize(target) > 2_000_000:
+        raise HTTPException(status_code=413, detail="File too large to view")
+    with open(target, encoding="utf-8", errors="replace") as fh:
+        content = fh.read()
+    return {"path": path, "content": content}
+
+
+@router.put("/{brain_id}/file")
+async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    target = _vault_path(brain, body.path)
+    if target == os.path.realpath(brain.host_path) or os.path.isdir(target):
+        raise HTTPException(status_code=400, detail="path must be a file")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(body.content)
+    try:
+        os.chmod(target, 0o666)
+    except OSError:
+        pass
+    return {"ok": True, "path": body.path}
+
+
+@router.delete("/{brain_id}/file")
+async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    target = _vault_path(brain, path)
+    if os.path.isfile(target):
+        os.remove(target)
+    elif os.path.isdir(target):
+        if os.listdir(target):
+            raise HTTPException(status_code=400, detail="folder not empty")
+        os.rmdir(target)
+    else:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"ok": True, "path": path}

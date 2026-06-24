@@ -879,8 +879,31 @@ export interface SecondBrainPayload {
   name: string;
   slug?: string;
   default_mode?: "ro" | "rw";
+  standard?: "freeform" | "wikimedia" | "it_support";
   description?: string | null;
   is_active?: boolean;
+}
+
+export interface BrainFileEntry {
+  path: string;
+  name: string;
+  type: "dir" | "file";
+}
+
+export async function getBrainTree(id: number): Promise<{ entries: BrainFileEntry[]; standard: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/tree`);
+}
+
+export async function getBrainFile(id: number, path: string): Promise<{ path: string; content: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/file?path=${encodeURIComponent(path)}`);
+}
+
+export async function saveBrainFile(id: number, path: string, content: string): Promise<{ ok: boolean; path: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/file`, { method: "PUT", body: JSON.stringify({ path, content }) });
+}
+
+export async function deleteBrainFile(id: number, path: string): Promise<{ ok: boolean; path: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/file?path=${encodeURIComponent(path)}`, { method: "DELETE" });
 }
 
 export async function listSecondBrains(activeOnly = false): Promise<SecondBrain[]> {

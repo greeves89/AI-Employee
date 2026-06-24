@@ -27,6 +27,8 @@ class SecondBrain(Base):
     host_path: Mapped[str] = mapped_column(String, nullable=False)        # /srv/secondbrain/<slug>  (never exposed to UI)
     container_path: Mapped[str] = mapped_column(String, nullable=False)   # /mnt/brains/<slug>
     default_mode: Mapped[str] = mapped_column(String, nullable=False, default="rw")  # "ro" | "rw" — upper bound; per-user/role narrows it
+    # Vault formatting standard scaffolded on creation: wikimedia | it_support | freeform
+    standard: Mapped[str] = mapped_column(String, nullable=False, default="freeform", server_default="freeform")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)

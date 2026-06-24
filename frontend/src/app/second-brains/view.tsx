@@ -1,20 +1,30 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, Power } from "lucide-react";
+import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, Power, FolderOpen } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { SecondBrain } from "@/lib/types";
+import { BrainBrowser } from "./brain-browser";
+
+type Standard = "freeform" | "wikimedia" | "it_support";
+
+const STANDARDS: { value: Standard; label: string; hint: string }[] = [
+  { value: "it_support", label: "IT-Support / Runbooks", hint: "Ordner Drucker/Netzwerk/… + Symptom→Ursache→Lösung-Vorlage" },
+  { value: "wikimedia", label: "Wikimedia-Stil", hint: "Themen-Ordner + index.md + [[wikilinks]]" },
+  { value: "freeform", label: "Freiform", hint: "Nur index.md, frei organisierbar" },
+];
 
 type FormState = {
   name: string;
   slug: string;
   default_mode: "ro" | "rw";
+  standard: Standard;
   description: string;
 };
 
-const EMPTY_FORM: FormState = { name: "", slug: "", default_mode: "rw", description: "" };
+const EMPTY_FORM: FormState = { name: "", slug: "", default_mode: "rw", standard: "it_support", description: "" };
 
 function slugify(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "").replace(/^[-_]+|[-_]+$/g, "");
@@ -45,6 +55,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
   const [slugTouched, setSlugTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [browsing, setBrowsing] = useState<SecondBrain | null>(null);
 
   const showToast = (type: "success" | "error", message: string) => setToast({ type, message });
 
@@ -62,7 +73,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
 
   const openCreate = () => { setForm(EMPTY_FORM); setSlugTouched(false); setEditingId(null); setShowForm(true); };
   const openEdit = (b: SecondBrain) => {
-    setForm({ name: b.name, slug: b.slug, default_mode: b.default_mode, description: b.description || "" });
+    setForm({ name: b.name, slug: b.slug, default_mode: b.default_mode, standard: b.standard, description: b.description || "" });
     setSlugTouched(true);
     setEditingId(b.id);
     setShowForm(true);
@@ -92,6 +103,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
           name: form.name.trim(),
           slug,
           default_mode: form.default_mode,
+          standard: form.standard,
           description: form.description.trim() || null,
         });
         showToast("success", "Second Brain erstellt");
@@ -193,6 +205,19 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="optional" />
               </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
+                  Vault-Standard {editingId && <span className="text-muted-foreground/40">(beim Anlegen festgelegt)</span>}
+                </label>
+                <select className={cn(inputCls, editingId && "opacity-60")} value={form.standard} disabled={!!editingId}
+                  onChange={(e) => setForm({ ...form, standard: e.target.value as Standard })}>
+                  {STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+                <p className="text-[10px] text-muted-foreground/40 mt-1">
+                  {STANDARDS.find((s) => s.value === form.standard)?.hint}
+                  {!editingId && " — Ordner + CONVENTIONS.md werden beim Speichern angelegt."}
+                </p>
+              </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setShowForm(false)}
@@ -221,7 +246,8 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                 "rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex items-center gap-4",
                 !b.is_active && "opacity-50"
               )}>
-                <div className="flex-1 min-w-0">
+                <button onClick={() => setBrowsing(b)} title="Inhalt öffnen"
+                  className="flex-1 min-w-0 text-left rounded-lg -m-1 p-1 hover:bg-foreground/[0.04]">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate">{b.name}</span>
                     <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-400">
@@ -233,11 +259,18 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                     )}>
                       {b.default_mode}
                     </span>
+                    <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground/70">
+                      {b.standard}
+                    </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
                     {b.container_path}{b.description ? ` — ${b.description}` : ""}
                   </p>
-                </div>
+                </button>
+                <button onClick={() => setBrowsing(b)} title="Inhalt ansehen/bearbeiten"
+                  className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
+                  <FolderOpen className="h-4 w-4" />
+                </button>
                 <button onClick={() => toggleActive(b)} title={b.is_active ? "Deaktivieren" : "Aktivieren"}
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", b.is_active ? "text-emerald-400" : "text-muted-foreground")}>
                   <Power className="h-4 w-4" />
@@ -254,6 +287,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
           </div>
         )}
       </div>
+      {browsing && <BrainBrowser brain={browsing} onClose={() => setBrowsing(null)} />}
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>
   );
