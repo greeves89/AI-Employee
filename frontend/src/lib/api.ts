@@ -637,6 +637,27 @@ export async function updateMemory(
   });
 }
 
+export interface BucketUsage {
+  agent_id: string;
+  room: string | null;
+  category: string | null;
+  count: number;
+  chars: number;
+  budget: number;
+  utilization: number;
+}
+
+export async function getMemoryBucketUsage(
+  agentId: string,
+  opts: { room?: string | null; category?: string | null } = {},
+): Promise<BucketUsage> {
+  const params = new URLSearchParams();
+  if (opts.room) params.set("room", opts.room);
+  if (opts.category) params.set("category", opts.category);
+  const qs = params.toString() ? `?${params}` : "";
+  return fetchJSON(`${getBase()}/memory/bucket-usage/${agentId}${qs}`);
+}
+
 export async function deleteMemory(memoryId: number): Promise<void> {
   await fetchJSON(`${getBase()}/memory/${memoryId}`, { method: "DELETE" });
 }

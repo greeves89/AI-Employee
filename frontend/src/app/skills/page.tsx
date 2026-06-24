@@ -720,7 +720,10 @@ export default function SkillsPage() {
                 return (
                   <div
                     key={`${skill.repo}-${skill.name}`}
-                    className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex flex-col gap-3 cursor-pointer hover:border-foreground/[0.12] transition-all group"
+                    className={cn(
+                      "rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex flex-col gap-3 cursor-pointer hover:border-foreground/[0.12] transition-all group",
+                      (skill as { status?: string }).status === "stale" && "opacity-60",
+                    )}
                     onClick={() => {
                       if (skill.type === "db" && skill.id) {
                         setDetailSkill(skill as unknown as MarketplaceSkill);
@@ -740,6 +743,14 @@ export default function SkillsPage() {
                       <div className="flex items-center gap-1.5">
                         {skill.type === "db" && skill.id && (
                           <span className="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">Details →</span>
+                        )}
+                        {(skill as { status?: string }).status === "stale" && (
+                          <span
+                            className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400"
+                            title="Marked stale by the skill curator — unused recently. Will be archived if not used again."
+                          >
+                            Stale
+                          </span>
                         )}
                         <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", cfg.color)}>
                           {cfg.label}

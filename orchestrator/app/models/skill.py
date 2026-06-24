@@ -20,6 +20,7 @@ from app.models.base import Base, TimestampMixin
 class SkillStatus(str, enum.Enum):
     DRAFT = "draft"          # Agent-proposed or freshly imported, needs review
     ACTIVE = "active"        # Approved and available in marketplace
+    STALE = "stale"          # Curator: unused for STALE_THRESHOLD_DAYS, hidden but not deleted
     ARCHIVED = "archived"    # Deprecated, no longer assignable
 
 
@@ -71,6 +72,12 @@ class Skill(Base, TimestampMixin):
 
     # Versioning
     current_version: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Curator (Hermes-inspired): track staleness based on last task usage.
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None, index=True,
+    )
+    curator_notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
     # A/B validation after auto-improvement
     improvement_status: Mapped[str | None] = mapped_column(

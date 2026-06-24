@@ -29,6 +29,16 @@ class UserProfile(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
+    # Peer Card (Honcho-inspired): compact cross-agent snapshot built from
+    # high-confidence memories across ALL of the user's agents. Capped to
+    # PEER_CARD_MAX_CHARS (2200) so it fits in every agent's system prompt.
+    # JSON: {"facts": [{"text": str, "confidence": float, "agents": [str]}],
+    #        "generated_at": iso, "chars": int}
+    peer_card: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    peer_card_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
 
 class UserProfileEvent(Base):
     """Audit trail for profile changes — tracks what changed, why, and when."""

@@ -364,6 +364,29 @@ async def reject_skill(
     return {"id": skill_id, "status": "archived"}
 
 
+@router.post("/marketplace/curator/run")
+async def run_skill_curator(
+    dry_run: bool = False,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the Hermes-inspired skill curator: active → stale → archived.
+
+    With ``dry_run=true``, returns the IDs that *would* be moved but does
+    not commit. Used by the scheduled curator job and ad-hoc admin runs.
+    """
+    from app.services.skill_curator import SkillCurator
+    report = await SkillCurator(db).run(dry_run=dry_run)
+    return {
+        "dry_run": dry_run,
+        "scanned": report.scanned,
+        "moved_to_stale": report.moved_to_stale,
+        "moved_to_archived": report.moved_to_archived,
+        "refreshed_to_active": report.refreshed_to_active,
+        "summary": report.summary(),
+    }
+
+
 # --- Skill improvement proposal review ---
 
 @router.get("/marketplace/improvements/pending")

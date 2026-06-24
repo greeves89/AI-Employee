@@ -70,6 +70,14 @@ class AgentMemory(Base):
     # "transient" (exponential decay) vs "permanent" (logarithmic decay).
     tag_type: Mapped[str] = mapped_column(String(20), nullable=False, default="permanent")
 
+    # Memory caps (Hermes-inspired): set by memory_caps.enforce() when a row
+    # is evicted to keep the bucket under its char budget. Different from
+    # superseded_by (which points at a replacement); evicted rows have no
+    # replacement but are still kept in the audit trail.
+    evicted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None, index=True,
+    )
+
     # NOTE: `value_hash` is a GENERATED STORED column in Postgres
     # (md5(coalesce(content, ''))). It's used by the UNIQUE index but
     # intentionally NOT mapped to the ORM — SQLAlchemy would otherwise

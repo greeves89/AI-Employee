@@ -1044,6 +1044,14 @@ Womit sollen wir starten?
     improvement_engine = ImprovementEngine()
     improvement_task = asyncio.create_task(improvement_engine.run())
 
+    # Start skill curator (Hermes-inspired daily active→stale→archived sweep)
+    from app.services.skill_curator_runner import SkillCuratorRunner
+    from app.db.session import async_session_factory as _sf_curator
+
+    skill_curator_runner = SkillCuratorRunner(_sf_curator)
+    app.state.skill_curator_runner = skill_curator_runner
+    skill_curator_task = asyncio.create_task(skill_curator_runner.run())
+
     # Start self-test service (daily health checks + self-improvement)
     from app.services.self_test_service import SelfTestService
 
