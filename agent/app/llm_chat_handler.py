@@ -49,6 +49,9 @@ class LLMChatHandler:
         self._provider: BaseLLMProvider | None = None
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
+        # Execute MCP tool calls on the same client that ran discovery (shared
+        # registry) — otherwise every MCP call fails with "Unknown MCP tool".
+        self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None
         # Conversation history (in-memory, replaces --resume)
         self._history: list[ChatMessage] = []

@@ -70,6 +70,10 @@ class LLMRunner:
         self._provider: BaseLLMProvider | None = None
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
+        # The executor must call MCP tools on the SAME client that ran discovery —
+        # otherwise its lazily-created client has an empty registry and every MCP
+        # tool call fails with "Unknown MCP tool".
+        self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None
         self._context_window: int = 0
 
