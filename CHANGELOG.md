@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.56.1] — 2026-06-24
+
+### Fixed
+- **Second Brain vault permissions** — the orchestrator runs as root but agent containers run as uid 1000; a root-created vault dir (0755) was not writable by agents. New vaults are now created `0777` (and the seeded `index.md` `0666`) so read-write brains are actually writable by assigned agents. `.git` stays root-owned (the host auto-commit timer runs as root).
+
 ## [1.56.0] — 2026-06-24
 
 ### Added

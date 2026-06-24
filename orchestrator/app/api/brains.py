@@ -66,11 +66,20 @@ def _provision_vault(host_path: str, name: str) -> None:
     if real != base and not real.startswith(base + os.sep):
         raise HTTPException(status_code=400, detail="resolved path escapes the second-brain base")
     os.makedirs(real, exist_ok=True)
+    # The orchestrator runs as root but agent containers run as a non-root user
+    # (uid 1000). Make the vault writable by the agent so rw brains work, and the
+    # seeded index.md editable. .git stays root-owned (the host auto-commit timer
+    # runs as root). World-writable is acceptable for an internal shared vault.
+    try:
+        os.chmod(real, 0o777)
+    except OSError as e:
+        log.warning("Could not chmod vault %s: %s", real, e)
     index = os.path.join(real, "index.md")
     if not os.path.exists(index):
         try:
             with open(index, "w", encoding="utf-8") as fh:
                 fh.write(_INDEX_TEMPLATE.format(name=name))
+            os.chmod(index, 0o666)
         except OSError as e:
             log.warning("Could not write index.md for vault %s: %s", real, e)
     if not os.path.isdir(os.path.join(real, ".git")):
