@@ -105,11 +105,20 @@ async def list_ai_accounts(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List AI accounts (any authenticated user — needed to attach to agents)."""
+    """List AI accounts. Admins see all; non-admins see only the accounts their
+    group/role allows (custom_role.permissions.ai_account_ids; None = all)."""
     stmt = select(AIAccount).order_by(AIAccount.name)
     if active_only:
         stmt = stmt.where(AIAccount.is_active.is_(True))
     rows = (await db.execute(stmt)).scalars().all()
+
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        from app.core.permissions import get_effective_permissions
+        perms = await get_effective_permissions(user, db)
+        allowed = perms.get("ai_account_ids")
+        if allowed is not None:
+            allowed_set = set(allowed)
+            rows = [a for a in rows if a.id in allowed_set]
     return [_to_response(a) for a in rows]
 
 

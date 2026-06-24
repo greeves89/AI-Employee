@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.57.0] — 2026-06-24
+
+### Added
+- **Gruppen-basierte Rechte-Bündel (Custom Roles als Gruppen).** Eine Gruppe (Custom Role) kann jetzt Ressourcen direkt **vergeben** — ein User bekommt eine Gruppe und erbt alles, manuelle Einzelzuweisungen kommen additiv dazu (Union):
+  - **Second Brains / Mounts als Grant statt nur Filter** — `role.permissions.mount_labels` vergibt Zugriff; effektiver Zugriff = Gruppen-Grant ∪ per-User `user_mount_access`. Ein Brain einer Gruppe zuweisen genügt, damit alle Mitglieder es nutzen können.
+  - **AI-Accounts per Gruppe** — neuer Permission-Key `ai_account_ids`: nur freigegebene LLM-Accounts (und damit Modelle) sind für die Gruppe wähl- und nutzbar (`list_ai_accounts` gefiltert + Check bei Agent-Erstellung).
+  - **Keys/Secrets per Gruppe** — neuer Permission-Key `secret_ids`: die Gruppe sieht/nutzt nur freigegebene Keys (`list_secrets` gefiltert + Check bei Secret-Zuweisung).
+  - **Roles-UI** erweitert um Multi-Selects für **AI-Accounts (Konten)** und **Keys/Secrets** (neben den bestehenden für Mounts/Second Brains, LLM-Provider, Menü). Admins bleiben unbeschränkt.
+- Keys sind reine JSON-Felder in `custom_roles.permissions` → **keine DB-Migration** nötig.
+
+### Fixed
+- **Brain-Mount über die UI zuweisbar** — der `PATCH /agents/{id}/mounts`-Endpoint nutzte noch den statischen ENV-Katalog und kannte die DB-Second-Brains nicht (422 „Unknown mount label"). Nutzt jetzt den gemergten Katalog (`get_effective_catalog`).
+
 ## [1.56.3] — 2026-06-24
 
 ### Added

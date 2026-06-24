@@ -5,7 +5,9 @@ Permissions dict shape:
   "max_agents": int | None,            # None = unlimited
   "template_ids": list[int] | None,    # None = all
   "llm_providers": list[str] | None,   # None = all
-  "mount_labels": list[str] | None,    # None = inherit user_mount_access
+  "mount_labels": list[str] | None,    # None = inherit user_mount_access; listed labels are GRANTED to the group (union with per-user grants)
+  "ai_account_ids": list[int] | None,  # None = all AI accounts; listed accounts are the ones this group may use
+  "secret_ids": list[int] | None,      # None = all secrets; listed secrets are the ones this group may use
   "url_host_patterns": list[str] | None,
   "menu_paths": list[str] | None       # None = all
 }
@@ -24,6 +26,8 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "template_ids": None,
         "llm_providers": None,
         "mount_labels": None,
+        "ai_account_ids": None,
+        "secret_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -32,6 +36,8 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "template_ids": None,
         "llm_providers": None,
         "mount_labels": None,
+        "ai_account_ids": None,
+        "secret_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -40,6 +46,8 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "template_ids": None,
         "llm_providers": None,
         "mount_labels": None,
+        "ai_account_ids": None,
+        "secret_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -48,6 +56,8 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "template_ids": [],
         "llm_providers": [],
         "mount_labels": [],
+        "ai_account_ids": [],
+        "secret_ids": [],
         "url_host_patterns": [],
         "menu_paths": ["/dashboard", "/agents", "/tasks"],  # read-only views
     },
@@ -86,6 +96,8 @@ def _merge_defaults(p: dict[str, Any]) -> dict[str, Any]:
         "template_ids": None,
         "llm_providers": None,
         "mount_labels": None,
+        "ai_account_ids": None,
+        "secret_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     }
@@ -98,6 +110,20 @@ def can_use_template(permissions: dict, template_id: int | None) -> bool:
         return True
     allowed = permissions.get("template_ids")
     return allowed is None or template_id in allowed
+
+
+def can_use_ai_account(permissions: dict, account_id: int | None) -> bool:
+    if account_id is None:
+        return True
+    allowed = permissions.get("ai_account_ids")
+    return allowed is None or account_id in allowed
+
+
+def can_use_secret(permissions: dict, secret_id: int | None) -> bool:
+    if secret_id is None:
+        return True
+    allowed = permissions.get("secret_ids")
+    return allowed is None or secret_id in allowed
 
 
 def can_use_llm_provider(permissions: dict, provider_type: str | None) -> bool:

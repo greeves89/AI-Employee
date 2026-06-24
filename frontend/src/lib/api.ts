@@ -197,6 +197,8 @@ export interface RolePermissions {
   template_ids?: number[] | null;
   llm_providers?: string[] | null;
   mount_labels?: string[] | null;
+  ai_account_ids?: number[] | null;
+  secret_ids?: number[] | null;
   url_host_patterns?: string[] | null;
   menu_paths?: string[] | null;
 }

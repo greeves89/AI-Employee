@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { Loader2, Plus, Save, Shield, Trash2, Users } from "lucide-react";
 import * as api from "@/lib/api";
-import type { CustomRole, RolePermissions, MountCatalogEntry } from "@/lib/api";
-import type { AdminUser, AgentTemplate } from "@/lib/types";
+import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry } from "@/lib/api";
+import type { AdminUser, AgentTemplate, AIAccount } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
 
@@ -51,6 +51,11 @@ function toggleListValue(list: string[] | null | undefined, value: string): stri
   return current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
 }
 
+function toggleNumberValue(list: number[] | null | undefined, value: number): number[] {
+  const current = list ?? [];
+  return current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+}
+
 interface RoleDraft {
   id?: number;
   name: string;
@@ -59,6 +64,8 @@ interface RoleDraft {
   template_ids: string;
   llm_providers: string[] | null;
   mount_labels: string[] | null;
+  ai_account_ids: number[] | null;
+  secret_ids: number[] | null;
   url_host_patterns: string;
   menu_paths: string[] | null;
 }
@@ -73,6 +80,8 @@ function draftFromRole(role?: CustomRole): RoleDraft {
     template_ids: listToText(p.template_ids),
     llm_providers: p.llm_providers ?? null,
     mount_labels: p.mount_labels ?? null,
+    ai_account_ids: p.ai_account_ids ?? null,
+    secret_ids: p.secret_ids ?? null,
     url_host_patterns: listToText(p.url_host_patterns),
     menu_paths: p.menu_paths ?? null,
   };
@@ -85,6 +94,8 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
     template_ids: parseNumberList(draft.template_ids),
     llm_providers: draft.llm_providers,
     mount_labels: draft.mount_labels,
+    ai_account_ids: draft.ai_account_ids,
+    secret_ids: draft.secret_ids,
     url_host_patterns: parseStringList(draft.url_host_patterns),
     menu_paths: draft.menu_paths,
   };
@@ -102,6 +113,8 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const [draft, setDraft] = useState<RoleDraft>(draftFromRole());
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [mounts, setMounts] = useState<MountCatalogEntry[]>([]);
+  const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
+  const [secrets, setSecrets] = useState<AgentSecretEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -113,14 +126,18 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const reload = async () => {
     setLoading(true);
     try {
-      const [roleData, templateData, mountData] = await Promise.all([
+      const [roleData, templateData, mountData, aiAccountData, secretData] = await Promise.all([
         api.listRoles(),
         api.getTemplates(),
         api.getAgentMountCatalog(),
+        api.listAIAccounts().catch(() => [] as AIAccount[]),
+        api.listSecrets().catch(() => [] as AgentSecretEntry[]),
       ]);
       setRoles(roleData.roles);
       setTemplates(templateData.templates);
       setMounts(mountData.mounts);
+      setAiAccounts(aiAccountData);
+      setSecrets(secretData);
       if (selectedId !== "new") {
         const role = roleData.roles.find((r) => r.id === selectedId);
         setDraft(draftFromRole(role));
@@ -284,7 +301,7 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4">
-            <PermissionBlock title="AI-Accounts / Provider">
+            <PermissionBlock title="LLM-Provider">
               <div className="flex flex-wrap gap-2">
                 {LLM_PROVIDERS.map((provider) => (
                   <ToggleChip
@@ -318,6 +335,48 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
                 ))}
               </div>
               <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mount_labels: null }))} />
+            </PermissionBlock>
+
+            <PermissionBlock title="AI-Accounts (Konten)">
+              <div className="flex flex-wrap gap-2">
+                {aiAccounts.length === 0 && (
+                  <span className="text-[11px] text-muted-foreground/50">Keine AI-Accounts angelegt</span>
+                )}
+                {aiAccounts.map((acc) => (
+                  <ToggleChip
+                    key={acc.id}
+                    active={draft.ai_account_ids == null || draft.ai_account_ids.includes(acc.id)}
+                    muted={draft.ai_account_ids == null}
+                    label={acc.name}
+                    onClick={() => setDraft((d) => ({
+                      ...d,
+                      ai_account_ids: toggleNumberValue(d.ai_account_ids, acc.id),
+                    }))}
+                  />
+                ))}
+              </div>
+              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, ai_account_ids: null }))} />
+            </PermissionBlock>
+
+            <PermissionBlock title="Keys / Secrets">
+              <div className="flex flex-wrap gap-2">
+                {secrets.length === 0 && (
+                  <span className="text-[11px] text-muted-foreground/50">Keine Keys angelegt</span>
+                )}
+                {secrets.map((s) => (
+                  <ToggleChip
+                    key={s.id}
+                    active={draft.secret_ids == null || draft.secret_ids.includes(s.id)}
+                    muted={draft.secret_ids == null}
+                    label={s.name}
+                    onClick={() => setDraft((d) => ({
+                      ...d,
+                      secret_ids: toggleNumberValue(d.secret_ids, s.id),
+                    }))}
+                  />
+                ))}
+              </div>
+              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, secret_ids: null }))} />
             </PermissionBlock>
 
             <PermissionBlock title="Menüpfade">

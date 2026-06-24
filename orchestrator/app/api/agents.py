@@ -402,6 +402,7 @@ async def create_agent(
             from app.core.permissions import (
                 get_effective_permissions,
                 can_use_llm_provider,
+                can_use_ai_account,
             )
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
@@ -424,6 +425,12 @@ async def create_agent(
                 raise HTTPException(
                     status_code=403,
                     detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                )
+            # 3) AI-Account (group/role may restrict which accounts are usable)
+            if not can_use_ai_account(perms, data.ai_account_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Dieser AI-Account ist für deine Gruppe nicht freigegeben.",
                 )
 
         # Don't set user_id for anonymous (setup mode) users
@@ -1526,44 +1533,44 @@ async def update_agent_mounts(
     user_mount_access. Admins can assign any catalog mount.
     """
     await _check_owner(agent_id, user, db)
-    from app.core.mounts import parse_mount_catalog
+    from app.core.mounts import get_effective_catalog
     from app.models.user import UserRole
     from app.models.user_mount_access import UserMountAccess
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    # Effective catalog = static env catalog + DB-managed Second Brains, so brains
+    # created in the UI are assignable here too.
+    catalog = await get_effective_catalog(db)
     new_mounts: list[str] = body.get("mounts", [])
     unknown = [m for m in new_mounts if m not in catalog]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
 
-    # Non-admin: enforce per-user grants
+    # Non-admin: a mount is authorized if granted per-user OR via the user's
+    # group/role (custom_role.permissions.mount_labels) — a UNION of both.
     effective_modes: dict[str, str] = {}
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         from app.core.permissions import get_effective_permissions
 
         perms = await get_effective_permissions(user, db)
-        role_mount_labels = perms.get("mount_labels")
-        if role_mount_labels is not None:
-            role_denied = [m for m in new_mounts if m not in role_mount_labels]
-            if role_denied:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Mount(s) not allowed by role: {role_denied}",
-                )
+        role_mount_labels = set(perms.get("mount_labels") or [])
 
         grants = (await db.execute(
             select(UserMountAccess).where(UserMountAccess.user_id == user.id)
         )).scalars().all()
         grant_by_label = {g.mount_label: g.mode for g in grants}
-        granted_labels = set(grant_by_label)
+        granted_labels = set(grant_by_label) | role_mount_labels
         denied = [m for m in new_mounts if m not in granted_labels]
         if denied:
             raise HTTPException(
                 status_code=403,
-                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access in /admin → User → Mount Permissions.",
+                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access via your group/role or in /admin → User → Mount Permissions.",
             )
+        # Per-user grant caps the mode; a pure group grant uses the catalog default.
         effective_modes = {
-            label: ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+            label: (
+                ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+                if label in grant_by_label else catalog[label].mode
+            )
             for label in new_mounts
         }
     else:

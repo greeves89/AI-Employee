@@ -226,10 +226,12 @@ async def get_agent_mount_catalog(
             ]
         }
 
-    # Non-admin: intersect with grants
+    # Non-admin: a label is available if granted per-user (user_mount_access) OR
+    # via the user's group/role (custom_role.permissions.mount_labels). The two
+    # are a UNION — group grant + manual per-user grant.
     from app.core.permissions import get_effective_permissions
     perms = await get_effective_permissions(user, db)
-    role_mount_labels = perms.get("mount_labels")
+    role_mount_labels = set(perms.get("mount_labels") or [])
 
     grants = (await db.execute(
         select(UserMountAccess).where(UserMountAccess.user_id == user.id)
@@ -238,12 +240,16 @@ async def get_agent_mount_catalog(
 
     out = []
     for label, entry in catalog.items():
-        if label not in grant_by_label:
+        user_mode = grant_by_label.get(label)
+        role_granted = label in role_mount_labels
+        if user_mode is None and not role_granted:
             continue
-        if role_mount_labels is not None and label not in role_mount_labels:
-            continue
-        # Effective mode = stricter of catalog mode and grant mode (rw vs ro → ro wins)
-        eff_mode = "ro" if "ro" in (entry.mode, grant_by_label[label]) else "rw"
+        # Per-user grant mode is stricter-capped against the catalog; a pure group
+        # grant uses the catalog's default mode for the mount/brain.
+        if user_mode is not None:
+            eff_mode = "ro" if "ro" in (entry.mode, user_mode) else "rw"
+        else:
+            eff_mode = entry.mode
         out.append({"label": label, "container_path": entry.container_path, "mode": eff_mode})
     return {"mounts": out}
 
