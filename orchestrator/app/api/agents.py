@@ -666,8 +666,14 @@ async def update_agent_budget(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Set or clear the monthly budget cap + over-budget action (admin or owner)."""
-    await _check_owner(agent_id, user, db)
+    """Set or clear the monthly budget cap + over-budget action.
+
+    Budget is an admin governance control: only admins may set it; owners see it
+    read-only in the agent settings.
+    """
+    from app.models.user import UserRole
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Nur Admins können das Budget festlegen.")
     try:
         agent = await manager._get_agent(agent_id)
         agent.budget_usd = body.budget_usd

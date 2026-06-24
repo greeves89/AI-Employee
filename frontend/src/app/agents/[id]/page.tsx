@@ -35,6 +35,7 @@ import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -1928,25 +1929,37 @@ function AgentSettings({
 }
 
 function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string; agent: Agent; onUpdated: (a: Agent) => void }) {
+  const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const currentTimeout = agent.config?.idle_timeout_minutes ?? "";
   const currentQuota = agent.config?.workspace_size_gb ?? "";
+  const currentBudget = agent.budget_usd != null ? String(agent.budget_usd) : "";
+  const currentAction = (agent.budget_exceeded_action as "haiku" | "stop") ?? "haiku";
 
   const [idleTimeout, setIdleTimeout] = useState(String(currentTimeout));
   const [workspaceGb, setWorkspaceGb] = useState(String(currentQuota));
+  const [budgetUsd, setBudgetUsd] = useState(currentBudget);
+  const [budgetAction, setBudgetAction] = useState<"haiku" | "stop">(currentAction);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const hasChanges = idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota);
+  const budgetChanged = isAdmin && (budgetUsd !== currentBudget || budgetAction !== currentAction);
+  const hasChanges = idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota) || budgetChanged;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const timeoutVal = idleTimeout === "" ? null : parseInt(idleTimeout);
-      const quotaVal = workspaceGb === "" ? null : parseFloat(workspaceGb);
-      await api.updateAgentResourceLimits(agentId, {
-        idle_timeout_minutes: timeoutVal,
-        workspace_size_gb: quotaVal,
-      });
+      if (idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota)) {
+        const timeoutVal = idleTimeout === "" ? null : parseInt(idleTimeout);
+        const quotaVal = workspaceGb === "" ? null : parseFloat(workspaceGb);
+        await api.updateAgentResourceLimits(agentId, {
+          idle_timeout_minutes: timeoutVal,
+          workspace_size_gb: quotaVal,
+        });
+      }
+      if (budgetChanged) {
+        const b = budgetUsd.trim() === "" ? null : parseFloat(budgetUsd);
+        await api.updateAgentBudget(agentId, b, budgetAction);
+      }
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
       setSaved(true);
@@ -2025,6 +2038,44 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
               Agent wird bei 95% des Limits gestoppt. Standard: 5 GB.
             </p>
           </div>
+        </div>
+
+        {/* Budget — admin sets the cap; non-admin users see it read-only */}
+        <div className="space-y-2">
+          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+            Budget / Monat {!isAdmin && <span className="normal-case text-muted-foreground/40">(nur Admin änderbar)</span>}
+          </label>
+          {isAdmin ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={budgetUsd}
+                  onChange={(e) => setBudgetUsd(e.target.value)}
+                  placeholder="kein Limit"
+                  className="w-28 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              </div>
+              <select
+                value={budgetAction}
+                onChange={(e) => setBudgetAction(e.target.value as "haiku" | "stop")}
+                className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+              >
+                <option value="haiku">Bei Limit: auf Haiku umschalten</option>
+                <option value="stop">Bei Limit: Agent stoppen</option>
+              </select>
+              <p className="text-xs text-muted-foreground/50">Leer = kein Limit.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-foreground/80">
+              {currentBudget
+                ? `$${currentBudget} / Monat · bei Überschreitung: ${currentAction === "stop" ? "Agent stoppt" : "Haiku-Modus"}`
+                : "Kein Budget-Limit gesetzt."}
+            </p>
+          )}
         </div>
       </div>
     </div>
