@@ -925,6 +925,17 @@ export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: 
   return fetchJSON(`${getBase()}/brains/${id}`, { method: "DELETE" });
 }
 
+// MCP exposure: generate/rotate the Bearer token (plaintext returned ONCE), or disable.
+export async function generateBrainMcpToken(
+  id: number,
+): Promise<{ mcp_enabled: boolean; mcp_path: string; token: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/mcp/token`, { method: "POST" });
+}
+
+export async function disableBrainMcp(id: number): Promise<{ ok: boolean; mcp_enabled: boolean }> {
+  return fetchJSON(`${getBase()}/brains/${id}/mcp`, { method: "DELETE" });
+}
+
 export async function updateAgentAIAccount(
   agentId: string,
   aiAccountId: number,

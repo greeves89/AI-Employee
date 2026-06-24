@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, Power, FolderOpen } from "lucide-react";
+import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, Power, FolderOpen, Plug, Copy, KeyRound } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -45,6 +45,131 @@ function Toast({ type, message, onClose }: { type: "success" | "error"; message:
   );
 }
 
+function BrainMcpModal({
+  brain,
+  onClose,
+  onChanged,
+}: {
+  brain: SecondBrain;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [token, setToken] = useState<string | null>(null); // shown only right after (re)generation
+  const [enabled, setEnabled] = useState(!!brain.mcp_enabled);
+  const [copied, setCopied] = useState<"url" | "token" | null>(null);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const path = brain.mcp_path || `/api/v1/mcp/brains/${brain.slug}`;
+  const url = `${origin}${path}`;
+
+  const copy = (text: string, which: "url" | "token") => {
+    navigator.clipboard?.writeText(text);
+    setCopied(which);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const generate = async () => {
+    setBusy(true);
+    try {
+      const r = await api.generateBrainMcpToken(brain.id);
+      setToken(r.token);
+      setEnabled(true);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    setBusy(true);
+    try {
+      await api.disableBrainMcp(brain.id);
+      setEnabled(false);
+      setToken(null);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldCls = "flex-1 min-w-0 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs font-mono truncate";
+  const copyBtn = "shrink-0 rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-foreground/[0.08] bg-card p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Plug className="h-4 w-4 text-primary" /> MCP-Zugriff — {brain.name}
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+        </div>
+
+        <p className="text-[12px] text-muted-foreground/70 leading-relaxed">
+          Macht dieses Brain als <b>MCP-Server</b> für externe Clients (n8n, Cursor, …) erreichbar — Tools
+          <code className="mx-1">brain_search</code><code className="mr-1">brain_read</code><code>brain_list</code>.
+          Geschützt per Bearer-Token.
+        </p>
+
+        <div>
+          <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Endpoint-URL</label>
+          <div className="flex items-center gap-2">
+            <div className={fieldCls}>{url}</div>
+            <button onClick={() => copy(url, "url")} className={copyBtn} title="URL kopieren">
+              {copied === "url" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {token && (
+          <div>
+            <label className="block text-[11px] font-medium text-amber-400 mb-1 flex items-center gap-1">
+              <KeyRound className="h-3.5 w-3.5" /> Bearer-Token — wird nur JETZT angezeigt, kopiere ihn
+            </label>
+            <div className="flex items-center gap-2">
+              <div className={cn(fieldCls, "border-amber-500/30 bg-amber-500/[0.06]")}>{token}</div>
+              <button onClick={() => copy(token, "token")} className={copyBtn} title="Token kopieren">
+                {copied === "token" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 mt-1">
+              Header: <code>Authorization: Bearer {"<token>"}</code>
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2 border-t border-foreground/[0.06]">
+          <span className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+            enabled ? "bg-emerald-500/10 text-emerald-400" : "bg-foreground/[0.04] text-muted-foreground"
+          )}>
+            <Power className="h-3 w-3" /> {enabled ? "Aktiv" : "Inaktiv"}
+          </span>
+          <div className="flex gap-2">
+            {enabled && (
+              <button onClick={disable} disabled={busy}
+                className="rounded-xl px-3 py-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/[0.06] disabled:opacity-50">
+                Deaktivieren
+              </button>
+            )}
+            <button onClick={generate} disabled={busy}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-medium text-primary-foreground disabled:opacity-50">
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+              {enabled ? "Token neu generieren" : "Aktivieren + Token generieren"}
+            </button>
+          </div>
+        </div>
+        {enabled && (
+          <p className="text-[10px] text-muted-foreground/40">
+            „Neu generieren" rotiert den Token — der alte verliert sofort die Gültigkeit.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
   const [brains, setBrains] = useState<SecondBrain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +181,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [browsing, setBrowsing] = useState<SecondBrain | null>(null);
+  const [mcpBrain, setMcpBrain] = useState<SecondBrain | null>(null);
 
   const showToast = (type: "success" | "error", message: string) => setToast({ type, message });
 
@@ -271,6 +397,10 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
                   <FolderOpen className="h-4 w-4" />
                 </button>
+                <button onClick={() => setMcpBrain(b)} title={b.mcp_enabled ? "MCP aktiv — verwalten" : "Via MCP erreichbar machen"}
+                  className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", b.mcp_enabled ? "text-emerald-400" : "text-muted-foreground hover:text-primary")}>
+                  <Plug className="h-4 w-4" />
+                </button>
                 <button onClick={() => toggleActive(b)} title={b.is_active ? "Deaktivieren" : "Aktivieren"}
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", b.is_active ? "text-emerald-400" : "text-muted-foreground")}>
                   <Power className="h-4 w-4" />
@@ -288,6 +418,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
         )}
       </div>
       {browsing && <BrainBrowser brain={browsing} onClose={() => setBrowsing(null)} />}
+      {mcpBrain && <BrainMcpModal brain={mcpBrain} onClose={() => setMcpBrain(null)} onChanged={load} />}
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>
   );

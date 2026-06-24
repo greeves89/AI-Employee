@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.68.0] — 2026-06-24
+
+### Added
+- **Second Brain via MCP — jeder Vault als externer MCP-Server.** Ein Second Brain kann jetzt von externen MCP-Clients (n8n, Cursor, …) als eigener MCP-Server genutzt werden, analog zum bestehenden Per-Agent-MCP-Server.
+  - **Endpoint:** `POST /api/v1/mcp/brains/<slug>` (2025-06-18 Streamable HTTP, JSON-RPC: `initialize`/`tools/list`/`tools/call`/`ping`), geschützt per **Bearer-Token** pro Brain.
+  - **Tools:** `brain_search` (grep über die `.md`-Sammlung — boardmittel, keine Embedding-Abhängigkeit), `brain_read` (Datei lesen), `brain_list` (Dateien auflisten). Path-Jailing geteilt mit dem Datei-Browser (`app/core/vault.py`) — kein Escape aus dem Vault, `.git` gesperrt.
+  - **Token-Verwaltung (Admin):** in der Second-Brains-Ansicht pro Brain MCP aktivieren → Token wird **einmalig** angezeigt (Fernet-verschlüsselt gespeichert, nie wieder auslesbar); „neu generieren" rotiert (alter Token sofort ungültig); deaktivieren wischt den Token. Endpoint-URL + Token per Klick kopierbar.
+  - Neue Spalten `second_brains.mcp_enabled` + `mcp_token_encrypted` (Migration `a5b6c7d8e9f0` + idempotenter Startup-Ensure, analog pgvector).
+
+---
+
+## [1.67.0] — 2026-06-24
+
+### Changed
+- **Kontext-Kompaktierung: gleitendes Fenster + rollende Summary statt voller History pro Turn.** Bisher feuerte die Compaction erst bei **75 % des Modellfensters** — gpt-5.x hat **1 Mio** Tokens, also bei 750k, was praktisch nie erreicht wurde. Folge: jeder Turn schickte die **komplette, wachsende History** → kumulative Input-Kosten explodierten (z. B. 490k Tokens über 8 Turns). Neu:
+  - **Absolutes Token-Budget** (`ABSOLUTE_COMPACTION_BUDGET = 150k`) triggert die Kompaktierung, unabhängig von der Fenstergröße (`effective_threshold_tokens = min(75 % Fenster, 150k)`). Auf langen Tasks bleiben die Calls dadurch konstant günstig.
+  - **Layer 4 ist jetzt eine gleitende, inkrementelle rollende Summary** statt „gesamte History verwerfen": die **letzten 24 Nachrichten bleiben wörtlich** (Tool-I/O — exakte Pfade, IDs, Werte, die der Agent fürs Weiterarbeiten braucht), alles Ältere wird in **eine** Summary gefaltet, die bei jeder Kompaktierung **fortgeschrieben** (nicht neu erzeugt) wird.
+  - **Boundary-Schutz:** das Recent-Fenster beginnt nie mit einem verwaisten `tool`-Ergebnis (dessen `tool_call` wegsummiert wäre) — solche Ergebnisse werden in den Summary-Block zurückgeschoben. Verhindert Tool-Protocol-Fehler bei custom_llm-Providern.
+  - Gilt für beide custom-LLM-Pfade (`LLMRunner` Task-Ausführung + `LLMChatHandler` interaktiver Chat). Claude-Code-CLI-Agenten machen ihre Compaction weiterhin nativ.
+
+---
+
 ## [1.66.0] — 2026-06-24
 
 ### Fixed

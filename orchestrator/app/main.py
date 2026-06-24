@@ -593,6 +593,21 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure pgvector/embedding columns: {e}")
 
+    # Second Brain MCP exposure columns: added to the model, but create_all never
+    # ALTERs existing tables — ensure them idempotently so the MCP token endpoints
+    # work on already-provisioned databases without a manual migration.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS mcp_enabled boolean NOT NULL DEFAULT false"
+            ))
+            await conn.execute(_sql_text(
+                "ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS mcp_token_encrypted text"
+            ))
+        logger.info("second_brains MCP columns ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure second_brains MCP columns: {e}")
+
     await engine.dispose()
 
     result = subprocess.run(

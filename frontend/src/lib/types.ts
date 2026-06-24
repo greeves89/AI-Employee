@@ -71,6 +71,8 @@ export interface SecondBrain {
   standard: "freeform" | "wikimedia" | "it_support";
   description: string | null;
   is_active: boolean;
+  mcp_enabled?: boolean;
+  mcp_path?: string | null;   // relative MCP endpoint; prepend window.location.origin
   created_at: string;
   updated_at: string;
 }

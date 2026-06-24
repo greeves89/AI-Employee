@@ -32,6 +32,11 @@ class SecondBrain(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    # MCP exposure: when enabled, the vault is reachable by external MCP clients
+    # (n8n, Cursor, …) at POST /api/v1/mcp/brains/<slug>, protected by a Bearer
+    # token. Token is Fernet-encrypted at rest, shown to the admin only once.
+    mcp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    mcp_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

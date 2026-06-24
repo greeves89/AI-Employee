@@ -13,6 +13,7 @@ attach one to an agent). The host path is never returned to the UI.
 import logging
 import os
 import re
+import secrets
 import subprocess
 from datetime import datetime
 
@@ -22,6 +23,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import vault
+from app.core.encryption import encrypt_token
 from app.db.session import get_db
 from app.dependencies import require_auth
 from app.models.audit_log import AuditEventType, AuditLog
@@ -169,16 +172,24 @@ class BrainResponse(BaseModel):
     standard: str
     description: str | None
     is_active: bool
+    mcp_enabled: bool = False
+    mcp_path: str | None = None  # relative endpoint; UI prepends window.location.origin
     created_at: datetime
     updated_at: datetime
 
 
+def _mcp_path(b: SecondBrain) -> str:
+    return f"/api/v1/mcp/brains/{b.slug}"
+
+
 def _to_response(b: SecondBrain) -> BrainResponse:
+    mcp_on = bool(getattr(b, "mcp_enabled", False))
     return BrainResponse(
         id=b.id, label=b.label, name=b.name, slug=b.slug,
         container_path=b.container_path, default_mode=b.default_mode,
         standard=getattr(b, "standard", "freeform") or "freeform",
         description=b.description, is_active=b.is_active,
+        mcp_enabled=mcp_on, mcp_path=_mcp_path(b) if mcp_on else None,
         created_at=b.created_at, updated_at=b.updated_at,
     )
 
@@ -281,18 +292,65 @@ async def delete_brain(
     return {"ok": True, "id": brain_id}
 
 
+# ── MCP exposure (admin-only): generate/rotate/disable the Bearer token ──
+
+class BrainMcpTokenResponse(BaseModel):
+    mcp_enabled: bool
+    mcp_path: str
+    token: str  # plaintext — shown to the admin ONCE, never stored or returned again
+
+
+@router.post("/{brain_id}/mcp/token", response_model=BrainMcpTokenResponse)
+async def brain_mcp_generate_token(
+    brain_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enable MCP for this brain and generate (or rotate) its Bearer token.
+
+    The plaintext token is returned ONLY here — it is stored Fernet-encrypted and
+    can never be read back. Calling again rotates it (old token stops working).
+    """
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    token = secrets.token_urlsafe(32)
+    brain.mcp_token_encrypted = encrypt_token(token)
+    brain.mcp_enabled = True
+    await db.commit()
+    await db.refresh(brain)
+    await _audit(db, AuditEventType.BRAIN_UPDATED, brain, user.id)
+    return BrainMcpTokenResponse(mcp_enabled=True, mcp_path=_mcp_path(brain), token=token)
+
+
+@router.delete("/{brain_id}/mcp")
+async def brain_mcp_disable(
+    brain_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disable MCP access for this brain and wipe its token."""
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    brain.mcp_enabled = False
+    brain.mcp_token_encrypted = None
+    await db.commit()
+    await _audit(db, AuditEventType.BRAIN_UPDATED, brain, user.id)
+    return {"ok": True, "mcp_enabled": False}
+
+
 # ── Vault file browser (admin-only): view + edit the Markdown content ──
 
 def _vault_path(brain: SecondBrain, rel_path: str) -> str:
-    """Resolve a vault-relative path to an absolute host path, jailed to the vault
-    and never touching the .git directory."""
-    base = os.path.realpath(brain.host_path)
-    target = os.path.realpath(os.path.join(base, (rel_path or "").lstrip("/")))
-    if target != base and not target.startswith(base + os.sep):
-        raise HTTPException(status_code=400, detail="path escapes the vault")
-    if ".git" in os.path.relpath(target, base).split(os.sep):
-        raise HTTPException(status_code=400, detail=".git is not accessible")
-    return target
+    """Resolve a vault-relative path to an absolute host path (jailed). Delegates
+    to the shared vault helper so browser + MCP use identical jailing."""
+    try:
+        return vault.resolve_path(brain.host_path, rel_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 class BrainFileWrite(BaseModel):
