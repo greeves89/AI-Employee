@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.69.1] — 2026-06-24
+
+### Fixed
+- **Freigabe-Anfrage (`request_approval`) pausierte den Agenten nicht** — er fragte um Freigabe, lief aber **weiter** statt zu warten, und beim Task-Ende verschwand das Approval-Popup. Ursache: das Tool kehrte sofort zurück („Approval requested, use check_approval") statt zu blockieren. Jetzt **blockiert** `request_approval`: es pollt die Entscheidung (`/approvals/check/{id}`) und wartet (Default 15 Min), gibt dann **APPROVED** (inkl. gewählter Option) → weiter, **DENIED** → stop, oder **kein Entscheid/Timeout** → „nicht fortfahren, stop". Tool-Beschreibung entsprechend angepasst. `agent/app/tools/api_client.py`, `agent/app/tools/definitions.py`.
+
 ## [1.69.0] — 2026-06-24
 
 ### Added

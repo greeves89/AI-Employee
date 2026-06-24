@@ -880,7 +880,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "request_approval",
-            "description": "Request user approval for an action or decision. The user sees it in Approvals and gets a channel-aware notification. Returns an approval_id that you can check with check_approval. Use before irreversible or important actions.",
+            "description": "Request user approval and WAIT for the decision. This call BLOCKS until the user approves or denies (the agent pauses here) and returns the decision directly, including the chosen option — you do NOT need to poll with check_approval. If APPROVED, proceed; if DENIED or no decision, STOP and do not perform the action. Use before irreversible or important actions.",
             "parameters": {
                 "type": "object",
                 "properties": {

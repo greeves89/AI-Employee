@@ -4,7 +4,9 @@ Replaces the 4 MCP servers (orchestrator, memory, notifications, bash-approval)
 with direct API calls for custom_llm agents.
 """
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -406,7 +408,13 @@ class OrchestratorAPIClient:
         return f"Notification sent (priority: {result.get('priority', 'normal')})"
 
     async def request_approval(self, params: dict) -> str:
-        """Request user approval for an action via the approvals system."""
+        """Request user approval AND BLOCK until the user decides.
+
+        This intentionally does not return until the user has approved or denied
+        (or the wait times out) — so the agent truly **pauses** at the approval
+        gate instead of continuing. The returned string carries the decision
+        (incl. the chosen option), so a separate ``check_approval`` is not needed.
+        """
         body = {
             "question": params.get("question", ""),
             "options": params.get("options", ["Yes", "No"]),
@@ -417,11 +425,42 @@ class OrchestratorAPIClient:
         result = await self._request("POST", "/approvals/request", json=body)
         if isinstance(result, str):
             return result
-        approval_id = result.get("approval_id", "unknown")
+        approval_id = result.get("approval_id", "")
+        if not approval_id:
+            return "Error: approval request did not return an approval id."
+
+        # Block until the user decides. Poll the decision; do NOT proceed without it.
+        try:
+            wait_seconds = int(params.get("timeout") or 900)  # default 15 min
+        except (TypeError, ValueError):
+            wait_seconds = 900
+        wait_seconds = min(max(wait_seconds, 60), 3600)
+        deadline = time.time() + wait_seconds
+
+        while time.time() < deadline:
+            await asyncio.sleep(3)
+            check = await self._request("GET", f"/approvals/check/{approval_id}")
+            if isinstance(check, str):
+                continue  # transient error — keep waiting
+            status = str(check.get("status", "")).lower()
+            choice = check.get("user_response") or ""
+            if status == "approved":
+                return (
+                    f"APPROVED by the user."
+                    + (f" Chosen option: {choice}." if choice else "")
+                    + " You may now proceed accordingly."
+                )
+            if status == "denied":
+                return (
+                    f"DENIED by the user."
+                    + (f" {choice}" if choice else "")
+                    + " Do NOT perform the action. Stop and inform the user."
+                )
+
         return (
-            f"Approval requested (id: {approval_id}). "
-            f"The user will see this on the Approvals page. "
-            f"Use check_approval(approval_id='{approval_id}') to check the user's decision."
+            f"NO DECISION YET — the user has not responded (approval id {approval_id}). "
+            f"Do NOT proceed with the action. Stop now and tell the user you are waiting "
+            f"for their approval; they can still decide later under Approvals."
         )
 
     async def check_approval(self, params: dict) -> str:
