@@ -250,7 +250,7 @@ export default function AdminPage() {
     try {
       await api.createUser(addUserForm);
       setShowAddUser(false);
-      setAddUserForm({ name: "", email: "", password: "", role: "member" });
+      setAddUserForm({ name: "", email: "", password: "", role: "member", custom_role_id: null });
       setShowPassword(false);
       await fetchUsers();
     } catch (e) {
