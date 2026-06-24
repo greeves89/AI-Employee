@@ -13,7 +13,14 @@ BASE="${SECONDBRAIN_BASE:-/srv/secondbrain}"
 [ -d "$BASE" ] || exit 0
 
 for d in "$BASE"/*/; do
-  [ -d "${d}.git" ] || continue
+  [ -d "$d" ] || continue
+  # The orchestrator image has no git, so a UI-created vault arrives without a
+  # repo — initialise it here (the host has git). LOCAL only, no remote.
+  if [ ! -d "${d}.git" ]; then
+    git -C "$d" init -q || continue
+    git -C "$d" config user.email secondbrain@ai-employee.local
+    git -C "$d" config user.name "Second Brain"
+  fi
   if [ -n "$(git -C "$d" status --porcelain 2>/dev/null)" ]; then
     git -C "$d" add -A
     git -C "$d" -c user.email=secondbrain@ai-employee.local -c user.name="Second Brain" \

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.56.2] — 2026-06-24
+
+### Added
+- **git in the orchestrator image** — so Second Brain vault provisioning can `git init` the local repo directly when a brain is created (no dependency on the host watcher for the initial repo).
+
+### Fixed
+- **Auto-commit watcher self-heals vault repos** — `scripts/secondbrain-autocommit.sh` now `git init`s any vault under `/srv/secondbrain` that has no `.git` yet before committing, so file history works even for vaults created before git was available. Local only, no remote.
+
 ## [1.56.1] — 2026-06-24
 
 ### Fixed
