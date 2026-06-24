@@ -1519,13 +1519,14 @@ function formatAudioTime(seconds: number) {
 
 /* ─── Tool Call Block (Claude CLI Style) ────────────────────────────── */
 
-function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: boolean }) {
-  // Auto-expand while still streaming so the user sees live tool activity.
+function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
+  // Stays compact (overlapping bubbles) at all times — even while the agent is
+  // working — so it doesn't pop open and resize on every tool call. The running
+  // tool's bubble shows a live spinner; click to expand for details.
   const [expanded, setExpanded] = useState(false);
   const anyRunning = steps.some((s) => s.status === "running");
-  const open = expanded || (isStreaming && anyRunning);
 
-  if (open) {
+  if (expanded) {
     return (
       <div className="space-y-1.5">
         <button
