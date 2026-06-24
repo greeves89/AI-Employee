@@ -4,7 +4,9 @@ from app import model_registry
 
 
 def test_known_model_context_window():
-    assert model_registry.get_context_window("claude-sonnet-4-6") == 200_000
+    assert model_registry.get_context_window("claude-opus-4-8") == 1_000_000
+    assert model_registry.get_context_window("claude-sonnet-4-6") == 1_000_000
+    assert model_registry.get_context_window("claude-haiku-4-5") == 200_000
     assert model_registry.get_context_window("gpt-4o") == 128_000
     assert model_registry.get_context_window("gemini-1.5-pro") == 2_000_000
 
@@ -12,7 +14,18 @@ def test_known_model_context_window():
 def test_dated_variant_resolves_via_substring():
     # A dated/suffixed model id still resolves to its base entry.
     assert model_registry.get_context_window("gpt-4o-2024-08-06") == 128_000
-    assert model_registry.get_context_window("claude-sonnet-4-6-20260101") == 200_000
+    assert model_registry.get_context_window("claude-sonnet-4-6-20260101") == 1_000_000
+    assert model_registry.get_context_window("claude-haiku-4-5-20251001") == 200_000
+
+
+def test_anthropic_pricing_matches_official_docs():
+    # Opus 4.5+: $5 / $25 (Anthropic dropped Opus pricing at 4.5)
+    assert abs(model_registry.estimate_cost("claude-opus-4-8", 1_000_000, 1_000_000) - 30.0) < 1e-9
+    assert abs(model_registry.estimate_cost("claude-opus-4-7", 1_000_000, 1_000_000) - 30.0) < 1e-9
+    # Sonnet 4.6: $3 / $15
+    assert abs(model_registry.estimate_cost("claude-sonnet-4-6", 1_000_000, 1_000_000) - 18.0) < 1e-9
+    # Haiku 4.5: $1 / $5
+    assert abs(model_registry.estimate_cost("claude-haiku-4-5", 1_000_000, 1_000_000) - 6.0) < 1e-9
 
 
 def test_longest_substring_wins():

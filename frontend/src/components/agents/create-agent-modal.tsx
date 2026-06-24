@@ -116,7 +116,7 @@ const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noK
   },
   anthropic: {
     endpoint: "https://api.anthropic.com/v1",
-    models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-6", "claude-opus-4-6", "claude-sonnet-4-5-20250929"],
+    models: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-5"],
   },
   google: {
     endpoint: "https://generativelanguage.googleapis.com/v1beta",

@@ -12,11 +12,6 @@
 		-Server
 	}
 
-	# Allow large file uploads (up to 50 MB for Telegram file sending)
-	request_body {
-		max_size 55MB
-	}
-
 	# API + health endpoints → orchestrator
 	handle /api/* {
 		reverse_proxy ai-employee-orchestrator:8000

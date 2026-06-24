@@ -14,10 +14,15 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
     "o1": (15.00, 60.00),
     "o1-mini": (3.00, 12.00),
     "o3-mini": (1.10, 4.40),
-    # Anthropic
-    "claude-opus-4-6": (15.00, 75.00),
+    # Anthropic (pricing per Anthropic docs as of 2026-05-27)
+    "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00),
+    "claude-opus-4-6": (5.00, 25.00),
+    "claude-opus-4-5": (5.00, 25.00),
+    "claude-opus-4-1": (15.00, 75.00),
     "claude-opus-4": (15.00, 75.00),
     "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-sonnet-4-5": (3.00, 15.00),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
     # Google
