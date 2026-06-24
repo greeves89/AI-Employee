@@ -831,6 +831,61 @@ Womit sollen wir starten?
 - Keep the briefing concise — max 10 open items, group by topic if needed.
 """,
             },
+            {
+                "name": "secondbrain_lookup",
+                "description": "Second Brain: search the shared department knowledge vault (Markdown under /mnt/brains/*) before answering support/how-to/troubleshooting questions, cite the source, and contribute new learnings back.",
+                "category": SkillCategory.WORKFLOW if hasattr(SkillCategory, "WORKFLOW") else "WORKFLOW",
+                "content": """\
+# Second Brain Lookup Skill
+
+A shared **department knowledge base** may be mounted into this agent as a
+Markdown vault under `/mnt/brains/<name>/` (e.g. `/mnt/brains/it_operations/`).
+It is the single source of truth for department know-how (runbooks, error-code
+fixes, how-tos). Use it whenever a question could be answered from documented
+knowledge — especially support, troubleshooting and "how do I…" questions.
+
+## When to use
+- The user reports an error code (e.g. `x17137`), a device/system problem, or asks "how do I…".
+- Any factual department question that is likely documented.
+
+## 1. Find the vault(s)
+```bash
+ls -d /mnt/brains/*/ 2>/dev/null || echo "(no Second Brain mounted)"
+```
+If none is mounted, answer normally (no department vault assigned to this agent).
+
+## 2. Search FIRST (before answering)
+Grep for the concrete keywords / error code, then read the matches:
+```bash
+Q="x17137"   # the user's error code / keywords
+grep -ril "$Q" /mnt/brains/*/ 2>/dev/null | head
+```
+Open the best matches with `read_file` and answer **from their content**. Always
+**cite the source file** (e.g. "laut `it_operations/Drucker/x17137.md`"). If grep
+finds nothing, broaden the terms (synonyms, German+English) before giving up.
+
+## 3. Contribute back (if you have write access)
+If you learned something new, or fixed a problem that wasn't documented, add or
+update a concise article so the whole department benefits:
+- One `.md` per topic, **Wikimedia-style** folders (`Drucker/`, `Netzwerk/`, `Zugaenge/`).
+- Speaking file names; put error codes / keywords in plain text so grep finds them.
+- Link related articles with `[[Titel]]`.
+- Update the vault's `index.md` to link the new article.
+```bash
+# only if the mount is writable (rw)
+mkdir -p /mnt/brains/it_operations/Drucker
+write_file /mnt/brains/it_operations/Drucker/x17137.md  # title + cause + step-by-step fix
+```
+File history is versioned automatically (local git on the server) — just write
+clean Markdown; you don't need to commit.
+
+## Rules
+- **Search before you answer** — never guess if the vault might hold the answer.
+- Cite the source `.md`. Don't invent file names.
+- Only write if the mount is read-write; never delete others' articles.
+- Keep articles short, factual, and reusable.
+""",
+            },
         ]
 
         async with _sf_skills() as db:
