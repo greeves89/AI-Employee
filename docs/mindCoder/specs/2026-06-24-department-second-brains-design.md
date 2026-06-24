@@ -18,16 +18,22 @@ die Mitarbeiter über die KI interagieren.
 Das Anlegen eines Brains und die Vergabe der Lese-/Schreibrechte erfolgt **komplett im UI**,
 **ohne** `.env`-Bearbeitung und **ohne** Orchestrator-Neustart.
 
+Der Agent **durchsucht das zugewiesene Brain automatisch** bei einschlägigen Fragen (z.B.
+„Drucker zeigt Fehler x17137") und antwortet auf Basis der gefundenen `.md`-Inhalte. Das
+Durchsuchen für Menschen erfolgt (vorerst) über den Agent im Chat.
+
 **Erste Abteilung beim Rollout:** `it_operations` → `/srv/secondbrain/it_operations/`.
 
 ---
 
 ## 2. Nicht-Ziele (bewusst ausgeklammert)
 
-- **Keine Datei-Versionierung** auf Inhaltsebene (kein Git-per-Vault). Nur die Brain-/Rechte-Aktionen
-  werden im bestehenden `audit_log` getrackt. (Entscheidung 2026-06-24.)
+- **Kein semantischer pgvector-Index** in diesem Scope. Retrieval läuft über `grep`/Datei-Lesen
+  durch den Agent (§4.8). Begründung: exakte Treffer (Fehlercodes), Dateien als **einzige Wahrheit**
+  (null Staleness), Obsidian-nativ, minimaler Bau — der Agent liefert die Semantik über seine
+  Lese-/Reasoning-Schleife. Semantischer Index ist später als zusätzliche Schicht nachrüstbar (§10).
 - **Kein Mensch-Editier-Zugang** (Obsidian/Netzlaufwerk/Samba) in diesem Scope. Vorerst interagieren
-  nur die Agents mit dem Vault. Der Mensch-Zugang wird später separat geklärt (siehe §12).
+  nur die Agents mit dem Vault. Der Mensch-Zugang wird später separat geklärt (siehe §10).
 - **Keine eigene Super-Admin-Rolle.** Verwaltung läuft über die vorhandene `require_admin`-Dependency.
 - **Kein eigenes Department-/Gruppen-Datenmodell.** Personengruppen werden über die bereits
   vorhandenen **Custom Roles** (`custom_roles.permissions.mount_labels`) abgebildet.
@@ -149,6 +155,41 @@ Neue Event-Typen in `models/audit_log.py`: `BRAIN_CREATED`, `BRAIN_UPDATED`, `BR
 (Rechte-Änderungen werden über das vorhandene Mount-Access-Logging abgedeckt bzw. ergänzt um
 `BRAIN_ACCESS_GRANTED`/`REVOKED`, falls dort noch nicht geloggt wird.)
 
+### 4.8 Retrieval — `.md`-Sammlung + grep, Agent durchsucht automatisch
+
+**Kein semantischer Index.** Der Agent durchsucht den gemounteten Vault direkt mit seinen
+vorhandenen Tools (`grep`, `list_files`, `read_file`). Das deckt den Kern-Use-Case (exakte
+Fehlercodes wie `x17137`) optimal ab; die semantische Bewertung leistet das LLM beim Lesen der
+Treffer.
+
+Zwei Bausteine machen das zuverlässig:
+1. **Agent-Skill „secondbrain-lookup"** (Markdown unter `/workspace/.claude/skills/`, **kein UI-Code**):
+   weist den Agent an, bei Support-/Wissens-Fragen **zuerst** das zugewiesene Brain unter
+   `/mnt/brains/<slug>` zu durchsuchen (grep auf Stichworte/Fehlercodes → Treffer-Dateien lesen →
+   Antwort + Quellenangabe der `.md`). Der Skill wird beim Brain-Mount automatisch mitgegeben
+   (analog zur „Host Mounts"-Sektion in CLAUDE.md, `agent_manager.py:437-447`).
+2. **Vault-Konvention (Wikimedia-artig)** für gute Keyword-Trefferquote: sprechende Dateinamen,
+   `index.md` als Einstieg, einheitliche Überschriften, Fehlercodes/Schlagworte im Klartext,
+   `[[wikilinks]]` zwischen Artikeln. Eine `index.md` + Ordnerstruktur (`/Drucker/`, `/Netzwerk/`, …)
+   wird beim Brain-Anlegen als Gerüst erzeugt.
+
+**Menschliche Suche** (vorerst): über den Agent im Chat („durchsuche das IT-Brain nach VPN").
+Eine dedizierte Such-UI ist Nicht-Ziel dieses Scopes (§10).
+
+### 4.9 Datei-Historie — lokales Git pro Vault (kein Remote)
+
+Jeder Vault `/srv/secondbrain/<slug>` ist ein **lokales** Git-Repo (`git init`, **kein Remote,
+kein push** — nichts verlässt den Server; relevant für DSGVO/Klinik).
+
+- Ein **leichter Auto-Commit-Watcher** (host-seitiger systemd-Timer/Service, `git add -A &&
+  git commit` bei Änderungen bzw. im kurzen Intervall) erzeugt Diff/History/Rollback pro `.md`.
+- **Wer/Wann** kommt aus dem vorhandenen `FILE_WRITTEN`-Audit-Event (Agents loggen Schreibvorgänge
+  bereits); **Was/Diff/Rollback** aus Git. Zusammen = vollständige Änderungshistorie ohne Eingriff
+  in die Agent-File-Tools.
+- Ansehen vorerst **agent-mediated**: „zeig mir die Änderungen an `Backup.md`" → Agent führt
+  `git log`/`git diff`/`git revert` im Vault aus (git ist im Agent-Image, v2.47.3). Ein klickbarer
+  History-Browser im UI ist Nicht-Ziel/optional (§10).
+
 ---
 
 ## 5. Datenfluss (Beispiel it_operations)
@@ -191,6 +232,9 @@ Agent-File-Tools, Auto-Restart bei Mount-Änderung, `audit_log`-Framework.
 - `frontend/src/components/admin/second-brains-view.tsx` (neu, Klon AI-Accounts-View)
 - `frontend/src/lib/api.ts` + `types.ts` (`getBrains/createBrain/updateBrain/deleteBrain`, Typ `SecondBrain`)
 - `docker-compose.override.yml` (Orchestrator `/srv/secondbrain` rw)
+- **Agent-Skill** `secondbrain-lookup` (Markdown), beim Brain-Mount automatisch mitgegeben (§4.8)
+- **Provisionierung beim Brain-Anlegen**: `git init` (lokal) + `index.md`/Ordnergerüst
+- **Host-Auto-Commit-Watcher** (systemd-Timer/Service) für lokale Git-Historie (§4.9)
 
 ---
 
@@ -201,7 +245,10 @@ Agent-File-Tools, Auto-Restart bei Mount-Änderung, `audit_log`-Framework.
 - **Enforcement-Matrix:** (User-Grant ro|rw|none) × (Katalog default_mode ro|rw) → effektiver Mode;
   `ro`-User darf nicht schreiben, `none`-User sieht den Mount nicht.
 - **Katalog-Merge:** ENV-Mount + DB-Brain gleichzeitig auflösbar; Label-Kollision ausgeschlossen.
-- **Ordner-Provisionierung:** `mkdir` idempotent; existierender Ordner wird nicht überschrieben.
+- **Ordner-Provisionierung:** `mkdir` idempotent; `git init` + `index.md`-Gerüst nur bei Neuanlage.
+- **Retrieval:** Agent findet bei „Fehler x17137" die richtige `.md` via grep und antwortet mit Quelle.
+- **Git-Historie:** Schreibvorgang → Auto-Commit; `git log`/`diff`/`revert` über Agent funktionieren;
+  **kein** Remote konfiguriert (nichts verlässt den Host).
 - **Agent-E2E:** Brain anlegen → zuweisen → Agent liest/schreibt `.md` im Vault.
 
 ---
@@ -218,8 +265,12 @@ Agent-File-Tools, Auto-Restart bei Mount-Änderung, `audit_log`-Framework.
 
 ## 10. Offene Punkte / später
 
+- **Semantischer pgvector-Index** über die Vault-Inhalte — Ausbaustufe, falls Messung zeigt, dass
+  grep bei großen/unscharfen Vaults Treffer verfehlt (Hybrid keyword + semantic, als Schicht über
+  den Dateien — nicht statt ihnen).
+- **Klickbarer History-/Diff-Browser im UI** und **dedizierte Such-UI für Menschen** — Polish-Stufe;
+  heute agent-mediated im Chat (§4.8/§4.9).
 - **Mensch-Editier-Zugang** (Obsidian via Samba/Netzlaufwerk auf `/srv/secondbrain`) — separater Scope.
-- **Datei-Historie** (Git-per-Vault) — bewusst ausgeklammert, später nachrüstbar.
 - **Dynamischer Agent-Reload ohne Container-Restart** — heute Restart bei Mount-Änderung (akzeptiert).
 - **Brain-Löschung inkl. Daten** — aktuell Soft-Disable; Hard-Delete der Ordnerdaten nur manuell.
 
@@ -227,5 +278,7 @@ Agent-File-Tools, Auto-Restart bei Mount-Änderung, `audit_log`-Framework.
 
 ## 11. Aufwand (grob)
 
-Backend Modell+Migration+API ~1 Tag · Katalog-Merge+Provisionierung ~0,5 Tag · Admin-UI (Klon) ~1 Tag ·
-Audit+Tests ~0,5 Tag → **~3 Tage**. Niedrig, weil Rechte-/Enforcement-Schicht bereits existiert.
+Backend Modell+Migration+API ~1 Tag · Katalog-Merge+Provisionierung (mkdir + `git init` + Gerüst) ~0,5 Tag ·
+Admin-UI (Klon) ~1 Tag · Agent-Skill `secondbrain-lookup` + Auto-Commit-Watcher ~0,5 Tag ·
+Audit+Tests ~0,5 Tag → **~3,5 Tage**. Niedrig, weil Rechte-/Enforcement-Schicht + Agent-File-Tools +
+`grep` bereits existieren und kein semantischer Index/Scope-Umbau nötig ist.
