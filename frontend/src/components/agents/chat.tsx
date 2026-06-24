@@ -1274,28 +1274,39 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
           <span>Arbeitet...</span>
         </div>
       )}
-      {visibleSteps.map((step, i) => {
-        if (step.type === "text") {
-          return (
-            <div key={`text-${i}`}>
-              <MarkdownContent content={step.content} />
-              {message.isStreaming && i === visibleSteps.length - 1 && (
+      {(() => {
+        // Group consecutive tool calls into one collapsible cluster (overlapping
+        // bubbles, max 5 + "+N"); text segments stay inline between clusters.
+        const groups: Array<
+          | { kind: "text"; content: string; idx: number }
+          | { kind: "tools"; steps: ToolStep[]; idx: number }
+        > = [];
+        visibleSteps.forEach((step, i) => {
+          if (step.type === "tool_call") {
+            const last = groups[groups.length - 1];
+            if (last && last.kind === "tools") last.steps.push(step);
+            else groups.push({ kind: "tools", steps: [step], idx: i });
+          } else if (step.type === "text") {
+            groups.push({ kind: "text", content: step.content, idx: i });
+          }
+        });
+        return groups.map((g) =>
+          g.kind === "text" ? (
+            <div key={`text-${g.idx}`}>
+              <MarkdownContent content={g.content} />
+              {message.isStreaming && g.idx === visibleSteps.length - 1 && (
                 <span className="inline-block w-1.5 h-4 bg-muted-foreground/50 animate-pulse ml-0.5 rounded-sm" />
               )}
             </div>
-          );
-        }
-        if (step.type === "tool_call") {
-          return (
-            <ToolCallBlock
-              key={step.id}
-              step={step}
-              isStreaming={message.isStreaming && i === steps.length - 1}
+          ) : (
+            <ToolCluster
+              key={`tools-${g.idx}`}
+              steps={g.steps}
+              isStreaming={message.isStreaming && g.steps.some((s) => s.status === "running")}
             />
-          );
-        }
-        return null;
-      })}
+          )
+        );
+      })()}
       <PresentedImages images={message.images} />
       <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
@@ -1507,6 +1518,76 @@ function formatAudioTime(seconds: number) {
 }
 
 /* ─── Tool Call Block (Claude CLI Style) ────────────────────────────── */
+
+function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: boolean }) {
+  // Auto-expand while still streaming so the user sees live tool activity.
+  const [expanded, setExpanded] = useState(false);
+  const anyRunning = steps.some((s) => s.status === "running");
+  const open = expanded || (isStreaming && anyRunning);
+
+  if (open) {
+    return (
+      <div className="space-y-1.5">
+        <button
+          onClick={() => setExpanded(false)}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          <ChevronRight className="h-3 w-3 rotate-90" /> {steps.length} Tool-Aufrufe einklappen
+        </button>
+        {steps.map((s) => (
+          <ToolCallBlock key={s.id} step={s} />
+        ))}
+      </div>
+    );
+  }
+
+  const MAX = 5;
+  const shown = steps.slice(0, MAX);
+  const extra = steps.length - shown.length;
+  return (
+    <button
+      onClick={() => setExpanded(true)}
+      className="group flex items-center gap-2.5 rounded-full py-0.5 pr-2 transition-colors hover:bg-foreground/[0.04]"
+      title="Tool-Aufrufe ansehen"
+    >
+      <div className="flex items-center">
+        {shown.map((s, idx) => {
+          const { label } = getToolDisplay(s.tool, s.input);
+          return (
+            <span
+              key={s.id}
+              title={label}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-card shadow-sm",
+                idx > 0 && "-ml-2.5"
+              )}
+              style={{ zIndex: shown.length - idx }}
+            >
+              {s.status === "running" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+              ) : s.status === "error" ? (
+                <XCircle className="h-3.5 w-3.5 text-red-400" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              )}
+            </span>
+          );
+        })}
+        {extra > 0 && (
+          <span
+            className="-ml-2.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-foreground/10 text-[10px] font-semibold text-muted-foreground"
+            style={{ zIndex: 0 }}
+          >
+            +{extra}
+          </span>
+        )}
+      </div>
+      <span className="text-[11px] text-muted-foreground group-hover:text-foreground">
+        {anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`} · Details
+      </span>
+    </button>
+  );
+}
 
 function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(false);

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.65.0] — 2026-06-24
+
+### Changed
+- **Chat: Tool-Aufrufe als kompakter Bubble-Cluster.** Aufeinanderfolgende Tool-Aufrufe werden jetzt **eingeklappt** als überlappende Bubbles dargestellt (max. 5 + „+N", iOS-Stil) statt als lange Liste. Klick auf den Cluster klappt die volle Liste auf; Klick auf einen Tool-Eintrag zeigt dessen IN/OUT-Details (wie bisher). Während der Agent arbeitet, ist der Cluster automatisch ausgeklappt (Live-Sicht).
+
 ## [1.64.1] — 2026-06-24
 
 ### Fixed
