@@ -566,14 +566,34 @@ async def _init_db_from_models() -> None:
     import subprocess
 
     from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text as _sql_text
 
     from app.models import Base  # noqa: F401
 
     engine = create_async_engine(settings.database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
     logger.info("Tables created from SQLAlchemy models")
+
+    # pgvector must ALWAYS be present. The embedding columns are pgvector
+    # `vector(1024)` added via raw-SQL migrations, NOT in the SQLAlchemy models —
+    # so on a fresh DB (create_all + `alembic stamp head` below) they would be
+    # skipped. Ensure the extension + columns + HNSW indexes here, idempotently,
+    # on every startup so semantic search (brain/skill/memory) always works.
+    # Kept in its own transaction so a missing extension can never block startup.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text("CREATE EXTENSION IF NOT EXISTS vector"))
+            for _tbl in ("knowledge_entries", "agent_memories", "skills"):
+                await conn.execute(_sql_text(f"ALTER TABLE {_tbl} ADD COLUMN IF NOT EXISTS embedding vector(1024)"))
+                await conn.execute(_sql_text(
+                    f"CREATE INDEX IF NOT EXISTS ix_{_tbl}_embedding ON {_tbl} USING hnsw (embedding vector_cosine_ops)"
+                ))
+        logger.info("pgvector extension + embedding columns ensured (local bge-m3, 1024-dim)")
+    except Exception as e:
+        logger.warning(f"Could not ensure pgvector/embedding columns: {e}")
+
+    await engine.dispose()
 
     result = subprocess.run(
         ["alembic", "stamp", "head"],

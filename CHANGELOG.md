@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.64.1] — 2026-06-24
+
+### Fixed
+- **pgvector ist jetzt bei jedem Deploy garantiert da.** Ursache des fehlenden pgvector: der Startup macht `create_all` + `alembic stamp head` (markiert Migrationen als angewendet, ohne sie auszuführen) — die `embedding`-Spalten sind aber pgvector-`vector(1024)` via SQL-Migration, also wurden sie auf frischen DBs übersprungen. Der Orchestrator stellt jetzt beim **Start** idempotent `CREATE EXTENSION vector` + die `embedding`-Spalten + HNSW-Indizes sicher (eigene Transaktion, blockiert den Start nicht). Embeddings bleiben **lokal** (BAAI/bge-m3, 1024-dim; kein Cloud-Fallback ohne OPENAI_API_KEY).
+
 ## [1.64.0] — 2026-06-24
 
 ### Fixed
