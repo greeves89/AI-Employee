@@ -430,20 +430,41 @@ DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
 """
 
 
-def _build_mounts_section(mount_labels: list[str]) -> str:
-    """Return a CLAUDE.md section listing mounted host directories, or empty string."""
+def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) -> str:
+    """Return a CLAUDE.md section listing mounted host directories, or empty string.
+
+    ``catalog`` should be the effective catalog (env + DB Second Brains). When not
+    provided it falls back to the static env catalog so callers without a DB session
+    still work.
+    """
     if not mount_labels:
         return ""
-    from app.core.mounts import parse_mount_catalog
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    if catalog is None:
+        from app.core.mounts import parse_mount_catalog
+        catalog = parse_mount_catalog(settings.agent_mount_catalog)
     lines = ["\n## Host Mounts"]
     lines.append("The following directories from the host are mounted into this container:")
+    has_brain = False
     for label in mount_labels:
         entry = catalog.get(label)
         if entry:
             mode_note = "(read-only)" if entry.mode == "ro" else "(read-write)"
-            lines.append(f"- `{entry.container_path}` — {label} {mode_note}")
+            is_brain = label.startswith("brain-")
+            note = " — shared department Second Brain (Markdown knowledge base)" if is_brain else ""
+            lines.append(f"- `{entry.container_path}` — {label} {mode_note}{note}")
+            has_brain = has_brain or is_brain
     lines.append("\nWhen the user asks about their local files, always check these paths first.")
+    if has_brain:
+        lines.append(
+            "\n### Second Brain lookup (IMPORTANT)\n"
+            "A shared department knowledge base is mounted above (a `brain-*` path under "
+            "`/mnt/brains/`). For support, how-to or troubleshooting questions (e.g. error "
+            "codes like `x17137`), **search it FIRST** before answering: use `grep` for "
+            "keywords/error codes and `read_file` on the matches, then answer from the found "
+            "`.md` content and cite the file. If you learn something new and have read-write "
+            "access, add or update a concise `.md` article (Markdown, `[[wikilinks]]` between "
+            "topics) so the knowledge is preserved for the whole department."
+        )
     return "\n".join(lines)
 
 
@@ -1060,8 +1081,8 @@ class AgentManager:
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
-        catalog = parse_mount_catalog(settings.agent_mount_catalog)
+        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
@@ -1096,7 +1117,7 @@ class AgentManager:
             agent_mounts = config.get("mounts", [])
             fresh_claude_md = DEFAULT_CLAUDE_MD.replace(
                 "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-            ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
+            ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts, catalog))
             mode = agent.mode or config.get("mode", "claude_code")
             target_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
             self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
@@ -1227,8 +1248,8 @@ class AgentManager:
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
-        catalog = parse_mount_catalog(settings.agent_mount_catalog)
+        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
@@ -1260,7 +1281,7 @@ class AgentManager:
                     "/workspace/CLAUDE.md",
                     DEFAULT_CLAUDE_MD.replace(
                         "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-                    ).replace("$MOUNTS_SECTION", _build_mounts_section(_agent_mounts)),
+                    ).replace("$MOUNTS_SECTION", _build_mounts_section(_agent_mounts, catalog)),
                 )
                 logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
             except Exception as e:

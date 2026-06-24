@@ -1,0 +1,8 @@
+[Unit]
+Description=Auto-commit AI-Employee Second Brain vaults (local git, no remote)
+Documentation=https://github.com/greeves89/AI-Employee
+
+[Service]
+Type=oneshot
+Environment=SECONDBRAIN_BASE=/srv/secondbrain
+ExecStart=/opt/ai-employee/scripts/secondbrain-autocommit.sh

@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     # Format per line: label:host_path:container_path:mode  (mode = ro | rw)
     # Example: nas-docs:/mnt/nas/docs:/mnt/docs:ro
     agent_mount_catalog: str = ""
+    # Second Brains: department-shared knowledge vaults (DB-managed mount entries).
+    # Host base dir (must be bind-mounted into the orchestrator rw for provisioning)
+    # and the container path prefix where each brain is mounted in agents.
+    secondbrain_base: str = "/srv/secondbrain"
+    secondbrain_container_base: str = "/mnt/brains"
 
     # Telegram
     telegram_bot_token: str = ""

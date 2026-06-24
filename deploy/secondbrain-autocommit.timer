@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic auto-commit of Second Brain vaults
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

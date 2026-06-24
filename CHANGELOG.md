@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.56.0] — 2026-06-24
+
+### Added
+- **Second Brains — abteilungsweite, geteilte Wissens-Vaults.** Ein Admin legt im neuen Admin-Tab „Second Brains" pro Abteilung ein Brain an (Name + Slug); der Orchestrator provisioniert dazu einen geteilten Markdown-Ordner unter `/srv/secondbrain/<slug>/` (mkdir + **lokales** `git init` ohne Remote + `index.md`-Gerüst). Das Brain ist ein **DB-verwalteter Mount-Eintrag**: es erscheint sofort (ohne `.env`-Edit/Neustart) im Mount-Permissions-Modal (ro/rw pro Person), in den Custom-Roles (`mount_labels`, Gruppen) und im Agent-Mount-Selector. Zugewiesene Agents mounten den Vault als `/mnt/brains/<slug>` und lesen/schreiben die `.md` mit ihren bestehenden File-Tools.
+  - **Auto-Retrieval:** Bei zugewiesenem Brain weist die Agent-CLAUDE.md den Agent an, bei Support-/How-to-Fragen (z.B. Fehlercode `x17137`) **zuerst** den Vault per `grep`/`read_file` zu durchsuchen und die Antwort aus den gefundenen `.md` zu belegen.
+  - **Datei-Historie:** lokales Git pro Vault + host-seitiger systemd-Timer (`deploy/secondbrain-autocommit.*`) für Auto-Commits → Diff/History/Rollback, kombiniert mit den vorhandenen `FILE_WRITTEN`-Audit-Events (wer/wann). Kein Remote, nichts verlässt den Server (DSGVO).
+  - **Audit:** neue Event-Typen `BRAIN_CREATED` / `BRAIN_UPDATED` / `BRAIN_DELETED`.
+  - Backend: `second_brains`-Tabelle + Migration, `brains`-API (CRUD), zentraler Katalog-Merge `get_effective_catalog` (env + DB) in Mount-Auflösung und Settings.
+  - Wiederverwendet: vorhandenes Mount-System, `user_mount_access`, `custom_roles`, Agent-File-Tools, Audit-Framework — kein Scope-Umbau, kein semantischer Index (grep-basiert; pgvector als spätere Ausbaustufe vorgesehen).
+
 ## [1.55.36] — 2026-06-14
 
 ### Fixed
