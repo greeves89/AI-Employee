@@ -779,31 +779,67 @@ siehst du Besitzer, Status und Modell.
   Agent?" nachzusehen (Besitzer-Spalte).
 
 ### 22.3 Zuweisungen & „Trainierten Agent verteilen"
+
+**Wozu das gut ist:** Nicht jeder Endanwender kann (oder will) sich selbst einen
+vernünftigen Agenten bauen. Deshalb baut **der Admin** einmal einen guten Agenten, **lernt
+ihn fertig an** — und **verteilt** ihn dann an einzelne User oder ganze Gruppen. Jeder
+bekommt eine **eigene, einsatzbereite Kopie**, ohne selbst konfigurieren zu müssen.
+
+Tab **Zuweisungen**. Hier siehst du, welche Agenten welchem User gehören, und hast oben
+rechts zwei Buttons:
+
 ![Zuweisungen](screenshots/21-admin-zuweisungen.png)
-1. Tab **Zuweisungen**.
 
-**Variante A — Agent aus Template zuweisen**
+#### Variante A — Agent aus einer Vorlage zuweisen
+Erzeugt für **einen** User einen Agenten aus einem **Template** (Blueprint):
 1. **Agent zuweisen** klicken.
-2. **User** und **Template** wählen, optional **Name**.
-3. **Zuweisen** — es entsteht ein Agent für diesen User.
+2. **User** und **Template** wählen, optional einen **Namen** vergeben.
+3. **Zuweisen** — der Agent wird angelegt und dem User zugeordnet.
 
-**Variante B — Trainierten Agent verteilen (Kopie pro User/Gruppe)**
+#### Variante B — Trainierten Agenten verteilen (Kopie pro User/Gruppe)
+
+Das ist der Weg für **fertig angelernte** Agenten. Klicke **Trainierten Agent verteilen** →
+das Modal öffnet sich:
+
 ![Trainierten Agent verteilen](screenshots/22-verteilen-modal.png)
-1. **Trainierten Agent verteilen** klicken.
-2. **Quell-Agent** wählen (das fertig angelernte Original).
-3. **Gruppe (Rolle)** wählen (alle aktiven Mitglieder bekommen eine Kopie) **und/oder**
-   einzelne **User** (Mehrfachauswahl mit Strg/Cmd-Klick).
-4. Optional **Namens-Präfix** eingeben.
-5. **Verteilen** klicken. Das Ergebnis zeigt, wie viele Kopien erstellt/übersprungen
-   wurden.
 
-Jede Kopie ist ein **eigenständiger Agent** (eigener Container + Workspace, dem User
-gehörend) mit **voller Konfiguration** des Originals **und dessen angelerntem Wissen**
-(knowledge.md, Skills, Dokumente). **Idempotent**: wer schon eine Kopie hat, wird
-übersprungen.
+**Jedes Feld erklärt:**
+- **Quell-Agent (das fertige Original)** — der Agent, den du klonst. Wähle den, den du
+  vorher gebaut und angelernt hast (Rolle, Skills, Wissen in `knowledge.md`).
+- **An Gruppe (Rolle)** — wählst du hier eine Rolle, bekommt **jedes aktive Mitglied**
+  dieser Gruppe automatisch eine Kopie. So stattest du eine ganze Abteilung auf einmal aus.
+- **…und/oder einzelne User** — Mehrfachauswahl (Strg/Cmd-Klick) für gezielte Einzelpersonen.
+  Du kannst Gruppe **und** Einzel-User kombinieren.
+- **Namens-Präfix (optional)** — Vorsilbe für die Namen der Kopien (Standard: Name des
+  Originals). Jede Kopie heißt dann z. B. „IT-Helfer – Max Mustermann".
+- **Verteilen** — legt die Kopien an. Im Ergebnis steht, **wie viele erstellt** und **wie
+  viele übersprungen** wurden (mit Begründung).
 
-**Zuweisung entfernen:** in der Liste beim Agenten auf den **Papierkorb** klicken
-(stoppt Container und löscht den Agenten).
+**Was bei jeder Kopie passiert:**
+- Es entsteht ein **vollständig eigenständiger Agent** — **eigener Container, eigenes
+  Workspace, dem jeweiligen User gehörend**. Es ist **nie** derselbe geteilte Agent
+  (kein gemeinsam genutzter Container).
+- Die Kopie übernimmt die **volle Konfiguration** des Originals: Modell, Modus/LLM, Rolle,
+  Berechtigungen, Integrationen, MCP-Server, Budget, Autonomie-Level.
+- Und das **angelernte „Gehirn"**: der **komplette Workspace** des Originals
+  (`knowledge.md`, installierte Skills, `CLAUDE.md`, Dokumente) wird mitkopiert — nur die
+  technische Task-Historie (`.agent_state.md`) startet je Kopie frisch.
+- **Snapshot & idempotent:** Es zählen die **aktuellen** Mitglieder. Wer **schon eine
+  Kopie** dieses Originals hat, wird **übersprungen** (keine Dubletten). Neue Mitglieder
+  später? Einfach erneut **Verteilen** — nur die fehlenden Kopien entstehen.
+
+**Zuweisung entfernen:** in der Liste beim Agenten auf den **Papierkorb** klicken — das
+**stoppt den Container und löscht** den (Kopie-)Agenten dieses Users.
+
+#### Szenario: IT-Abteilung in 1 Minute ausstatten
+1. **Agents → + New Agent → Leerer Agent**, „IT-Helfer" bauen, Rolle/Skills/Wissen anlernen
+   (Kap. 5.7), bis er rund läuft.
+2. **Admin-Konsole → Zuweisungen → Trainierten Agent verteilen.**
+3. **Quell-Agent** = „IT-Helfer", **Gruppe (Rolle)** = „IT-Abteilung" → **Verteilen**.
+4. Ergebnis: „8 Kopien erstellt". Jedes IT-Mitglied hat jetzt seinen **eigenen** IT-Helfer
+   — mit demselben Wissen, aber getrennt und privat.
+5. Kommt nächste Woche ein neuer Kollege in die Gruppe → erneut **Verteilen**, er bekommt
+   seine Kopie, die anderen werden übersprungen.
 
 ### 22.4 Rollen (Gruppen-Rechte)
 
