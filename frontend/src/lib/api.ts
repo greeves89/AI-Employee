@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -870,6 +870,31 @@ export async function updateAIAccount(id: number, payload: Partial<AIAccountPayl
 
 export async function deleteAIAccount(id: number): Promise<{ ok: boolean; id: number }> {
   return fetchJSON(`${getBase()}/ai-accounts/${id}`, { method: "DELETE" });
+}
+
+// ── Second Brains (department-shared knowledge vaults) ──
+export interface SecondBrainPayload {
+  name: string;
+  slug?: string;
+  default_mode?: "ro" | "rw";
+  description?: string | null;
+  is_active?: boolean;
+}
+
+export async function listSecondBrains(activeOnly = false): Promise<SecondBrain[]> {
+  return fetchJSON(`${getBase()}/brains/?active_only=${activeOnly}`);
+}
+
+export async function createSecondBrain(payload: SecondBrainPayload): Promise<SecondBrain> {
+  return fetchJSON(`${getBase()}/brains/`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateSecondBrain(id: number, payload: Partial<SecondBrainPayload>): Promise<SecondBrain> {
+  return fetchJSON(`${getBase()}/brains/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: number }> {
+  return fetchJSON(`${getBase()}/brains/${id}`, { method: "DELETE" });
 }
 
 export async function updateAgentAIAccount(

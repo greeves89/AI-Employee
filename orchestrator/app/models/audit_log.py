@@ -38,6 +38,10 @@ class AuditEventType(str, Enum):
     SKILL_FILE_UPLOADED = "skill_file_uploaded"
     SKILL_FILE_DOWNLOADED = "skill_file_downloaded"
     SKILL_FILE_DELETED = "skill_file_deleted"
+    # Second Brains (department-shared knowledge vaults)
+    BRAIN_CREATED = "brain_created"
+    BRAIN_UPDATED = "brain_updated"
+    BRAIN_DELETED = "brain_deleted"
 
 
 class AuditLog(Base):

@@ -143,6 +143,8 @@ services:
       - ./CHANGELOG.md:/CHANGELOG.md:ro
       - ai-employee-shared:/shared
       - ${HOME}/.ai-employee:/host-auth:ro
+      # Second Brains base — orchestrator provisions per-department vault folders here
+      - ${SECONDBRAIN_BASE:-/srv/secondbrain}:/srv/secondbrain
     deploy:
       resources:
         limits:

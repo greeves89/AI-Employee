@@ -210,12 +210,12 @@ async def get_agent_mount_catalog(
     Non-admin sees only labels granted via user_mount_access, with the
     grant's `mode` (which may be downgraded to "ro" from the catalog's "rw").
     """
-    from app.core.mounts import parse_mount_catalog
+    from app.core.mounts import get_effective_catalog
     from app.models.user import UserRole
     from app.models.user_mount_access import UserMountAccess
     from sqlalchemy import select
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    catalog = await get_effective_catalog(db)
 
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         # Admin: full catalog
@@ -296,7 +296,8 @@ async def set_user_mount_access(
     if not isinstance(new_grants, list):
         raise HTTPException(status_code=422, detail="grants must be a list")
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    from app.core.mounts import get_effective_catalog
+    catalog = await get_effective_catalog(db)
     valid_labels = set(catalog.keys())
 
     # Validate

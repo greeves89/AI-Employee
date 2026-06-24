@@ -60,6 +60,20 @@ export interface AIAccount {
   updated_at: string;
 }
 
+// Second Brain — department-shared knowledge vault (DB-managed mount entry).
+export interface SecondBrain {
+  id: number;
+  label: string;            // mount label (access grants hang on this), e.g. brain-it_operations
+  name: string;             // display / department name
+  slug: string;
+  container_path: string;   // where it mounts in agents, e.g. /mnt/brains/it_operations
+  default_mode: "ro" | "rw";
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Agent {
   id: string;
   name: string;

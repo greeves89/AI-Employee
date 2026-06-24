@@ -35,6 +35,7 @@ from app.models.agent_secret import AgentSecret, AgentSecretAssignment, SecretTy
 from app.models.user_mount_access import UserMountAccess
 from app.models.custom_role import CustomRole
 from app.models.ai_account import AIAccount
+from app.models.second_brain import SecondBrain
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -58,5 +59,5 @@ __all__ = [
     "UrlAllowlistTemplate", "UrlAllowlistTemplateEntry", "AgentUrlAllowlist",
     "UserProfile", "UserProfileEvent",
     "AgentSecret", "AgentSecretAssignment", "SecretType",
-    "UserMountAccess", "CustomRole", "AIAccount",
+    "UserMountAccess", "CustomRole", "AIAccount", "SecondBrain",
 ]
