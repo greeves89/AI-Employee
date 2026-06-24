@@ -31,7 +31,13 @@ const priorityIndicator: Record<string, string> = {
   low: "opacity-80",
 };
 
-export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sidebar" }) {
+export function NotificationBell({
+  variant = "icon",
+  collapsed = false,
+}: {
+  variant?: "icon" | "sidebar";
+  collapsed?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -213,7 +219,25 @@ export function NotificationBell({ variant = "icon" }: { variant?: "icon" | "sid
 
   return (
     <div className="relative" ref={panelRef}>
-      {variant === "sidebar" ? (
+      {variant === "sidebar" && collapsed ? (
+        <button
+          onClick={handleOpen}
+          title="Notifications"
+          className={cn(
+            "relative flex items-center justify-center h-9 w-9 rounded-xl transition-all",
+            isOpen
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+          )}
+        >
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+      ) : variant === "sidebar" ? (
         <button
           onClick={handleOpen}
           className={cn(
