@@ -71,44 +71,117 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ## 1. Grundlagen: Navigation & Login
 
-**Anmelden**
+### 1.1 Anmelden
 1. Öffne die Plattform-URL im Browser.
 2. **E-Mail** und **Passwort** eingeben.
-3. Auf **Anmelden** klicken. Du landest auf dem Dashboard.
+3. Auf **Anmelden** klicken. Du landest auf dem **Dashboard**. Die Sitzung bleibt sicher
+   aktiv (verschlüsseltes Cookie), bis du dich abmeldest oder sie abläuft.
 
-**Seitenleiste bedienen**
-- Links findest du alle Bereiche, gruppiert in **Übersicht**, **Zusammenarbeit**,
-  **Automation**, **System** und **Admin**.
-- Zum **Einklappen** auf den kleinen **Pfeil** am Rand der Seitenleiste klicken
-  (zeigt dann nur noch Icons). Erneut klicken = ausklappen.
-- Unten: **Glocke** (Benachrichtigungen), **Light/Dark Mode** umschalten,
-  **Star on GitHub**, **Über AI Employee**, dein **Profil**.
+### 1.2 Die Seitenleiste — dein Hauptmenü
+Die **linke Seitenleiste** ist auf jeder Seite dein Navigationszentrum (im Screenshot
+unten gut zu sehen). Sie ist in **Gruppen** organisiert:
 
-**Abmelden**: unten auf dein **Profil** (Name/Avatar) klicken → **Abmelden**.
+![Seitenleiste & Dashboard](screenshots/01-dashboard.png)
+
+- **Übersicht** — **Dashboard** (Startseite), **Agents** (deine Agenten), **Onboarding**,
+  **Tasks** (Aufträge), **Analytics** (Auswertungen).
+- **Zusammenarbeit** — **Knowledge** (Wissensablage), **Meeting Rooms**
+  (Multi-Agent-Zusammenarbeit).
+- **Automation** — **Skill Marketplace**, **Triggers** (ereignisbasiert),
+  **Schedules** (zeitgesteuert).
+- **System** — **Approvals** (Freigaben), **Explorer** (Dateien), **Integrations**
+  (externe Dienste/MCP).
+- **Admin** — **Admin-Konsole** (nur für Administratoren).
+
+**Bedienung:**
+- Auf einen **Menüpunkt** klicken → öffnet die jeweilige Seite (der aktive Punkt ist
+  hervorgehoben).
+- Den kleinen **Pfeil** am Rand klicken → Leiste **einklappen** (nur Icons, mehr Platz).
+  Erneut klicken = ausklappen.
+- **Ganz unten** findest du: die **Glocke** (Benachrichtigungen, mit Zähler),
+  **Light/Dark Mode** umschalten, **Star on GitHub**, **Über AI Employee** und dein
+  **Profil** (Name/Avatar).
+
+### 1.3 Abmelden
+Unten auf dein **Profil** (Name/Avatar) klicken → **Abmelden**.
+
+> Hinweis: Welche Menüpunkte du siehst, kann von deiner **Rolle** abhängen — ein Admin gibt
+> pro Gruppe frei, welche Bereiche sichtbar sind (Kap. 22.4).
 
 ---
 
 ## 2. Onboarding
 
-![Onboarding](screenshots/03-onboarding.png)
+Das **Onboarding** ist der schnellste Start: Statt einzelne Agenten von Hand zu bauen,
+wählst du ein **Branchen-Paket** — ein **fertiges Team** aus mehreren, aufeinander
+abgestimmten Agenten — und richtest es **in einem Schritt** ein.
 
-1. In der Seitenleiste **Onboarding** klicken.
-2. Den Schritten folgen (ersten Agenten anlegen, Modell/Account wählen).
-3. Mit **Weiter** durch die Schritte klicken bis **Fertig**.
+**Schritt 1 — Paket wählen.** Seitenleiste → **Onboarding**:
+
+![Onboarding: Branchen-Pakete](screenshots/03-onboarding.png)
+
+Jede Kachel ist ein vorkonfiguriertes Team (Anzahl Agenten unten angegeben):
+- **Entwickler-Team** — Fullstack-Entwicklung, DevOps, Code-Review (komplettes
+  Software-Team). *3 Agenten.*
+- **Content-Studio** — Technische Doku, Social Media, SEO (komplette Content-Produktion).
+  *3 Agenten.*
+- **Support-Desk** — Kundensupport, Recherche, Doku (reaktionsschnelles Support-Team).
+  *3 Agenten.*
+
+Auf die gewünschte **Paket-Kachel** klicken.
+
+**Schritt 2 — Paket-Inhalt prüfen & einrichten.** Es öffnet sich die Detailansicht:
+
+![Onboarding: Paket-Detail](screenshots/f18-onboarding-pack.png)
+
+Hier siehst du **genau, was angelegt wird**:
+- **„Agenten die erstellt werden (3)"** — die einzelnen Team-Mitglieder mit Rolle, z. B.
+  beim Entwickler-Team: **Fullstack Developer**, **DevOps Engineer**, **Code Reviewer**
+  (jeweils mit Kurzbeschreibung ihrer Aufgabe).
+- **Wissens-Einträge** — Wissen, das dem Team mitgegeben wird (z. B. *Development
+  Standards*).
+- **Erste Demo-Aufgabe** — ein vorbereiteter Einstiegs-Task (z. B. „Repo-Überblick
+  erstellen"), damit du das Team gleich in Aktion siehst.
+- **Zurück** — andere Pakete ansehen. **Paket einrichten** (großer Button) — legt das
+  **ganze Team** (alle Agenten + Wissen) auf einmal an.
+
+Danach findest du die neuen Agenten unter **Agents** und kannst sofort loslegen.
+
+> Wann Onboarding, wann „+ New Agent"? **Onboarding** = schnell ein **ganzes Team** für
+> einen Anwendungsfall. **+ New Agent** (Kap. 4.2) = ein **einzelner**, gezielt
+> konfigurierter Agent.
 
 ---
 
 ## 3. Dashboard
 
+Das **Dashboard** ist deine Startseite nach dem Login — der Gesamtüberblick über deine
+Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Dashboard**.
+
 ![Dashboard](screenshots/01-dashboard.png)
 
-1. In der Seitenleiste **Dashboard** klicken.
-2. Oben siehst du die **System-Status-Leiste** (API, DB, Redis, Agenten-Anzahl).
-3. Darunter die **Kennzahlen**: Active Agents, Working, In Queue, Completed, Total Cost.
-4. Unter **Active Agents** auf eine Agent-Kachel klicken → öffnet die Agent-Detailseite.
-5. **View all** (rechts neben „Active Agents") → zur vollen Agentenliste.
-6. **All tasks →** (bei „Recent Activity") → zur Task-Liste.
-7. Oben rechts **+ New Agent** → neuen Agenten anlegen (siehe Kap. 4).
+**Aufbau der Seite, Element für Element:**
+
+- **System-Status-Leiste** (oben) — zeigt mit grünen Punkten, dass die Plattform-Bausteine
+  laufen: **All Systems Go**, **API**, **DB**, **Redis** und die **Anzahl Agenten**. Ist
+  hier etwas rot, lohnt ein Blick auf **Health** (Kap. 19).
+- **Kennzahlen-Kacheln** — fünf Summen auf einen Blick:
+  - **Active Agents** — wie viele Agenten existieren/laufen.
+  - **Working** — wie viele gerade an einem Task arbeiten.
+  - **In Queue** — wie viele Aufträge anstehen.
+  - **Completed** — abgeschlossene Tasks.
+  - **Total Cost** — aufgelaufene Kosten.
+- **Active Agents** (Liste) — deine laufenden Agenten als Kacheln mit **Live-CPU/Memory**,
+  **Modell-Badge** und Status. Ein **Update**-Badge zeigt eine neue Version an.
+  - Auf eine **Agent-Kachel** klicken → öffnet die **Agent-Detailseite** (Kap. 5).
+  - **View all** (rechts) → zur vollständigen Agentenliste.
+- **Recent Activity** (unten links) — die zuletzt erledigten Tasks. **All tasks →** führt
+  zur Task-Liste (Kap. 6).
+- **Kostenverlauf** (unten rechts) — Kosten über die Zeit (sobald Daten vorliegen).
+- **+ New Agent** (oben rechts) — startet direkt den Anlege-Assistenten (Kap. 4.2).
+
+> Faustregel: Hier startest du jeden Tag — siehst sofort, ob alles läuft, was deine
+> Agenten gerade tun und was es kostet.
 
 ---
 
@@ -342,11 +415,27 @@ Nach **Create Task** läuft der Agent los; der Task erscheint in der Liste und w
 
 ## 7. Analytics
 
+**Analytics** ist dein Auswertungs-Dashboard über alle Agenten und Tasks — hier siehst du,
+**wie gut** und **wie wirtschaftlich** deine Agenten arbeiten. Seitenleiste → **Analytics**.
+
 ![Analytics](screenshots/05-analytics.png)
 
-1. Seitenleiste → **Analytics**.
-2. Kennzahlen ablesen: abgeschlossene Tasks, **Ø Bewertung**, Kosten, Token, Dauer.
-3. Über Sortier-/Spaltenköpfe (z. B. **Bewertung**) die Tabelle sortieren.
+**Was du hier abliest:**
+- **Übersichts-Kacheln** (oben) — die wichtigsten Summen auf einen Blick:
+  - **Abgeschlossene Tasks** — wie viele Aufträge fertig wurden.
+  - **Ø Bewertung** — die durchschnittliche Sterne-Bewertung (aus den Task-Bewertungen,
+    Kap. 6.3). Niedrig? → Prompts/Agenten verbessern.
+  - **Kosten** — was die Agenten verbraucht haben.
+  - **Token** — verbrauchte Eingabe-/Ausgabe-Token (Kosten-Treiber).
+  - **Bewertungen** — Anzahl abgegebener Bewertungen.
+- **Tabelle pro Agent** (darunter) — je Agent die Kennzahlen (z. B. **Ø Bewertung**,
+  abgeschlossene Tasks, Kosten, Ø Dauer). Über die **Spaltenköpfe** (z. B. **Bewertung**)
+  **sortieren** — so findest du Top-Performer und Ausreißer.
+- Gibt es noch keine Daten, steht „Noch keine Bewertungen oder Fehler." — dann erst Tasks
+  ausführen und **bewerten**.
+
+> Praxis: Nutze Analytics wöchentlich, um zu sehen, welche Agenten gut laufen (hohe
+> Bewertung, niedrige Kosten) und welche Prompts/Konfigurationen nachjustiert werden sollten.
 
 ---
 
