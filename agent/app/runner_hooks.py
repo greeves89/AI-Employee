@@ -49,9 +49,11 @@ FIRST STEPS (do these BEFORE starting the actual task):
 0. **Read /workspace/.agent_state.md** if it exists — this is your cross-run working memory.
    It tells you what you last did, active work, and user directives. Check it FIRST.
 1. Read /workspace/knowledge.md to recall your role, skills, and learned patterns
-2. Use **brain_search** (query relevant to this task) to search the user's Second Brain —
-   the unified knowledge graph shared across ALL agents of this user. This surfaces context
-   from other agents, previous research, and semantically linked knowledge.
+2. Look things up in BOTH knowledge stores (they are different — see step 5):
+   - **secondbrain_search** — the SHARED department Second Brain vault (`/mnt/brains/<slug>/`),
+     used by many users. Best for support/how-to/troubleshooting (error codes, devices, procedures).
+   - **brain_search** — THIS user's personal Knowledge Base (account-bound; the Knowledge tab):
+     prior research, decisions and semantically linked notes of this user's own agents.
 3. Use memory_search with a focused query AND pass `room` to narrow to the current project/area
    (e.g. room="project:<repo-name>/<area>"). Rooms dramatically improve retrieval precision.
 4. Use list_todos to check for pending work items
@@ -68,8 +70,8 @@ FIRST STEPS (do these BEFORE starting the actual task):
       Do NOT skip skill_rate — it feeds the self-improvement loop.
    c) If no skill matches: do the task with your own approach, then call skill_propose.
 
-If you encounter ANY problem during the task, ALWAYS search brain_search and memory_search
-for solutions BEFORE reporting errors or asking the user.
+If you encounter ANY problem during the task, ALWAYS search secondbrain_search (shared vault), brain_search (personal KB) and
+memory_search for solutions BEFORE reporting errors or asking the user.
 
 ---
 """
@@ -188,30 +190,29 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    If this task had ZERO learnings, save one memory with key="current_task", tag_type="transient",
    content="task_clean_run: completed without issues" so we know you reflected.
 
-5. **Preserve knowledge — there are TWO distinct stores, do NOT confuse them:**
+5. **Preserve knowledge — there are TWO distinct stores. Pick the right one:**
 
-   **A) A mounted Second Brain VAULT** (a `brain-*` directory under `/mnt/brains/<slug>/`,
-   e.g. `/mnt/brains/it_operations/`). THIS is the shared department knowledge base the user
-   sees and browses in the UI ("the Second Brain"). To put something **into the Second Brain**,
-   you **WRITE MARKDOWN FILES** into that directory with your file tools — e.g.
-   `write_file` to `/mnt/brains/it_operations/Drucker/HP-Fax.md`. **`brain_contribute` does
-   NOT write here.** When the user says "schreibe das ins Second Brain / in den Vault", or you
-   imported wiki/source content for a department, create/update `.md` articles in the mounted
-   vault (sensible folders + filenames, `[[wikilinks]]` between topics, plain-text error
-   codes/model names so `grep` finds them). Only do this if the vault is mounted **read-write**.
+   **A) SHARED Second Brain VAULT** — the department knowledge base shared by MANY users,
+   mounted under `/mnt/brains/<slug>/` and browsed in the UI under *Wissen → Second Brain*.
+   Use the **`secondbrain_*` tools**: `secondbrain_search` to look things up,
+   `secondbrain_write` to add/update an article, `secondbrain_list`/`secondbrain_read` to
+   navigate. When the user says **"schreibe das ins Second Brain / in den Vault"**, or you
+   imported wiki/source content for a department/team, call **`secondbrain_write`** (e.g.
+   path `it_operations/Drucker/HP-Fax.md`) — one file per topic, sensible folders,
+   `[[wikilinks]]`, plain-text error codes/model names so search finds them.
+   ⚠️ Do **NOT** use `brain_contribute` for this. (Writing needs a read-write vault.)
 
-   **B) Your personal knowledge brain** (`brain_contribute` → a private, searchable store, NOT
-   the mounted vault). Call `brain_contribute` for general cross-task learnings:
-   - a **research finding**, a **decision with rationale**, a **working process/workflow**,
-     a **domain insight**, or a **tool/API capability** discovered during the task.
-   - **title**: short searchable noun phrase · **content**: 2-5 sentences (fact, why it matters,
-     how to apply; `[[Other Entry Title]]` to cross-reference) · **tags**: 2-4 specific tags.
+   **B) PERSONAL Knowledge Base** — account-bound to THIS user (the *Knowledge* tab; shared
+   only across this user's own agents). Use the **`brain_*` tools** (`brain_contribute`) for
+   the user's general cross-task learnings: a research finding, a decision + rationale, a
+   working process, a domain insight, or a discovered tool/API capability.
+   - **title**: short searchable noun phrase · **content**: 2-5 sentences (fact, why, how to
+     apply; `[[Other Title]]` to cross-reference) · **tags**: 2-4 specific tags.
 
-   ❌ Do NOT store: task-completion confirmations, summaries of what you just did, code
+   ❌ Do NOT store task-completion confirmations, summaries of what you just did, code
       descriptions, or ephemeral state.
-   ✅ DO: put **department/shared** knowledge into the **mounted vault (A)** as `.md` files;
-      put **general personal learnings** into **brain_contribute (B)**. If a task produced
-      neither, skip this step.
+   ✅ Rule of thumb: **department/team knowledge → `secondbrain_write` (A)**; **this user's
+      personal learnings → `brain_contribute` (B)**. If neither applies, skip this step.
 
 6. **Update knowledge.md**: Append to these sections in `/workspace/knowledge.md`:
    - "## Learned Patterns" — new patterns that worked

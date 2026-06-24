@@ -49,6 +49,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "git_status", "git_diff",
     "web_search", "web_fetch",
     "brain_search", "brain_get", "brain_list", "brain_related",
+    "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
     "list_team", "list_tasks", "list_todos", "list_schedules",
     "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
     "send_message", "create_task",
@@ -927,6 +928,126 @@ class ToolExecutor:
             return "\n".join(files)
         except Exception as e:
             return f"Error running glob: {e}"
+
+    # ── Second Brain — the SHARED department vault(s) under /mnt/brains/<slug>/ ──
+    # These operate on the mounted Markdown vault (what the user sees in the UI),
+    # NOT the personal Knowledge Base (that is brain_*). Keep the two apart.
+
+    _BRAINS_ROOT = "/mnt/brains"
+
+    def _brain_dirs(self) -> list[str]:
+        import glob as _glob
+        return sorted(d for d in _glob.glob(f"{self._BRAINS_ROOT}/*") if os.path.isdir(d))
+
+    def _resolve_brain_path(self, path: str) -> str:
+        root = os.path.realpath(self._BRAINS_ROOT)
+        p = (path or "").strip()
+        base = p if p.startswith(self._BRAINS_ROOT) else os.path.join(root, p.lstrip("/"))
+        target = os.path.realpath(base)
+        if target != root and not target.startswith(root + os.sep):
+            raise ValueError("path escapes /mnt/brains")
+        if ".git" in os.path.relpath(target, root).split(os.sep):
+            raise ValueError(".git is not accessible")
+        return target
+
+    async def _tool_secondbrain_list(self, params: dict) -> str:
+        dirs = self._brain_dirs()
+        if not dirs:
+            return ("No Second Brain is mounted for this agent. Ask an admin to assign one "
+                    "(Agent → Wissen → Second Brain).")
+        out = []
+        for d in dirs:
+            slug = os.path.basename(d)
+            rw = "read-write" if os.access(d, os.W_OK) else "read-only"
+            files = []
+            for root, dns, fns in os.walk(d):
+                dns[:] = [x for x in dns if x != ".git"]
+                for f in sorted(fns):
+                    files.append(os.path.relpath(os.path.join(root, f), d))
+            body = "\n".join(f"  {x}" for x in sorted(files)) or "  (empty)"
+            out.append(f"## {slug}  ({rw})\n{body}")
+        return "\n\n".join(out)
+
+    async def _tool_secondbrain_search(self, params: dict) -> str:
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: 'query' is required"
+        terms = [t for t in query.lower().split() if t]
+        try:
+            limit = min(int(float(str(params.get("limit", 10)))), 50)
+        except (ValueError, TypeError):
+            limit = 10
+        results = []
+        for d in self._brain_dirs():
+            slug = os.path.basename(d)
+            for root, dns, fns in os.walk(d):
+                dns[:] = [x for x in dns if x != ".git"]
+                for f in fns:
+                    if not f.lower().endswith((".md", ".markdown", ".txt")):
+                        continue
+                    full = os.path.join(root, f)
+                    rel = os.path.relpath(full, d)
+                    try:
+                        with open(full, encoding="utf-8", errors="replace") as fh:
+                            content = fh.read()
+                    except OSError:
+                        continue
+                    hay, name = content.lower(), rel.lower()
+                    score = sum(name.count(t) * 5 + hay.count(t) for t in terms)
+                    if score <= 0:
+                        continue
+                    snips = [ln.strip()[:240] for ln in content.splitlines()
+                             if any(t in ln.lower() for t in terms)][:4]
+                    results.append((score, slug, rel, snips))
+        results.sort(key=lambda r: r[0], reverse=True)
+        if not results:
+            return f"No matches for '{query}' in any Second Brain."
+        lines = []
+        for _score, slug, rel, snips in results[:limit]:
+            lines.append(f"## {slug}/{rel}")
+            lines.extend(f"  · {s}" for s in snips)
+        return "\n".join(lines)
+
+    async def _tool_secondbrain_read(self, params: dict) -> str:
+        try:
+            target = self._resolve_brain_path(params.get("path", ""))
+        except ValueError as e:
+            return f"Error: {e}"
+        if not os.path.isfile(target):
+            return f"File not found: {params.get('path')}"
+        if os.path.getsize(target) > 2_000_000:
+            return "Error: file too large to read"
+        with open(target, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+
+    async def _tool_secondbrain_write(self, params: dict) -> str:
+        path = (params.get("path") or "").strip()
+        content = params.get("content")
+        if not path or content is None:
+            return "Error: 'path' and 'content' are required (e.g. path='it_operations/Drucker/HP-Fax.md')"
+        try:
+            target = self._resolve_brain_path(path)
+        except ValueError as e:
+            return f"Error: {e}"
+        root = os.path.realpath(self._BRAINS_ROOT)
+        if target == root or os.path.isdir(target):
+            return "Error: path must be a file inside a brain, e.g. 'it_operations/Drucker/HP-Fax.md'"
+        slug = os.path.relpath(target, root).split(os.sep)[0]
+        brain_dir = os.path.join(root, slug)
+        if not os.path.isdir(brain_dir):
+            avail = ", ".join(os.path.basename(d) for d in self._brain_dirs()) or "(none mounted)"
+            return f"Error: no mounted Second Brain '{slug}'. Available: {avail}."
+        if not os.access(brain_dir, os.W_OK):
+            return (f"Error: Second Brain '{slug}' is mounted read-only — you cannot write to it. "
+                    f"Ask an admin for read-write access.")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        try:
+            os.chmod(target, 0o666)
+        except OSError:
+            pass
+        return f"Saved to Second Brain: {os.path.relpath(target, root)} ({len(content)} chars)."
 
     async def _tool_web_search(self, params: dict) -> str:
         """Search the web using DuckDuckGo (no API key needed)."""

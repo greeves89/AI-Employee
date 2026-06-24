@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.69.4] — 2026-06-24
+
+### Changed
+- **Nachhaltige Trennung „Second Brain (geteilter Vault)" vs „Knowledge Base (persönlich)".** Die Namens-Kollision an der Wurzel beseitigt — der Agent hat jetzt **zwei klar getrennte, eindeutig benannte Tool-Familien**:
+  - **`secondbrain_search` / `secondbrain_read` / `secondbrain_write` / `secondbrain_list`** — der **geteilte Abteilungs-Vault** (`/mnt/brains/<slug>/`, viele User, UI: Wissen → Second Brain). Dateisystem-basiert, jailed, read-only/read-write erkannt. „Ins Second Brain schreiben" = `secondbrain_write`.
+  - **`brain_*`** — die **persönliche, account-gebundene Knowledge Base** (DB/pgvector, Knowledge-Tab). Beschreibungen entsprechend korrigiert (nicht mehr „Second Brain").
+  - Agent-Instruktionen (`runner_hooks.py`) routen jetzt eindeutig (shared → `secondbrain_*`, persönlich → `brain_*`); Orchestrator-Docstring (`brain.py`) als „Knowledge Base API" klargestellt. Behebt, dass der Agent „ins Second Brain" in die falsche (persönliche) Knowledge Base schrieb.
+
 ## [1.69.3] — 2026-06-24
 
 ### Fixed
