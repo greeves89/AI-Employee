@@ -29,18 +29,17 @@ def _max_turns() -> int:
     return settings.max_turns if settings.max_turns and settings.max_turns > 0 else DEFAULT_MAX_TURNS
 
 
-COMPACTION_THRESHOLD = 0.75  # Trigger compaction at 75% of context window
-
 class LLMChatHandler:
     """Handles interactive chat sessions using custom LLM providers.
 
     Same interface as ChatHandler — publishes identical events via
     LogPublisher.publish_chat() so the frontend sees no difference.
 
-    Context management: tracks token usage vs model context window.
-    When usage exceeds COMPACTION_THRESHOLD (75%), triggers an LLM-based
-    summarization of the conversation, replaces history with the summary,
-    and continues seamlessly.
+    Context management: tracks token usage vs an absolute compaction budget
+    (context_compressor.effective_threshold_tokens). When exceeded, it runs the
+    deterministic compression layers and then a sliding-window rolling summary
+    (recent messages kept verbatim, older ones folded into an extending
+    summary), then continues seamlessly.
     """
 
     def __init__(self, log_publisher: LogPublisher):
@@ -108,11 +107,11 @@ class LLMChatHandler:
             return False  # Too short to compact
         estimated = self._estimate_tokens()
         window = self._get_context_window()
-        usage_pct = estimated / window
-        if usage_pct >= COMPACTION_THRESHOLD:
+        threshold = context_compressor.effective_threshold_tokens(window)
+        if estimated >= threshold:
             logger.info(
-                f"[Context] {usage_pct:.0%} used "
-                f"({estimated:,}/{window:,} tokens) — compaction needed"
+                f"[Context] {estimated:,} tokens ≥ {threshold:,} threshold "
+                f"(window {window:,}) — compaction needed"
             )
             return True
         return False
@@ -141,7 +140,7 @@ class LLMChatHandler:
 
         # Check if still over threshold after deterministic layers
         estimated = context_compressor.estimate_tokens(self._history)
-        still_over = estimated > int(window * COMPACTION_THRESHOLD)
+        still_over = estimated > context_compressor.effective_threshold_tokens(window)
 
         if not still_over:
             self._last_input_tokens = 0

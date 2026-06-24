@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # Safety upper-bound; actual cap comes from settings.max_turns
 MAX_TURNS_HARD_CAP = 200
 
-# Trigger context compression at this fraction of the model's context window
-COMPACTION_THRESHOLD = 0.75
+# Context compression triggers at context_compressor.effective_threshold_tokens
+# (min of 75% of the model window or an absolute token budget).
 
 TOOL_USAGE_RULES = """
 TOOL USAGE RULES (follow strictly):
@@ -349,12 +349,13 @@ class LLMRunner:
 
                 # Context compression: check after each tool round
                 window = self._get_context_window()
+                threshold = context_compressor.effective_threshold_tokens(window)
                 if total_input_tokens > 0:
-                    usage_pct = total_input_tokens / window
+                    current_tokens = total_input_tokens
                 else:
-                    usage_pct = context_compressor.estimate_tokens(messages) / window
+                    current_tokens = context_compressor.estimate_tokens(messages)
 
-                if usage_pct >= COMPACTION_THRESHOLD:
+                if current_tokens >= threshold:
                     await self.log_publisher.publish(
                         task_id, "system", {"message": "[Context compressing...]"}
                     )
@@ -367,9 +368,9 @@ class LLMRunner:
                         logger.info(f"[Context] Runner layers {applied} applied")
                         total_input_tokens = 0  # Re-measure on next API call
 
-                    # Layer 4: LLM summarization if still over threshold
+                    # Layer 4: rolling summary if still over threshold
                     estimated = context_compressor.estimate_tokens(messages)
-                    if estimated > int(window * COMPACTION_THRESHOLD):
+                    if estimated > threshold:
                         new_msgs = await context_compressor.summarize_messages(
                             messages, provider
                         )
