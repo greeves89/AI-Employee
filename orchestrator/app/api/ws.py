@@ -859,6 +859,27 @@ async def ws_agent_voice(
 
 
 @router.websocket("/notifications")
+async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
+    """Agent ids whose notifications a user may receive on the live stream
+    (own + unowned + shared) — same scope as the REST notification endpoints,
+    so the live push never leaks another user's agent notifications."""
+    if not user_id:
+        return set()
+    from sqlalchemy import or_, select
+
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+
+    async with async_session_factory() as db:
+        owned = (await db.execute(
+            select(Agent.id).where(or_(Agent.user_id == user_id, Agent.user_id.is_(None)))
+        )).scalars().all()
+        shared = (await db.execute(
+            select(AgentAccess.agent_id).where(AgentAccess.user_id == user_id)
+        )).scalars().all()
+    return set(owned) | set(shared)
+
+
 async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
     if not _redis or not _redis.client:
@@ -869,10 +890,16 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
         return
 
     await websocket.accept()
+    user_id = getattr(websocket.state, "user_id", None)
+    visible = await _notif_visible_agent_ids(user_id)
     pubsub = await _redis.subscribe("notifications:live")
 
     try:
+        ticks = 0
         while True:
+            ticks += 1
+            if ticks % 60 == 0:  # refresh visibility (~30s) to pick up new agents/access
+                visible = await _notif_visible_agent_ids(user_id)
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=0.5
             )
@@ -880,6 +907,13 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
                 data = message["data"]
                 if isinstance(data, bytes):
                     data = data.decode("utf-8")
+                # Scope: only forward notifications for agents this user may see.
+                try:
+                    aid = (json.loads(data).get("data") or {}).get("agent_id")
+                except Exception:
+                    aid = None
+                if aid not in visible:
+                    continue
                 await websocket.send_text(data)
             await asyncio.sleep(0.05)
     except WebSocketDisconnect:

@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.68.3] — 2026-06-24
+
+### Security
+- **Cross-User-Leak: jeder User sah ALLE Notifications (auch fremder Agenten).** `Notification` hat keine `user_id`-Spalte (nur `agent_id`), und `list_notifications`/`unread_count` filterten **gar nicht** → die Notifications fremder Agenten (Task-Ergebnisse, Approval-Inhalte) waren für jeden sichtbar, und der Badge zählte global. Gefixt: alle UI-Notification-Endpoints (`list`, `count`, `read`, `read-all`, `respond`, `delete`) **scopen jetzt nach sichtbaren Agenten** (eigene + besitzerlose + freigegebene) via neuem `_visible_agent_ids`. Der **Live-WebSocket** (`/ws/notifications`) filtert ebenfalls per-User (fail-closed). Antwort auf die Ausgangsfrage „sieht das nur der Admin?": vorher **nein, jeder** — jetzt nur noch der Berechtigte.
+
+---
+
 ## [1.68.2] — 2026-06-24
 
 ### Fixed
