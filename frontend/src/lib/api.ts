@@ -1079,6 +1079,32 @@ export async function assignAgentToUser(userId: string, templateId: number, name
   });
 }
 
+export interface DistributeResult {
+  status: string;
+  source_agent_id: string;
+  source_agent_name: string;
+  created: { user_id: string; user_name: string; agent_id: string; agent_name: string }[];
+  skipped: { user_id: string; user_name?: string; reason: string; agent_id?: string }[];
+  created_count: number;
+  skipped_count: number;
+}
+
+// Distribute a trained agent as an independent per-user copy (explicit users + a role's members).
+export async function distributeAgent(
+  sourceAgentId: string,
+  opts: { userIds?: string[]; roleId?: number | null; namePrefix?: string },
+): Promise<DistributeResult> {
+  return fetchJSON(`${getBase()}/admin/distribute-agent`, {
+    method: "POST",
+    body: JSON.stringify({
+      source_agent_id: sourceAgentId,
+      user_ids: opts.userIds || [],
+      role_id: opts.roleId ?? null,
+      name_prefix: opts.namePrefix || undefined,
+    }),
+  });
+}
+
 export async function getAssignments(): Promise<{ assignments: { agent_id: string; agent_name: string; user_id: string; user_name: string; user_email: string; template_id: number | null; template_name: string | null; state: string; model: string; role: string; created_at: string }[]; total: number }> {
   return fetchJSON(`${getBase()}/admin/assignments`);
 }

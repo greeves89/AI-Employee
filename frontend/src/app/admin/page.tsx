@@ -275,6 +275,31 @@ export default function AdminPage() {
   const [showAssign, setShowAssign] = useState(false);
   const [assignForm, setAssignForm] = useState({ userId: "", templateId: 0, name: "" });
   const [assignLoading, setAssignLoading] = useState(false);
+  // Distribute a trained agent as per-user copies
+  const [showDistribute, setShowDistribute] = useState(false);
+  const [distForm, setDistForm] = useState<{ sourceAgentId: string; userIds: string[]; roleId: number | 0; namePrefix: string }>({ sourceAgentId: "", userIds: [], roleId: 0, namePrefix: "" });
+  const [distLoading, setDistLoading] = useState(false);
+  const [distResult, setDistResult] = useState<import("@/lib/api").DistributeResult | null>(null);
+
+  const handleDistribute = async () => {
+    if (!distForm.sourceAgentId || (distForm.userIds.length === 0 && !distForm.roleId)) return;
+    setDistLoading(true);
+    setDistResult(null);
+    try {
+      const res = await api.distributeAgent(distForm.sourceAgentId, {
+        userIds: distForm.userIds,
+        roleId: distForm.roleId || null,
+        namePrefix: distForm.namePrefix || undefined,
+      });
+      setDistResult(res);
+      const d = await api.getAssignments();
+      setAssignments(d.assignments);
+    } catch (e) {
+      setDistResult({ status: "error", source_agent_id: distForm.sourceAgentId, source_agent_name: "", created: [], skipped: [{ user_id: "", reason: e instanceof Error ? e.message : "Fehler" }], created_count: 0, skipped_count: 1 });
+    } finally {
+      setDistLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (tab === "assignments") {
@@ -639,13 +664,23 @@ export default function AdminPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">Agent-Zuweisungen</h3>
-                  <button
-                    onClick={() => setShowAssign(true)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Agent zuweisen
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setDistResult(null); setShowDistribute(true); }}
+                      className="inline-flex items-center gap-2 rounded-xl border border-foreground/[0.1] bg-foreground/[0.03] px-4 py-2 text-sm font-medium hover:bg-foreground/[0.06] transition-all"
+                      title="Einen fertig angelernten Agenten als eigene Kopie an User/Gruppen verteilen"
+                    >
+                      <Cpu className="h-4 w-4" />
+                      Trainierten Agent verteilen
+                    </button>
+                    <button
+                      onClick={() => setShowAssign(true)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Agent zuweisen
+                    </button>
+                  </div>
                 </div>
 
                 {assignments.length === 0 ? (
@@ -755,6 +790,93 @@ export default function AdminPage() {
                           className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
                         >
                           Abbrechen
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+
+                {/* Distribute trained agent as per-user copies */}
+                {showDistribute && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowDistribute(false)}>
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h3 className="text-base font-semibold mb-1">Trainierten Agent verteilen</h3>
+                      <p className="text-[12px] text-muted-foreground/70 mb-4">
+                        Erstellt für jeden Ziel-User eine <b>eigene, unabhängige Kopie</b> (eigener Container + Workspace)
+                        inkl. angelerntem Wissen &amp; Skills des Originals. Bereits vorhandene Kopien werden übersprungen.
+                      </p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Quell-Agent (das fertige Original)</label>
+                          <select
+                            value={distForm.sourceAgentId}
+                            onChange={(e) => setDistForm({ ...distForm, sourceAgentId: e.target.value })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          >
+                            <option value="">Agent wählen...</option>
+                            {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">An Gruppe (Rolle) — alle aktiven Mitglieder</label>
+                          <select
+                            value={distForm.roleId}
+                            onChange={(e) => setDistForm({ ...distForm, roleId: Number(e.target.value) })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          >
+                            <option value={0}>— keine Gruppe —</option>
+                            {customRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">…und/oder einzelne User (Strg/Cmd-Klick)</label>
+                          <select
+                            multiple
+                            size={5}
+                            value={distForm.userIds}
+                            onChange={(e) => setDistForm({ ...distForm, userIds: Array.from(e.target.selectedOptions, (o) => o.value) })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none"
+                          >
+                            {users.filter((u) => u.is_active).map((u) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Namens-Präfix (optional)</label>
+                          <input
+                            value={distForm.namePrefix}
+                            onChange={(e) => setDistForm({ ...distForm, namePrefix: e.target.value })}
+                            placeholder="Standard: Name des Originals"
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          />
+                        </div>
+                        {distResult && (
+                          <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-3 text-[12px] space-y-0.5">
+                            <p className="text-emerald-400 font-medium">{distResult.created_count} Kopie(n) erstellt</p>
+                            {distResult.created.map((c) => <div key={c.agent_id} className="text-muted-foreground">✓ {c.user_name} → {c.agent_name}</div>)}
+                            {distResult.skipped_count > 0 && <p className="text-amber-400 font-medium mt-1">{distResult.skipped_count} übersprungen</p>}
+                            {distResult.skipped.map((s, i) => <div key={i} className="text-muted-foreground/70">– {s.user_name || s.user_id || "?"}: {s.reason}</div>)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        <button
+                          onClick={handleDistribute}
+                          disabled={distLoading || !distForm.sourceAgentId || (distForm.userIds.length === 0 && !distForm.roleId)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                        >
+                          {distLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cpu className="h-4 w-4" />}
+                          Verteilen
+                        </button>
+                        <button
+                          onClick={() => setShowDistribute(false)}
+                          className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                        >
+                          Schließen
                         </button>
                       </div>
                     </motion.div>

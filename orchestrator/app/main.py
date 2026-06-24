@@ -608,6 +608,17 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure second_brains MCP columns: {e}")
 
+    # Agent clone origin: distributed copies of a "trained" source agent track it
+    # via agents.source_agent_id. Ensure idempotently (create_all never ALTERs).
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE agents ADD COLUMN IF NOT EXISTS source_agent_id varchar"
+            ))
+        logger.info("agents.source_agent_id ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure agents.source_agent_id: {e}")
+
     await engine.dispose()
 
     result = subprocess.run(
