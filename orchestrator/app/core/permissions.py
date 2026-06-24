@@ -8,6 +8,7 @@ Permissions dict shape:
   "mount_labels": list[str] | None,    # None = inherit user_mount_access; listed labels are GRANTED to the group (union with per-user grants)
   "ai_account_ids": list[int] | None,  # None = all AI accounts; listed accounts are the ones this group may use
   "secret_ids": list[int] | None,      # None = all secrets; listed secrets are the ones this group may use
+  "mcp_server_ids": list[int] | None,  # None = all MCP servers; listed servers are the ones this group's agents may use
   "url_host_patterns": list[str] | None,
   "menu_paths": list[str] | None       # None = all
 }
@@ -28,6 +29,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
+        "mcp_server_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -38,6 +40,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
+        "mcp_server_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -48,6 +51,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
+        "mcp_server_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -58,6 +62,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "mount_labels": [],
         "ai_account_ids": [],
         "secret_ids": [],
+        "mcp_server_ids": [],
         "url_host_patterns": [],
         "menu_paths": ["/dashboard", "/agents", "/tasks"],  # read-only views
     },
@@ -98,6 +103,7 @@ def _merge_defaults(p: dict[str, Any]) -> dict[str, Any]:
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
+        "mcp_server_ids": None,
         "url_host_patterns": None,
         "menu_paths": None,
     }

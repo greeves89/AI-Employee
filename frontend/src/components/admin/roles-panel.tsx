@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { Loader2, Plus, Save, Shield, Trash2, Users } from "lucide-react";
 import * as api from "@/lib/api";
-import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry } from "@/lib/api";
+import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo } from "@/lib/api";
 import type { AdminUser, AgentTemplate, AIAccount } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -66,6 +66,7 @@ interface RoleDraft {
   mount_labels: string[] | null;
   ai_account_ids: number[] | null;
   secret_ids: number[] | null;
+  mcp_server_ids: number[] | null;
   url_host_patterns: string;
   menu_paths: string[] | null;
 }
@@ -82,6 +83,7 @@ function draftFromRole(role?: CustomRole): RoleDraft {
     mount_labels: p.mount_labels ?? null,
     ai_account_ids: p.ai_account_ids ?? null,
     secret_ids: p.secret_ids ?? null,
+    mcp_server_ids: p.mcp_server_ids ?? null,
     url_host_patterns: listToText(p.url_host_patterns),
     menu_paths: p.menu_paths ?? null,
   };
@@ -96,6 +98,7 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
     mount_labels: draft.mount_labels,
     ai_account_ids: draft.ai_account_ids,
     secret_ids: draft.secret_ids,
+    mcp_server_ids: draft.mcp_server_ids,
     url_host_patterns: parseStringList(draft.url_host_patterns),
     menu_paths: draft.menu_paths,
   };
@@ -115,6 +118,7 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const [mounts, setMounts] = useState<MountCatalogEntry[]>([]);
   const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
   const [secrets, setSecrets] = useState<AgentSecretEntry[]>([]);
+  const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -126,18 +130,20 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const reload = async () => {
     setLoading(true);
     try {
-      const [roleData, templateData, mountData, aiAccountData, secretData] = await Promise.all([
+      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData] = await Promise.all([
         api.listRoles(),
         api.getTemplates(),
         api.getAgentMountCatalog(),
         api.listAIAccounts().catch(() => [] as AIAccount[]),
         api.listSecrets().catch(() => [] as AgentSecretEntry[]),
+        api.getMcpServers().then((r) => r.servers).catch(() => [] as McpServerInfo[]),
       ]);
       setRoles(roleData.roles);
       setTemplates(templateData.templates);
       setMounts(mountData.mounts);
       setAiAccounts(aiAccountData);
       setSecrets(secretData);
+      setMcpServers(mcpData);
       if (selectedId !== "new") {
         const role = roleData.roles.find((r) => r.id === selectedId);
         setDraft(draftFromRole(role));
@@ -377,6 +383,27 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
                 ))}
               </div>
               <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, secret_ids: null }))} />
+            </PermissionBlock>
+
+            <PermissionBlock title="MCP-Server / Tools">
+              <div className="flex flex-wrap gap-2">
+                {mcpServers.length === 0 && (
+                  <span className="text-[11px] text-muted-foreground/50">Keine MCP-Server angelegt</span>
+                )}
+                {mcpServers.map((m) => (
+                  <ToggleChip
+                    key={m.id}
+                    active={draft.mcp_server_ids == null || draft.mcp_server_ids.includes(m.id)}
+                    muted={draft.mcp_server_ids == null}
+                    label={m.name}
+                    onClick={() => setDraft((d) => ({
+                      ...d,
+                      mcp_server_ids: toggleNumberValue(d.mcp_server_ids, m.id),
+                    }))}
+                  />
+                ))}
+              </div>
+              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mcp_server_ids: null }))} />
             </PermissionBlock>
 
             <PermissionBlock title="Menüpfade">

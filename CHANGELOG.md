@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.61.0] — 2026-06-24
+
+### Added
+- **Bearer-Auth für MCP-Server.** Beim Hinzufügen eines MCP-Servers (System → Integrations) kann jetzt ein **Bearer Token** angegeben werden. Er wird Fernet-verschlüsselt gespeichert und sowohl bei der Tool-Discovery als auch bei jedem Agent-Tool-Call als `Authorization: Bearer …` mitgesendet (neue Agent-Env `CUSTOM_MCP_AUTH`; `mcp_client` setzt den Header pro Server). Migration: `mcp_servers.auth_token_encrypted`.
+- **MCP-Server/Tools als Gruppen-Recht (Custom Roles).** Neuer Permission-Key `mcp_server_ids`: eine Gruppe darf nur die freigegebenen MCP-Server nutzen (Multi-Select in der Rollen-UI; Enforcement in `_get_custom_mcp_env` filtert die Server des Agents nach der Gruppe des Owners). Admins unbeschränkt.
+
 ## [1.60.0] — 2026-06-24
 
 ### Added

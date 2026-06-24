@@ -347,6 +347,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
   const [addUrl, setAddUrl] = useState("");
+  const [addBearer, setAddBearer] = useState("");
   const [adding, setAdding] = useState(false);
   const [expandedServer, setExpandedServer] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState<number | null>(null);
@@ -371,10 +372,11 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     if (!addName.trim() || !addUrl.trim()) return;
     setAdding(true);
     try {
-      const server = await api.addMcpServer(addName.trim(), addUrl.trim());
+      const server = await api.addMcpServer(addName.trim(), addUrl.trim(), addBearer.trim() || undefined);
       setServers((prev) => [server, ...prev]);
       setAddName("");
       setAddUrl("");
+      setAddBearer("");
       setShowAdd(false);
       setExpandedServer(server.id);
       onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefuegt (${server.tools.length} Tools)` });
@@ -461,6 +463,19 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                 value={addUrl}
                 onChange={(e) => setAddUrl(e.target.value)}
                 placeholder="http://localhost:8080/mcp"
+                className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+                Bearer Token <span className="text-muted-foreground/40">(optional)</span>
+              </label>
+              <input
+                type="password"
+                value={addBearer}
+                onChange={(e) => setAddBearer(e.target.value)}
+                placeholder="für geschützte MCP-Server (Authorization: Bearer …)"
                 className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               />

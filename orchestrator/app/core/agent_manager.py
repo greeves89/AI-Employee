@@ -687,7 +687,30 @@ class AgentManager:
         if agent_mcp_ids is not None:
             servers = [s for s in servers if s.id in agent_mcp_ids]
 
+        # Role/group restriction: limit to MCP servers the agent owner's group allows
+        # (custom_role.permissions.mcp_server_ids; None = all). Admins are unrestricted.
+        if agent_id:
+            try:
+                from app.models.agent import Agent as _Ag
+                from app.models.user import User as _U
+                from app.core.permissions import get_effective_permissions
+                ag = await self.db.get(_Ag, agent_id)
+                owner = await self.db.get(_U, ag.user_id) if (ag and ag.user_id) else None
+                if owner:
+                    perms = await get_effective_permissions(owner, self.db)
+                    allowed = perms.get("mcp_server_ids")
+                    if allowed is not None:
+                        allowed_set = set(allowed)
+                        servers = [s for s in servers if s.id in allowed_set]
+            except Exception as e:
+                logger.warning(f"MCP role filter failed for agent {agent_id}: {e}")
+
         mcp_map = {s.name: s.url for s in servers}
+        # Bearer tokens passed alongside so the agent can authenticate per server.
+        auth_map = {
+            s.name: decrypt_token(s.auth_token_encrypted)
+            for s in servers if s.auth_token_encrypted
+        }
 
         # Auto-inject MS Graph MCP server when agent has microsoft integration
         if agent_id and agent_integrations and "microsoft" in agent_integrations:
@@ -695,7 +718,10 @@ class AgentManager:
 
         if not mcp_map:
             return {}
-        return {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
+        env = {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
+        if auth_map:
+            env["CUSTOM_MCP_AUTH"] = json.dumps(auth_map)
+        return env
 
     async def _get_integration_env(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:
         """Get environment variables for agent integrations (e.g., GitHub token)."""

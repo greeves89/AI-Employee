@@ -199,6 +199,7 @@ export interface RolePermissions {
   mount_labels?: string[] | null;
   ai_account_ids?: number[] | null;
   secret_ids?: number[] | null;
+  mcp_server_ids?: number[] | null;
   url_host_patterns?: string[] | null;
   menu_paths?: string[] | null;
 }
@@ -706,6 +707,7 @@ export interface McpServerInfo {
   url: string;
   tools: McpTool[];
   enabled: boolean;
+  has_auth?: boolean;
   created_at: string | null;
 }
 
@@ -719,10 +721,10 @@ export async function getMcpServers(): Promise<{ servers: McpServerInfo[] }> {
   return fetchJSON(`${getBase()}/mcp-servers`);
 }
 
-export async function addMcpServer(name: string, url: string): Promise<McpServerInfo> {
+export async function addMcpServer(name: string, url: string, bearerToken?: string): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers`, {
     method: "POST",
-    body: JSON.stringify({ name, url }),
+    body: JSON.stringify({ name, url, ...(bearerToken ? { bearer_token: bearerToken } : {}) }),
   });
 }
 
