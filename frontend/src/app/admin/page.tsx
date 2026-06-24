@@ -83,7 +83,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showAddUser, setShowAddUser] = useState(false);
-  const [addUserForm, setAddUserForm] = useState({ name: "", email: "", password: "", role: "member" });
+  const [addUserForm, setAddUserForm] = useState<{ name: string; email: string; password: string; role: string; custom_role_id: number | null }>({ name: "", email: "", password: "", role: "member", custom_role_id: null });
+  const [customRoles, setCustomRoles] = useState<import("@/lib/api").CustomRole[]>([]);
+  useEffect(() => { api.listRoles().then((r) => setCustomRoles(r.roles)).catch(() => setCustomRoles([])); }, []);
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [addUserError, setAddUserError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -867,32 +869,35 @@ export default function AdminPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Role</label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(["viewer", "member", "manager", "admin"] as const).map((r) => {
-                    const colors: Record<string, string> = {
-                      admin: "border-amber-500 bg-amber-500/10 text-amber-500",
-                      manager: "border-purple-500 bg-purple-500/10 text-purple-400",
-                      member: "border-primary bg-primary/10 text-primary",
-                      viewer: "border-zinc-500 bg-zinc-500/10 text-zinc-400",
-                    };
-                    const active = addUserForm.role === r;
-                    return (
-                      <button
-                        key={r}
-                        onClick={() => setAddUserForm((f) => ({ ...f, role: r }))}
-                        className={cn(
-                          "flex items-center justify-center rounded-xl border px-2 py-2.5 text-xs font-medium transition-all",
-                          active
-                            ? colors[r]
-                            : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                        )}
-                      >
-                        {r.charAt(0).toUpperCase() + r.slice(1)}
-                      </button>
-                    );
-                  })}
-                </div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Rolle (Gruppe)</label>
+                {customRoles.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/60">
+                    Noch keine Rollen angelegt — erstelle zuerst eine unter <b>Rollen</b>.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {customRoles.map((r) => {
+                      const active = addUserForm.custom_role_id === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => setAddUserForm((f) => ({ ...f, custom_role_id: r.id, role: "member" }))}
+                          className={cn(
+                            "flex items-center justify-center rounded-xl border px-2 py-2.5 text-xs font-medium transition-all",
+                            active
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                          )}
+                        >
+                          {r.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground/40 mt-1">
+                  Bestimmt die Rechte des Users (Second Brains, AI-Accounts, Keys, MCP …). Admin-Rechte werden separat in der Userliste vergeben.
+                </p>
               </div>
 
               {addUserError && (

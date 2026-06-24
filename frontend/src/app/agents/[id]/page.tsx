@@ -36,6 +36,8 @@ import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
+import { BrainBrowser } from "@/app/second-brains/brain-browser";
+import type { SecondBrain } from "@/lib/types";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -63,7 +65,7 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
 type SubKey =
   | "chat" | "todos" | "terminal" | "history"
   | "files" | "apps" | "computer-use"
-  | "knowledge" | "memory" | "skills"
+  | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
 
 type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2; simpleVisible: boolean };
@@ -87,6 +89,7 @@ const tabGroups: TabGroup[] = [
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
     { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
+    { key: "secondbrain", label: "Second Brain", icon: Brain, simpleVisible: true },
     { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
     { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
   ] },
@@ -342,6 +345,7 @@ export default function AgentDetailPage() {
           {activeSub === "apps" && <DockerAppsTab agentId={agentId} />}
           {activeSub === "history" && <TaskHistory tasks={tasks} />}
           {activeSub === "knowledge" && <KnowledgePanel agentId={agentId} />}
+          {activeSub === "secondbrain" && <AgentSecondBrains agentId={agentId} />}
           {activeSub === "memory" && <MemoryTab agentId={agentId} />}
           {activeSub === "integrations" && <IntegrationSelector agentId={agentId} />}
           {activeSub === "command-policies" && <CommandPoliciesTab agentId={agentId} />}
@@ -572,6 +576,49 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
           </Link>
         );
       })}
+    </div>
+  );
+}
+
+function AgentSecondBrains({ agentId }: { agentId: string }) {
+  const [brains, setBrains] = useState<SecondBrain[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [browsing, setBrowsing] = useState<SecondBrain | null>(null);
+
+  useEffect(() => {
+    Promise.all([api.getAgentMounts(agentId), api.listSecondBrains()])
+      .then(([m, all]) => {
+        const labels = new Set(m.mounts ?? []);
+        setBrains(all.filter((b) => labels.has(b.label)));
+      })
+      .catch(() => setBrains([]))
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  if (loading) return <div className="h-20 animate-pulse rounded-xl bg-foreground/[0.04]" />;
+  if (brains.length === 0)
+    return (
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-6 text-center text-sm text-muted-foreground">
+        Diesem Agent ist kein Second Brain zugewiesen. Ein Admin weist Brains über die Rolle/Gruppe oder die Mount-Rechte zu.
+      </div>
+    );
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">Zugewiesene Second Brains — klicken zum Ansehen / Bearbeiten der Inhalte.</p>
+      {brains.map((b) => (
+        <button
+          key={b.id}
+          onClick={() => setBrowsing(b)}
+          className="flex w-full items-center gap-3 rounded-xl border border-foreground/[0.06] bg-card/80 p-4 text-left hover:bg-foreground/[0.04]"
+        >
+          <Brain className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{b.name}</p>
+            <p className="truncate text-[11px] text-muted-foreground/60">{b.container_path} · {b.default_mode}</p>
+          </div>
+        </button>
+      ))}
+      {browsing && <BrainBrowser brain={browsing} onClose={() => setBrowsing(null)} />}
     </div>
   );
 }
@@ -2152,16 +2199,19 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
             <div className="space-y-2">
               {catalog.map((entry) => {
                 const enabled = assigned.includes(entry.label);
+                const isBrain = entry.label.startsWith("brain-");
                 return (
                   <div
                     key={entry.label}
+                    title={isBrain ? "Second Brains werden über den Wissen-Tab → Second Brain verwaltet" : undefined}
                     className={cn(
-                      "flex items-center justify-between rounded-lg border px-3 py-2.5 transition-all cursor-pointer",
+                      "flex items-center justify-between rounded-lg border px-3 py-2.5 transition-all",
+                      isBrain ? "cursor-not-allowed opacity-50" : "cursor-pointer",
                       enabled
                         ? "border-blue-500/20 bg-blue-500/5"
                         : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
                     )}
-                    onClick={() => toggle(entry.label)}
+                    onClick={() => { if (!isBrain) toggle(entry.label); }}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <FolderOpen className={cn("h-4 w-4 shrink-0", enabled ? "text-blue-400" : "text-muted-foreground/40")} />

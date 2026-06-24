@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, FileText, Folder, Save, Trash2, Plus, Loader2 } from "lucide-react";
+import { X, FileText, Folder, Save, Trash2, Plus, Loader2, Eye, Pencil } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { BrainFileEntry } from "@/lib/api";
@@ -15,8 +16,23 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState(true);
 
   const readOnly = brain.default_mode === "ro";
+
+  // Open a [[wikilink]] by matching a file whose name (minus .md) equals the title.
+  const openWiki = (title: string) => {
+    const t = title.trim().toLowerCase();
+    const match = entries.find(
+      (e) => e.type === "file" &&
+        (e.name.toLowerCase() === `${t}.md` ||
+         e.name.toLowerCase().replace(/\.md$/, "") === t ||
+         e.path.toLowerCase().replace(/\.md$/, "").split("/").pop() === t),
+    );
+    if (match) openFile(match.path);
+  };
+  // Convert [[Title]] to a clickable link the renderer can route.
+  const renderable = (md: string) => md.replace(/\[\[([^\]]+)\]\]/g, (_m, t) => `[${t}](#wiki:${encodeURIComponent(t)})`);
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -135,25 +151,54 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
               <>
                 <div className="flex items-center justify-between border-b border-foreground/[0.08] px-3 py-2">
                   <span className="truncate font-mono text-xs text-muted-foreground">{selected}{dirty && " •"}</span>
-                  {!readOnly && (
-                    <div className="flex shrink-0 gap-2">
-                      <button onClick={save} disabled={saving || !dirty}
-                        className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40">
-                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Speichern
-                      </button>
-                      <button onClick={del} className="rounded-lg p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/[0.06]">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button onClick={() => setPreview((p) => !p)} title={preview ? "Bearbeiten" : "Vorschau"}
+                      className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-xs hover:bg-foreground/[0.1]">
+                      {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {preview ? "Bearbeiten" : "Vorschau"}
+                    </button>
+                    {!readOnly && !preview && (
+                      <>
+                        <button onClick={save} disabled={saving || !dirty}
+                          className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40">
+                          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Speichern
+                        </button>
+                        <button onClick={del} className="rounded-lg p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/[0.06]">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <textarea
-                  value={content}
-                  readOnly={readOnly}
-                  onChange={(e) => { setContent(e.target.value); setDirty(true); }}
-                  spellCheck={false}
-                  className="flex-1 resize-none bg-transparent p-3 font-mono text-xs leading-relaxed outline-none"
-                />
+                {preview ? (
+                  <div className="prose prose-invert prose-sm max-w-none flex-1 overflow-auto p-4 text-sm">
+                    <ReactMarkdown
+                      components={{
+                        a: ({ href, children }) => {
+                          if (href?.startsWith("#wiki:")) {
+                            return (
+                              <a className="cursor-pointer text-primary underline decoration-dotted"
+                                onClick={(e) => { e.preventDefault(); openWiki(decodeURIComponent(href.slice(6))); }}>
+                                {children}
+                              </a>
+                            );
+                          }
+                          return <a href={href} target="_blank" rel="noreferrer" className="text-primary underline">{children}</a>;
+                        },
+                      }}
+                    >
+                      {renderable(content)}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <textarea
+                    value={content}
+                    readOnly={readOnly}
+                    onChange={(e) => { setContent(e.target.value); setDirty(true); }}
+                    spellCheck={false}
+                    className="flex-1 resize-none bg-transparent p-3 font-mono text-xs leading-relaxed outline-none"
+                  />
+                )}
               </>
             ) : (
               <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

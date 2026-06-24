@@ -760,6 +760,7 @@ export async function createUser(data: {
   email: string;
   password: string;
   role?: string;
+  custom_role_id?: number | null;
 }): Promise<AdminUser> {
   return fetchJSON(`${getBase()}/auth/users`, {
     method: "POST",

@@ -412,6 +412,7 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
     email = body_raw.get("email", "").strip()
     password = body_raw.get("password", "")
     role = body_raw.get("role", "member")
+    custom_role_id = body_raw.get("custom_role_id")
 
     if not name or not email or not password:
         raise HTTPException(status_code=400, detail="Name, email, and password are required")
@@ -420,6 +421,12 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
     valid_roles = {r.value for r in UserRole}
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(valid_roles))}")
+
+    # Optional custom role (group) — validate it exists.
+    if custom_role_id is not None:
+        from app.models.custom_role import CustomRole
+        if not await db.get(CustomRole, custom_role_id):
+            raise HTTPException(status_code=400, detail="custom_role_id not found")
 
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
@@ -431,6 +438,7 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
         name=name,
         password_hash=hash_password(password),
         role=UserRole(role),
+        custom_role_id=custom_role_id,
     )
     db.add(user)
     await db.commit()

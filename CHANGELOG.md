@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.63.0] — 2026-06-24
+
+### Added
+- **Second-Brain Inhalt: Markdown-Vorschau + klickbare `[[wikilinks]]`.** Im Brain-Browser gibt es einen Vorschau/Bearbeiten-Umschalter; in der Vorschau wird Markdown gerendert und `[[Titel]]`-Verweise sind klickbar (öffnen den passenden Artikel).
+- **User-Anlage nutzt Custom-Rollen (Gruppen) statt Enum-Rollen.** Im „Add User"-Dialog wählt man die unter **Rollen** angelegten Gruppen (GBD …); `custom_role_id` wird beim Anlegen gesetzt. Admin-Rechte werden weiter separat in der Userliste vergeben.
+- **Agent → Wissen → „Second Brain"-Subtab.** Zeigt die dem Agent zugewiesenen Second Brains und öffnet den Inhalts-Browser. Im Mount-Selektor sind `brain-*`-Mounts jetzt **ausgegraut** (nicht klickbar) — Second Brains werden über den Wissen-Tab / Rollen verwaltet.
+
 ## [1.62.1] — 2026-06-24
 
 ### Fixed
