@@ -421,19 +421,23 @@ async def create_agent(
                         status_code=403,
                         detail=f"Agent-Limit erreicht ({max_agents}). Bitte einen bestehenden Agent löschen.",
                     )
-            # 2) LLM provider
-            llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
-            if not can_use_llm_provider(perms, llm_type):
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
-                )
-            # 3) AI-Account (group/role may restrict which accounts are usable)
+            # 2) AI-Account (group/role may restrict which accounts are usable)
             if not can_use_ai_account(perms, data.ai_account_id):
                 raise HTTPException(
                     status_code=403,
                     detail="Dieser AI-Account ist für deine Gruppe nicht freigegeben.",
                 )
+            # 3) LLM provider whitelist — only for the manual/custom path. When a
+            #    (granted) AI-Account is chosen, the account grant is the
+            #    authorization; its provider string (e.g. azure-openai) must NOT be
+            #    re-checked against the role's llm_providers list.
+            if data.ai_account_id is None:
+                llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
+                if not can_use_llm_provider(perms, llm_type):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                    )
 
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
