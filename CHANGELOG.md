@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.58.0] — 2026-06-24
+
+### Changed
+- **Agent-Runtime-Gleichschaltung (claude_code / codex / custom_llm).** Die drei Runtimes injizieren jetzt **dieselben** Kontext-Bausteine aus einer zentralen Stelle:
+  - **Neu `runner_hooks.get_mounts_context()`** — erkennt Host-Mounts und **Second-Brain-Vaults** (`/mnt/brains/*`) zur Laufzeit per Filesystem-Scan und beschreibt sie im Prompt. Damit wissen auch **custom_llm**-Agents (die ihre `AGENT.md` nie lesen) von den Vaults und durchsuchen sie zuerst.
+  - **Neu `runner_hooks.compose_prompt_bundle()`** — eine geteilte, geordnete Bausteinkette (Startup-Prefix, Memory, Skills, **Mounts/Second Brain**, **Marketplace-Skill-Vorschläge**, User-Feedback, Improvement). `agent_runner` und `codex_runner` nutzen sie für beide Modi; künftige Bausteine landen automatisch bei allen.
+  - **custom_llm**: Mounts/Second-Brain im System-Prompt (Task + Chat), Marketplace-Skill-Vorschläge auch im **Chat** (vorher nur Task).
+  - **codex**: Chat/Lightweight bekommt jetzt den vollen Kontext (vorher nackt) inkl. Mounts.
+
+### Added
+- **Inter-Agent-Messages für custom_llm** — `message_consumer` beantwortet Agent-zu-Agent-Nachrichten im `custom_llm`-Modus über den LLM-Provider direkt (vorher nur CLI-Modi). Damit funktioniert Agent-Kommunikation auch für Azure/OpenAI-basierte Agents.
+
+### Notes
+- **Codex-MCP** bleibt bewusst offen (Codex spricht kein MCP wie Claude); Codex-Agents nutzen den Second Brain über native `grep`/shell statt MCP-`brain_search`.
+- Agent-Image geändert → Agents zeigen „Update available" (AGENT_VERSION 1.58.0).
+
 ## [1.57.0] — 2026-06-24
 
 ### Added

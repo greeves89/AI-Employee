@@ -19,6 +19,7 @@ from app.runner_hooks import (
     get_improvement_context,
     get_marketplace_skill_suggestions,
     get_memory_preload,
+    get_mounts_context,
     get_skill_preload,
     get_skills_context,
 )
@@ -144,13 +145,18 @@ class LLMRunner:
         base_system = base_system + MULTIMODAL_CAPABILITY_NOTE
 
         skills_ctx = get_skills_context()
+        # Host mounts / Second Brain awareness — custom_llm builds its own system
+        # prompt and never reads the instruction file, so inject it here (parity
+        # with the CLI runtimes, which get it via the bundle / CLAUDE.md).
+        mounts_ctx = get_mounts_context()
 
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
-            system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES
+            system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
-            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
+            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
+            enhanced_prompt = CHAT_STARTUP_PREFIX + marketplace_suggestions + prompt
         else:
             memory_preload = get_memory_preload()
             approval_rules = get_approval_rules_prefix()
@@ -160,6 +166,7 @@ class LLMRunner:
                 + "\n\n"
                 + TOOL_USAGE_RULES
                 + approval_rules
+                + mounts_ctx
                 + memory_preload
                 + improvement_ctx
             )

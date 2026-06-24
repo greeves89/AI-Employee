@@ -16,13 +16,7 @@ from app.config import settings
 from app.log_publisher import LogPublisher
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
-    TASK_STARTUP_PREFIX,
-    get_improvement_context,
-    get_marketplace_skill_suggestions,
-    get_memory_preload,
-    get_skill_preload,
-    get_skills_context,
-    get_user_feedback,
+    compose_prompt_bundle,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,21 +159,14 @@ class CodexAgentRunner:
         self.is_running = True
 
         task_id_line = f"CURRENT_TASK_ID: {task_id}\n\n"
-        if lightweight:
-            enhanced_prompt = task_id_line + prompt
-        else:
-            enhanced_prompt = (
-                task_id_line
-                + TASK_STARTUP_PREFIX
-                + get_memory_preload()
-                + get_user_feedback()
-                + get_skill_preload()
-                + get_skills_context()
-                + get_marketplace_skill_suggestions(prompt[:200])
-                + get_improvement_context()
-                + prompt
-                + SELF_IMPROVEMENT_SUFFIX
-            )
+        # Unified context bundle (shared via runner_hooks) — same blocks as the
+        # Claude and custom_llm runtimes, incl. host mounts / Second Brain awareness.
+        enhanced_prompt = (
+            task_id_line
+            + compose_prompt_bundle(prompt, lightweight)
+            + prompt
+            + SELF_IMPROVEMENT_SUFFIX
+        )
 
         await self.log_publisher.publish(
             task_id, "system", {"message": f"Starting Codex task with model {model}"}

@@ -205,15 +205,26 @@ class LLMChatHandler:
 
         # Build system message if this is the first message
         if not self._history:
-            from app.runner_hooks import MULTIMODAL_CAPABILITY_NOTE, get_skills_context
+            from app.runner_hooks import (
+                MULTIMODAL_CAPABILITY_NOTE,
+                get_skills_context,
+                get_mounts_context,
+                get_marketplace_skill_suggestions,
+            )
             system_prompt = settings.llm_system_prompt or (
                 "You are a helpful AI coding assistant running in a Docker container. "
                 "Your workspace is at /workspace. Use the available tools to help the user."
             )
             system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
+            # Host mounts / Second Brain awareness + marketplace skills — parity with
+            # the task runtimes so chat agents also search the shared vault and skills.
+            system_prompt = system_prompt + get_mounts_context()
             skills_ctx = get_skills_context()
             if skills_ctx:
                 system_prompt = system_prompt + "\n" + skills_ctx
+            marketplace = get_marketplace_skill_suggestions(text[:200])
+            if marketplace:
+                system_prompt = system_prompt + "\n" + marketplace
             self._history.append(ChatMessage(role="system", content=system_prompt))
 
         # Add user message to history (image-aware)

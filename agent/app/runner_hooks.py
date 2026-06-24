@@ -524,6 +524,80 @@ def get_marketplace_skill_suggestions(task_hint: str) -> str:
         return ""
 
 
+def get_mounts_context() -> str:
+    """Detect host mounts at runtime — especially shared Second Brain vaults under
+    /mnt/brains — and describe them in-prompt.
+
+    This is the ONE place all runtimes get mount/Second-Brain awareness. It works
+    even for the custom_llm runtime, which builds its own system prompt and never
+    reads the orchestrator-written CLAUDE.md/AGENT.md instruction file.
+    """
+    import glob
+    try:
+        brains = sorted(d for d in glob.glob("/mnt/brains/*") if os.path.isdir(d))
+        other = sorted(
+            d for d in glob.glob("/mnt/*")
+            if os.path.isdir(d) and not d.startswith("/mnt/brains")
+        )
+        if not brains and not other:
+            return ""
+        lines = [
+            "",
+            "=== HOST MOUNTS ===",
+            "Directories mounted from the host into this container (check them for the user's files):",
+        ]
+        for d in other:
+            lines.append(f"  - `{d}`")
+        if brains:
+            lines.append("")
+            lines.append("Shared department **Second Brain** vault(s) — Markdown knowledge bases:")
+            for d in brains:
+                lines.append(f"  - `{d}`")
+            lines.append(
+                "For support / how-to / troubleshooting questions (e.g. an error code like "
+                "x17137), SEARCH the Second Brain FIRST: `grep` the keywords/code across the vault, "
+                "read the matching `.md`, and answer from it WITH a citation of the file. If you "
+                "learn something new and the vault is writable, add or update a concise `.md` "
+                "article (Markdown, `[[wikilinks]]` between topics) so the whole department benefits."
+            )
+        lines.extend(["=== END HOST MOUNTS ===", ""])
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
+    """Central, ordered context bundle shared by ALL runtimes so every mode injects
+    the SAME building blocks (memory, installed + workspace skills, host mounts /
+    Second Brain, marketplace skill suggestions, user feedback, improvement).
+
+    Returned WITHOUT the CURRENT_TASK_ID line, the task/chat prompt itself, or the
+    reflection suffix — those stay per-runner (delivery differs: CLI runners put
+    everything in one prompt; custom_llm splits system vs. user).
+    """
+    mounts = get_mounts_context()
+    marketplace = get_marketplace_skill_suggestions(prompt[:200])
+    if lightweight:
+        return (
+            CHAT_STARTUP_PREFIX
+            + get_memory_preload()
+            + get_skill_preload()
+            + get_skills_context()
+            + mounts
+            + marketplace
+        )
+    return (
+        TASK_STARTUP_PREFIX
+        + get_memory_preload()
+        + get_user_feedback()
+        + get_skill_preload()
+        + get_skills_context()
+        + mounts
+        + marketplace
+        + get_improvement_context()
+    )
+
+
 def get_user_feedback() -> str:
     """Fetch recent user corrections (category=correction, importance=5) from memory.
 

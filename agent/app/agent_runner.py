@@ -9,13 +9,7 @@ from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
-    TASK_STARTUP_PREFIX,
-    get_improvement_context,
-    get_marketplace_skill_suggestions,
-    get_memory_preload,
-    get_skill_preload,
-    get_skills_context,
-    get_user_feedback,
+    compose_prompt_bundle,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,40 +43,15 @@ class AgentRunner:
 
         task_id_line = f"CURRENT_TASK_ID: {task_id}\n\n"
 
-        if lightweight:
-            from app.runner_hooks import CHAT_STARTUP_PREFIX
-            skill_preload = get_skill_preload()
-            memory_preload = get_memory_preload()
-            skills_ctx = get_skills_context()
-            enhanced_prompt = (
-                task_id_line
-                + CHAT_STARTUP_PREFIX
-                + memory_preload
-                + skill_preload
-                + skills_ctx
-                + prompt
-                + SELF_IMPROVEMENT_SUFFIX
-            )
-        else:
-            # Full mode: startup context + memory + skills + user feedback + performance + self-improvement
-            memory_preload = get_memory_preload()
-            skill_preload = get_skill_preload()
-            skills_ctx = get_skills_context()
-            user_feedback = get_user_feedback()
-            improvement_ctx = get_improvement_context()
-            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = (
-                task_id_line
-                + TASK_STARTUP_PREFIX
-                + memory_preload
-                + user_feedback
-                + skill_preload
-                + skills_ctx
-                + marketplace_suggestions
-                + improvement_ctx
-                + prompt
-                + SELF_IMPROVEMENT_SUFFIX
-            )
+        # Unified context bundle (shared by all runtimes via runner_hooks): startup
+        # prefix + memory + skills + host mounts/Second Brain + marketplace + (full:
+        # user feedback + improvement). Mode-specific delivery stays here.
+        enhanced_prompt = (
+            task_id_line
+            + compose_prompt_bundle(prompt, lightweight)
+            + prompt
+            + SELF_IMPROVEMENT_SUFFIX
+        )
 
         cmd = [
             "claude",
