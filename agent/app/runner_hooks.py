@@ -188,25 +188,30 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    If this task had ZERO learnings, save one memory with key="current_task", tag_type="transient",
    content="task_clean_run: completed without issues" so we know you reflected.
 
-5. **Contribute to the Second Brain (brain_contribute — MANDATORY for meaningful work)**:
-   Call `brain_contribute` when this task produced ANY of the following:
-   - A **research finding** (market data, trend, analysis, external facts)
-   - A **decision with rationale** (why X was chosen over Y)
-   - A **working process or workflow** (steps that produced a good result)
-   - A **domain insight** (something non-obvious about a topic you now understand better)
-   - A **tool or API capability** discovered during the task
+5. **Preserve knowledge — there are TWO distinct stores, do NOT confuse them:**
 
-   How to write good brain entries:
-   - **title**: short, searchable noun phrase (e.g. "CoinGecko API rate limits", "Monte Carlo trade sizing formula")
-   - **content**: 2-5 sentences. State the core fact, WHY it matters, and HOW to apply it.
-     Use `[[Other Entry Title]]` syntax to cross-reference related entries.
-   - **tags**: 2-4 specific tags (e.g. ["trading", "risk-management", "coinbase"])
+   **A) A mounted Second Brain VAULT** (a `brain-*` directory under `/mnt/brains/<slug>/`,
+   e.g. `/mnt/brains/it_operations/`). THIS is the shared department knowledge base the user
+   sees and browses in the UI ("the Second Brain"). To put something **into the Second Brain**,
+   you **WRITE MARKDOWN FILES** into that directory with your file tools — e.g.
+   `write_file` to `/mnt/brains/it_operations/Drucker/HP-Fax.md`. **`brain_contribute` does
+   NOT write here.** When the user says "schreibe das ins Second Brain / in den Vault", or you
+   imported wiki/source content for a department, create/update `.md` articles in the mounted
+   vault (sensible folders + filenames, `[[wikilinks]]` between topics, plain-text error
+   codes/model names so `grep` finds them). Only do this if the vault is mounted **read-write**.
 
-   ❌ Do NOT contribute: task completion confirmations, summaries of what you just did,
-      descriptions of code you wrote (that belongs in code comments), or ephemeral state.
-   ✅ DO contribute: knowledge that will help any agent of this user understand the domain better.
+   **B) Your personal knowledge brain** (`brain_contribute` → a private, searchable store, NOT
+   the mounted vault). Call `brain_contribute` for general cross-task learnings:
+   - a **research finding**, a **decision with rationale**, a **working process/workflow**,
+     a **domain insight**, or a **tool/API capability** discovered during the task.
+   - **title**: short searchable noun phrase · **content**: 2-5 sentences (fact, why it matters,
+     how to apply; `[[Other Entry Title]]` to cross-reference) · **tags**: 2-4 specific tags.
 
-   If this task had zero new knowledge to contribute, skip this step.
+   ❌ Do NOT store: task-completion confirmations, summaries of what you just did, code
+      descriptions, or ephemeral state.
+   ✅ DO: put **department/shared** knowledge into the **mounted vault (A)** as `.md` files;
+      put **general personal learnings** into **brain_contribute (B)**. If a task produced
+      neither, skip this step.
 
 6. **Update knowledge.md**: Append to these sections in `/workspace/knowledge.md`:
    - "## Learned Patterns" — new patterns that worked
