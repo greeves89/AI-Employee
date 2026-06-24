@@ -404,6 +404,23 @@ class LLMChatHandler:
                 if self._needs_compaction():
                     await self._compact_history(message_id)
 
+                # Live steering (mid-turn): fold in any messages that arrived
+                # while the tools were running, so the agent picks up the new
+                # info on its very NEXT step — not only at the end of the turn.
+                # Drained AFTER compaction so fresh input is never summarized away.
+                if self.pending_drain is not None:
+                    extra = await self.pending_drain()
+                    if extra:
+                        for t in extra:
+                            self._history.append(ChatMessage(role="user", content=t))
+                            full_text += "\n\n[Neue Nachricht aufgenommen]\n"
+                        await self.log_publisher.publish_chat(
+                            message_id, "system",
+                            {"message": f"{len(extra)} neue Nachricht(en) aufgenommen — wird sofort mitverarbeitet."},
+                        )
+                        # New input extends the work budget for this message.
+                        max_turns = num_turns + _max_turns()
+
         except Exception as e:
             logger.exception(f"LLM Chat error: {e}")
             await self.log_publisher.publish_chat(

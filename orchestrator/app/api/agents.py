@@ -1620,7 +1620,10 @@ async def update_agent_mounts(
 class ProactiveUpdate(BaseModel):
     enabled: bool = True
     interval_seconds: int = 3600
-    prompt: str | None = None
+    prompt: str | None = None  # legacy/unused: base prompt always lives in code
+    # Per-agent additions appended to the code base prompt at fire time.
+    # None = leave unchanged (toggle/interval-only saves); "" = clear.
+    custom_instructions: str | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -1654,10 +1657,12 @@ async def get_proactive_config(
                     "fail_count": schedule.fail_count,
                 }
 
+        from app.core.agent_manager import PROACTIVE_PROMPT
         return {
             "agent_id": agent_id,
             "proactive": proactive,
             "schedule": schedule_stats,
+            "base_prompt": PROACTIVE_PROMPT,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -1685,14 +1690,21 @@ async def update_proactive_config(
         schedule_id = proactive.get("schedule_id")
         now = datetime.now(tz.utc)
 
+        # Preserve existing custom instructions unless the caller explicitly sends
+        # a new value — toggle/interval-only updates omit it and must not wipe it.
+        existing_custom = (proactive or {}).get("custom_instructions", "")
+        new_custom = (
+            body.custom_instructions
+            if body.custom_instructions is not None
+            else existing_custom
+        )
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
             if schedule:
                 schedule.enabled = body.enabled
                 schedule.interval_seconds = body.interval_seconds
-                if body.prompt:
-                    schedule.prompt = body.prompt
                 if body.enabled:
                     schedule.next_run_at = now + timedelta(seconds=body.interval_seconds)
             else:
@@ -1703,7 +1715,9 @@ async def update_proactive_config(
             schedule = Schedule(
                 id=schedule_id,
                 name=f"[Proactive] {agent.name}",
-                prompt=body.prompt or PROACTIVE_PROMPT,
+                # Base prompt always comes from code at fire time (scheduler);
+                # this stored copy is only a placeholder for the schedule row.
+                prompt=PROACTIVE_PROMPT,
                 interval_seconds=body.interval_seconds,
                 priority=0,
                 agent_id=agent_id,
@@ -1716,6 +1730,7 @@ async def update_proactive_config(
             "enabled": body.enabled,
             "schedule_id": schedule_id,
             "interval_seconds": body.interval_seconds,
+            "custom_instructions": new_custom,
         }
         config["proactive"] = proactive
         agent.config = config

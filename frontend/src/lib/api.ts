@@ -681,7 +681,12 @@ export async function getProactiveConfig(agentId: string): Promise<ProactiveResp
 
 export async function updateProactiveConfig(
   agentId: string,
-  config: { enabled: boolean; interval_seconds: number; prompt?: string },
+  config: {
+    enabled: boolean;
+    interval_seconds: number;
+    prompt?: string;
+    custom_instructions?: string;
+  },
 ): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {
     method: "POST",
@@ -907,6 +912,36 @@ export async function saveBrainFile(id: number, path: string, content: string): 
 
 export async function deleteBrainFile(id: number, path: string): Promise<{ ok: boolean; path: string }> {
   return fetchJSON(`${getBase()}/brains/${id}/file?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+}
+
+// ── Vault knowledge graph (Obsidian-style: notes = nodes, [[wikilinks]] = edges) ──
+// Named "Vault*" to stay distinct from getBrainGraph() (the personal Knowledge
+// Base graph at /brain/graph) — same brain-vs-vault split as the backend tools.
+export interface VaultGraphNode {
+  id: string;
+  name: string;
+  path: string;
+  folder: string;
+  tags: string[];
+  in: number;
+  out: number;
+  degree: number;
+}
+
+export interface VaultGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface VaultGraph {
+  nodes: VaultGraphNode[];
+  edges: VaultGraphEdge[];
+  truncated?: boolean;
+  brain?: { id: number; name: string; slug: string };
+}
+
+export async function getVaultGraph(id: number): Promise<VaultGraph> {
+  return fetchJSON(`${getBase()}/brains/${id}/graph`);
 }
 
 export async function listSecondBrains(activeOnly = false): Promise<SecondBrain[]> {

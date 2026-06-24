@@ -380,6 +380,22 @@ async def brain_tree(brain_id: int, user=Depends(require_auth), db: AsyncSession
     return {"entries": entries, "standard": getattr(brain, "standard", "freeform")}
 
 
+@router.get("/{brain_id}/graph")
+async def brain_graph(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Obsidian-style link graph of the vault.
+
+    Nodes = Markdown notes, edges = [[wikilinks]] / relative .md links between
+    them. Powers the 3D knowledge-graph view in the vault browser.
+    """
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    graph = vault.build_graph(brain.host_path)
+    graph["brain"] = {"id": brain.id, "name": brain.name, "slug": brain.slug}
+    return graph
+
+
 @router.get("/{brain_id}/file")
 async def brain_read_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)

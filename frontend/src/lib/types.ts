@@ -272,6 +272,7 @@ export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
+  custom_instructions?: string;
 }
 
 export interface ProactiveResponse {
@@ -286,6 +287,7 @@ export interface ProactiveResponse {
     success_count: number;
     fail_count: number;
   } | null;
+  base_prompt?: string;
 }
 
 export interface PermissionPackage {

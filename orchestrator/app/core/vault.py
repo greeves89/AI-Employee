@@ -11,12 +11,26 @@ is bind-mounted into the orchestrator (same mount used for provisioning).
 from __future__ import annotations
 
 import os
+import re
 
 # Files larger than this are skipped (search) / refused (read) — vaults are
 # Markdown knowledge bases, not binary stores.
 MAX_FILE_BYTES = 2_000_000
 
 _SEARCHABLE_SUFFIXES = (".md", ".markdown", ".txt")
+
+# Link/tag extraction for the Obsidian-style graph view.
+# Wikilink: [[Note]], [[Note|Alias]], [[Note#Heading]] — capture the target part.
+_WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
+# Relative markdown link to another note: [text](some/Note.md)
+_MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+\.(?:md|markdown))\)")
+# Inline #tag (not a markdown heading: requires a word char right after #)
+_TAG_RE = re.compile(r"(?:^|\s)#([A-Za-z0-9_][A-Za-z0-9_/-]{1,39})")
+# First level-1 heading → human title for a note
+_HEADING_RE = re.compile(r"^\s{0,3}#\s+(.+?)\s*$", re.MULTILINE)
+
+# Soft cap so a pathologically large vault can't stall the canvas force sim.
+MAX_GRAPH_NODES = 2000
 
 
 def resolve_path(host_path: str, rel_path: str) -> str:
@@ -110,3 +124,109 @@ def search(host_path: str, query: str, limit: int = 10) -> list[dict]:
 
     results.sort(key=lambda r: r["score"], reverse=True)
     return results[:limit]
+
+
+def _title_of(rel: str, content: str) -> str:
+    """Human label for a note: first ``# Heading`` if present, else filename stem."""
+    m = _HEADING_RE.search(content)
+    if m:
+        return m.group(1).strip()
+    return os.path.splitext(os.path.basename(rel))[0]
+
+
+def build_graph(host_path: str) -> dict:
+    """Obsidian-style link graph for the vault.
+
+    Nodes = Markdown notes; edges = ``[[wikilinks]]`` and relative ``.md`` links
+    between them. Targets resolve by title, full relative path (without ext), or
+    bare filename stem (case-insensitive) — mirroring how Obsidian resolves
+    ``[[Note Name]]``. Pure filesystem + regex, no DB/embedding dependency, so it
+    works wherever the vault is mounted. Returns ``{"nodes": [...], "edges": [...]}``.
+    """
+    base = os.path.realpath(host_path)
+    if not os.path.isdir(base):
+        return {"nodes": [], "edges": []}
+
+    files: list[dict] = []           # {rel, name, folder, content, tags}
+    by_stem: dict[str, str] = {}     # filename stem (lower) -> rel
+    by_title: dict[str, str] = {}    # title (lower) -> rel
+    by_relstem: dict[str, str] = {}  # rel without ext (lower, /) -> rel
+    truncated = False
+
+    for root, dirs, fnames in os.walk(base):
+        dirs[:] = sorted(d for d in dirs if d != ".git")
+        for f in sorted(fnames):
+            if not f.lower().endswith((".md", ".markdown")):
+                continue
+            if len(files) >= MAX_GRAPH_NODES:
+                truncated = True
+                break
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, base)
+            try:
+                if os.path.getsize(full) > MAX_FILE_BYTES:
+                    continue
+                with open(full, encoding="utf-8", errors="replace") as fh:
+                    content = fh.read()
+            except OSError:
+                continue
+            stem = os.path.splitext(os.path.basename(rel))[0]
+            title = _title_of(rel, content)
+            parts = rel.split(os.sep)
+            folder = parts[0] if len(parts) > 1 else ""
+            tags = sorted(set(_TAG_RE.findall(content)))[:12]
+            files.append({
+                "rel": rel, "name": title or stem, "folder": folder,
+                "content": content, "tags": tags,
+            })
+            by_stem.setdefault(stem.lower(), rel)
+            if title:
+                by_title.setdefault(title.lower(), rel)
+            by_relstem.setdefault(os.path.splitext(rel)[0].lower().replace(os.sep, "/"), rel)
+        if truncated:
+            break
+
+    def _resolve(target: str) -> str | None:
+        t = (target or "").strip().lower().replace("\\", "/")
+        if not t:
+            return None
+        if t in by_title:
+            return by_title[t]
+        if t in by_relstem:
+            return by_relstem[t]
+        if t in by_stem:
+            return by_stem[t]
+        # path-style target: fall back to its bare filename stem
+        bn = os.path.splitext(os.path.basename(t))[0]
+        return by_stem.get(bn)
+
+    indeg: dict[str, int] = {fr["rel"]: 0 for fr in files}
+    outdeg: dict[str, int] = {fr["rel"]: 0 for fr in files}
+    edges: list[dict] = []
+    seen: set[tuple] = set()
+
+    for fr in files:
+        src = fr["rel"]
+        targets = set(_WIKILINK_RE.findall(fr["content"]))
+        targets.update(_MD_LINK_RE.findall(fr["content"]))
+        for tgt in targets:
+            dst = _resolve(tgt)
+            if not dst or dst == src or (src, dst) in seen:
+                continue
+            seen.add((src, dst))
+            edges.append({"source": src, "target": dst})
+            outdeg[src] += 1
+            indeg[dst] += 1
+
+    nodes = [{
+        "id": fr["rel"],
+        "name": fr["name"],
+        "path": fr["rel"],
+        "folder": fr["folder"],
+        "tags": fr["tags"],
+        "in": indeg.get(fr["rel"], 0),
+        "out": outdeg.get(fr["rel"], 0),
+        "degree": indeg.get(fr["rel"], 0) + outdeg.get(fr["rel"], 0),
+    } for fr in files]
+
+    return {"nodes": nodes, "edges": edges, "truncated": truncated}

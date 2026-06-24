@@ -1,12 +1,23 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, FileText, Folder, Save, Trash2, Plus, Loader2, Eye, Pencil } from "lucide-react";
+import dynamic from "next/dynamic";
+import { X, FileText, Folder, Save, Trash2, Plus, Loader2, Eye, Pencil, Network, List } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { BrainFileEntry } from "@/lib/api";
 import type { SecondBrain } from "@/lib/types";
+
+// 3D graph is WebGL/three.js — client-only, lazy-loaded so it never runs on the server.
+const VaultGraph3D = dynamic(() => import("./vault-graph-3d"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-[#06060c] text-sm text-muted-foreground">
+      <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 3D-Graph wird geladen…
+    </div>
+  ),
+});
 
 export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: () => void }) {
   const [entries, setEntries] = useState<BrainFileEntry[]>([]);
@@ -17,6 +28,7 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [preview, setPreview] = useState(true);
+  const [view, setView] = useState<"files" | "graph">("files");
 
   const readOnly = brain.default_mode === "ro";
 
@@ -101,7 +113,10 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
       <div
-        className="flex h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-foreground/[0.08] bg-card shadow-2xl"
+        className={cn(
+          "flex w-full flex-col overflow-hidden rounded-xl border border-foreground/[0.08] bg-card shadow-2xl",
+          view === "graph" ? "h-[88vh] max-w-7xl" : "h-[80vh] max-w-5xl",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-foreground/[0.08] px-5 py-3">
@@ -111,7 +126,27 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
             {readOnly && <span className="ml-2 text-[10px] text-amber-400">read-only</span>}
           </div>
           <div className="flex items-center gap-2">
-            {!readOnly && (
+            <div className="flex items-center gap-0.5 rounded-lg bg-foreground/[0.05] p-0.5">
+              <button
+                onClick={() => setView("files")}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors",
+                  view === "files" ? "bg-foreground/[0.1] text-foreground" : "text-muted-foreground/60 hover:text-foreground",
+                )}
+              >
+                <List className="h-3.5 w-3.5" /> Dateien
+              </button>
+              <button
+                onClick={() => setView("graph")}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors",
+                  view === "graph" ? "bg-foreground/[0.1] text-foreground" : "text-muted-foreground/60 hover:text-foreground",
+                )}
+              >
+                <Network className="h-3.5 w-3.5" /> Graph
+              </button>
+            </div>
+            {!readOnly && view === "files" && (
               <button onClick={newFile} className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-xs hover:bg-foreground/[0.1]">
                 <Plus className="h-3.5 w-3.5" /> Neue Datei
               </button>
@@ -121,6 +156,16 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
         </div>
 
         <div className="flex flex-1 overflow-hidden">
+          {view === "graph" ? (
+            <VaultGraph3D
+              brainId={brain.id}
+              onOpenFile={(p) => {
+                setView("files");
+                openFile(p);
+              }}
+            />
+          ) : (
+            <>
           <div className="w-64 shrink-0 overflow-y-auto border-r border-foreground/[0.08] p-2">
             {loading ? (
               <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -206,6 +251,8 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
 
         {err && <div className="border-t border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">{err}</div>}

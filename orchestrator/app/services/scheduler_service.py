@@ -189,9 +189,23 @@ class SchedulerService:
             return
 
         # For proactive schedules: always use the latest PROACTIVE_PROMPT from code
-        # so prompt improvements apply immediately to all agents without DB migration
+        # so prompt improvements apply immediately to all agents without DB migration.
+        # Per-agent additions (admin/user editable in the UI) are appended to the
+        # code base — stored as data in agent.config, never duplicating the base.
         is_proactive = schedule.name.startswith("[Proactive]")
-        prompt = PROACTIVE_PROMPT if is_proactive else schedule.prompt
+        if is_proactive:
+            prompt = PROACTIVE_PROMPT
+            extra = await self._proactive_custom_instructions(db, schedule.agent_id)
+            if extra:
+                prompt = (
+                    prompt
+                    + "\n\n## Zusätzliche Anweisungen (vom Nutzer)\n"
+                    + "Diese ergänzen die Schritte oben — befolge sie zusätzlich, "
+                    + "ohne die Basisregeln zu verletzen.\n\n"
+                    + extra
+                )
+        else:
+            prompt = schedule.prompt
 
         task = await router.create_and_route_task(
             title=f"[Scheduled] {schedule.name}",
@@ -212,6 +226,26 @@ class SchedulerService:
             f"next run at {schedule.next_run_at.isoformat()}"
         )
 
+    async def _proactive_custom_instructions(
+        self, db: AsyncSession, agent_id: str | None
+    ) -> str:
+        """Per-agent proactive additions from agent.config['proactive']['custom_instructions'].
+
+        Appended to the code-level PROACTIVE_PROMPT at fire time so the base stays
+        centralized in code (one source of truth) while each agent can carry its own
+        extra instructions as plain data.
+        """
+        if not agent_id:
+            return ""
+        from sqlalchemy import select
+        from app.models.agent import Agent
+
+        result = await db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if not agent:
+            return ""
+        proactive = (agent.config or {}).get("proactive", {}) or {}
+        return (proactive.get("custom_instructions", "") or "").strip()
 
     async def _stop_idle_agents(self) -> int:
         """Stop agents that have been idle longer than their configured limit.

@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Clock, Loader2, Zap } from "lucide-react";
+import {
+  Activity,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  FileText,
+  Loader2,
+  Save,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProactiveConfig, updateProactiveConfig } from "@/lib/api";
 import type { ProactiveResponse } from "@/lib/types";
@@ -23,6 +33,10 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const [data, setData] = useState<ProactiveResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [customDraft, setCustomDraft] = useState("");
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -37,6 +51,31 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Seed the editable draft whenever the server's saved value changes — keyed on
+  // the value itself so interval/toggle reloads never clobber in-progress typing.
+  const savedCustom = data?.proactive?.custom_instructions ?? "";
+  useEffect(() => {
+    setCustomDraft(savedCustom);
+  }, [savedCustom]);
+
+  const handleSavePrompt = async () => {
+    if (!data) return;
+    setSavingPrompt(true);
+    try {
+      await updateProactiveConfig(agentId, {
+        enabled: data.proactive?.enabled ?? true,
+        interval_seconds: data.proactive?.interval_seconds || 3600,
+        custom_instructions: customDraft,
+      });
+      await load();
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
+    } catch {
+      // ignore
+    }
+    setSavingPrompt(false);
+  };
 
   const handleToggle = async () => {
     if (!data) return;
@@ -194,6 +233,73 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
               )}
             </div>
           )}
+
+          {/* Prompt: base (read-only) + per-agent additions */}
+          <div className="pt-2 mt-1 border-t border-foreground/[0.04]">
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+            >
+              {expanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <FileText className="h-3 w-3" />
+              Prompt &amp; Anweisungen
+            </button>
+
+            {expanded && (
+              <div className="mt-2 space-y-2.5">
+                {data?.base_prompt && (
+                  <div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                      Basis-Prompt — fest im System, gilt fuer alle Agenten
+                    </div>
+                    <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded-lg border border-foreground/[0.06] bg-background/60 p-2 text-[10px] leading-relaxed text-muted-foreground/70">
+                      {data.base_prompt}
+                    </pre>
+                  </div>
+                )}
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    Zusaetzliche Anweisungen fuer diesen Agenten
+                  </div>
+                  <textarea
+                    value={customDraft}
+                    onChange={(e) => setCustomDraft(e.target.value)}
+                    rows={5}
+                    placeholder="z.B. Pruefe bei jedem Lauf das IT-Operations Second Brain auf neue Druckerprobleme und ergaenze fehlende Loesungen als .md."
+                    className="w-full resize-y rounded-lg border border-foreground/[0.08] bg-background/60 p-2 text-[11px] leading-relaxed text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
+                  />
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground/40">
+                      Wird bei jedem proaktiven Lauf an den Basis-Prompt angehaengt.
+                    </span>
+                    <button
+                      onClick={handleSavePrompt}
+                      disabled={savingPrompt || customDraft === savedCustom}
+                      className={cn(
+                        "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                        customDraft !== savedCustom && !savingPrompt
+                          ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                          : "cursor-not-allowed bg-foreground/[0.04] text-muted-foreground/40"
+                      )}
+                    >
+                      {savingPrompt ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : savedFlash ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Save className="h-3 w-3" />
+                      )}
+                      {savedFlash ? "Gespeichert" : "Speichern"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
