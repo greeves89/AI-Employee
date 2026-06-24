@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.68.4] — 2026-06-24
+
+### Fixed
+- **Bridge-App (Windows): Login-Fenster zu klein, „Anmelden"-Button abgeschnitten.** Das customtkinter-Setup-Fenster hatte fix `480x400` + `resizable(False, False)` — auf Windows (DPI/Font-Scaling) passte der Inhalt nicht in 400px Höhe, der Login-Button lag unterhalb des sichtbaren Bereichs und das Fenster ließ sich nicht vergrößern. Jetzt: höheres Default (`480x560`), vertikal resizable + `minsize`, und der Button-Bereich ist am **unteren Rand verankert** (nie mehr abschneidbar). `computer-use-bridge/tray_app.py`.
+
+---
+
 ## [1.68.3] — 2026-06-24
 
 ### Security
