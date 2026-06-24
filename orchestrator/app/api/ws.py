@@ -858,7 +858,6 @@ async def ws_agent_voice(
             pass
 
 
-@router.websocket("/notifications")
 async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
     """Agent ids whose notifications a user may receive on the live stream
     (own + unowned + shared) — same scope as the REST notification endpoints,
@@ -880,6 +879,7 @@ async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
     return set(owned) | set(shared)
 
 
+@router.websocket("/notifications")
 async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
     if not _redis or not _redis.client:

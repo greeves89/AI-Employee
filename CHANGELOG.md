@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.68.5] — 2026-06-24
+
+### Fixed
+- **Notification-Live-WebSocket war komplett kaputt (`/api/v1/ws/notifications` → 403 / „bad response from the server").** Regression aus 1.68.3: beim Einbau des `_notif_visible_agent_ids`-Helfers rutschte dieser **zwischen den `@router.websocket("/notifications")`-Decorator und die eigentliche Handler-Funktion** — dadurch dekorierte der Route-Decorator den Helper (erwartet `user_id` statt `websocket`) und `ws_notifications` war gar nicht mehr registriert. Decorator wieder direkt über `ws_notifications` gesetzt. Chat-/Logs-WS waren nie betroffen.
+
 ## [1.68.4] — 2026-06-24
 
 ### Fixed
