@@ -457,7 +457,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G   # ingestion worker; headroom for ClickHouse batch writes
     networks:
       - internal
 
@@ -499,7 +499,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G   # Langfuse v3 web (Next.js) OOMs below ~1.5G
     networks:
       - internal
 
