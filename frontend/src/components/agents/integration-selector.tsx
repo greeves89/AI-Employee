@@ -5,6 +5,7 @@ import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
   Shield, Plus, Trash2, ChevronDown, KeyRound, ExternalLink,
+  Eye, PenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -56,6 +57,7 @@ interface IntegrationSelectorProps {
 export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [agentIntegrations, setAgentIntegrations] = useState<string[]>([]);
+  const [msgraphAccess, setMsgraphAccess] = useState<"read" | "write">("read");
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [agentMcpServerIds, setAgentMcpServerIds] = useState<number[] | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
   const load = useCallback(async () => {
     try {
-      const [{ integrations: all }, { integrations: enabled }, { servers }, mcpResp, entries, tmpl, secretsAll, agentSecretsResp] = await Promise.all([
+      const [{ integrations: all }, agentIntResp, { servers }, mcpResp, entries, tmpl, secretsAll, agentSecretsResp] = await Promise.all([
         api.getIntegrations(),
         api.getAgentIntegrations(agentId),
         api.getMcpServers(),
@@ -91,7 +93,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         api.getAgentSecrets(agentId),
       ]);
       setIntegrations(all);
-      setAgentIntegrations(enabled);
+      setAgentIntegrations(agentIntResp.integrations);
+      setMsgraphAccess(agentIntResp.msgraph_access === "write" ? "write" : "read");
       setMcpServers(servers);
       setAgentMcpServerIds(mcpResp.mcp_servers);
       setAllowlist(entries);
@@ -144,7 +147,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
     try {
       const promises: Promise<void>[] = [];
       if (changed) {
-        promises.push(api.updateAgentIntegrations(agentId, agentIntegrations));
+        promises.push(api.updateAgentIntegrations(agentId, agentIntegrations, msgraphAccess));
       }
       if (mcpChanged) {
         promises.push(api.updateAgentMcpServers(agentId, agentMcpServerIds));
@@ -446,35 +449,73 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           ) : (
             connectedIntegrations.map((integration) => {
               const enabled = agentIntegrations.includes(integration.provider);
+              const showMsgraphAccess = integration.provider === "microsoft" && enabled;
               return (
-                <label
-                  key={integration.provider}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-all",
-                    enabled
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-foreground/[0.06] hover:border-foreground/[0.12]"
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={() => toggle(integration.provider)}
-                    className="h-4 w-4 rounded border-foreground/20 bg-background text-primary focus:ring-primary/30"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{integration.display_name}</span>
-                      {integration.account_label && (
-                        <span className="text-[10px] text-muted-foreground/60">
-                          ({integration.account_label})
-                        </span>
-                      )}
+                <div key={integration.provider} className="space-y-2">
+                  <label
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-all",
+                      enabled
+                        ? "border-primary/30 bg-primary/5"
+                        : "border-foreground/[0.06] hover:border-foreground/[0.12]"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={() => toggle(integration.provider)}
+                      className="h-4 w-4 rounded border-foreground/20 bg-background text-primary focus:ring-primary/30"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{integration.display_name}</span>
+                        {integration.account_label && (
+                          <span className="text-[10px] text-muted-foreground/60">
+                            ({integration.account_label})
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground/60">{integration.description}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground/60">{integration.description}</p>
-                  </div>
-                  {enabled && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
-                </label>
+                    {enabled && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                  </label>
+
+                  {showMsgraphAccess && (
+                    <div className="ml-7 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => { setMsgraphAccess("read"); setChanged(true); }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            msgraphAccess === "read"
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]"
+                          )}
+                        >
+                          <Eye className="h-3 w-3" />
+                          Read
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setMsgraphAccess("write"); setChanged(true); }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            msgraphAccess === "write"
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]"
+                          )}
+                        >
+                          <PenLine className="h-3 w-3" />
+                          Read + Write
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground/60 mt-2">
+                        Read+Write: Agent darf schreiben — ausgehende Mail wird als Entwurf angelegt.
+                      </p>
+                    </div>
+                  )}
+                </div>
               );
             })
           )}

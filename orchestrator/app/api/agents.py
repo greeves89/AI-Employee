@@ -1428,7 +1428,11 @@ async def get_agent_integrations(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        return {"agent_id": agent_id, "integrations": config.get("integrations", [])}
+        return {
+            "agent_id": agent_id,
+            "integrations": config.get("integrations", []),
+            "msgraph_access": (config or {}).get("msgraph_access", "read"),
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
