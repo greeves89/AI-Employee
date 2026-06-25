@@ -17,10 +17,16 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
+  const [ssoOnly, setSsoOnly] = useState(false);
 
   // Load SSO providers and check for SSO errors in URL
   useEffect(() => {
-    getSSOProviders().then(setSsoProviders).catch(() => {});
+    getSSOProviders()
+      .then((res) => {
+        setSsoProviders(res.providers);
+        setSsoOnly(res.sso_only);
+      })
+      .catch(() => {});
     const ssoError = searchParams.get("error");
     if (ssoError) {
       setError(`SSO login failed: ${ssoError}`);
@@ -70,14 +76,15 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
+        {error && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
+        {/* Form (password login — hidden when SSO-only is enforced) */}
+        {!ssoOnly && (
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
               Email
@@ -135,10 +142,19 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+        )}
+
+        {/* SSO-only hint */}
+        {ssoOnly && (
+          <p className="text-center text-xs text-muted-foreground">
+            Anmeldung nur über Microsoft (SSO)
+          </p>
+        )}
 
         {/* SSO Buttons */}
         {ssoProviders.length > 0 && (
           <div className="space-y-3">
+            {!ssoOnly && (
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border" />
@@ -147,6 +163,7 @@ export default function LoginPage() {
                 <span className="bg-background px-2 text-muted-foreground">or continue with</span>
               </div>
             </div>
+            )}
 
             <div className="grid gap-2">
               {ssoProviders.map((provider) => (
@@ -179,12 +196,14 @@ export default function LoginPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="text-primary hover:underline">
-            Register
-          </Link>
-        </p>
+        {!ssoOnly && (
+          <p className="text-center text-xs text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="text-primary hover:underline">
+              Register
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

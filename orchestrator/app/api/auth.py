@@ -168,6 +168,11 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # SSO-only mode: password login disabled (only Microsoft SSO + MFA). The env
+    # break-glass (EMERGENCY_PASSWORD_LOGIN) re-enables it for lockout recovery.
+    if settings.sso_only_login and not settings.emergency_password_login:
+        raise HTTPException(status_code=403, detail="Password login is disabled — please sign in with Microsoft.")
+
     # Brute-force protection: check rate limit per email
     _check_login_rate(body.email)
 
@@ -202,7 +207,18 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # Optional: drop the user's stored MS Graph token on logout (no persistent
+    # token after sign-out). Best-effort — never block logout on failure.
+    if settings.revoke_msgraph_on_logout:
+        try:
+            from app.dependencies import get_current_user
+            from app.services.oauth_service import OAuthService
+            user = await get_current_user(request, db)
+            await OAuthService(db, request.app.state.redis).disconnect("microsoft", user_id=user.id)
+            logger.info(f"Revoked MS Graph token on logout for {user.email}")
+        except Exception as e:
+            logger.warning(f"MS token revoke on logout skipped: {e}")
     response.delete_cookie(COOKIE_ACCESS, path="/")
     response.delete_cookie(COOKIE_REFRESH, path="/")
     return {"ok": True}
@@ -258,7 +274,10 @@ async def list_sso_providers():
                 "display_name": provider.display_name,
                 "icon": provider.icon,
             })
-    return {"providers": providers}
+    # sso_only: tells the login page to hide the password form (SSO + MFA only).
+    # The env break-glass still allows password login server-side for recovery.
+    sso_only = bool(settings.sso_only_login and not settings.emergency_password_login and providers)
+    return {"providers": providers, "sso_only": sso_only}
 
 
 @router.get("/sso/{provider}/login")

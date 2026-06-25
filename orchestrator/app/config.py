@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
     registration_open: bool = True  # Allow new user registration
     setup_token: str = ""  # Required for first admin registration (if set)
+    # SSO-only: disable password login entirely → only Microsoft SSO (MFA) can sign in.
+    # Closes the "knows the password → impersonate" vector. Per-deployment toggle.
+    sso_only_login: bool = False
+    # BREAK-GLASS (env only, NOT in DB): re-enable password login even if sso_only_login
+    # is on — emergency access if SSO is misconfigured / admins are locked out.
+    emergency_password_login: bool = False
+    # Delete the user's stored MS Graph token on logout (no persistent token after
+    # sign-out). Trade-off: autonomous agents lose Graph until the owner re-connects.
+    revoke_msgraph_on_logout: bool = False
 
     # OAuth Integrations
     # Microsoft Entra tenant for SSO + Graph. "common" works only for multi-tenant

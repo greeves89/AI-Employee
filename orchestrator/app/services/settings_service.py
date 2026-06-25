@@ -46,6 +46,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "foundry_resource",
     "telegram_chat_id",
     "registration_open",
+    "sso_only_login",
+    "revoke_msgraph_on_logout",
     # OAuth non-secret fields
     "oauth_microsoft_tenant_id",
     "oauth_apple_team_id",

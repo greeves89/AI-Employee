@@ -242,6 +242,9 @@ export interface Settings {
   has_microsoft_oauth: boolean;
   has_apple_oauth: boolean;
   msgraph_mcp_external_enabled: boolean;
+  // Security / Login
+  sso_only_login?: boolean;
+  revoke_msgraph_on_logout?: boolean;
 }
 
 export interface AgentMemory {

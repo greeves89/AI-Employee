@@ -7,7 +7,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  Plug, Mic,
+  Plug, Mic, AlertTriangle,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -193,6 +193,30 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setMessage(e instanceof Error ? e.message : "Konnte MCP-Exposition nicht ändern");
     } finally {
       setMsgraphExtSaving(false);
+    }
+  };
+  const [ssoOnlySaving, setSsoOnlySaving] = useState(false);
+  const toggleSsoOnly = async (enabled: boolean) => {
+    setSsoOnlySaving(true);
+    try {
+      await api.updateSettings({ sso_only_login: enabled });
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte SSO-Only nicht ändern");
+    } finally {
+      setSsoOnlySaving(false);
+    }
+  };
+  const [revokeMsgraphSaving, setRevokeMsgraphSaving] = useState(false);
+  const toggleRevokeMsgraph = async (enabled: boolean) => {
+    setRevokeMsgraphSaving(true);
+    try {
+      await api.updateSettings({ revoke_msgraph_on_logout: enabled });
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Logout-Token-Einstellung nicht ändern");
+    } finally {
+      setRevokeMsgraphSaving(false);
     }
   };
   const isAdmin = user?.role === "admin";
@@ -1369,6 +1393,92 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     )}
                   />
                 </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ─── Sicherheit / Login (Admin only) ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Lock className="h-4 w-4 text-muted-foreground/60" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                Sicherheit / Login
+              </h2>
+            </div>
+
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+              {/* Nur SSO-Login */}
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                      <Shield className="h-3.5 w-3.5 text-blue-400" />
+                      Nur SSO-Login (Passwort-Login deaktivieren)
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      Blendet die Passwort-Anmeldung auf der Login-Seite aus — nur noch SSO.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleSsoOnly(!settings?.sso_only_login)}
+                    disabled={ssoOnlySaving}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      settings?.sso_only_login ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                      ssoOnlySaving && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    {ssoOnlySaving ? (
+                      <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                    ) : (
+                      <span className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        settings?.sso_only_login ? "translate-x-6" : "translate-x-1",
+                      )} />
+                    )}
+                  </button>
+                </div>
+                <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400 mt-0.5" />
+                  <p className="text-[10px] leading-relaxed text-amber-300">
+                    <strong>Achtung:</strong> Danach ist die Anmeldung NUR noch über Microsoft-SSO möglich. Nutzer ohne SSO-Konto im konfigurierten Tenant werden ausgesperrt. Notfall-Zugang: auf dem Server ENV <code className="font-mono">EMERGENCY_PASSWORD_LOGIN=true</code> setzen.
+                  </p>
+                </div>
+              </div>
+
+              {/* MS-Graph-Token bei Logout entfernen */}
+              <div className="p-5 pt-3 border-t border-foreground/[0.04]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                      <Network className="h-3.5 w-3.5 text-blue-400" />
+                      MS-Graph-Token bei Logout entfernen
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      Entfernt den gespeicherten Microsoft-Token beim Abmelden. Autonome Agenten verlieren MS-Graph dann bis zum nächsten Login + Verbinden.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleRevokeMsgraph(!settings?.revoke_msgraph_on_logout)}
+                    disabled={revokeMsgraphSaving}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      settings?.revoke_msgraph_on_logout ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                      revokeMsgraphSaving && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    {revokeMsgraphSaving ? (
+                      <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                    ) : (
+                      <span className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        settings?.revoke_msgraph_on_logout ? "translate-x-6" : "translate-x-1",
+                      )} />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </section>
