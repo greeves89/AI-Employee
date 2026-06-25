@@ -241,6 +241,7 @@ export interface Settings {
   has_google_oauth: boolean;
   has_microsoft_oauth: boolean;
   has_apple_oauth: boolean;
+  msgraph_mcp_external_enabled: boolean;
 }
 
 export interface AgentMemory {

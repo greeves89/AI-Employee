@@ -185,6 +185,13 @@ export async function setIdleStopMax(max_idle_minutes: number): Promise<{ max_id
   });
 }
 
+export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph_mcp_external_enabled: boolean }> {
+  return fetchJSON(`${getBase()}/settings/msgraph-mcp-external`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function setAgentIdleStop(agentId: string, idle_stop_minutes: number): Promise<{ agent_id: string; idle_stop_minutes: number | null }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/idle-stop`, {
     method: "PATCH",

@@ -61,6 +61,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         has_google_oauth=bool(settings.oauth_google_client_id),
         has_microsoft_oauth=bool(settings.oauth_microsoft_client_id),
         has_apple_oauth=bool(settings.oauth_apple_client_id),
+        msgraph_mcp_external_enabled=(await svc.get("msgraph_mcp_external_enabled") or "false").lower() in ("true", "1", "yes"),
         # Lifecycle
         agent_idle_timeout_minutes=int(await svc.get("agent_idle_timeout_minutes") or "30"),
         # Improvement engine thresholds
@@ -370,3 +371,29 @@ async def set_idle_stop_max(
         db.add(PlatformSettings(key="max_idle_minutes", value=str(minutes)))
     await db.commit()
     return {"max_idle_minutes": minutes}
+
+
+@router.put("/msgraph-mcp-external")
+async def set_msgraph_mcp_external(
+    body: dict,
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: expose the MS Graph MCP server to external LLM clients (OpenWebUI).
+
+    Refuses to enable without a configured Microsoft app registration, so the
+    toggle can never be switched on into a dead end. Takes effect immediately
+    (live ``settings`` update) and persists across restarts.
+    """
+    from fastapi import HTTPException
+
+    enable = bool(body.get("enabled", False))
+    if enable and not settings.oauth_microsoft_client_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Configure the Microsoft app registration (OAUTH_MICROSOFT_CLIENT_ID) first.",
+        )
+    svc = SettingsService(db)
+    await svc.set("msgraph_mcp_external_enabled", "true" if enable else "false")
+    settings.msgraph_mcp_external_enabled = enable  # live effect, no restart needed
+    return {"msgraph_mcp_external_enabled": enable}

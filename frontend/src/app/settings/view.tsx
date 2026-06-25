@@ -6,7 +6,7 @@ import {
   Key, MessageSquare, Save, Loader2,
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
-  ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles,
+  ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -159,6 +159,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [microsoftClientId, setMicrosoftClientId] = useState("");
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
   const [msGuideExpanded, setMsGuideExpanded] = useState(false);
+  const [msgraphExtSaving, setMsgraphExtSaving] = useState(false);
   const [appleClientId, setAppleClientId] = useState("");
   const [appleTeamId, setAppleTeamId] = useState("");
   // Claude OAuth login
@@ -180,6 +181,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const user = useAuthStore((s) => s.user);
+
+  const toggleMsgraphExt = async (enabled: boolean) => {
+    setMsgraphExtSaving(true);
+    try {
+      await api.setMsgraphMcpExternal(enabled);
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte MCP-Exposition nicht ändern");
+    } finally {
+      setMsgraphExtSaving(false);
+    }
+  };
   const isAdmin = user?.role === "admin";
   // License state
   const [license, setLicense] = useState<import("@/lib/api").License | null>(null);
@@ -1153,6 +1166,64 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     SSO aktiv — &quot;Mit Microsoft anmelden&quot; erscheint auf der Login-Seite. User können ihr Konto unter Integrations verbinden.
                   </div>
                 )}
+
+                {/* Admin: expose the MS Graph MCP server to external LLMs (OpenWebUI) */}
+                <div className="px-5 pb-4 pt-3 border-t border-foreground/[0.04]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                        <Network className="h-3.5 w-3.5 text-blue-400" />
+                        MCP-Server extern exponieren (OpenWebUI)
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                        Stellt den MS-Graph-MCP-Server externen LLM-Clients per OAuth 2.1 bereit. Jeder User loggt sich ein und nutzt sein eigenes M365.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toggleMsgraphExt(!settings?.msgraph_mcp_external_enabled)}
+                      disabled={!settings?.has_microsoft_oauth || msgraphExtSaving}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                        settings?.msgraph_mcp_external_enabled ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                        (!settings?.has_microsoft_oauth || msgraphExtSaving) && "opacity-40 cursor-not-allowed",
+                      )}
+                    >
+                      {msgraphExtSaving ? (
+                        <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                      ) : (
+                        <span className={cn(
+                          "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                          settings?.msgraph_mcp_external_enabled ? "translate-x-6" : "translate-x-1",
+                        )} />
+                      )}
+                    </button>
+                  </div>
+                  {!settings?.has_microsoft_oauth && (
+                    <p className="mt-1.5 text-[10px] text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
+                  )}
+                  {settings?.msgraph_mcp_external_enabled && (
+                    <div className="mt-2.5 space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                      <p className="text-[10px] font-medium text-emerald-300">
+                        In OpenWebUI → Admin Settings → External Tools → Add Server → Type: MCP (Streamable HTTP), Auth: OAuth 2.1 — diese Server-URL eintragen:
+                      </p>
+                      <div className="flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
+                        <span className="flex-1 break-all text-emerald-400">
+                          {typeof window !== "undefined" ? window.location.origin : "https://deine-domain.com"}/api/v1/mcp/msgraph
+                        </span>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/v1/mcp/msgraph`)}
+                          className="flex-shrink-0 text-muted-foreground/40 transition-colors hover:text-muted-foreground"
+                          title="Kopieren"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/50">
+                        Login &amp; Client-Registrierung (DCR) laufen automatisch über OAuth. Token sind pro User — kein geteilter Zugriff.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Apple */}

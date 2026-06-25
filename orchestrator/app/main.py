@@ -732,6 +732,28 @@ async def lifespan(app: FastAPI):
         logger.warning("Alembic migration timed out, falling back to direct init ...")
         await _init_db_from_models()
 
+    # Ensure the oauth_clients table (built-in MCP authorization server) exists on
+    # every startup, independent of Alembic — no migration ships for it. Idempotent.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS oauth_clients ("
+                "client_id varchar(64) PRIMARY KEY, "
+                "client_secret_hash varchar(128), "
+                "client_name varchar(255), "
+                "redirect_uris text, "
+                "grant_types varchar(255), "
+                "token_endpoint_auth_method varchar(32), "
+                "scope text, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+        logger.info("oauth_clients table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure oauth_clients table: {e}")
+
     # Seed autonomy preset rules (defaults per level into DB if not yet present)
     try:
         from app.api.approval_rules import seed_autonomy_presets
@@ -1264,6 +1286,11 @@ else:
     )
 
 app.include_router(api_router, prefix="/api/v1")
+
+# OAuth discovery documents (RFC 8414 / RFC 9728) MUST live at well-known ROOT
+# paths so MCP clients (e.g. OpenWebUI) can discover the authorization server.
+from app.api.oauth_as import wellknown_router as oauth_wellknown_router
+app.include_router(oauth_wellknown_router)
 
 # Computer-Use bridge WebSocket — mounted at root (not under /api/v1) so
 # the bridge client can connect at ws://host/ws/computer-use/bridge

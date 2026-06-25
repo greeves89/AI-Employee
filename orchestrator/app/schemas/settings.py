@@ -93,6 +93,7 @@ class SettingsResponse(BaseModel):
     has_google_oauth: bool = False
     has_microsoft_oauth: bool = False
     has_apple_oauth: bool = False
+    msgraph_mcp_external_enabled: bool = False
     # Lifecycle
     agent_idle_timeout_minutes: int = 30
     # Improvement engine thresholds

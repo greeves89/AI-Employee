@@ -106,6 +106,14 @@ class Settings(BaseSettings):
     oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
 
+    # Expose the MS Graph MCP server to external LLM clients (e.g. OpenWebUI) via
+    # our built-in OAuth 2.1 AS. Admin-only; only effective when a Microsoft app
+    # registration (oauth_microsoft_client_id) is configured. Default OFF.
+    msgraph_mcp_external_enabled: bool = False
+    # Optional independent signing key for MCP access tokens. Empty = derive from
+    # api_secret_key (domain-separated). Set for full key isolation from sessions.
+    mcp_signing_key: str = ""
+
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures
 
