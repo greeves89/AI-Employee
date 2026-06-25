@@ -88,6 +88,16 @@ def _token_error(error: str, desc: str = "", status: int = 400) -> JSONResponse:
     return JSONResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
 
 
+# Browser-rendered auth pages must never be framed — otherwise the consent
+# "Erlauben" button is a clickjacking target. Defense in depth on top of the
+# reverse proxy's global X-Frame-Options.
+_FRAME_DENY = {"X-Frame-Options": "DENY", "Content-Security-Policy": "frame-ancestors 'none'"}
+
+
+def _html(content: str, status: int = 200) -> HTMLResponse:
+    return HTMLResponse(content, status_code=status, headers=_FRAME_DENY)
+
+
 # ---------------------------------------------------------------------------
 # Discovery (RFC 8414 + RFC 9728)
 # ---------------------------------------------------------------------------
@@ -137,7 +147,7 @@ async def authorize(request: Request, db: AsyncSession = Depends(get_db)):
     # unvalidated URI (open-redirect / code-injection guard).
     client = await oas.get_client(db, client_id)
     if not client or redirect_uri not in oas.client_redirect_uris(client):
-        return HTMLResponse(_error_page("Ungültiger Client oder redirect_uri."), status_code=400)
+        return _html(_error_page("Ungültiger Client oder redirect_uri."), status=400)
 
     if q.get("response_type") != "code":
         return _redirect_error(redirect_uri, q.get("state", ""), "unsupported_response_type")
@@ -151,7 +161,7 @@ async def authorize(request: Request, db: AsyncSession = Depends(get_db)):
         back = quote(f"{request.url.path}?{request.url.query}", safe="")
         return RedirectResponse(f"{oas.issuer()}/login?redirect={back}", status_code=302)
 
-    return HTMLResponse(_consent_page(
+    return _html(_consent_page(
         client_name=client.client_name or client_id,
         client_id=client_id,
         redirect_uri=redirect_uri,
@@ -176,7 +186,7 @@ async def authorize_decide(
 
     client = await oas.get_client(db, client_id)
     if not client or redirect_uri not in oas.client_redirect_uris(client):
-        return HTMLResponse(_error_page("Ungültiger Client oder redirect_uri."), status_code=400)
+        return _html(_error_page("Ungültiger Client oder redirect_uri."), status=400)
 
     user_id = _session_user_id(request)
     if not user_id:
