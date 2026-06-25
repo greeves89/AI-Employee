@@ -395,5 +395,6 @@ async def set_msgraph_mcp_external(
         )
     svc = SettingsService(db)
     await svc.set("msgraph_mcp_external_enabled", "true" if enable else "false")
+    await db.commit()  # SettingsService.set() does not commit; persist explicitly
     settings.msgraph_mcp_external_enabled = enable  # live effect, no restart needed
     return {"msgraph_mcp_external_enabled": enable}
