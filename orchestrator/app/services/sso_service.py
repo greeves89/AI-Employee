@@ -155,13 +155,14 @@ class SSOService:
         self, provider: SSOProviderConfig, code: str
     ) -> dict:
         """Exchange authorization code for tokens."""
+        from app.core.oauth_providers import apply_tenant
         client_id = get_sso_client_id(provider)
         client_secret = get_sso_client_secret(provider)
         redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider.name}/callback"
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                provider.token_url,
+                apply_tenant(provider.token_url),
                 data={
                     "client_id": client_id,
                     "client_secret": client_secret,
