@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.73.0] — 2026-06-25
+
+### Removed
+- **LLM-Observability (Langfuse) zurückgerollt.** Der gesamte Langfuse-Stack (Compose-Services/Volumes, `observability_service`, Observability-API + Admin-Tab, Task- und Chat-Trace-Hooks, Config/Secrets, `.env.example`-Block) wurde wieder entfernt — zu schwergewichtig/komplex für den aktuellen Bedarf. (Die in v1.72.x mitgelieferten **SSO/Graph-Login- und Microsoft-Tenant-Fixes bleiben erhalten** — sie sind für den Login essenziell.)
+
 ## [1.72.1] — 2026-06-25
 
 ### Added

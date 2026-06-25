@@ -396,14 +396,6 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                         await db.rollback()
                         continue
                     await db.refresh(notif)
-                    # LLM-Observability: trace this chat turn (no-op if off).
-                    from app.services.observability_service import observability
-                    await observability.record_chat_trace(
-                        db, agent_id=agent_id, message_id=message_id,
-                        session_id=session_id, output=content,
-                        cost_usd=meta.get("cost_usd"), tool_calls=tool_calls,
-                        source=source,
-                    )
                     await redis.client.publish(
                         "notifications:live",
                         json.dumps({

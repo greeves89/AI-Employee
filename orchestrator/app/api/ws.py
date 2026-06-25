@@ -249,15 +249,6 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         output_tokens=output_tokens,
                     ))
                 await db.commit()
-                # LLM-Observability: trace finished assistant chat turns (no-op if off).
-                if role == "assistant":
-                    from app.services.observability_service import observability
-                    await observability.record_chat_trace(
-                        db, agent_id=msg_agent_id, message_id=message_id,
-                        session_id=session_id, output=content,
-                        cost_usd=cost_usd, input_tokens=input_tokens,
-                        output_tokens=output_tokens, tool_calls=tool_calls,
-                    )
         except Exception:
             pass  # Don't break chat if DB write fails
 

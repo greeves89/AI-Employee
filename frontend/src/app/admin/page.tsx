@@ -35,7 +35,6 @@ import {
   HeartPulse,
   ScrollText,
   Brain,
-  Activity,
 } from "lucide-react";
 
 import { SettingsView } from "@/app/settings/view";
@@ -44,7 +43,6 @@ import { SecondBrainsView } from "@/app/second-brains/view";
 import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
-import { ObservabilityView } from "@/app/observability/view";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
@@ -58,12 +56,11 @@ import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
-  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit"
-  | "observability";
+  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "observability"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit"];
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -357,7 +354,6 @@ export default function AdminPage() {
     { id: "secrets", label: "Key Management", icon: KeyRound },
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
-    { id: "observability", label: "Observability", icon: Activity },
   ];
 
   return (
@@ -411,7 +407,6 @@ export default function AdminPage() {
             {tab === "secrets" && <SecretsView embedded />}
             {tab === "health" && <HealthView embedded />}
             {tab === "audit" && <AuditView embedded />}
-            {tab === "observability" && <ObservabilityView embedded />}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-20">
