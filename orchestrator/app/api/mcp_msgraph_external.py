@@ -75,5 +75,6 @@ async def mcp_msgraph_external(
         except ValueError:
             return None
 
-    resp, status = await handle_mcp_request(body, resolve_token)
+    # External (OpenWebUI) access is ALWAYS read-only — no write/send tools.
+    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=False, draft_mail=False)
     return JSONResponse(resp, status_code=status)

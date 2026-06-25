@@ -1449,16 +1449,27 @@ async def update_agent_integrations(
         old_integrations = set(config.get("integrations", []))
         new_integrations = body.get("integrations", [])
         config["integrations"] = new_integrations
+
+        # Optional: Microsoft Graph read/write mode for this agent.
+        old_msgraph_access = config.get("msgraph_access", "read")
+        if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
+            config["msgraph_access"] = body["msgraph_access"]
+        msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
+
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
 
-        # Auto-restart running agents so new tokens are injected
-        if set(new_integrations) != old_integrations and agent.state == AgentState.RUNNING:
+        # Auto-restart running agents so new tokens / access mode are applied
+        if (set(new_integrations) != old_integrations or msgraph_access_changed) and agent.state == AgentState.RUNNING:
             await manager.restart_agent(agent_id)
 
-        return {"agent_id": agent_id, "integrations": config["integrations"]}
+        return {
+            "agent_id": agent_id,
+            "integrations": config["integrations"],
+            "msgraph_access": config.get("msgraph_access", "read"),
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

@@ -326,6 +326,19 @@ MSGRAPH_TOOLS = [
     },
 ]
 
+# Tools that CREATE/SEND/MODIFY Microsoft data. Everything else in MSGRAPH_TOOLS
+# is read-only. Agents in read-only mode (and the external per-user transport)
+# never see or get to call these.
+WRITE_TOOLS = {
+    "ms_send_email",
+    "ms_reply_email",
+    "ms_create_calendar_event",
+    "ms_send_teams_message",
+    "ms_send_chat_message",
+    "ms_create_task",
+    "ms_create_planner_task",
+}
+
 
 # ---------------------------------------------------------------------------
 # JSON-RPC helpers
@@ -384,7 +397,7 @@ def _strip_html(s) -> str:
 # Tool handlers
 # ---------------------------------------------------------------------------
 
-async def handle_tool(name: str, args: dict, token: str) -> str:
+async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = False) -> str:
 
     if name == "ms_get_user_info":
         data = await _graph("GET", "/me", token)
@@ -432,20 +445,27 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 
     elif name == "ms_send_email":
         recipients = [{"emailAddress": {"address": a.strip()}} for a in args["to"].split(",")]
-        payload: dict = {
-            "message": {
-                "subject": args["subject"],
-                "body": {"contentType": args.get("body_type", "Text"), "content": args["body"]},
-                "toRecipients": recipients,
-            },
-            "saveToSentItems": True,
+        message: dict = {
+            "subject": args["subject"],
+            "body": {"contentType": args.get("body_type", "Text"), "content": args["body"]},
+            "toRecipients": recipients,
         }
         if args.get("cc"):
-            payload["message"]["ccRecipients"] = [{"emailAddress": {"address": a.strip()}} for a in args["cc"].split(",")]
+            message["ccRecipients"] = [{"emailAddress": {"address": a.strip()}} for a in args["cc"].split(",")]
+        if draft_mail:
+            # Create an Outlook draft instead of sending — leaves the final send
+            # to the human.
+            await _graph("POST", "/me/messages", token, content=json.dumps(message))
+            return f"Email-Entwurf in Outlook erstellt (NICHT gesendet): '{args['subject']}'."
+        payload: dict = {"message": message, "saveToSentItems": True}
         await _graph("POST", "/me/sendMail", token, content=json.dumps(payload))
         return f"Email sent to {args['to']}."
 
     elif name == "ms_reply_email":
+        if draft_mail:
+            # createReply produces a reply draft in the mailbox — not sent.
+            await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/createReply", token)
+            return "Antwort-Entwurf erstellt (NICHT gesendet)."
         endpoint = "/me/messages/{}/replyAll" if args.get("reply_all") else "/me/messages/{}/reply"
         payload = {"comment": args["body"]}
         await _graph("POST", endpoint.format(_gid(args["email_id"])), token, content=json.dumps(payload))
@@ -523,9 +543,10 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 
     elif name == "ms_list_chats":
         limit = min(int(args.get("limit", 20)), 50)
+        # NOTE: nested "$expand=members($select=...)" makes Graph return HTTP 400
+        # here — expand members plainly and pick displayName from the full object.
         data = await _graph("GET", "/me/chats", token,
-                            params={"$top": limit, "$select": "id,chatType,topic,lastUpdatedDateTime",
-                                    "$expand": "members($select=displayName)"})
+                            params={"$top": limit, "$expand": "members"})
         chats = data.get("value", [])
         if not chats:
             return "No chats found."
@@ -732,9 +753,16 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 async def handle_mcp_request(
     body: dict,
     resolve_token: Callable[[], Awaitable[str | None]],
+    *,
+    write_enabled: bool = False,
+    draft_mail: bool = False,
 ) -> tuple[dict, int]:
     """Handle one MCP JSON-RPC message; ``resolve_token`` yields the caller's
-    Microsoft access token (or None if not connected). Returns ``(json, status)``."""
+    Microsoft access token (or None if not connected). Returns ``(json, status)``.
+
+    ``write_enabled`` gates the write/send tools (``WRITE_TOOLS``): when False they
+    are hidden from tools/list and refused in tools/call. ``draft_mail`` routes
+    outbound mail to drafts instead of sending."""
     method = body.get("method", "")
     id_ = body.get("id")
 
@@ -752,12 +780,20 @@ async def handle_mcp_request(
         return mcp_result(id_, {}), 200
 
     if method == "tools/list":
-        return mcp_result(id_, {"tools": MSGRAPH_TOOLS}), 200
+        tools = MSGRAPH_TOOLS if write_enabled else [t for t in MSGRAPH_TOOLS if t["name"] not in WRITE_TOOLS]
+        return mcp_result(id_, {"tools": tools}), 200
 
     if method == "tools/call":
         params = body.get("params", {})
         tool_name = params.get("name", "")
         args = params.get("arguments", {})
+        # Refuse write/send tools in read-only mode BEFORE resolving any token.
+        if tool_name in WRITE_TOOLS and not write_enabled:
+            return mcp_result(id_, tool_result(
+                "This agent has read-only Microsoft access. Enable Read+Write in the "
+                "agent's Integrations settings to use write tools.",
+                is_error=True,
+            )), 200
         token = await resolve_token()
         if not token:
             return mcp_result(id_, tool_result(
@@ -766,7 +802,7 @@ async def handle_mcp_request(
                 is_error=True,
             )), 200
         try:
-            result_text = await handle_tool(tool_name, args, token)
+            result_text = await handle_tool(tool_name, args, token, draft_mail=draft_mail)
             return mcp_result(id_, tool_result(result_text)), 200
         except RuntimeError as e:
             return mcp_result(id_, tool_result(str(e), is_error=True)), 200

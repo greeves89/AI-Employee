@@ -63,5 +63,14 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
         async with async_session_factory() as db:
             return await _get_access_token(agent_id, db)
 
-    resp, status = await handle_mcp_request(body, resolve_token)
+    # Determine the agent's Microsoft access mode (read-only by default).
+    # Write mode unlocks the send/create tools and routes outbound mail to drafts.
+    async with async_session_factory() as db:
+        agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    access = (agent.config or {}).get("msgraph_access", "read") if agent else "read"
+    write_enabled = access in ("write", "read_write", "rw")
+
+    resp, status = await handle_mcp_request(
+        body, resolve_token, write_enabled=write_enabled, draft_mail=write_enabled
+    )
     return JSONResponse(resp, status_code=status)
