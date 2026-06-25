@@ -468,6 +468,23 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
     return "\n".join(lines)
 
 
+def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
+                      workspace_size_gb: float | None = None) -> str:
+    """Render the agent CLAUDE.md from its template — the SINGLE place that fills
+    its placeholders (workspace soft-quota + host-mounts section). Used by the
+    create / update / restart paths, so the substitution lives in exactly one spot.
+
+    ``workspace_size_gb`` defaults to the global setting; pass a per-agent value to
+    honour an individual agent's quota override (``config["workspace_size_gb"]``).
+    """
+    size = settings.agent_workspace_size_gb if workspace_size_gb is None else workspace_size_gb
+    return (
+        DEFAULT_CLAUDE_MD
+        .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
+        .replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts, catalog))
+    )
+
+
 class AgentManager:
     """Manages the lifecycle of agent Docker containers."""
 
@@ -712,9 +729,12 @@ class AgentManager:
             for s in servers if s.auth_token_encrypted
         }
 
-        # Auto-inject MS Graph MCP server when agent has microsoft integration
+        # Auto-inject MS Graph MCP server when agent has microsoft integration.
+        # The agent's MCP client authenticates with the agent's HMAC bearer token
+        # (via CUSTOM_MCP_AUTH); without it the msgraph endpoint returns 401.
         if agent_id and agent_integrations and "microsoft" in agent_integrations:
             mcp_map["msgraph"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/msgraph/{agent_id}"
+            auth_map["msgraph"] = make_agent_token(agent_id)
 
         if not mcp_map:
             return {}
@@ -881,9 +901,7 @@ class AgentManager:
 
         # Initialize workspace files
         agent_mounts = []
-        claude_md = DEFAULT_CLAUDE_MD.replace(
-            "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-        ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
+        claude_md = _render_claude_md(agent_mounts)
         if mode == "claude_code":
             # Claude Code: full CLAUDE.md + knowledge.md
             try:
@@ -1141,9 +1159,7 @@ class AgentManager:
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
-            fresh_claude_md = DEFAULT_CLAUDE_MD.replace(
-                "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-            ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts, catalog))
+            fresh_claude_md = _render_claude_md(agent_mounts, catalog)
             mode = agent.mode or config.get("mode", "claude_code")
             target_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
             self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
@@ -1305,9 +1321,7 @@ class AgentManager:
                 self.docker.write_file_in_container(
                     container.id,
                     "/workspace/CLAUDE.md",
-                    DEFAULT_CLAUDE_MD.replace(
-                        "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-                    ).replace("$MOUNTS_SECTION", _build_mounts_section(_agent_mounts, catalog)),
+                    _render_claude_md(_agent_mounts, catalog),
                 )
                 logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
             except Exception as e:
