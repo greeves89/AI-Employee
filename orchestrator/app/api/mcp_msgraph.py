@@ -38,7 +38,8 @@ async def _get_access_token(agent_id: str, db: AsyncSession) -> str | None:
     if not agent or not agent.user_id:
         return None
     try:
-        return await OAuthService(db).get_valid_token("microsoft", agent.user_id)
+        # OAuthService needs (db, redis); get_valid_token doesn't use redis → None ok.
+        return await OAuthService(db, None).get_valid_token("microsoft", agent.user_id)
     except ValueError:
         return None
 
