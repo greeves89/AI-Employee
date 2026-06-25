@@ -713,8 +713,11 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 
     elif name == "ms_graph_get":
         path = str(args.get("path", ""))
-        if not path.startswith("/") or "://" in path or ".." in path:
-            return "Error: path must be a relative Graph path starting with / (no scheme, no '..')."
+        # Must start with "/" + alphanumeric → blocks protocol-relative "//host",
+        # backslash tricks, scheme ("://") and traversal ("..") — keeps the call
+        # pinned to graph.microsoft.com.
+        if not re.match(r"^/[A-Za-z0-9]", path) or "://" in path or ".." in path or "\\" in path:
+            return "Error: path must be a relative Graph path like /me/messages (no scheme, no '..', no '//')."
         data = await _graph("GET", path, token, params=args.get("params") or {})
         return json.dumps(data, ensure_ascii=False)[:2000]
 
