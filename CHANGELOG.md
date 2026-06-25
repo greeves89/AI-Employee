@@ -7,30 +7,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ## [1.73.0] — 2026-06-25
 
-### Removed
-- **LLM-Observability (Langfuse) zurückgerollt.** Der gesamte Langfuse-Stack (Compose-Services/Volumes, `observability_service`, Observability-API + Admin-Tab, Task- und Chat-Trace-Hooks, Config/Secrets, `.env.example`-Block) wurde wieder entfernt — zu schwergewichtig/komplex für den aktuellen Bedarf. (Die in v1.72.x mitgelieferten **SSO/Graph-Login- und Microsoft-Tenant-Fixes bleiben erhalten** — sie sind für den Login essenziell.)
-
-## [1.72.1] — 2026-06-25
-
 ### Added
-- **Chat-Tracing für Langfuse.** Nicht nur Tasks, sondern auch **Agent-Chat-Nachrichten** werden jetzt getract (Web/WS- UND Telegram/Scheduler-Pfad): pro Chat-Turn ein Trace mit Prompt/Antwort, Tokens/Kosten, Tool-Anzahl, **sessionId** (gruppiert Dialoge) + User-/Agent-Zuordnung. Gemeinsamer `record_chat_trace`-Helper, No-Op wenn Langfuse aus. Damit sind „alle" LLM-Interaktionen je Agent sichtbar, nicht nur Task-Läufe. (`services/observability_service.py`, `api/ws.py`, `main.py`)
-
-### Fixed
-- **SSO-Token-Exchange** nutzte noch `/common` statt des konfigurierten Tenants → 400 bei Single-Tenant-Apps. Jetzt `apply_tenant` auch im SSO-`_exchange_code`.
-- Langfuse-web Compose: Memory 1G→2G (OOM) und Healthcheck auf GET/Container-IP (band nicht auf loopback).
-
-## [1.72.0] — 2026-06-25
-
-### Added
-- **LLM-Observability (Langfuse) — opt-in.** Self-gehosteter Langfuse-Stack (eigene Postgres/Redis/ClickHouse/MinIO, nur internes Netz, **kein** Host-Port) hinter dem Compose-Profil `observability` — Default-Deployments bleiben unverändert/leichtgewichtig. Trace-Hook in `handle_task_completion` schickt pro abgeschlossenem Task **einen** Trace (Prompt/Ergebnis + **echte** Tokens/Kosten/Dauer + User-/Agent-Zuordnung) an die Langfuse-Ingestion-API; **No-Op**, solange keine Keys gesetzt sind (bricht nie einen Task; Langfuse ist Trace-Sink, **kein** Proxy). Neuer **Admin-Tab „Observability"** (admin-only, nativ, Deep-Links in die Langfuse-UI — kein iframe) via Orchestrator-Proxy auf die Langfuse-Read-API. Keine Schema-Migration; echte statt geschätzte Kosten. (`services/observability_service.py`, `api/observability.py`, `core/task_router.py`, `app/observability/view.tsx`)
-- **Konfigurierbarer Microsoft-Tenant** (`oauth_microsoft_tenant_id`, Default `common`) — pro Kunde via `.env` (`OAUTH_MICROSOFT_TENANT_ID`) oder Admin → Settings. Nicht hardcoded; wirkt für Login **und** M365-Integration.
+- **Konfigurierbarer Microsoft-Tenant** (`oauth_microsoft_tenant_id`, Default `common`) — pro Kunde via `.env` (`OAUTH_MICROSOFT_TENANT_ID`) oder Admin → Settings. Nicht hardcoded; wirkt für Login **und** M365-Integration. Single-Tenant-Azure-Apps brauchen das zwingend.
 
 ### Changed
 - **Microsoft-SSO-Login holt jetzt direkt die Graph-Tokens.** Der Login fordert die vollen Graph-Scopes **+ `offline_access`** an und speichert Access/Refresh verschlüsselt (`persist_tokens` von Login- und Integrations-Flow **geteilt** — eine Storage-Stelle). Ein Login = Identität **und** Graph, kein separater „M365 verbinden"-Schritt nötig. (`core/sso_providers.py`, `services/sso_service.py`, `services/oauth_service.py`)
 
 ### Fixed
-- **AADSTS50194** behoben: Single-Tenant-Azure-Apps können den `/common`-Endpoint nicht nutzen — die Authority wird jetzt zur Laufzeit auf den konfigurierten Tenant gesetzt.
-- **Security:** `trace_id`-Format-Validierung im Observability-Proxy (Path-Traversal/SSRF-Schutz); Microsoft-`email_verified` wird **nur** bei konkretem Tenant (GUID/Domain) vertraut — `common`/`organizations`/`consumers` ausgeschlossen (Schutz vor Cross-Tenant-Account-Takeover).
+- **AADSTS50194** behoben: Single-Tenant-Azure-Apps können den `/common`-Endpoint nicht nutzen — die Authority (Authorize **und** Token-Exchange) wird zur Laufzeit auf den konfigurierten Tenant gesetzt.
+- **Cross-Tenant-Account-Takeover-Schutz:** Microsoft-`email_verified` wird **nur** bei konkretem Tenant (GUID/Domain) vertraut — `common`/`organizations`/`consumers` ausgeschlossen.
 
 ## [1.71.0] — 2026-06-25
 
