@@ -32,6 +32,8 @@ SECRET_KEYS = {
     "voice_elevenlabs_api_key",
     # APNs auth key (.p8 contents)
     "apns_auth_key",
+    # LLM-Observability (Langfuse) project secret key
+    "langfuse_secret_key",
 }
 
 # All settings keys that can be persisted
@@ -47,6 +49,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "telegram_chat_id",
     "registration_open",
     # OAuth non-secret fields
+    "oauth_microsoft_tenant_id",
     "oauth_apple_team_id",
     "oauth_apple_key_id",
     # License
@@ -73,6 +76,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "apns_team_id",
     "apns_bundle_id",
     "apns_sandbox",
+    # LLM-Observability (Langfuse) non-secret config
+    "langfuse_host",
+    "langfuse_public_key",
+    "langfuse_public_url",
 }
 
 

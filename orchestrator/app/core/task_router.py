@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.load_balancer import LoadBalancer
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
+from app.services.observability_service import observability
 from app.services.redis_service import RedisService
 from app.services.skill_auto_injector import auto_inject_skills
 
@@ -408,6 +409,16 @@ class TaskRouter:
             await self._update_schedule_stats(schedule_id, data)
 
         await self.db.commit()
+
+        # LLM-Observability: emit a Langfuse trace for this finished task.
+        # No-op when Langfuse is unconfigured; the user lookup only runs when enabled.
+        if observability.enabled:
+            user_id = None
+            if agent_id:
+                from app.models.agent import Agent
+                ures = await self.db.execute(select(Agent.user_id).where(Agent.id == agent_id))
+                user_id = ures.scalar_one_or_none()
+            await observability.record_task_trace(task, user_id=user_id)
 
         # Auto-rate the task based on outcome metrics
         await self._auto_rate_task(task)

@@ -1963,6 +1963,52 @@ export async function getAuditSummary(): Promise<AuditSummary> {
   return fetchJSON(`${getBase()}/audit/logs/summary`);
 }
 
+// LLM-Observability (Langfuse) — admin-only. The orchestrator proxies the
+// Langfuse read API so the browser never holds the Langfuse secret key.
+export interface ObservabilityConfig {
+  enabled: boolean;
+  public_url: string | null;
+  project_id: string;
+}
+
+export interface ObservabilityTrace {
+  id: string;
+  name?: string;
+  timestamp?: string;
+  userId?: string;
+  totalCost?: number;
+  latency?: number;
+  tags?: string[];
+  _deepLink?: string;
+  [key: string]: unknown;
+}
+
+export async function getObservabilityConfig(): Promise<ObservabilityConfig> {
+  return fetchJSON(`${getBase()}/observability/config`);
+}
+
+export async function getObservabilityTraces(params?: {
+  page?: number; limit?: number; user_id?: string; tags?: string;
+}): Promise<{ data: ObservabilityTrace[]; meta?: { totalItems?: number; totalPages?: number; page?: number } }> {
+  const q = new URLSearchParams();
+  if (params?.page != null) q.set("page", String(params.page));
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  if (params?.user_id) q.set("user_id", params.user_id);
+  if (params?.tags) q.set("tags", params.tags);
+  const qs = q.toString();
+  return fetchJSON(`${getBase()}/observability/traces${qs ? `?${qs}` : ""}`);
+}
+
+export async function getObservabilityTrace(traceId: string): Promise<ObservabilityTrace> {
+  return fetchJSON(`${getBase()}/observability/traces/${encodeURIComponent(traceId)}`);
+}
+
+export async function getObservabilityDaily(
+  days = 14,
+): Promise<{ data: Array<{ date: string; countTraces?: number; totalCost?: number; [k: string]: unknown }> }> {
+  return fetchJSON(`${getBase()}/observability/metrics/daily?days=${days}`);
+}
+
 // Computer-Use Bridge Sessions
 export interface ComputerUseSession {
   session_id: string;

@@ -16,6 +16,7 @@ from app.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.core.oauth_providers import (
     PROVIDERS,
+    apply_tenant,
     get_provider,
     get_provider_client_id,
     get_provider_client_secret,
@@ -89,7 +90,7 @@ class OAuthService:
                 **provider.auth_extra_params,
             }
 
-        return f"{provider.authorization_url}?{urlencode(params)}"
+        return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
 
     async def exchange_code(self, provider_name: str, code: str, state: str) -> OAuthIntegration:
         """Exchange authorization code for tokens, encrypt and store them."""
@@ -134,7 +135,7 @@ class OAuthService:
                 await self.redis.client.delete(verifier_key)
 
                 token_response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "authorization_code",
                         "code": code,
@@ -150,7 +151,7 @@ class OAuthService:
                 )
             else:
                 token_response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "authorization_code",
                         "code": code,
@@ -170,6 +171,18 @@ class OAuthService:
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
 
+        return await self.persist_tokens(provider_name, user_id, token_data)
+
+    async def persist_tokens(
+        self, provider_name: str, user_id: str | None, token_data: dict
+    ) -> OAuthIntegration:
+        """Encrypt + upsert tokens from a finished code exchange.
+
+        Shared by the integration connect flow (exchange_code) AND the SSO login
+        flow (sso_service), so Graph access/refresh tokens are stored in exactly
+        one place regardless of which flow obtained them.
+        """
+        provider = get_provider(provider_name)
         access_token = token_data.get("access_token", "")
         refresh_token = token_data.get("refresh_token")
         expires_in = token_data.get("expires_in")
@@ -206,7 +219,9 @@ class OAuthService:
 
         if integration:
             integration.access_token_encrypted = encrypt_token(access_token)
-            integration.refresh_token_encrypted = encrypt_token(refresh_token) if refresh_token else None
+            # Keep an existing refresh token if this exchange didn't return a new one.
+            if refresh_token:
+                integration.refresh_token_encrypted = encrypt_token(refresh_token)
             integration.token_type = token_type
             integration.expires_at = expires_at
             integration.scopes = scope
@@ -265,7 +280,7 @@ class OAuthService:
         async with httpx.AsyncClient() as client:
             if provider.token_exchange_method == "anthropic_oauth":
                 response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "refresh_token",
                         "refresh_token": refresh_token,
@@ -278,7 +293,7 @@ class OAuthService:
                 )
             else:
                 response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "refresh_token",
                         "refresh_token": refresh_token,

@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     setup_token: str = ""  # Required for first admin registration (if set)
 
     # OAuth Integrations
+    # Microsoft Entra tenant for SSO + Graph. "common" works only for multi-tenant
+    # apps; single-tenant apps MUST use their tenant id (else AADSTS50194 on /common).
+    oauth_microsoft_tenant_id: str = "common"
     oauth_google_client_id: str = ""
     oauth_google_client_secret: str = ""
     oauth_microsoft_client_id: str = ""
@@ -135,7 +138,21 @@ class Settings(BaseSettings):
     apns_bundle_id: str = "com.da.ai-employee-ios.ai-employee-ios"
     apns_sandbox: bool = True    # development builds use the sandbox gateway
 
+    # LLM-Observability (Langfuse) — optional. When public/secret key are empty,
+    # tracing is a graceful no-op. langfuse_host is the internal API endpoint;
+    # langfuse_public_url is the browser-facing URL used only for admin deep-links.
+    langfuse_host: str = "http://langfuse-web:3000"
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_public_url: str = ""
+    langfuse_project_id: str = "ai-employee"  # used to build UI deep-links
+
     model_config = {"env_prefix": "", "case_sensitive": False}
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        """Tracing is active only when both project keys are configured."""
+        return bool(self.langfuse_public_key and self.langfuse_secret_key)
 
 
 settings = Settings()
