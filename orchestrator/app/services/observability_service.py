@@ -68,6 +68,84 @@ class ObservabilityService:
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
 
+    async def record_chat_trace(
+        self, db, *, agent_id: str, message_id: str, session_id: str | None = None,
+        output: str | None = None, cost_usd: float | None = None,
+        input_tokens: int | None = None, output_tokens: int | None = None,
+        tool_calls=None, source: str = "chat",
+    ) -> None:
+        """Emit one trace for a finished chat turn. No-op if disabled.
+
+        Covers the chat path (web/WS + telegram/scheduler) so agent CHAT messages
+        are traced too, not just tasks. Groups turns of a conversation via
+        sessionId. The user prompt is looked up from the paired user message.
+        """
+        if not self.enabled or not agent_id or not message_id:
+            return
+        try:
+            from sqlalchemy import select
+            from app.models.agent import Agent
+            from app.models.chat_message import ChatMessage
+
+            um = await db.scalar(select(ChatMessage).where(
+                ChatMessage.agent_id == agent_id,
+                ChatMessage.message_id == message_id,
+                ChatMessage.role == "user",
+            ))
+            prompt = um.content if um else None
+            user_id = await db.scalar(select(Agent.user_id).where(Agent.id == agent_id))
+
+            now = _iso(None)
+            trace_id = f"chat-{message_id}"
+            n_tools = len(tool_calls) if isinstance(tool_calls, list) else 0
+            trace_body: dict = {
+                "id": trace_id,
+                "name": "chat",
+                "input": _clip(prompt),
+                "output": _clip(output),
+                "metadata": {"agent_id": agent_id, "source": source, "num_tools": n_tools},
+                "tags": ["chat"] + ([f"agent:{agent_id}"] if agent_id else []),
+                "timestamp": now,
+            }
+            if session_id:
+                trace_body["sessionId"] = session_id
+            if user_id:
+                trace_body["userId"] = user_id
+
+            usage = {
+                "input": input_tokens or 0,
+                "output": output_tokens or 0,
+                "total": (input_tokens or 0) + (output_tokens or 0),
+                "unit": "TOKENS",
+            }
+            gen_body: dict = {
+                "id": f"gen-chat-{message_id}",
+                "traceId": trace_id,
+                "type": "GENERATION",
+                "name": "chat-response",
+                "input": _clip(prompt),
+                "output": _clip(output),
+                "startTime": now,
+                "endTime": now,
+                "usage": usage,
+                "usageDetails": {"input": usage["input"], "output": usage["output"]},
+            }
+            if cost_usd is not None:
+                gen_body["costDetails"] = {"total": cost_usd}
+
+            batch = {"batch": [
+                {"id": str(uuid.uuid4()), "type": "trace-create",
+                 "timestamp": now, "body": trace_body},
+                {"id": str(uuid.uuid4()), "type": "generation-create",
+                 "timestamp": now, "body": gen_body},
+            ]}
+            resp = await self._http().post(_INGESTION_PATH, json=batch)
+            if resp.status_code >= 400:
+                logger.debug("Langfuse chat ingestion non-2xx (%s): %s",
+                             resp.status_code, resp.text[:300])
+        except Exception as exc:
+            logger.debug("Langfuse chat trace skipped for %s: %s", message_id, exc)
+
     async def api_get(self, path: str, params: dict | None = None) -> tuple[int, object]:
         """Proxy a GET to the Langfuse public API. Returns (status_code, json|text).
 

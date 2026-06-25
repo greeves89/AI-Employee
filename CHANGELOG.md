@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.72.1] — 2026-06-25
+
+### Added
+- **Chat-Tracing für Langfuse.** Nicht nur Tasks, sondern auch **Agent-Chat-Nachrichten** werden jetzt getract (Web/WS- UND Telegram/Scheduler-Pfad): pro Chat-Turn ein Trace mit Prompt/Antwort, Tokens/Kosten, Tool-Anzahl, **sessionId** (gruppiert Dialoge) + User-/Agent-Zuordnung. Gemeinsamer `record_chat_trace`-Helper, No-Op wenn Langfuse aus. Damit sind „alle" LLM-Interaktionen je Agent sichtbar, nicht nur Task-Läufe. (`services/observability_service.py`, `api/ws.py`, `main.py`)
+
+### Fixed
+- **SSO-Token-Exchange** nutzte noch `/common` statt des konfigurierten Tenants → 400 bei Single-Tenant-Apps. Jetzt `apply_tenant` auch im SSO-`_exchange_code`.
+- Langfuse-web Compose: Memory 1G→2G (OOM) und Healthcheck auf GET/Container-IP (band nicht auf loopback).
+
 ## [1.72.0] — 2026-06-25
 
 ### Added
