@@ -200,7 +200,10 @@ export default function VaultGraph3D({
     sprite.padding = 1.6;
     sprite.textHeight = Math.min(6, 2.6 + node.degree * 0.4);
     sprite.fontFace = "Inter, system-ui, sans-serif";
-    sprite.position.set(0, -(5 + Math.cbrt(1 + node.degree) * 2), 0);
+    // Sit the label clear BELOW the sphere surface (radius-aware) + a comfortable
+    // gap — matches the nodeVal/nodeRelSize sizing so big bubbles don't overlap.
+    const sphereRadius = 4 * Math.cbrt(1 + node.degree * 1.4);
+    sprite.position.set(0, -(sphereRadius + 7), 0);
     return sprite;
   }, []);
 
