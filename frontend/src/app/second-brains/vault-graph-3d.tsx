@@ -124,6 +124,15 @@ export default function VaultGraph3D({
   useEffect(() => {
     if (!fgRef.current || loading || !graph || graph.nodes.length === 0) return;
     let cancelled = false;
+    // Spread nodes apart: much stronger charge repulsion + longer links than the
+    // d3 defaults (-30 / 30), so bubbles breathe instead of clumping.
+    try {
+      fgRef.current.d3Force?.("charge")?.strength(-220).distanceMax(900);
+      fgRef.current.d3Force?.("link")?.distance(90);
+      fgRef.current.d3ReheatSimulation?.();
+    } catch {
+      /* force tuning is best-effort */
+    }
     (async () => {
       try {
         // @ts-expect-error — three's example modules ship no bundled type declarations
@@ -131,9 +140,11 @@ export default function VaultGraph3D({
         const composer = fgRef.current?.postProcessingComposer?.();
         if (composer && !cancelled) {
           const bloom = new UnrealBloomPass();
-          (bloom as any).strength = 1.1;
-          (bloom as any).radius = 0.55;
-          (bloom as any).threshold = 0.05;
+          // Subtle glow: only the brightest cores bloom (high threshold), gentle
+          // strength — otherwise every sphere blows out into white mush.
+          (bloom as any).strength = 0.45;
+          (bloom as any).radius = 0.4;
+          (bloom as any).threshold = 0.3;
           composer.addPass(bloom);
         }
       } catch {
@@ -182,10 +193,14 @@ export default function VaultGraph3D({
 
   const nodeThreeObject = useCallback((node: any) => {
     const sprite: any = new SpriteText(node.name);
-    sprite.color = "rgba(235,240,255,0.92)";
-    sprite.textHeight = Math.min(8, 3 + node.degree * 0.5);
+    sprite.color = "rgba(226,232,240,0.95)";
+    // Dark chip behind the text keeps labels crisp instead of dissolving in the glow.
+    sprite.backgroundColor = "rgba(6,6,14,0.6)";
+    sprite.borderRadius = 2;
+    sprite.padding = 1.6;
+    sprite.textHeight = Math.min(6, 2.6 + node.degree * 0.4);
     sprite.fontFace = "Inter, system-ui, sans-serif";
-    sprite.position.set(0, -(4 + Math.cbrt(1 + node.degree) * 2), 0);
+    sprite.position.set(0, -(5 + Math.cbrt(1 + node.degree) * 2), 0);
     return sprite;
   }, []);
 
