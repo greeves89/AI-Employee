@@ -7,6 +7,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
+  Plug, Mic,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -180,6 +181,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [secTab, setSecTab] = useState<"modelle" | "integrationen" | "voice" | "system">("modelle");
   const user = useAuthStore((s) => s.user);
 
   const toggleMsgraphExt = async (enabled: boolean) => {
@@ -489,6 +491,36 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
+        {/* ─── Sub-tab navigation ─── */}
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {([
+            { id: "modelle" as const, label: "Modelle", icon: Cpu },
+            { id: "integrationen" as const, label: "Integrationen", icon: Plug },
+            { id: "voice" as const, label: "Voice", icon: Mic },
+            { id: "system" as const, label: "System", icon: Shield },
+          ]).map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setSecTab(t.id)}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                  secTab === t.id
+                    ? "bg-accent text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ─── Tab: Modelle ─── */}
+        {secTab === "modelle" && (
+        <div className="space-y-6">
         {/* ─── Section 1: Model Provider ─── */}
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -839,7 +871,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           </div>
           <TemplateManager isAdmin={isAdmin} />
         </section>
+        </div>
+        )}
 
+        {/* ─── Tab: Integrationen ─── */}
+        {secTab === "integrationen" && (
+        <div className="space-y-6">
         {/* ─── Section 4: Notifications ─── */}
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -895,10 +932,20 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </div>
           </div>
         </section>
+        </div>
+        )}
 
+        {/* ─── Tab: Voice ─── */}
+        {secTab === "voice" && (
+        <div className="space-y-6">
         {/* ─── Voice Live-Sessions ─── */}
         {isAdmin && <VoiceSettings />}
+        </div>
+        )}
 
+        {/* ─── Tab: System ─── */}
+        {secTab === "system" && (
+        <div className="space-y-6">
         {/* ─── License ─── */}
         {isAdmin && (
           <section>
@@ -1002,7 +1049,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </div>
           </section>
         )}
+        </div>
+        )}
 
+        {/* ─── Tab: Integrationen (continued) — OAuth Integrations ─── */}
+        {secTab === "integrationen" && (
+        <div className="space-y-6">
         {/* ─── Section 5: OAuth Integrations ─── */}
         {isAdmin && (
           <section>
@@ -1270,7 +1322,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </div>
           </section>
         )}
+        </div>
+        )}
 
+        {/* ─── Tab: System (continued) — Access Control ─── */}
+        {secTab === "system" && (
+        <div className="space-y-6">
         {/* ─── Section 6: Access Control (Admin only) ─── */}
         {isAdmin && (
           <section>
@@ -1315,6 +1372,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               </div>
             </div>
           </section>
+        )}
+        </div>
         )}
 
         {/* ─── Save Button ─── */}

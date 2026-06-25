@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.73.3] — 2026-06-25
+
+### Changed
+- **Settings-Seite in Unter-Tabs gegliedert.** Statt einer langen Scroll-Seite jetzt 4 Reiter: **Modelle** (Model-Provider, Agent-Config, Templates), **Integrationen** (OAuth + Telegram), **Voice**, **System** (License, Access Control). Reiner UI-Refactor, keine Funktionsänderung. (`app/settings/view.tsx`)
+
 ## [1.73.2] — 2026-06-25
 
 ### Fixed
