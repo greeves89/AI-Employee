@@ -196,6 +196,18 @@ MSGRAPH_TOOLS = [
         },
     },
     {
+        "name": "ms_list_chat_messages",
+        "description": "Read recent messages of a Teams 1:1 or group chat — use this to read or summarize a conversation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "chat_id": {"type": "string", "description": "The chat ID (from ms_list_chats)."},
+                "limit": {"type": "number", "description": "Max messages, newest first. Default: 25, max 50."},
+            },
+            "required": ["chat_id"],
+        },
+    },
+    {
         "name": "ms_list_tasks",
         "description": "List tasks from Microsoft To-Do. Returns all task lists with their tasks.",
         "inputSchema": {
@@ -231,6 +243,85 @@ MSGRAPH_TOOLS = [
                 "limit": {"type": "number", "description": "Max results. Default: 10."},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "ms_list_channel_messages",
+        "description": "Read recent messages of a Microsoft Teams channel — use this to read or summarize a channel conversation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "team_id": {"type": "string", "description": "The Team ID (from ms_list_teams)."},
+                "channel_id": {"type": "string", "description": "The Channel ID (from ms_list_channels)."},
+                "limit": {"type": "number", "description": "Max messages, newest first. Default: 25, max 50."},
+            },
+            "required": ["team_id", "channel_id"],
+        },
+    },
+    {
+        "name": "ms_list_planner_plans",
+        "description": "List Microsoft Planner plans the user has access to.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ms_list_planner_tasks",
+        "description": "List Microsoft Planner tasks — for a specific plan, or all tasks assigned to the user.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "string", "description": "Optional: specific plan ID (from ms_list_planner_plans). Omit to list tasks assigned to you."},
+                "limit": {"type": "number", "description": "Max tasks to return. Default: 25, max 50."},
+            },
+        },
+    },
+    {
+        "name": "ms_create_planner_task",
+        "description": "Create a task in a Microsoft Planner plan.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "string", "description": "The plan ID (from ms_list_planner_plans)."},
+                "title": {"type": "string", "description": "Task title."},
+                "bucket_id": {"type": "string", "description": "Optional: bucket ID to place the task in."},
+                "due_date": {"type": "string", "description": "Optional due date in YYYY-MM-DD format."},
+            },
+            "required": ["plan_id", "title"],
+        },
+    },
+    {
+        "name": "ms_search_people",
+        "description": "Find people relevant to the user (colleagues, frequent contacts) by name or keyword — use this to resolve a person's name to an email address.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Name or keyword to search for (e.g. 'Daniel Alisch')."},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "ms_search",
+        "description": "Universal Microsoft Search across the user's content (emails, calendar events, files, Teams chat messages). Use this for broad 'find anything about X' queries.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query string."},
+                "types": {"type": "array", "items": {"type": "string"}, "description": "Entity types to search. Default: message, event, driveItem, chatMessage."},
+                "limit": {"type": "number", "description": "Max results. Default: 15, max 25."},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "ms_graph_get",
+        "description": "Advanced/fallback: read-only GET on ANY Microsoft Graph v1.0 endpoint (relative path like /me/messages). Bounded by your delegated permissions. Use only when no specific tool fits.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Relative Graph v1.0 path starting with / (e.g. /me/messages)."},
+                "params": {"type": "object", "description": "Optional query parameters (e.g. {\"$top\": 5})."},
+            },
+            "required": ["path"],
         },
     },
 ]
@@ -283,6 +374,10 @@ def _fmt_size(b: int) -> str:
     if b < 1024 ** 2:
         return f"{b // 1024}KB"
     return f"{b // (1024 ** 2)}MB"
+
+
+def _strip_html(s) -> str:
+    return re.sub(r"<[^>]+>", "", s or "").replace("&nbsp;", " ").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -429,11 +524,34 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
     elif name == "ms_list_chats":
         limit = min(int(args.get("limit", 20)), 50)
         data = await _graph("GET", "/me/chats", token,
-                            params={"$top": limit, "$select": "id,chatType,topic,lastUpdatedDateTime"})
+                            params={"$top": limit, "$select": "id,chatType,topic,lastUpdatedDateTime",
+                                    "$expand": "members($select=displayName)"})
         chats = data.get("value", [])
         if not chats:
             return "No chats found."
-        return "\n".join(f"• {c.get('topic') or c['chatType']} (ID: {c['id']}) — {c.get('lastUpdatedDateTime', '')[:10]}" for c in chats)
+        lines = []
+        for c in chats:
+            names = ", ".join(m.get("displayName", "") for m in c.get("members", []) if m.get("displayName"))
+            label = c.get("topic") or names or c.get("chatType", "chat")
+            lines.append(f"• {label} (ID: {c['id']}) — {c.get('lastUpdatedDateTime', '')[:10]}")
+        return "\n".join(lines)
+
+    elif name == "ms_list_chat_messages":
+        limit = min(int(args.get("limit", 25)), 50)
+        data = await _graph("GET", f"/me/chats/{_gid(args['chat_id'])}/messages", token,
+                            params={"$top": limit})
+        messages = data.get("value", [])
+        lines = []
+        for m in messages:
+            sender = m.get("from", {}).get("user", {}).get("displayName") or "—"
+            when = m.get("createdDateTime", "")[:16]
+            text = _strip_html(m.get("body", {}).get("content", ""))
+            if not text:
+                continue
+            lines.append(f"[{when}] {sender}: {text[:500]}")
+        if not lines:
+            return "No messages found."
+        return "\n".join(lines)
 
     elif name == "ms_send_chat_message":
         payload = {"body": {"content": args["message"]}}
@@ -497,6 +615,108 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             f"• {f['name']} ({_fmt_size(f.get('size', 0))})\n  Modified: {f.get('lastModifiedDateTime', '')[:10]}\n  URL: {f.get('webUrl', '')}"
             for f in files
         )
+
+    elif name == "ms_list_channel_messages":
+        limit = min(int(args.get("limit", 25)), 50)
+        data = await _graph("GET",
+                            f"/teams/{_gid(args['team_id'])}/channels/{_gid(args['channel_id'])}/messages",
+                            token, params={"$top": limit})
+        messages = data.get("value", [])
+        lines = []
+        for m in messages:
+            sender = m.get("from", {}).get("user", {}).get("displayName") or "—"
+            when = m.get("createdDateTime", "")[:16]
+            text = _strip_html(m.get("body", {}).get("content", ""))
+            if not text:
+                continue
+            lines.append(f"[{when}] {sender}: {text[:500]}")
+        if not lines:
+            return "No messages found."
+        return "\n".join(lines)
+
+    elif name == "ms_list_planner_plans":
+        data = await _graph("GET", "/me/planner/plans", token, params={"$select": "id,title"})
+        plans = data.get("value", [])
+        if not plans:
+            return "No Planner plans found."
+        return "\n".join(f"• {p.get('title')} (ID: {p['id']})" for p in plans)
+
+    elif name == "ms_list_planner_tasks":
+        limit = min(int(args.get("limit", 25)), 50)
+        if args.get("plan_id"):
+            data = await _graph("GET", f"/planner/plans/{_gid(args['plan_id'])}/tasks", token)
+        else:
+            data = await _graph("GET", "/me/planner/tasks", token)
+        tasks = data.get("value", [])
+        if not tasks:
+            return "No Planner tasks found."
+        lines = []
+        for t in tasks[:limit]:
+            pct = t.get("percentComplete", 0)
+            state = "done" if pct == 100 else ("open" if pct == 0 else "in progress")
+            due = (t.get("dueDateTime") or "")[:10]
+            lines.append(f"• [{state}] {t.get('title')} {('due: ' + due) if due else ''} (ID: {t['id']})")
+        return "\n".join(lines)
+
+    elif name == "ms_create_planner_task":
+        payload: dict = {"planId": args["plan_id"], "title": args["title"]}
+        if args.get("bucket_id"):
+            payload["bucketId"] = args["bucket_id"]
+        if args.get("due_date"):
+            payload["dueDateTime"] = f"{args['due_date']}T00:00:00Z"
+        data = await _graph("POST", "/planner/tasks", token, content=json.dumps(payload))
+        return f"Planner task created: '{args['title']}' (ID: {data.get('id')})"
+
+    elif name == "ms_search_people":
+        data = await _graph("GET", "/me/people", token, params={
+            "$search": '"' + str(args["query"]) + '"',
+            "$top": 10,
+            "$select": "displayName,scoredEmailAddresses,jobTitle",
+        })
+        people = data.get("value", [])
+        if not people:
+            return f"No people found for '{args['query']}'."
+        lines = []
+        for p in people:
+            emails = p.get("scoredEmailAddresses", [])
+            email = emails[0].get("address", "") if emails else ""
+            title = p.get("jobTitle", "") or ""
+            lines.append(f"• {p.get('displayName', '')} <{email}>{(' — ' + title) if title else ''}")
+        return "\n".join(lines)
+
+    elif name == "ms_search":
+        types = args.get("types") or ["message", "event", "driveItem", "chatMessage"]
+        limit = min(int(args.get("limit", 15)), 25)
+        body = {"requests": [{
+            "entityTypes": types,
+            "query": {"queryString": str(args["query"])},
+            "size": limit,
+        }]}
+        data = await _graph("POST", "/search/query", token, content=json.dumps(body))
+        hits = []
+        for container in (data.get("value") or [{}])[0].get("hitsContainers", []) or []:
+            hits.extend(container.get("hits", []) or [])
+        if not hits:
+            return "No results."
+        lines = []
+        for h in hits:
+            res = h.get("resource", {}) or {}
+            title = res.get("name") or res.get("subject") or res.get("displayName") or ""
+            summary = _strip_html(h.get("summary", ""))[:300]
+            url = res.get("webUrl", "")
+            parts = [p for p in [title, summary] if p]
+            line = "• " + " — ".join(parts) if parts else "• (no title)"
+            if url:
+                line += f"\n  URL: {url}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    elif name == "ms_graph_get":
+        path = str(args.get("path", ""))
+        if not path.startswith("/") or "://" in path or ".." in path:
+            return "Error: path must be a relative Graph path starting with / (no scheme, no '..')."
+        data = await _graph("GET", path, token, params=args.get("params") or {})
+        return json.dumps(data, ensure_ascii=False)[:2000]
 
     else:
         return f"Unknown tool: {name}"
