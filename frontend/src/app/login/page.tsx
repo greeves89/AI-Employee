@@ -41,7 +41,10 @@ export default function LoginPage() {
       // Honour a same-origin ?redirect= (e.g. the OAuth /authorize URL that
       // bounced us here). Full navigation since it may be an /api/* route.
       const redirectTo = searchParams.get("redirect");
-      if (redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")) {
+      // Same-origin path only: must start with "/" followed by a non-slash/backslash
+      // char, so "//evil.com" and "/\evil.com" (protocol-relative open redirects,
+      // which browsers normalise to "//") are rejected.
+      if (redirectTo && /^\/[^/\\]/.test(redirectTo)) {
         window.location.href = redirectTo;
       } else {
         router.push("/dashboard");
