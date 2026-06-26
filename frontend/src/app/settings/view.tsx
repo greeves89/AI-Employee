@@ -207,6 +207,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setSsoOnlySaving(false);
     }
   };
+  const [approvalSaving, setApprovalSaving] = useState(false);
+  const toggleRequireApproval = async (enabled: boolean) => {
+    setApprovalSaving(true);
+    try {
+      await api.updateSettings({ require_user_approval: enabled });
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Freischaltungs-Pflicht nicht ändern");
+    } finally {
+      setApprovalSaving(false);
+    }
+  };
   const [revokeMsgraphSaving, setRevokeMsgraphSaving] = useState(false);
   const toggleRevokeMsgraph = async (enabled: boolean) => {
     setRevokeMsgraphSaving(true);
@@ -1445,6 +1457,39 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   <p className="text-[10px] leading-relaxed text-amber-300">
                     <strong>Achtung:</strong> Danach ist die Anmeldung NUR noch über Microsoft-SSO möglich. Nutzer ohne SSO-Konto im konfigurierten Tenant werden ausgesperrt. Notfall-Zugang: auf dem Server ENV <code className="font-mono">EMERGENCY_PASSWORD_LOGIN=true</code> setzen.
                   </p>
+                </div>
+              </div>
+
+              {/* Neue User: Admin-Freischaltung */}
+              <div className="p-5 pt-3 border-t border-foreground/[0.04]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                      <Shield className="h-3.5 w-3.5 text-blue-400" />
+                      Neue User müssen freigeschaltet werden
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      Neu per SSO oder Registrierung angelegte Konten landen auf „Warten auf Freischaltung" — ein Admin gibt sie unter Admin-Konsole → Benutzer frei (wie OpenWebUI).
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleRequireApproval(!settings?.require_user_approval)}
+                    disabled={approvalSaving}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      settings?.require_user_approval ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                      approvalSaving && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    {approvalSaving ? (
+                      <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                    ) : (
+                      <span className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        settings?.require_user_approval ? "translate-x-6" : "translate-x-1",
+                      )} />
+                    )}
+                  </button>
                 </div>
               </div>
 

@@ -782,7 +782,7 @@ export async function createUser(data: {
 
 export async function updateUser(
   userId: string,
-  data: { name?: string; role?: string; is_active?: boolean },
+  data: { name?: string; role?: string; is_active?: boolean; approved?: boolean },
 ): Promise<AdminUser> {
   return fetchJSON(`${getBase()}/auth/users/${userId}`, {
     method: "PATCH",

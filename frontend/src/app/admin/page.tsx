@@ -28,6 +28,7 @@ import {
   ChevronDown,
   DollarSign,
   AlertTriangle,
+  Check,
   CheckCircle2,
   Edit3,
   Settings as SettingsIcon,
@@ -174,6 +175,19 @@ export default function AdminPage() {
       await fetchUsers();
     } catch (e) {
       toast.error("Failed to update user", e instanceof Error ? e.message : undefined);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleApprove = async (u: AdminUser) => {
+    setActionLoading(u.id);
+    try {
+      await api.updateUser(u.id, { approved: true });
+      await fetchUsers();
+      toast.success(`${u.name} freigeschaltet`);
+    } catch (e) {
+      toast.error("Freischalten fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -435,9 +449,11 @@ export default function AdminPage() {
                     transition={{ delay: i * 0.04 }}
                     className={cn(
                       "flex items-center gap-4 p-4 rounded-xl border transition-colors",
-                      u.is_active
-                        ? "border-border/50 bg-card/50"
-                        : "border-red-500/20 bg-red-500/5 opacity-60"
+                      u.approved === false
+                        ? "border-amber-500/30 bg-amber-500/[0.07]"
+                        : u.is_active
+                          ? "border-border/50 bg-card/50"
+                          : "border-red-500/20 bg-red-500/5 opacity-60"
                     )}
                   >
                     {/* Avatar */}
@@ -461,6 +477,11 @@ export default function AdminPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      {u.approved === false && (
+                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-400">
+                          Wartet auf Freischaltung
+                        </span>
+                      )}
                     </div>
 
                     {/* Role badge */}
@@ -484,6 +505,15 @@ export default function AdminPage() {
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                         ) : (
                           <>
+                            {u.approved === false && (
+                              <button
+                                onClick={() => handleApprove(u)}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors flex items-center gap-1"
+                                title="Konto freischalten"
+                              >
+                                <Check className="h-3.5 w-3.5" /> Freischalten
+                              </button>
+                            )}
                             <button
                               onClick={() => handleCycleRole(u)}
                               className="p-2 rounded-lg text-xs text-muted-foreground hover:bg-accent transition-colors"

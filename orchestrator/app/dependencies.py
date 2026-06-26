@@ -61,6 +61,7 @@ class _AnonymousUser:
     name = "Anonymous"
     role = None
     is_active = True
+    approved = True  # setup-mode placeholder is always usable
 
     def __init__(self):
         from app.models.user import UserRole
@@ -99,8 +100,8 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
         raise HTTPException(status_code=401, detail="Invalid token type")
 
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or inactive")
+    if not user or not user.is_active or not getattr(user, "approved", True):
+        raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
 
     # Row-Level Security: restrict this session to rows owned by this user.
     # Admins bypass RLS so they can manage all tenants.
@@ -122,10 +123,8 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
         from app.db.session import async_session_factory
         async with async_session_factory() as activity_session:
             await activity_session.execute(
-                sa_text(
-                    f"UPDATE users SET last_active_at = NOW() "
-                    f"WHERE id = '{str(user.id).replace(chr(39), chr(39)*2)}'"
-                )
+                sa_text("UPDATE users SET last_active_at = NOW() WHERE id = :uid"),
+                {"uid": str(user.id)},
             )
             await activity_session.commit()
         # Update the in-memory object so we don't re-trigger within the same minute
@@ -229,7 +228,7 @@ async def get_current_user_ws(token: str | None, db: AsyncSession) -> "User":
         return None
 
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
-    if not user or not user.is_active:
+    if not user or not user.is_active or not getattr(user, "approved", True):
         return None
 
     return user

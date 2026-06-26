@@ -68,6 +68,20 @@ def _session_user_id(request: Request) -> str | None:
         return None
 
 
+async def _approved_session_user_id(request: Request, db: AsyncSession) -> str | None:
+    """Session user_id, but ONLY if the account is active AND approved — so a
+    pending/deactivated user can never obtain an MCP authorization code or token."""
+    uid = _session_user_id(request)
+    if not uid:
+        return None
+    from sqlalchemy import select
+    from app.models.user import User
+    u = await db.scalar(select(User).where(User.id == uid))
+    if not u or not u.is_active or not getattr(u, "approved", True):
+        return None
+    return uid
+
+
 def _csrf(user_id: str, client_id: str) -> str:
     msg = f"{user_id}:{client_id}".encode()
     return hmac.new(settings.api_secret_key.encode(), msg, hashlib.sha256).hexdigest()[:32]
@@ -155,7 +169,7 @@ async def authorize(request: Request, db: AsyncSession = Depends(get_db)):
     if not code_challenge or q.get("code_challenge_method") != "S256":
         return _redirect_error(redirect_uri, q.get("state", ""), "invalid_request", "PKCE S256 required")
 
-    user_id = _session_user_id(request)
+    user_id = await _approved_session_user_id(request, db)
     if not user_id:
         # Bounce through the platform login, then come back to this exact URL.
         back = quote(f"{request.url.path}?{request.url.query}", safe="")
@@ -188,7 +202,7 @@ async def authorize_decide(
     if not client or redirect_uri not in oas.client_redirect_uris(client):
         return _html(_error_page("Ungültiger Client oder redirect_uri."), status=400)
 
-    user_id = _session_user_id(request)
+    user_id = await _approved_session_user_id(request, db)
     if not user_id:
         return _redirect_error(redirect_uri, state, "access_denied", "not authenticated")
     if not hmac.compare_digest(str(form.get("csrf", "")), _csrf(user_id, client_id)):

@@ -16,6 +16,7 @@ class SettingsUpdate(BaseModel):
     max_agents: int | None = None
     registration_open: bool | None = None
     sso_only_login: bool | None = None
+    require_user_approval: bool | None = None
     revoke_msgraph_on_logout: bool | None = None
     # Provider
     model_provider: str | None = None
@@ -83,6 +84,7 @@ class SettingsResponse(BaseModel):
     max_agents: int
     registration_open: bool
     sso_only_login: bool = False
+    require_user_approval: bool = False
     revoke_msgraph_on_logout: bool = False
     # Provider
     model_provider: str

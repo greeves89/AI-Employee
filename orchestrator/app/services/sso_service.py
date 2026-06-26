@@ -244,13 +244,17 @@ class SSOService:
         if not is_first and not settings.registration_open:
             raise ValueError("Registration is closed. Contact an admin for access.")
 
-        # 4. Create new user
+        # 4. Create new user. When admin-approval is required, non-first users land
+        # in pending (approved=False) and must be unlocked by an admin. The first user
+        # (auto-admin) is always approved so the platform is never locked out.
+        approved = is_first or not settings.require_user_approval
         user = User(
             id=uuid.uuid4().hex[:12],
             email=email,
             name=name,
             password_hash=None,  # SSO users don't have a password
             role=UserRole.ADMIN if is_first else UserRole.MEMBER,
+            approved=approved,
             sso_provider=provider_name,
             sso_subject=subject,
         )
@@ -260,6 +264,6 @@ class SSOService:
 
         logger.info(
             f"SSO user created: {email} via {provider_name} "
-            f"(role: {user.role.value}, first: {is_first})"
+            f"(role: {user.role.value}, first: {is_first}, approved: {approved})"
         )
         return user

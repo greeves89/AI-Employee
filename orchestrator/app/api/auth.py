@@ -85,6 +85,7 @@ class UserResponse(BaseModel):
     role: str
     custom_role_id: int | None = None
     is_active: bool
+    approved: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -93,6 +94,7 @@ class UserUpdateRequest(BaseModel):
     name: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    approved: bool | None = None
 
 
 # --- Helpers ---
@@ -146,18 +148,24 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
+    approved = is_first or not settings.require_user_approval
     user = User(
         id=uuid.uuid4().hex[:12],
         email=body.email,
         name=body.name,
         password_hash=hash_password(body.password),
         role=UserRole.ADMIN if is_first else UserRole.MEMBER,
+        approved=approved,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    logger.info(f"User registered: {user.email} (role: {user.role.value}, first: {is_first})")
+    logger.info(f"User registered: {user.email} (role: {user.role.value}, first: {is_first}, approved: {approved})")
+
+    # Pending approval → no session; the frontend shows a "wait for admin" notice.
+    if not approved:
+        return {"pending": True, "user": UserResponse.model_validate(user).model_dump()}
 
     tokens = _set_auth_cookies(response, user)
     return {
@@ -183,6 +191,8 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
+    if not getattr(user, "approved", True):
+        raise HTTPException(status_code=403, detail="Dein Konto wartet noch auf Freischaltung durch einen Administrator.")
 
     _clear_login_attempts(body.email)
     tokens = _set_auth_cookies(response, user)
@@ -240,8 +250,8 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
         raise HTTPException(status_code=401, detail="Not a refresh token")
 
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or inactive")
+    if not user or not user.is_active or not getattr(user, "approved", True):
+        raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
 
     tokens = _set_auth_cookies(response, user)
     return {"user": UserResponse.model_validate(user).model_dump(), **tokens}
@@ -347,6 +357,11 @@ async def sso_callback(
             url=f"{frontend_url}/login?error={str(e)}&provider={provider}"
         )
 
+    # Pending admin approval → no session; bounce back to login with a clear notice.
+    if not getattr(user, "approved", True):
+        logger.info(f"SSO login blocked (pending approval): {user.email}")
+        return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
+
     # Set auth cookies (same as normal login)
     redirect_resp = RedirectResponse(url=f"{frontend_url}/dashboard", status_code=302)
     access = create_access_token(user.id, user.role.value)
@@ -412,6 +427,8 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
         if target.id == current.id:
             raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
         target.is_active = body.is_active
+    if body.approved is not None:
+        target.approved = body.approved
 
     await db.commit()
     return UserResponse.model_validate(target).model_dump()
@@ -458,6 +475,7 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
         password_hash=hash_password(password),
         role=UserRole(role),
         custom_role_id=custom_role_id,
+        approved=True,  # admin-created users are always approved
     )
     db.add(user)
     await db.commit()

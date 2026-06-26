@@ -18,8 +18,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
   const [ssoOnly, setSsoOnly] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  // Load SSO providers and check for SSO errors in URL
+  // Load SSO providers and check for SSO errors / pending-approval in URL
   useEffect(() => {
     getSSOProviders()
       .then((res) => {
@@ -30,6 +31,9 @@ export default function LoginPage() {
     const ssoError = searchParams.get("error");
     if (ssoError) {
       setError(`SSO login failed: ${ssoError}`);
+    }
+    if (searchParams.get("pending")) {
+      setPending(true);
     }
   }, [searchParams]);
 
@@ -79,6 +83,12 @@ export default function LoginPage() {
         {error && (
           <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
             {error}
+          </div>
+        )}
+
+        {pending && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-300">
+            Dein Konto wurde angelegt und wartet auf <b>Freischaltung durch einen Administrator</b>. Du wirst benachrichtigt bzw. kannst dich anmelden, sobald es freigeschaltet ist.
           </div>
         )}
 

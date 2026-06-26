@@ -124,6 +124,7 @@ export interface AdminUser {
   role: UserRole;
   custom_role_id?: number | null;
   is_active: boolean;
+  approved?: boolean;
 }
 
 export interface Integration {
@@ -244,6 +245,7 @@ export interface Settings {
   msgraph_mcp_external_enabled: boolean;
   // Security / Login
   sso_only_login?: boolean;
+  require_user_approval?: boolean;
   revoke_msgraph_on_logout?: boolean;
 }
 

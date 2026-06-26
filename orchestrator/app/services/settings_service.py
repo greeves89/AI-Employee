@@ -47,6 +47,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "telegram_chat_id",
     "registration_open",
     "sso_only_login",
+    "require_user_approval",
     "revoke_msgraph_on_logout",
     # OAuth non-secret fields
     "oauth_microsoft_tenant_id",

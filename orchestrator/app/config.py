@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
     registration_open: bool = True  # Allow new user registration
+    # When True, new self-registered users (SSO or password) land in "pending approval"
+    # (approved=False) and must be unlocked by an admin before they can use the app
+    # (OpenWebUI-style "Warten auf Freischaltung"). Default off. Admin-created users are
+    # always approved.
+    require_user_approval: bool = False
     setup_token: str = ""  # Required for first admin registration (if set)
     # SSO-only: disable password login entirely → only Microsoft SSO (MFA) can sign in.
     # Closes the "knows the password → impersonate" vector. Per-deployment toggle.

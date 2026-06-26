@@ -754,6 +754,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure oauth_clients table: {e}")
 
+    # Ensure users.approved (admin-approval gate). Default true so existing users stay
+    # usable; new self-registered users get false when require_user_approval is on.
+    try:
+        from app.db.session import engine as _eng2
+        from sqlalchemy import text as _txt2
+        async with _eng2.begin() as conn:
+            await conn.execute(_txt2(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS approved boolean NOT NULL DEFAULT true"
+            ))
+        logger.info("users.approved column ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure users.approved: {e}")
+
     # Seed autonomy preset rules (defaults per level into DB if not yet present)
     try:
         from app.api.approval_rules import seed_autonomy_presets

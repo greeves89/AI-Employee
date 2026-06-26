@@ -49,6 +49,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         max_agents=settings.max_agents,
         registration_open=settings.registration_open,
         sso_only_login=settings.sso_only_login,
+        require_user_approval=settings.require_user_approval,
         revoke_msgraph_on_logout=settings.revoke_msgraph_on_logout,
         # Provider info
         model_provider=settings.model_provider,
@@ -84,6 +85,7 @@ _FIELD_MAP: dict[str, str] = {
     "max_agents": "max_agents",
     "registration_open": "registration_open",
     "sso_only_login": "sso_only_login",
+    "require_user_approval": "require_user_approval",
     "revoke_msgraph_on_logout": "revoke_msgraph_on_logout",
     "anthropic_api_key": "anthropic_api_key",
     "aws_access_key_id": "aws_access_key_id",
