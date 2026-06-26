@@ -73,8 +73,25 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
     If no users have registered yet (setup mode), returns an anonymous admin
     to allow the platform to function before first registration.
     """
-    from app.core.auth import decode_token
-    from app.models.user import User
+    from app.core.auth import decode_token, internal_service_secret
+    from app.models.user import User, UserRole
+
+    # Internal service auth: localhost calls with a matching X-Internal-Secret
+    # header authenticate as the first active admin user. Used by the in-process
+    # Telegram bot to call its own API without owning a user JWT. The expected
+    # secret is HMAC-derived from api_secret_key (NOT the raw JWT signing key),
+    # so leaking this header cannot be used to forge tokens.
+    client_host = request.client.host if request.client else ""
+    if client_host in ("127.0.0.1", "::1", "localhost"):
+        internal_secret = request.headers.get("X-Internal-Secret", "")
+        if internal_secret and hmac.compare_digest(internal_secret, internal_service_secret()):
+            admin = await db.scalar(
+                select(User).where(User.role == UserRole.ADMIN).order_by(User.created_at).limit(1)
+            )
+            if admin and admin.is_active:
+                from app.db.session import set_rls_user
+                await set_rls_user(db, None)  # admin bypasses RLS
+                return admin
 
     token = request.cookies.get("access_token")
 
