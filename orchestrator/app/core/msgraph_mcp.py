@@ -382,80 +382,6 @@ MSGRAPH_TOOLS = [
             "required": ["path"],
         },
     },
-    {
-        "name": "ms_forward_email",
-        "description": "Forward an existing email to one or more recipients.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "email_id": {"type": "string", "description": "The email ID (from ms_list_emails)."},
-                "to": {"type": "string", "description": "Recipient email address(es), comma-separated."},
-                "comment": {"type": "string", "description": "Optional note to add above the forwarded message."},
-            },
-            "required": ["email_id", "to"],
-        },
-    },
-    {
-        "name": "ms_move_email",
-        "description": "Move an email to another mail folder (e.g. archive, deleteditems).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "email_id": {"type": "string", "description": "The email ID."},
-                "folder": {"type": "string", "description": "Destination folder: inbox, archive, deleteditems, junkemail, sentitems, drafts."},
-            },
-            "required": ["email_id", "folder"],
-        },
-    },
-    {
-        "name": "ms_mark_email_read",
-        "description": "Mark an email as read or unread.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "email_id": {"type": "string", "description": "The email ID."},
-                "read": {"type": "boolean", "description": "true = read, false = unread. Default: true."},
-            },
-            "required": ["email_id"],
-        },
-    },
-    {
-        "name": "ms_respond_event",
-        "description": "Respond to a calendar event invitation: accept, decline, or tentatively accept.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "event_id": {"type": "string", "description": "The event ID (from ms_list_calendar_events)."},
-                "response": {"type": "string", "description": "'accept', 'decline', or 'tentative'."},
-                "comment": {"type": "string", "description": "Optional reply comment."},
-            },
-            "required": ["event_id", "response"],
-        },
-    },
-    {
-        "name": "ms_cancel_event",
-        "description": "Cancel an event you organized (notifies attendees) or remove it from your calendar.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "event_id": {"type": "string", "description": "The event ID."},
-                "comment": {"type": "string", "description": "Optional cancellation message to attendees."},
-            },
-            "required": ["event_id"],
-        },
-    },
-    {
-        "name": "ms_complete_task",
-        "description": "Mark a Microsoft To-Do task as completed.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "list_id": {"type": "string", "description": "The task list ID (from ms_list_tasks)."},
-                "task_id": {"type": "string", "description": "The task ID (from ms_list_tasks)."},
-            },
-            "required": ["list_id", "task_id"],
-        },
-    },
 ]
 
 # Tools that CREATE/SEND/MODIFY Microsoft data. Everything else in MSGRAPH_TOOLS
@@ -473,15 +399,6 @@ WRITE_TOOLS = {
     "ms_create_folder",
     "ms_upload_text_file",
     "ms_share_file",
-    # Mail triage
-    "ms_forward_email",
-    "ms_move_email",
-    "ms_mark_email_read",
-    # Calendar manage
-    "ms_respond_event",
-    "ms_cancel_event",
-    # To-Do
-    "ms_complete_task",
 }
 
 
