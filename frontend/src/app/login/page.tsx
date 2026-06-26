@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Eye, EyeOff, LogIn } from "lucide-react";
+import { Bot, Eye, EyeOff, LogIn, Clock } from "lucide-react";
 import { login, getSSOProviders, type SSOProvider } from "@/lib/auth";
 
 import { getApiUrl } from "@/lib/config";
@@ -87,8 +87,23 @@ export default function LoginPage() {
         )}
 
         {pending && (
-          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-300">
-            Dein Konto wurde angelegt und wartet auf <b>Freischaltung durch einen Administrator</b>. Du wirst benachrichtigt bzw. kannst dich anmelden, sobald es freigeschaltet ist.
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-amber-500/20 bg-card p-8 text-center shadow-2xl">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15">
+                <Clock className="h-8 w-8 text-amber-400" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Warten auf Freischaltung</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Dein Konto wurde angelegt und muss erst von einem <b className="text-foreground">Administrator freigeschaltet</b> werden.
+                Sobald das erledigt ist, kannst du dich anmelden.
+              </p>
+              <button
+                onClick={() => { setPending(false); router.replace("/login"); }}
+                className="mt-6 w-full rounded-lg bg-foreground/[0.06] px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.1]"
+              >
+                Verstanden
+              </button>
+            </div>
           </div>
         )}
 
