@@ -691,11 +691,18 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
     };
   }, [connect]);
 
-  // Auto-scroll
+  // Auto-scroll — jump instantly (no "smooth", which made the view creep on every
+  // streamed token) and ONLY when the user is already near the bottom, so reading
+  // older messages isn't yanked away mid-stream.
   useEffect(() => {
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      });
+    }
   }, [messages]);
 
   const sendMessage = useCallback(() => {
@@ -980,7 +987,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       </div>
 
       {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]">
         {messages.length === 0 && !connectionFailed && historyLoaded && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Bot className="h-8 w-8 mb-2" />
