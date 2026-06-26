@@ -324,6 +324,138 @@ MSGRAPH_TOOLS = [
             "required": ["path"],
         },
     },
+    {
+        "name": "ms_list_folder",
+        "description": "List the contents (files and folders) of a OneDrive folder.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Folder path relative to the drive root, e.g. 'Projekte/2026'. Omit for the root."},
+            },
+        },
+    },
+    {
+        "name": "ms_read_file_content",
+        "description": "Read the text content of a OneDrive file (best for .txt/.md/.csv/.json). Returns up to ~12k chars.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to the drive root, e.g. 'Notizen/protokoll.md'."},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "ms_create_folder",
+        "description": "Create a new folder in OneDrive.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name of the new folder."},
+                "parent_path": {"type": "string", "description": "Parent folder path relative to root (e.g. 'Projekte'). Omit to create in the root."},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "ms_upload_text_file",
+        "description": "Create or overwrite a text file in OneDrive with the given content.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Target file path relative to root, e.g. 'Notizen/todo.md'."},
+                "content": {"type": "string", "description": "The text content to write."},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "ms_share_file",
+        "description": "Create a sharing link for a OneDrive file or folder.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path of the file/folder relative to root."},
+                "link_type": {"type": "string", "description": "'view' (read-only) or 'edit'. Default: view."},
+                "scope": {"type": "string", "description": "'organization' (only your tenant) or 'anonymous'. Default: organization."},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "ms_forward_email",
+        "description": "Forward an existing email to one or more recipients.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The email ID (from ms_list_emails)."},
+                "to": {"type": "string", "description": "Recipient email address(es), comma-separated."},
+                "comment": {"type": "string", "description": "Optional note to add above the forwarded message."},
+            },
+            "required": ["email_id", "to"],
+        },
+    },
+    {
+        "name": "ms_move_email",
+        "description": "Move an email to another mail folder (e.g. archive, deleteditems).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The email ID."},
+                "folder": {"type": "string", "description": "Destination folder: inbox, archive, deleteditems, junkemail, sentitems, drafts."},
+            },
+            "required": ["email_id", "folder"],
+        },
+    },
+    {
+        "name": "ms_mark_email_read",
+        "description": "Mark an email as read or unread.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The email ID."},
+                "read": {"type": "boolean", "description": "true = read, false = unread. Default: true."},
+            },
+            "required": ["email_id"],
+        },
+    },
+    {
+        "name": "ms_respond_event",
+        "description": "Respond to a calendar event invitation: accept, decline, or tentatively accept.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "The event ID (from ms_list_calendar_events)."},
+                "response": {"type": "string", "description": "'accept', 'decline', or 'tentative'."},
+                "comment": {"type": "string", "description": "Optional reply comment."},
+            },
+            "required": ["event_id", "response"],
+        },
+    },
+    {
+        "name": "ms_cancel_event",
+        "description": "Cancel an event you organized (notifies attendees) or remove it from your calendar.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "The event ID."},
+                "comment": {"type": "string", "description": "Optional cancellation message to attendees."},
+            },
+            "required": ["event_id"],
+        },
+    },
+    {
+        "name": "ms_complete_task",
+        "description": "Mark a Microsoft To-Do task as completed.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "string", "description": "The task list ID (from ms_list_tasks)."},
+                "task_id": {"type": "string", "description": "The task ID (from ms_list_tasks)."},
+            },
+            "required": ["list_id", "task_id"],
+        },
+    },
 ]
 
 # Tools that CREATE/SEND/MODIFY Microsoft data. Everything else in MSGRAPH_TOOLS
@@ -337,6 +469,19 @@ WRITE_TOOLS = {
     "ms_send_chat_message",
     "ms_create_task",
     "ms_create_planner_task",
+    # OneDrive write
+    "ms_create_folder",
+    "ms_upload_text_file",
+    "ms_share_file",
+    # Mail triage
+    "ms_forward_email",
+    "ms_move_email",
+    "ms_mark_email_read",
+    # Calendar manage
+    "ms_respond_event",
+    "ms_cancel_event",
+    # To-Do
+    "ms_complete_task",
 }
 
 
@@ -391,6 +536,35 @@ def _fmt_size(b: int) -> str:
 
 def _strip_html(s) -> str:
     return re.sub(r"<[^>]+>", "", s or "").replace("&nbsp;", " ").strip()
+
+
+def _drive_path(path) -> str:
+    """Encode a OneDrive item path for the ``/drive/root:/{path}:`` addressing.
+
+    Strips surrounding slashes and URL-encodes each segment (so spaces, umlauts
+    etc. are safe) while keeping ``/`` as the segment separator — blocks traversal
+    because each segment is encoded, not the slashes."""
+    p = str(path or "").strip().strip("/")
+    # Drop "." / ".." segments — otherwise URL normalisation of the
+    # /root:/{path}: address could traverse out of the drive.
+    return "/".join(quote(seg, safe="") for seg in p.split("/") if seg and seg not in (".", ".."))
+
+
+async def _graph_bytes(method: str, path: str, token: str, content: bytes | None = None,
+                       content_type: str = "text/plain") -> httpx.Response:
+    """Graph call for RAW (non-JSON) bodies/responses — file content up/download.
+
+    Unlike ``_graph`` this does not force ``application/json`` and returns the raw
+    response (caller reads ``.text`` / ``.json()`` as needed)."""
+    headers = {"Authorization": f"Bearer {token}"}
+    if content is not None:
+        headers["Content-Type"] = content_type
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.request(method, f"{GRAPH_BASE}{path}", headers=headers, content=content)
+        if resp.status_code >= 400:
+            logger.warning("Graph API %s on %s: %s", resp.status_code, path, resp.text[:200])
+            raise RuntimeError(f"Microsoft Graph request failed (HTTP {resp.status_code}).")
+        return resp
 
 
 # ---------------------------------------------------------------------------
@@ -741,6 +915,105 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
             return "Error: path must be a relative Graph path like /me/messages (no scheme, no '..', no '//')."
         data = await _graph("GET", path, token, params=args.get("params") or {})
         return json.dumps(data, ensure_ascii=False)[:2000]
+
+    elif name == "ms_list_folder":
+        rel = _drive_path(args.get("path", ""))
+        endpoint = f"/me/drive/root:/{rel}:/children" if rel else "/me/drive/root/children"
+        data = await _graph("GET", endpoint, token,
+                            params={"$select": "name,size,folder,file,lastModifiedDateTime,webUrl", "$top": 100})
+        items = data.get("value", [])
+        if not items:
+            return "Ordner ist leer oder nicht gefunden."
+        lines = []
+        for it in items:
+            if it.get("folder"):
+                lines.append(f"[DIR ] {it.get('name')} ({it['folder'].get('childCount', '?')} Einträge)")
+            else:
+                lines.append(f"[FILE] {it.get('name')} ({_fmt_size(it.get('size', 0))}) — {it.get('webUrl','')}")
+        return "\n".join(lines)
+
+    elif name == "ms_read_file_content":
+        rel = _drive_path(args["path"])
+        if not rel:
+            return "Error: path required."
+        resp = await _graph_bytes("GET", f"/me/drive/root:/{rel}:/content", token)
+        raw = resp.content
+        if len(raw) > 2_000_000:
+            return "Datei zu groß zum Lesen (>2MB)."
+        try:
+            return raw.decode("utf-8")[:12000]
+        except UnicodeDecodeError:
+            return f"Datei ist kein reiner Text ({resp.headers.get('content-type', 'binär')}) — Inhalt hier nicht extrahierbar."
+
+    elif name == "ms_create_folder":
+        parent = _drive_path(args.get("parent_path", ""))
+        endpoint = f"/me/drive/root:/{parent}:/children" if parent else "/me/drive/root/children"
+        body = {"name": str(args["name"]), "folder": {}, "@microsoft.graph.conflictBehavior": "rename"}
+        data = await _graph("POST", endpoint, token, content=json.dumps(body))
+        return f"Ordner erstellt: '{data.get('name')}' (ID: {data.get('id')})\nURL: {data.get('webUrl', '')}"
+
+    elif name == "ms_upload_text_file":
+        rel = _drive_path(args["path"])
+        if not rel:
+            return "Error: path required."
+        resp = await _graph_bytes("PUT", f"/me/drive/root:/{rel}:/content", token,
+                                  content=str(args["content"]).encode("utf-8"), content_type="text/plain")
+        data = resp.json()
+        return f"Datei gespeichert: '{data.get('name')}' (ID: {data.get('id')})\nURL: {data.get('webUrl', '')}"
+
+    elif name == "ms_share_file":
+        rel = _drive_path(args["path"])
+        ltype = "edit" if str(args.get("link_type", "view")).lower() == "edit" else "view"
+        scope = "anonymous" if str(args.get("scope", "organization")).lower() == "anonymous" else "organization"
+        data = await _graph("POST", f"/me/drive/root:/{rel}:/createLink", token,
+                            content=json.dumps({"type": ltype, "scope": scope}))
+        link = (data.get("link") or {}).get("webUrl", "")
+        return f"Freigabe-Link ({ltype}, {scope}): {link}"
+
+    elif name == "ms_forward_email":
+        recipients = [{"emailAddress": {"address": a.strip()}} for a in str(args["to"]).split(",") if a.strip()]
+        body = {"comment": args.get("comment", ""), "toRecipients": recipients}
+        await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/forward", token, content=json.dumps(body))
+        return f"E-Mail weitergeleitet an {args['to']}."
+
+    elif name == "ms_move_email":
+        dest = _folder(args["folder"])
+        await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/move", token,
+                    content=json.dumps({"destinationId": dest}))
+        return f"E-Mail nach '{dest}' verschoben."
+
+    elif name == "ms_mark_email_read":
+        read = args.get("read", True)
+        read = read if isinstance(read, bool) else str(read).lower() in ("true", "1", "yes")
+        await _graph("PATCH", f"/me/messages/{_gid(args['email_id'])}", token,
+                    content=json.dumps({"isRead": read}))
+        return f"E-Mail als {'gelesen' if read else 'ungelesen'} markiert."
+
+    elif name == "ms_respond_event":
+        r = str(args["response"]).lower()
+        action = {"accept": "accept", "decline": "decline", "tentative": "tentativelyAccept"}.get(r)
+        if not action:
+            return "Error: response must be accept, decline or tentative."
+        body: dict = {"sendResponse": True}
+        if args.get("comment"):
+            body["comment"] = args["comment"]
+        await _graph("POST", f"/me/events/{_gid(args['event_id'])}/{action}", token, content=json.dumps(body))
+        return f"Termin '{r}' beantwortet."
+
+    elif name == "ms_cancel_event":
+        try:
+            body = {"comment": args["comment"]} if args.get("comment") else {}
+            await _graph("POST", f"/me/events/{_gid(args['event_id'])}/cancel", token, content=json.dumps(body))
+            return "Termin abgesagt (Teilnehmer benachrichtigt)."
+        except RuntimeError:
+            # Not the organizer → just remove it from the user's own calendar.
+            await _graph("DELETE", f"/me/events/{_gid(args['event_id'])}", token)
+            return "Termin aus dem Kalender entfernt."
+
+    elif name == "ms_complete_task":
+        await _graph("PATCH", f"/me/todo/lists/{_gid(args['list_id'])}/tasks/{_gid(args['task_id'])}", token,
+                    content=json.dumps({"status": "completed"}))
+        return "Aufgabe als erledigt markiert."
 
     else:
         return f"Unknown tool: {name}"
