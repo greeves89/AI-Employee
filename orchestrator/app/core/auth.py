@@ -1,5 +1,7 @@
 """JWT authentication and password hashing utilities."""
 
+import hashlib
+import hmac
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +14,17 @@ from app.config import settings
 ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL = timedelta(minutes=30)
 REFRESH_TOKEN_TTL = timedelta(days=7)
+
+
+def internal_service_secret() -> str:
+    """Shared secret for in-process service calls (e.g. the Telegram bot calling
+    its own API over loopback). Domain-separated from ``api_secret_key`` via HMAC
+    so the value transmitted in the ``X-Internal-Secret`` header is NOT the JWT
+    signing key — a leak of this header therefore cannot be used to forge tokens.
+    Mirrors the derivation in ``core.mcp_oauth``."""
+    return hmac.new(
+        settings.api_secret_key.encode(), b"internal-service-auth-v1", hashlib.sha256
+    ).hexdigest()
 
 
 def hash_password(password: str) -> str:

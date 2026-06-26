@@ -7,13 +7,16 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from app.config import settings
+from app.core.auth import internal_service_secret
 
 # Use localhost since the bot runs INSIDE the orchestrator container
 API_BASE = "http://127.0.0.1:8000/api/v1"
 
 # Service-auth header: dependencies.get_current_user accepts requests from
-# 127.0.0.1 with X-Internal-Secret == api_secret_key as the first admin user.
-INTERNAL_HEADERS = {"X-Internal-Secret": settings.api_secret_key}
+# 127.0.0.1 with a matching X-Internal-Secret as the first admin user. The
+# secret is HMAC-derived from api_secret_key (domain-separated), not the raw
+# JWT signing key — see core.auth.internal_service_secret.
+INTERNAL_HEADERS = {"X-Internal-Secret": internal_service_secret()}
 
 # Track which Telegram user chats with which agent
 _active_chats: dict[int, str] = {}  # chat_id -> agent_id
