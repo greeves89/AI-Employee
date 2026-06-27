@@ -170,3 +170,21 @@ def get_provider_client_secret(provider: OAuthProviderConfig) -> str:
 def is_provider_available(provider: OAuthProviderConfig) -> bool:
     """Check if a provider has client credentials configured."""
     return bool(get_provider_client_id(provider))
+
+
+def apply_tenant(url: str) -> str:
+    """Rewrite a Microsoft /common authority URL to the configured tenant.
+
+    Single-tenant Entra apps cannot use the /common endpoint (AADSTS50194), so
+    when oauth_microsoft_tenant_id is set we swap it into the authorize/token URL.
+    No-op for non-Microsoft URLs and when the tenant is left as "common".
+    Shared by BOTH the SSO login and the M365 integration flows.
+    """
+    from app.config import settings
+    tenant = (settings.oauth_microsoft_tenant_id or "common").strip()
+    if tenant and tenant != "common":
+        return url.replace(
+            "login.microsoftonline.com/common/",
+            f"login.microsoftonline.com/{tenant}/",
+        )
+    return url

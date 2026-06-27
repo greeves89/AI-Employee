@@ -1191,8 +1191,12 @@ def _show_setup_tkinter(cfg):
 
     root = ctk.CTk()
     root.title("AI-Employee Bridge — Einstellungen")
-    root.geometry("480x400")
-    root.resizable(False, False)
+    # 400px was too short on Windows (DPI/font scaling) → the "Anmelden" button
+    # was clipped off the bottom. Taller default + vertical resize + minsize so
+    # the button is always reachable regardless of display scaling.
+    root.geometry("480x560")
+    root.minsize(480, 480)
+    root.resizable(False, True)
 
     # Header
     ctk.CTkLabel(root, text="AI-Employee Bridge", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w", padx=24, pady=(24, 2))
@@ -1218,8 +1222,10 @@ def _show_setup_tkinter(cfg):
     status_lbl = ctk.CTkLabel(root, text="", text_color="gray50", font=ctk.CTkFont(size=11))
     status_lbl.pack(anchor="w", padx=24, pady=(6,0))
 
+    # Anchor the action buttons to the bottom edge so they stay visible even if
+    # the content above needs more vertical space than expected.
     btn_frame = ctk.CTkFrame(root, fg_color="transparent")
-    btn_frame.pack(fill="x", padx=24, pady=12)
+    btn_frame.pack(side="bottom", fill="x", padx=24, pady=16)
 
     def on_cancel(): root.destroy()
 

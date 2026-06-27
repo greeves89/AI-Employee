@@ -105,7 +105,8 @@ export default function MeetingRoomDetailPage() {
   useEffect(() => {
     const count = room?.messages?.length || 0;
     if (count > prevMessageCount.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      // Jump instantly (no "smooth" creep), consistent with the agent chat.
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
     }
     prevMessageCount.current = count;
   }, [room?.messages?.length]);

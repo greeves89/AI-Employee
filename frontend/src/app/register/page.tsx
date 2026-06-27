@@ -28,7 +28,7 @@ export default function RegisterPage() {
         setRegistrationClosed(true);
       }
     }).catch(() => {});
-    getSSOProviders().then(setSsoProviders).catch(() => {});
+    getSSOProviders().then((res) => setSsoProviders(res.providers)).catch(() => {});
   }, []);
 
   const handleSSO = (provider: string) => {

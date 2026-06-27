@@ -30,6 +30,11 @@ class User(Base, TimestampMixin):
         Integer, ForeignKey("custom_roles.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Admin-approval gate (OpenWebUI-style). True = approved/usable. New self-registered
+    # users (SSO or password) get False when `require_user_approval` is on → they wait
+    # for an admin to approve. Distinct from is_active (deactivation). Default True so
+    # existing users and admin-created users are unaffected.
+    approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sso_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     sso_subject: Mapped[str | None] = mapped_column(String, nullable=True)
     # Activity tracking for lifecycle management (auto-stop/start user's agents)

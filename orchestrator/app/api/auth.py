@@ -85,6 +85,7 @@ class UserResponse(BaseModel):
     role: str
     custom_role_id: int | None = None
     is_active: bool
+    approved: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -93,6 +94,7 @@ class UserUpdateRequest(BaseModel):
     name: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    approved: bool | None = None
 
 
 # --- Helpers ---
@@ -146,18 +148,24 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
+    approved = is_first or not settings.require_user_approval
     user = User(
         id=uuid.uuid4().hex[:12],
         email=body.email,
         name=body.name,
         password_hash=hash_password(body.password),
         role=UserRole.ADMIN if is_first else UserRole.MEMBER,
+        approved=approved,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    logger.info(f"User registered: {user.email} (role: {user.role.value}, first: {is_first})")
+    logger.info(f"User registered: {user.email} (role: {user.role.value}, first: {is_first}, approved: {approved})")
+
+    # Pending approval → no session; the frontend shows a "wait for admin" notice.
+    if not approved:
+        return {"pending": True, "user": UserResponse.model_validate(user).model_dump()}
 
     tokens = _set_auth_cookies(response, user)
     return {
@@ -168,6 +176,11 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # SSO-only mode: password login disabled (only Microsoft SSO + MFA). The env
+    # break-glass (EMERGENCY_PASSWORD_LOGIN) re-enables it for lockout recovery.
+    if settings.sso_only_login and not settings.emergency_password_login:
+        raise HTTPException(status_code=403, detail="Password login is disabled — please sign in with Microsoft.")
+
     # Brute-force protection: check rate limit per email
     _check_login_rate(body.email)
 
@@ -178,6 +191,8 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
+    if not getattr(user, "approved", True):
+        raise HTTPException(status_code=403, detail="Dein Konto wartet noch auf Freischaltung durch einen Administrator.")
 
     _clear_login_attempts(body.email)
     tokens = _set_auth_cookies(response, user)
@@ -202,7 +217,18 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # Optional: drop the user's stored MS Graph token on logout (no persistent
+    # token after sign-out). Best-effort — never block logout on failure.
+    if settings.revoke_msgraph_on_logout:
+        try:
+            from app.dependencies import get_current_user
+            from app.services.oauth_service import OAuthService
+            user = await get_current_user(request, db)
+            await OAuthService(db, request.app.state.redis).disconnect("microsoft", user_id=user.id)
+            logger.info(f"Revoked MS Graph token on logout for {user.email}")
+        except Exception as e:
+            logger.warning(f"MS token revoke on logout skipped: {e}")
     response.delete_cookie(COOKIE_ACCESS, path="/")
     response.delete_cookie(COOKIE_REFRESH, path="/")
     return {"ok": True}
@@ -224,8 +250,8 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
         raise HTTPException(status_code=401, detail="Not a refresh token")
 
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or inactive")
+    if not user or not user.is_active or not getattr(user, "approved", True):
+        raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
 
     tokens = _set_auth_cookies(response, user)
     return {"user": UserResponse.model_validate(user).model_dump(), **tokens}
@@ -258,7 +284,10 @@ async def list_sso_providers():
                 "display_name": provider.display_name,
                 "icon": provider.icon,
             })
-    return {"providers": providers}
+    # sso_only: tells the login page to hide the password form (SSO + MFA only).
+    # The env break-glass still allows password login server-side for recovery.
+    sso_only = bool(settings.sso_only_login and not settings.emergency_password_login and providers)
+    return {"providers": providers, "sso_only": sso_only}
 
 
 @router.get("/sso/{provider}/login")
@@ -328,6 +357,11 @@ async def sso_callback(
             url=f"{frontend_url}/login?error={str(e)}&provider={provider}"
         )
 
+    # Pending admin approval → no session; bounce back to login with a clear notice.
+    if not getattr(user, "approved", True):
+        logger.info(f"SSO login blocked (pending approval): {user.email}")
+        return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
+
     # Set auth cookies (same as normal login)
     redirect_resp = RedirectResponse(url=f"{frontend_url}/dashboard", status_code=302)
     access = create_access_token(user.id, user.role.value)
@@ -393,6 +427,8 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
         if target.id == current.id:
             raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
         target.is_active = body.is_active
+    if body.approved is not None:
+        target.approved = body.approved
 
     await db.commit()
     return UserResponse.model_validate(target).model_dump()
@@ -412,6 +448,7 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
     email = body_raw.get("email", "").strip()
     password = body_raw.get("password", "")
     role = body_raw.get("role", "member")
+    custom_role_id = body_raw.get("custom_role_id")
 
     if not name or not email or not password:
         raise HTTPException(status_code=400, detail="Name, email, and password are required")
@@ -420,6 +457,12 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
     valid_roles = {r.value for r in UserRole}
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(valid_roles))}")
+
+    # Optional custom role (group) — validate it exists.
+    if custom_role_id is not None:
+        from app.models.custom_role import CustomRole
+        if not await db.get(CustomRole, custom_role_id):
+            raise HTTPException(status_code=400, detail="custom_role_id not found")
 
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
@@ -431,6 +474,8 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
         name=name,
         password_hash=hash_password(password),
         role=UserRole(role),
+        custom_role_id=custom_role_id,
+        approved=True,  # admin-created users are always approved
     )
     db.add(user)
     await db.commit()

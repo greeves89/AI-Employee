@@ -15,6 +15,9 @@ class SettingsUpdate(BaseModel):
     max_turns: int | None = None
     max_agents: int | None = None
     registration_open: bool | None = None
+    sso_only_login: bool | None = None
+    require_user_approval: bool | None = None
+    revoke_msgraph_on_logout: bool | None = None
     # Provider
     model_provider: str | None = None
     # Bedrock
@@ -80,6 +83,9 @@ class SettingsResponse(BaseModel):
     max_turns: int
     max_agents: int
     registration_open: bool
+    sso_only_login: bool = False
+    require_user_approval: bool = False
+    revoke_msgraph_on_logout: bool = False
     # Provider
     model_provider: str
     has_bedrock: bool
@@ -93,6 +99,7 @@ class SettingsResponse(BaseModel):
     has_google_oauth: bool = False
     has_microsoft_oauth: bool = False
     has_apple_oauth: bool = False
+    msgraph_mcp_external_enabled: bool = False
     # Lifecycle
     agent_idle_timeout_minutes: int = 30
     # Improvement engine thresholds

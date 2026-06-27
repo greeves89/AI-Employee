@@ -5,6 +5,315 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.75.0] — 2026-06-25
+
+### Added
+- **Admin-Freischaltung für neue User (OpenWebUI-Style „Warten auf Freischaltung").** Admin-Toggle `require_user_approval` (Settings → Sicherheit/Login, Default aus): ist er an, landen neu per **Microsoft-SSO oder Registrierung** angelegte Konten auf `approved=false` und können die App **erst nach Admin-Freischaltung** nutzen. Login-Seite zeigt einen Hinweis, der SSO-Callback gibt Pending-Usern **kein** Token. In der **Benutzerverwaltung** (Admin-Konsole) sind Pending-User amber markiert mit **„Freischalten"**-Button. Erster User (Auto-Admin) und admin-angelegte User sind immer freigeschaltet → kein Lockout. Pending-Block an **allen** Auth-Pfaden (Login/SSO/Refresh/get_current_user/WS-Legacy/MCP-OAuth). Neues `users.approved`-Feld (Default true → Bestandsuser unberührt). (`models/user.py`, `services/sso_service.py`, `api/auth.py`, `dependencies.py`, `api/oauth_as.py`, `app/admin/page.tsx`, `app/login/page.tsx`, `app/settings/view.tsx`)
+- **Lazy Tool Loading mit `search_tools` (hebt das 128-Tool-Limit dauerhaft auf).** OpenAI/Azure begrenzen Function-Tools auf **128 pro Request** — durch wachsende MCP-Integrationen wurde das gerissen (130 Tools → „Unexpected error" bei jedem Chat im Write-Modus). Statt den ganzen Katalog (18 built-in + 41 API + alle MCP-Tools) zu senden, bekommt das LLM nur noch einen **Kern-Satz (~21)** + ein **`search_tools(query)`**-Meta-Tool. Bei Bedarf sucht das Modell Tools (Keyword über Name+Beschreibung), die Treffer werden **on-demand für die nächsten Turns aktiviert** (LRU-begrenzt, ≤60). Damit pro Request immer **< 128**, Katalog beliebig groß. Nur custom_llm-Runtime betroffen (claude_code verwaltet Tools selbst). (`agent/app/llm_chat_handler.py`)
+
+### Fixed
+- **128-Tool-Limit-Crash:** msgraph-Toolset von 34 auf 28 zurückgetrimmt (OneDrive-Write inkl. `create_folder` behalten) als Sofort-Fix; Lazy Loading ist die dauerhafte Lösung.
+- **Chat-UI-Layout-Shift & -Breite:** `scrollbar-gutter:stable` app-weit + Auto-Scroll ohne Smooth-Creep; `main min-w-0` → viele Chat-Tabs scrollen statt die Seite zu verbreitern.
+
+## [1.74.4] — 2026-06-25
+
+### Added
+- **SSO-only Login + Token-Revoke (Sicherheit/Datenschutz).** Zwei Admin-Settings (Default AUS): `sso_only_login` deaktiviert den Passwort-Login → Anmeldung nur via Microsoft-SSO (MFA), schließt die „Passwort-bekannt → Impersonation"-Lücke; `revoke_msgraph_on_logout` löscht den gespeicherten MS-Graph-Token beim Abmelden. **Break-Glass:** ENV `EMERGENCY_PASSWORD_LOGIN=true` reaktiviert Passwort-Login (Lockout-Recovery). Login-Seite blendet bei SSO-only das Passwortfeld aus. Toggles im System-Tab der Settings mit Warnhinweis. (`config.py`, `api/auth.py`, `api/settings.py`, `schemas/settings.py`, `services/settings_service.py`, `app/login/page.tsx`, `app/settings/view.tsx`)
+
+## [1.74.3] — 2026-06-25
+
+### Added
+- **Read / Read+Write-Selector pro Agent (Frontend).** Unter Microsoft 365 in den Agent-Integrationen lässt sich der MS-Graph-Zugriff jetzt auf **Read** oder **Read+Write** stellen (speichert `msgraph_access`, startet den Agenten bei Änderung neu). GET `/agents/{id}/integrations` liefert den Wert mit. (`components/agents/integration-selector.tsx`, `lib/api.ts`, `api/agents.py`)
+
+## [1.74.2] — 2026-06-25
+
+### Added
+- **MS-Graph pro Agent als Read / Read+Write einstellbar.** Read-Modus blendet alle schreibenden Tools aus (tools/list) und lehnt sie ab; Read+Write schaltet sie frei. Im Write-Modus wird ausgehende **Mail als Entwurf** angelegt (nicht gesendet). Externer OpenWebUI-Zugang bleibt immer read-only. Einstellbar in den Agent-Integrationen (`config.msgraph_access`). (`core/msgraph_mcp.py`, `api/mcp_msgraph.py`, `api/mcp_msgraph_external.py`, `api/agents.py`)
+
+### Fixed
+- **`ms_list_chats` gab HTTP 400** (verschachteltes `$expand=members($select=…)`). Jetzt `$expand=members` → 1:1-Chats zeigen Teilnehmer-Namen, Chat-Inhalt über `ms_list_chat_messages` lesbar. (`core/msgraph_mcp.py`)
+
+## [1.74.1] — 2026-06-25
+
+### Fixed
+- **Security (ms_graph_get):** Pfad-Validierung gehärtet — blockiert jetzt protokoll-relative Pfade (`//host`), Backslashes und Schema/`..` strikt (Regex `^/[A-Za-z0-9]`), sodass der read-only GET garantiert auf graph.microsoft.com gepinnt bleibt. (`core/msgraph_mcp.py`)
+
+## [1.74.0] — 2026-06-25
+
+### Added
+- **MS-Graph-MCP deutlich erweitert — fast alles in Graph durchsuchbar/lesbar.** Neue Tools: `ms_search` (universelle Microsoft-Search über Mail/Events/Dateien/Chat-Nachrichten), `ms_graph_get` (read-only GET-Escape-Hatch auf jeden Graph-v1.0-Endpoint, durch delegierte Scopes begrenzt, kein `..`/scheme), `ms_list_chat_messages` + `ms_list_channel_messages` (Chat-/Channel-Inhalte lesen), `ms_list_planner_plans` / `ms_list_planner_tasks` / `ms_create_planner_task` (Planner), `ms_search_people` (Name→E-Mail auflösen). `ms_list_chats` zeigt jetzt Teilnehmer-Namen statt nur „oneOnOne". (`core/msgraph_mcp.py`)
+
+## [1.73.4] — 2026-06-25
+
+### Fixed
+- **MS-Graph-Tools des Agenten gaben 500 (Teams/Mail/Teamliste).** `mcp_msgraph._get_access_token` konstruierte `OAuthService(db)` ohne das erforderliche `redis`-Argument → `TypeError` bei JEDEM Graph-Tool-Aufruf (initialize/tools-list liefen, aber `tools/call` crashte). Auf `OAuthService(db, None)` korrigiert (get_valid_token nutzt kein redis). Teams/OneDrive/To-Do funktionieren damit über den Agenten. (`api/mcp_msgraph.py`)
+
+## [1.73.3] — 2026-06-25
+
+### Changed
+- **Settings-Seite in Unter-Tabs gegliedert.** Statt einer langen Scroll-Seite jetzt 4 Reiter: **Modelle** (Model-Provider, Agent-Config, Templates), **Integrationen** (OAuth + Telegram), **Voice**, **System** (License, Access Control). Reiner UI-Refactor, keine Funktionsänderung. (`app/settings/view.tsx`)
+
+## [1.73.2] — 2026-06-25
+
+### Fixed
+- **„MCP-Server extern exponieren"-Toggle ließ sich nicht aktivieren / blieb nach dem Speichern aus.** Der Endpoint `PUT /settings/msgraph-mcp-external` rief `SettingsService.set()` ohne anschließenden `await db.commit()` auf — die Änderung wurde beim Session-Schluss zurückgerollt (PUT gab trotzdem 200, nur das In-Memory-Flag wirkte bis zum Restart). `getSettings` las daraufhin den nicht-persistierten DB-Wert (`false`) → Toggle sprang zurück. Commit ergänzt → Einstellung bleibt erhalten. (`api/settings.py`)
+
+## [1.73.1] — 2026-06-25
+
+### Fixed
+- **MS-Graph-MCP für Agenten gab 401** → Agent konnte Kalender/Mail/Teams nicht nutzen, obwohl „Microsoft" aktiviert + M365 verbunden war. Zwei Ursachen behoben: (1) der auto-injizierte msgraph-MCP-Server bekam **keinen** Bearer-Token mit (`auth_map["msgraph"]` fehlte in `_get_custom_mcp_env`), (2) der Endpoint verlangte `X-Agent-ID`, das der Agent-MCP-Client gar nicht schickt — er authentifiziert jetzt direkt gegen die `agent_id` aus dem URL-Pfad. (`core/agent_manager.py`, `api/mcp_msgraph.py`)
+
+## [1.73.0] — 2026-06-25
+
+### Added
+- **Konfigurierbarer Microsoft-Tenant** (`oauth_microsoft_tenant_id`, Default `common`) — pro Kunde via `.env` (`OAUTH_MICROSOFT_TENANT_ID`) oder Admin → Settings. Nicht hardcoded; wirkt für Login **und** M365-Integration. Single-Tenant-Azure-Apps brauchen das zwingend.
+
+### Changed
+- **Microsoft-SSO-Login holt jetzt direkt die Graph-Tokens.** Der Login fordert die vollen Graph-Scopes **+ `offline_access`** an und speichert Access/Refresh verschlüsselt (`persist_tokens` von Login- und Integrations-Flow **geteilt** — eine Storage-Stelle). Ein Login = Identität **und** Graph, kein separater „M365 verbinden"-Schritt nötig. (`core/sso_providers.py`, `services/sso_service.py`, `services/oauth_service.py`)
+
+### Fixed
+- **AADSTS50194** behoben: Single-Tenant-Azure-Apps können den `/common`-Endpoint nicht nutzen — die Authority (Authorize **und** Token-Exchange) wird zur Laufzeit auf den konfigurierten Tenant gesetzt.
+- **Cross-Tenant-Account-Takeover-Schutz:** Microsoft-`email_verified` wird **nur** bei konkretem Tenant (GUID/Domain) vertraut — `common`/`organizations`/`consumers` ausgeschlossen.
+
+## [1.71.0] — 2026-06-25
+
+### Added
+- **MS-Graph-MCP-Server für externe LLM-Clients (OpenWebUI) per OAuth 2.1.** Admin-Schalter (Settings → Microsoft 365, nur aktivierbar wenn App-Registrierung hinterlegt) exponiert den MCP-Server unter `POST /api/v1/mcp/msgraph`. Eingebauter **OAuth-2.1-Authorization-Server**: RFC 8414 (AS-Metadata), RFC 9728 (Protected Resource Metadata), RFC 7591 (Dynamic Client Registration), `/oauth/authorize` (Consent über das bestehende Microsoft-SSO-Login), `/oauth/token` (PKCE S256 + Refresh-Rotation, audience-gebundene Tokens). **Pro User**: jeder OpenWebUI-Nutzer loggt sich ein und nutzt sein **eigenes** M365. Caddy-Discovery-Routen für `/.well-known/oauth-*`. Default AUS. (`core/mcp_oauth.py`, `api/oauth_as.py`, `api/mcp_msgraph_external.py`, `models/oauth_client.py`)
+- **Mail-Suche nach Absender/Betreff** in `ms_list_emails`: neue Filter `sender` + `subject` (Graph-KQL) zusätzlich zur Freitextsuche.
+
+### Changed
+- **MS-Graph-Tools + MCP-Dispatch zentralisiert** (`core/msgraph_mcp.py`) — Agent-Transport und Extern-Transport teilen sich exakt eine Tool-Implementierung (keine Doppel-Implementierung).
+
+### Fixed
+- **Latenter Bug:** die per-Agent-Token-Auflösung rief `get_valid_token(integration)` statt `("microsoft", user_id)` → hätte immer geworfen (fiel nicht auf, da MS unkonfiguriert). Behoben.
+- **Security-Härtung** (Scanner vor Release): Graph-Resource-IDs URL-encodiert (Path-Traversal-Schutz), Mail-Ordner-Allowlist, KQL-Metazeichen-Escaping (Injection-Schutz), DCR-Client-Limit (Abuse), generische Graph-Fehler statt verbatim (Info-Disclosure), separater MCP-Signing-Key (Key-Trennung), PKCE-Verifier-Längenprüfung.
+
+## [1.70.0] — 2026-06-24
+
+### Added
+- **3D-Wissensgraph für Second-Brain-Vaults (Obsidian-Stil).** Neuer **„Graph"-Tab** im Vault-Browser: Notizen als leuchtende **Bubbles** (Größe = Verknüpfungsgrad, Farbe = Ordner), **Kanten** aus `[[wikilinks]]` und relativen `.md`-Links, Flow-Partikel und Bloom-Glow. **Klick auf eine Bubble** fokussiert die Kamera und öffnet ein **Detail-Panel** (Inhalt-Vorschau, Tags, verlinkte Notizen, „Im Editor öffnen"). Backend: `GET /brains/{id}/graph` → `vault.build_graph` (reines Dateisystem + Regex, kein DB-Dependency, jailed, Soft-Cap 2000 Knoten). Frontend: `react-force-graph-3d` (three.js), client-only lazy-geladen (kein SSR). Eindeutig als `getVaultGraph`/`Vault*` benannt — getrennt von der persönlichen KB (`getBrainGraph`).
+- **Proactive Mode: Prompt einsehbar + pro Agent erweiterbar.** Im Proactive-Panel lässt sich der feste **Basis-Prompt aufklappen** (read-only) und um **agent-spezifische Zusatz-Anweisungen** ergänzen. Der Scheduler komponiert zur Feuerzeit `Basis (Code) + Zusatz (config['proactive']['custom_instructions'])` — Basis-Verbesserungen gelten weiterhin **sofort für alle** Agenten, keine DB-Duplikation. Toggle/Intervall-Speichern lassen den Zusatz unangetastet. (`agents.py`, `scheduler_service.py`, `proactive-toggle.tsx`)
+
+### Changed
+- **Live-Steering greift jetzt mitten im Turn.** Nachrichten, die während eines laufenden Agent-Turns ankommen, werden nun **nach jedem fertigen Tool-Call** in den Kontext injiziert (nach Compaction, damit frischer Input nicht wegsummiert wird) — der Agent nimmt neue Infos **sofort beim nächsten Schritt** mit, nicht erst am Turn-Ende. (`llm_chat_handler.py`)
+
+## [1.69.4] — 2026-06-24
+
+### Changed
+- **Nachhaltige Trennung „Second Brain (geteilter Vault)" vs „Knowledge Base (persönlich)".** Die Namens-Kollision an der Wurzel beseitigt — der Agent hat jetzt **zwei klar getrennte, eindeutig benannte Tool-Familien**:
+  - **`secondbrain_search` / `secondbrain_read` / `secondbrain_write` / `secondbrain_list`** — der **geteilte Abteilungs-Vault** (`/mnt/brains/<slug>/`, viele User, UI: Wissen → Second Brain). Dateisystem-basiert, jailed, read-only/read-write erkannt. „Ins Second Brain schreiben" = `secondbrain_write`.
+  - **`brain_*`** — die **persönliche, account-gebundene Knowledge Base** (DB/pgvector, Knowledge-Tab). Beschreibungen entsprechend korrigiert (nicht mehr „Second Brain").
+  - Agent-Instruktionen (`runner_hooks.py`) routen jetzt eindeutig (shared → `secondbrain_*`, persönlich → `brain_*`); Orchestrator-Docstring (`brain.py`) als „Knowledge Base API" klargestellt. Behebt, dass der Agent „ins Second Brain" in die falsche (persönliche) Knowledge Base schrieb.
+
+## [1.69.3] — 2026-06-24
+
+### Fixed
+- **Agent schrieb „ins Second Brain" in den falschen Speicher.** Namens-Kollision zweier Systeme: die Tools `brain_search`/`brain_contribute`/`brain_get` hängen an der **DB-pgvector-Brain** (`/brain/agent/*`), während der **Second-Brain-Vault** (den der User im UI sieht) als **Markdown-Dateien** unter `/mnt/brains/<slug>/` lebt. Die Agent-Instruktion sagte „Contribute to the Second Brain (brain_contribute)" → der Agent schrieb in die DB-Brain, im Vault stand nichts. Instruktion (`runner_hooks.py`) jetzt eindeutig getrennt: **(A) Second-Brain-Vault → `.md`-Dateien via write_file in den gemounteten `/mnt/brains/<slug>/`** (nur bei rw), **(B) `brain_contribute` → separater persönlicher Wissensspeicher**.
+
+## [1.69.2] — 2026-06-24
+
+### Fixed
+- **Second Brain ließ sich nirgends einem Agenten zuweisen (UI-Sackgasse).** Die Volume-Mounts-Sektion graute `brain-*` aus und verwies auf den Wissen-Tab; der **Wissen → Second Brain**-Tab war aber rein anzeigend und verwies zurück auf „Admin/Mount-Rechte" — es gab **keinen** Zuweisen-Schalter. Jetzt ist der **Wissen → Second Brain**-Tab ein echtes Zuweisen-Panel: alle freigegebenen Brains mit **Toggle** → `updateAgentMounts` (+ automatischer Neustart), „Inhalt"-Button zum Ansehen, und eine klare Meldung, falls noch keine Brains freigegeben sind (Admin → Rollen → Mountshares bzw. Users → Mount-Rechte). Nicht-Brain-Mounts bleiben unangetastet. `frontend/src/app/agents/[id]/page.tsx`.
+
+## [1.69.1] — 2026-06-24
+
+### Fixed
+- **Freigabe-Anfrage (`request_approval`) pausierte den Agenten nicht** — er fragte um Freigabe, lief aber **weiter** statt zu warten, und beim Task-Ende verschwand das Approval-Popup. Ursache: das Tool kehrte sofort zurück („Approval requested, use check_approval") statt zu blockieren. Jetzt **blockiert** `request_approval`: es pollt die Entscheidung (`/approvals/check/{id}`) und wartet (Default 15 Min), gibt dann **APPROVED** (inkl. gewählter Option) → weiter, **DENIED** → stop, oder **kein Entscheid/Timeout** → „nicht fortfahren, stop". Tool-Beschreibung entsprechend angepasst. `agent/app/tools/api_client.py`, `agent/app/tools/definitions.py`.
+
+## [1.69.0] — 2026-06-24
+
+### Added
+- **Trainierte Agenten verteilen — Admin klont einen fertig angelernten Agenten als eigene Kopie pro User/Gruppe.** Admin baut/trainiert einen Agenten fertig und verteilt ihn dann an einzelne User **und/oder eine ganze Gruppe (Custom Role)**. Jede Kopie ist ein **vollständig eigenständiger Agent** (eigener Container, eigenes Workspace-Volume, dem Ziel-User gehörend) — nie eine geteilte Instanz.
+  - Übernimmt die **volle Config** des Originals: model, **mode + llm_config/ai_account** (damit die Kopie auf custom_llm/Azure wirklich läuft), role, permissions, integrations, MCP-Server, budget, autonomy, browser.
+  - Kopiert das **angelernte „Gehirn"**: der komplette Workspace des Originals (`knowledge.md`, installierte Skills unter `.claude/skills/`, `CLAUDE.md`, Docs) wird in jede Kopie geklont — außer `.git`; `.agent_state.md` startet je Kopie frisch.
+  - **Snapshot + idempotent:** verteilt an alle aktuellen Mitglieder; wer schon eine Kopie dieser Quelle hat, wird übersprungen.
+  - Neuer Endpoint `POST /admin/distribute-agent`, Herkunfts-Tracking via `agents.source_agent_id` (Migration `b6c7d8e9f0a1` + Startup-Ensure), UI unter Admin → Zuweisungen → „Trainierten Agent verteilen".
+
+## [1.68.5] — 2026-06-24
+
+### Fixed
+- **Notification-Live-WebSocket war komplett kaputt (`/api/v1/ws/notifications` → 403 / „bad response from the server").** Regression aus 1.68.3: beim Einbau des `_notif_visible_agent_ids`-Helfers rutschte dieser **zwischen den `@router.websocket("/notifications")`-Decorator und die eigentliche Handler-Funktion** — dadurch dekorierte der Route-Decorator den Helper (erwartet `user_id` statt `websocket`) und `ws_notifications` war gar nicht mehr registriert. Decorator wieder direkt über `ws_notifications` gesetzt. Chat-/Logs-WS waren nie betroffen.
+
+## [1.68.4] — 2026-06-24
+
+### Fixed
+- **Bridge-App (Windows): Login-Fenster zu klein, „Anmelden"-Button abgeschnitten.** Das customtkinter-Setup-Fenster hatte fix `480x400` + `resizable(False, False)` — auf Windows (DPI/Font-Scaling) passte der Inhalt nicht in 400px Höhe, der Login-Button lag unterhalb des sichtbaren Bereichs und das Fenster ließ sich nicht vergrößern. Jetzt: höheres Default (`480x560`), vertikal resizable + `minsize`, und der Button-Bereich ist am **unteren Rand verankert** (nie mehr abschneidbar). `computer-use-bridge/tray_app.py`.
+
+---
+
+## [1.68.3] — 2026-06-24
+
+### Security
+- **Cross-User-Leak: jeder User sah ALLE Notifications (auch fremder Agenten).** `Notification` hat keine `user_id`-Spalte (nur `agent_id`), und `list_notifications`/`unread_count` filterten **gar nicht** → die Notifications fremder Agenten (Task-Ergebnisse, Approval-Inhalte) waren für jeden sichtbar, und der Badge zählte global. Gefixt: alle UI-Notification-Endpoints (`list`, `count`, `read`, `read-all`, `respond`, `delete`) **scopen jetzt nach sichtbaren Agenten** (eigene + besitzerlose + freigegebene) via neuem `_visible_agent_ids`. Der **Live-WebSocket** (`/ws/notifications`) filtert ebenfalls per-User (fail-closed). Antwort auf die Ausgangsfrage „sieht das nur der Admin?": vorher **nein, jeder** — jetzt nur noch der Berechtigte.
+
+---
+
+## [1.68.2] — 2026-06-24
+
+### Fixed
+- **Sidebar eingeklappt: „Notifications" zeigte abgeschnittenen Text statt Icon.** Im collapsed-Modus (64px) rendert die `NotificationBell` jetzt — wie alle anderen Items — ein **icon-only** Glocken-Symbol (mit Unread-Badge + Tooltip „Notifications") statt des breiten Buttons mit Text. Neues `collapsed`-Prop in `notification-bell.tsx`, gesetzt aus `sidebar.tsx`.
+
+---
+
+## [1.68.1] — 2026-06-24
+
+### Fixed
+- **Ein einzelnes nicht-unterstütztes Bild (z.B. SVG-Logo) killte die ganze Task mit `API error 400: invalid_image_format`.** Beim Video-/Präsentations-Bau lud der Agent Bilder aus dem Netz; `view_image` bestimmte den Bildtyp nur aus der **Dateiendung/Content-Type** (`default="image/jpeg"`), nicht aus dem echten Inhalt. Eine `logo.svg` wurde so als „image/jpeg" an die Vision-API geschickt → 400 → Abbruch der kompletten Aufgabe. Behoben mit zwei Schichten:
+  - **Tool-Ebene** (`view_image`/`present_image`): echtes Format aus **Magic-Bytes** erkennen, **SVG → PNG rastern** (cairosvg + libcairo2 — Logos werden so sogar nutzbar), andere Rasterformate (bmp/tiff/ico/…) via Pillow → PNG. Lässt sich ein Bild nicht nutzen (HTML-Fehlerseite, korrupt) → **Tool gibt einen Text-Fehler zurück und der Agent macht weiter**, statt abzustürzen.
+  - **Provider-Ebene** (Sicherheitsnetz): vor jedem OpenAI/Azure-Call werden alle Bild-Blöcke **re-gesnifft**; mismatchte/unsupported Blöcke werden **gedroppt** (und falsch gelabelte echte Bilder korrigiert) — egal aus welcher Quelle, ein kaputtes Bild kann nie wieder die ganze Completion 400en.
+  - Neue Dependency `cairosvg>=2.7` im Agent-Image.
+
+---
+
+## [1.68.0] — 2026-06-24
+
+### Added
+- **Second Brain via MCP — jeder Vault als externer MCP-Server.** Ein Second Brain kann jetzt von externen MCP-Clients (n8n, Cursor, …) als eigener MCP-Server genutzt werden, analog zum bestehenden Per-Agent-MCP-Server.
+  - **Endpoint:** `POST /api/v1/mcp/brains/<slug>` (2025-06-18 Streamable HTTP, JSON-RPC: `initialize`/`tools/list`/`tools/call`/`ping`), geschützt per **Bearer-Token** pro Brain.
+  - **Tools:** `brain_search` (grep über die `.md`-Sammlung — boardmittel, keine Embedding-Abhängigkeit), `brain_read` (Datei lesen), `brain_list` (Dateien auflisten). Path-Jailing geteilt mit dem Datei-Browser (`app/core/vault.py`) — kein Escape aus dem Vault, `.git` gesperrt.
+  - **Token-Verwaltung (Admin):** in der Second-Brains-Ansicht pro Brain MCP aktivieren → Token wird **einmalig** angezeigt (Fernet-verschlüsselt gespeichert, nie wieder auslesbar); „neu generieren" rotiert (alter Token sofort ungültig); deaktivieren wischt den Token. Endpoint-URL + Token per Klick kopierbar.
+  - Neue Spalten `second_brains.mcp_enabled` + `mcp_token_encrypted` (Migration `a5b6c7d8e9f0` + idempotenter Startup-Ensure, analog pgvector).
+
+---
+
+## [1.67.0] — 2026-06-24
+
+### Changed
+- **Kontext-Kompaktierung: gleitendes Fenster + rollende Summary statt voller History pro Turn.** Bisher feuerte die Compaction erst bei **75 % des Modellfensters** — gpt-5.x hat **1 Mio** Tokens, also bei 750k, was praktisch nie erreicht wurde. Folge: jeder Turn schickte die **komplette, wachsende History** → kumulative Input-Kosten explodierten (z. B. 490k Tokens über 8 Turns). Neu:
+  - **Absolutes Token-Budget** (`ABSOLUTE_COMPACTION_BUDGET = 150k`) triggert die Kompaktierung, unabhängig von der Fenstergröße (`effective_threshold_tokens = min(75 % Fenster, 150k)`). Auf langen Tasks bleiben die Calls dadurch konstant günstig.
+  - **Layer 4 ist jetzt eine gleitende, inkrementelle rollende Summary** statt „gesamte History verwerfen": die **letzten 24 Nachrichten bleiben wörtlich** (Tool-I/O — exakte Pfade, IDs, Werte, die der Agent fürs Weiterarbeiten braucht), alles Ältere wird in **eine** Summary gefaltet, die bei jeder Kompaktierung **fortgeschrieben** (nicht neu erzeugt) wird.
+  - **Boundary-Schutz:** das Recent-Fenster beginnt nie mit einem verwaisten `tool`-Ergebnis (dessen `tool_call` wegsummiert wäre) — solche Ergebnisse werden in den Summary-Block zurückgeschoben. Verhindert Tool-Protocol-Fehler bei custom_llm-Providern.
+  - Gilt für beide custom-LLM-Pfade (`LLMRunner` Task-Ausführung + `LLMChatHandler` interaktiver Chat). Claude-Code-CLI-Agenten machen ihre Compaction weiterhin nativ.
+
+---
+
+## [1.66.0] — 2026-06-24
+
+### Fixed
+- **Lange Befehle (Video-Render, Builds, Installs) wurden nach 30 s abgewürgt.** Der Bash-Tool-Default-Timeout war **30 s** — ein HyperFrames-Render dauert aber ~76 s (Low-Memory, 1 Worker) → „Command timed out", der Agent dachte „geht nicht" und brach ab. **Default jetzt 120 s, Max 600 s** (Modell kann pro Befehl höher anfordern); Timeout-Fehlermeldung weist auf höheren Timeout hin.
+- **Agent-Memory 4g → 8g.** Mit 4 GB erzwingt der Renderer „low-memory profile" (1 Worker, langsam). 8 GB nutzt mehr Worker → schnellere, zuverlässigere Renders. Greift bei Agent-Recreate/Update.
+
+## [1.65.1] — 2026-06-24
+
+### Fixed
+- **Tool-Bubble-Cluster springt nicht mehr auf/zu.** Der Cluster bleibt waehrend der Agent arbeitet durchgehend kompakt (Bubbles); die laufende Bubble zeigt einen Spinner. Vorher klappte er bei jedem Tool-Aufruf auf und wieder zu (unruhig).
+
+## [1.65.0] — 2026-06-24
+
+### Changed
+- **Chat: Tool-Aufrufe als kompakter Bubble-Cluster.** Aufeinanderfolgende Tool-Aufrufe werden jetzt **eingeklappt** als überlappende Bubbles dargestellt (max. 5 + „+N", iOS-Stil) statt als lange Liste. Klick auf den Cluster klappt die volle Liste auf; Klick auf einen Tool-Eintrag zeigt dessen IN/OUT-Details (wie bisher). Während der Agent arbeitet, ist der Cluster automatisch ausgeklappt (Live-Sicht).
+
+## [1.64.1] — 2026-06-24
+
+### Fixed
+- **pgvector ist jetzt bei jedem Deploy garantiert da.** Ursache des fehlenden pgvector: der Startup macht `create_all` + `alembic stamp head` (markiert Migrationen als angewendet, ohne sie auszuführen) — die `embedding`-Spalten sind aber pgvector-`vector(1024)` via SQL-Migration, also wurden sie auf frischen DBs übersprungen. Der Orchestrator stellt jetzt beim **Start** idempotent `CREATE EXTENSION vector` + die `embedding`-Spalten + HNSW-Indizes sicher (eigene Transaktion, blockiert den Start nicht). Embeddings bleiben **lokal** (BAAI/bge-m3, 1024-dim; kein Cloud-Fallback ohne OPENAI_API_KEY).
+
+## [1.64.0] — 2026-06-24
+
+### Fixed
+- **MCP-Tools schlugen bei custom_llm-Agents mit „Unknown MCP tool" fehl.** Der Runner machte die Tool-Discovery auf seiner `MCPHTTPClient`-Instanz, der `ToolExecutor` rief die Tools aber auf einer **zweiten, leeren** Instanz auf. Jetzt teilen sich beide (in `llm_runner` **und** `llm_chat_handler`) den **discovery-Client** → MCP-Tools (z.B. `mcp_MediaWiki-MCP_search`) sind aufrufbar.
+- **`brain_search` / `skill_search` / Memory warfen API 500.** Auf Deployments, die auf einem Postgres **ohne pgvector** aufgesetzt wurden, fehlten die `embedding`-Spalten („column embedding does not exist"). Neue **idempotente Repair-Migration** legt die pgvector-Extension + `embedding vector(1024)`-Spalten + HNSW-Indizes auf `knowledge_entries`/`agent_memories`/`skills` an (no-op, wo schon vorhanden).
+
+## [1.63.2] — 2026-06-24
+
+### Fixed
+- **Persönliche Agents-Seite (Seitenmenü) zeigt nur eigene Agents — auch für Admins.** Bisher sah ein Admin im Seitenmenü → Agents ALLE Agents (auch die anderer User). Jetzt ist die Liste „own"-scoped (eigene + ungebundene + geteilte). Der globale Blick bleibt die **Admin-Konsole → All Agents** (`scope=all`). Neuer Query-Param `GET /agents/?scope=own|all`.
+
+## [1.63.0] — 2026-06-24
+
+### Added
+- **Second-Brain Inhalt: Markdown-Vorschau + klickbare `[[wikilinks]]`.** Im Brain-Browser gibt es einen Vorschau/Bearbeiten-Umschalter; in der Vorschau wird Markdown gerendert und `[[Titel]]`-Verweise sind klickbar (öffnen den passenden Artikel).
+- **User-Anlage nutzt Custom-Rollen (Gruppen) statt Enum-Rollen.** Im „Add User"-Dialog wählt man die unter **Rollen** angelegten Gruppen (GBD …); `custom_role_id` wird beim Anlegen gesetzt. Admin-Rechte werden weiter separat in der Userliste vergeben.
+- **Agent → Wissen → „Second Brain"-Subtab.** Zeigt die dem Agent zugewiesenen Second Brains und öffnet den Inhalts-Browser. Im Mount-Selektor sind `brain-*`-Mounts jetzt **ausgegraut** (nicht klickbar) — Second Brains werden über den Wissen-Tab / Rollen verwaltet.
+
+## [1.62.1] — 2026-06-24
+
+### Fixed
+- **Agent-Erstellung mit AI-Account scheiterte mit 403 „LLM-Provider … nicht erlaubt".** Wenn ein (der Gruppe freigegebener) AI-Account gewählt wird, ist der Account-Grant die Autorisierung — der Provider-String (z.B. `azure-openai`) wird **nicht mehr** zusätzlich gegen `role.llm_providers` geprüft. Der `llm_providers`-Check gilt nur noch für die manuelle Provider-Eingabe (ohne AI-Account).
+
+## [1.62.0] — 2026-06-24
+
+### Changed
+- **Jeder authentifizierte User darf Agenten anlegen** (vorher Manager/Admin). Wie viele regelt weiterhin das `max_agents`-Limit der Gruppe/Rolle (VIEWER = 0).
+- **Agent-Erstellung zeigt nur verfügbare Modelle/Harnesses.** Im Account-&-Harness-Selektor erscheinen nur **verbundene** OAuth-Harnesses (Claude/Codex) und **aktive AI-Accounts** (gruppengefiltert über `ai_account_ids`). Die **manuelle** „Eigener Provider/Modell"-Eingabe ist nur noch für **Admins** sichtbar — normale User wählen ausschließlich vom Admin bereitgestellte AI-Accounts.
+
+## [1.61.0] — 2026-06-24
+
+### Added
+- **Bearer-Auth für MCP-Server.** Beim Hinzufügen eines MCP-Servers (System → Integrations) kann jetzt ein **Bearer Token** angegeben werden. Er wird Fernet-verschlüsselt gespeichert und sowohl bei der Tool-Discovery als auch bei jedem Agent-Tool-Call als `Authorization: Bearer …` mitgesendet (neue Agent-Env `CUSTOM_MCP_AUTH`; `mcp_client` setzt den Header pro Server). Migration: `mcp_servers.auth_token_encrypted`.
+- **MCP-Server/Tools als Gruppen-Recht (Custom Roles).** Neuer Permission-Key `mcp_server_ids`: eine Gruppe darf nur die freigegebenen MCP-Server nutzen (Multi-Select in der Rollen-UI; Enforcement in `_get_custom_mcp_env` filtert die Server des Agents nach der Gruppe des Owners). Admins unbeschränkt.
+
+## [1.60.0] — 2026-06-24
+
+### Added
+- **Budget in den Agent-Settings (Admin-Governance).** Unter Agent → Settings → Ressource-Limits gibt es jetzt ein **Budget / Monat**: Admins setzen die Obergrenze (Betrag + Verhalten bei Überschreitung: auf Haiku umschalten oder Agent stoppen), normale User sehen es **read-only**. Backend: `PATCH /agents/{id}/budget` ist jetzt **admin-only** (vorher Owner erlaubt).
+
+### Changed
+- **Admin-Menüleiste responsiver.** Die Tab-Leiste (All Agents, Zuweisungen, …, Audit Log) bricht nicht mehr um, sondern scrollt bei wenig Platz **horizontal** (kompaktere Tabs, kein Zeilenumbruch); Seiten-Padding skaliert mit der Breite.
+
+## [1.59.0] — 2026-06-24
+
+### Added
+- **Second-Brain Content-Browser + Vault-Standards.** Klick auf ein Brain (oder das Ordner-Icon) öffnet einen **Datei-Browser**: Ordner-/Datei-Baum links, Markdown-Editor rechts — `.md` ansehen, bearbeiten, neu anlegen und löschen (read-only bei `ro`-Brains). Backend: `GET /brains/{id}/tree`, `GET/PUT/DELETE /brains/{id}/file` (admin-only, pfad-jailed auf den Vault, `.git` gesperrt). Änderungen werden vom lokalen Auto-Commit-Watcher versioniert.
+- **Vault-Standard beim Anlegen wählbar** (`second_brains.standard`): **IT-Support/Runbooks** (Ordner Drucker/Netzwerk/Zugaenge/Software/Hardware + `Symptom→Ursache→Lösung`-Vorlage), **Wikimedia-Stil** (Themen-Ordner + `[[wikilinks]]`) oder **Freiform**. Beim Speichern werden Ordner + `index.md` + `CONVENTIONS.md` (und bei IT-Support eine `_template.md`) automatisch scaffolded; die Agents richten sich beim Pflegen nach `CONVENTIONS.md`.
+
+## [1.58.0] — 2026-06-24
+
+### Changed
+- **Agent-Runtime-Gleichschaltung (claude_code / codex / custom_llm).** Die drei Runtimes injizieren jetzt **dieselben** Kontext-Bausteine aus einer zentralen Stelle:
+  - **Neu `runner_hooks.get_mounts_context()`** — erkennt Host-Mounts und **Second-Brain-Vaults** (`/mnt/brains/*`) zur Laufzeit per Filesystem-Scan und beschreibt sie im Prompt. Damit wissen auch **custom_llm**-Agents (die ihre `AGENT.md` nie lesen) von den Vaults und durchsuchen sie zuerst.
+  - **Neu `runner_hooks.compose_prompt_bundle()`** — eine geteilte, geordnete Bausteinkette (Startup-Prefix, Memory, Skills, **Mounts/Second Brain**, **Marketplace-Skill-Vorschläge**, User-Feedback, Improvement). `agent_runner` und `codex_runner` nutzen sie für beide Modi; künftige Bausteine landen automatisch bei allen.
+  - **custom_llm**: Mounts/Second-Brain im System-Prompt (Task + Chat), Marketplace-Skill-Vorschläge auch im **Chat** (vorher nur Task).
+  - **codex**: Chat/Lightweight bekommt jetzt den vollen Kontext (vorher nackt) inkl. Mounts.
+
+### Added
+- **Inter-Agent-Messages für custom_llm** — `message_consumer` beantwortet Agent-zu-Agent-Nachrichten im `custom_llm`-Modus über den LLM-Provider direkt (vorher nur CLI-Modi). Damit funktioniert Agent-Kommunikation auch für Azure/OpenAI-basierte Agents.
+
+### Notes
+- **Codex-MCP** bleibt bewusst offen (Codex spricht kein MCP wie Claude); Codex-Agents nutzen den Second Brain über native `grep`/shell statt MCP-`brain_search`.
+- Agent-Image geändert → Agents zeigen „Update available" (AGENT_VERSION 1.58.0).
+
+## [1.57.0] — 2026-06-24
+
+### Added
+- **Gruppen-basierte Rechte-Bündel (Custom Roles als Gruppen).** Eine Gruppe (Custom Role) kann jetzt Ressourcen direkt **vergeben** — ein User bekommt eine Gruppe und erbt alles, manuelle Einzelzuweisungen kommen additiv dazu (Union):
+  - **Second Brains / Mounts als Grant statt nur Filter** — `role.permissions.mount_labels` vergibt Zugriff; effektiver Zugriff = Gruppen-Grant ∪ per-User `user_mount_access`. Ein Brain einer Gruppe zuweisen genügt, damit alle Mitglieder es nutzen können.
+  - **AI-Accounts per Gruppe** — neuer Permission-Key `ai_account_ids`: nur freigegebene LLM-Accounts (und damit Modelle) sind für die Gruppe wähl- und nutzbar (`list_ai_accounts` gefiltert + Check bei Agent-Erstellung).
+  - **Keys/Secrets per Gruppe** — neuer Permission-Key `secret_ids`: die Gruppe sieht/nutzt nur freigegebene Keys (`list_secrets` gefiltert + Check bei Secret-Zuweisung).
+  - **Roles-UI** erweitert um Multi-Selects für **AI-Accounts (Konten)** und **Keys/Secrets** (neben den bestehenden für Mounts/Second Brains, LLM-Provider, Menü). Admins bleiben unbeschränkt.
+- Keys sind reine JSON-Felder in `custom_roles.permissions` → **keine DB-Migration** nötig.
+
+### Fixed
+- **Brain-Mount über die UI zuweisbar** — der `PATCH /agents/{id}/mounts`-Endpoint nutzte noch den statischen ENV-Katalog und kannte die DB-Second-Brains nicht (422 „Unknown mount label"). Nutzt jetzt den gemergten Katalog (`get_effective_catalog`).
+
+## [1.56.3] — 2026-06-24
+
+### Added
+- **Builtin skill `secondbrain_lookup` in the Skill Marketplace** — a template workflow skill that tells agents to search the shared department Second Brain (`/mnt/brains/*`) before answering support/how-to/troubleshooting questions (grep on keywords/error codes → read matches → answer with source citation), and to contribute new learnings back as Wikimedia-style `.md` articles. Seeded as an ACTIVE marketplace skill, so it is discovered automatically via the existing agent `skill_search` flow (runner_hooks) — every agent checks the marketplace and can install/use it.
+
+## [1.56.2] — 2026-06-24
+
+### Added
+- **git in the orchestrator image** — so Second Brain vault provisioning can `git init` the local repo directly when a brain is created (no dependency on the host watcher for the initial repo).
+
+### Fixed
+- **Auto-commit watcher self-heals vault repos** — `scripts/secondbrain-autocommit.sh` now `git init`s any vault under `/srv/secondbrain` that has no `.git` yet before committing, so file history works even for vaults created before git was available. Local only, no remote.
+
+## [1.56.1] — 2026-06-24
+
+### Fixed
+- **Second Brain vault permissions** — the orchestrator runs as root but agent containers run as uid 1000; a root-created vault dir (0755) was not writable by agents. New vaults are now created `0777` (and the seeded `index.md` `0666`) so read-write brains are actually writable by assigned agents. `.git` stays root-owned (the host auto-commit timer runs as root).
+
+## [1.56.0] — 2026-06-24
+
+### Added
+- **Second Brains — abteilungsweite, geteilte Wissens-Vaults.** Ein Admin legt im neuen Admin-Tab „Second Brains" pro Abteilung ein Brain an (Name + Slug); der Orchestrator provisioniert dazu einen geteilten Markdown-Ordner unter `/srv/secondbrain/<slug>/` (mkdir + **lokales** `git init` ohne Remote + `index.md`-Gerüst). Das Brain ist ein **DB-verwalteter Mount-Eintrag**: es erscheint sofort (ohne `.env`-Edit/Neustart) im Mount-Permissions-Modal (ro/rw pro Person), in den Custom-Roles (`mount_labels`, Gruppen) und im Agent-Mount-Selector. Zugewiesene Agents mounten den Vault als `/mnt/brains/<slug>` und lesen/schreiben die `.md` mit ihren bestehenden File-Tools.
+  - **Auto-Retrieval:** Bei zugewiesenem Brain weist die Agent-CLAUDE.md den Agent an, bei Support-/How-to-Fragen (z.B. Fehlercode `x17137`) **zuerst** den Vault per `grep`/`read_file` zu durchsuchen und die Antwort aus den gefundenen `.md` zu belegen.
+  - **Datei-Historie:** lokales Git pro Vault + host-seitiger systemd-Timer (`deploy/secondbrain-autocommit.*`) für Auto-Commits → Diff/History/Rollback, kombiniert mit den vorhandenen `FILE_WRITTEN`-Audit-Events (wer/wann). Kein Remote, nichts verlässt den Server (DSGVO).
+  - **Audit:** neue Event-Typen `BRAIN_CREATED` / `BRAIN_UPDATED` / `BRAIN_DELETED`.
+  - Backend: `second_brains`-Tabelle + Migration, `brains`-API (CRUD), zentraler Katalog-Merge `get_effective_catalog` (env + DB) in Mount-Auflösung und Settings.
+  - Wiederverwendet: vorhandenes Mount-System, `user_mount_access`, `custom_roles`, Agent-File-Tools, Audit-Framework — kein Scope-Umbau, kein semantischer Index (grep-basiert; pgvector als spätere Ausbaustufe vorgesehen).
+
 ## [1.55.36] — 2026-06-14
 
 ### Fixed

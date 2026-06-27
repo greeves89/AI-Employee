@@ -293,6 +293,7 @@ async def poll_reply(
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
     lite: bool = False,
+    scope: str = "own",
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
@@ -300,8 +301,11 @@ async def list_agents(
     from app.models.user import UserRole
 
     agents = await manager.list_agents()
-    # Non-admins only see their own agents (+ unowned + shared via AgentAccess)
-    if user.role != UserRole.ADMIN:
+    # Personal view (default): everyone — INCLUDING admins — sees only their own
+    # agents (+ unowned + shared). The global "all agents" view is the Admin-Konsole,
+    # which passes scope=all (admins only).
+    is_admin = getattr(user, "role", None) == UserRole.ADMIN
+    if not (is_admin and scope == "all"):
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
@@ -364,7 +368,9 @@ async def list_agents(
 @router.post("/", response_model=AgentResponse, status_code=201)
 async def create_agent(
     data: AgentCreate,
-    user=Depends(require_manager),
+    # Any authenticated user may create agents; the per-role max_agents limit
+    # (enforced below) governs how many — VIEWER roles have a limit of 0.
+    user=Depends(require_auth),
     manager: AgentManager = Depends(_get_agent_manager),
     db: AsyncSession = Depends(get_db),
 ):
@@ -402,6 +408,7 @@ async def create_agent(
             from app.core.permissions import (
                 get_effective_permissions,
                 can_use_llm_provider,
+                can_use_ai_account,
             )
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
@@ -418,13 +425,23 @@ async def create_agent(
                         status_code=403,
                         detail=f"Agent-Limit erreicht ({max_agents}). Bitte einen bestehenden Agent löschen.",
                     )
-            # 2) LLM provider
-            llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
-            if not can_use_llm_provider(perms, llm_type):
+            # 2) AI-Account (group/role may restrict which accounts are usable)
+            if not can_use_ai_account(perms, data.ai_account_id):
                 raise HTTPException(
                     status_code=403,
-                    detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                    detail="Dieser AI-Account ist für deine Gruppe nicht freigegeben.",
                 )
+            # 3) LLM provider whitelist — only for the manual/custom path. When a
+            #    (granted) AI-Account is chosen, the account grant is the
+            #    authorization; its provider string (e.g. azure-openai) must NOT be
+            #    re-checked against the role's llm_providers list.
+            if data.ai_account_id is None:
+                llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
+                if not can_use_llm_provider(perms, llm_type):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                    )
 
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
@@ -659,8 +676,14 @@ async def update_agent_budget(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Set or clear the monthly budget cap + over-budget action (admin or owner)."""
-    await _check_owner(agent_id, user, db)
+    """Set or clear the monthly budget cap + over-budget action.
+
+    Budget is an admin governance control: only admins may set it; owners see it
+    read-only in the agent settings.
+    """
+    from app.models.user import UserRole
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Nur Admins können das Budget festlegen.")
     try:
         agent = await manager._get_agent(agent_id)
         agent.budget_usd = body.budget_usd
@@ -1405,7 +1428,11 @@ async def get_agent_integrations(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        return {"agent_id": agent_id, "integrations": config.get("integrations", [])}
+        return {
+            "agent_id": agent_id,
+            "integrations": config.get("integrations", []),
+            "msgraph_access": (config or {}).get("msgraph_access", "read"),
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -1426,16 +1453,27 @@ async def update_agent_integrations(
         old_integrations = set(config.get("integrations", []))
         new_integrations = body.get("integrations", [])
         config["integrations"] = new_integrations
+
+        # Optional: Microsoft Graph read/write mode for this agent.
+        old_msgraph_access = config.get("msgraph_access", "read")
+        if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
+            config["msgraph_access"] = body["msgraph_access"]
+        msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
+
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
 
-        # Auto-restart running agents so new tokens are injected
-        if set(new_integrations) != old_integrations and agent.state == AgentState.RUNNING:
+        # Auto-restart running agents so new tokens / access mode are applied
+        if (set(new_integrations) != old_integrations or msgraph_access_changed) and agent.state == AgentState.RUNNING:
             await manager.restart_agent(agent_id)
 
-        return {"agent_id": agent_id, "integrations": config["integrations"]}
+        return {
+            "agent_id": agent_id,
+            "integrations": config["integrations"],
+            "msgraph_access": config.get("msgraph_access", "read"),
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -1526,44 +1564,44 @@ async def update_agent_mounts(
     user_mount_access. Admins can assign any catalog mount.
     """
     await _check_owner(agent_id, user, db)
-    from app.core.mounts import parse_mount_catalog
+    from app.core.mounts import get_effective_catalog
     from app.models.user import UserRole
     from app.models.user_mount_access import UserMountAccess
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    # Effective catalog = static env catalog + DB-managed Second Brains, so brains
+    # created in the UI are assignable here too.
+    catalog = await get_effective_catalog(db)
     new_mounts: list[str] = body.get("mounts", [])
     unknown = [m for m in new_mounts if m not in catalog]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
 
-    # Non-admin: enforce per-user grants
+    # Non-admin: a mount is authorized if granted per-user OR via the user's
+    # group/role (custom_role.permissions.mount_labels) — a UNION of both.
     effective_modes: dict[str, str] = {}
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         from app.core.permissions import get_effective_permissions
 
         perms = await get_effective_permissions(user, db)
-        role_mount_labels = perms.get("mount_labels")
-        if role_mount_labels is not None:
-            role_denied = [m for m in new_mounts if m not in role_mount_labels]
-            if role_denied:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Mount(s) not allowed by role: {role_denied}",
-                )
+        role_mount_labels = set(perms.get("mount_labels") or [])
 
         grants = (await db.execute(
             select(UserMountAccess).where(UserMountAccess.user_id == user.id)
         )).scalars().all()
         grant_by_label = {g.mount_label: g.mode for g in grants}
-        granted_labels = set(grant_by_label)
+        granted_labels = set(grant_by_label) | role_mount_labels
         denied = [m for m in new_mounts if m not in granted_labels]
         if denied:
             raise HTTPException(
                 status_code=403,
-                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access in /admin → User → Mount Permissions.",
+                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access via your group/role or in /admin → User → Mount Permissions.",
             )
+        # Per-user grant caps the mode; a pure group grant uses the catalog default.
         effective_modes = {
-            label: ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+            label: (
+                ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+                if label in grant_by_label else catalog[label].mode
+            )
             for label in new_mounts
         }
     else:
@@ -1597,7 +1635,10 @@ async def update_agent_mounts(
 class ProactiveUpdate(BaseModel):
     enabled: bool = True
     interval_seconds: int = 3600
-    prompt: str | None = None
+    prompt: str | None = None  # legacy/unused: base prompt always lives in code
+    # Per-agent additions appended to the code base prompt at fire time.
+    # None = leave unchanged (toggle/interval-only saves); "" = clear.
+    custom_instructions: str | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -1631,10 +1672,12 @@ async def get_proactive_config(
                     "fail_count": schedule.fail_count,
                 }
 
+        from app.core.agent_manager import PROACTIVE_PROMPT
         return {
             "agent_id": agent_id,
             "proactive": proactive,
             "schedule": schedule_stats,
+            "base_prompt": PROACTIVE_PROMPT,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -1662,14 +1705,21 @@ async def update_proactive_config(
         schedule_id = proactive.get("schedule_id")
         now = datetime.now(tz.utc)
 
+        # Preserve existing custom instructions unless the caller explicitly sends
+        # a new value — toggle/interval-only updates omit it and must not wipe it.
+        existing_custom = (proactive or {}).get("custom_instructions", "")
+        new_custom = (
+            body.custom_instructions
+            if body.custom_instructions is not None
+            else existing_custom
+        )
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
             if schedule:
                 schedule.enabled = body.enabled
                 schedule.interval_seconds = body.interval_seconds
-                if body.prompt:
-                    schedule.prompt = body.prompt
                 if body.enabled:
                     schedule.next_run_at = now + timedelta(seconds=body.interval_seconds)
             else:
@@ -1680,7 +1730,9 @@ async def update_proactive_config(
             schedule = Schedule(
                 id=schedule_id,
                 name=f"[Proactive] {agent.name}",
-                prompt=body.prompt or PROACTIVE_PROMPT,
+                # Base prompt always comes from code at fire time (scheduler);
+                # this stored copy is only a placeholder for the schedule row.
+                prompt=PROACTIVE_PROMPT,
                 interval_seconds=body.interval_seconds,
                 priority=0,
                 agent_id=agent_id,
@@ -1693,6 +1745,7 @@ async def update_proactive_config(
             "enabled": body.enabled,
             "schedule_id": schedule_id,
             "interval_seconds": body.interval_seconds,
+            "custom_instructions": new_custom,
         }
         config["proactive"] = proactive
         agent.config = config

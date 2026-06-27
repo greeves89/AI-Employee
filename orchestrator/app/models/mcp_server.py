@@ -14,3 +14,6 @@ class McpServer(Base, TimestampMixin):
     url: Mapped[str] = mapped_column(Text, nullable=False)
     tools: Mapped[dict] = mapped_column(JSON, default=list)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Optional Bearer token (Fernet-encrypted) sent as `Authorization: Bearer <token>`
+    # on discovery and on every agent tool call to this server.
+    auth_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

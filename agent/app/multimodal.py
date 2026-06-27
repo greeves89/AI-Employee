@@ -22,10 +22,14 @@ Each provider converts these blocks to its own API's image representation.
 """
 
 import base64
+import io
 import json
+import logging
 import os
 
 from app.providers.base import ChatMessage
+
+logger = logging.getLogger(__name__)
 
 # Unlikely to occur in normal tool output — marks an image-carrying result.
 IMAGE_SENTINEL = "\x00MM_IMG\x00"
@@ -46,6 +50,101 @@ SUPPORTED_MEDIA_TYPES = frozenset(_EXT_MEDIA_TYPES.values())
 def guess_media_type(name: str, default: str = "image/jpeg") -> str:
     """Best-effort media type from a filename extension."""
     return _EXT_MEDIA_TYPES.get(os.path.splitext(name)[1].lower(), default)
+
+
+def sniff_media_type(data: bytes) -> str | None:
+    """Detect the REAL image format from magic bytes (ignores filename/header lies).
+
+    Returns one of the vision-API-supported media types, or None if the bytes are
+    not one of those four formats. This is the source of truth — a file named
+    ``logo.png`` that actually holds SVG/HTML returns None here, never "image/png".
+    """
+    if len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if len(data) >= 3 and data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _looks_like_svg(data: bytes) -> bool:
+    head = data[:512].lstrip().lower()
+    return head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in data[:4096].lower())
+
+
+def normalize_image(data: bytes) -> tuple[bytes, str] | None:
+    """Guarantee vision-API-compatible image bytes.
+
+    Returns ``(bytes, media_type)`` where the media type is always one of the
+    supported four AND the bytes really are that format. Conversions:
+      - already png/jpeg/gif/webp  → returned unchanged
+      - SVG (logos!)               → rasterized to PNG via cairosvg (libcairo2)
+      - other raster (bmp/tiff/ico/avif/heic/…) → PNG via Pillow
+
+    Returns ``None`` if the data is not a usable image (HTML error page, corrupt,
+    or unconvertible) — callers surface a tool error and the agent continues.
+    """
+    if not data:
+        return None
+    real = sniff_media_type(data)
+    if real:
+        return data, real
+
+    # SVG → PNG. Logos are almost always SVG, so converting (not rejecting) lets
+    # the agent actually see them.
+    if _looks_like_svg(data):
+        try:
+            import cairosvg
+            png = cairosvg.svg2png(bytestring=data, output_width=1024)
+            if png and sniff_media_type(png) == "image/png":
+                return png, "image/png"
+        except Exception as e:
+            logger.warning(f"[image] SVG→PNG conversion failed: {e}")
+        return None
+
+    # Any other raster format Pillow can decode → PNG.
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        img = img.convert("RGBA" if img.mode in ("RGBA", "LA", "P") else "RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png = buf.getvalue()
+        if sniff_media_type(png) == "image/png":
+            return png, "image/png"
+    except Exception as e:
+        logger.warning(f"[image] Pillow conversion failed: {e}")
+    return None
+
+
+def safe_image_blocks(images: list[dict] | None) -> list[dict]:
+    """Provider-side safety net: keep only image blocks whose base64 bytes REALLY
+    are a supported format, correcting the declared media_type to the sniffed one.
+
+    Mismatched/unsupported/corrupt blocks are dropped so a single bad image can
+    never 400 an entire completion — no matter which path produced it. The agent
+    keeps going instead of the task dying mid-run.
+    """
+    out: list[dict] = []
+    for im in images or []:
+        try:
+            raw = base64.b64decode(im.get("data", ""), validate=False)
+        except Exception:
+            logger.warning("[image] dropping block with undecodable base64")
+            continue
+        real = sniff_media_type(raw)
+        if real:
+            out.append({**im, "media_type": real})
+        else:
+            logger.warning(
+                f"[image] dropping unsupported image block "
+                f"(declared {im.get('media_type', '?')}, bytes are not png/jpeg/gif/webp)"
+            )
+    return out
 
 
 def encode_image_result(data: bytes, media_type: str, note: str = "") -> str:

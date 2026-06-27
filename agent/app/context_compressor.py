@@ -52,6 +52,36 @@ _SUCCESS_RE = re.compile(
 # collapse them into one entry with a "(×N)" annotation.
 COLLAPSE_MIN_REPEATS = 3
 
+# ── Rolling-summary constants ─────────────────────────────────────────────────
+# Absolute per-call token budget that triggers compaction, regardless of how
+# large the model's context window is. gpt-5.x has a 1,000,000-token window, so
+# the old "75% of window" gate (750k) was effectively never reached — every turn
+# re-sent the full, growing history and cumulative input cost exploded. Capping
+# at an absolute budget keeps each call cheap and makes the rolling summary
+# kick in regularly on long agentic tasks.
+ABSOLUTE_COMPACTION_BUDGET = 150_000
+
+# Sliding window: how many of the most recent messages are kept VERBATIM.
+# Tool-using agents need the exact recent tool I/O (file paths, IDs, values) to
+# act on it — these must never be summarized. ~24 msgs ≈ the last dozen tool
+# rounds. Everything older is folded into the rolling summary.
+RECENT_WINDOW_MESSAGES = 24
+
+# Marker that identifies the single rolling-summary message in the history, so
+# the next compaction EXTENDS it incrementally instead of re-summarizing from
+# scratch.
+ROLLING_SUMMARY_PREFIX = "[Conversation summary — rolling context]"
+
+
+def effective_threshold_tokens(context_window: int) -> int:
+    """Token count at which compaction should fire.
+
+    The smaller of 75% of the model window or the absolute budget. On huge
+    windows the absolute budget wins (keeps calls cheap); on small windows the
+    75% mark wins (leaves headroom before a hard overflow).
+    """
+    return min(int(context_window * 0.75), ABSOLUTE_COMPACTION_BUDGET)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
@@ -117,33 +147,114 @@ def compress_messages(
 
 # ── COMPACTION PROMPT (used by the async Summarize layer in callers) ──────────
 
-COMPACTION_PROMPT = (
-    "You are a conversation compactor. Summarize the ENTIRE conversation so far "
-    "into a concise but complete status report. Include:\n"
-    "1. What the user originally asked for\n"
-    "2. What has been accomplished so far (files changed, commands run, decisions made)\n"
-    "3. What is still pending or in progress\n"
-    "4. Any errors encountered and how they were resolved\n"
-    "5. Key context the assistant needs to continue seamlessly\n\n"
-    "Write the summary as a briefing for the assistant to continue the work. "
-    "Be specific — include file paths, function names, and concrete details. "
-    "Do NOT lose any actionable information."
+INCREMENTAL_COMPACTION_PROMPT = (
+    "You are maintaining a ROLLING summary of a long agent work session.\n\n"
+    "Below you get (a) the summary so far — may be empty — and (b) a transcript "
+    "of older messages that are about to scroll out of the live context window. "
+    "The most recent messages are NOT shown here; they stay verbatim in context.\n\n"
+    "Produce an UPDATED summary that MERGES both: keep everything from the prior "
+    "summary that is still relevant and fold in the older messages. The result "
+    "must let the assistant continue seamlessly. Be specific and preserve every "
+    "actionable detail:\n"
+    "- The user's original goal(s) and any changed requirements\n"
+    "- Concrete artifacts: file paths, function names, commands run, IDs, URLs, exact values\n"
+    "- Decisions made and the reasoning behind them\n"
+    "- Errors encountered and how they were resolved\n"
+    "- What is still pending or in progress\n\n"
+    "Write prose (not JSON). Do NOT lose any actionable information. "
+    "Do NOT invent facts that are not in the prior summary or transcript."
 )
+
+
+def _serialize_for_summary(messages: list["ChatMessage"]) -> str:
+    """Flatten a message list into a plain-text transcript for summarization.
+
+    Sending the block as ONE user message (instead of replaying real tool/
+    assistant turns) keeps the summarize call provider-agnostic and avoids any
+    tool-call protocol pitfalls. Images are reduced to a placeholder.
+    """
+    lines: list[str] = []
+    for m in messages:
+        if isinstance(m.content, str):
+            text = m.content
+        elif isinstance(m.content, list):
+            parts = []
+            for c in m.content:
+                if isinstance(c, dict) and c.get("type") == "image":
+                    parts.append("[image]")
+                else:
+                    parts.append(str(c))
+            text = " ".join(parts)
+        else:
+            text = ""
+        if getattr(m, "tool_calls", None):
+            tc = json.dumps(m.tool_calls)
+            text += f" [tool_calls: {tc[:2000]}]"
+        lines.append(f"{m.role.upper()}: {text}")
+    return "\n\n".join(lines)
 
 
 async def summarize_messages(
     messages: list["ChatMessage"],
     provider: "BaseLLMProvider",
+    keep_recent: int = RECENT_WINDOW_MESSAGES,
 ) -> list["ChatMessage"] | None:
-    """Layer 4 — Summarize: ask the LLM to produce a compact summary.
+    """Layer 4 — Sliding-window + incremental rolling summary.
 
-    Returns the new (shorter) message list, or None on failure.
-    Preserves the system message and the last user message.
+    Instead of discarding the whole conversation, this:
+      1. keeps the system message,
+      2. keeps the last ``keep_recent`` messages VERBATIM (recent tool I/O the
+         agent still needs to act on — exact paths, IDs, values),
+      3. folds everything older into a single rolling-summary message, EXTENDING
+         the previous rolling summary if one already exists (incremental — the
+         older messages are only ever summarized once).
+
+    Result layout: ``[system?] + [rolling-summary assistant] + [recent verbatim]``.
+
+    Returns the new (shorter) message list, or ``None`` if there is nothing old
+    enough to summarize / on failure (caller keeps the current history).
     """
     from app.providers.base import ChatMessage  # local import to avoid circularity
 
-    compact_input = list(messages) + [
-        ChatMessage(role="user", content=COMPACTION_PROMPT)
+    # 1. Peel the system message.
+    system_msg = messages[0] if messages and messages[0].role == "system" else None
+    body = list(messages[1:]) if system_msg else list(messages)
+
+    # 2. Peel an existing rolling summary so we EXTEND it instead of redoing it.
+    prior_summary = ""
+    if (
+        body
+        and body[0].role == "assistant"
+        and isinstance(body[0].content, str)
+        and body[0].content.startswith(ROLLING_SUMMARY_PREFIX)
+    ):
+        prior_summary = body[0].content[len(ROLLING_SUMMARY_PREFIX):].strip()
+        body = body[1:]
+
+    # 3. Nothing old enough? The recent window already covers everything.
+    if len(body) <= keep_recent:
+        return None
+
+    to_summarize = body[:-keep_recent]
+    recent = body[-keep_recent:]
+
+    # 4. Never orphan a tool result: the recent window must not START with a
+    #    tool message whose originating tool_call got summarized away. Push such
+    #    leading tool results back into the summarized block.
+    while recent and recent[0].role == "tool":
+        to_summarize.append(recent.pop(0))
+    if not recent or not to_summarize:
+        return None  # degenerate (e.g. one giant tool-call run) — leave as-is
+
+    # 5. Summarize the old block, merging with the prior rolling summary.
+    transcript = _serialize_for_summary(to_summarize)
+    user_block = (
+        f"=== SUMMARY SO FAR ===\n{prior_summary or '(none yet)'}\n\n"
+        f"=== OLDER MESSAGES TO FOLD IN ===\n{transcript}"
+    )
+    compact_input = [
+        ChatMessage(role="system", content=INCREMENTAL_COMPACTION_PROMPT),
+        ChatMessage(role="user", content=user_block),
     ]
 
     summary = ""
@@ -162,23 +273,20 @@ async def summarize_messages(
         logger.warning("[Summarize] Empty summary returned")
         return None
 
-    # Rebuild: [system?] + [summary-as-assistant] + [last user msg]
-    system_msg = messages[0] if messages and messages[0].role == "system" else None
-    last_user = next((m for m in reversed(messages) if m.role == "user"), None)
-
+    # 6. Rebuild: [system?] + [rolling summary] + [recent verbatim].
     new_msgs: list[ChatMessage] = []
     if system_msg:
         new_msgs.append(system_msg)
     new_msgs.append(ChatMessage(
         role="assistant",
-        content=f"[Conversation summary — context compacted]\n\n{summary}",
+        content=f"{ROLLING_SUMMARY_PREFIX}\n\n{summary.strip()}",
     ))
-    if last_user:
-        new_msgs.append(last_user)
+    new_msgs.extend(recent)
 
     logger.info(
-        f"[Summarize] {len(messages)} msgs → {len(new_msgs)} msgs "
-        f"({len(summary)} chars summary)"
+        f"[Summarize] rolling: {len(messages)} msgs → {len(new_msgs)} msgs "
+        f"(summarized {len(to_summarize)}, kept {len(recent)} verbatim, "
+        f"{len(summary)} chars summary)"
     )
     return new_msgs
 

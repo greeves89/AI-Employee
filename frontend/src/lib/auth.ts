@@ -121,9 +121,11 @@ export interface SSOProvider {
   icon: string;
 }
 
-export async function getSSOProviders(): Promise<SSOProvider[]> {
-  const data = await authFetch<{ providers: SSOProvider[] }>(`${authBase()}/sso/providers`);
-  return data.providers;
+export async function getSSOProviders(): Promise<{ providers: SSOProvider[]; sso_only: boolean }> {
+  const data = await authFetch<{ providers: SSOProvider[]; sso_only?: boolean }>(
+    `${authBase()}/sso/providers`,
+  );
+  return { providers: data.providers, sso_only: data.sso_only ?? false };
 }
 
 /**

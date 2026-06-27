@@ -92,9 +92,44 @@ class MessageConsumer:
             logger.debug(f"Could not load conversation history: {e}")
             return "(Verlauf nicht verfügbar)"
 
+    async def _execute_custom_llm(self, prompt: str, model: str | None = None) -> str:
+        """Generate an inter-agent reply via the configured LLM provider (custom_llm
+        mode has no CLI). One-shot completion, no tools — just a text answer."""
+        from app.providers import create_provider
+        from app.providers.base import ChatMessage
+        try:
+            provider = create_provider(
+                provider_type=settings.llm_provider_type,
+                api_endpoint=settings.llm_api_endpoint,
+                api_key=settings.llm_api_key,
+                model_name=(model if (model and model != "default") else settings.llm_model_name),
+                max_tokens=settings.llm_max_tokens,
+                temperature=settings.llm_temperature,
+                api_version=settings.llm_api_version,
+            )
+            system = settings.llm_system_prompt or (
+                "You are an AI agent collaborating with other agents. Reply concisely to the message."
+            )
+            messages = [
+                ChatMessage(role="system", content=system),
+                ChatMessage(role="user", content=prompt),
+            ]
+            text = ""
+            async for event in provider.stream_completion(messages, []):
+                if getattr(event, "type", None) == "text_delta":
+                    text += event.text
+            return text[:2000]
+        except Exception as e:
+            logger.warning(f"custom_llm inter-agent reply failed: {e}")
+            return ""
+
     async def _execute_cli(self, prompt: str, model: str | None = None) -> str:
-        """Run Claude CLI with the prompt and return the text response."""
+        """Run the agent's runtime with the prompt and return the text response."""
         import os
+
+        # custom_llm has no CLI — answer via the LLM provider directly.
+        if settings.agent_mode == "custom_llm":
+            return await self._execute_custom_llm(prompt, model)
 
         if settings.agent_mode == "codex_cli":
             cmd = [

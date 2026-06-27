@@ -880,7 +880,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "request_approval",
-            "description": "Request user approval for an action or decision. The user sees it in Approvals and gets a channel-aware notification. Returns an approval_id that you can check with check_approval. Use before irreversible or important actions.",
+            "description": "Request user approval and WAIT for the decision. This call BLOCKS until the user approves or denies (the agent pauses here) and returns the decision directly, including the chosen option — you do NOT need to poll with check_approval. If APPROVED, proceed; if DENIED or no decision, STOP and do not perform the action. Use before irreversible or important actions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -930,8 +930,58 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "secondbrain_search",
+            "description": "Search the SHARED Second Brain VAULT(s) — the department's Markdown knowledge base mounted under /mnt/brains/<slug>/, shared by MANY users (what users browse in the UI under Wissen → Second Brain). Use this for support/how-to/troubleshooting (error codes, devices, procedures) BEFORE answering. NOT the personal Knowledge Base (that is brain_search).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Keywords (error codes, device names, topics)."},
+                    "limit": {"type": "number", "description": "Max files (default 10, max 50)."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_read",
+            "description": "Read the full content of one file in the shared Second Brain vault, by path (as returned by secondbrain_search/secondbrain_list, e.g. 'it_operations/Drucker/x17137.md').",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "Vault-relative path under /mnt/brains."}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_write",
+            "description": "Create or overwrite a Markdown file in the SHARED Second Brain vault (department knowledge the whole team sees). USE THIS to 'write into the Second Brain / vault' — NOT brain_contribute. Path is vault-relative, e.g. 'it_operations/Drucker/HP-Fax.md'. Only works if the brain is mounted read-write. Use sensible folders/filenames, [[wikilinks]] between topics, and plain-text error codes/model names so search finds them.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Vault-relative path incl. brain slug, e.g. 'it_operations/Drucker/HP-Fax.md'."},
+                    "content": {"type": "string", "description": "Full Markdown content of the article."},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_list",
+            "description": "List the mounted Second Brain vault(s) and their files (with read-only/read-write status), so you can pick what to read or where to write.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "brain_search",
-            "description": "Semantic search across the user's Second Brain — the unified knowledge graph shared by ALL agents of this user. Returns entries ranked by similarity. Call this BEFORE starting any task to load context and BEFORE creating new entries to avoid duplicates.",
+            "description": "Semantic search across THIS USER'S personal KNOWLEDGE BASE (account-bound; the 'Knowledge' tab; shared across this user's own agents). This is NOT the shared Second Brain vault (department .md files under /mnt/brains — use secondbrain_search for that). Returns entries ranked by similarity. Call before tasks to load personal context and before creating entries to avoid duplicates.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -947,7 +997,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "brain_contribute",
-            "description": "Add or update a node in the user's Second Brain (upsert by title). Use to share research, decisions, insights, processes with all other agents. Auto-links to semantically related entries.",
+            "description": "Add/update an entry in THIS USER'S personal KNOWLEDGE BASE (account-bound; the 'Knowledge' tab; upsert by title). Use for the user's own research/decisions/insights. This is NOT the shared Second Brain vault — to write shared department knowledge (.md the whole team sees), use secondbrain_write instead. Auto-links related entries.",
             "parameters": {
                 "type": "object",
                 "properties": {

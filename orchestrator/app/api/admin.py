@@ -1,5 +1,7 @@
 """Admin API - aggregated stats, system overview, and agent assignments (admin-only)."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -15,6 +17,8 @@ from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -279,6 +283,137 @@ async def assign_agent_to_user(
     }
 
 
+# --- Distribute a trained agent as per-user clones ---
+
+
+class DistributeAgentRequest(BaseModel):
+    source_agent_id: str           # the "trained"/finished agent to clone
+    user_ids: list[str] = []       # explicit target users
+    role_id: int | None = None     # custom role → every active member gets a copy
+    name_prefix: str | None = None
+
+
+def _sanitize_agent_name(raw: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_ " else "" for c in raw).strip() or "Agent"
+
+
+@router.post("/distribute-agent")
+async def distribute_agent(
+    body: DistributeAgentRequest,
+    user=Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Clone a fully-trained source agent into an independent per-user copy for
+    each target user (explicit list + all active members of a custom role).
+
+    Each copy is its own agent — own container, own workspace volume, owned by
+    the target user — never a shared instance. The copy inherits the source's
+    full config (model, mode, llm_config/ai_account, role, permissions,
+    integrations, MCP servers, budget, autonomy, browser) AND a clone of its
+    workspace (knowledge.md, installed skills, CLAUDE.md, docs — the trained
+    brain). Snapshot semantics + idempotent: a user who already holds a copy of
+    this source is skipped.
+    """
+    from app.core.agent_manager import AgentManager
+
+    source = await db.get(Agent, body.source_agent_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source agent not found")
+
+    # Resolve target user ids: explicit + active members of the role.
+    target_ids: set[str] = {u for u in body.user_ids if u}
+    if body.role_id is not None:
+        members = (await db.execute(
+            select(User.id).where(User.custom_role_id == body.role_id, User.is_active == True)  # noqa: E712
+        )).scalars().all()
+        target_ids |= set(members)
+    if not target_ids:
+        raise HTTPException(status_code=400, detail="No target users (pass user_ids and/or a role_id with members)")
+
+    # Decrypt the source's per-agent llm_config api key so the clone is faithful
+    # (re-encrypted per copy by create_agent). Sources using the global custom_llm
+    # config (llm_config is null) just clone as null and reuse the global config.
+    src_llm = dict(source.llm_config) if source.llm_config else None
+    if src_llm and src_llm.get("api_key_encrypted") and not src_llm.get("api_key"):
+        from app.core.encryption import decrypt_token
+        try:
+            src_llm["api_key"] = decrypt_token(src_llm["api_key_encrypted"])
+        except Exception:
+            pass
+        src_llm.pop("api_key_encrypted", None)
+
+    cfg = source.config or {}
+    manager = AgentManager(db, docker, redis)
+    created: list[dict] = []
+    skipped: list[dict] = []
+
+    for uid in target_ids:
+        target_user = await db.get(User, uid)
+        if not target_user or not target_user.is_active:
+            skipped.append({"user_id": uid, "reason": "user not found or inactive"})
+            continue
+        # Idempotent: one copy of a given source per user.
+        existing = await db.scalar(
+            select(Agent.id).where(Agent.source_agent_id == source.id, Agent.user_id == uid)
+        )
+        if existing:
+            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": "already has a copy", "agent_id": existing})
+            continue
+
+        name = _sanitize_agent_name(f"{(body.name_prefix or source.name)} - {target_user.name}")
+        try:
+            clone = await manager.create_agent(
+                name=name,
+                model=source.model,
+                role=cfg.get("role", ""),
+                integrations=cfg.get("integrations", []),
+                permissions=cfg.get("permissions", []),
+                user_id=uid,
+                budget_usd=source.budget_usd,
+                budget_exceeded_action=source.budget_exceeded_action,
+                mode=source.mode,
+                llm_config=src_llm,
+                ai_account_id=source.ai_account_id,
+                browser_mode=source.browser_mode,
+                autonomy_level=source.autonomy_level,
+            )
+            clone.source_agent_id = source.id
+            clone.template_id = source.template_id
+            # Carry MCP-server grants (skills travel with the workspace copy).
+            new_cfg = clone.config or {}
+            new_cfg["mcp_servers"] = cfg.get("mcp_servers", [])
+            clone.config = new_cfg
+            await db.commit()
+
+            # Clone the trained workspace into the fresh copy, then restart so the
+            # container picks up the copied brain + rebuilt MCP env cleanly.
+            if source.volume_name and clone.volume_name:
+                try:
+                    docker.copy_workspace_volume(source.volume_name, clone.volume_name)
+                    await manager.restart_agent(clone.id)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Workspace clone/restart for {clone.id} failed: {e}")
+
+            db.add(AgentAccess(agent_id=clone.id, user_id=uid))
+            await db.commit()
+            created.append({"user_id": uid, "user_name": target_user.name, "agent_id": clone.id, "agent_name": clone.name})
+        except Exception as e:  # noqa: BLE001
+            logger.exception(f"Failed to clone source {source.id} for user {uid}")
+            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": f"error: {e}"})
+
+    return {
+        "status": "distributed",
+        "source_agent_id": source.id,
+        "source_agent_name": source.name,
+        "created": created,
+        "skipped": skipped,
+        "created_count": len(created),
+        "skipped_count": len(skipped),
+    }
+
+
 @router.get("/assignments")
 async def list_assignments(
     user=Depends(_require_admin),
@@ -305,6 +440,7 @@ async def list_assignments(
             "user_email": owner.email if owner else "",
             "template_id": template.id if template else None,
             "template_name": template.display_name if template else None,
+            "source_agent_id": getattr(agent, "source_agent_id", None),
             "state": agent.state.value if hasattr(agent.state, "value") else str(agent.state),
             "model": agent.model,
             "role": config.get("role", ""),

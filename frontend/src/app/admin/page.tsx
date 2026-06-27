@@ -28,16 +28,19 @@ import {
   ChevronDown,
   DollarSign,
   AlertTriangle,
+  Check,
   CheckCircle2,
   Edit3,
   Settings as SettingsIcon,
   KeyRound,
   HeartPulse,
   ScrollText,
+  Brain,
 } from "lucide-react";
 
 import { SettingsView } from "@/app/settings/view";
 import { AIAccountsView } from "@/app/ai-accounts/view";
+import { SecondBrainsView } from "@/app/second-brains/view";
 import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
@@ -54,11 +57,11 @@ import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
-  | "settings" | "ai-accounts" | "secrets" | "health" | "audit";
+  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "secrets", "health", "audit"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit"];
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -81,7 +84,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showAddUser, setShowAddUser] = useState(false);
-  const [addUserForm, setAddUserForm] = useState({ name: "", email: "", password: "", role: "member" });
+  const [addUserForm, setAddUserForm] = useState<{ name: string; email: string; password: string; role: string; custom_role_id: number | null }>({ name: "", email: "", password: "", role: "member", custom_role_id: null });
+  const [customRoles, setCustomRoles] = useState<import("@/lib/api").CustomRole[]>([]);
+  useEffect(() => { api.listRoles().then((r) => setCustomRoles(r.roles)).catch(() => setCustomRoles([])); }, []);
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [addUserError, setAddUserError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -110,7 +115,7 @@ export default function AdminPage() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const { agents: a } = await api.getAgents();
+      const { agents: a } = await api.getAgents("all");
       setAgents(a);
     } catch {
       // ignore
@@ -170,6 +175,19 @@ export default function AdminPage() {
       await fetchUsers();
     } catch (e) {
       toast.error("Failed to update user", e instanceof Error ? e.message : undefined);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleApprove = async (u: AdminUser) => {
+    setActionLoading(u.id);
+    try {
+      await api.updateUser(u.id, { approved: true });
+      await fetchUsers();
+      toast.success(`${u.name} freigeschaltet`);
+    } catch (e) {
+      toast.error("Freischalten fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -246,7 +264,7 @@ export default function AdminPage() {
     try {
       await api.createUser(addUserForm);
       setShowAddUser(false);
-      setAddUserForm({ name: "", email: "", password: "", role: "member" });
+      setAddUserForm({ name: "", email: "", password: "", role: "member", custom_role_id: null });
       setShowPassword(false);
       await fetchUsers();
     } catch (e) {
@@ -271,6 +289,31 @@ export default function AdminPage() {
   const [showAssign, setShowAssign] = useState(false);
   const [assignForm, setAssignForm] = useState({ userId: "", templateId: 0, name: "" });
   const [assignLoading, setAssignLoading] = useState(false);
+  // Distribute a trained agent as per-user copies
+  const [showDistribute, setShowDistribute] = useState(false);
+  const [distForm, setDistForm] = useState<{ sourceAgentId: string; userIds: string[]; roleId: number | 0; namePrefix: string }>({ sourceAgentId: "", userIds: [], roleId: 0, namePrefix: "" });
+  const [distLoading, setDistLoading] = useState(false);
+  const [distResult, setDistResult] = useState<import("@/lib/api").DistributeResult | null>(null);
+
+  const handleDistribute = async () => {
+    if (!distForm.sourceAgentId || (distForm.userIds.length === 0 && !distForm.roleId)) return;
+    setDistLoading(true);
+    setDistResult(null);
+    try {
+      const res = await api.distributeAgent(distForm.sourceAgentId, {
+        userIds: distForm.userIds,
+        roleId: distForm.roleId || null,
+        namePrefix: distForm.namePrefix || undefined,
+      });
+      setDistResult(res);
+      const d = await api.getAssignments();
+      setAssignments(d.assignments);
+    } catch (e) {
+      setDistResult({ status: "error", source_agent_id: distForm.sourceAgentId, source_agent_name: "", created: [], skipped: [{ user_id: "", reason: e instanceof Error ? e.message : "Fehler" }], created_count: 0, skipped_count: 1 });
+    } finally {
+      setDistLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (tab === "assignments") {
@@ -321,6 +364,7 @@ export default function AdminPage() {
     { id: "budget", label: "Budget", icon: DollarSign },
     { id: "settings", label: "Settings", icon: SettingsIcon },
     { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
+    { id: "second-brains", label: "Second Brains", icon: Brain },
     { id: "secrets", label: "Key Management", icon: KeyRound },
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
@@ -334,13 +378,13 @@ export default function AdminPage() {
       />
 
       <motion.div
-        className="px-8 py-6"
+        className="px-4 py-6 sm:px-8"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 rounded-xl bg-card/50 p-1 w-fit border border-border/50">
+        {/* Tabs — horizontally scrollable so they never wrap, fits any width */}
+        <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map((t) => {
             const Icon = t.icon;
             return (
@@ -348,7 +392,7 @@ export default function AdminPage() {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all",
                   tab === t.id
                     ? "bg-accent text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -373,6 +417,7 @@ export default function AdminPage() {
           <div>
             {tab === "settings" && <SettingsView embedded />}
             {tab === "ai-accounts" && <AIAccountsView embedded />}
+            {tab === "second-brains" && <SecondBrainsView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
             {tab === "health" && <HealthView embedded />}
             {tab === "audit" && <AuditView embedded />}
@@ -404,9 +449,11 @@ export default function AdminPage() {
                     transition={{ delay: i * 0.04 }}
                     className={cn(
                       "flex items-center gap-4 p-4 rounded-xl border transition-colors",
-                      u.is_active
-                        ? "border-border/50 bg-card/50"
-                        : "border-red-500/20 bg-red-500/5 opacity-60"
+                      u.approved === false
+                        ? "border-amber-500/30 bg-amber-500/[0.07]"
+                        : u.is_active
+                          ? "border-border/50 bg-card/50"
+                          : "border-red-500/20 bg-red-500/5 opacity-60"
                     )}
                   >
                     {/* Avatar */}
@@ -430,6 +477,11 @@ export default function AdminPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      {u.approved === false && (
+                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-400">
+                          Wartet auf Freischaltung
+                        </span>
+                      )}
                     </div>
 
                     {/* Role badge */}
@@ -453,6 +505,15 @@ export default function AdminPage() {
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                         ) : (
                           <>
+                            {u.approved === false && (
+                              <button
+                                onClick={() => handleApprove(u)}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors flex items-center gap-1"
+                                title="Konto freischalten"
+                              >
+                                <Check className="h-3.5 w-3.5" /> Freischalten
+                              </button>
+                            )}
                             <button
                               onClick={() => handleCycleRole(u)}
                               className="p-2 rounded-lg text-xs text-muted-foreground hover:bg-accent transition-colors"
@@ -633,13 +694,23 @@ export default function AdminPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">Agent-Zuweisungen</h3>
-                  <button
-                    onClick={() => setShowAssign(true)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Agent zuweisen
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setDistResult(null); setShowDistribute(true); }}
+                      className="inline-flex items-center gap-2 rounded-xl border border-foreground/[0.1] bg-foreground/[0.03] px-4 py-2 text-sm font-medium hover:bg-foreground/[0.06] transition-all"
+                      title="Einen fertig angelernten Agenten als eigene Kopie an User/Gruppen verteilen"
+                    >
+                      <Cpu className="h-4 w-4" />
+                      Trainierten Agent verteilen
+                    </button>
+                    <button
+                      onClick={() => setShowAssign(true)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Agent zuweisen
+                    </button>
+                  </div>
                 </div>
 
                 {assignments.length === 0 ? (
@@ -754,6 +825,93 @@ export default function AdminPage() {
                     </motion.div>
                   </div>
                 )}
+
+                {/* Distribute trained agent as per-user copies */}
+                {showDistribute && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowDistribute(false)}>
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h3 className="text-base font-semibold mb-1">Trainierten Agent verteilen</h3>
+                      <p className="text-[12px] text-muted-foreground/70 mb-4">
+                        Erstellt für jeden Ziel-User eine <b>eigene, unabhängige Kopie</b> (eigener Container + Workspace)
+                        inkl. angelerntem Wissen &amp; Skills des Originals. Bereits vorhandene Kopien werden übersprungen.
+                      </p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Quell-Agent (das fertige Original)</label>
+                          <select
+                            value={distForm.sourceAgentId}
+                            onChange={(e) => setDistForm({ ...distForm, sourceAgentId: e.target.value })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          >
+                            <option value="">Agent wählen...</option>
+                            {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">An Gruppe (Rolle) — alle aktiven Mitglieder</label>
+                          <select
+                            value={distForm.roleId}
+                            onChange={(e) => setDistForm({ ...distForm, roleId: Number(e.target.value) })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          >
+                            <option value={0}>— keine Gruppe —</option>
+                            {customRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">…und/oder einzelne User (Strg/Cmd-Klick)</label>
+                          <select
+                            multiple
+                            size={5}
+                            value={distForm.userIds}
+                            onChange={(e) => setDistForm({ ...distForm, userIds: Array.from(e.target.selectedOptions, (o) => o.value) })}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none"
+                          >
+                            {users.filter((u) => u.is_active).map((u) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Namens-Präfix (optional)</label>
+                          <input
+                            value={distForm.namePrefix}
+                            onChange={(e) => setDistForm({ ...distForm, namePrefix: e.target.value })}
+                            placeholder="Standard: Name des Originals"
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2.5 text-sm outline-none"
+                          />
+                        </div>
+                        {distResult && (
+                          <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-3 text-[12px] space-y-0.5">
+                            <p className="text-emerald-400 font-medium">{distResult.created_count} Kopie(n) erstellt</p>
+                            {distResult.created.map((c) => <div key={c.agent_id} className="text-muted-foreground">✓ {c.user_name} → {c.agent_name}</div>)}
+                            {distResult.skipped_count > 0 && <p className="text-amber-400 font-medium mt-1">{distResult.skipped_count} übersprungen</p>}
+                            {distResult.skipped.map((s, i) => <div key={i} className="text-muted-foreground/70">– {s.user_name || s.user_id || "?"}: {s.reason}</div>)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        <button
+                          onClick={handleDistribute}
+                          disabled={distLoading || !distForm.sourceAgentId || (distForm.userIds.length === 0 && !distForm.roleId)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                        >
+                          {distLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cpu className="h-4 w-4" />}
+                          Verteilen
+                        </button>
+                        <button
+                          onClick={() => setShowDistribute(false)}
+                          className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                        >
+                          Schließen
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -863,32 +1021,35 @@ export default function AdminPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Role</label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(["viewer", "member", "manager", "admin"] as const).map((r) => {
-                    const colors: Record<string, string> = {
-                      admin: "border-amber-500 bg-amber-500/10 text-amber-500",
-                      manager: "border-purple-500 bg-purple-500/10 text-purple-400",
-                      member: "border-primary bg-primary/10 text-primary",
-                      viewer: "border-zinc-500 bg-zinc-500/10 text-zinc-400",
-                    };
-                    const active = addUserForm.role === r;
-                    return (
-                      <button
-                        key={r}
-                        onClick={() => setAddUserForm((f) => ({ ...f, role: r }))}
-                        className={cn(
-                          "flex items-center justify-center rounded-xl border px-2 py-2.5 text-xs font-medium transition-all",
-                          active
-                            ? colors[r]
-                            : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                        )}
-                      >
-                        {r.charAt(0).toUpperCase() + r.slice(1)}
-                      </button>
-                    );
-                  })}
-                </div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Rolle (Gruppe)</label>
+                {customRoles.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/60">
+                    Noch keine Rollen angelegt — erstelle zuerst eine unter <b>Rollen</b>.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {customRoles.map((r) => {
+                      const active = addUserForm.custom_role_id === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => setAddUserForm((f) => ({ ...f, custom_role_id: r.id, role: "member" }))}
+                          className={cn(
+                            "flex items-center justify-center rounded-xl border px-2 py-2.5 text-xs font-medium transition-all",
+                            active
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                          )}
+                        >
+                          {r.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground/40 mt-1">
+                  Bestimmt die Rechte des Users (Second Brains, AI-Accounts, Keys, MCP …). Admin-Rechte werden separat in der Userliste vergeben.
+                </p>
               </div>
 
               {addUserError && (

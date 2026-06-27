@@ -57,13 +57,18 @@ class Settings(BaseSettings):
     agent_image: str = "ai-employee-agent:latest"
     agent_network: str = "ai-employee-network"
     max_agents: int = 10
-    agent_memory_limit: str = "4g"
+    agent_memory_limit: str = "8g"  # 8g: video renders/builds need >4g (4g forces low-memory render, 1 worker, slow)
     agent_cpu_quota: int = 200000  # 2 CPUs
     agent_workspace_size_gb: float = 10.0
     # Admin-defined mount catalog: newline-separated entries
     # Format per line: label:host_path:container_path:mode  (mode = ro | rw)
     # Example: nas-docs:/mnt/nas/docs:/mnt/docs:ro
     agent_mount_catalog: str = ""
+    # Second Brains: department-shared knowledge vaults (DB-managed mount entries).
+    # Host base dir (must be bind-mounted into the orchestrator rw for provisioning)
+    # and the container path prefix where each brain is mounted in agents.
+    secondbrain_base: str = "/srv/secondbrain"
+    secondbrain_container_base: str = "/mnt/brains"
 
     # Telegram
     telegram_bot_token: str = ""
@@ -84,9 +89,26 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
     registration_open: bool = True  # Allow new user registration
+    # When True, new self-registered users (SSO or password) land in "pending approval"
+    # (approved=False) and must be unlocked by an admin before they can use the app
+    # (OpenWebUI-style "Warten auf Freischaltung"). Default off. Admin-created users are
+    # always approved.
+    require_user_approval: bool = False
     setup_token: str = ""  # Required for first admin registration (if set)
+    # SSO-only: disable password login entirely → only Microsoft SSO (MFA) can sign in.
+    # Closes the "knows the password → impersonate" vector. Per-deployment toggle.
+    sso_only_login: bool = False
+    # BREAK-GLASS (env only, NOT in DB): re-enable password login even if sso_only_login
+    # is on — emergency access if SSO is misconfigured / admins are locked out.
+    emergency_password_login: bool = False
+    # Delete the user's stored MS Graph token on logout (no persistent token after
+    # sign-out). Trade-off: autonomous agents lose Graph until the owner re-connects.
+    revoke_msgraph_on_logout: bool = False
 
     # OAuth Integrations
+    # Microsoft Entra tenant for SSO + Graph. "common" works only for multi-tenant
+    # apps; single-tenant apps MUST use their tenant id (else AADSTS50194 on /common).
+    oauth_microsoft_tenant_id: str = "common"
     oauth_google_client_id: str = ""
     oauth_google_client_secret: str = ""
     oauth_microsoft_client_id: str = ""
@@ -100,6 +122,14 @@ class Settings(BaseSettings):
     # Anthropic OAuth (Claude Code public client — no secret needed)
     oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
+
+    # Expose the MS Graph MCP server to external LLM clients (e.g. OpenWebUI) via
+    # our built-in OAuth 2.1 AS. Admin-only; only effective when a Microsoft app
+    # registration (oauth_microsoft_client_id) is configured. Default OFF.
+    msgraph_mcp_external_enabled: bool = False
+    # Optional independent signing key for MCP access tokens. Empty = derive from
+    # api_secret_key (domain-separated). Set for full key isolation from sessions.
+    mcp_signing_key: str = ""
 
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures

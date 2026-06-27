@@ -24,6 +24,7 @@ def _sanitize_mcp_name(name: str) -> str:
 class McpServerCreate(BaseModel):
     name: str
     url: str
+    bearer_token: str | None = None  # plaintext on input; stored Fernet-encrypted
 
     @field_validator("name")
     @classmethod
@@ -35,6 +36,7 @@ class McpServerUpdate(BaseModel):
     name: str | None = None
     url: str | None = None
     enabled: bool | None = None
+    bearer_token: str | None = None  # "" clears the token; None leaves it unchanged
 
 
 def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
@@ -58,16 +60,19 @@ def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
         return None
 
 
-async def _discover_tools(url: str) -> list[dict]:
+async def _discover_tools(url: str, bearer_token: str | None = None) -> list[dict]:
     """Connect to an MCP server via Streamable HTTP and list its tools.
 
     Handles both application/json and text/event-stream (SSE) responses,
-    as servers like n8n respond with SSE format.
+    as servers like n8n respond with SSE format. An optional Bearer token is
+    sent as ``Authorization: Bearer <token>``.
     """
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         # Step 1: Initialize
@@ -147,6 +152,7 @@ async def list_mcp_servers(user=Depends(require_auth), db: AsyncSession = Depend
                 "url": s.url,
                 "tools": s.tools or [],
                 "enabled": s.enabled,
+                "has_auth": bool(s.auth_token_encrypted),
                 "created_at": s.created_at.isoformat() if s.created_at else None,
             }
             for s in servers
@@ -164,13 +170,17 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
 
     # Discover tools
     try:
-        tools = await _discover_tools(body.url)
+        tools = await _discover_tools(body.url, body.bearer_token)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not connect to MCP server: {e}")
 
-    server = McpServer(name=body.name, url=body.url, tools=tools, enabled=True)
+    from app.core.encryption import encrypt_token
+    server = McpServer(
+        name=body.name, url=body.url, tools=tools, enabled=True,
+        auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,
+    )
     db.add(server)
     await db.commit()
     await db.refresh(server)
@@ -181,6 +191,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
         "url": server.url,
         "tools": tools,
         "enabled": server.enabled,
+        "has_auth": bool(server.auth_token_encrypted),
     }
 
 
@@ -192,8 +203,10 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
     if not server:
         raise HTTPException(status_code=404, detail="MCP server not found")
 
+    from app.core.encryption import decrypt_token
+    token = decrypt_token(server.auth_token_encrypted) if server.auth_token_encrypted else None
     try:
-        tools = await _discover_tools(server.url)
+        tools = await _discover_tools(server.url, token)
     except HTTPException:
         raise
     except Exception as e:
@@ -210,6 +223,7 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
         "url": server.url,
         "tools": tools,
         "enabled": server.enabled,
+        "has_auth": bool(server.auth_token_encrypted),
     }
 
 
@@ -229,6 +243,9 @@ async def update_mcp_server(
         server.url = body.url
     if body.enabled is not None:
         server.enabled = body.enabled
+    if body.bearer_token is not None:
+        from app.core.encryption import encrypt_token
+        server.auth_token_encrypted = encrypt_token(body.bearer_token) if body.bearer_token.strip() else None
 
     await db.commit()
     return {
@@ -237,6 +254,7 @@ async def update_mcp_server(
         "url": server.url,
         "tools": server.tools or [],
         "enabled": server.enabled,
+        "has_auth": bool(server.auth_token_encrypted),
     }
 
 

@@ -29,7 +29,67 @@ def _max_turns() -> int:
     return settings.max_turns if settings.max_turns and settings.max_turns > 0 else DEFAULT_MAX_TURNS
 
 
-COMPACTION_THRESHOLD = 0.75  # Trigger compaction at 75% of context window
+# --- Lazy tool loading -------------------------------------------------------
+# OpenAI/Azure cap function tools at 128 PER REQUEST. Instead of sending the whole
+# catalog (18 built-in + 41 orchestrator API + every MCP tool), we send only a small
+# CORE set + a `search_tools` meta-tool, and ACTIVATE specific tools on demand when
+# the model searches for them. So the catalog can grow without limit.
+CORE_TOOL_NAMES = {
+    "bash", "read_file", "write_file", "edit_file", "multi_edit",
+    "list_files", "grep", "glob", "git_status", "git_diff",
+    "web_search", "web_fetch",
+    "request_approval", "notify_user", "send_message_and_wait",
+    "memory_save", "memory_search", "brain_search", "secondbrain_search",
+    "list_todos", "complete_todo",
+}
+MAX_ACTIVATED_TOOLS = 60  # core (~20) + search_tools + activated stays well under 128
+
+SEARCH_TOOLS_DEF = {
+    "type": "function",
+    "function": {
+        "name": "search_tools",
+        "description": (
+            "Find and load ADDITIONAL tools by capability when none of your currently "
+            "available tools fit the task. Searches the full catalog (Microsoft 365 — "
+            "mail, calendar, Teams, OneDrive, Planner; the knowledge base; skills; other "
+            "integrations) and makes the best matches callable on your NEXT step. Describe "
+            "what you want to do, e.g. 'create a folder in OneDrive' or 'send a Teams message'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What you want to do (capability or keywords)."},
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
+def _tokenize(text: str) -> list[str]:
+    cleaned = "".join(c if c.isalnum() else " " for c in str(text).lower())
+    return cleaned.split()
+
+
+def _search_catalog(catalog: list[dict], query: str, exclude: set[str], limit: int = 8) -> list[dict]:
+    """Keyword-rank tools by query terms over name + description (name hits weigh more)."""
+    terms = [t for t in _tokenize(query) if len(t) >= 2]
+    if not terms:
+        return []
+    scored: list[tuple[int, dict]] = []
+    for tool in catalog:
+        fn = tool.get("function", {})
+        name = (fn.get("name") or "")
+        if name in exclude:
+            continue
+        name_l = name.lower()
+        hay = name_l + " " + (fn.get("description") or "").lower()
+        score = sum(hay.count(term) for term in terms) + sum(2 for term in terms if term in name_l)
+        if score > 0:
+            scored.append((score, tool))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [t for _, t in scored[:limit]]
+
 
 class LLMChatHandler:
     """Handles interactive chat sessions using custom LLM providers.
@@ -37,10 +97,11 @@ class LLMChatHandler:
     Same interface as ChatHandler — publishes identical events via
     LogPublisher.publish_chat() so the frontend sees no difference.
 
-    Context management: tracks token usage vs model context window.
-    When usage exceeds COMPACTION_THRESHOLD (75%), triggers an LLM-based
-    summarization of the conversation, replaces history with the summary,
-    and continues seamlessly.
+    Context management: tracks token usage vs an absolute compaction budget
+    (context_compressor.effective_threshold_tokens). When exceeded, it runs the
+    deterministic compression layers and then a sliding-window rolling summary
+    (recent messages kept verbatim, older ones folded into an extending
+    summary), then continues seamlessly.
     """
 
     def __init__(self, log_publisher: LogPublisher):
@@ -49,7 +110,13 @@ class LLMChatHandler:
         self._provider: BaseLLMProvider | None = None
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
-        self._all_tools: list[dict] | None = None
+        # Execute MCP tool calls on the same client that ran discovery (shared
+        # registry) — otherwise every MCP call fails with "Unknown MCP tool".
+        self._tool_executor._mcp_client = self._mcp_client
+        self._all_tools: list[dict] | None = None   # full catalog (cached), searchable
+        # Tools loaded on demand via search_tools (recency order; capped). Only these
+        # plus the CORE set are actually sent to the LLM — keeps us under the 128 cap.
+        self._activated: list[str] = []
         # Conversation history (in-memory, replaces --resume)
         self._history: list[ChatMessage] = []
         # Loop detection: track recent tool call signatures
@@ -105,11 +172,11 @@ class LLMChatHandler:
             return False  # Too short to compact
         estimated = self._estimate_tokens()
         window = self._get_context_window()
-        usage_pct = estimated / window
-        if usage_pct >= COMPACTION_THRESHOLD:
+        threshold = context_compressor.effective_threshold_tokens(window)
+        if estimated >= threshold:
             logger.info(
-                f"[Context] {usage_pct:.0%} used "
-                f"({estimated:,}/{window:,} tokens) — compaction needed"
+                f"[Context] {estimated:,} tokens ≥ {threshold:,} threshold "
+                f"(window {window:,}) — compaction needed"
             )
             return True
         return False
@@ -138,7 +205,7 @@ class LLMChatHandler:
 
         # Check if still over threshold after deterministic layers
         estimated = context_compressor.estimate_tokens(self._history)
-        still_over = estimated > int(window * COMPACTION_THRESHOLD)
+        still_over = estimated > context_compressor.effective_threshold_tokens(window)
 
         if not still_over:
             self._last_input_tokens = 0
@@ -156,21 +223,53 @@ class LLMChatHandler:
         else:
             logger.warning("[Context] Layer 4 summarization failed; keeping current history")
 
-    async def _get_tools(self) -> list[dict] | None:
-        """Get combined built-in + MCP tool definitions."""
-        if not settings.llm_tools_enabled:
-            return None
+    async def _get_catalog(self) -> list[dict]:
+        """Full tool catalog (built-in + orchestrator API + MCP), cached. This is the
+        SEARCHABLE set — not everything here is sent to the LLM."""
         if self._all_tools is not None:
             return self._all_tools
-        self._all_tools = list(TOOL_DEFINITIONS)
+        catalog = list(TOOL_DEFINITIONS)
         try:
             mcp_tools = await self._mcp_client.discover_tools()
             if mcp_tools:
-                self._all_tools.extend(mcp_tools)
-                logger.info(f"Discovered {len(mcp_tools)} MCP tools")
+                catalog.extend(mcp_tools)
+                logger.info(f"Discovered {len(mcp_tools)} MCP tools (catalog size {len(catalog)})")
         except Exception as e:
             logger.warning(f"MCP tool discovery failed: {e}")
-        return self._all_tools
+        self._all_tools = catalog
+        return catalog
+
+    async def _get_tools(self) -> list[dict] | None:
+        """Tools actually SENT to the LLM this turn: the CORE set + search_tools +
+        whatever was activated via search_tools so far. The rest of the catalog is
+        reachable only by searching for it — that's what keeps us under the 128 cap."""
+        if not settings.llm_tools_enabled:
+            return None
+        catalog = await self._get_catalog()
+        active = set(self._activated)
+        sent = [t for t in catalog if t["function"]["name"] in CORE_TOOL_NAMES]
+        sent.append(SEARCH_TOOLS_DEF)
+        sent += [t for t in catalog
+                 if t["function"]["name"] in active and t["function"]["name"] not in CORE_TOOL_NAMES]
+        return sent
+
+    def _handle_search_tools(self, query: str) -> str:
+        """Search the catalog and activate the best matches for the next turn."""
+        matches = _search_catalog(self._all_tools or [], query, CORE_TOOL_NAMES | {"search_tools"})
+        if not matches:
+            return f"Keine passenden Tools für '{query}' gefunden. Versuch andere Stichwörter."
+        lines = []
+        for tool in matches:
+            name = tool["function"]["name"]
+            # Move-to-end (recency) + dedup
+            if name in self._activated:
+                self._activated.remove(name)
+            self._activated.append(name)
+            lines.append(f"- {name}: {(tool['function'].get('description') or '')[:160]}")
+        # LRU cap so core + activated never approaches the 128 limit
+        if len(self._activated) > MAX_ACTIVATED_TOOLS:
+            self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
+        return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
@@ -205,15 +304,35 @@ class LLMChatHandler:
 
         # Build system message if this is the first message
         if not self._history:
-            from app.runner_hooks import MULTIMODAL_CAPABILITY_NOTE, get_skills_context
+            from app.runner_hooks import (
+                MULTIMODAL_CAPABILITY_NOTE,
+                get_skills_context,
+                get_mounts_context,
+                get_marketplace_skill_suggestions,
+            )
             system_prompt = settings.llm_system_prompt or (
                 "You are a helpful AI coding assistant running in a Docker container. "
                 "Your workspace is at /workspace. Use the available tools to help the user."
             )
             system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
+            system_prompt = system_prompt + (
+                "\n\n## Werkzeuge bei Bedarf nachladen\n"
+                "Dir ist nur ein KERN-Satz an Werkzeugen direkt verfügbar. Für alles "
+                "Weitere — Microsoft 365 (Mail, Kalender, Teams, OneDrive, Planner), "
+                "Wissensdatenbank, Skills, weitere Integrationen — rufe ZUERST "
+                "`search_tools` mit einer Beschreibung der gewünschten Aktion auf "
+                "(z. B. 'Ordner in OneDrive anlegen'); die passenden Werkzeuge sind "
+                "dann ab deinem nächsten Schritt aufrufbar."
+            )
+            # Host mounts / Second Brain awareness + marketplace skills — parity with
+            # the task runtimes so chat agents also search the shared vault and skills.
+            system_prompt = system_prompt + get_mounts_context()
             skills_ctx = get_skills_context()
             if skills_ctx:
                 system_prompt = system_prompt + "\n" + skills_ctx
+            marketplace = get_marketplace_skill_suggestions(text[:200])
+            if marketplace:
+                system_prompt = system_prompt + "\n" + marketplace
             self._history.append(ChatMessage(role="system", content=system_prompt))
 
         # Add user message to history (image-aware)
@@ -237,6 +356,9 @@ class LLMChatHandler:
         try:
             while num_turns < max_turns:
                 num_turns += 1
+                # Re-fetch each turn so tools activated via search_tools on the
+                # previous turn become callable now (lazy loading).
+                tools = await self._get_tools()
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
@@ -338,11 +460,17 @@ class LLMChatHandler:
                 from app.tools.executor import _CACHEABLE_TOOLS
                 _WRITE_TOOLS = {"write_file", "edit_file", "multi_edit", "bash"}
 
-                read_only = [tc for tc in turn_tool_calls if tc["name"] in _CACHEABLE_TOOLS]
-                write_ops = [tc for tc in turn_tool_calls if tc["name"] in _WRITE_TOOLS]
-                other_ops = [tc for tc in turn_tool_calls if tc not in read_only and tc not in write_ops]
-
                 results_map: dict[str, str] = {}
+                # search_tools is handled in-handler (it owns the catalog + activation
+                # set) and never reaches the executor — it loads tools for the next turn.
+                for tc in turn_tool_calls:
+                    if tc["name"] == "search_tools":
+                        results_map[tc["id"]] = self._handle_search_tools(tc["input"].get("query", ""))
+                _dispatch = [tc for tc in turn_tool_calls if tc["name"] != "search_tools"]
+
+                read_only = [tc for tc in _dispatch if tc["name"] in _CACHEABLE_TOOLS]
+                write_ops = [tc for tc in _dispatch if tc["name"] in _WRITE_TOOLS]
+                other_ops = [tc for tc in _dispatch if tc not in read_only and tc not in write_ops]
                 if read_only:
                     parallel_results = await asyncio.gather(
                         *[self._tool_executor.execute(tc["name"], tc["input"]) for tc in read_only],
@@ -390,6 +518,23 @@ class LLMChatHandler:
                 # Mid-turn compaction: if a tool-heavy turn filled the context
                 if self._needs_compaction():
                     await self._compact_history(message_id)
+
+                # Live steering (mid-turn): fold in any messages that arrived
+                # while the tools were running, so the agent picks up the new
+                # info on its very NEXT step — not only at the end of the turn.
+                # Drained AFTER compaction so fresh input is never summarized away.
+                if self.pending_drain is not None:
+                    extra = await self.pending_drain()
+                    if extra:
+                        for t in extra:
+                            self._history.append(ChatMessage(role="user", content=t))
+                            full_text += "\n\n[Neue Nachricht aufgenommen]\n"
+                        await self.log_publisher.publish_chat(
+                            message_id, "system",
+                            {"message": f"{len(extra)} neue Nachricht(en) aufgenommen — wird sofort mitverarbeitet."},
+                        )
+                        # New input extends the work budget for this message.
+                        max_turns = num_turns + _max_turns()
 
         except Exception as e:
             logger.exception(f"LLM Chat error: {e}")

@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 # CSRF state TTL
 SSO_STATE_TTL = 600  # 10 minutes
 
+# Entra multi-tenant authority aliases — a login through any of these is NOT
+# locked to one org, so the email must NOT be auto-trusted (cross-tenant takeover).
+_MS_MULTITENANT_AUTHORITIES = {"common", "organizations", "consumers"}
+
 
 class SSOService:
     def __init__(self, db: AsyncSession, redis: RedisService):
@@ -60,7 +64,8 @@ class SSOService:
             **provider.auth_extra_params,
         }
 
-        return f"{provider.authorization_url}?{urlencode(params)}"
+        from app.core.oauth_providers import apply_tenant
+        return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
 
     async def handle_callback(
         self, provider_name: str, code: str, state: str
@@ -104,9 +109,19 @@ class SSOService:
             sub = email
 
         # Google always returns verified emails; Microsoft depends on tenant
-        # For security, we require email verification for account linking
+        # For security, we require email verification for account linking.
         if provider_name == "google":
             email_verified = True
+        elif provider_name == "microsoft":
+            # Graph /me returns no email_verified claim. Only trust the email when
+            # the app is locked to a SPECIFIC tenant (GUID or verified domain):
+            # then only that org's authoritative accounts can authenticate, so the
+            # email is effectively verified. For ANY of Entra's multi-tenant
+            # authority aliases we do NOT trust it — that would allow cross-tenant
+            # account-takeover by email match.
+            tenant = (settings.oauth_microsoft_tenant_id or "common").strip().lower()
+            if tenant and tenant not in _MS_MULTITENANT_AUTHORITIES:
+                email_verified = True
 
         # Find or create user
         user = await self._find_or_create_user(
@@ -117,19 +132,37 @@ class SSOService:
             email_verified=email_verified,
         )
 
+        # Unified login: when the provider also returned Graph tokens (login now
+        # requests the full Graph scopes + offline_access), persist them so MS
+        # Graph is usable right after login — no separate "connect M365" step.
+        # Reuses OAuthService storage so tokens live in exactly one place.
+        from app.models.oauth_integration import PER_USER_PROVIDERS
+        if provider_name in PER_USER_PROVIDERS and token_data.get("refresh_token"):
+            try:
+                from app.services.oauth_service import OAuthService
+                await OAuthService(self.db, self.redis).persist_tokens(
+                    provider_name, user.id, token_data
+                )
+                logger.info("Stored %s Graph tokens for user %s during login",
+                            provider_name, email)
+            except Exception as e:
+                logger.warning("Could not persist %s Graph tokens during login: %s",
+                               provider_name, e)
+
         return user
 
     async def _exchange_code(
         self, provider: SSOProviderConfig, code: str
     ) -> dict:
         """Exchange authorization code for tokens."""
+        from app.core.oauth_providers import apply_tenant
         client_id = get_sso_client_id(provider)
         client_secret = get_sso_client_secret(provider)
         redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider.name}/callback"
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                provider.token_url,
+                apply_tenant(provider.token_url),
                 data={
                     "client_id": client_id,
                     "client_secret": client_secret,
@@ -211,13 +244,17 @@ class SSOService:
         if not is_first and not settings.registration_open:
             raise ValueError("Registration is closed. Contact an admin for access.")
 
-        # 4. Create new user
+        # 4. Create new user. When admin-approval is required, non-first users land
+        # in pending (approved=False) and must be unlocked by an admin. The first user
+        # (auto-admin) is always approved so the platform is never locked out.
+        approved = is_first or not settings.require_user_approval
         user = User(
             id=uuid.uuid4().hex[:12],
             email=email,
             name=name,
             password_hash=None,  # SSO users don't have a password
             role=UserRole.ADMIN if is_first else UserRole.MEMBER,
+            approved=approved,
             sso_provider=provider_name,
             sso_subject=subject,
         )
@@ -227,6 +264,6 @@ class SSOService:
 
         logger.info(
             f"SSO user created: {email} via {provider_name} "
-            f"(role: {user.role.value}, first: {is_first})"
+            f"(role: {user.role.value}, first: {is_first}, approved: {approved})"
         )
         return user

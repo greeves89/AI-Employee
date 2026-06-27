@@ -28,6 +28,15 @@
 		reverse_proxy ai-employee-orchestrator:8000
 	}
 
+	# OAuth discovery (RFC 8414 / 9728) for the external MCP server — must be at
+	# well-known root so MCP clients (OpenWebUI) can find the authorization server.
+	handle /.well-known/oauth-authorization-server* {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+	handle /.well-known/oauth-protected-resource* {
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
 	# Everything else → frontend
 	handle {
 		reverse_proxy ai-employee-frontend:3000

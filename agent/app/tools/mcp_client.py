@@ -29,6 +29,8 @@ class MCPHTTPClient:
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
         # server_name -> url
         self._servers: dict[str, str] = {}
+        # server_name -> bearer token (from CUSTOM_MCP_AUTH)
+        self._auth: dict[str, str] = {}
         # tool_name -> (server_name, original_tool_name)
         self._tool_registry: dict[str, tuple[str, str]] = {}
         # server_name -> MCP session id, for stateful Streamable HTTP servers
@@ -48,15 +50,26 @@ class MCPHTTPClient:
                 self._servers = servers
         except (json.JSONDecodeError, TypeError):
             logger.warning("Could not parse CUSTOM_MCP_SERVERS env var")
+        # Optional per-server bearer tokens
+        custom_auth = os.environ.get("CUSTOM_MCP_AUTH", "")
+        if custom_auth:
+            try:
+                auth = json.loads(custom_auth)
+                if isinstance(auth, dict):
+                    self._auth = auth
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Could not parse CUSTOM_MCP_AUTH env var")
 
-    @staticmethod
-    def _mcp_headers(session_id: str | None = None) -> dict[str, str]:
+    def _mcp_headers(self, server_name: str | None = None, session_id: str | None = None) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
         if session_id:
             headers["mcp-session-id"] = session_id
+        token = self._auth.get(server_name) if server_name else None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         return headers
 
     @staticmethod
@@ -148,7 +161,7 @@ class MCPHTTPClient:
                 "clientInfo": {"name": "ai-employee-agent", "version": "1.0"},
             },
         }
-        resp = await self._client.post(url, headers=self._mcp_headers(), json=init_request)
+        resp = await self._client.post(url, headers=self._mcp_headers(server_name), json=init_request)
         if resp.status_code != 200:
             logger.warning(f"MCP init failed for {server_name}: {resp.status_code} {resp.text[:300]}")
             return []
@@ -161,7 +174,7 @@ class MCPHTTPClient:
             logger.warning(f"MCP init returned invalid response for {server_name}")
             return []
 
-        await self._client.post(url, headers=self._mcp_headers(session_id), json={
+        await self._client.post(url, headers=self._mcp_headers(server_name, session_id), json={
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
         })
@@ -173,7 +186,7 @@ class MCPHTTPClient:
             "method": "tools/list",
             "params": {},
         }
-        resp = await self._client.post(url, headers=self._mcp_headers(session_id), json=list_request)
+        resp = await self._client.post(url, headers=self._mcp_headers(server_name, session_id), json=list_request)
         if resp.status_code != 200:
             logger.warning(f"MCP tools/list failed for {server_name}: {resp.status_code} {resp.text[:300]}")
             return []
@@ -232,7 +245,7 @@ class MCPHTTPClient:
         }
 
         try:
-            resp = await self._client.post(url, headers=self._mcp_headers(session_id), json=call_request)
+            resp = await self._client.post(url, headers=self._mcp_headers(server_name, session_id), json=call_request)
             if resp.status_code != 200:
                 return f"MCP tool error {resp.status_code}: {resp.text[:500]}"
 

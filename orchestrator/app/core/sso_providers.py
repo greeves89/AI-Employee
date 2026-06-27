@@ -6,6 +6,13 @@ SSO providers use the same OAuth client credentials but with minimal OIDC scopes
 
 from dataclasses import dataclass, field
 
+from app.core.oauth_providers import PROVIDERS as _INTEGRATION_PROVIDERS
+
+# Single source of truth: the Microsoft SSO login requests the SAME Graph scopes
+# (incl. offline_access) as the M365 integration, so one login both authenticates
+# AND yields Graph access/refresh tokens — no separate "connect" step needed.
+_MICROSOFT_LOGIN_SCOPES = list(_INTEGRATION_PROVIDERS["microsoft"].scopes)
+
 
 @dataclass(frozen=True)
 class SSOProviderConfig:
@@ -50,7 +57,8 @@ SSO_PROVIDERS: dict[str, SSOProviderConfig] = {
         userinfo_url="https://graph.microsoft.com/v1.0/me",
         jwks_uri="https://login.microsoftonline.com/common/discovery/v2.0/keys",
         issuer="https://login.microsoftonline.com/{tenant}/v2.0",
-        scopes=["openid", "email", "profile"],
+        # Full Graph scopes + offline_access so login also yields Graph tokens.
+        scopes=_MICROSOFT_LOGIN_SCOPES,
         client_id_setting="oauth_microsoft_client_id",
         client_secret_setting="oauth_microsoft_client_secret",
     ),

@@ -322,7 +322,7 @@ export function Sidebar() {
       )}>
         {collapsed ? (
           <>
-            <NotificationBell variant="sidebar" />
+            <NotificationBell variant="sidebar" collapsed />
             <button
               onClick={toggleTheme}
               title={theme === "dark" ? "Light Mode" : "Dark Mode"}

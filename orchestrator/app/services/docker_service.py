@@ -137,6 +137,34 @@ class DockerService:
         container = self.client.containers.get(container_id)
         container.remove(force=force)
 
+    def copy_workspace_volume(self, src_volume: str, dst_volume: str,
+                              image: str = "ai-employee-agent:latest") -> None:
+        """Clone the entire contents of one workspace volume into another.
+
+        Used to give a distributed agent copy the *trained brain* of its source:
+        knowledge.md, installed skills (/workspace/.claude/skills), CLAUDE.md and
+        any docs the source built up. Excludes ``.git`` and resets the per-agent
+        task log (``.agent_state.md``) so each copy starts its own history fresh.
+        Runs a short-lived helper container that mounts both volumes.
+        """
+        script = (
+            "cp -a /from/. /to/ 2>/dev/null || true; "
+            "rm -rf /to/.git /to/.agent_state.md; "
+            "chmod -R u+rwX /to 2>/dev/null || true"
+        )
+        self.client.containers.run(
+            image=image,
+            entrypoint="",
+            command=["sh", "-c", script],
+            volumes={
+                src_volume: {"bind": "/from", "mode": "ro"},
+                dst_volume: {"bind": "/to", "mode": "rw"},
+            },
+            remove=True,
+            detach=False,
+            labels={"ai-employee.type": "clone-helper"},
+        )
+
     def remove_volume(self, volume_name: str) -> None:
         try:
             volume = self.client.volumes.get(volume_name)

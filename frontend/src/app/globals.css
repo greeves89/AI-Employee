@@ -55,8 +55,22 @@
   * {
     @apply border-border;
   }
+  html {
+    /* App-wide: reserve the scrollbar gutter so the layout never shifts
+       horizontally when a page scrollbar appears/disappears (the "UI verschiebt
+       sich beim Chatten"-Effekt). No-op on macOS overlay scrollbars. */
+    scrollbar-gutter: stable;
+  }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Apply to any inner overflow container that should not shift its content
+     when its own scrollbar appears (chat/message/log panels). */
+  .scroll-stable {
+    scrollbar-gutter: stable;
   }
 }
 
