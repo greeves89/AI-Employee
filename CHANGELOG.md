@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.81.0] — 2026-06-30
+
+### Added
+- **„Dreaming"-Memory (Grundstufe)** — der Scheduler aktualisiert periodisch (stündlich) das **adaptive Nutzerprofil** jedes aktiven Users aus dessen gesammelten Memories (preference/correction/learning), heuristisch und **ohne LLM-Kosten**. Baut auf dem vorhandenen `profile_extractor` + `UserProfile` auf (lief bisher nur on-demand via `/user-profiles/me/extract`). **Gated über `dreaming_enabled` (default off)** → keine Verhaltensänderung, bis ein Admin es aktiviert; per-User-Fehler isoliert (bricht den Scheduler nie). (`services/scheduler_service.py`, Settings)
+
+### Hinweise zum Kundenfeedback-Stand
+- **Agent-Symbolbilder** (v1.80.0) und **Meeting→MS-Planner** (v1.80.0) sind live.
+- **Second Brain grafisch:** 3D-Graph existiert bereits (`vault-graph-3d.tsx`) — konkrete „Anpassung" braucht eine Spec.
+- **Multi-Agent-Orchestrierung:** Delegations-Primitiv `send_message_and_wait` existiert (Master kann an andere Agenten delegieren + auf Ergebnis warten). **Dynamisches Subagent-Spawning** ist ein eigenes Design-/Test-Item — bewusst nicht ungetestet auf Prod gebracht.
+- `meeting_planner_plan_id` und `dreaming_enabled` sind aktuell per Settings-API setzbar (Admin-UI-Toggles als kleiner Folgeschritt).
+
+---
+
 ## [1.80.0] — 2026-06-30
 
 ### Added

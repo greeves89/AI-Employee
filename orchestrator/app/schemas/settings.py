@@ -68,6 +68,8 @@ class SettingsUpdate(BaseModel):
     exchange_mcp_external_enabled: bool | None = None
     # Meeting → MS Planner: target plan ID for mirrored action items (empty = off)
     meeting_planner_plan_id: str | None = None
+    # "Dreaming": periodic adaptive user-profile refresh from memories
+    dreaming_enabled: bool | None = None
 
 
 class VoiceSettings(BaseModel):

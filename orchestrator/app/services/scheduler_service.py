@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
+# "Dreaming": periodic adaptive user-profile refresh from accumulated memories
+# (heuristic, no LLM cost). Gated by the dreaming_enabled setting (default off).
+_DREAMING_INTERVAL_SECONDS = 3600
 
 
 class SchedulerService:
@@ -34,6 +37,7 @@ class SchedulerService:
         self._gc_counter = 0
         self._feeds_counter = 0
         self._idle_stop_counter = 0
+        self._dreaming_counter = 0
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -83,9 +87,44 @@ class SchedulerService:
                         )
                 except Exception as e:
                     print(f"[Scheduler] TrendScan error: {e}")
+                # "Dreaming": refresh adaptive user profiles from memories (gated)
+                self._dreaming_counter += 30
+                if self._dreaming_counter >= _DREAMING_INTERVAL_SECONDS:
+                    self._dreaming_counter = 0
+                    try:
+                        n = await self._run_dreaming()
+                        if n > 0:
+                            print(f"[Scheduler] Dreaming: refreshed {n} user profile(s)")
+                    except Exception as e:
+                        print(f"[Scheduler] Dreaming error: {e}")
             except Exception as e:
                 print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)
+
+    async def _run_dreaming(self) -> int:
+        """'Dreaming': rebuild each active user's adaptive profile from their
+        accumulated memories (heuristic, no LLM cost). Gated by ``dreaming_enabled``
+        (default off). Per-user failures are isolated — never break the loop."""
+        from app.services.settings_service import SettingsService
+        from app.services.profile_extractor import extract_profile
+        from app.models.agent import Agent
+        async with async_session_factory() as db:
+            enabled = (await SettingsService(db).get("dreaming_enabled")) or ""
+            if enabled.lower() not in ("true", "1", "yes"):
+                return 0
+            rows = await db.execute(
+                select(Agent.user_id).where(Agent.user_id.isnot(None)).distinct()
+            )
+            user_ids = [u for u in rows.scalars().all() if u]
+            n = 0
+            for uid in user_ids:
+                try:
+                    await extract_profile(db, uid)
+                    n += 1
+                except Exception:
+                    logger.warning("Dreaming: profile extract failed for user %s", uid, exc_info=True)
+            await db.commit()
+            return n
 
     async def _gc_expired_tasks(self) -> None:
         """Garbage-collect tasks whose evict_after timestamp has passed.

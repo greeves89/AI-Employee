@@ -191,6 +191,8 @@ async def update_settings(
     if data.exchange_mcp_external_enabled is not None:
         await svc.set("exchange_mcp_external_enabled",
                       "true" if data.exchange_mcp_external_enabled else "false")
+    if data.dreaming_enabled is not None:
+        await svc.set("dreaming_enabled", "true" if data.dreaming_enabled else "false")
 
     await db.commit()
     return {"status": "updated"}

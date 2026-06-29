@@ -89,6 +89,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "exchange_mcp_external_enabled",  # expose Exchange MCP to external LLM clients
     # Meeting → MS Planner: target plan for mirrored action items (empty = off)
     "meeting_planner_plan_id",
+    # "Dreaming": periodic adaptive user-profile refresh (default off)
+    "dreaming_enabled",
 }
 
 
