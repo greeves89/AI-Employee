@@ -1764,9 +1764,11 @@ export async function uploadSkillFile(skillId: number, file: File): Promise<Skil
 
 export async function downloadSkillFile(skillId: number, filename: string): Promise<void> {
   const base = getBase();
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  // Cookie-based auth like the rest of the API — the auth cookie is only sent
+  // with credentials:"include" (the old Bearer-from-localStorage was always null
+  // → 401 → silent failure / "click does nothing").
   const res = await fetch(`${base}/skills/marketplace/${skillId}/files/${encodeURIComponent(filename)}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
   });
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
@@ -1774,7 +1776,9 @@ export async function downloadSkillFile(skillId: number, filename: string): Prom
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a); // some browsers require the anchor in the DOM
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
 

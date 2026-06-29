@@ -62,7 +62,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
           voiceLanguageRef.current = "de";
         }
         if (cancelled) return;
-        const url = `${getWsUrl()}/agents/${agentId}/voice?ticket=${ticket}`;
+        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
         ws.onmessage = (e) => handleServerEvent(e.data);

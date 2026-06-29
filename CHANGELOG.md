@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.78.1] — 2026-06-29
+
+### Fixed
+- **Voice-Live-Session hängt nicht mehr bei „Verbinde…".** Der WebSocket wurde auf den falschen Pfad geöffnet (`${getWsUrl()}/agents/{id}/voice` statt `…/api/v1/ws/agents/{id}/voice` wie Chat/Logs/Notifications) → die Verbindung kam nie zustande, das „ready"-Event nie an. Kein GPT-realtime nötig — die STT/TTS/LLM-Pipeline (faster-whisper/Edge-TTS/Haiku) war intakt (stt-service healthy, Modell geladen). (`frontend/src/components/agents/voice-session.tsx`)
+- **Skills-Download funktioniert wieder.** `downloadSkillFile` sendete den Auth-Cookie nicht (`fetch` ohne `credentials:"include"`, dazu ein toter localStorage-Bearer) → 401, der im Klick-Handler stumm verschluckt wurde → „Klick passiert nichts". Jetzt cookie-basiert wie der Rest der API, Fehler werden sichtbar gemacht. (`frontend/src/lib/api.ts`, `frontend/src/app/skills/page.tsx`)
+
+---
+
 ## [1.78.0] — 2026-06-29
 
 ### Added

@@ -89,8 +89,9 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
     setDownloadingFile(filename);
     try {
       await api.downloadSkillFile(skill.id, filename);
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("Skill-Download fehlgeschlagen:", e);
+      alert(`Download fehlgeschlagen: ${e instanceof Error ? e.message : "Unbekannter Fehler"}`);
     } finally {
       setDownloadingFile(null);
     }
