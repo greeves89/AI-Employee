@@ -531,14 +531,18 @@ export async function disconnectIntegration(provider: string): Promise<void> {
   await fetchJSON(`${getBase()}/integrations/${provider}`, { method: "DELETE" });
 }
 
-export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string }> {
+export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/integrations`);
 }
 
-export async function updateAgentIntegrations(agentId: string, integrations: string[], msgraphAccess?: string): Promise<void> {
+export async function updateAgentIntegrations(agentId: string, integrations: string[], msgraphAccess?: string, exchangeAccess?: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/integrations`, {
     method: "PATCH",
-    body: JSON.stringify({ integrations, ...(msgraphAccess ? { msgraph_access: msgraphAccess } : {}) }),
+    body: JSON.stringify({
+      integrations,
+      ...(msgraphAccess ? { msgraph_access: msgraphAccess } : {}),
+      ...(exchangeAccess ? { exchange_access: exchangeAccess } : {}),
+    }),
   });
 }
 

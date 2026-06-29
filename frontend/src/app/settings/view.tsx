@@ -159,6 +159,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [googleClientSecret, setGoogleClientSecret] = useState("");
   const [microsoftClientId, setMicrosoftClientId] = useState("");
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
+  // On-prem Exchange (EWS) admin config
+  const [exchangeServerUrl, setExchangeServerUrl] = useState("");
+  const [exchangeAuthMode, setExchangeAuthMode] = useState("service_account");
+  const [exchangeSvcUser, setExchangeSvcUser] = useState("");
+  const [exchangeSvcPass, setExchangeSvcPass] = useState("");
+  const [exchangeTenantId, setExchangeTenantId] = useState("");
   const [msGuideExpanded, setMsGuideExpanded] = useState(false);
   const [msgraphExtSaving, setMsgraphExtSaving] = useState(false);
   const [appleClientId, setAppleClientId] = useState("");
@@ -386,6 +392,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       if (microsoftClientSecret) data.oauth_microsoft_client_secret = microsoftClientSecret;
       if (appleClientId) data.oauth_apple_client_id = appleClientId;
       if (appleTeamId) data.oauth_apple_team_id = appleTeamId;
+      // On-prem Exchange (only written when the server URL is provided)
+      if (exchangeServerUrl) {
+        data.exchange_server_url = exchangeServerUrl;
+        data.exchange_auth_mode = exchangeAuthMode;
+        if (exchangeSvcUser) data.exchange_service_account_user = exchangeSvcUser;
+        if (exchangeSvcPass) data.exchange_service_account_password = exchangeSvcPass;
+        if (exchangeTenantId) data.exchange_tenant_id = exchangeTenantId;
+      }
       await api.updateSettings(data);
       setMessage("Settings saved!");
       // Clear secret fields
@@ -401,6 +415,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setMicrosoftClientSecret("");
       setAppleClientId("");
       setAppleTeamId("");
+      setExchangeSvcPass("");
       const s = await api.getSettings();
       setSettings(s);
     } catch (e) {
@@ -1354,6 +1369,81 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     mono
                   />
                 </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ─── Exchange (on-prem) ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Network className="h-4 w-4 text-muted-foreground/60" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                Exchange (on-prem)
+              </h2>
+            </div>
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-foreground/[0.04]">
+                <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                  On-prem Exchange (EWS) für Mail &amp; Kalender — getrennt von M365/Graph. Zugriff ist{" "}
+                  <strong className="text-foreground">benutzerspezifisch</strong>: jeder Agent liest/schreibt das
+                  Postfach seines Owners via Impersonation auf dessen E-Mail (aus dem SSO-Login). Hier konfiguriert
+                  der Admin die Verbindung einmalig — danach erscheint &quot;Exchange (on-prem)&quot; bei den
+                  Agent-Integrationen.
+                </p>
+              </div>
+              <div className="p-5 space-y-3">
+                <CredentialField
+                  label="EWS-Server (Host)"
+                  value={exchangeServerUrl}
+                  onChange={setExchangeServerUrl}
+                  placeholder="mail.klinikum-bs.de"
+                  mono
+                />
+                <SelectField
+                  label="Auth-Modus"
+                  value={exchangeAuthMode}
+                  onChange={setExchangeAuthMode}
+                  options={[
+                    { value: "service_account", label: "Service-Account + Impersonation (empfohlen)" },
+                    { value: "modern_auth", label: "Modern Auth (Entra-App) + Impersonation" },
+                    { value: "basic", label: "Basic (User-Credentials, delegate)" },
+                  ]}
+                />
+                {exchangeAuthMode === "service_account" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <CredentialField
+                      label="Service-Account (UPN)"
+                      value={exchangeSvcUser}
+                      onChange={setExchangeSvcUser}
+                      placeholder="svc-aiemployee@klinikum-bs.de"
+                      mono
+                    />
+                    <CredentialField
+                      label="Service-Account Passwort"
+                      type="password"
+                      value={exchangeSvcPass}
+                      onChange={setExchangeSvcPass}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                )}
+                {exchangeAuthMode === "modern_auth" && (
+                  <CredentialField
+                    label="Entra Tenant-ID"
+                    value={exchangeTenantId}
+                    onChange={setExchangeTenantId}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    hint="Nutzt die Microsoft-OAuth-Client-ID/-Secret aus den OAuth-Integrationen oben (gleiche Entra-App)."
+                    mono
+                  />
+                )}
+                <p className="text-[10px] text-muted-foreground/50 pt-1 border-t border-foreground/[0.06]">
+                  Server-URL eintragen &amp; speichern aktiviert die Integration. Im service_account/modern_auth-Modus
+                  muss der User nichts hinterlegen. Voraussetzung am Server: ApplicationImpersonation-Rolle
+                  (service_account) bzw. EWS-App-Berechtigung (modern_auth).
+                </p>
               </div>
             </div>
           </section>

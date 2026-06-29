@@ -736,6 +736,12 @@ class AgentManager:
             mcp_map["msgraph"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/msgraph/{agent_id}"
             auth_map["msgraph"] = make_agent_token(agent_id)
 
+        # Auto-inject the on-prem Exchange MCP when the agent has the exchange
+        # integration. Per-user: the endpoint resolves the agent owner's mailbox.
+        if agent_id and agent_integrations and "exchange_onprem" in agent_integrations:
+            mcp_map["exchange_onprem"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/exchange-onprem/{agent_id}"
+            auth_map["exchange_onprem"] = make_agent_token(agent_id)
+
         if not mcp_map:
             return {}
         env = {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}

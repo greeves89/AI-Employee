@@ -481,6 +481,31 @@ class OAuthService:
                 "auth_type": "auth_json" if is_auth_json_provider else ("pat" if is_pat_provider else "oauth"),
                 "per_user": name in PER_USER_PROVIDERS,
             })
+
+        # On-prem Exchange is NOT an OAuth provider — it's configured by the admin
+        # at the platform level (server URL + auth mode). Surface it as an
+        # available integration once the admin has set the server; per-user auth
+        # happens via impersonation on the user's own email (no OAuth connect).
+        from app.services.settings_service import SettingsService
+        _ssvc = SettingsService(self.db)
+        ex_server = await _ssvc.get("exchange_server_url")
+        ex_mode = (await _ssvc.get("exchange_auth_mode")) or "service_account"
+        ex_connected = bool(ex_server)
+        if ex_mode == "basic":
+            ex_connected = connected.get("exchange_onprem") is not None
+        integrations.append({
+            "provider": "exchange_onprem",
+            "display_name": "Exchange (on-prem)",
+            "icon": "Mail",
+            "description": "On-prem Exchange — Mail & Kalender (benutzerspezifisch via Impersonation)",
+            "connected": ex_connected,
+            "account_label": None,
+            "expires_at": None,
+            "scopes": "",
+            "available": bool(ex_server),
+            "auth_type": "admin",
+            "per_user": True,
+        })
         return integrations
 
     async def get_tokens_for_agent(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:

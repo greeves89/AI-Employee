@@ -58,6 +58,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [agentIntegrations, setAgentIntegrations] = useState<string[]>([]);
   const [msgraphAccess, setMsgraphAccess] = useState<"read" | "write">("read");
+  const [exchangeAccess, setExchangeAccess] = useState<"read" | "write">("read");
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [agentMcpServerIds, setAgentMcpServerIds] = useState<number[] | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -95,6 +96,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
       setIntegrations(all);
       setAgentIntegrations(agentIntResp.integrations);
       setMsgraphAccess(agentIntResp.msgraph_access === "write" ? "write" : "read");
+      setExchangeAccess(agentIntResp.exchange_access === "write" ? "write" : "read");
       setMcpServers(servers);
       setAgentMcpServerIds(mcpResp.mcp_servers);
       setAllowlist(entries);
@@ -147,7 +149,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
     try {
       const promises: Promise<void>[] = [];
       if (changed) {
-        promises.push(api.updateAgentIntegrations(agentId, agentIntegrations, msgraphAccess));
+        promises.push(api.updateAgentIntegrations(agentId, agentIntegrations, msgraphAccess, exchangeAccess));
       }
       if (mcpChanged) {
         promises.push(api.updateAgentMcpServers(agentId, agentMcpServerIds));
@@ -450,6 +452,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             connectedIntegrations.map((integration) => {
               const enabled = agentIntegrations.includes(integration.provider);
               const showMsgraphAccess = integration.provider === "microsoft" && enabled;
+              const showExchangeAccess = integration.provider === "exchange_onprem" && enabled;
               return (
                 <div key={integration.provider} className="space-y-2">
                   <label
@@ -512,6 +515,42 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       </div>
                       <p className="text-[11px] text-muted-foreground/60 mt-2">
                         Read+Write: Agent darf schreiben — ausgehende Mail wird als Entwurf angelegt.
+                      </p>
+                    </div>
+                  )}
+
+                  {showExchangeAccess && (
+                    <div className="ml-7 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => { setExchangeAccess("read"); setChanged(true); }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            exchangeAccess === "read"
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]"
+                          )}
+                        >
+                          <Eye className="h-3 w-3" />
+                          Read
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setExchangeAccess("write"); setChanged(true); }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            exchangeAccess === "write"
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]"
+                          )}
+                        >
+                          <PenLine className="h-3 w-3" />
+                          Read + Write
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground/60 mt-2">
+                        Read+Write: Agent darf im on-prem-Postfach senden/ändern (Mail + Kalender).
                       </p>
                     </div>
                   )}

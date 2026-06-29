@@ -1460,19 +1460,26 @@ async def update_agent_integrations(
             config["msgraph_access"] = body["msgraph_access"]
         msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
 
+        # Optional: on-prem Exchange read/write mode for this agent.
+        old_exchange_access = config.get("exchange_access", "read")
+        if "exchange_access" in body and body["exchange_access"] in ("read", "write"):
+            config["exchange_access"] = body["exchange_access"]
+        exchange_access_changed = config.get("exchange_access", "read") != old_exchange_access
+
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
 
         # Auto-restart running agents so new tokens / access mode are applied
-        if (set(new_integrations) != old_integrations or msgraph_access_changed) and agent.state == AgentState.RUNNING:
+        if (set(new_integrations) != old_integrations or msgraph_access_changed or exchange_access_changed) and agent.state == AgentState.RUNNING:
             await manager.restart_agent(agent_id)
 
         return {
             "agent_id": agent_id,
             "integrations": config["integrations"],
             "msgraph_access": config.get("msgraph_access", "read"),
+            "exchange_access": config.get("exchange_access", "read"),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")

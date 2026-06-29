@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.78.0] — 2026-06-29
+
+### Added
+- **On-Prem Exchange MCP — Ende-zu-Ende verdrahtet + Admin-/Agent-UI.** Baut auf 1.77.0 (MCP-Core) auf und macht die Integration real nutzbar:
+  - **MCP-Injektion:** Sobald ein Agent die `exchange_onprem`-Integration aktiv hat, wird die Exchange-MCP automatisch in seine MCP-Server-Konfiguration injiziert (`agent_manager._get_custom_mcp_env`) — analog msgraph, mit HMAC-Agent-Token.
+  - **Read/Write pro Agent:** `agent.config["exchange_access"]` (read|write) über `PATCH /agents/{id}/integrations`, gated im MCP-Transport.
+  - **Verfügbarkeit:** Exchange erscheint in der Integrationsliste, sobald der Admin den Server konfiguriert hat (`oauth_service.list_integrations`) — kein OAuth-Connect nötig (benutzerspezifisch via Impersonation auf die SSO-E-Mail).
+  - **Admin-UI:** neuer Block „Exchange (on-prem)" unter Settings → Integrationen (Server-URL, Auth-Modus, Service-Account/Tenant).
+  - **Agent-UI:** „Exchange (on-prem)"-Card mit Read / Read+Write-Toggle.
+  (`orchestrator/app/core/agent_manager.py`, `app/api/agents.py`, `app/services/oauth_service.py`, `frontend/src/app/settings/view.tsx`, `frontend/src/components/agents/integration-selector.tsx`, `frontend/src/lib/api.ts`)
+
+---
+
 ## [1.77.0] — 2026-06-29
 
 ### Added
