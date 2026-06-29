@@ -87,6 +87,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "exchange_service_account_user",  # service-account UPN (service_account mode)
     "exchange_tenant_id",             # Entra tenant (modern_auth mode)
     "exchange_mcp_external_enabled",  # expose Exchange MCP to external LLM clients
+    # Meeting → MS Planner: target plan for mirrored action items (empty = off)
+    "meeting_planner_plan_id",
 }
 
 

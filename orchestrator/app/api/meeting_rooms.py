@@ -967,6 +967,40 @@ def _assign_item_to_agent(item: str, agent_name_map: dict) -> str:
     return best_agent_id or next(iter(agent_name_map))
 
 
+async def _maybe_create_planner_tasks(room: MeetingRoom, items: list[str], db) -> int:
+    """Best-effort: mirror each action item into MS Planner, in the admin-set target
+    plan, using the meeting owner's connected Microsoft (M365) account. If no plan is
+    configured or the owner has no M365 connection, this is silently skipped (0).
+
+    Reuses the ms_create_planner_task MCP tool (v1.76) so the Graph logic lives in
+    exactly one place. Server-side → harness-agnostic (works with custom_llm agents)."""
+    from app.services.settings_service import SettingsService
+    plan_id = await SettingsService(db).get("meeting_planner_plan_id")
+    if not plan_id or not room.created_by:
+        return 0
+    from app.services.oauth_service import OAuthService
+    from app.core.msgraph_mcp import handle_tool
+    try:
+        token = await OAuthService(db, None).get_valid_token("microsoft", room.created_by)
+    except Exception:
+        return 0
+    if not token:
+        return 0
+    created = 0
+    for item in items:
+        title = (item or "").strip()[:255]
+        if not title:
+            continue
+        try:
+            await handle_tool("ms_create_planner_task", {"plan_id": plan_id, "title": title}, token)
+            created += 1
+        except Exception:
+            logger.warning("MS-Planner task create failed (meeting %s)", room.id, exc_info=True)
+    if created:
+        logger.info("Mirrored %d action items to MS Planner from meeting %s", created, room.id)
+    return created
+
+
 async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis) -> None:
     """Parse the todo list, assign items to agents, create Task records, persist context."""
     import json as _json
@@ -1019,6 +1053,13 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             created_tasks.append((agent_id, agent_name, agent_items, task.id))
 
         await db.commit()
+
+        # Optional: mirror the action items into MS Planner (best-effort; gated by an
+        # admin-set target plan + the meeting owner's connected M365 account).
+        try:
+            await _maybe_create_planner_tasks(room, items, db)
+        except Exception:
+            logger.warning("MS-Planner mirror failed for meeting %s", room.id, exc_info=True)
 
     # Publish assignment summary message to the meeting room
     if created_tasks:

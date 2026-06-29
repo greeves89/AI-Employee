@@ -546,6 +546,13 @@ export async function updateAgentIntegrations(agentId: string, integrations: str
   });
 }
 
+export async function updateAgentAppearance(agentId: string, icon: string, color: string): Promise<void> {
+  await fetchJSON(`${getBase()}/agents/${agentId}/appearance`, {
+    method: "PATCH",
+    body: JSON.stringify({ icon, color }),
+  });
+}
+
 // Manual code exchange (Anthropic OAuth)
 export async function exchangeOAuthCode(
   provider: string,

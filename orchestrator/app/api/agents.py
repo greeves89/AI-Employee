@@ -663,6 +663,53 @@ async def update_agent_model(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+class AgentAppearanceUpdate(BaseModel):
+    icon: str | None = None
+    color: str | None = None
+
+
+# Curated lucide icon set + color tokens the UI offers — block arbitrary values
+# (avatar is rendered client-side by mapping these names to lucide components).
+_AVATAR_ICONS = {
+    "Bot", "Cpu", "Brain", "Sparkles", "Rocket", "Briefcase", "Cog",
+    "MessageSquare", "Code", "Database", "Mail", "Calendar", "FileText",
+    "Headphones", "ShieldCheck", "Stethoscope", "FlaskConical", "Bug",
+}
+_AVATAR_COLORS = {
+    "violet", "blue", "emerald", "amber", "rose", "cyan", "fuchsia", "slate", "orange",
+}
+
+
+@router.patch("/{agent_id}/appearance")
+async def update_agent_appearance(
+    agent_id: str,
+    body: AgentAppearanceUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set the agent's custom icon + color (cosmetic — stored in config, no restart)."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = dict(agent.config or {})
+        avatar = dict(config.get("avatar") or {})
+        if body.icon is not None:
+            if body.icon and body.icon not in _AVATAR_ICONS:
+                raise HTTPException(status_code=400, detail="Unknown icon")
+            avatar["icon"] = body.icon
+        if body.color is not None:
+            if body.color and body.color not in _AVATAR_COLORS:
+                raise HTTPException(status_code=400, detail="Unknown color")
+            avatar["color"] = body.color
+        config["avatar"] = avatar
+        agent.config = config
+        await db.commit()
+        return {"agent_id": agent_id, "avatar": avatar, "status": "updated"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 class AgentBudgetUpdate(BaseModel):
     budget_usd: float | None  # None = unlimited
     budget_exceeded_action: BudgetExceededAction | None = None

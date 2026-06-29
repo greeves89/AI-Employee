@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.80.0] — 2026-06-30
+
+### Added
+- **Agent-Symbolbilder anpassbar** — pro Agent ein eigenes Symbol (kuratierte lucide-Icons) + Farbe, wählbar über den „Symbol"-Button auf der Agent-Detailseite, angezeigt auf den Agent-Cards. Gespeichert in `agent.config.avatar` (keine DB-Migration), Endpoint `PATCH /agents/{id}/appearance` (Owner-Check, kein Restart). (`api/agents.py`, `frontend/src/components/agents/agent-avatar.tsx` + `agent-appearance-button.tsx`, `dashboard/agent-card.tsx`, `agents/[id]/page.tsx`)
+- **Meeting → MS Planner** — im Meeting erkannte Action-Items werden zusätzlich (best-effort) in einen **MS-Planner-Plan** gespiegelt, über das M365-Konto des Meeting-Owners (`created_by`) via `ms_create_planner_task` (v1.76). Gated über Admin-Setting `meeting_planner_plan_id` (leer = aus) → der bestehende interne Task-Flow bleibt unverändert. Server-seitig → harness-agnostisch (custom_llm). (`api/meeting_rooms.py`, Settings)
+
+### Noch offen (aus Kundenfeedback, bewusst nicht blind deployed)
+- **Second Brain grafisch** — die 3D-Graph-Visualisierung existiert bereits (`second-brains/vault-graph-3d.tsx`); „anpassen" braucht eine konkrete Spec vom Kunden.
+- **Multi-Agent-Orchestrierung** & **„Dreaming"-Memory** — größere Features (Bausteine vorhanden: Inter-Agent-Messaging bzw. Memory/KB/Rolling-Summary/user_profiles). Werden nicht ungetestet auf die Klinik-Prod geschoben — brauchen eigenen Design-/Test-Durchlauf.
+
+---
+
 ## [1.79.0] — 2026-06-30
 
 ### Added

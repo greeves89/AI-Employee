@@ -5,6 +5,7 @@ import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCirc
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 
 const statusConfig: Record<string, {
   online: boolean;
@@ -69,12 +70,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className={cn(
-              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors",
-              isActive ? "bg-primary/10" : "bg-foreground/[0.06]"
-            )}>
-              <Cpu className={cn("h-5 w-5", isActive ? "text-primary" : "text-muted-foreground")} />
-            </div>
+            <AgentAvatar config={agent.config} active={isActive} />
             <div className="min-w-0">
               <h4 className="font-semibold text-sm tracking-tight truncate" title={agent.name}>{agent.name}</h4>
               <div className="flex items-center gap-1.5">

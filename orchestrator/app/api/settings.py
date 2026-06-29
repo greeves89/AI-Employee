@@ -182,6 +182,7 @@ async def update_settings(
         "exchange_server_url", "exchange_auth_mode",
         "exchange_service_account_user", "exchange_service_account_password",
         "exchange_tenant_id",
+        "meeting_planner_plan_id",
     ]
     for field_name in _EXCHANGE_FIELDS:
         value = getattr(data, field_name, None)

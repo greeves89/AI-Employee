@@ -15,6 +15,7 @@ import {
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
+import { AgentAppearanceButton } from "@/components/agents/agent-appearance-button";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -208,6 +209,7 @@ export default function AgentDetailPage() {
                 </div>
               </div>
             )}
+            <AgentAppearanceButton agentId={agent.id} config={agent.config} />
             <button
               onClick={async () => {
                 setRestarting(true);

@@ -66,6 +66,8 @@ class SettingsUpdate(BaseModel):
     exchange_service_account_password: str | None = None # secret
     exchange_tenant_id: str | None = None                # Entra tenant (modern_auth)
     exchange_mcp_external_enabled: bool | None = None
+    # Meeting → MS Planner: target plan ID for mirrored action items (empty = off)
+    meeting_planner_plan_id: str | None = None
 
 
 class VoiceSettings(BaseModel):
