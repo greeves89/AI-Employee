@@ -382,6 +382,243 @@ MSGRAPH_TOOLS = [
             "required": ["path"],
         },
     },
+    # --- Mail: delete + re-exposed write handlers -------------------------------
+    {
+        "name": "ms_delete_email",
+        "description": "Delete an email (moves it to Deleted Items).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
+            },
+            "required": ["email_id"],
+        },
+    },
+    {
+        "name": "ms_forward_email",
+        "description": "Forward an email to one or more recipients.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
+                "to": {"type": "string", "description": "Recipient email address(es), comma-separated."},
+                "comment": {"type": "string", "description": "Optional comment added above the forwarded message."},
+            },
+            "required": ["email_id", "to"],
+        },
+    },
+    {
+        "name": "ms_move_email",
+        "description": "Move an email to a well-known folder (inbox, archive, deleteditems, junkemail, drafts, sentitems).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
+                "folder": {"type": "string", "description": "Destination: inbox, archive, deleteditems, junkemail, drafts, sentitems."},
+            },
+            "required": ["email_id", "folder"],
+        },
+    },
+    {
+        "name": "ms_mark_email_read",
+        "description": "Mark an email as read or unread.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
+                "read": {"type": "boolean", "description": "true = read (default), false = unread."},
+            },
+            "required": ["email_id"],
+        },
+    },
+    # --- Calendar: update + respond + cancel -----------------------------------
+    {
+        "name": "ms_update_calendar_event",
+        "description": "Update/reschedule a calendar event (subject, start, end, location or body).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "The event ID (from ms_list_calendar_events)."},
+                "subject": {"type": "string", "description": "Optional new subject/title."},
+                "start": {"type": "string", "description": "Optional new start, ISO 8601 (e.g. 2026-07-01T09:00:00)."},
+                "end": {"type": "string", "description": "Optional new end, ISO 8601."},
+                "timezone": {"type": "string", "description": "Timezone for start/end (default UTC), e.g. Europe/Berlin."},
+                "location": {"type": "string", "description": "Optional new location."},
+                "body": {"type": "string", "description": "Optional new description/body text."},
+            },
+            "required": ["event_id"],
+        },
+    },
+    {
+        "name": "ms_respond_event",
+        "description": "Respond to a meeting invitation (accept, decline or tentative).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "The event ID (from ms_list_calendar_events)."},
+                "response": {"type": "string", "description": "One of: accept, decline, tentative."},
+                "comment": {"type": "string", "description": "Optional message sent with the response."},
+            },
+            "required": ["event_id", "response"],
+        },
+    },
+    {
+        "name": "ms_cancel_event",
+        "description": "Cancel an event you organize (notifies attendees) — or remove it from your calendar if you are not the organizer.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "The event ID (from ms_list_calendar_events)."},
+                "comment": {"type": "string", "description": "Optional cancellation message to attendees."},
+            },
+            "required": ["event_id"],
+        },
+    },
+    # --- To-Do: update + complete + delete -------------------------------------
+    {
+        "name": "ms_update_task",
+        "description": "Update a Microsoft To-Do task (title, due date or status).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "string", "description": "The To-Do list ID (from ms_list_tasks)."},
+                "task_id": {"type": "string", "description": "The task ID (from ms_list_tasks)."},
+                "title": {"type": "string", "description": "Optional new title."},
+                "due_date": {"type": "string", "description": "Optional due date in YYYY-MM-DD."},
+                "status": {"type": "string", "description": "Optional: notStarted, inProgress or completed."},
+            },
+            "required": ["list_id", "task_id"],
+        },
+    },
+    {
+        "name": "ms_complete_task",
+        "description": "Mark a Microsoft To-Do task as completed.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "string", "description": "The To-Do list ID (from ms_list_tasks)."},
+                "task_id": {"type": "string", "description": "The task ID (from ms_list_tasks)."},
+            },
+            "required": ["list_id", "task_id"],
+        },
+    },
+    {
+        "name": "ms_delete_task",
+        "description": "Delete a Microsoft To-Do task.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "string", "description": "The To-Do list ID (from ms_list_tasks)."},
+                "task_id": {"type": "string", "description": "The task ID (from ms_list_tasks)."},
+            },
+            "required": ["list_id", "task_id"],
+        },
+    },
+    # --- Planner: update + delete (full CRUD) ----------------------------------
+    {
+        "name": "ms_update_planner_task",
+        "description": "Update a Microsoft Planner task — title, due date, completion (percent_complete 0/50/100) or bucket. Use percent_complete=100 to mark it done.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "The Planner task ID (from ms_list_planner_tasks)."},
+                "title": {"type": "string", "description": "Optional new title."},
+                "due_date": {"type": "string", "description": "Optional due date in YYYY-MM-DD."},
+                "percent_complete": {"type": "number", "description": "Optional completion: 0 (open), 50 (in progress) or 100 (done)."},
+                "bucket_id": {"type": "string", "description": "Optional: move the task to this bucket."},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "ms_delete_planner_task",
+        "description": "Delete a Microsoft Planner task.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "The Planner task ID (from ms_list_planner_tasks)."},
+            },
+            "required": ["task_id"],
+        },
+    },
+    # --- OneDrive: delete + move/rename ----------------------------------------
+    {
+        "name": "ms_delete_item",
+        "description": "Delete a OneDrive file or folder (moves it to the OneDrive recycle bin).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path of the file/folder relative to root, e.g. 'Projekte/alt.txt'."},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "ms_move_item",
+        "description": "Rename and/or move a OneDrive file or folder.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Current path relative to root."},
+                "new_name": {"type": "string", "description": "Optional new name."},
+                "new_parent_path": {"type": "string", "description": "Optional new parent folder path relative to root (empty = root)."},
+            },
+            "required": ["path"],
+        },
+    },
+    # --- Contacts: full CRUD ---------------------------------------------------
+    {
+        "name": "ms_list_contacts",
+        "description": "List the user's personal Outlook contacts.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "number", "description": "Max contacts to return. Default: 25, max 50."},
+            },
+        },
+    },
+    {
+        "name": "ms_create_contact",
+        "description": "Create a personal Outlook contact.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "given_name": {"type": "string", "description": "First name."},
+                "surname": {"type": "string", "description": "Optional last name."},
+                "email": {"type": "string", "description": "Optional email address."},
+                "mobile": {"type": "string", "description": "Optional mobile phone number."},
+                "company": {"type": "string", "description": "Optional company name."},
+            },
+            "required": ["given_name"],
+        },
+    },
+    {
+        "name": "ms_update_contact",
+        "description": "Update an existing Outlook contact.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "contact_id": {"type": "string", "description": "The contact ID (from ms_list_contacts)."},
+                "given_name": {"type": "string", "description": "Optional new first name."},
+                "surname": {"type": "string", "description": "Optional new last name."},
+                "email": {"type": "string", "description": "Optional new email address."},
+                "mobile": {"type": "string", "description": "Optional new mobile phone number."},
+                "company": {"type": "string", "description": "Optional new company name."},
+            },
+            "required": ["contact_id"],
+        },
+    },
+    {
+        "name": "ms_delete_contact",
+        "description": "Delete an Outlook contact.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "contact_id": {"type": "string", "description": "The contact ID (from ms_list_contacts)."},
+            },
+            "required": ["contact_id"],
+        },
+    },
 ]
 
 # Tools that CREATE/SEND/MODIFY Microsoft data. Everything else in MSGRAPH_TOOLS
@@ -390,15 +627,33 @@ MSGRAPH_TOOLS = [
 WRITE_TOOLS = {
     "ms_send_email",
     "ms_reply_email",
+    "ms_forward_email",
+    "ms_delete_email",
+    "ms_move_email",
+    "ms_mark_email_read",
     "ms_create_calendar_event",
+    "ms_update_calendar_event",
+    "ms_respond_event",
+    "ms_cancel_event",
     "ms_send_teams_message",
     "ms_send_chat_message",
     "ms_create_task",
+    "ms_update_task",
+    "ms_complete_task",
+    "ms_delete_task",
     "ms_create_planner_task",
+    "ms_update_planner_task",
+    "ms_delete_planner_task",
     # OneDrive write
     "ms_create_folder",
     "ms_upload_text_file",
     "ms_share_file",
+    "ms_delete_item",
+    "ms_move_item",
+    # Contacts write
+    "ms_create_contact",
+    "ms_update_contact",
+    "ms_delete_contact",
 }
 
 
@@ -423,12 +678,18 @@ def tool_result(content: str, is_error: bool = False) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _graph(method: str, path: str, token: str, **kwargs) -> dict:
-    """Make an MS Graph API call and return parsed JSON."""
+    """Make an MS Graph API call and return parsed JSON.
+
+    Extra request headers (e.g. ``If-Match`` for Planner PATCH/DELETE, which Graph
+    rejects without the task's ETag) can be passed via ``headers=`` — they are
+    merged onto the auth/content-type defaults."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    headers.update(kwargs.pop("headers", None) or {})
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.request(
             method,
             f"{GRAPH_BASE}{path}",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            headers=headers,
             **kwargs,
         )
         if resp.status_code == 204:
@@ -441,6 +702,13 @@ async def _graph(method: str, path: str, token: str, **kwargs) -> dict:
             logger.warning("Graph API %s on %s: %s", resp.status_code, path, str(err.get("message", ""))[:300])
             raise RuntimeError(f"Microsoft Graph request failed (HTTP {resp.status_code}).")
         return data
+
+
+async def _planner_etag(task_id, token: str) -> str:
+    """Fetch a Planner task's ``@odata.etag`` — Graph requires it as the
+    ``If-Match`` header for any Planner PATCH/DELETE, otherwise it 412s."""
+    data = await _graph("GET", f"/planner/tasks/{_gid(task_id)}", token)
+    return data.get("@odata.etag", "")
 
 
 def _fmt_size(b: int) -> str:
@@ -931,6 +1199,151 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
         await _graph("PATCH", f"/me/todo/lists/{_gid(args['list_id'])}/tasks/{_gid(args['task_id'])}", token,
                     content=json.dumps({"status": "completed"}))
         return "Aufgabe als erledigt markiert."
+
+    elif name == "ms_delete_email":
+        await _graph("DELETE", f"/me/messages/{_gid(args['email_id'])}", token)
+        return "E-Mail gelöscht (in 'Gelöschte Elemente' verschoben)."
+
+    elif name == "ms_update_calendar_event":
+        tz = args.get("timezone", "UTC")
+        payload = {}
+        if args.get("subject"):
+            payload["subject"] = str(args["subject"])
+        if args.get("location"):
+            payload["location"] = {"displayName": str(args["location"])}
+        if args.get("body"):
+            payload["body"] = {"contentType": "Text", "content": str(args["body"])}
+        if args.get("start"):
+            payload["start"] = {"dateTime": str(args["start"]), "timeZone": tz}
+        if args.get("end"):
+            payload["end"] = {"dateTime": str(args["end"]), "timeZone": tz}
+        if not payload:
+            return "Error: nothing to update — provide subject, start, end, location or body."
+        await _graph("PATCH", f"/me/events/{_gid(args['event_id'])}", token, content=json.dumps(payload))
+        return "Termin aktualisiert."
+
+    elif name == "ms_update_task":
+        payload = {}
+        if args.get("title"):
+            payload["title"] = str(args["title"])
+        if args.get("status"):
+            st = str(args["status"])
+            payload["status"] = st if st in ("notStarted", "inProgress", "completed") else "notStarted"
+        if args.get("due_date"):
+            payload["dueDateTime"] = {"dateTime": f"{args['due_date']}T00:00:00", "timeZone": "UTC"}
+        if not payload:
+            return "Error: nothing to update — provide title, due_date or status."
+        await _graph("PATCH", f"/me/todo/lists/{_gid(args['list_id'])}/tasks/{_gid(args['task_id'])}", token,
+                    content=json.dumps(payload))
+        return "Aufgabe aktualisiert."
+
+    elif name == "ms_delete_task":
+        await _graph("DELETE", f"/me/todo/lists/{_gid(args['list_id'])}/tasks/{_gid(args['task_id'])}", token)
+        return "Aufgabe gelöscht."
+
+    elif name == "ms_update_planner_task":
+        etag = await _planner_etag(args["task_id"], token)
+        if not etag:
+            return "Error: Planner task not found."
+        payload = {}
+        if args.get("title"):
+            payload["title"] = str(args["title"])
+        if args.get("bucket_id"):
+            payload["bucketId"] = str(args["bucket_id"])
+        if args.get("due_date"):
+            payload["dueDateTime"] = f"{args['due_date']}T00:00:00Z"
+        if args.get("percent_complete") is not None:
+            try:
+                pct = int(args["percent_complete"])
+            except (TypeError, ValueError):
+                pct = 0
+            payload["percentComplete"] = max(0, min(100, pct))
+        if not payload:
+            return "Error: nothing to update — provide title, due_date, percent_complete or bucket_id."
+        await _graph("PATCH", f"/planner/tasks/{_gid(args['task_id'])}", token,
+                    headers={"If-Match": etag}, content=json.dumps(payload))
+        return "Planner-Aufgabe aktualisiert."
+
+    elif name == "ms_delete_planner_task":
+        etag = await _planner_etag(args["task_id"], token)
+        if not etag:
+            return "Error: Planner task not found."
+        await _graph("DELETE", f"/planner/tasks/{_gid(args['task_id'])}", token,
+                    headers={"If-Match": etag})
+        return "Planner-Aufgabe gelöscht."
+
+    elif name == "ms_delete_item":
+        rel = _drive_path(args["path"])
+        if not rel:
+            return "Error: path required."
+        await _graph("DELETE", f"/me/drive/root:/{rel}", token)
+        return f"Gelöscht: '{args['path']}' (in den OneDrive-Papierkorb verschoben)."
+
+    elif name == "ms_move_item":
+        rel = _drive_path(args["path"])
+        if not rel:
+            return "Error: path required."
+        payload = {}
+        if args.get("new_name"):
+            payload["name"] = str(args["new_name"])
+        if "new_parent_path" in args:
+            np = _drive_path(args.get("new_parent_path", ""))
+            payload["parentReference"] = {"path": f"/drive/root:/{np}" if np else "/drive/root:"}
+        if not payload:
+            return "Error: provide new_name and/or new_parent_path."
+        data = await _graph("PATCH", f"/me/drive/root:/{rel}", token, content=json.dumps(payload))
+        return f"Verschoben/umbenannt: '{data.get('name')}'\nURL: {data.get('webUrl', '')}"
+
+    elif name == "ms_list_contacts":
+        limit = min(int(args.get("limit", 25)), 50)
+        data = await _graph("GET", "/me/contacts", token, params={
+            "$select": "id,displayName,emailAddresses,mobilePhone,companyName",
+            "$top": limit,
+        })
+        contacts = data.get("value", [])
+        if not contacts:
+            return "No contacts found."
+        lines = []
+        for c in contacts:
+            emails = c.get("emailAddresses", [])
+            email = emails[0].get("address", "") if emails else ""
+            comp = c.get("companyName", "") or ""
+            lines.append(f"• {c.get('displayName', '')} <{email}>{(' — ' + comp) if comp else ''} (ID: {c['id']})")
+        return "\n".join(lines)
+
+    elif name == "ms_create_contact":
+        payload = {"givenName": str(args["given_name"])}
+        if args.get("surname"):
+            payload["surname"] = str(args["surname"])
+        if args.get("company"):
+            payload["companyName"] = str(args["company"])
+        if args.get("mobile"):
+            payload["mobilePhone"] = str(args["mobile"])
+        if args.get("email"):
+            payload["emailAddresses"] = [{"address": str(args["email"]), "name": payload["givenName"]}]
+        data = await _graph("POST", "/me/contacts", token, content=json.dumps(payload))
+        return f"Kontakt erstellt: '{data.get('displayName')}' (ID: {data.get('id')})"
+
+    elif name == "ms_update_contact":
+        payload = {}
+        if args.get("given_name"):
+            payload["givenName"] = str(args["given_name"])
+        if args.get("surname"):
+            payload["surname"] = str(args["surname"])
+        if args.get("company"):
+            payload["companyName"] = str(args["company"])
+        if args.get("mobile"):
+            payload["mobilePhone"] = str(args["mobile"])
+        if args.get("email"):
+            payload["emailAddresses"] = [{"address": str(args["email"])}]
+        if not payload:
+            return "Error: nothing to update."
+        await _graph("PATCH", f"/me/contacts/{_gid(args['contact_id'])}", token, content=json.dumps(payload))
+        return "Kontakt aktualisiert."
+
+    elif name == "ms_delete_contact":
+        await _graph("DELETE", f"/me/contacts/{_gid(args['contact_id'])}", token)
+        return "Kontakt gelöscht."
 
     else:
         return f"Unknown tool: {name}"

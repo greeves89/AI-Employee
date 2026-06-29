@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.76.0] — 2026-06-29
+
+### Added
+- **Vollständiges CRUD für die Microsoft-365-MCP (Outlook, Kalender, To-Do, Planner, OneDrive, Kontakte).** Behebt u.a. den Kundenfehler „Planner-Aufgaben editieren: fehlende Rechte" — es gab schlicht **kein** Update-Tool für Planner, und der `_graph`-Helper konnte den von Graph **zwingend verlangten `If-Match`-ETag** nicht senden. Neu:
+  - **Planner:** `ms_update_planner_task` (Titel/Fälligkeit/Fortschritt 0·50·100/Bucket — `percent_complete=100` = erledigt) und `ms_delete_planner_task` — beide holen vorab den `@odata.etag` (`_planner_etag`) und senden ihn als `If-Match`.
+  - **To-Do:** `ms_update_task`, `ms_complete_task`, `ms_delete_task`.
+  - **Kalender:** `ms_update_calendar_event` (Betreff/Zeit/Ort/Body), plus reaktiviert `ms_respond_event` (zu-/absagen/vorbehaltlich) und `ms_cancel_event`.
+  - **Mail:** `ms_delete_email`, plus reaktiviert `ms_forward_email`, `ms_move_email`, `ms_mark_email_read`.
+  - **OneDrive:** `ms_delete_item`, `ms_move_item` (Umbenennen/Verschieben).
+  - **Kontakte (neu, vorher 0 Tools trotz `Contacts.ReadWrite`-Scope):** `ms_list_contacts`, `ms_create_contact`, `ms_update_contact`, `ms_delete_contact`.
+  - 6 bereits implementierte, aber wegen des alten 128-Tool-Limits ausgeblendete Handler sind wieder als Tools exponiert (Lazy-Tool-Loading aus 1.75.0 hebt das Limit auf). MS-Graph-Tools **28 → 46**; alle 27 schreibenden Tools sind über `WRITE_TOOLS` weiterhin im Read-Only-Modus gesperrt. `_graph` akzeptiert jetzt Extra-Header (`If-Match`). Tests: `orchestrator/tests/test_msgraph_crud.py` (Katalog-Integrität, Write-Gating/AuthZ, ETag-Logik, Handler-Shapes). (`orchestrator/app/core/msgraph_mcp.py`)
+
+---
+
 ## [1.75.0] — 2026-06-25
 
 ### Added
