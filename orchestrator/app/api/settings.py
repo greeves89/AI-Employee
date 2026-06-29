@@ -169,6 +169,7 @@ async def update_settings(
         "voice_stt_provider", "voice_tts_provider", "voice_tts_voice",
         "voice_llm_model", "voice_language",
         "voice_openai_api_key", "voice_elevenlabs_api_key",
+        "voice_azure_speech_key", "voice_azure_speech_region",
     ]
     for field_name in _VOICE_FIELDS:
         value = getattr(data, field_name, None)
@@ -205,7 +206,8 @@ async def get_voice_settings(
     # Currently only edge_tts exposes a curated voice list synchronously;
     # ElevenLabs voices are fetched on-demand by the frontend when that
     # provider is selected (requires an API key call).
-    voices = EDGE_VOICES if cfg["tts_provider"] == "edge_tts" else []
+    # Edge and Azure Speech share the same neural-voice IDs → reuse the list.
+    voices = EDGE_VOICES if cfg["tts_provider"] in ("edge_tts", "azure_speech") else []
     return VoiceSettings(
         stt_provider=cfg["stt_provider"],
         tts_provider=cfg["tts_provider"],
@@ -218,6 +220,8 @@ async def get_voice_settings(
         available_voices=voices,
         has_openai_key=cfg["has_openai_key"],
         has_elevenlabs_key=cfg["has_elevenlabs_key"],
+        has_azure_speech_key=cfg.get("has_azure_speech_key", False),
+        azure_speech_region=cfg.get("azure_speech_region", ""),
     )
 
 

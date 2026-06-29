@@ -21,12 +21,14 @@ from app.services.voice_providers.stt_faster_whisper import FasterWhisperSTT
 from app.services.voice_providers.stt_openai import OpenAIWhisperSTT
 from app.services.voice_providers.tts_edge import EdgeTTS, DEFAULT_VOICE as EDGE_DEFAULT
 from app.services.voice_providers.tts_elevenlabs import ElevenLabsTTS
+from app.services.voice_providers.stt_azure_speech import AzureSpeechSTT
+from app.services.voice_providers.tts_azure_speech import AzureSpeechTTS
 
 logger = logging.getLogger(__name__)
 
 
-STT_PROVIDERS = ["faster_whisper", "openai_whisper"]
-TTS_PROVIDERS = ["edge_tts", "elevenlabs"]
+STT_PROVIDERS = ["faster_whisper", "openai_whisper", "azure_speech"]
+TTS_PROVIDERS = ["edge_tts", "elevenlabs", "azure_speech"]
 LLM_PROVIDERS = ["anthropic"]
 DEFAULT_LANGUAGE = "de"
 
@@ -37,6 +39,11 @@ async def get_stt(db: AsyncSession) -> STTProvider:
     if provider == "openai_whisper":
         key = (await svc.get("voice_openai_api_key")) or settings.openai_api_key
         return OpenAIWhisperSTT(api_key=key)
+    if provider == "azure_speech":
+        key = (await svc.get("voice_azure_speech_key")) or ""
+        region = (await svc.get("voice_azure_speech_region")) or ""
+        lang = (await svc.get("voice_language")) or DEFAULT_LANGUAGE
+        return AzureSpeechSTT(key=key, region=region, language=lang)
     return FasterWhisperSTT()
 
 
@@ -47,6 +54,10 @@ async def get_tts(db: AsyncSession) -> TTSProvider:
     if provider == "elevenlabs":
         key = await svc.get("voice_elevenlabs_api_key") or ""
         return ElevenLabsTTS(api_key=key, default_voice=voice)
+    if provider == "azure_speech":
+        key = (await svc.get("voice_azure_speech_key")) or ""
+        region = (await svc.get("voice_azure_speech_region")) or ""
+        return AzureSpeechTTS(key=key, region=region, default_voice=voice)
     return EdgeTTS(default_voice=voice)
 
 
@@ -72,4 +83,6 @@ async def get_active_voice_config(db: AsyncSession) -> dict:
             (await svc.get("voice_openai_api_key")) or settings.openai_api_key
         ),
         "has_elevenlabs_key": bool(await svc.get("voice_elevenlabs_api_key")),
+        "has_azure_speech_key": bool(await svc.get("voice_azure_speech_key")),
+        "azure_speech_region": (await svc.get("voice_azure_speech_region")) or "",
     }

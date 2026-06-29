@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.79.0] — 2026-06-30
+
+### Added
+- **Voice: Azure Cognitive Services Speech als STT- und TTS-Engine** — die offiziellen „Microsoft"-Stimmen über den **Azure-Speech-Key/Region des Kunden** (nicht das freie Edge-TTS). Neue Provider `AzureSpeechSTT` (Short-Audio-REST) + `AzureSpeechTTS` (Neural Voices, gleiche IDs wie Edge, SSML→MP3-Stream), wählbar in Admin → Settings → Voice; Admin hinterlegt Key + Region (z.B. germanywestcentral). **Default bleibt faster-whisper/Edge** → bestehende Sprachsessions unverändert. Vor Live-Nutzung: Azure-Speech-Key/Region eintragen + Test (Audioformat webm→Azure ist als Validierungspunkt markiert). (`orchestrator/app/services/voice_providers/{stt,tts}_azure_speech.py`, `registry.py`, `settings_service.py`, `schemas/settings.py`, `api/settings.py`, `frontend/src/components/settings/voice-settings.tsx`)
+
+### Noch offen (Voice-Ausbau)
+- Voice-Interaction-LLM über **AWS Bedrock / Azure Foundry** (statt nur Anthropic) und der **Azure-OpenAI-Realtime-Modus** (bidirektionales Audio, ein Modell für STT+LLM+TTS) folgen separat. Der Realtime-Modus braucht die Azure-Realtime-Deployment-Daten des Kunden (Endpoint/Deployment/Key/api-version) zum Bauen UND Validieren — wird nicht ungetestet auf Prod geschoben.
+
+---
+
 ## [1.78.1] — 2026-06-29
 
 ### Fixed

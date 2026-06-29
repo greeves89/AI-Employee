@@ -30,6 +30,7 @@ SECRET_KEYS = {
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
+    "voice_azure_speech_key",
     # APNs auth key (.p8 contents)
     "apns_auth_key",
     # On-prem Exchange: service-account password (basic/NTLM) — secret
@@ -74,6 +75,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "voice_tts_voice",
     "voice_llm_model",
     "voice_language",
+    "voice_azure_speech_region",
     # APNs push config
     "apns_key_id",
     "apns_team_id",

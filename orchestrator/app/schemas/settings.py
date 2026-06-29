@@ -57,6 +57,8 @@ class SettingsUpdate(BaseModel):
     voice_language: str | None = None           # ISO code or None for auto-detect
     voice_openai_api_key: str | None = None     # optional, secret
     voice_elevenlabs_api_key: str | None = None # optional, secret
+    voice_azure_speech_key: str | None = None   # Azure Speech (STT/TTS), secret
+    voice_azure_speech_region: str | None = None # e.g. "germanywestcentral"
     # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
     exchange_server_url: str | None = None               # EWS host, e.g. "mail.klinikum-bs.de"
     exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"
@@ -78,6 +80,8 @@ class VoiceSettings(BaseModel):
     available_voices: list[dict] = []
     has_openai_key: bool = False
     has_elevenlabs_key: bool = False
+    has_azure_speech_key: bool = False
+    azure_speech_region: str = ""
 
 
 class SettingsResponse(BaseModel):
