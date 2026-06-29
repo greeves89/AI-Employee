@@ -175,6 +175,21 @@ async def update_settings(
         if value is not None:
             await svc.set(field_name, str(value))
 
+    # On-prem Exchange (EWS) connection config — stored DB-only (read by the MCP
+    # transport via SettingsService); not mirrored into the config singleton.
+    _EXCHANGE_FIELDS = [
+        "exchange_server_url", "exchange_auth_mode",
+        "exchange_service_account_user", "exchange_service_account_password",
+        "exchange_tenant_id",
+    ]
+    for field_name in _EXCHANGE_FIELDS:
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
+    if data.exchange_mcp_external_enabled is not None:
+        await svc.set("exchange_mcp_external_enabled",
+                      "true" if data.exchange_mcp_external_enabled else "false")
+
     await db.commit()
     return {"status": "updated"}
 

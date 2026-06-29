@@ -32,6 +32,8 @@ SECRET_KEYS = {
     "voice_elevenlabs_api_key",
     # APNs auth key (.p8 contents)
     "apns_auth_key",
+    # On-prem Exchange: service-account password (basic/NTLM) — secret
+    "exchange_service_account_password",
 }
 
 # All settings keys that can be persisted
@@ -77,6 +79,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "apns_team_id",
     "apns_bundle_id",
     "apns_sandbox",
+    # On-prem Exchange (EWS) — admin connection config (per-user auth via impersonation)
+    "exchange_server_url",            # e.g. "mail.klinikum-bs.de" (EWS host)
+    "exchange_auth_mode",             # "service_account" | "modern_auth" | "basic"
+    "exchange_service_account_user",  # service-account UPN (service_account mode)
+    "exchange_tenant_id",             # Entra tenant (modern_auth mode)
+    "exchange_mcp_external_enabled",  # expose Exchange MCP to external LLM clients
 }
 
 

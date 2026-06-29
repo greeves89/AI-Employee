@@ -57,6 +57,13 @@ class SettingsUpdate(BaseModel):
     voice_language: str | None = None           # ISO code or None for auto-detect
     voice_openai_api_key: str | None = None     # optional, secret
     voice_elevenlabs_api_key: str | None = None # optional, secret
+    # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
+    exchange_server_url: str | None = None               # EWS host, e.g. "mail.klinikum-bs.de"
+    exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"
+    exchange_service_account_user: str | None = None     # service-account UPN
+    exchange_service_account_password: str | None = None # secret
+    exchange_tenant_id: str | None = None                # Entra tenant (modern_auth)
+    exchange_mcp_external_enabled: bool | None = None
 
 
 class VoiceSettings(BaseModel):

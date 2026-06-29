@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import admin, agents, ai_accounts, analytics, approval_rules, approvals, audit, auth, brain, brain_mcp, brains, command_policies, computer_use, docker_apps, downloads, event_triggers, features, feedback, health, integrations, knowledge, knowledge_feeds, license as license_api, meeting_rooms, memory, mcp_agent, mcp_msgraph, mcp_msgraph_external, mcp_servers, notifications, oauth_as, ratings, roles, schedules, secrets, skill_marketplace, skills_catalog, tasks, telegram_actions, templates, todos, url_allowlist, user_profiles, version, vertical_packs, webhooks, ws, settings
+from app.api import admin, agents, ai_accounts, analytics, approval_rules, approvals, audit, auth, brain, brain_mcp, brains, command_policies, computer_use, docker_apps, downloads, event_triggers, features, feedback, health, integrations, knowledge, knowledge_feeds, license as license_api, meeting_rooms, memory, mcp_agent, mcp_exchange, mcp_msgraph, mcp_msgraph_external, mcp_servers, notifications, oauth_as, ratings, roles, schedules, secrets, skill_marketplace, skills_catalog, tasks, telegram_actions, templates, todos, url_allowlist, user_profiles, version, vertical_packs, webhooks, ws, settings
 
 api_router = APIRouter()
 api_router.include_router(admin.router)
@@ -28,6 +28,7 @@ api_router.include_router(mcp_agent.router)
 api_router.include_router(brain_mcp.router)
 api_router.include_router(mcp_msgraph.router)
 api_router.include_router(mcp_msgraph_external.router)
+api_router.include_router(mcp_exchange.router)
 api_router.include_router(oauth_as.oauth_router)
 api_router.include_router(mcp_servers.router)
 api_router.include_router(notifications.router)

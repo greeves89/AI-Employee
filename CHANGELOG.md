@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.77.0] — 2026-06-29
+
+### Added
+- **On-Prem Exchange MCP (EWS) — eigener MCP-Server für on-prem Exchange (Mail + Kalender), getrennt von der M365/Graph-MCP.** Der Kunde betreibt Exchange on-prem; `graph.microsoft.com` erreicht das nicht. Neuer MCP via EWS (`exchangelib`), **user-spezifisch**: jeder Agent agiert ausschließlich auf der Mailbox seines Owners (EWS-Impersonation gepinnt auf dessen E-Mail/UPN). Drei admin-wählbare Auth-Modi (`exchange_auth_mode`): `service_account` (Service-Account + ApplicationImpersonation, kein User-Passwort nötig), `modern_auth` (Entra-App-OAuth + Impersonation), `basic` (User-Credential, delegate). 13 Tools (Mail: list/read/send/reply/forward/delete/move/mark_read; Kalender: list/create/update/cancel; + Verbindungstest `ex_whoami`); schreibende Tools über `WRITE_TOOLS` + `agent.config["exchange_access"]` im Read-Only-Modus gesperrt. Admin-Config in den System-Einstellungen (`exchange_server_url`, `exchange_auth_mode`, Service-Account, Tenant). Endpoint `POST /mcp/exchange-onprem/{agent_id}` (HMAC, per-User-Mailbox via Agent-Owner). **Inert bis ein Admin den Exchange-Server konfiguriert** — bricht nichts Bestehendes. Neue Dependency `exchangelib` → Orchestrator-Rebuild beim Deploy. (`orchestrator/app/core/exchange_mcp.py`, `orchestrator/app/api/mcp_exchange.py`, `models/oauth_integration.py`, `services/settings_service.py`, `schemas/settings.py`, `api/settings.py`, `tests/test_exchange_crud.py`)
+
+---
+
 ## [1.76.0] — 2026-06-29
 
 ### Added
