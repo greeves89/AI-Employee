@@ -30,6 +30,7 @@ import {
   BarChart3,
   Rocket,
   Info,
+  HelpCircle,
   X,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -92,6 +93,13 @@ const navGroups: NavGroup[] = [
       { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
       { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
       { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+    ],
+  },
+  {
+    label: "Hilfe",
+    key: "help",
+    items: [
+      { href: "/help", label: "Hilfe & FAQ", icon: HelpCircle, simpleVisible: true },
     ],
   },
   {

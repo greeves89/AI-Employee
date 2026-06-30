@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.84.0] — 2026-06-30
+
+### Added
+- **Hilfe-Bereich im Sidemenü** (`/help`) — neuer Menüpunkt „Hilfe & FAQ" mit **Volltext-Suche**, **FAQ** und Funktions-How-Tos (Deep-Links direkt in die App) sowie Schnellzugriff auf **Benutzerhandbuch (PDF)**, Onboarding und Changelog. Bündelt alle als Hilfe identifizierbaren Inhalte an einem Ort. (`app/help/page.tsx`, `components/layout/sidebar.tsx`)
+- **Benutzerhandbuch auf v1.84.0 aktualisiert** — neue Abschnitte: Skills herunterladen/installieren, Agent-Symbol, Voice, Meeting→Planner, Benachrichtigung→Task-Details, Hilfe-Seite, Admin (Exchange on-prem / Azure-Stimmen / Dreaming). PDF neu generiert (WeasyPrint) + im Frontend unter `/benutzerhandbuch.pdf` abrufbar. (`docs/benutzerhandbuch/`)
+
+---
+
 ## [1.83.2] — 2026-06-30
 
 ### Added

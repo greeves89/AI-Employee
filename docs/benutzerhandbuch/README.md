@@ -1,8 +1,8 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.69.0
-**Stand:** 24. Juni 2026
+**Version:** 1.84.0
+**Stand:** 30. Juni 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** skbs-s-kichat.klinikum-bs.de
 
@@ -1064,6 +1064,98 @@ führt — im Rahmen deiner Freigaben — Aktionen aus.
 1. Bridge starten, anmelden, Berechtigungen *Screenshot* + *Klick* erlauben.
 2. Im Agent-Chat: „Öffne den Browser und zeig mir die Startseite." → der Agent macht einen
    Screenshot und klickt sich nach deinen Freigaben durch.
+
+---
+
+## 24. Skills herunterladen & installieren
+
+Ein **Skill** ist eine wiederverwendbare Fähigkeit (z. B. „Präsentation erstellen").
+
+**Skill installieren (in einen Agenten laden):**
+1. Linke Seitenleiste → **Skill Marketplace**.
+2. Oben **einen Agenten auswählen** (sonst weist ein Hinweis darauf hin).
+3. Beim gewünschten Skill auf **Installieren** klicken.
+
+**Skill herunterladen (als Datei sichern):**
+1. Im Skill Store auf das **Download-Symbol** neben *Installieren* klicken — **oder** den Skill öffnen und im Detailfenster auf **Herunterladen**.
+2. Die Datei `SKILL.md` wird heruntergeladen.
+3. Bereits installierte Skills: **Agent → Wissen → Skills** → Download-Symbol pro Skill.
+
+> _[Screenshot folgt: Skill-Store-Karte mit markiertem Download-Symbol]_
+
+---
+
+## 25. Agent-Symbol (Icon + Farbe) anpassen
+
+1. **Agents** → gewünschten Agenten öffnen → **Einstellungen**.
+2. Bereich **Symbol** → ein **Icon** und eine **Farbe** wählen (wird sofort gespeichert).
+3. Das Symbol erscheint auf den Agent-Karten und in der Übersicht.
+
+> Beim **Erstellen** eines Agenten lässt sich das Symbol ebenfalls direkt wählen.
+>
+> _[Screenshot folgt: Symbol-Auswahl im Agent-Einstellungen-Tab]_
+
+---
+
+## 26. Mit dem Agenten sprechen (Voice)
+
+1. Agent öffnen → **Chat** → die **Sprach-/Voice-Funktion** starten.
+2. Sprechen — der Agent antwortet per Sprache.
+
+**Microsoft-/Azure-Stimmen (optional, vom Admin freizuschalten):** siehe Abschnitt 30.
+
+> _[Screenshot folgt: Voice-Bedienelement im Agent-Chat]_
+
+---
+
+## 27. Meeting-Transkription → MS Planner
+
+Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Aufgaben in einen **MS-Planner-Plan** übertragen (über das M365-Konto des Meeting-Owners).
+
+1. **Meeting Rooms** → Meeting durchführen/aufzeichnen.
+2. Nach der Auswertung erscheinen erkannte Aufgaben — sofern der Admin eine **Planner-Plan-ID** hinterlegt hat (Abschnitt 30), landen sie automatisch im Plan.
+
+> _[Screenshot folgt: erkannte Action-Items im Meeting-Ergebnis]_
+
+---
+
+## 28. Benachrichtigung → Task-Details öffnen
+
+1. Oben rechts auf die **Glocke** klicken.
+2. Eine Benachrichtigung **anklicken** → ein zentriertes Fenster zeigt die **Task-Details**: Status, Ergebnis, Kosten, Dauer, Tokens und ggf. Fehlermeldung.
+
+> _[Screenshot folgt: Task-Detail-Fenster aus einer Benachrichtigung]_
+
+---
+
+## 29. Hilfe & FAQ (im Menü)
+
+1. Linke Seitenleiste → **Hilfe & FAQ**.
+2. **Suchfeld** nutzen (z. B. „Skill herunterladen", „Exchange", „Symbol") oder Themen aufklappen.
+3. Schnellzugriff oben: **Benutzerhandbuch (PDF)**, **Onboarding**, **Changelog**.
+
+> _[Screenshot folgt: Hilfe-Seite mit Suchfeld und FAQ]_
+
+---
+
+## 30. Admin: Exchange on-prem, Azure-Stimmen, Dreaming
+
+**Exchange on-prem (Mail + Kalender):**
+1. **Admin-Konsole → Einstellungen → Integrationen → Exchange (on-prem)**.
+2. **Server-URL (EWS)** + **Auth-Modus** (service_account | modern_auth | basic) eintragen.
+3. Danach erscheint **Exchange** bei den Agent-Integrationen; jeder Agent greift nur auf das Postfach **seines Owners** zu.
+
+**Microsoft-/Azure-Stimmen (Speech):**
+1. **Admin-Konsole → Einstellungen → Voice** → **Azure-Speech-Key** + **Region** eintragen.
+2. Danach sind Azure-STT/TTS als Sprach-Option wählbar.
+
+**Dreaming-Memory (adaptives Nutzerprofil, optional):**
+1. **Admin-Konsole → Einstellungen → Automatisierung** → **Dreaming** aktivieren.
+2. Der Scheduler frischt periodisch das adaptive Nutzerprofil aus den Memories auf.
+
+**Meeting → Planner:** unter Automatisierung die **Planner-Plan-ID** hinterlegen (Abschnitt 27).
+
+> _[Screenshot folgt: Admin-Integrationen mit Exchange-Karte]_
 
 ---
 
