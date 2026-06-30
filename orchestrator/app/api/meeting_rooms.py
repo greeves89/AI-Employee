@@ -1070,6 +1070,24 @@ def _next_followup_name(base: str) -> str:
     return f"{base}{marker}"
 
 
+# Cap how deep the auto-follow-up chain may go. Every meeting that produces action items
+# spawns a follow-up which auto-starts, completes, and would spawn ANOTHER — without a cap
+# this runs (and bills) forever. The chain depth is encoded in the room name.
+MAX_FOLLOWUP_DEPTH = 3
+
+
+def _followup_depth(name: str) -> int:
+    """0 for an original meeting, N for its Nth follow-up (derived from the name)."""
+    marker = " — Folgetermin"
+    if marker not in (name or ""):
+        return 0
+    tail = (name or "").rpartition(marker)[2].strip()
+    try:
+        return int(tail) if tail else 1
+    except ValueError:
+        return 1
+
+
 def _looks_like_todo(text: str | None) -> bool:
     """True only if the synthesizer output is a usable action-item list — NOT an LLM
     error string (e.g. 'API Error: Unable to connect to API (ConnectionRefused)')."""
@@ -1341,6 +1359,14 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
     import json as _json
     import uuid as _uuid
     from app.db.session import async_session_factory
+
+    # Stop the chain after MAX_FOLLOWUP_DEPTH so follow-ups don't beget follow-ups forever.
+    if _followup_depth(room.name) >= MAX_FOLLOWUP_DEPTH:
+        logger.info(
+            f"[Meeting {room.id}] Follow-up chain reached depth {_followup_depth(room.name)} "
+            f"(max {MAX_FOLLOWUP_DEPTH}) — not creating another follow-up."
+        )
+        return None
 
     from datetime import timedelta as _td
     context = _extract_followup_context(todo_content)
