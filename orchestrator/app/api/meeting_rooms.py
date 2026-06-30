@@ -359,8 +359,40 @@ async def _start_moderator_container(room_id: str, docker, redis_url_internal: s
     mod_id = _moderator_agent_id(room_id)
     container_name = f"ai-moderator-{room_id}"
 
-    # Build the same provider env a normal agent gets (OAuth token etc.)
-    provider_env = AgentManager._build_provider_env(None)
+    # Resolve the moderator's LLM. The customer may run Azure custom_llm (no Anthropic),
+    # so a hardcoded claude_code/Haiku moderator dies with "Unable to connect to API
+    # (ConnectionRefused)". The moderator must use a real AI-Account like any agent.
+    # Priority: admin-set moderator account -> first available AI-Account -> platform default.
+    from app.services.settings_service import SettingsService
+    from app.db.session import async_session_factory
+
+    llm_env: dict[str, str] = {}
+    agent_mode = "claude_code"
+    provider_env: dict[str, str] = {}
+    try:
+        async with async_session_factory() as db:
+            am = AgentManager(db, docker, None)
+            acct_id = await SettingsService(db).get("meeting_moderator_ai_account_id")
+            cfg = None
+            if acct_id:
+                try:
+                    cfg = await am._effective_llm_config(int(acct_id), None, None)
+                except Exception:
+                    cfg = None
+            if not cfg:
+                from app.models.ai_account import AIAccount
+                acc = (await db.execute(select(AIAccount).limit(1))).scalars().first()
+                if acc:
+                    cfg = await am._effective_llm_config(acc.id, None, None)
+            if cfg and cfg.get("provider_type"):
+                llm_env = AgentManager._llm_env(cfg)
+                agent_mode = AgentManager._mode_for_ai_provider(cfg.get("provider_type"))
+                logger.info(f"[Moderator] LLM: mode={agent_mode} provider={cfg.get('provider_type')} model={cfg.get('model_name')}")
+    except Exception as e:
+        logger.warning(f"[Moderator] LLM-Config konnte nicht aufgeloest werden: {e}")
+
+    if not llm_env:
+        provider_env = AgentManager._build_provider_env(None)  # last resort (anthropic/claude_code)
 
     env = {
         "AGENT_ID": mod_id,
@@ -369,11 +401,11 @@ async def _start_moderator_container(room_id: str, docker, redis_url_internal: s
         "AGENT_TOKEN": mod_id,          # not used for auth, just identification
         "REDIS_URL": redis_url_internal,
         "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
-        "AGENT_MODE": "claude_code",
-        "DEFAULT_MODEL": "claude-haiku-4-5-20251001",
+        "AGENT_MODE": agent_mode,
         "MAX_TURNS": "3",               # moderator needs very few turns
         "EXTENDED_THINKING": "false",
         **provider_env,
+        **llm_env,
     }
 
     try:
@@ -908,11 +940,16 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
     )
 
     # Wrap-up synthesis: prefer the moderator (it directed the meeting, full context).
-    # Fall back to the first participant if no moderator runs or it doesn't answer.
+    # Fall back to the first participant if the moderator doesn't answer OR returns an
+    # error/garbage instead of a real list (e.g. its LLM is unreachable).
     todo_content = None
-    synthesizer_id = mod_agent_id or room.agent_ids[0]
+    synthesizer_id = room.agent_ids[0]
     if mod_agent_id:
-        todo_content = await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=48)
+        mod_out = await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=48)
+        if _looks_like_todo(mod_out):
+            todo_content, synthesizer_id = mod_out, mod_agent_id
+        else:
+            logger.warning(f"[Meeting {room.id}] Moderator synthesis unusable, falling back to participant")
     if not todo_content:
         synthesizer_id = room.agent_ids[0]
         payload = _json.dumps({"type": "meeting", "room_id": room.id, "prompt": prompt})
@@ -989,6 +1026,17 @@ def _next_followup_name(base: str) -> str:
             num = 2
         return f"{head}{marker} {num}"
     return f"{base}{marker}"
+
+
+def _looks_like_todo(text: str | None) -> bool:
+    """True only if the synthesizer output is a usable action-item list — NOT an LLM
+    error string (e.g. 'API Error: Unable to connect to API (ConnectionRefused)')."""
+    if not text or not text.strip():
+        return False
+    low = text.lower()
+    if any(s in low for s in ("api error", "connectionrefused", "unable to connect", "rate limit")):
+        return False
+    return ("action items" in low) or ("- [ ]" in text)
 
 
 def _assign_item_to_agent(item: str, agent_name_map: dict) -> str:

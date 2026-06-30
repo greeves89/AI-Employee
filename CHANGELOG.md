@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.85.2] — 2026-06-30
+
+### Fixed
+- **Meeting-Moderator war fest auf Anthropic/Claude-Haiku verdrahtet → „Unable to connect to API (ConnectionRefused)" bei Azure-Kunden** (kein Anthropic). Der Moderator bezieht sein LLM jetzt aus einem **AI-Account** wie jeder Agent — einstellbar über `meeting_moderator_ai_account_id` (sonst erster verfügbarer Account). (`orchestrator/app/api/meeting_rooms.py`)
+- **Meeting-Abschluss erzeugte keine Tasks/TODOs, wenn die Synthese fehlschlug.** Der Synthese-Schritt erkennt jetzt unbrauchbare/Fehler-Antworten (z. B. „API Error…") und fällt auf einen funktionierenden Teilnehmer zurück → Action-Items, Tasks und Folgetermin werden zuverlässig erzeugt.
+
+---
+
 ## [1.85.1] — 2026-06-30
 
 ### Fixed

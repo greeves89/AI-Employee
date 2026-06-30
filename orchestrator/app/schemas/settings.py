@@ -68,6 +68,8 @@ class SettingsUpdate(BaseModel):
     exchange_mcp_external_enabled: bool | None = None
     # Meeting → MS Planner: target plan ID for mirrored action items (empty = off)
     meeting_planner_plan_id: str | None = None
+    # Meeting moderator: which AI-Account the moderator agent uses (empty = first available)
+    meeting_moderator_ai_account_id: str | None = None
     # "Dreaming": periodic adaptive user-profile refresh from memories
     dreaming_enabled: bool | None = None
 
@@ -126,4 +128,5 @@ class SettingsResponse(BaseModel):
     improvement_analysis_interval: int = 3600
     # Meeting → MS Planner + "Dreaming"-Memory
     meeting_planner_plan_id: str = ""
+    meeting_moderator_ai_account_id: str = ""
     dreaming_enabled: bool = False

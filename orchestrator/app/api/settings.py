@@ -75,6 +75,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         improvement_skill_threshold=float(await svc.get("improvement_skill_threshold") or "3.0"),
         improvement_analysis_interval=int(await svc.get("improvement_analysis_interval") or "3600"),
         meeting_planner_plan_id=await svc.get("meeting_planner_plan_id") or "",
+        meeting_moderator_ai_account_id=await svc.get("meeting_moderator_ai_account_id") or "",
         dreaming_enabled=(await svc.get("dreaming_enabled") or "false").lower() in ("true", "1", "yes"),
     )
 
@@ -185,6 +186,7 @@ async def update_settings(
         "exchange_service_account_user", "exchange_service_account_password",
         "exchange_tenant_id",
         "meeting_planner_plan_id",
+        "meeting_moderator_ai_account_id",
     ]
     for field_name in _EXCHANGE_FIELDS:
         value = getattr(data, field_name, None)
