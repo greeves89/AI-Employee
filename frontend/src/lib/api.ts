@@ -2286,3 +2286,75 @@ export async function provisionVerticalPack(slug: string): Promise<{
 }> {
   return fetchJSON(`${getBase()}/vertical-packs/${slug}/provision`, { method: "POST" });
 }
+
+// Teams
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  member_agent_ids: string[];
+  lead_agent_id: string | null;
+  is_active: boolean;
+  created_by: string | null;
+}
+
+export async function listTeams(): Promise<{ teams: Team[] }> {
+  return fetchJSON(`${getBase()}/teams/`);
+}
+
+export async function createTeam(body: {
+  name: string;
+  description?: string;
+  member_agent_ids?: string[];
+  lead_agent_id?: string | null;
+}): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getTeam(id: string): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}`);
+}
+
+export async function updateTeam(
+  id: string,
+  body: { name?: string; description?: string; member_agent_ids?: string[]; lead_agent_id?: string | null },
+): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  await fetchJSON(`${getBase()}/teams/${id}`, { method: "DELETE" });
+}
+
+export async function changeTeamMembers(
+  id: string,
+  changes: { add?: string[]; remove?: string[] },
+): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}/members`, {
+    method: "POST",
+    body: JSON.stringify(changes),
+  });
+}
+
+export async function setTeamLead(id: string, leadAgentId: string | null): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}/lead`, {
+    method: "PATCH",
+    body: JSON.stringify({ lead_agent_id: leadAgentId }),
+  });
+}
+
+export async function delegateToTeam(
+  id: string,
+  body: { title: string; prompt: string; priority?: number },
+): Promise<{ task_id: string; lead_agent_id: string; status: string }> {
+  return fetchJSON(`${getBase()}/teams/${id}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
