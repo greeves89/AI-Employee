@@ -24,6 +24,7 @@ from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
 from app.models.test_run import TestRun
 from app.models.meeting_room import MeetingRoom
+from app.models.team import Team  # noqa: F401
 from app.models.approval_rule import ApprovalRule
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.models.event_trigger import EventTrigger
@@ -51,6 +52,7 @@ __all__ = [
     "TaskRating",
     "TestRun",
     "MeetingRoom",
+    "Team",
     "ApprovalRule",
     "KnowledgeFeed", "KnowledgeFeedItem",
     "EventTrigger",
