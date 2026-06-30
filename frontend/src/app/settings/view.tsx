@@ -213,6 +213,32 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setSsoOnlySaving(false);
     }
   };
+  const [dreamingSaving, setDreamingSaving] = useState(false);
+  const toggleDreaming = async (enabled: boolean) => {
+    setDreamingSaving(true);
+    try {
+      await api.updateSettings({ dreaming_enabled: enabled });
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Dreaming nicht ändern");
+    } finally {
+      setDreamingSaving(false);
+    }
+  };
+  const [plannerPlanId, setPlannerPlanId] = useState("");
+  const [plannerSaving, setPlannerSaving] = useState(false);
+  const savePlannerPlan = async () => {
+    setPlannerSaving(true);
+    try {
+      await api.updateSettings({ meeting_planner_plan_id: plannerPlanId.trim() });
+      setSettings(await api.getSettings());
+      setMessage("Meeting → Planner gespeichert");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Planner-Plan nicht speichern");
+    } finally {
+      setPlannerSaving(false);
+    }
+  };
   const [approvalSaving, setApprovalSaving] = useState(false);
   const toggleRequireApproval = async (enabled: boolean) => {
     setApprovalSaving(true);
@@ -303,6 +329,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setAwsRegion(s.aws_region || "us-east-1");
       setVertexRegion(s.vertex_region || "us-east5");
       setFoundryResource(s.foundry_resource || "");
+      setPlannerPlanId(s.meeting_planner_plan_id || "");
       if (s.auth_method === "oauth_token") {
         setAuthMethod("oauth_token");
       } else {
@@ -997,6 +1024,63 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         {/* ─── Tab: System ─── */}
         {secTab === "system" && (
         <div className="space-y-6">
+        {/* ─── Automatisierung ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="h-4 w-4 text-muted-foreground/60" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                Automatisierung
+              </h2>
+            </div>
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm divide-y divide-foreground/[0.04]">
+              <div className="flex items-center justify-between gap-3 px-5 py-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">&bdquo;Dreaming&ldquo;-Memory</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                    Aktualisiert stündlich das adaptive Nutzerprofil aus den Memories (heuristisch, ohne LLM-Kosten).
+                  </p>
+                </div>
+                <button
+                  onClick={() => toggleDreaming(!settings?.dreaming_enabled)}
+                  disabled={dreamingSaving}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                    settings?.dreaming_enabled ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                    dreamingSaving && "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                    settings?.dreaming_enabled ? "translate-x-6" : "translate-x-1",
+                  )} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <div className="text-sm font-medium">Meeting → MS Planner</div>
+                <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                  Plan-ID, in die erkannte Meeting-Action-Items gespiegelt werden (leer = aus).
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={plannerPlanId}
+                    onChange={(e) => setPlannerPlanId(e.target.value)}
+                    placeholder={settings?.meeting_planner_plan_id || "Planner-Plan-ID"}
+                    className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm font-mono outline-none focus:border-primary/50"
+                  />
+                  <button
+                    onClick={savePlannerPlan}
+                    disabled={plannerSaving}
+                    className="rounded-lg bg-foreground/[0.06] hover:bg-foreground/[0.10] px-3 text-xs disabled:opacity-40"
+                  >
+                    Speichern
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
         {/* ─── License ─── */}
         {isAdmin && (
           <section>

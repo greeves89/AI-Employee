@@ -247,6 +247,9 @@ export interface Settings {
   sso_only_login?: boolean;
   require_user_approval?: boolean;
   revoke_msgraph_on_logout?: boolean;
+  // Meeting → MS Planner + "Dreaming"-Memory
+  meeting_planner_plan_id?: string;
+  dreaming_enabled?: boolean;
 }
 
 export interface AgentMemory {

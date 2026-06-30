@@ -45,6 +45,7 @@ import {
 import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { AgentAvatar, AVATAR_ICONS, AVATAR_COLORS } from "@/components/agents/agent-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
 
@@ -180,6 +181,8 @@ export function CreateAgentModal({
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
+  const [avatarIcon, setAvatarIcon] = useState("Cpu");
+  const [avatarColor, setAvatarColor] = useState("violet");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [budgetUsd, setBudgetUsd] = useState<string>("");
   const [budgetExceededAction, setBudgetExceededAction] = useState<"haiku" | "stop">("haiku");
@@ -370,8 +373,9 @@ export function CreateAgentModal({
     try {
       const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
 
+      let created: Awaited<ReturnType<typeof api.createAgent>> | undefined;
       if (aiAccountId !== null) {
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim() || selectedTemplate?.name || "agent",
           aiAccountModel || undefined,
           role.trim() || selectedTemplate?.role || undefined,
@@ -384,14 +388,14 @@ export function CreateAgentModal({
           aiAccountId,
         );
       } else if (selectedTemplate && mode === "claude_code") {
-        await api.createAgentFromTemplate(
+        created = await api.createAgentFromTemplate(
           selectedTemplate.id,
           name.trim() || undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           budgetExceededAction,
         );
       } else if (mode === "codex_cli") {
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim() || selectedTemplate?.name || "codex-agent",
           "gpt-5.5",
           role.trim() || selectedTemplate?.role || undefined,
@@ -413,7 +417,7 @@ export function CreateAgentModal({
           system_prompt: llmSystemPrompt.trim(),
           tools_enabled: llmToolsEnabled,
         };
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim(),
           llmModelName.trim(),
           role.trim() || undefined,
@@ -425,7 +429,7 @@ export function CreateAgentModal({
           budgetExceededAction,
         );
       } else {
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim(),
           undefined,
           role.trim() || undefined,
@@ -436,6 +440,11 @@ export function CreateAgentModal({
           autonomyLevel,
           budgetExceededAction,
         );
+      }
+      if (created?.id) {
+        try {
+          await api.updateAgentAppearance(created.id, avatarIcon, avatarColor);
+        } catch { /* cosmetic — ignore */ }
       }
       setName("");
       setRole("");
@@ -704,6 +713,51 @@ export function CreateAgentModal({
                           autoFocus
                           className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                         />
+                      </div>
+
+                      {/* Symbol & Farbe */}
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Symbol &amp; Farbe
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <AgentAvatar config={{ avatar: { icon: avatarIcon, color: avatarColor } }} />
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(AVATAR_ICONS).map(([n, Icon]) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setAvatarIcon(n)}
+                                className={cn(
+                                  "flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
+                                  avatarIcon === n
+                                    ? "border-primary/50 bg-primary/10"
+                                    : "border-transparent hover:bg-foreground/[0.06]",
+                                )}
+                                title={n}
+                              >
+                                <Icon className="h-3.5 w-3.5" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {Object.entries(AVATAR_COLORS).map(([n, c]) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setAvatarColor(n)}
+                              className={cn(
+                                "h-5 w-5 rounded-full transition-all",
+                                c.dot,
+                                avatarColor === n
+                                  ? "ring-2 ring-offset-2 ring-offset-background ring-foreground/40"
+                                  : "",
+                              )}
+                              title={n}
+                            />
+                          ))}
+                        </div>
                       </div>
 
                       {/* ===== CUSTOM LLM FIELDS (admins only; users pick an AI-Account) ===== */}

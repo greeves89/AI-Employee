@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.82.0] — 2026-06-30
+
+### Added (UI-Nachzug zu 1.80/1.81)
+- **Agent-Symbol beim Erstellen wählbar** — der Create-Agent-Dialog hat jetzt einen Icon- + Farb-Picker; das gewählte Symbol wird direkt beim Anlegen gesetzt. (`create-agent-modal.tsx`)
+- **Agent-Symbol auch im Settings-Tab** (zusätzlich zum Header-Button) — Sektion „Symbol & Farbe" unter Agent → Allgemein. (`agents/[id]/page.tsx`)
+- **Admin-UI für „Dreaming" + Meeting→Planner** — neue Sektion „Automatisierung" unter Admin → Settings → System: Toggle für `dreaming_enabled` + Eingabe der `meeting_planner_plan_id` (vorher nur per API). (`settings/view.tsx`, `SettingsResponse` um beide Felder erweitert)
+
+---
+
 ## [1.81.1] — 2026-06-30
 
 ### Fixed

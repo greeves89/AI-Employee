@@ -1348,6 +1348,17 @@ function AgentSettings({
 
   return (
     <div className="space-y-6 overflow-auto h-full pb-4">
+      {/* Aussehen / Symbol */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-5 py-3.5">
+          <div>
+            <div className="text-sm font-medium">Symbol &amp; Farbe</div>
+            <div className="text-[11px] text-muted-foreground/60">Eigenes Icon + Farbe für diesen Agent (Anzeige auf den Karten).</div>
+          </div>
+          <AgentAppearanceButton agentId={agentId} />
+        </div>
+      </div>
+
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
 

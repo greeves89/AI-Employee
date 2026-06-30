@@ -124,3 +124,6 @@ class SettingsResponse(BaseModel):
     improvement_min_skill_usages: int = 5
     improvement_skill_threshold: float = 3.0
     improvement_analysis_interval: int = 3600
+    # Meeting → MS Planner + "Dreaming"-Memory
+    meeting_planner_plan_id: str = ""
+    dreaming_enabled: bool = False

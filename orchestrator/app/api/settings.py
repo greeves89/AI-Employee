@@ -74,6 +74,8 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         improvement_min_skill_usages=int(await svc.get("improvement_min_skill_usages") or "5"),
         improvement_skill_threshold=float(await svc.get("improvement_skill_threshold") or "3.0"),
         improvement_analysis_interval=int(await svc.get("improvement_analysis_interval") or "3600"),
+        meeting_planner_plan_id=await svc.get("meeting_planner_plan_id") or "",
+        dreaming_enabled=(await svc.get("dreaming_enabled") or "false").lower() in ("true", "1", "yes"),
     )
 
 
