@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.89.0] — 2026-06-30
+
+### Fixed
+- **Meeting-Agenten führen ihre zugewiesenen Aufgaben jetzt WIRKLICH aus** (vorher: Task lief, aber der Agent lehnte ab/tat nichts). Mehrere zusammenhängende Ursachen behoben:
+  - **Leere Autonomie-Whitelist trotz l3-Default:** `get_active_rules_for_agent` lieferte nur materialisierte Regeln; Agenten mit Default-Level l3 (Regeln nie materialisiert) bekamen eine LEERE Whitelist → „immer Approval vor Schreiben" → Ablehnung. Jetzt Fallback: Whitelist wird aus dem Autonomie-Level-Preset abgeleitet, wenn keine agent-spezifischen Regeln existieren. (`api/approval_rules.py`)
+  - **TODOs für den Agenten unsichtbar:** Orchestrator legte Meeting-TODOs mit `project=NULL` an, der Agent liest `list_todos` aus `project='workspace/general'` → 0 gefunden. TODOs werden jetzt im richtigen Projekt angelegt. (`api/meeting_rooms.py`)
+  - **TODO-Abschluss automatisch:** verknüpfte TODOs werden auf erledigt gesetzt, sobald der [Meeting]-Task des Agenten fertig ist — unabhängig davon, ob der Agent `complete_todo` (ggf. lazy-loaded) aufruft. (`core/task_router.py`)
+  - **Task-Prompt:** explizite Autonomie-Freigabe für die zugewiesene Eigenarbeit (Workspace/knowledge schreiben + Recherche, extern weiter approval-pflichtig), Onboarding-Status irrelevant, keine Spezial-Tools nötig — nur Punkte abarbeiten + in `knowledge.md` dokumentieren. (`api/meeting_rooms.py`)
+
+### Changed
+- **Event-basierter Folgetermin keyt jetzt auf Task-Abschluss** (Agenten erledigen Tasks zuverlässig; TODO-Häkchen nicht immer) statt auf TODO-Status. (`services/scheduler_service.py`)
+- Synthese-Prompt: ungenutzten `FOLLOWUP_DATE`-Marker entfernt (Folgetermin ist event-basiert).
+
 ## [1.88.0] — 2026-06-30
 
 ### Changed

@@ -108,15 +108,15 @@ class SchedulerService:
             await asyncio.sleep(30)
 
     async def _start_due_followups(self) -> int:
-        """Auto-start idle follow-up meeting rooms — EVENT-BASED: start once ALL of the
-        parent meeting's action-item TODOs are completed (the agents brought results),
+        """Auto-start idle follow-up meeting rooms — EVENT-BASED: start once the agents
+        have FINISHED their assigned tasks from the parent meeting (the agents reliably
+        complete tasks; they don't always tick the TODOs, so we key on task completion),
         or, as a safety net, once scheduled_for (the cap) is reached."""
         from datetime import datetime, timezone
-        from sqlalchemy import select, and_, or_, func
+        from sqlalchemy import select, and_, or_
         from app.db.session import async_session_factory
         from app.models.meeting_room import MeetingRoom
-        from app.models.task import Task
-        from app.models.agent_todo import AgentTodo, TodoStatus
+        from app.models.task import Task, TaskStatus
         from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
 
         now = datetime.now(timezone.utc)
@@ -135,20 +135,13 @@ class SchedulerService:
                 cap_due = room.scheduled_for is not None and room.scheduled_for <= now
                 tasks_done = False
                 if room.parent_room_id:
-                    ptids = (await db.execute(
-                        select(Task.id).where(Task.metadata_["room_id"].astext == room.parent_room_id)
+                    statuses = (await db.execute(
+                        select(Task.status).where(Task.metadata_["room_id"].astext == room.parent_room_id)
                     )).scalars().all()
-                    if ptids:
-                        total = await db.scalar(
-                            select(func.count(AgentTodo.id)).where(AgentTodo.task_id.in_(ptids))
-                        )
-                        open_ = await db.scalar(
-                            select(func.count(AgentTodo.id)).where(and_(
-                                AgentTodo.task_id.in_(ptids),
-                                AgentTodo.status != TodoStatus.COMPLETED,
-                            ))
-                        )
-                        tasks_done = (total or 0) > 0 and (open_ or 0) == 0
+                    # Ready once every assigned meeting task has reached a terminal state
+                    # (COMPLETED/FAILED) — i.e. the agents are done working.
+                    if statuses:
+                        tasks_done = all(s not in (TaskStatus.PENDING, TaskStatus.RUNNING) for s in statuses)
                 if not (cap_due or tasks_done):
                     continue
                 room.state = "running"

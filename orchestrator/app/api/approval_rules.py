@@ -306,13 +306,33 @@ async def delete_rule(
 
 
 async def get_active_rules_for_agent(db: AsyncSession, agent_id: str) -> list[ApprovalRule]:
-    """Return all active rules that apply to a given agent (global rules + agent-specific)."""
+    """Return all active rules that apply to a given agent (global rules + agent-specific).
+
+    If the agent has NO agent-specific rules materialized, fall back to its autonomy_level
+    preset (agents default to l3, but their preset rules are only materialized when the
+    autonomy level is explicitly (re)applied — without this fallback such agents would get
+    an EMPTY whitelist and therefore require approval for every write)."""
     result = await db.execute(
         select(ApprovalRule)
         .where(ApprovalRule.is_active == True)
         .where((ApprovalRule.agent_id.is_(None)) | (ApprovalRule.agent_id == agent_id))
     )
-    return list(result.scalars().all())
+    rules = list(result.scalars().all())
+    if not any(r.agent_id == agent_id for r in rules):
+        from app.models.agent import Agent as _Agent
+        level = (await db.scalar(select(_Agent.autonomy_level).where(_Agent.id == agent_id))) or "l3"
+        presets = list((await db.execute(
+            select(AutonomyPresetRule)
+            .where(AutonomyPresetRule.level == level)
+            .order_by(AutonomyPresetRule.sort_order, AutonomyPresetRule.id)
+        )).scalars().all())
+        # Transient (not persisted) — just feed the prompt's whitelist for this read.
+        for pr in presets:
+            rules.append(ApprovalRule(
+                name=pr.name, description=pr.description,
+                category=pr.category, agent_id=agent_id, is_active=True,
+            ))
+    return rules
 
 
 # ── Autonomy Level Presets ────────────────────────────────────────────────────

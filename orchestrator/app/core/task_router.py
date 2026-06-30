@@ -409,6 +409,20 @@ class TaskRouter:
         if schedule_id:
             await self._update_schedule_stats(schedule_id, data)
 
+        # Meeting tasks: mark the linked structured TODOs as completed once the agent's
+        # task finishes — so they show as done in the Todo tab and the event-based
+        # follow-up (which keys on task completion) reflects real progress. The agent
+        # does NOT need to call complete_todo itself (it may be lazy-loaded out).
+        if task.status == TaskStatus.COMPLETED and (task.metadata_ or {}).get("source") == "meeting":
+            from app.models.agent_todo import AgentTodo, TodoStatus
+            mtodos = (await self.db.execute(
+                select(AgentTodo).where(AgentTodo.task_id == task.id)
+            )).scalars().all()
+            for _td in mtodos:
+                if _td.status != TodoStatus.COMPLETED:
+                    _td.status = TodoStatus.COMPLETED
+                    _td.completed_at = datetime.now(timezone.utc)
+
         await self.db.commit()
 
         # Auto-rate the task based on outcome metrics

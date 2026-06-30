@@ -1186,15 +1186,23 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             agent_name = agent_name_map[agent_id]
             task_prompt = (
                 f"Im Meeting **{room.name}** (Thema: {room.topic or 'kein Thema'}) "
-                f"wurden dir folgende Action Items zugewiesen — sie liegen **bereits als TODOs in deiner Liste**:\n\n"
+                f"wurden dir folgende Action Items zugewiesen — sie liegen bereits als TODOs in deiner Liste:\n\n"
                 + "\n".join(f"- {it}" for it in agent_items)
-                + "\n\n**Schritt 1 — Prüfen & selbst terminieren:** Rufe `list_todos` auf. Lege für jedes dieser "
-                "TODOs SELBST fest, **bis wann** (konkretes Fälligkeitsdatum) und **wie** (kurzes Vorgehen) du es "
-                "erledigst, und aktualisiere den TODO-Text entsprechend — nutze dafür deine **Todo-MCP-Tools** "
-                "(NICHT die eingebaute TodoWrite, KEINE Datei; nur so bleibt es in der Todo-Liste des Nutzers sichtbar).\n"
-                "**Schritt 2 — Abarbeiten:** Erledige die Punkte und markiere jeden mit `complete_todo` als fertig.\n"
-                "**Schritt 3 — Dokumentieren:** Speichere relevante Ergebnisse in `/workspace/knowledge.md` "
-                f"unter dem Abschnitt '## Meeting-Ergebnisse: {room.name}'."
+                + "\n\n=== AUTONOMY WHITELIST (für diese zugewiesene Aufgabe) ===\n"
+                "Diese Arbeit ist dir vom Meeting FREIGEGEBEN. Du DARFST sie OHNE `request_approval` ausführen:\n"
+                "  - in deinem eigenen Workspace schreiben (`/workspace/knowledge.md`, `/workspace/.agent_state.md`)\n"
+                "  - eigene Recherche-Tools nutzen (web_search, web_fetch, brain_search, memory_search)\n"
+                "Nur EXTERNE Seiteneffekte (Mails/Nachrichten senden, externe APIs, Käufe) brauchen weiter Approval.\n"
+                "Der Onboarding-Status ist hier IRRELEVANT — arbeite die Punkte direkt ab, frag nicht zurück.\n"
+                "=== END WHITELIST ===\n\n"
+                "So gehst du vor:\n"
+                "1. **Abarbeiten:** Bearbeite jeden Punkt konkret (recherchiere bei Bedarf). Erfinde nichts — "
+                "wo du etwas nicht abschließen kannst, halte den konkreten Zwischenstand + nächsten Schritt fest.\n"
+                "2. **Dokumentieren:** Schreibe deine Ergebnisse in `/workspace/knowledge.md` unter dem Abschnitt "
+                f"'## Meeting-Ergebnisse: {room.name}' — pro Action Item ein kurzer Absatz mit dem Ergebnis. "
+                "Diese Ergebnisse bringst du zum Folgetermin mit.\n"
+                "Du musst KEINE Todo-Tools aufrufen — der Abschluss deiner TODOs wird automatisch gesetzt, "
+                "sobald dieser Task fertig ist."
             )
             import uuid as _uuid
             task = Task(
@@ -1219,6 +1227,7 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
                     status=TodoStatus.PENDING,
                     priority=3,
                     sort_order=_i,
+                    project="workspace/general",
                 ))
             created_tasks.append((agent_id, agent_name, agent_items, task.id))
 
