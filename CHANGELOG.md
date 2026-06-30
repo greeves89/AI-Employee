@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.87.2] — 2026-06-30
+
+### Fixed
+- **Folgetermin-Datum greift jetzt zuverlässig (Agenten-Vorschlag statt +7-Tage-Fallback).** Die Synthese ließ die End-Abschnitte (Folgetermin/Kontext) oft weg → es blieb der Fallback. Das Datum wird nun als **PFLICHT-erste-Zeile** `FOLLOWUP_DATE: YYYY-MM-DD` verlangt (wird nicht ignoriert/abgeschnitten) und vorrangig geparst. (`orchestrator/app/api/meeting_rooms.py`)
+
 ## [1.87.1] — 2026-06-30
 
 ### Fixed

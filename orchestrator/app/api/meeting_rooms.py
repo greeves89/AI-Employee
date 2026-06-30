@@ -934,21 +934,20 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         f"Topic: {room.topic or '(no topic)'}\n"
         f"Heutiges Datum: {_today}.\n\n"
         f"Conversation:\n{conversation}\n\n"
-        f"Based on this discussion, create a clear, actionable **Todo List** as a markdown checklist.\n"
-        f"Format exactly like this:\n"
+        f"Antworte in GENAU dieser Reihenfolge:\n\n"
+        f"1) Als ALLERERSTE Zeile der Folgetermin im Format `FOLLOWUP_DATE: YYYY-MM-DD` "
+        f"(z. B. `FOLLOWUP_DATE: 2026-07-15`) — realistisch ab heute ({_today}) so gewählt, dass die unten "
+        f"stehenden Action Items bis dahin erledigt sein können. Diese Zeile ist PFLICHT und muss zuerst kommen.\n\n"
+        f"2) Dann die Todo-Liste als markdown-Checkliste, genau so:\n"
         f"## Action Items\n"
         f"- [ ] Item 1\n"
         f"- [ ] Item 2\n"
         f"...\n"
-        f"Group items by priority: **Sofort**, **Kurzfristig**, **Mittelfristig** if applicable.\n"
-        f"Be concrete and specific. Max 15 items.\n\n"
-        f"After the checklist, also append TWO sections:\n"
+        f"Gruppiere nach Priorität: **Sofort**, **Kurzfristig**, **Mittelfristig** (falls sinnvoll). "
+        f"Konkret und spezifisch. Max 15 Items.\n\n"
+        f"3) Dann der Abschnitt:\n"
         f"## Meeting-Kontext für Folgetermine\n"
-        f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting.)\n"
-        f"## Folgetermin\n"
-        f"Gib hier GENAU EINE Zeile aus: das vorgeschlagene Datum im Format YYYY-MM-DD (z. B. 2026-07-15), "
-        f"realistisch so gewählt, dass die obigen Action Items bis dahin erledigt sein können (ab heute, {_today}). "
-        f"Nur das Datum, kein weiterer Text.\n"
+        f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting.)\n\n"
         f"Antworte AUSSCHLIESSLICH mit diesem Markdown — keine Dateispeicherung nötig."
     )
 
@@ -1061,6 +1060,15 @@ def _extract_followup_date(markdown: str):
     if not markdown:
         return None
     now = datetime.now(timezone.utc)
+    # Preferred: the explicit FOLLOWUP_DATE marker (we ask for it as the first line).
+    fd = re.search(r"FOLLOWUP_DATE:\s*(\d{4})-(\d{1,2})-(\d{1,2})", markdown, re.I)
+    if fd:
+        try:
+            dt = datetime(int(fd.group(1)), int(fd.group(2)), int(fd.group(3)), 9, 0, tzinfo=timezone.utc)
+            if dt > now:
+                return dt
+        except ValueError:
+            pass
     m = re.search(r"##\s*Folgetermin\b(.*?)(?:\n##\s|\Z)", markdown, re.S | re.I)
     block = m.group(1) if m else markdown
 
