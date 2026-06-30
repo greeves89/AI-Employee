@@ -1100,6 +1100,7 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
     from app.db.session import async_session_factory
     from app.models.task import Task, TaskStatus, TaskPriority
     from app.models.agent import Agent as _Agent
+    from app.models.agent_todo import AgentTodo, TodoStatus
 
     items = _parse_action_items(todo_content)
     if not items:
@@ -1126,17 +1127,13 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             agent_name = agent_name_map[agent_id]
             task_prompt = (
                 f"Im Meeting **{room.name}** (Thema: {room.topic or 'kein Thema'}) "
-                f"wurden dir folgende Action Items zugewiesen — sie gehören ab jetzt zu DEINEN Aufgaben:\n\n"
-                + "\n".join(f"- [ ] {it}" for it in agent_items)
-                + "\n\n**Schritt 1 — In deine To-Do-Liste übernehmen & selbst terminieren:** "
-                "Trage JEDES dieser Items in deine persönliche To-Do-Liste `/workspace/todo.md` ein "
-                "(lege die Datei an, falls sie nicht existiert) unter der Überschrift "
-                f"'## Aus Meeting: {room.name}'. Lege dabei für jedes Item SELBST fest, "
-                "**bis wann** (konkretes Fälligkeitsdatum) und **wie** (kurzer Vorgehensplan) du es erledigst. "
-                "Schreibe jede Zeile im Format: "
-                "`- [ ] <Item> — fällig: <YYYY-MM-DD> — Vorgehen: <kurz>`. "
-                "Falls dir ein Schedule-/Reminder-Tool zur Verfügung steht, plane die Fälligkeiten zusätzlich dort ein.\n"
-                "**Schritt 2 — Abarbeiten:** Erledige die Punkte gemäß deinem Plan und hake sie in `todo.md` ab (`- [x]`).\n"
+                f"wurden dir folgende Action Items zugewiesen — sie liegen **bereits als TODOs in deiner Liste**:\n\n"
+                + "\n".join(f"- {it}" for it in agent_items)
+                + "\n\n**Schritt 1 — Prüfen & selbst terminieren:** Rufe `list_todos` auf. Lege für jedes dieser "
+                "TODOs SELBST fest, **bis wann** (konkretes Fälligkeitsdatum) und **wie** (kurzes Vorgehen) du es "
+                "erledigst, und aktualisiere den TODO-Text entsprechend — nutze dafür deine **Todo-MCP-Tools** "
+                "(NICHT die eingebaute TodoWrite, KEINE Datei; nur so bleibt es in der Todo-Liste des Nutzers sichtbar).\n"
+                "**Schritt 2 — Abarbeiten:** Erledige die Punkte und markiere jeden mit `complete_todo` als fertig.\n"
                 "**Schritt 3 — Dokumentieren:** Speichere relevante Ergebnisse in `/workspace/knowledge.md` "
                 f"unter dem Abschnitt '## Meeting-Ergebnisse: {room.name}'."
             )
@@ -1151,6 +1148,19 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
                 metadata_={"source": "meeting", "room_id": room.id, "items": agent_items},
             )
             db.add(task)
+            # Pre-create the structured TODOs so they appear in the agent's Todo tab
+            # immediately — deterministic, independent of whether the agent calls its
+            # todo tools. The agent then sets deadlines + completes them via the tools.
+            for _i, _it in enumerate(agent_items):
+                db.add(AgentTodo(
+                    agent_id=agent_id,
+                    task_id=task.id,
+                    title=(_it or "")[:200],
+                    description=f"Aus Meeting: {room.name}",
+                    status=TodoStatus.PENDING,
+                    priority=3,
+                    sort_order=_i,
+                ))
             created_tasks.append((agent_id, agent_name, agent_items, task.id))
 
         await db.commit()

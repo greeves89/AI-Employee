@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.86.1] — 2026-06-30
+
+### Fixed
+- **Meeting-Action-Items erschienen nicht im TODOs-Tab des Agenten.** Ursache: der Assignment-Prompt schickte den Agenten auf `/workspace/todo.md` (Datei) statt auf die strukturierten Todo-MCP-Tools (DB → UI-Tab). Jetzt legt der Orchestrator die TODOs **direkt** an (`agent_todos`, erscheinen sofort), und der Prompt weist den Agenten an, sie via `list_todos`/`complete_todo` selbst zu terminieren + abzuarbeiten. (`orchestrator/app/api/meeting_rooms.py`)
+
+---
+
 ## [1.86.0] — 2026-06-30
 
 ### Added
