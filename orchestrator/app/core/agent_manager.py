@@ -934,6 +934,14 @@ class AgentManager:
             except Exception as e:
                 logger.warning(f"Could not initialize agent files: {e}")
 
+        # write_file_in_container writes as root; the agent runs as uid 1000 and MUST be
+        # able to write its own /workspace/knowledge.md (otherwise "save results to
+        # knowledge.md" fails with Permission denied). Hand the workspace to the agent.
+        try:
+            self.docker.exec_in_container(container.id, ["chown", "-R", "1000:1000", "/workspace"], user="root")
+        except Exception as e:
+            logger.warning(f"Could not chown workspace for agent {agent_id}: {e}")
+
         # Update shared team registry
         try:
             self._update_team_registry(container.id, agent_id, name, role or "Unassigned")
