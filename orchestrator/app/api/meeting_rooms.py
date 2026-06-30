@@ -672,17 +672,20 @@ def _clean_meeting_response(text: str | None) -> str | None:
         return text
     import re as _re
 
+    # The "knowledge file" the agents narrate reading — both the literal path and the
+    # German synonyms the moderator uses ("Wissensdatei/-basis/-datenbank").
+    _KNOW = r"(knowledge\.md|wissens(datei|basis|datenbank|file))"
+
     def _is_filler(st: str) -> bool:
-        low = st.lower()
         # Leaked tool-call / shell syntax (the moderator sometimes emits raw "<bash> cat …")
         if _re.match(r"^\s*(</?bash>?|```|\$\s|cat\s+/|sh\s+-|<tool|tool_call|to=functions)", st, _re.I):
             return True
-        if "knowledge.md" not in low:
+        m = _re.search(_KNOW, st, _re.I)
+        if not m:
             return False
         if not _re.match(r"^\s*(ich\s+(lese|schaue|pr[üu]fe|sehe|werfe)|i('?ll| will)?\s+read|let me read|reading)\b", st, _re.I):
             return False
-        idx = low.rfind("knowledge.md") + len("knowledge.md")
-        return len(st[idx:].strip(" .,:;—-")) <= 60
+        return len(st[m.end():].strip(" .,:;—-")) <= 60
 
     s = text.strip()
     # Whole-message exact duplication ("AAA AAA" / "AAA. AAA." / "AAA\nAAA"),
@@ -705,7 +708,7 @@ def _clean_meeting_response(text: str | None) -> str | None:
         # Bounded ({0,80}) so a leading filler sentence is removed ONLY when it ends
         # shortly after the knowledge.md mention — never greedily swallow real content.
         ln = _re.sub(
-            r"^\s*(ich\s+(lese|schaue|pr[üu]fe|sehe|werfe)[^.!?\n]{0,40}knowledge\.md[^.!?\n]{0,40}[.!?]\s*)+",
+            r"^\s*(ich\s+(lese|schaue|pr[üu]fe|sehe|werfe)[^.!?\n]{0,40}" + _KNOW + r"[^.!?\n]{0,40}[.!?]\s*)+",
             "", ln, flags=_re.I,
         )
         ln = _re.sub(
