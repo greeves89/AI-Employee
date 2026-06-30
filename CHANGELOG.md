@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.81.1] — 2026-06-30
+
+### Fixed
+- **KRITISCH: Tasks scheiterten reihenweise am 128-Tool-Limit** (`API error 400: Invalid 'tools': array too long … got 154, max 128`). Das Lazy-Tool-Loading (`search_tools`, v1.75) war **nur im Chat-Handler** aktiv — der **Task-Runner** (`llm_runner.py`) schickte weiterhin den **vollen** Katalog. Durch die heutigen Tool-Erweiterungen (MS-Graph 28→46, Exchange +13) riss der Task-Pfad das Limit → alle Tasks (inkl. Proactive-Mode) brachen ab. Fix: derselbe Lazy-Loading-Mechanismus (CORE-Set + `search_tools` + on-demand-Aktivierung, LRU-capped, geteilt mit dem Chat-Handler) jetzt auch im Task-Runner. **Erfordert Agent-Image-Rebuild + Neu-Erstellung laufender Agenten.** (`agent/app/llm_runner.py`, `agent/Dockerfile`)
+
+---
+
 ## [1.81.0] — 2026-06-30
 
 ### Added
