@@ -136,7 +136,7 @@ class SchedulerService:
                 tasks_done = False
                 if room.parent_room_id:
                     statuses = (await db.execute(
-                        select(Task.status).where(Task.metadata_["room_id"].astext == room.parent_room_id)
+                        select(Task.status).where(Task.metadata_.op("->>")("room_id") == room.parent_room_id)
                     )).scalars().all()
                     # Ready once every assigned meeting task has reached a terminal state
                     # (COMPLETED/FAILED) — i.e. the agents are done working.
