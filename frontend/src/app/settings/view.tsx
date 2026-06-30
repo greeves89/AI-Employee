@@ -16,7 +16,7 @@ import { VoiceSettings } from "@/components/settings/voice-settings";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
-import type { Settings, ModelProvider } from "@/lib/types";
+import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 
 // ── Model options per provider ──────────────────────────────
 const MODEL_OPTIONS: Record<ModelProvider, { value: string; label: string; tier: string }[]> = {
@@ -239,6 +239,22 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setPlannerSaving(false);
     }
   };
+  const [moderatorAccountId, setModeratorAccountId] = useState("");
+  const [moderatorAccounts, setModeratorAccounts] = useState<AIAccount[]>([]);
+  const [moderatorSaving, setModeratorSaving] = useState(false);
+  const saveModeratorAccount = async (value: string) => {
+    setModeratorAccountId(value);
+    setModeratorSaving(true);
+    try {
+      await api.updateSettings({ meeting_moderator_ai_account_id: value });
+      setSettings(await api.getSettings());
+      setMessage("Moderator-LLM gespeichert");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Moderator-LLM nicht speichern");
+    } finally {
+      setModeratorSaving(false);
+    }
+  };
   const [approvalSaving, setApprovalSaving] = useState(false);
   const toggleRequireApproval = async (enabled: boolean) => {
     setApprovalSaving(true);
@@ -319,6 +335,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   }, []);
 
   useEffect(() => {
+    api.listAIAccounts(true).then(setModeratorAccounts).catch(() => {});
     api.getSettings().then((s) => {
       setSettings(s);
       setProvider(s.model_provider || "anthropic");
@@ -330,6 +347,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setVertexRegion(s.vertex_region || "us-east5");
       setFoundryResource(s.foundry_resource || "");
       setPlannerPlanId(s.meeting_planner_plan_id || "");
+      setModeratorAccountId(s.meeting_moderator_ai_account_id || "");
       if (s.auth_method === "oauth_token") {
         setAuthMethod("oauth_token");
       } else {
@@ -1077,6 +1095,23 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     Speichern
                   </button>
                 </div>
+              </div>
+              <div className="px-5 py-4 border-t border-foreground/[0.04]">
+                <div className="text-sm font-medium">Meeting-Moderator — LLM (Standard)</div>
+                <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                  Welcher AI-Account den Moderator antreibt. Pro Meeting überschreibbar. Leer = erster verfügbarer Account.
+                </p>
+                <select
+                  value={moderatorAccountId}
+                  onChange={(e) => saveModeratorAccount(e.target.value)}
+                  disabled={moderatorSaving}
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 disabled:opacity-40"
+                >
+                  <option value="">Automatisch (erster Account)</option>
+                  {moderatorAccounts.map((a) => (
+                    <option key={a.id} value={String(a.id)}>{a.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </section>

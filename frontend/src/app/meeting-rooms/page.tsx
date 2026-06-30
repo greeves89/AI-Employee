@@ -25,7 +25,7 @@ import remarkGfm from "remark-gfm";
 import { Header } from "@/components/layout/header";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
-import type { MeetingRoom, Agent } from "@/lib/types";
+import type { MeetingRoom, Agent, AIAccount } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATE_COLORS: Record<string, string> = {
@@ -55,6 +55,8 @@ export default function MeetingRoomsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [useStages, setUseStages] = useState(true);
   const [useModerator, setUseModerator] = useState(true);
+  const [moderatorAiAccountId, setModeratorAiAccountId] = useState("");
+  const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
   const [customStages, setCustomStages] = useState([
     { name: "Eröffnung", rounds: 1 },
     { name: "Analyse", rounds: 2 },
@@ -91,6 +93,7 @@ export default function MeetingRoomsPage() {
   useEffect(() => {
     fetchRooms();
     api.getAgents().then((d) => setAgents(d.agents)).catch(() => {});
+    api.listAIAccounts(true).then(setAiAccounts).catch(() => {});
     const interval = setInterval(fetchRooms, 5000);
     return () => clearInterval(interval);
   }, [fetchRooms]);
@@ -118,6 +121,7 @@ export default function MeetingRoomsPage() {
         max_rounds: stages ? stages.reduce((s, r) => s + r.rounds, 0) : maxRounds,
         stages_config: stages,
         use_moderator: useModerator,
+        moderator_ai_account_id: useModerator ? (moderatorAiAccountId || undefined) : undefined,
       });
       setShowCreate(false);
       setName(""); setTopic(""); setSelectedAgents([]);
@@ -367,6 +371,26 @@ export default function MeetingRoomsPage() {
                           )} />
                         </button>
                       </div>
+
+                      {/* Moderator-LLM (pro-Meeting-Override) */}
+                      {useModerator && (
+                        <div className="pl-11 -mt-1">
+                          <label className="block text-[11px] text-muted-foreground mb-1">Moderator-LLM</label>
+                          <select
+                            value={moderatorAiAccountId}
+                            onChange={(e) => setModeratorAiAccountId(e.target.value)}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-sm outline-none focus:border-primary/40"
+                          >
+                            <option value="">Standard (globale Einstellung)</option>
+                            {aiAccounts.map((a) => (
+                              <option key={a.id} value={String(a.id)}>{a.name}</option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-muted-foreground/60 mt-1">
+                            Welches LLM den Moderator antreibt. Leer = globaler Default.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Stages toggle */}
                       <div className="flex items-start justify-between gap-4">

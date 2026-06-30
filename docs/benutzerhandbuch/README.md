@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.85.0
+**Version:** 1.86.0
 **Stand:** 30. Juni 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** skbs-s-kichat.klinikum-bs.de
@@ -492,6 +492,8 @@ Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Ro
 
 > Unterschied zum Chat/Task: Hier reden **mehrere Agenten miteinander**, statt dass du mit
 > einem einzelnen sprichst.
+
+> **Moderator-LLM:** Ist der Moderator aktiv, kannst du im „Neuer Raum"-Dialog wählen, **welches LLM** ihn antreibt. Leer = globaler Standard (Admin → Einstellungen → System → Automatisierung → „Meeting-Moderator — LLM").
 
 **Was am Ende automatisch passiert:**
 - Der **Moderator** fasst die Ergebnisse als **Action-Item-Liste** zusammen.

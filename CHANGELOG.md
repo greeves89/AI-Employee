@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.86.0] — 2026-06-30
+
+### Added
+- **Meeting-Moderator-LLM einstellbar.** Der Moderator nutzt einen wählbaren AI-Account — als **globaler Default** (Admin → Einstellungen → System → Automatisierung) und als **pro-Meeting-Override** (Dropdown unter dem Moderator-Toggle im „Neuer Raum"-Dialog). Leer = erster verfügbarer Account. DB: neue Spalte `meeting_rooms.moderator_ai_account_id` (Migration `f1a2b3c4d5e6`). (`orchestrator/app/api/meeting_rooms.py`, `frontend/src/app/settings/view.tsx`, `frontend/src/app/meeting-rooms/page.tsx`)
+
+---
+
 ## [1.85.2] — 2026-06-30
 
 ### Fixed

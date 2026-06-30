@@ -249,6 +249,7 @@ export interface Settings {
   revoke_msgraph_on_logout?: boolean;
   // Meeting → MS Planner + "Dreaming"-Memory
   meeting_planner_plan_id?: string;
+  meeting_moderator_ai_account_id?: string;
   dreaming_enabled?: boolean;
 }
 

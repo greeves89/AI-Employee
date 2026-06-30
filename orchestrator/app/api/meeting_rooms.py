@@ -82,6 +82,7 @@ class CreateRoom(BaseModel):
     max_rounds: int = 10
     stages_config: list[StageConfig] | None = None
     use_moderator: bool = False
+    moderator_ai_account_id: str | None = None  # per-meeting moderator LLM (None = global default)
 
 
 class StartRoom(BaseModel):
@@ -179,6 +180,7 @@ async def create_room(
         max_rounds=max_rounds,
         stages_config=stages,
         use_moderator=body.use_moderator,
+        moderator_ai_account_id=(body.moderator_ai_account_id or None),
         created_by=user.id if user.id != "__anonymous__" else None,
         messages=[],
     )
@@ -372,7 +374,10 @@ async def _start_moderator_container(room_id: str, docker, redis_url_internal: s
     try:
         async with async_session_factory() as db:
             am = AgentManager(db, docker, None)
-            acct_id = await SettingsService(db).get("meeting_moderator_ai_account_id")
+            # Priority: per-meeting moderator account -> global default -> first available.
+            mroom = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
+            acct_id = (mroom.moderator_ai_account_id if mroom else None) \
+                or await SettingsService(db).get("meeting_moderator_ai_account_id")
             cfg = None
             if acct_id:
                 try:

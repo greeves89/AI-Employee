@@ -28,6 +28,8 @@ class MeetingRoom(Base, TimestampMixin):
     stages_config: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
     # Whether a virtual moderator directs each turn
     use_moderator: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Per-meeting moderator LLM: AI-Account id the moderator uses (None = global default)
+    moderator_ai_account_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
     # Message history stored as JSONB array
     messages: Mapped[list] = mapped_column(JSONB, default=list)
     # Creator
