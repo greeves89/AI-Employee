@@ -159,13 +159,13 @@ async def create_room(
     if len(body.agent_ids) > 6:
         raise HTTPException(status_code=400, detail="Max 6 agents per room")
 
-    # Verify all agents exist and are running
+    # Verify all agents exist. (We no longer require them to be RUNNING here: agents
+    # idle-exit between turns, and the meeting loop now wakes each participant on demand
+    # before its turn — so an idle/stopped agent is fine and gets restarted automatically.)
     for aid in body.agent_ids:
         agent = await db.scalar(select(Agent).where(Agent.id == aid))
         if not agent:
             raise HTTPException(status_code=400, detail=f"Agent {aid} not found")
-        if agent.state not in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
-            raise HTTPException(status_code=400, detail=f"Agent {agent.name} is not running")
 
     # Build stages config and derive max_rounds from it
     stages = None
@@ -317,6 +317,11 @@ async def start_room(
 
     redis = request.app.state.redis
     docker = request.app.state.docker
+
+    # Wake all participants up front so they are warm for round 1 (they idle-exit when
+    # not in use). Best-effort — the meeting loop also wakes each agent before its turn.
+    for aid in (room.agent_ids or []):
+        await _ensure_agent_running(aid, docker, redis)
 
     # Spin up a dedicated Haiku moderator container if moderator is enabled
     mod_agent_id = None
@@ -659,6 +664,30 @@ async def _moderator_turn(room: MeetingRoom, next_agent_name: str, stage_name: s
     return await _haiku_call(api_key, system_prompt, user_prompt, max_tokens=120)
 
 
+async def _ensure_agent_running(agent_id: str, docker, redis) -> None:
+    """Wake an idle-exited participant so it can take its meeting turn.
+
+    Meeting turns are pushed straight to the agent's redis queue, which is ONLY consumed
+    while the container runs. Agents idle-exit between turns (the gap to their next turn
+    can exceed the idle timeout), so the message would sit in a queue nobody reads →
+    '[Agent hat nicht geantwortet]'. Restart on demand (cheap if already running)."""
+    if not docker or not agent_id:
+        return
+    try:
+        from app.db.session import async_session_factory
+        from app.core.agent_manager import AgentManager
+        from app.models.agent import Agent as _Agent
+        async with async_session_factory() as db:
+            agent = await db.scalar(select(_Agent).where(_Agent.id == agent_id))
+            if not agent:
+                return
+            running = bool(agent.container_id) and docker.get_container_status(agent.container_id) == "running"
+            if not running:
+                await AgentManager(db, docker, redis).start_agent(agent_id)
+    except Exception:
+        logger.warning(f"[Meeting] ensure_agent_running failed for {agent_id}", exc_info=True)
+
+
 async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, docker=None) -> None:
     """Run the meeting loop with dynamic speaker selection, parallel reactions, and context compression."""
     import json
@@ -677,7 +706,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
 
                 if room.max_rounds > 0 and room.rounds_completed >= room.max_rounds:
                     logger.info(f"Meeting room {room_id} completed after {room.rounds_completed} rounds")
-                    await _generate_todo_summary(room, redis, mod_agent_id=mod_agent_id)
+                    await _generate_todo_summary(room, redis, mod_agent_id=mod_agent_id, docker=docker)
                     room.state = "completed"
                     await db.commit()
                     break
@@ -850,6 +879,10 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                     f"Bisheriges Gespräch:\n{context_block}"
                 )
 
+                # Wake the agent if it idle-exited since its last turn, otherwise the
+                # message sits in a queue nobody consumes → "hat nicht geantwortet".
+                await _ensure_agent_running(current_agent_id, docker, redis)
+
                 # Send to agent queue
                 await redis.client.rpush(
                     f"agent:{current_agent_id}:messages",
@@ -916,7 +949,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
             await _stop_moderator_container(room_id, docker)
 
 
-async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | None = None) -> None:
+async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | None = None, docker=None) -> None:
     """After all rounds finish, synthesize the action-item todo list.
 
     Prefers the MODERATOR agent (it directed the meeting and has the full context);
@@ -960,6 +993,7 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
             logger.warning(f"[Meeting {room.id}] Moderator synthesis unusable, falling back to participant")
     if not todo_content:
         synthesizer_id = room.agent_ids[0]
+        await _ensure_agent_running(synthesizer_id, docker, redis)
         payload = _json.dumps({"type": "meeting", "room_id": room.id, "prompt": prompt})
         await redis.client.rpush(f"agent:{synthesizer_id}:messages", payload)
         response_key = f"meeting:{room.id}:response:{synthesizer_id}"
