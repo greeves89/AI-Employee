@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.84.0
+**Version:** 1.85.0
 **Stand:** 30. Juni 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** skbs-s-kichat.klinikum-bs.de
@@ -492,6 +492,11 @@ Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Ro
 
 > Unterschied zum Chat/Task: Hier reden **mehrere Agenten miteinander**, statt dass du mit
 > einem einzelnen sprichst.
+
+**Was am Ende automatisch passiert:**
+- Der **Moderator** fasst die Ergebnisse als **Action-Item-Liste** zusammen.
+- Jede Aufgabe wird einem Agenten zugewiesen — der Agent **übernimmt sie in seine eigene To-Do-Liste** (`/workspace/todo.md`) und legt **selbst fest, bis wann und wie** er sie erledigt.
+- Ein **Folge-Meeting** („… — Folgetermin") wird automatisch angelegt und steht startbereit in der Raumliste — mit dem Kontext und den offenen Punkten des Vortermins.
 
 ---
 

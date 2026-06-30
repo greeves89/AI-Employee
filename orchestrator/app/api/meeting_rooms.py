@@ -424,19 +424,22 @@ async def _stop_moderator_container(room_id: str, docker) -> None:
         pass
 
 
-async def _moderator_request(room_id: str, mod_id: str, prompt: str, redis) -> str | None:
-    """Send a moderation request to the moderator container and wait for its response."""
+async def _moderator_request(room_id: str, mod_id: str, prompt: str, redis, timeout_rounds: int = 6) -> str | None:
+    """Send a moderation request to the moderator container and wait for its response.
+
+    ``timeout_rounds`` × 5s = max wait. Quick turn-moderation uses the default (30s);
+    the heavier end-of-meeting synthesis passes a larger value."""
     import json as _json
     payload = _json.dumps({"type": "meeting", "room_id": room_id, "prompt": prompt})
     await redis.client.rpush(f"agent:{mod_id}:messages", payload)
 
     response_key = f"meeting:{room_id}:response:{mod_id}"
-    for _ in range(6):   # wait up to 30s
+    for _ in range(timeout_rounds):
         result = await redis.client.lpop(response_key)
         if result:
             return result if isinstance(result, str) else result.decode()
         await asyncio.sleep(5)
-    logger.warning(f"[Moderator] No response from container for room {room_id} within 30s")
+    logger.warning(f"[Moderator] No response from container for room {room_id} within {timeout_rounds * 5}s")
     return None
 
 
@@ -635,7 +638,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
 
                 if room.max_rounds > 0 and room.rounds_completed >= room.max_rounds:
                     logger.info(f"Meeting room {room_id} completed after {room.rounds_completed} rounds")
-                    await _generate_todo_summary(room, redis)
+                    await _generate_todo_summary(room, redis, mod_agent_id=mod_agent_id)
                     room.state = "completed"
                     await db.commit()
                     break
@@ -872,19 +875,19 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
             await _stop_moderator_container(room_id, docker)
 
 
-async def _generate_todo_summary(room: MeetingRoom, redis) -> None:
-    """After all rounds finish, ask one agent to synthesize a todo list."""
+async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | None = None) -> None:
+    """After all rounds finish, synthesize the action-item todo list.
+
+    Prefers the MODERATOR agent (it directed the meeting and has the full context);
+    falls back to the first participant if no moderator is running."""
     import json as _json
     if not room.agent_ids or not room.messages:
         return
 
-    # Pick first agent for synthesis
-    synthesizer_id = room.agent_ids[0]
-
     conversation = "\n".join(
         f"[{m.get('agent_id') or 'System'}]: {m['content']}"
         for m in (room.messages or [])
-        if m.get("role") in ("agent", "system")
+        if m.get("role") in ("agent", "system", "moderator")
     )
     prompt = (
         f"The following meeting just concluded.\n"
@@ -901,20 +904,26 @@ async def _generate_todo_summary(room: MeetingRoom, redis) -> None:
         f"After the checklist, also append a section:\n"
         f"## Meeting-Kontext für Folgetermine\n"
         f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting zu diesem Thema.)\n"
-        f"Then save this entire section to /workspace/knowledge.md under the heading '## Meeting-Ergebnisse: {room.name}'"
+        f"Antworte AUSSCHLIESSLICH mit diesem Markdown — keine Dateispeicherung nötig."
     )
 
-    payload = _json.dumps({"type": "meeting", "room_id": room.id, "prompt": prompt})
-    await redis.client.rpush(f"agent:{synthesizer_id}:messages", payload)
-
-    response_key = f"meeting:{room.id}:response:{synthesizer_id}"
+    # Wrap-up synthesis: prefer the moderator (it directed the meeting, full context).
+    # Fall back to the first participant if no moderator runs or it doesn't answer.
     todo_content = None
-    for _ in range(60):
-        result = await redis.client.lpop(response_key)
-        if result:
-            todo_content = result if isinstance(result, str) else result.decode()
-            break
-        await asyncio.sleep(5)
+    synthesizer_id = mod_agent_id or room.agent_ids[0]
+    if mod_agent_id:
+        todo_content = await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=48)
+    if not todo_content:
+        synthesizer_id = room.agent_ids[0]
+        payload = _json.dumps({"type": "meeting", "room_id": room.id, "prompt": prompt})
+        await redis.client.rpush(f"agent:{synthesizer_id}:messages", payload)
+        response_key = f"meeting:{room.id}:response:{synthesizer_id}"
+        for _ in range(60):
+            result = await redis.client.lpop(response_key)
+            if result:
+                todo_content = result if isinstance(result, str) else result.decode()
+                break
+            await asyncio.sleep(5)
 
     if not todo_content:
         todo_content = "## Action Items\n*(Todo-Liste konnte nicht generiert werden)*"
@@ -949,6 +958,37 @@ def _parse_action_items(markdown: str) -> list[str]:
             if item:
                 items.append(item)
     return items
+
+
+def _extract_followup_context(markdown: str) -> str:
+    """Pull the '## Meeting-Kontext für Folgetermine' section out of the todo summary."""
+    if not markdown:
+        return ""
+    out, capture = [], False
+    for line in markdown.splitlines():
+        low = line.strip().lower()
+        if low.startswith("## meeting-kontext f") and "folgetermine" in low:
+            capture = True
+            continue
+        if capture and line.strip().startswith("## "):
+            break
+        if capture:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+def _next_followup_name(base: str) -> str:
+    """Derive the follow-up room name, incrementing a trailing 'Folgetermin N' counter."""
+    marker = " — Folgetermin"
+    if marker in base:
+        head, _, tail = base.rpartition(marker)
+        tail = tail.strip()
+        try:
+            num = int(tail) + 1 if tail else 2
+        except ValueError:
+            num = 2
+        return f"{head}{marker} {num}"
+    return f"{base}{marker}"
 
 
 def _assign_item_to_agent(item: str, agent_name_map: dict) -> str:
@@ -1033,10 +1073,18 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             agent_name = agent_name_map[agent_id]
             task_prompt = (
                 f"Im Meeting **{room.name}** (Thema: {room.topic or 'kein Thema'}) "
-                f"wurden dir folgende Action Items zugewiesen:\n\n"
+                f"wurden dir folgende Action Items zugewiesen — sie gehören ab jetzt zu DEINEN Aufgaben:\n\n"
                 + "\n".join(f"- [ ] {it}" for it in agent_items)
-                + f"\n\nArbeite diese Punkte durch. Dokumentiere deine Ergebnisse klar "
-                f"und speichere relevante Erkenntnisse in /workspace/knowledge.md "
+                + "\n\n**Schritt 1 — In deine To-Do-Liste übernehmen & selbst terminieren:** "
+                "Trage JEDES dieser Items in deine persönliche To-Do-Liste `/workspace/todo.md` ein "
+                "(lege die Datei an, falls sie nicht existiert) unter der Überschrift "
+                f"'## Aus Meeting: {room.name}'. Lege dabei für jedes Item SELBST fest, "
+                "**bis wann** (konkretes Fälligkeitsdatum) und **wie** (kurzer Vorgehensplan) du es erledigst. "
+                "Schreibe jede Zeile im Format: "
+                "`- [ ] <Item> — fällig: <YYYY-MM-DD> — Vorgehen: <kurz>`. "
+                "Falls dir ein Schedule-/Reminder-Tool zur Verfügung steht, plane die Fälligkeiten zusätzlich dort ein.\n"
+                "**Schritt 2 — Abarbeiten:** Erledige die Punkte gemäß deinem Plan und hake sie in `todo.md` ab (`- [x]`).\n"
+                "**Schritt 3 — Dokumentieren:** Speichere relevante Ergebnisse in `/workspace/knowledge.md` "
                 f"unter dem Abschnitt '## Meeting-Ergebnisse: {room.name}'."
             )
             import uuid as _uuid
@@ -1111,6 +1159,72 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
         logger.info(
             f"[Meeting {room.id}] Task assignment complete: {sum(len(i) for _, _, i, _ in created_tasks)} items → {len(created_tasks)} agents"
         )
+
+    # Auto-create a ready-to-start follow-up meeting room (Folgetermin), seeded with
+    # the prior context + the action items, so the loop continues additively.
+    try:
+        await _create_follow_up_room(room, todo_content, items, redis)
+    except Exception:
+        logger.warning("Follow-up room creation failed for meeting %s", room.id, exc_info=True)
+
+
+async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: list[str], redis) -> str | None:
+    """Create a ready-to-start follow-up meeting room (Folgetermin). Same agents +
+    moderator setting, seeded with the prior meeting's context and the open action
+    items. Created 'idle' — it appears in the room list, ready to start or schedule.
+    Reuses the existing MeetingRoom machinery (no island)."""
+    import json as _json
+    import uuid as _uuid
+    from app.db.session import async_session_factory
+
+    context = _extract_followup_context(todo_content)
+    new_name = _next_followup_name(room.name)
+    seed = (
+        f"## Folgetermin zu: {room.name}\n\n"
+        + (f"{context}\n\n" if context else "Fortsetzung des vorherigen Meetings.\n\n")
+        + "**Action Items aus dem Vortermin (Stand prüfen / nächste Schritte planen):**\n"
+        + ("\n".join(f"- {it}" for it in items) if items else "—")
+    )
+    new_id = _uuid.uuid4().hex[:12]
+    async with async_session_factory() as db:
+        new_room = MeetingRoom(
+            id=new_id,
+            name=new_name,
+            topic=room.topic or "",
+            agent_ids=list(room.agent_ids),
+            state="idle",
+            max_rounds=room.max_rounds,
+            stages_config=room.stages_config,
+            use_moderator=room.use_moderator,
+            created_by=room.created_by,
+            messages=[{
+                "role": "system",
+                "agent_id": None,
+                "content": seed,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }],
+        )
+        db.add(new_room)
+        await db.commit()
+    logger.info(f"[Meeting {room.id}] Follow-up room created: {new_id} ({new_name})")
+
+    # Announce it in the original room so the UI shows the follow-up live.
+    announce = {
+        "role": "system",
+        "agent_id": None,
+        "content": f"## Folgetermin angelegt\nEin Folge-Meeting **{new_name}** wurde erstellt und steht bereit (Raum-ID `{new_id}`).",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        async with async_session_factory() as db:
+            fr = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room.id))
+            if fr:
+                fr.messages = list(fr.messages or []) + [announce]
+                await db.commit()
+        await redis.client.publish(f"meeting:{room.id}:updates", _json.dumps(announce))
+    except Exception:
+        pass
+    return new_id
 
 
 async def resume_running_rooms(redis, docker=None) -> None:

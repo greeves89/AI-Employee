@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.85.0] — 2026-06-30
+
+### Changed / Added
+- **Meeting-Räume: vollständiger Abschluss-Workflow.** Am Meeting-Ende synthetisiert jetzt der **Moderator** die Action-Item-Liste (statt des ersten Teilnehmers; Fallback auf Teilnehmer, falls der Moderator nicht antwortet). Die zugewiesenen Agenten **übernehmen ihre Action-Items in die eigene To-Do-Liste** (`/workspace/todo.md`) und **terminieren sie selbst** (Fälligkeit + Vorgehen pro Item). Zusätzlich wird automatisch ein **Folge-Meeting-Raum** („… — Folgetermin") angelegt — seeded mit dem Meeting-Kontext + den offenen Action-Items, startbereit (`state=idle`). (`orchestrator/app/api/meeting_rooms.py`)
+
+---
+
 ## [1.84.0] — 2026-06-30
 
 ### Added
