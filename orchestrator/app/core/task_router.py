@@ -15,8 +15,10 @@ from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.services.redis_service import RedisService
 from app.services.skill_auto_injector import auto_inject_skills
 
-# Eviction grace period for completed tasks (seconds)
-TASK_EVICT_GRACE_SECONDS = int(300)
+# Eviction grace period for completed tasks (seconds). Must outlive the
+# notification that points at the task — otherwise clicking a "Task fertig"
+# notification 404s because the task was already GC'd. 7 days.
+TASK_EVICT_GRACE_SECONDS = int(7 * 24 * 3600)
 
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"

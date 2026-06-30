@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.85.1] — 2026-06-30
+
+### Fixed
+- **Tasks aus Benachrichtigungen waren nach kurzer Zeit weg (404 „Task nicht mehr verfügbar").** Die Eviction-Frist für abgeschlossene Tasks war nur **5 Minuten** (`TASK_EVICT_GRACE_SECONDS`) — die Benachrichtigung überlebte den Task. Frist auf **7 Tage** erhöht, damit „Task fertig — Bewertung?" anklickbar bleibt. (`orchestrator/app/core/task_router.py`)
+
+---
+
 ## [1.85.0] — 2026-06-30
 
 ### Changed / Added
