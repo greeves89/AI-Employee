@@ -111,6 +111,7 @@ async def list_rooms(user=Depends(require_auth), db: AsyncSession = Depends(get_
                 "max_rounds": r.max_rounds,
                 "message_count": len(r.messages or []),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "scheduled_for": r.scheduled_for.isoformat() if r.scheduled_for else None,
             }
             for r in rooms
         ]
@@ -143,6 +144,7 @@ async def get_room(room_id: str, user=Depends(require_auth), db: AsyncSession = 
         "use_moderator": room.use_moderator,
         "messages": room.messages or [],
         "created_at": room.created_at.isoformat() if room.created_at else None,
+        "scheduled_for": room.scheduled_for.isoformat() if room.scheduled_for else None,
     }
 
 
@@ -926,9 +928,11 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         for m in (room.messages or [])
         if m.get("role") in ("agent", "system", "moderator")
     )
+    _today = datetime.now(timezone.utc).date().isoformat()
     prompt = (
         f"The following meeting just concluded.\n"
-        f"Topic: {room.topic or '(no topic)'}\n\n"
+        f"Topic: {room.topic or '(no topic)'}\n"
+        f"Heutiges Datum: {_today}.\n\n"
         f"Conversation:\n{conversation}\n\n"
         f"Based on this discussion, create a clear, actionable **Todo List** as a markdown checklist.\n"
         f"Format exactly like this:\n"
@@ -938,9 +942,12 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         f"...\n"
         f"Group items by priority: **Sofort**, **Kurzfristig**, **Mittelfristig** if applicable.\n"
         f"Be concrete and specific. Max 15 items.\n\n"
-        f"After the checklist, also append a section:\n"
+        f"After the checklist, also append TWO sections:\n"
         f"## Meeting-Kontext für Folgetermine\n"
-        f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting zu diesem Thema.)\n"
+        f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting.)\n"
+        f"## Folgetermin\n"
+        f"Schlage EIN konkretes Datum für das Folge-Meeting vor (Format YYYY-MM-DD), realistisch so gewählt, "
+        f"dass die obigen Action Items bis dahin erledigt sein können (ab heute, {_today}). Gib in dieser Sektion NUR das Datum aus.\n"
         f"Antworte AUSSCHLIESSLICH mit diesem Markdown — keine Dateispeicherung nötig."
     )
 
@@ -1042,6 +1049,24 @@ def _looks_like_todo(text: str | None) -> bool:
     if any(s in low for s in ("api error", "connectionrefused", "unable to connect", "rate limit")):
         return False
     return ("action items" in low) or ("- [ ]" in text)
+
+
+def _extract_followup_date(markdown: str):
+    """Parse the agent-proposed follow-up date (YYYY-MM-DD) from the '## Folgetermin'
+    section. Returns a future UTC datetime (09:00) or None if missing/invalid/past."""
+    import re
+    if not markdown:
+        return None
+    m = re.search(r"##\s*Folgetermin\b(.*?)(?:\n##\s|\Z)", markdown, re.S | re.I)
+    block = m.group(1) if m else markdown
+    d = re.search(r"(\d{4})-(\d{2})-(\d{2})", block)
+    if not d:
+        return None
+    try:
+        dt = datetime(int(d.group(1)), int(d.group(2)), int(d.group(3)), 9, 0, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return dt if dt > datetime.now(timezone.utc) else None
 
 
 def _assign_item_to_agent(item: str, agent_name_map: dict) -> str:
@@ -1240,10 +1265,15 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
     import uuid as _uuid
     from app.db.session import async_session_factory
 
+    from datetime import timedelta as _td
     context = _extract_followup_context(todo_content)
     new_name = _next_followup_name(room.name)
+    # Agents propose the follow-up date in the synthesis; fall back to +7 days.
+    scheduled = _extract_followup_date(todo_content) or (datetime.now(timezone.utc) + _td(days=7))
+    sched_str = scheduled.strftime("%Y-%m-%d %H:%M UTC")
     seed = (
         f"## Folgetermin zu: {room.name}\n\n"
+        + f"**Geplant für:** {sched_str} — startet automatisch. Bis dahin arbeiten die Agenten ihre Action Items ab und bringen die Ergebnisse mit.\n\n"
         + (f"{context}\n\n" if context else "Fortsetzung des vorherigen Meetings.\n\n")
         + "**Action Items aus dem Vortermin (Stand prüfen / nächste Schritte planen):**\n"
         + ("\n".join(f"- {it}" for it in items) if items else "—")
@@ -1259,6 +1289,8 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
             max_rounds=room.max_rounds,
             stages_config=room.stages_config,
             use_moderator=room.use_moderator,
+            moderator_ai_account_id=room.moderator_ai_account_id,
+            scheduled_for=scheduled,
             created_by=room.created_by,
             messages=[{
                 "role": "system",
@@ -1275,7 +1307,7 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
     announce = {
         "role": "system",
         "agent_id": None,
-        "content": f"## Folgetermin angelegt\nEin Folge-Meeting **{new_name}** wurde erstellt und steht bereit (Raum-ID `{new_id}`).",
+        "content": f"## Folgetermin angelegt\nEin Folge-Meeting **{new_name}** ist für **{sched_str}** terminiert und startet automatisch (Raum-ID `{new_id}`).",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:

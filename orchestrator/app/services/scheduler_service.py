@@ -52,6 +52,12 @@ class SchedulerService:
         while True:
             try:
                 await self._check_due_schedules()
+                try:
+                    started = await self._start_due_followups()
+                    if started:
+                        print(f"[Scheduler] Auto-started {started} follow-up meeting(s)")
+                except Exception as e:
+                    print(f"[Scheduler] Follow-up auto-start error: {e}")
                 self._gc_counter += 30
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
@@ -100,6 +106,43 @@ class SchedulerService:
             except Exception as e:
                 print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)
+
+    async def _start_due_followups(self) -> int:
+        """Auto-start idle follow-up meeting rooms whose scheduled_for is due, so the
+        agents (who worked their action items in the meantime) bring results."""
+        from datetime import datetime, timezone
+        from sqlalchemy import select, and_
+        from app.db.session import async_session_factory
+        from app.models.meeting_room import MeetingRoom
+        from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
+
+        now = datetime.now(timezone.utc)
+        started = 0
+        async with async_session_factory() as db:
+            rows = (await db.execute(
+                select(MeetingRoom).where(and_(
+                    MeetingRoom.state == "idle",
+                    MeetingRoom.is_active == True,
+                    MeetingRoom.scheduled_for.isnot(None),
+                    MeetingRoom.scheduled_for <= now,
+                ))
+            )).scalars().all()
+            for room in rows:
+                if room.id in _running_rooms:
+                    continue
+                room.state = "running"
+                room.current_turn = 0
+                room.scheduled_for = None  # consume the schedule so it fires once
+                await db.commit()
+                mod_agent_id = None
+                if room.use_moderator and self.docker:
+                    from app.config import settings as _settings
+                    mod_agent_id = await _start_moderator_container(room.id, self.docker, _settings.redis_url_internal)
+                task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
+                _running_rooms[room.id] = task
+                started += 1
+                print(f"[Scheduler] Auto-started follow-up meeting {room.id}: {room.name}")
+        return started
 
     async def _run_dreaming(self) -> int:
         """'Dreaming': rebuild each active user's adaptive profile from their

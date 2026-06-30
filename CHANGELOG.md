@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.87.0] — 2026-06-30
+
+### Added
+- **Folgetermin wird von den Agenten terminiert + startet automatisch.** Im Meeting-Abschluss schlägt der Moderator ein **Folgetermin-Datum** vor (so gewählt, dass die Action-Items bis dahin erledigt sein können). Der Folge-Raum wird mit diesem Datum (`scheduled_for`) angelegt, das **im Raum sichtbar** ist; der Scheduler **startet ihn automatisch** zum Termin — die Agenten arbeiten ihre Tasks bis dahin ab und bringen die Ergebnisse mit. DB: `meeting_rooms.scheduled_for` (Migration `a7b8c9d0e1f2`); Scheduler: `_start_due_followups`. (`orchestrator/app/api/meeting_rooms.py`, `services/scheduler_service.py`, `frontend/src/app/meeting-rooms/page.tsx`)
+
+---
+
 ## [1.86.1] — 2026-06-30
 
 ### Fixed

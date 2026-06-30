@@ -518,4 +518,5 @@ export interface MeetingRoom {
   messages?: MeetingMessage[];
   message_count?: number;
   created_at: string | null;
+  scheduled_for?: string | null;  // follow-up auto-start time (ISO) when set
 }

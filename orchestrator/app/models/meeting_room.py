@@ -1,6 +1,8 @@
 """Meeting Room model — group chat between 3-4 agents with round-robin messaging."""
 
-from sqlalchemy import String, Text, Integer, Boolean
+from datetime import datetime
+
+from sqlalchemy import String, Text, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +32,9 @@ class MeetingRoom(Base, TimestampMixin):
     use_moderator: Mapped[bool] = mapped_column(Boolean, default=False)
     # Per-meeting moderator LLM: AI-Account id the moderator uses (None = global default)
     moderator_ai_account_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
+    # Follow-up: when this (idle) room should auto-start. Agents propose the date in the
+    # meeting wrap-up; the scheduler starts the room once scheduled_for <= now.
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     # Message history stored as JSONB array
     messages: Mapped[list] = mapped_column(JSONB, default=list)
     # Creator
