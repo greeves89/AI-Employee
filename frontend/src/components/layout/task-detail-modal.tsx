@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X, Loader2 } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Task } from "@/lib/types";
@@ -54,13 +55,24 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string | null; on
     api
       .getTask(taskId)
       .then(setTask)
-      .catch((e) => setError(e instanceof Error ? e.message : "Konnte Task nicht laden"))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : "Konnte Task nicht laden";
+        setError(
+          /404|not found/i.test(msg)
+            ? "Dieser Task ist nicht mehr verfügbar — er wurde vermutlich automatisch aufgeräumt."
+            : msg,
+        );
+      })
       .finally(() => setLoading(false));
   }, [taskId]);
 
   if (!taskId) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  // Portal to <body> so the fixed overlay centers on the viewport — otherwise a
+  // transformed ancestor (sidebar / framer-motion popover) traps `position:fixed`
+  // and the modal renders next to the notification panel instead of centered.
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-auto rounded-2xl border border-foreground/10 bg-card shadow-2xl">
@@ -120,6 +132,7 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string | null; on
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

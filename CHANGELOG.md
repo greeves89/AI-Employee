@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.83.1] — 2026-06-30
+
+### Fixed
+- **Task-Detail-Modal jetzt zentral** statt neben dem Notification-Popup — wird per Portal an `document.body` gerendert, sodass das `fixed`-Overlay auf dem Viewport zentriert (vorher fing ein transformierter Eltern-Container/Sidebar das `position:fixed` ab). (`task-detail-modal.tsx`)
+- **Freundliche Meldung bei aufgeräumten Tasks** — statt rohem „API Error 404" zeigt das Modal „Dieser Task ist nicht mehr verfügbar — vermutlich automatisch aufgeräumt." (alte Notifications zeigen auf bereits GC'te Tasks).
+
+---
+
 ## [1.83.0] — 2026-06-30
 
 ### Added
