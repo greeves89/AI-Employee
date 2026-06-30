@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.87.1] — 2026-06-30
+
+### Fixed
+- **Meeting-Action-Items werden gleichmäßig auf alle Teilnehmer verteilt** — vorher landeten Items ohne Namens-Treffer alle beim ersten Agenten; jetzt bekommt der Agent mit der geringsten Last das nächste Item (z. B. 12 Items → 6/6 statt 12/0). (`orchestrator/app/api/meeting_rooms.py`)
+- **Folgetermin-Datum-Parsing robuster** — akzeptiert ISO (YYYY-MM-DD), deutsch (DD.MM.YYYY) und relativ („in N Tagen/Wochen"); der Synthese-Prompt verlangt nun klar eine ISO-Datumszeile. So greift der von den Agenten vorgeschlagene Termin statt des +7-Tage-Fallbacks.
+
 ## [1.87.0] — 2026-06-30
 
 ### Added

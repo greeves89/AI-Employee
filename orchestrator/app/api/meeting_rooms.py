@@ -946,8 +946,9 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         f"## Meeting-Kontext für Folgetermine\n"
         f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting.)\n"
         f"## Folgetermin\n"
-        f"Schlage EIN konkretes Datum für das Folge-Meeting vor (Format YYYY-MM-DD), realistisch so gewählt, "
-        f"dass die obigen Action Items bis dahin erledigt sein können (ab heute, {_today}). Gib in dieser Sektion NUR das Datum aus.\n"
+        f"Gib hier GENAU EINE Zeile aus: das vorgeschlagene Datum im Format YYYY-MM-DD (z. B. 2026-07-15), "
+        f"realistisch so gewählt, dass die obigen Action Items bis dahin erledigt sein können (ab heute, {_today}). "
+        f"Nur das Datum, kein weiterer Text.\n"
         f"Antworte AUSSCHLIESSLICH mit diesem Markdown — keine Dateispeicherung nötig."
     )
 
@@ -1052,25 +1053,49 @@ def _looks_like_todo(text: str | None) -> bool:
 
 
 def _extract_followup_date(markdown: str):
-    """Parse the agent-proposed follow-up date (YYYY-MM-DD) from the '## Folgetermin'
-    section. Returns a future UTC datetime (09:00) or None if missing/invalid/past."""
+    """Parse the agent-proposed follow-up date from the '## Folgetermin' section.
+    Tolerant: accepts ISO (YYYY-MM-DD), German (DD.MM.YYYY) and relative ('in N
+    Tagen/Wochen'). Returns a future UTC datetime (09:00) or None."""
     import re
+    from datetime import timedelta as _td
     if not markdown:
         return None
+    now = datetime.now(timezone.utc)
     m = re.search(r"##\s*Folgetermin\b(.*?)(?:\n##\s|\Z)", markdown, re.S | re.I)
     block = m.group(1) if m else markdown
-    d = re.search(r"(\d{4})-(\d{2})-(\d{2})", block)
-    if not d:
-        return None
-    try:
-        dt = datetime(int(d.group(1)), int(d.group(2)), int(d.group(3)), 9, 0, tzinfo=timezone.utc)
-    except ValueError:
-        return None
-    return dt if dt > datetime.now(timezone.utc) else None
+
+    # ISO YYYY-MM-DD
+    d = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", block)
+    if d:
+        try:
+            dt = datetime(int(d.group(1)), int(d.group(2)), int(d.group(3)), 9, 0, tzinfo=timezone.utc)
+            if dt > now:
+                return dt
+        except ValueError:
+            pass
+    # German DD.MM.YYYY
+    d = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", block)
+    if d:
+        try:
+            dt = datetime(int(d.group(3)), int(d.group(2)), int(d.group(1)), 9, 0, tzinfo=timezone.utc)
+            if dt > now:
+                return dt
+        except ValueError:
+            pass
+    # Relative: "in N Tagen" / "in N Wochen"
+    r = re.search(r"in\s+(\d{1,3})\s*(woche|wochen|tag|tage|tagen)", block, re.I)
+    if r:
+        n = int(r.group(1))
+        days = n * 7 if r.group(2).lower().startswith("woche") else n
+        if 0 < days <= 365:
+            return now + _td(days=days)
+    return None
 
 
-def _assign_item_to_agent(item: str, agent_name_map: dict) -> str:
-    """Keyword-match an action item to the most relevant agent. Returns agent_id."""
+def _assign_item_to_agent(item: str, agent_name_map: dict) -> str | None:
+    """Keyword-match an action item to the most relevant agent by NAME. Returns the
+    agent_id, or None if there is no clear match — the caller then distributes those
+    items evenly across all participants (instead of dumping them on the first agent)."""
     item_lower = item.lower()
     best_agent_id = None
     best_score = 0
@@ -1081,8 +1106,7 @@ def _assign_item_to_agent(item: str, agent_name_map: dict) -> str:
         if score > best_score:
             best_score = score
             best_agent_id = agent_id
-    # Fall back to first agent
-    return best_agent_id or next(iter(agent_name_map))
+    return best_agent_id
 
 
 async def _maybe_create_planner_tasks(room: MeetingRoom, items: list[str], db) -> int:
@@ -1141,9 +1165,15 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
         # Distribute items across agents (keyword match + round-robin fallback)
         agent_ids = list(agent_name_map.keys())
         assignments: dict[str, list[str]] = {aid: [] for aid in agent_ids}
-        for i, item in enumerate(items):
-            assigned = _assign_item_to_agent(item, agent_name_map)
-            assignments[assigned].append(item)
+        for item in items:
+            matched = _assign_item_to_agent(item, agent_name_map)
+            if matched:
+                assignments[matched].append(item)
+            else:
+                # No name match → give to the agent with the fewest items so far,
+                # so the workload is shared evenly across all participants.
+                target = min(agent_ids, key=lambda a: len(assignments[a]))
+                assignments[target].append(item)
 
         created_tasks = []
         for agent_id, agent_items in assignments.items():
