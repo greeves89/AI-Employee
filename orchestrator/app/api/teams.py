@@ -93,3 +93,38 @@ async def delete_team(team_id: str, user=Depends(require_auth), db: AsyncSession
     t.is_active = False
     await db.commit()
     return {"status": "deleted", "id": team_id}
+
+
+class MembersChange(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
+
+
+class SetLead(BaseModel):
+    lead_agent_id: str | None
+
+
+@router.post("/{team_id}/members")
+async def change_members(team_id: str, body: MembersChange, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    t = await _get_team(team_id, db)
+    members = list(t.member_agent_ids or [])
+    for a in body.add:
+        if a not in members:
+            members.append(a)
+    members = [m for m in members if m not in body.remove]
+    t.member_agent_ids = members
+    if t.lead_agent_id and t.lead_agent_id not in members:
+        t.lead_agent_id = None  # lead removed -> clear
+    await db.commit()
+    await db.refresh(t)
+    return _serialize(t)
+
+
+@router.patch("/{team_id}/lead")
+async def set_lead(team_id: str, body: SetLead, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    t = await _get_team(team_id, db)
+    _validate_lead(t.member_agent_ids, body.lead_agent_id)
+    t.lead_agent_id = body.lead_agent_id
+    await db.commit()
+    await db.refresh(t)
+    return _serialize(t)

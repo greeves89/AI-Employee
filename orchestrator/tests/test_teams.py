@@ -71,3 +71,41 @@ async def test_get_team_404_when_missing():
     with pytest.raises(HTTPException) as e:
         await get_team("nope", user=MagicMock(), db=db)
     assert e.value.status_code == 404
+
+
+# ─── Task 3: member + lead management (mocked-DB unit tests) ──────
+
+
+@pytest.mark.asyncio
+async def test_set_lead_rejects_non_member():
+    from app.api.teams import set_lead, SetLead, Team
+    from unittest.mock import AsyncMock, MagicMock
+    t = Team(id="t1", name="T", member_agent_ids=["a1"], lead_agent_id=None, is_active=True)
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
+    with pytest.raises(HTTPException) as e:
+        await set_lead("t1", SetLead(lead_agent_id="ghost"), user=MagicMock(), db=db)
+    assert e.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_set_lead_ok_for_member():
+    from app.api.teams import set_lead, SetLead, Team
+    from unittest.mock import AsyncMock, MagicMock
+    t = Team(id="t1", name="T", member_agent_ids=["a1", "lead1"], lead_agent_id=None, is_active=True)
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
+    out = await set_lead("t1", SetLead(lead_agent_id="lead1"), user=MagicMock(), db=db)
+    assert out["lead_agent_id"] == "lead1"
+
+
+@pytest.mark.asyncio
+async def test_remove_member_clears_lead():
+    from app.api.teams import change_members, MembersChange, Team
+    from unittest.mock import AsyncMock, MagicMock
+    t = Team(id="t1", name="T", member_agent_ids=["a1", "lead1"], lead_agent_id="lead1", is_active=True)
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
+    out = await change_members("t1", MembersChange(remove=["lead1"]), user=MagicMock(), db=db)
+    assert "lead1" not in out["member_agent_ids"]
+    assert out["lead_agent_id"] is None
