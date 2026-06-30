@@ -10,6 +10,50 @@
 
 ---
 
+## Testing Convention (READ FIRST — overrides the test style shown in the tasks below)
+
+This repo's tests are **mocked-DB unit tests** (`@pytest.mark.asyncio` + `unittest.mock.AsyncMock`), **not** integration tests against a real Postgres. Mirror `orchestrator/tests/test_feedback_notifications.py`. Do **not** stand up a real DB; do **not** use `httpx.AsyncClient` against the live app.
+
+Every `tests/test_teams.py` test MUST follow this style:
+- **Pure logic** (`_validate_lead`, roster/prefix building, member add/remove logic) → call the function directly; assert the result or that it raises `HTTPException(status_code=400)`.
+- **Route handlers** that touch the DB → call the handler coroutine **directly** (not over HTTP) with an `AsyncMock` `db`, stubbing `db.execute(...)` return values; assert the object built and the calls made. Mock `TaskRouter.create_and_route_task` to capture its kwargs.
+
+Canonical helpers + example:
+```python
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+from fastapi import HTTPException
+
+@pytest.fixture
+def db():
+    return AsyncMock()
+
+def _exec_returns(value):
+    """Build a mock result for `await db.execute(select(...))`."""
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = value
+    res.scalars.return_value.all.return_value = value if isinstance(value, list) else []
+    return res
+
+@pytest.mark.asyncio
+async def test_validate_lead_rejects_non_member():
+    from app.api.teams import _validate_lead
+    with pytest.raises(HTTPException) as e:
+        _validate_lead(["a1"], "ghost")
+    assert e.value.status_code == 400
+```
+
+**Run the tests** (ephemeral container — mocked, so no DB env needed; never touches the live instance):
+```bash
+# from ~/Projects/AI-Employee
+rsync -az --delete --exclude __pycache__ --exclude '*.pyc' orchestrator/ openclaw:/home/openclaw/teams-test/orchestrator/
+ssh openclaw "docker run --rm -v /home/openclaw/teams-test/orchestrator:/app -w /app ai-employee-orchestrator pytest tests/test_teams.py -p no:cacheprovider -q"
+```
+
+**Ignore the `docker exec ai-employee-orchestrator pytest …` and `httpx.AsyncClient` lines in the task steps below** — they predate this convention. Use the ephemeral command above, and the mocked-handler style. (Task 1's migration step is the one exception that DOES run against a DB — run it once against the throwaway `ai_employee_test` DB, not live.)
+
+---
+
 ## File Structure
 
 **Backend (`orchestrator/`):**
