@@ -732,6 +732,25 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        const md = skill.content || `# ${skill.name}\n\n${skill.description || ""}`;
+                        const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${skill.name}.md`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      title="Skill herunterladen (SKILL.md)"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         startEdit(skill);
                       }}
                       className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"

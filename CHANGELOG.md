@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.83.2] — 2026-06-30
+
+### Added
+- **Skills herunterladen (echter Download)** — Skills lassen sich jetzt als `SKILL.md` herunterladen: per Download-Icon auf den **Skill-Store-Karten**, im **Skill-Detail-Modal** („Herunterladen"), und pro installiertem Skill unter **Agent → Wissen → Skills**. Client-seitig (Blob), kein Backend nötig. (`app/skills/page.tsx`, `components/agents/skills-tab.tsx`)
+
+### Fixed
+- **„Installieren" reagierte (gefühlt) nicht** — ist kein Agent gewählt, gibt es jetzt eine klare Meldung statt stillem Nichtstun; Install-Fehler werden nicht mehr verschluckt. Install-Icon von „Download" auf „Plus" geändert (das Download-Icom war irreführend). **Korrigiert den fehlgeleiteten v1.78.1-Fix**, der nur Datei-*Anhänge* betraf, nicht den eigentlichen Skill-Download.
+
+---
+
 ## [1.83.1] — 2026-06-30
 
 ### Fixed
