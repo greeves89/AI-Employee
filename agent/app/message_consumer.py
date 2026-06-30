@@ -118,7 +118,9 @@ class MessageConsumer:
             async for event in provider.stream_completion(messages, []):
                 if getattr(event, "type", None) == "text_delta":
                     text += event.text
-            return text[:2000]
+            # 12000 chars (~3000 tokens, within llm_max_tokens) — the old 2000 cap cut off
+            # meeting syntheses (the Action-Item list) mid-sentence. Prompts control brevity.
+            return text[:12000]
         except Exception as e:
             logger.warning(f"custom_llm inter-agent reply failed: {e}")
             return ""

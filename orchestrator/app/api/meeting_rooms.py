@@ -674,6 +674,9 @@ def _clean_meeting_response(text: str | None) -> str | None:
 
     def _is_filler(st: str) -> bool:
         low = st.lower()
+        # Leaked tool-call / shell syntax (the moderator sometimes emits raw "<bash> cat …")
+        if _re.match(r"^\s*(</?bash>?|```|\$\s|cat\s+/|sh\s+-|<tool|tool_call|to=functions)", st, _re.I):
+            return True
         if "knowledge.md" not in low:
             return False
         if not _re.match(r"^\s*(ich\s+(lese|schaue|pr[üu]fe|sehe|werfe)|i('?ll| will)?\s+read|let me read|reading)\b", st, _re.I):
@@ -696,6 +699,19 @@ def _clean_meeting_response(text: str | None) -> str | None:
     out: list[str] = []
     leading = True
     for ln in s.split("\n"):
+        # Strip a LEADING filler sentence ("Ich lese ... knowledge.md.") and leaked
+        # tool/shell syntax that precedes real content on the same line (common in
+        # moderator messages), without dropping the real content after it.
+        # Bounded ({0,80}) so a leading filler sentence is removed ONLY when it ends
+        # shortly after the knowledge.md mention — never greedily swallow real content.
+        ln = _re.sub(
+            r"^\s*(ich\s+(lese|schaue|pr[üu]fe|sehe|werfe)[^.!?\n]{0,40}knowledge\.md[^.!?\n]{0,40}[.!?]\s*)+",
+            "", ln, flags=_re.I,
+        )
+        ln = _re.sub(
+            r"^\s*((</?bash>?|`{1,3}|to=functions\.?\w*)[^.\n]{0,80}[.\n]?\s*)+",
+            "", ln, flags=_re.I,
+        )
         st = ln.strip()
         if _is_filler(st):
             continue
@@ -858,11 +874,12 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                         f"Teilnehmer: {participants}\n"
                         f"{agenda_ctx}\n\n"
                         f"Eröffne das Meeting in 2-3 Sätzen: Thema + Agenda kurz vorstellen, "
-                        f"dann **{first_agent_name}** als ersten Sprecher aufrufen. Direkt, keine Floskeln."
+                        f"dann **{first_agent_name}** als ersten Sprecher aufrufen. Direkt, keine Floskeln. "
+                        f"Beginne SOFORT — KEIN Vorwort, kein 'Ich lese ...', keine Tool-/Shell-Syntax."
                     )
 
                     async def _fire_opening(rid: str, mid: str, prompt: str, r) -> None:
-                        text = await _moderator_request(rid, mid, prompt, r)
+                        text = _clean_meeting_response(await _moderator_request(rid, mid, prompt, r))
                         if text:
                             msg = {
                                 "role": "moderator", "agent_id": None,
@@ -896,9 +913,10 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                         f"(2) **{next_agent_name}** gezielt zu etwas NEUEM auffordern — ein noch offener Agenda-Punkt, eine "
                         f"Lücke, ein konkretes Beispiel ODER (wo es das Ergebnis schärft) ein kritischer Widerspruch/eine "
                         f"Gegenprüfung der letzten Aussage. WIEDERHOLE NICHTS bereits Gesagtes; ist ein Punkt ausreichend "
-                        f"behandelt, geh zum nächsten offenen Aspekt. Keine Floskeln, kein Dank, direkt."
+                        f"behandelt, geh zum nächsten offenen Aspekt. Keine Floskeln, kein Dank, direkt. "
+                        f"Beginne SOFORT mit der Moderation — KEIN Vorwort, kein 'Ich lese ...', keine Tool-/Shell-Syntax."
                     )
-                    moderator_text = await _moderator_request(room_id, mod_agent_id, mod_prompt, redis)
+                    moderator_text = _clean_meeting_response(await _moderator_request(room_id, mod_agent_id, mod_prompt, redis))
                     if moderator_text:
                         mod_msg = {
                             "role": "moderator",
