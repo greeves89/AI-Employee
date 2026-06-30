@@ -149,3 +149,84 @@ async def test_delegate_creates_lead_task_with_roster(monkeypatch):
     assert captured["agent_id"] == "lead1"
     assert "Team-Roster" in captured["prompt"] and "do x" in captured["prompt"]
     assert captured["metadata"]["team_id"] == "t1"
+
+
+# ─── Task 5: list_my_team MCP tool (team-scoped roster) ──────────
+
+
+def test_list_my_team_registered():
+    """The list_my_team tool is declared in the agent MCP tool registry."""
+    from app.api.mcp_agent import AGENT_TOOLS
+
+    names = [t["name"] for t in AGENT_TOOLS]
+    assert "list_my_team" in names
+
+
+def test_teams_for_agent_filters_membership():
+    """Pure selection helper keeps only teams whose roster includes the agent."""
+    from app.api.mcp_agent import _teams_for_agent
+    from app.models.team import Team
+
+    t1 = Team(id="t1", name="A", member_agent_ids=["me", "x"], lead_agent_id="me", is_active=True)
+    t2 = Team(id="t2", name="B", member_agent_ids=["y"], lead_agent_id="y", is_active=True)
+    t3 = Team(id="t3", name="C", member_agent_ids=None, lead_agent_id=None, is_active=True)
+
+    selected = _teams_for_agent([t1, t2, t3], "me")
+    assert [t.id for t in selected] == ["t1"]
+
+
+@pytest.mark.asyncio
+async def test_list_my_team_filters_to_membership():
+    """Handler returns only the team(s) the calling agent belongs to, with roster + lead."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from app.api.mcp_agent import _list_my_team
+    from app.models.team import Team
+
+    # t1 contains the calling agent "me" (and is its lead); t2 does not
+    t1 = Team(id="t1", name="A", member_agent_ids=["me", "x"], lead_agent_id="me", is_active=True)
+    t2 = Team(id="t2", name="B", member_agent_ids=["y"], lead_agent_id="y", is_active=True)
+
+    teams_res = MagicMock()
+    teams_res.scalars.return_value.all.return_value = [t1, t2]
+    agents_res = MagicMock()
+    agents_res.scalars.return_value.all.return_value = [
+        SimpleNamespace(id="me", name="Me", config={"role": "dev"}),
+        SimpleNamespace(id="x", name="Xavier", config={}),
+    ]
+    db = AsyncMock()
+    db.execute.side_effect = [teams_res, agents_res]
+
+    agent = SimpleNamespace(id="me")
+    out = await _list_my_team(agent, db)
+
+    assert len(out) == 1
+    team = out[0]
+    assert team["team_id"] == "t1"
+    assert team["name"] == "A"
+    assert team["lead_agent_id"] == "me"
+    members = {m["id"]: m for m in team["members"]}
+    assert set(members) == {"me", "x"}
+    assert members["me"]["is_lead"] is True
+    assert members["me"]["name"] == "Me"
+    assert members["me"]["role"] == "dev"
+    assert members["x"]["is_lead"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_my_team_empty_when_no_membership():
+    """An agent in no team yields an empty list (no second agent query needed)."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from app.api.mcp_agent import _list_my_team
+    from app.models.team import Team
+
+    t2 = Team(id="t2", name="B", member_agent_ids=["y"], lead_agent_id="y", is_active=True)
+    teams_res = MagicMock()
+    teams_res.scalars.return_value.all.return_value = [t2]
+    db = AsyncMock()
+    db.execute.side_effect = [teams_res]
+
+    out = await _list_my_team(SimpleNamespace(id="me"), db)
+    assert out == []
+    db.execute.assert_awaited_once()
