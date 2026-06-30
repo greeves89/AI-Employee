@@ -1046,6 +1046,18 @@ class TaskRouter:
             if not parent_task or not parent_task.agent_id:
                 return
 
+            # Wake the parent agent if it idle-stopped while waiting, so it
+            # actually consumes the queued completion message (mirrors dispatch).
+            if self.docker:
+                try:
+                    from app.services.user_lifecycle import wake_agent
+                    await wake_agent(self.db, self.docker, parent_task.agent_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not wake parent agent {parent_task.agent_id} "
+                        f"for subtask {subtask.id}: {e}"
+                    )
+
             status = "completed" if subtask.status == TaskStatus.COMPLETED else "failed"
             result_preview = (subtask.result or subtask.error or "")[:500]
 
@@ -1124,6 +1136,18 @@ class TaskRouter:
         try:
             status = "completed" if task.status == TaskStatus.COMPLETED else "failed"
             result_preview = (task.result or task.error or "No output")[:800]
+
+            # Wake the delegating agent if it idle-stopped while waiting, so it
+            # actually consumes the queued result (mirrors dispatch).
+            if self.docker:
+                try:
+                    from app.services.user_lifecycle import wake_agent
+                    await wake_agent(self.db, self.docker, delegator_agent_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not wake delegating agent {delegator_agent_id} "
+                        f"for task {task.id}: {e}"
+                    )
 
             # Push structured message to delegating agent's message queue
             message = json.dumps({
