@@ -1289,9 +1289,24 @@ async def _maybe_generate_artifact(room: MeetingRoom, todo_content: str, db) -> 
 
     import re as _re
     import uuid as _uuid
+    from sqlalchemy import func as _func
     from app.models.task import Task, TaskStatus, TaskPriority
+    from app.models.agent import Agent as _Agent
 
-    agent_id = room.agent_ids[0]  # a participant turns the result into artifacts
+    # Route to the LEAST-busy agent so the artifact renders in PARALLEL instead of queuing
+    # behind a participant's action-item task (agents process their own queue serially).
+    # The prompt is self-contained (full todo_content), so any agent can do it.
+    active = (TaskStatus.PENDING, TaskStatus.RUNNING)
+    load = {
+        aid: c for aid, c in (await db.execute(
+            select(Task.agent_id, _func.count()).where(Task.status.in_(active)).group_by(Task.agent_id)
+        )).all()
+    }
+    candidates = (await db.execute(select(_Agent.id))).scalars().all()
+    if not candidates:
+        return False
+    # Prefer participants on a tie (they have the meeting context warm), else least loaded overall.
+    agent_id = min(candidates, key=lambda a: (load.get(a, 0), 0 if a in (room.agent_ids or []) else 1))
     slug = _re.sub(r"[^a-z0-9]+", "-", (room.name or "meeting").lower()).strip("-")[:40] or "meeting"
     prompt = (
         f"Aus dem Meeting **{room.name}** liegt dieses Ergebnis vor (Action Items + Kontext):\n\n"
