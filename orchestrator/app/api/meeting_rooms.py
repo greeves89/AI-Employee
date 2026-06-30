@@ -664,6 +664,51 @@ async def _moderator_turn(room: MeetingRoom, next_agent_name: str, stage_name: s
     return await _haiku_call(api_key, system_prompt, user_prompt, max_tokens=120)
 
 
+def _clean_meeting_response(text: str | None) -> str | None:
+    """Tidy an agent's meeting message before it is stored (one place, all paths):
+    drops the 'Ich lese zuerst knowledge.md' narration filler, collapses a fully
+    duplicated message and consecutive duplicate lines. Never empties a real message."""
+    if not text:
+        return text
+    import re as _re
+
+    def _is_filler(st: str) -> bool:
+        low = st.lower()
+        if "knowledge.md" not in low:
+            return False
+        if not _re.match(r"^\s*(ich\s+(lese|schaue|pr[üu]fe|sehe|werfe)|i('?ll| will)?\s+read|let me read|reading)\b", st, _re.I):
+            return False
+        idx = low.rfind("knowledge.md") + len("knowledge.md")
+        return len(st[idx:].strip(" .,:;—-")) <= 60
+
+    s = text.strip()
+    # Whole-message exact duplication ("AAA AAA" / "AAA. AAA." / "AAA\nAAA"),
+    # tolerating a single separator char between the halves (even or odd length).
+    n = len(s)
+    if n > 20:
+        mid = n // 2
+        for cut in (mid, mid + 1):
+            a, b = s[:mid].strip(), s[cut:].strip()
+            if a and a == b:
+                s = a
+                break
+
+    out: list[str] = []
+    leading = True
+    for ln in s.split("\n"):
+        st = ln.strip()
+        if _is_filler(st):
+            continue
+        if leading and not st:
+            continue
+        leading = False
+        if out and out[-1].strip() == st and st:
+            continue  # collapse consecutive duplicate lines
+        out.append(ln.rstrip())
+    # Pure filler/duplication collapses to empty → let the caller show its placeholder.
+    return "\n".join(out).strip()
+
+
 async def _ensure_agent_running(agent_id: str, docker, redis) -> None:
     """Wake an idle-exited participant so it can take its meeting turn.
 
@@ -901,6 +946,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                         break
                     await asyncio.sleep(3)
 
+                response = _clean_meeting_response(response)
                 if not response:
                     response = f"[{agent_name_map.get(current_agent_id, current_agent_id)} hat nicht geantwortet]"
 
@@ -967,16 +1013,18 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         f"The following meeting just concluded.\n"
         f"Topic: {room.topic or '(no topic)'}\n\n"
         f"Conversation:\n{conversation}\n\n"
+        f"Beginne DIREKT mit der Überschrift — KEIN Vorwort, KEINE Wiederholungen, NICHT 'Ich lese ...'.\n"
         f"Erstelle eine klare, umsetzbare **Todo-Liste** als markdown-Checkliste, genau so:\n"
         f"## Action Items\n"
         f"- [ ] Item 1\n"
         f"- [ ] Item 2\n"
         f"...\n"
-        f"Gruppiere nach Priorität: **Sofort**, **Kurzfristig**, **Mittelfristig** (falls sinnvoll). "
-        f"Konkret und spezifisch. Max 15 Items.\n\n"
+        f"Gruppiere nach Priorität: **Sofort**, **Kurzfristig**, **Mittelfristig** (nur wenn sinnvoll). "
+        f"Jedes Item EINE Zeile, konkret. **Maximal 10 Items insgesamt** (lieber wenige, dafür präzise) — "
+        f"damit die Liste vollständig in eine Antwort passt und nicht abgeschnitten wird.\n\n"
         f"Danach der Abschnitt:\n"
         f"## Meeting-Kontext für Folgetermine\n"
-        f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting.)\n\n"
+        f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, Kontext fürs nächste Meeting.)\n\n"
         f"Antworte AUSSCHLIESSLICH mit diesem Markdown — keine Dateispeicherung nötig."
     )
 
@@ -986,7 +1034,7 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
     todo_content = None
     synthesizer_id = room.agent_ids[0]
     if mod_agent_id:
-        mod_out = await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=24)
+        mod_out = _clean_meeting_response(await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=24))
         if _looks_like_todo(mod_out):
             todo_content, synthesizer_id = mod_out, mod_agent_id
         else:
@@ -1000,7 +1048,7 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         for _ in range(40):
             result = await redis.client.lpop(response_key)
             if result:
-                todo_content = result if isinstance(result, str) else result.decode()
+                todo_content = _clean_meeting_response(result if isinstance(result, str) else result.decode())
                 break
             await asyncio.sleep(3)
 
