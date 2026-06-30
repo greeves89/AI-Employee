@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.83.0] — 2026-06-30
+
+### Added
+- **Notification → Task-Detail-Modal** — Klick auf eine task-bezogene Benachrichtigung („Task abgeschlossen — Bewertung?", „Task fehlgeschlagen") öffnet ein Modal mit Details: Status, Ergebnis, Fehler, Kosten, Tokens (in/out), Dauer, Schritte, Zeitstempel + Link zum Agent. Task-ID aus `meta.task_id` bzw. `action_url`; nicht-task-bezogene Notifications bleiben unverändert. (`components/layout/task-detail-modal.tsx`, `notification-bell.tsx`)
+
+### Fixed
+- **Agent-Symbol-Picker lag hinter der Proactive-Karte** (z-index/Stacking durch `backdrop-blur`). Im Agent-Settings-Tab jetzt **inline** statt Popover (kein Overlay-Problem, direkt sichtbar); der redundante Header-Button wurde entfernt. (`components/agents/agent-appearance-inline.tsx`, `agents/[id]/page.tsx`)
+
+---
+
 ## [1.82.0] — 2026-06-30
 
 ### Added (UI-Nachzug zu 1.80/1.81)

@@ -12,6 +12,7 @@ import {
   respondToApproval,
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
+import { TaskDetailModal } from "@/components/layout/task-detail-modal";
 import { useAuthStore } from "@/lib/auth";
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
@@ -31,6 +32,13 @@ const priorityIndicator: Record<string, string> = {
   low: "opacity-80",
 };
 
+function taskIdOf(n: Notification): string | null {
+  const meta = n.meta as Record<string, unknown> | null;
+  if (meta && typeof meta.task_id === "string") return meta.task_id;
+  if (n.action_url && n.action_url.startsWith("/tasks/")) return n.action_url.slice("/tasks/".length);
+  return null;
+}
+
 export function NotificationBell({
   variant = "icon",
   collapsed = false,
@@ -40,6 +48,7 @@ export function NotificationBell({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [taskModalId, setTaskModalId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -327,8 +336,17 @@ export function NotificationBell({
                     <div className={cn("h-2 w-2 rounded-full", typeColors[notif.type] || typeColors.info)} />
                   </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
+                  {/* Content — click opens the task detail modal when linked to a task */}
+                  <div
+                    className={cn("flex-1 min-w-0", taskIdOf(notif) && "cursor-pointer")}
+                    onClick={() => {
+                      const tid = taskIdOf(notif);
+                      if (tid) {
+                        setTaskModalId(tid);
+                        if (!notif.read) handleMarkRead(notif.id);
+                      }
+                    }}
+                  >
                     <p className={cn("text-xs font-medium", !notif.read && "text-foreground")}>
                       {notif.title}
                     </p>
@@ -349,7 +367,7 @@ export function NotificationBell({
                           (notif.meta.options as string[]).map((opt, i) => (
                             <button
                               key={i}
-                              onClick={() => handleApprovalChoice(notif.id, opt)}
+                              onClick={(e) => { e.stopPropagation(); handleApprovalChoice(notif.id, opt); }}
                               className={cn(
                                 "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
                                 i === 0
@@ -393,6 +411,7 @@ export function NotificationBell({
           </div>
         </div>
       )}
+      <TaskDetailModal taskId={taskModalId} onClose={() => setTaskModalId(null)} />
     </div>
   );
 }

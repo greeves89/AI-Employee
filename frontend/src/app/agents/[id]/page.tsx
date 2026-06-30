@@ -15,7 +15,7 @@ import {
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
-import { AgentAppearanceButton } from "@/components/agents/agent-appearance-button";
+import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -209,7 +209,6 @@ export default function AgentDetailPage() {
                 </div>
               </div>
             )}
-            <AgentAppearanceButton agentId={agent.id} config={agent.config} />
             <button
               onClick={async () => {
                 setRestarting(true);
@@ -1349,14 +1348,12 @@ function AgentSettings({
   return (
     <div className="space-y-6 overflow-auto h-full pb-4">
       {/* Aussehen / Symbol */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm">
-        <div className="flex items-center justify-between px-5 py-3.5">
-          <div>
-            <div className="text-sm font-medium">Symbol &amp; Farbe</div>
-            <div className="text-[11px] text-muted-foreground/60">Eigenes Icon + Farbe für diesen Agent (Anzeige auf den Karten).</div>
-          </div>
-          <AgentAppearanceButton agentId={agentId} />
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="mb-3">
+          <div className="text-sm font-medium">Symbol &amp; Farbe</div>
+          <div className="text-[11px] text-muted-foreground/60">Eigenes Icon + Farbe für diesen Agent (Anzeige auf den Karten).</div>
         </div>
+        <AgentAppearanceInline agentId={agentId} config={agent.config} />
       </div>
 
       {/* Proactive Mode */}
