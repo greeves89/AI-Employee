@@ -11,6 +11,18 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def format_exception(exc: BaseException) -> str:
+    """Human-readable exception string that is NEVER empty.
+
+    Some exceptions (timeouts, certain OpenAI/httpx SDK errors) have an empty str(),
+    which produced the useless task error 'Unexpected error: '. Fall back to the type
+    name / repr so failures are always debuggable."""
+    msg = str(exc).strip()
+    if msg:
+        return f"{type(exc).__name__}: {msg}"
+    return repr(exc) or type(exc).__name__
+
+
 @dataclass
 class LLMEvent:
     """Normalized event emitted by all providers."""

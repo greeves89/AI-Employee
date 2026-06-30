@@ -40,9 +40,13 @@ CORE_TOOL_NAMES = {
     "web_search", "web_fetch",
     "request_approval", "notify_user", "send_message_and_wait",
     "memory_save", "memory_search", "brain_search", "secondbrain_search",
-    "list_todos", "complete_todo",
+    "list_todos", "complete_todo", "update_todos",
+    # The standard task workflow MANDATES a skill check + rating on every task, so these
+    # must always be loaded — otherwise the agent hits "tool not available" mid-workflow
+    # (it cannot search_tools for a capability the workflow already required).
+    "skill_search", "skill_install", "skill_rate", "skill_propose", "rate_task",
 }
-MAX_ACTIVATED_TOOLS = 60  # core (~20) + search_tools + activated stays well under 128
+MAX_ACTIVATED_TOOLS = 60  # core (~27) + search_tools + activated stays well under 128
 
 SEARCH_TOOLS_DEF = {
     "type": "function",

@@ -20,7 +20,7 @@ from typing import AsyncIterator
 import httpx
 
 from app import multimodal
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
+from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +256,7 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text="Request timed out")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {e}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
@@ -456,7 +456,7 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text="Request timed out")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {e}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
@@ -658,7 +658,7 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text="Request timed out")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {e}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
