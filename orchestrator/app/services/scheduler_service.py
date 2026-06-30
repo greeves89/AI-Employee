@@ -411,6 +411,20 @@ class SchedulerService:
                     print(f"[IdleStop] Skip {agent.id} ({agent.name}) — task {active_task} is still RUNNING")
                     continue
 
+                # Keep-warm: don't reap an agent that is a participant of a RUNNING meeting —
+                # it idles between its turns but is needed again seconds later (avoids the
+                # stop/restart churn and "[Agent hat nicht geantwortet]").
+                from app.models.meeting_room import MeetingRoom as _MeetingRoom
+                in_meeting = (await db.execute(
+                    select(_MeetingRoom.id).where(
+                        _MeetingRoom.state == "running",
+                        _MeetingRoom.agent_ids.contains([agent.id]),
+                    ).limit(1)
+                )).scalar_one_or_none()
+                if in_meeting:
+                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — active in meeting {in_meeting}")
+                    continue
+
                 cfg = agent.config or {}
                 per_agent = cfg.get("idle_stop_minutes")
                 try:

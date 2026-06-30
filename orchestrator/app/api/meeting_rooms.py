@@ -892,9 +892,11 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                         f"{agenda_ctx}\n"
                         f"Aktuelle Phase: {stage_name or 'freie Diskussion'}\n\n"
                         f"Letzte Beiträge:\n{recent_ctx or '(noch keine)'}\n\n"
-                        f"In maximal 2 Sätzen: (1) Kernaussage des letzten Beitrags aufgreifen und zur Agenda in Bezug setzen, "
-                        f"(2) konkrete Frage/Aufgabe an **{next_agent_name}** stellen, die das Meeting voranbringt. "
-                        f"Keine Floskeln. Kein Dank. Direkt."
+                        f"Deine Moderation in max. 2 knappen Sätzen: (1) die letzte Kernaussage in EINEM Halbsatz aufgreifen, "
+                        f"(2) **{next_agent_name}** gezielt zu etwas NEUEM auffordern — ein noch offener Agenda-Punkt, eine "
+                        f"Lücke, ein konkretes Beispiel ODER (wo es das Ergebnis schärft) ein kritischer Widerspruch/eine "
+                        f"Gegenprüfung der letzten Aussage. WIEDERHOLE NICHTS bereits Gesagtes; ist ein Punkt ausreichend "
+                        f"behandelt, geh zum nächsten offenen Aspekt. Keine Floskeln, kein Dank, direkt."
                     )
                     moderator_text = await _moderator_request(room_id, mod_agent_id, mod_prompt, redis)
                     if moderator_text:
@@ -921,7 +923,10 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                     f"Teilnehmer: {', '.join(agent_name_map.values())}\n\n"
                     f"{stage_header}"
                     f"{moderator_directive}"
-                    f"Bisheriges Gespräch:\n{context_block}"
+                    f"Bisheriges Gespräch:\n{context_block}\n\n"
+                    f"Bring NEUE Substanz: wiederhole NICHT, was bereits gesagt wurde, sondern ergänze, "
+                    f"vertiefe oder widersprich begründet. Beginne direkt mit dem Inhalt (kein Vorwort, "
+                    f"kein 'Ich lese ...'). Maximal ein kurzer, konkreter Beitrag."
                 )
 
                 # Wake the agent if it idle-exited since its last turn, otherwise the
