@@ -1273,7 +1273,7 @@ async def _maybe_create_planner_tasks(room: MeetingRoom, items: list[str], db) -
     return created
 
 
-async def _maybe_generate_artifact(room: MeetingRoom, todo_content: str, db) -> bool:
+async def _maybe_generate_artifact(room: MeetingRoom, todo_content: str, db, redis=None) -> bool:
     """Best-effort: turn the meeting result into a REAL artifact (decision document +
     slide deck), not just text. Spawns a follow-up task to a participant agent which
     renders the files into /workspace/transfer/ using its own document tooling
@@ -1331,7 +1331,13 @@ async def _maybe_generate_artifact(room: MeetingRoom, todo_content: str, db) -> 
     )
     db.add(task)
     await db.commit()
-    logger.info("Meeting %s: artifact-generation task %s queued for agent %s", room.id, task.id, agent_id)
+    # CRUCIAL: push to the agent's queue so it actually runs (db.add alone leaves it PENDING
+    # forever — the agent pulls work from Redis, not the DB).
+    if redis is not None:
+        import json as _json
+        payload = _json.dumps({"id": task.id, "prompt": task.prompt, "model": None, "priority": task.priority})
+        await redis.push_task(agent_id, payload)
+    logger.info("Meeting %s: artifact-generation task %s dispatched to agent %s", room.id, task.id, agent_id)
     return True
 
 
@@ -1426,7 +1432,7 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
 
         # Optional: turn the result into a real decision doc + slide deck (gated, best-effort).
         try:
-            await _maybe_generate_artifact(room, todo_content, db)
+            await _maybe_generate_artifact(room, todo_content, db, redis)
         except Exception:
             logger.warning("Meeting artifact generation failed for meeting %s", room.id, exc_info=True)
 
