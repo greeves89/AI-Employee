@@ -566,10 +566,10 @@ export default function MeetingRoomsPage() {
                   </span>
                 </div>
 
-                {room.scheduled_for && (
+                {room.scheduled_for && room.state === "idle" && (
                   <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-400">
                     <Clock className="h-3.5 w-3.5 shrink-0" />
-                    Folgetermin: {new Date(room.scheduled_for).toLocaleString("de-DE")} — startet automatisch
+                    Folgetermin: startet automatisch, sobald die Aufgaben erledigt sind (spätestens {new Date(room.scheduled_for).toLocaleString("de-DE")})
                   </div>
                 )}
 

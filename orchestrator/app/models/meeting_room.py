@@ -32,9 +32,12 @@ class MeetingRoom(Base, TimestampMixin):
     use_moderator: Mapped[bool] = mapped_column(Boolean, default=False)
     # Per-meeting moderator LLM: AI-Account id the moderator uses (None = global default)
     moderator_ai_account_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
-    # Follow-up: when this (idle) room should auto-start. Agents propose the date in the
-    # meeting wrap-up; the scheduler starts the room once scheduled_for <= now.
+    # Follow-up auto-start: this (idle) room starts when all action-item TODOs of the
+    # parent meeting are completed (event-based) — scheduled_for is only the safety cap
+    # (start no later than this, even if tasks aren't all done).
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    # Parent meeting id — the follow-up waits for THAT meeting's assigned TODOs to finish.
+    parent_room_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None, index=True)
     # Message history stored as JSONB array
     messages: Mapped[list] = mapped_column(JSONB, default=list)
     # Creator

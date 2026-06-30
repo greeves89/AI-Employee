@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.87.0
+**Version:** 1.88.0
 **Stand:** 30. Juni 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** skbs-s-kichat.klinikum-bs.de
@@ -498,7 +498,7 @@ Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Ro
 **Was am Ende automatisch passiert:**
 - Der **Moderator** fasst die Ergebnisse als **Action-Item-Liste** zusammen.
 - Jede Aufgabe wird einem Agenten zugewiesen — der Agent **übernimmt sie in seine eigene To-Do-Liste** (`/workspace/todo.md`) und legt **selbst fest, bis wann und wie** er sie erledigt.
-- Ein **Folge-Meeting** („… — Folgetermin") wird automatisch angelegt — mit dem Kontext und den offenen Punkten des Vortermins. Die Agenten **schlagen selbst einen Termin vor** (so, dass die Aufgaben bis dahin erledigt sind); der Termin ist **im Raum sichtbar** und das Folge-Meeting **startet zu diesem Zeitpunkt automatisch** — die Agenten arbeiten ihre Aufgaben bis dahin ab und bringen die Ergebnisse mit.
+- Ein **Folge-Meeting** („… — Folgetermin") wird automatisch angelegt — mit dem Kontext und den offenen Punkten des Vortermins. Es **startet automatisch, sobald die Agenten alle Action-Items des Vortermins erledigt haben** (sie bringen die fertigen Ergebnisse mit) — mit einer 24-Stunden-Sicherheitsgrenze. So passt der Folgetermin zum tatsächlichen Arbeitsfortschritt der Agenten statt zu einem geschätzten Kalenderdatum.
 
 ---
 

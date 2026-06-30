@@ -108,12 +108,15 @@ class SchedulerService:
             await asyncio.sleep(30)
 
     async def _start_due_followups(self) -> int:
-        """Auto-start idle follow-up meeting rooms whose scheduled_for is due, so the
-        agents (who worked their action items in the meantime) bring results."""
+        """Auto-start idle follow-up meeting rooms — EVENT-BASED: start once ALL of the
+        parent meeting's action-item TODOs are completed (the agents brought results),
+        or, as a safety net, once scheduled_for (the cap) is reached."""
         from datetime import datetime, timezone
-        from sqlalchemy import select, and_
+        from sqlalchemy import select, and_, or_, func
         from app.db.session import async_session_factory
         from app.models.meeting_room import MeetingRoom
+        from app.models.task import Task
+        from app.models.agent_todo import AgentTodo, TodoStatus
         from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
 
         now = datetime.now(timezone.utc)
@@ -123,16 +126,35 @@ class SchedulerService:
                 select(MeetingRoom).where(and_(
                     MeetingRoom.state == "idle",
                     MeetingRoom.is_active == True,
-                    MeetingRoom.scheduled_for.isnot(None),
-                    MeetingRoom.scheduled_for <= now,
+                    or_(MeetingRoom.parent_room_id.isnot(None), MeetingRoom.scheduled_for.isnot(None)),
                 ))
             )).scalars().all()
             for room in rows:
                 if room.id in _running_rooms:
                     continue
+                cap_due = room.scheduled_for is not None and room.scheduled_for <= now
+                tasks_done = False
+                if room.parent_room_id:
+                    ptids = (await db.execute(
+                        select(Task.id).where(Task.metadata_["room_id"].astext == room.parent_room_id)
+                    )).scalars().all()
+                    if ptids:
+                        total = await db.scalar(
+                            select(func.count(AgentTodo.id)).where(AgentTodo.task_id.in_(ptids))
+                        )
+                        open_ = await db.scalar(
+                            select(func.count(AgentTodo.id)).where(and_(
+                                AgentTodo.task_id.in_(ptids),
+                                AgentTodo.status != TodoStatus.COMPLETED,
+                            ))
+                        )
+                        tasks_done = (total or 0) > 0 and (open_ or 0) == 0
+                if not (cap_due or tasks_done):
+                    continue
                 room.state = "running"
                 room.current_turn = 0
-                room.scheduled_for = None  # consume the schedule so it fires once
+                room.scheduled_for = None
+                room.parent_room_id = None  # consume so it fires once
                 await db.commit()
                 mod_agent_id = None
                 if room.use_moderator and self.docker:
@@ -141,7 +163,8 @@ class SchedulerService:
                 task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
                 _running_rooms[room.id] = task
                 started += 1
-                print(f"[Scheduler] Auto-started follow-up meeting {room.id}: {room.name}")
+                reason = "alle Aufgaben erledigt" if tasks_done else "Cap erreicht"
+                print(f"[Scheduler] Auto-started follow-up {room.id} ({reason}): {room.name}")
         return started
 
     async def _run_dreaming(self) -> int:

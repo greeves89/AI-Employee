@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.88.0] — 2026-06-30
+
+### Changed
+- **Folgetermin ist jetzt EVENT-BASIERT statt LLM-Kalender-Schätzung.** Der Folge-Raum startet automatisch, sobald **alle Action-Item-TODOs des Vortermins erledigt** sind (die Agenten bringen fertige Ergebnisse mit) — mit 24-Stunden-Sicherheits-Cap. Vorher schätzte das LLM ein Kalenderdatum (oft Wochen, weil es in Menschen-Projektzeit rechnet, nicht im Agent-Tempo → z. B. „14.07."). DB: `meeting_rooms.parent_room_id` (Migration `b2c3d4e5f6a7`); der Scheduler prüft den TODO-Abschluss des Vortermins. (`orchestrator/app/api/meeting_rooms.py`, `services/scheduler_service.py`, `frontend/src/app/meeting-rooms/page.tsx`)
+
 ## [1.87.3] — 2026-06-30
 
 ### Fixed

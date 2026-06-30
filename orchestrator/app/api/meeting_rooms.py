@@ -930,24 +930,18 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         for m in (room.messages or [])
         if m.get("role") in ("agent", "system", "moderator")
     )
-    _today = datetime.now(timezone.utc).date().isoformat()
     prompt = (
         f"The following meeting just concluded.\n"
-        f"Topic: {room.topic or '(no topic)'}\n"
-        f"Heutiges Datum: {_today}.\n\n"
+        f"Topic: {room.topic or '(no topic)'}\n\n"
         f"Conversation:\n{conversation}\n\n"
-        f"Antworte in GENAU dieser Reihenfolge:\n\n"
-        f"1) Als ALLERERSTE Zeile der Folgetermin im Format `FOLLOWUP_DATE: YYYY-MM-DD` "
-        f"(z. B. `FOLLOWUP_DATE: 2026-07-15`) — realistisch ab heute ({_today}) so gewählt, dass die unten "
-        f"stehenden Action Items bis dahin erledigt sein können. Diese Zeile ist PFLICHT und muss zuerst kommen.\n\n"
-        f"2) Dann die Todo-Liste als markdown-Checkliste, genau so:\n"
+        f"Erstelle eine klare, umsetzbare **Todo-Liste** als markdown-Checkliste, genau so:\n"
         f"## Action Items\n"
         f"- [ ] Item 1\n"
         f"- [ ] Item 2\n"
         f"...\n"
         f"Gruppiere nach Priorität: **Sofort**, **Kurzfristig**, **Mittelfristig** (falls sinnvoll). "
         f"Konkret und spezifisch. Max 15 Items.\n\n"
-        f"3) Dann der Abschnitt:\n"
+        f"Danach der Abschnitt:\n"
         f"## Meeting-Kontext für Folgetermine\n"
         f"(2-3 Sätze: Was wurde entschieden, welche offenen Fragen bleiben, was ist der Kontext für das nächste Meeting.)\n\n"
         f"Antworte AUSSCHLIESSLICH mit diesem Markdown — keine Dateispeicherung nötig."
@@ -1308,12 +1302,13 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
     from datetime import timedelta as _td
     context = _extract_followup_context(todo_content)
     new_name = _next_followup_name(room.name)
-    # Agents propose the follow-up date in the synthesis; fall back to +7 days.
-    scheduled = _extract_followup_date(todo_content) or (datetime.now(timezone.utc) + _td(days=7))
-    sched_str = scheduled.strftime("%Y-%m-%d %H:%M UTC")
+    # Event-based: the follow-up auto-starts when the parent meeting's action-item TODOs
+    # are all completed. scheduled_for is ONLY the safety cap (start no later than +24h).
+    cap = datetime.now(timezone.utc) + _td(hours=24)
+    cap_str = cap.strftime("%Y-%m-%d %H:%M UTC")
     seed = (
         f"## Folgetermin zu: {room.name}\n\n"
-        + f"**Geplant für:** {sched_str} — startet automatisch. Bis dahin arbeiten die Agenten ihre Action Items ab und bringen die Ergebnisse mit.\n\n"
+        + f"**Start:** automatisch, sobald die Agenten alle Action Items des Vortermins erledigt haben (spätestens {cap_str}).\n\n"
         + (f"{context}\n\n" if context else "Fortsetzung des vorherigen Meetings.\n\n")
         + "**Action Items aus dem Vortermin (Stand prüfen / nächste Schritte planen):**\n"
         + ("\n".join(f"- {it}" for it in items) if items else "—")
@@ -1330,7 +1325,8 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
             stages_config=room.stages_config,
             use_moderator=room.use_moderator,
             moderator_ai_account_id=room.moderator_ai_account_id,
-            scheduled_for=scheduled,
+            scheduled_for=cap,
+            parent_room_id=room.id,
             created_by=room.created_by,
             messages=[{
                 "role": "system",
@@ -1347,7 +1343,7 @@ async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: li
     announce = {
         "role": "system",
         "agent_id": None,
-        "content": f"## Folgetermin angelegt\nEin Folge-Meeting **{new_name}** ist für **{sched_str}** terminiert und startet automatisch (Raum-ID `{new_id}`).",
+        "content": f"## Folgetermin angelegt\nEin Folge-Meeting **{new_name}** wurde angelegt — es startet **automatisch, sobald alle Aufgaben erledigt sind** (spätestens {cap_str}). Raum-ID `{new_id}`.",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     try:
