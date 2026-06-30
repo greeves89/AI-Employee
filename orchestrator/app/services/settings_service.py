@@ -91,6 +91,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "meeting_planner_plan_id",
     # Meeting moderator: AI-Account the moderator agent uses (empty = first available)
     "meeting_moderator_ai_account_id",
+    # Meeting → generate a real decision doc + slide deck from the result (default off)
+    "meeting_artifact_enabled",
     # "Dreaming": periodic adaptive user-profile refresh (default off)
     "dreaming_enabled",
 }

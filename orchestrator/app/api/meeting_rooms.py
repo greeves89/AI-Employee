@@ -1273,6 +1273,56 @@ async def _maybe_create_planner_tasks(room: MeetingRoom, items: list[str], db) -
     return created
 
 
+async def _maybe_generate_artifact(room: MeetingRoom, todo_content: str, db) -> bool:
+    """Best-effort: turn the meeting result into a REAL artifact (decision document +
+    slide deck), not just text. Spawns a follow-up task to a participant agent which
+    renders the files into /workspace/transfer/ using its own document tooling
+    (python-pptx / Marp / pandoc). Reuses the task machine — no island, same pattern as
+    the MS-Planner mirror. Gated by the admin setting `meeting_artifact_enabled`
+    (default off) so it only runs when wanted."""
+    from app.services.settings_service import SettingsService
+    enabled = await SettingsService(db).get("meeting_artifact_enabled")
+    if str(enabled).lower() not in ("1", "true", "yes", "on"):
+        return False
+    if not room.agent_ids:
+        return False
+
+    import re as _re
+    import uuid as _uuid
+    from app.models.task import Task, TaskStatus, TaskPriority
+
+    agent_id = room.agent_ids[0]  # a participant turns the result into artifacts
+    slug = _re.sub(r"[^a-z0-9]+", "-", (room.name or "meeting").lower()).strip("-")[:40] or "meeting"
+    prompt = (
+        f"Aus dem Meeting **{room.name}** liegt dieses Ergebnis vor (Action Items + Kontext):\n\n"
+        f"{todo_content}\n\n"
+        "=== AUTONOMY WHITELIST (für diese zugewiesene Aufgabe) ===\n"
+        "Diese Arbeit ist freigegeben — schreibe in /workspace/ und führe nötige bash-Schritte "
+        "(z. B. `pip install python-pptx`) selbstständig aus, OHNE request_approval. Nur externe "
+        "Seiteneffekte brauchen Approval.\n=== END WHITELIST ===\n\n"
+        "Erzeuge daraus präsentationsreife Artefakte — beschreibe sie NICHT nur, sondern erstelle die Dateien:\n"
+        f"1. **Entscheidungsvorlage** als Markdown `/workspace/transfer/{slug}-entscheidung.md`: "
+        "Zielbild, Beschlussvorschlag, Action Items nach Priorität, Verantwortung, nächste Schritte.\n"
+        f"2. **Foliendeck** `/workspace/transfer/{slug}.pptx` mit python-pptx (oder Marp→pptx): "
+        "Titel, Zielbild, Action Items, nächste Schritte. Fehlt dir ein Tool, installiere es per bash "
+        "oder lade es via `search_tools`.\n"
+        "Halte dich strikt an die Inhalte oben, erfinde nichts dazu. Melde am Ende die erzeugten Dateipfade."
+    )
+    task = Task(
+        id=_uuid.uuid4().hex[:12],
+        title=f"[Meeting-Artefakt] {room.name}",
+        prompt=prompt,
+        status=TaskStatus.PENDING,
+        priority=TaskPriority.NORMAL,
+        agent_id=agent_id,
+        metadata_={"source": "meeting_artifact", "room_id": room.id},
+    )
+    db.add(task)
+    await db.commit()
+    logger.info("Meeting %s: artifact-generation task %s queued for agent %s", room.id, task.id, agent_id)
+    return True
+
+
 async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis) -> None:
     """Parse the todo list, assign items to agents, create Task records, persist context."""
     import json as _json
@@ -1365,6 +1415,12 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             await _maybe_create_planner_tasks(room, items, db)
         except Exception:
             logger.warning("MS-Planner mirror failed for meeting %s", room.id, exc_info=True)
+
+        # Optional: turn the result into a real decision doc + slide deck (gated, best-effort).
+        try:
+            await _maybe_generate_artifact(room, todo_content, db)
+        except Exception:
+            logger.warning("Meeting artifact generation failed for meeting %s", room.id, exc_info=True)
 
     # Publish assignment summary message to the meeting room
     if created_tasks:
