@@ -856,15 +856,17 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                     json.dumps({"type": "meeting", "room_id": room_id, "prompt": prompt}),
                 )
 
-                # Wait for response (up to 5 min)
+                # Wait for response, but BOUNDED (90s, 3s granularity) so a slow or
+                # overloaded agent can never stall the whole meeting — its turn is
+                # skipped with a placeholder and the meeting always progresses.
                 response_key = f"meeting:{room_id}:response:{current_agent_id}"
                 response = None
-                for _ in range(60):
+                for _ in range(30):
                     result = await redis.client.lpop(response_key)
                     if result:
                         response = result if isinstance(result, str) else result.decode()
                         break
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(3)
 
                 if not response:
                     response = f"[{agent_name_map.get(current_agent_id, current_agent_id)} hat nicht geantwortet]"
@@ -957,7 +959,7 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
     todo_content = None
     synthesizer_id = room.agent_ids[0]
     if mod_agent_id:
-        mod_out = await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=48)
+        mod_out = await _moderator_request(room.id, mod_agent_id, prompt, redis, timeout_rounds=24)
         if _looks_like_todo(mod_out):
             todo_content, synthesizer_id = mod_out, mod_agent_id
         else:
@@ -967,12 +969,12 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         payload = _json.dumps({"type": "meeting", "room_id": room.id, "prompt": prompt})
         await redis.client.rpush(f"agent:{synthesizer_id}:messages", payload)
         response_key = f"meeting:{room.id}:response:{synthesizer_id}"
-        for _ in range(60):
+        for _ in range(40):
             result = await redis.client.lpop(response_key)
             if result:
                 todo_content = result if isinstance(result, str) else result.decode()
                 break
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
 
     if not todo_content:
         todo_content = "## Action Items\n*(Todo-Liste konnte nicht generiert werden)*"

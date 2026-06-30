@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.87.3] — 2026-06-30
+
+### Fixed
+- **Meetings können nicht mehr durch einen trägen/überlasteten Agenten blockieren.** Der Per-Turn-Timeout war 5 Min — ein nicht-antwortender Teilnehmer ließ das Meeting faktisch stillstehen. Jetzt **90 s pro Turn** (danach Platzhalter + weiter); Synthese-Waits ebenfalls gebound (Moderator 120 s, Teilnehmer-Fallback 120 s). Meetings laufen damit zuverlässig bis zum Abschluss. (`orchestrator/app/api/meeting_rooms.py`)
+
 ## [1.87.2] — 2026-06-30
 
 ### Fixed
