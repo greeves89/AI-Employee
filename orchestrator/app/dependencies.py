@@ -43,14 +43,21 @@ def get_docker_service(request: Request) -> DockerService:
 
 
 async def _check_users_exist(db: AsyncSession) -> bool:
-    """Check if any users have been registered yet."""
+    """Check if any users have been registered yet.
+
+    Fail-closed: only a genuinely missing users table (fresh install, no
+    migration yet) counts as "no users -> setup mode". Any other DB error
+    (connection lost, timeout, permission) propagates so the caller denies
+    the request instead of granting an anonymous ADMIN with RLS bypass.
+    """
     from sqlalchemy import func
+    from sqlalchemy.exc import ProgrammingError
+    from app.models.user import User
     try:
-        from app.models.user import User
         count = await db.scalar(select(func.count()).select_from(User))
-        return count > 0
-    except Exception:
-        # Table doesn't exist yet (no migration) - no users
+        return (count or 0) > 0
+    except ProgrammingError:
+        # users table does not exist yet (no migration) - genuine setup mode
         return False
 
 
