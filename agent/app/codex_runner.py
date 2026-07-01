@@ -370,6 +370,7 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
         "memory": "/opt/mcp/memory-server.mjs",
         "notification": "/opt/mcp/notification-server.mjs",
         "orchestrator": "/opt/mcp/orchestrator-server.mjs",
+        "read_logs": "/opt/mcp/read-logs-server.mjs",
     }
 
     lines: list[str] = [

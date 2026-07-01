@@ -88,6 +88,76 @@ async def get_model_catalog(user=Depends(require_auth)):
     return catalog_payload()
 
 
+@router.get("/logs")
+async def read_agent_logs(
+    target_agent_id: str | None = Query(None),
+    tail: int = Query(200, ge=1, le=1000),
+    since_minutes: int | None = Query(None, ge=1, le=1440),
+    auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """An agent reads container logs to diagnose and improve itself.
+
+    This is the SAFE path for the self-improvement loop — the orchestrator is the
+    only component with docker access; the agent never touches the socket. Scope:
+    an agent always reads its OWN logs; a team lead may also read the logs of its
+    own team members. Output is secret-redacted (app.core.log_redaction) and every
+    read is written to the audit log. tail is capped at 1000 lines.
+    """
+    caller_id = auth["agent_id"]
+    target_id = target_agent_id or caller_id
+
+    # Scope: own logs always; a lead may read its team members' logs.
+    if target_id != caller_id:
+        from app.models.team import Team
+        teams = (await db.execute(select(Team).where(Team.is_active.is_(True)))).scalars().all()
+        allowed = any(
+            t.lead_agent_id == caller_id and target_id in (t.member_agent_ids or [])
+            for t in teams
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Zugriff nur auf eigene Logs — oder als Team-Lead auf die des eigenen Teams.",
+            )
+
+    target = (await db.execute(select(Agent).where(Agent.id == target_id))).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not target.container_id:
+        raise HTTPException(status_code=409, detail="Agent hat keinen laufenden Container")
+
+    from app.core.log_redaction import redact_logs
+    try:
+        raw = docker.get_container_logs(
+            target.container_id,
+            tail=tail,
+            since_seconds=since_minutes * 60 if since_minutes else None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Logs konnten nicht gelesen werden: {e}")
+    logs = redact_logs(raw)
+
+    # Audit trail — who read whose logs, when, how much.
+    from app.models.audit_log import AuditLog, AuditEventType
+    db.add(AuditLog(
+        agent_id=caller_id,
+        event_type=AuditEventType.LOGS_READ.value,
+        command="read_logs",
+        outcome="success",
+        meta={"target_agent_id": target_id, "tail": tail, "since_minutes": since_minutes},
+    ))
+    await db.commit()
+
+    return {
+        "agent_id": target_id,
+        "tail": tail,
+        "since_minutes": since_minutes,
+        "logs": logs,
+    }
+
+
 # --- Team routes (MUST be before /{agent_id} to avoid path conflicts) ---
 
 

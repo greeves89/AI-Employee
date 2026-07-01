@@ -42,6 +42,8 @@ class AuditEventType(str, Enum):
     BRAIN_CREATED = "brain_created"
     BRAIN_UPDATED = "brain_updated"
     BRAIN_DELETED = "brain_deleted"
+    # Self-improvement
+    LOGS_READ = "logs_read"                       # agent read container logs (own/team)
 
 
 class AuditLog(Base):
