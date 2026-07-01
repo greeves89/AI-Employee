@@ -9,7 +9,14 @@ client.
 We mint a short-lived JWT for the platform admin and attach it to the bridge's
 HTTP clients. ``require_auth`` resolves it to a real user, so the bot keeps the
 internal access it had before without re-introducing a shared static secret.
+
+Token caching: JWTs are valid for 30 minutes (per create_access_token default).
+We cache the token for 25 minutes so at most one DB round-trip occurs per
+refresh cycle regardless of how many concurrent bot commands fire.
 """
+
+import asyncio
+import time
 
 import httpx
 from sqlalchemy import select
@@ -18,24 +25,50 @@ from app.core.auth import create_access_token
 from app.db.session import async_session_factory
 from app.models.user import User, UserRole
 
+_TOKEN_CACHE: str | None = None
+_TOKEN_EXPIRY: float = 0.0
+_TOKEN_TTL_SECONDS = 25 * 60  # 25 min — JWT valid 30 min, 5 min safety margin
+_cache_lock = asyncio.Lock()
 
-async def bridge_token() -> str | None:
-    """Mint a short-lived admin JWT for in-process bridge API calls.
 
-    Returns ``None`` if no approved admin exists (caller falls back to an
-    unauthenticated client, which will simply get the usual 401).
+async def bridge_token() -> str:
+    """Mint (or return cached) short-lived admin JWT for bridge API calls.
+
+    Raises RuntimeError if no approved admin exists so callers surface a clear
+    error instead of silently sending unauthenticated requests that produce the
+    same 401/KeyError the PR was meant to fix.
     """
-    async with async_session_factory() as session:
-        result = await session.execute(
-            select(User)
-            .where(User.role == UserRole.ADMIN, User.approved == True)  # noqa: E712
-            .limit(1)
-        )
-        user = result.scalar_one_or_none()
+    global _TOKEN_CACHE, _TOKEN_EXPIRY
+
+    now = time.monotonic()
+    if _TOKEN_CACHE and now < _TOKEN_EXPIRY:
+        return _TOKEN_CACHE
+
+    async with _cache_lock:
+        # Re-check inside the lock to avoid a thundering herd on expiry
+        now = time.monotonic()
+        if _TOKEN_CACHE and now < _TOKEN_EXPIRY:
+            return _TOKEN_CACHE
+
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(User)
+                .where(User.role == UserRole.ADMIN, User.approved == True)  # noqa: E712
+                .order_by(User.created_at)
+                .limit(1)
+            )
+            user = result.scalar_one_or_none()
+
         if user is None:
-            return None
-        role = user.role.value if hasattr(user.role, "value") else str(user.role)
-        return create_access_token(str(user.id), role)
+            raise RuntimeError(
+                "No approved admin user found — cannot mint bridge token. "
+                "Ensure at least one admin account is approved in the platform."
+            )
+
+        token = create_access_token(str(user.id), user.role.value)
+        _TOKEN_CACHE = token
+        _TOKEN_EXPIRY = time.monotonic() + _TOKEN_TTL_SECONDS
+        return token
 
 
 async def authed_client(**kwargs) -> httpx.AsyncClient:
@@ -48,9 +81,9 @@ async def authed_client(**kwargs) -> httpx.AsyncClient:
             resp = await client.get(f"{API_BASE}/agents/")
 
     Any ``headers`` passed in are preserved and merged with the Bearer token.
+    Raises RuntimeError (propagated from bridge_token) if no admin exists.
     """
     token = await bridge_token()
     headers = dict(kwargs.pop("headers", {}) or {})
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    headers["Authorization"] = f"Bearer {token}"
     return httpx.AsyncClient(headers=headers, **kwargs)
