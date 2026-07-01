@@ -26,6 +26,7 @@ REUSE (no parallel implementations)
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -59,6 +60,34 @@ def _read_host_metrics() -> dict:
         return data
     except Exception:
         return {}
+
+
+# Kiosk-local settings live in a writable JSON on the device (bind-mounted).
+KIOSK_CONFIG_PATH = "/kiosk-config/settings.json"
+
+
+def _load_kiosk_settings() -> dict:
+    try:
+        with open(KIOSK_CONFIG_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_kiosk_settings(data: dict) -> None:
+    os.makedirs(os.path.dirname(KIOSK_CONFIG_PATH), exist_ok=True)
+    tmp = KIOSK_CONFIG_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, KIOSK_CONFIG_PATH)
+
+
+def _tariff() -> float:
+    """Electricity price: kiosk-settings override, else the .env default."""
+    try:
+        return float(_load_kiosk_settings().get("electricity_price_eur_kwh", settings.electricity_price_eur_kwh))
+    except (TypeError, ValueError):
+        return settings.electricity_price_eur_kwh
 
 
 @router.get("/overview")
@@ -132,7 +161,7 @@ async def kiosk_overview(db: AsyncSession = Depends(get_db)):
 
     # --- Host + live power / electricity cost ---
     host = _read_host_metrics()
-    price = settings.electricity_price_eur_kwh
+    price = _tariff()
     watts = host.get("power_w")
     today_kwh = host.get("today_kwh")
     power = {
@@ -257,3 +286,95 @@ async def kiosk_chat_history(
             if m.role in ("user", "assistant", "error")
         ],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Agent detail (tile -> "all data") + device-local kiosk settings               #
+# --------------------------------------------------------------------------- #
+
+@router.get("/agents/{agent_id}")
+async def kiosk_agent_detail(agent_id: str, db: AsyncSession = Depends(get_db)):
+    """Full read-only detail for one agent: state, model, task stats, recent tasks."""
+    a = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not a:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    status_rows = (await db.execute(
+        select(Task.status, func.count()).where(Task.agent_id == agent_id).group_by(Task.status)
+    )).all()
+    by_status = {_state_value(st): int(c) for st, c in status_rows}
+
+    total_cost = await db.scalar(
+        select(func.coalesce(func.sum(Task.cost_usd), 0.0)).where(Task.agent_id == agent_id)
+    ) or 0.0
+    tin = await db.scalar(
+        select(func.coalesce(func.sum(Task.input_tokens), 0)).where(Task.agent_id == agent_id)
+    ) or 0
+    tout = await db.scalar(
+        select(func.coalesce(func.sum(Task.output_tokens), 0)).where(Task.agent_id == agent_id)
+    ) or 0
+
+    current = None
+    row = (await db.execute(
+        select(Task.title)
+        .where(Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING)
+        .order_by(Task.created_at.desc()).limit(1)
+    )).first()
+    if row:
+        current = row[0]
+
+    recent_rows = (await db.execute(
+        select(Task.title, Task.status, Task.cost_usd, Task.created_at)
+        .where(Task.agent_id == agent_id)
+        .order_by(Task.created_at.desc()).limit(8)
+    )).all()
+
+    cfg = a.config or {}
+    return {
+        "id": a.id,
+        "name": a.name,
+        "state": _state_value(a.state),
+        "model": a.model,
+        "mode": a.mode,
+        "role": cfg.get("role"),
+        "has_container": bool(a.container_id),
+        "autonomy_level": a.autonomy_level,
+        "budget_usd": a.budget_usd,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "current_task": current,
+        "tasks_by_status": by_status,
+        "tasks_total": sum(by_status.values()),
+        "cost_usd_total": round(float(total_cost), 4),
+        "tokens_in_total": int(tin),
+        "tokens_out_total": int(tout),
+        "recent_tasks": [
+            {
+                "title": r[0],
+                "status": _state_value(r[1]),
+                "cost_usd": r[2],
+                "ts": r[3].isoformat() if r[3] else None,
+            }
+            for r in recent_rows
+        ],
+    }
+
+
+class KioskSettingsUpdate(BaseModel):
+    electricity_price_eur_kwh: float | None = None
+
+
+@router.get("/settings")
+async def kiosk_get_settings():
+    return {
+        "electricity_price_eur_kwh": _tariff(),
+        "metrics_stale": _read_host_metrics().get("stale", True),
+    }
+
+
+@router.put("/settings")
+async def kiosk_put_settings(body: KioskSettingsUpdate):
+    data = _load_kiosk_settings()
+    if body.electricity_price_eur_kwh is not None:
+        data["electricity_price_eur_kwh"] = max(0.0, min(5.0, float(body.electricity_price_eur_kwh)))
+    _save_kiosk_settings(data)
+    return {"ok": True, "electricity_price_eur_kwh": _tariff()}
