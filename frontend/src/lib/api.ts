@@ -124,6 +124,28 @@ export async function updateAgentModel(
   });
 }
 
+export interface ModelCatalogModel {
+  value: string;
+  label: string;
+  tier: string;
+}
+export interface ModelCatalogProvider {
+  provider: string;
+  models: ModelCatalogModel[];
+}
+export interface ModelCatalogMode {
+  mode: string;
+  label: string;
+  default_provider: string;
+  default_model: string;
+  providers: ModelCatalogProvider[];
+}
+// Provider/model catalog per harness — single source of truth served by the
+// backend so create-modal and settings don't keep divergent hardcoded lists.
+export async function getModelCatalog(): Promise<{ modes: ModelCatalogMode[] }> {
+  return fetchJSON(`${getBase()}/agents/models`);
+}
+
 export async function updateLLMConfig(
   agentId: string,
   config: Partial<LLMConfig>,

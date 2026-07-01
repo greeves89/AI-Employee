@@ -1194,6 +1194,12 @@ function AgentSettings({
   const [agentModel, setAgentModel] = useState(agent.model);
   const [agentProvider, setAgentProvider] = useState<string>(agent.model_provider || "anthropic");
   const [modelSaving, setModelSaving] = useState(false);
+  // Provider/model catalog from the backend (single source of truth). Falls
+  // back to the built-in Claude list below while it loads / if it fails.
+  const [modelCatalog, setModelCatalog] = useState<api.ModelCatalogMode[] | null>(null);
+  useEffect(() => {
+    api.getModelCatalog().then((c) => setModelCatalog(c.modes)).catch(() => {});
+  }, []);
 
   const CLAUDE_MODELS: Record<string, { value: string; label: string; tier: string }[]> = {
     anthropic: [
@@ -1235,15 +1241,27 @@ function AgentSettings({
     bedrock: "Amazon Bedrock",
     vertex: "Google Vertex",
     foundry: "Azure Foundry",
+    codex: "OpenAI Codex",
   };
 
-  const modelOptions = CLAUDE_MODELS[agentProvider] || CLAUDE_MODELS.anthropic;
-  const modelChanged = agentModel !== agent.model || agentProvider !== (agent.model_provider || "anthropic");
+  // Providers + models for THIS agent's harness. Prefer the backend catalog;
+  // fall back to the built-in Claude list for claude_code while it loads.
+  const catalogForMode = modelCatalog?.find((m) => m.mode === agent.mode);
+  const providersForMode: Record<string, { value: string; label: string; tier: string }[]> =
+    catalogForMode
+      ? Object.fromEntries(catalogForMode.providers.map((p) => [p.provider, p.models]))
+      : (agent.mode === "claude_code" ? CLAUDE_MODELS : {});
+  const providerKeys = Object.keys(providersForMode);
+  // Keep the selected provider valid for the mode (a codex agent has no "anthropic").
+  const activeProvider = providersForMode[agentProvider] ? agentProvider : (providerKeys[0] || "anthropic");
+  const modelOptions = providersForMode[activeProvider] || [];
+  const showModelPanel = agent.mode === "claude_code" || agent.mode === "codex_cli";
+  const modelChanged = agentModel !== agent.model || activeProvider !== (agent.model_provider || providerKeys[0] || "anthropic");
 
   const handleModelSave = async () => {
     setModelSaving(true);
     try {
-      await api.updateAgentModel(agentId, agentProvider, agentModel);
+      await api.updateAgentModel(agentId, activeProvider, agentModel);
       setMessage({ type: "success", text: "Modell aktualisiert. Agent wird neu gestartet." });
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
@@ -1254,13 +1272,12 @@ function AgentSettings({
     }
   };
 
-  // When provider changes, reset model to first option
+  // When the provider set or selection changes, keep the chosen model valid.
   useEffect(() => {
-    const models = CLAUDE_MODELS[agentProvider] || [];
-    if (models.length && !models.some((m) => m.value === agentModel)) {
-      setAgentModel(models[0].value);
+    if (modelOptions.length && !modelOptions.some((m) => m.value === agentModel)) {
+      setAgentModel(modelOptions[0].value);
     }
-  }, [agentProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProvider, catalogForMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
 
@@ -1424,15 +1441,15 @@ function AgentSettings({
         </div>
       </div>
 
-      {/* Model Selection (Claude Code agents) */}
-      {agent.mode === "claude_code" && (
+      {/* Model Selection (Claude Code + Codex CLI agents) */}
+      {showModelPanel && (
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-blue-400" />
               <span className="text-sm font-medium">Modell</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
-                {PROVIDER_LABELS[agentProvider] || agentProvider}
+                {PROVIDER_LABELS[activeProvider] || activeProvider}
               </span>
             </div>
             {modelChanged && (
@@ -1447,26 +1464,29 @@ function AgentSettings({
             )}
           </div>
           <div className="p-5 space-y-4">
-            {/* Provider */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground/70">Provider</label>
-              <div className="flex gap-1.5">
-                {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setAgentProvider(key)}
-                    className={cn(
-                      "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
-                      agentProvider === key
-                        ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                        : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground border border-transparent"
-                    )}
-                  >
-                    {label.split(" ")[0]}
-                  </button>
-                ))}
+            {/* Provider — only shown when the harness offers more than one
+                (Claude runs on anthropic/bedrock/vertex/foundry; Codex only OpenAI). */}
+            {providerKeys.length > 1 && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground/70">Provider</label>
+                <div className="flex gap-1.5">
+                  {providerKeys.map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => setAgentProvider(key)}
+                      className={cn(
+                        "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
+                        activeProvider === key
+                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                          : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      {(PROVIDER_LABELS[key] || key).split(" ")[0]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             {/* Model */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-medium text-muted-foreground/70">Model</label>

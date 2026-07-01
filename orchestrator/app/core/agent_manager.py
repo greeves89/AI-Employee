@@ -822,6 +822,12 @@ class AgentManager:
         elif mode == "claude_code" and settings.model_provider == "codex":
             mode = "codex_cli"
 
+        # Last-line defense: never launch a harness with a model it can't run.
+        # e.g. a codex_cli agent with the platform default claude-sonnet-4-6, or
+        # a claude_code agent handed a GPT model. custom_llm is left untouched.
+        from app.core.model_catalog import coerce_model_for_mode
+        model = coerce_model_for_mode(mode, model)
+
         # Resolve the effective LLM config (account takes precedence over inline).
         effective_llm = await self._effective_llm_config(ai_account_id, llm_config, model)
 
@@ -1094,6 +1100,8 @@ class AgentManager:
         mode = agent.mode or "claude_code"
         if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
             mode = "codex_cli"
+        from app.core.model_catalog import coerce_model_for_mode
+        model = coerce_model_for_mode(mode, model)
 
         env_vars: dict[str, str] = {
             "AGENT_ID": agent_id,
@@ -1254,6 +1262,8 @@ class AgentManager:
         mode = agent.mode or "claude_code"
         if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
             mode = "codex_cli"
+        from app.core.model_catalog import coerce_model_for_mode
+        model = coerce_model_for_mode(mode, model)
 
         env_vars: dict[str, str] = {
             "AGENT_ID": agent_id,

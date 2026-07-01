@@ -127,6 +127,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         return
 
     agent_container_id: str | None = None
+    agent_mode: str = "claude_code"
 
     # Check if agent container is alive before accepting
     if _docker:
@@ -144,6 +145,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     await websocket.close(code=4010, reason="Agent has no container")
                     return
                 agent_container_id = agent.container_id
+                agent_mode = agent.mode or "claude_code"
                 status = _docker.get_container_status(agent.container_id)
                 if status not in ("running", "created"):
                     await websocket.close(code=4010, reason=f"Agent container is {status}")
@@ -631,10 +633,18 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             message_id = uuid.uuid4().hex[:12]
             _pending_message_ids.add(message_id)
             source = str(msg.get("source") or "webapp")
+            # Per-message model override must belong to the agent's harness — a
+            # claude_code agent can't run a GPT model and vice-versa. Drop an
+            # incompatible override so the agent falls back to its own model.
+            override_model = msg.get("model")
+            if override_model:
+                from app.core.model_catalog import is_model_allowed_for_mode
+                if not is_model_allowed_for_mode(agent_mode, override_model):
+                    override_model = None
             chat_payload = json.dumps({
                 "id": message_id,
                 "text": text,
-                "model": msg.get("model"),
+                "model": override_model,
                 "images": images,
                 "source": source,
                 "chat_session_id": _session["id"],

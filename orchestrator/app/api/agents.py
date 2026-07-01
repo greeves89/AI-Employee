@@ -79,6 +79,15 @@ async def get_permission_packages(user=Depends(require_auth)):
     return {"packages": packages, "defaults": DEFAULT_PERMISSIONS}
 
 
+@router.get("/models")
+async def get_model_catalog(user=Depends(require_auth)):
+    """Provider/model catalog per harness (mode). The create modal and the
+    per-agent settings render their provider + model dropdowns straight from
+    this — one source of truth instead of hardcoded lists in three UI files."""
+    from app.core.model_catalog import catalog_payload
+    return catalog_payload()
+
+
 # --- Team routes (MUST be before /{agent_id} to avoid path conflicts) ---
 
 
@@ -508,6 +517,24 @@ async def create_agent(
                         detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
                     )
 
+        # Guard: the model must belong to the harness that will run it. A
+        # claude_code agent may only use Claude models, a codex_cli agent only
+        # GPT/o-series — otherwise the CLI fails at runtime ("claude model not
+        # supported with a ChatGPT account"). custom_llm is exempt (its model
+        # comes from the account/llm_config). Single source: model_catalog.
+        final_mode = _mode_for_ai_account_provider(account_provider_type, data.mode)
+        if data.ai_account_id is None and data.model:
+            from app.core.model_catalog import is_model_allowed_for_mode, default_model_for_mode
+            if not is_model_allowed_for_mode(final_mode, data.model):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Modell '{data.model}' passt nicht zum Provider "
+                        f"'{final_mode}'. Erlaubt sind z. B. "
+                        f"'{default_model_for_mode(final_mode)}'."
+                    ),
+                )
+
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
         agent = await manager.create_agent(
@@ -515,7 +542,7 @@ async def create_agent(
             integrations=data.integrations, permissions=data.permissions,
             user_id=uid, budget_usd=data.budget_usd,
             budget_exceeded_action=data.budget_exceeded_action,
-            mode=_mode_for_ai_account_provider(account_provider_type, data.mode),
+            mode=final_mode,
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
             ai_account_id=data.ai_account_id,
             browser_mode=data.browser_mode,
@@ -704,6 +731,19 @@ async def update_agent_model(
                 detail=f"Model-Provider '{body.model_provider}' ist für deine Rolle nicht erlaubt.",
             )
         agent = await manager._get_agent(agent_id)
+        # Guard: a claude_code agent may only switch to Claude models, a
+        # codex_cli agent only to GPT/o-series. Prevents mismatching the harness
+        # via settings. custom_llm agents use the AI-account path, not this one.
+        from app.core.model_catalog import is_model_allowed_for_mode, default_model_for_mode
+        if not is_model_allowed_for_mode(agent.mode, body.model):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Modell '{body.model}' passt nicht zum Provider "
+                    f"'{agent.mode}'. Erlaubt sind z. B. "
+                    f"'{default_model_for_mode(agent.mode)}'."
+                ),
+            )
         agent.model = body.model
         config = dict(agent.config or {})
         config["model_provider"] = body.model_provider
