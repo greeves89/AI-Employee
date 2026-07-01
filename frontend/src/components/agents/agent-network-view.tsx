@@ -2,10 +2,11 @@
 
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, MessageSquare, Users, X, ArrowRight } from "lucide-react";
+import { Bot, MessageSquare, Users, X, ArrowRight, Crown } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import type { AgentTeam } from "@/lib/api";
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -115,6 +116,14 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [bubbles, setBubbles] = useState<ApiBubble[]>([]);
   const [messageCount, setMessageCount] = useState(0);
   const [timeFilter, setTimeFilter] = useState(60); // minutes
+  const [teams, setTeams] = useState<AgentTeam[]>([]);
+
+  // Load teams so the network can be grouped by team (PR #256)
+  useEffect(() => {
+    let alive = true;
+    api.getTeams().then((d) => { if (alive) setTeams(d.teams || []); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // Conversation modal
   const [convoOpen, setConvoOpen] = useState(false);
@@ -184,16 +193,59 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     return map;
   }, [agents]);
 
-  // Calculate circular positions (scales with agent count)
-  const positions = useMemo(() => {
-    return agents.map((_, i) => {
-      const angle = (2 * Math.PI * i) / agents.length - Math.PI / 2;
-      return {
-        x: cx + radius * Math.cos(angle),
-        y: cy + radius * Math.sin(angle),
-      };
+  // Team grouping: lead set + groups (one per team present, plus an ungrouped bucket)
+  const { leadIds, groups } = useMemo(() => {
+    const teamOf: Record<string, AgentTeam> = {};
+    const leads = new Set<string>();
+    for (const t of teams) {
+      if (t.lead_agent_id) leads.add(t.lead_agent_id);
+      for (const m of t.member_agent_ids) if (!teamOf[m]) teamOf[m] = t;
+    }
+    const byKey: Record<string, { key: string; name: string; leadId: string | null; indices: number[] }> = {};
+    agents.forEach((a, i) => {
+      const t = teamOf[a.id];
+      const key = t ? t.id : "__none__";
+      if (!byKey[key]) byKey[key] = { key, name: t ? t.name : "Ohne Team", leadId: t ? t.lead_agent_id : null, indices: [] };
+      byKey[key].indices.push(i);
     });
-  }, [agents.length, cx, cy, radius]);
+    return { leadIds: leads, groups: Object.values(byKey) };
+  }, [teams, agents]);
+
+  // Positions: clustered per team (lead centered, members ringed). Falls back to a
+  // single circle when there are no teams, so nothing breaks without the feature.
+  const { positions, teamRegions } = useMemo(() => {
+    const pos: { x: number; y: number }[] = new Array(agents.length);
+    const regions: { name: string; cx: number; cy: number; r: number }[] = [];
+    if (teams.length === 0 || groups.length === 0) {
+      agents.forEach((_, i) => {
+        const angle = (2 * Math.PI * i) / agents.length - Math.PI / 2;
+        pos[i] = { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+      });
+      return { positions: pos, teamRegions: regions };
+    }
+    const G = groups.length;
+    const clusterR = G <= 1 ? 0 : Math.min(cx, cy) - 110;
+    groups.forEach((g, gi) => {
+      const gc = G <= 1
+        ? { x: cx, y: cy }
+        : {
+            x: cx + clusterR * Math.cos((2 * Math.PI * gi) / G - Math.PI / 2),
+            y: cy + clusterR * Math.sin((2 * Math.PI * gi) / G - Math.PI / 2),
+          };
+      const leadIdx = g.leadId != null ? agentIndexMap[g.leadId] : undefined;
+      const others = g.indices.filter((i) => i !== leadIdx);
+      const memR = Math.max(84, 48 + others.length * 20);
+      if (leadIdx !== undefined) pos[leadIdx] = { x: gc.x, y: gc.y };
+      else if (g.indices.length === 1) pos[g.indices[0]] = { x: gc.x, y: gc.y };
+      const denom = Math.max(1, others.length);
+      others.forEach((idx, oi) => {
+        const a = (2 * Math.PI * oi) / denom - Math.PI / 2;
+        pos[idx] = { x: gc.x + memR * Math.cos(a), y: gc.y + memR * Math.sin(a) };
+      });
+      regions.push({ name: g.name, cx: gc.x, cy: gc.y, r: memR + 58 });
+    });
+    return { positions: pos, teamRegions: regions };
+  }, [agents, teams.length, groups, agentIndexMap, cx, cy, radius]);
 
   // Map API connections to position indices
   const mappedConnections = useMemo(() => {
@@ -271,7 +323,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         ))}
       </div>
       <span className="text-[10px] text-muted-foreground/50">
-        {messageCount} Nachrichten · {connections.length} Verbindungen
+        {messageCount} Nachrichten · {connections.length} Verbindungen{teams.length > 0 ? ` · ${teams.length} Team${teams.length !== 1 ? "s" : ""}` : ""}
       </span>
     </div>
 
@@ -311,6 +363,14 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
             <stop offset="100%" stopColor="rgb(99,102,241)" stopOpacity={0} />
           </radialGradient>
         </defs>
+
+        {/* Team boundaries — one soft ring + label per team (PR #256 grouping) */}
+        {teamRegions.map((tr, i) => (
+          <g key={`team-${i}`}>
+            <circle cx={tr.cx} cy={tr.cy} r={tr.r} fill="rgba(139,92,246,0.05)" stroke="rgba(139,92,246,0.28)" strokeWidth={1.2} strokeDasharray="7 7" />
+            <text x={tr.cx} y={tr.cy - tr.r + 18} textAnchor="middle" className="text-[12px] font-semibold" fill="rgba(196,181,253,0.95)">{tr.name}</text>
+          </g>
+        ))}
 
         {/* Connection lines (from real data) */}
         {mappedConnections.map((conn, i) => {
@@ -453,6 +513,13 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
 
             {/* Status dot */}
             <div className={cn("absolute -bottom-0.5 right-1 h-3 w-3 rounded-full border-2 border-card", colors.dot)} />
+
+            {/* Team-Lead crown */}
+            {leadIds.has(agent.id) && (
+              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-amber-400 grid place-items-center border-2 border-card shadow" title="Team Lead">
+                <Crown className="h-3 w-3 text-amber-950" />
+              </div>
+            )}
 
             {/* Name + connection count */}
             <motion.div

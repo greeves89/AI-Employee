@@ -92,6 +92,19 @@ export async function getAgentConversation(agentA: string, agentB: string): Prom
   return fetchJSON(`${getBase()}/agents/team/conversation?agent_a=${agentA}&agent_b=${agentB}`);
 }
 
+export interface AgentTeam {
+  id: string;
+  name: string;
+  description?: string;
+  member_agent_ids: string[];
+  lead_agent_id: string | null;
+  is_active?: boolean;
+}
+
+export async function getTeams(): Promise<{ teams: AgentTeam[] }> {
+  return fetchJSON(`${getBase()}/teams/`);
+}
+
 export async function updateAgentModel(
   agentId: string,
   modelProvider: string,
