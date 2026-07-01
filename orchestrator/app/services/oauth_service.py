@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 
 import httpx
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -217,15 +218,17 @@ class OAuthService:
         )
         integration = result.scalar_one_or_none()
 
-        if integration:
-            integration.access_token_encrypted = encrypt_token(access_token)
-            # Keep an existing refresh token if this exchange didn't return a new one.
+        def _apply_token_fields(row: OAuthIntegration) -> None:
+            row.access_token_encrypted = encrypt_token(access_token)
             if refresh_token:
-                integration.refresh_token_encrypted = encrypt_token(refresh_token)
-            integration.token_type = token_type
-            integration.expires_at = expires_at
-            integration.scopes = scope
-            integration.account_label = account_label or integration.account_label
+                row.refresh_token_encrypted = encrypt_token(refresh_token)
+            row.token_type = token_type
+            row.expires_at = expires_at
+            row.scopes = scope
+            row.account_label = account_label or row.account_label
+
+        if integration:
+            _apply_token_fields(integration)
         else:
             integration = OAuthIntegration(
                 provider=provider_enum,
@@ -239,7 +242,18 @@ class OAuthService:
             )
             self.db.add(integration)
 
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            # Concurrent request inserted the same provider row between our SELECT and INSERT.
+            await self.db.rollback()
+            result = await self.db.execute(
+                select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
+            )
+            integration = result.scalar_one()
+            _apply_token_fields(integration)
+            await self.db.commit()
+
         await self.db.refresh(integration)
         return integration
 
