@@ -1442,7 +1442,7 @@ function FeedbackTab({
     api.getIntegrations().then((data) => {
       const gh = data.integrations.find((i) => i.provider === "github");
       setGithubConnected(!!gh?.connected);
-    }).catch(() => setGithubConnected(false));
+    }).catch(() => setGithubConnected(null));
   }, []);
 
   const handleStatusChange = async (f: Feedback, newStatus: FeedbackStatus) => {
