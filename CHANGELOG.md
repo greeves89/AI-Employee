@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.94.0] — 2026-07-01
+
+### Added
+- **Lokales Kiosk-Dashboard „AI Employee · Mission Control"** für ein On-Device-Display auf dem Raspberry Pi (7" / 1024×600). Neue Seite `/kiosk` (Frontend) + no-auth Kiosk-API (`/api/v1/kiosk/*`). Zeigt live: Agenten (Status + aktueller Task), Task-Übersicht (läuft/wartet/heute fertig) + Aktivitäts-Feed, AI-Kosten heute, Pi-Auslastung (CPU/RAM/Disk/Temp/Load/Uptime) und **echte Leistungsaufnahme** vom Pi-5-PMIC + Stromkosten (Tarif via `ELECTRICITY_PRICE_EUR_KWH`, Default 0,35 €/kWh). Agenten-**Chat per Touch**; **Energiesparmodus** (Screensaver bei Inaktivität + reduziertes Polling, Display-Aus via `swayidle`/`wlopm`). (`frontend/src/app/kiosk/`, `orchestrator/app/api/kiosk.py`)
+- **Host-Metrik-Collector** (`scripts/kiosk-power-collector.sh` + systemd `kiosk-power.service`): liest die realen Rail-Ströme/Spannungen des Pi-5-PMIC (`vcgencmd pmic_read_adc`) → Wattzahl, dazu Temp/CPU/RAM/Disk/Uptime und akkumulierte Tagesenergie; schreibt JSON, read-only in den Orchestrator gemountet.
+
+### Security
+- **Kiosk ist strikt lokal:** Caddy liefert für `/kiosk` und `/api/v1/kiosk*` **404**, wenn die Anfrage über den Cloudflare-Tunnel kommt (erkennbar am `Cf-Ray`-Header); nur Anfragen vom Gerät selbst werden bedient. Die Seite selbst ohne Auth (bewusst, weil nur lokal erreichbar).
+
+### Fixed
+- **Codex-Agenten: `401 Invalid/Missing agent token` behoben.** Der Codex-Runner schrieb in den generierten MCP-`[env]`-Block nur `AGENT_TOKEN`/`ORCHESTRATOR_URL`, aber **nicht `AGENT_ID`**. Da Codex den Container-Env nicht an die MCP-Server vererbt, fiel `AGENT_ID` in den `.mjs`-Servern auf `"unknown"` zurück → HMAC-Token passte nicht → jeder Agent-Tool-Call (Brain/Memory/Skills/Todos) 401. Jetzt `AGENT_ID` (plus `AGENT_NAME`/`DEFAULT_MODEL` für den orchestrator-Server) explizit im env-Block. Betraf nur Codex; der Claude-Pfad war korrekt. (`agent/app/codex_runner.py`)
+
 ## [1.89.0] — 2026-06-30
 
 ### Fixed
