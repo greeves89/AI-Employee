@@ -191,6 +191,7 @@ class CodexAgentRunner:
         stderr_lines: list[str] = []
         text_output: list[str] = []
         result_data: dict = {"status": "completed", "result": ""}
+        completed_seen = False
 
         async def collect_stderr(proc: asyncio.subprocess.Process) -> None:
             if not proc.stderr:
@@ -244,6 +245,7 @@ class CodexAgentRunner:
                     )
 
                 if str(event.get("type", "")).endswith("completed"):
+                    completed_seen = True
                     usage = event.get("usage", {}) if isinstance(event.get("usage"), dict) else {}
                     result_data.update({
                         "input_tokens": usage.get("input_tokens"),
@@ -257,9 +259,19 @@ class CodexAgentRunner:
             result_data["text"] = final_text
 
             if returncode != 0:
-                error = "\n".join(stderr_lines).strip() or f"Codex CLI exited with code {returncode}"
-                result_data = {"status": "error", "error": error}
-                await _publish(self.log_publisher, stream, target_id, "error", {"message": error})
+                stderr_text = "\n".join(stderr_lines).strip()
+                # The Codex CLI runs with stdin=DEVNULL: after finishing its turn it
+                # tries to read more input, hits EOF and prints "Reading additional
+                # input from stdin..." then exits non-zero. That is NOT a task
+                # failure. Treat the run as successful when a completion event was
+                # seen (or the only issue is that benign stdin-EOF after real
+                # output); report an error only for a run that genuinely produced
+                # neither a completion nor any output.
+                benign_stdin = "reading additional input from stdin" in stderr_text.lower()
+                if not (completed_seen or (benign_stdin and final_text.strip())):
+                    error = stderr_text or f"Codex CLI exited with code {returncode}"
+                    result_data = {"status": "error", "error": error}
+                    await _publish(self.log_publisher, stream, target_id, "error", {"message": error})
         except asyncio.CancelledError:
             await self.interrupt()
             result_data = {"status": "cancelled"}

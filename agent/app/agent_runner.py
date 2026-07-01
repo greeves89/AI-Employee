@@ -76,6 +76,7 @@ class AgentRunner:
         )
 
         result_data: dict = {"status": "completed"}
+        got_result = False
         stderr_lines: list[str] = []
         text_output: list[str] = []
         presented_files: list[dict] = []
@@ -124,6 +125,7 @@ class AgentRunner:
                             text_output.append(block["text"])
 
                 if event.get("type") == "result":
+                    got_result = True
                     result_text = event.get("result", "") or "\n".join(text_output)
                     usage = event.get("usage", {}) or {}
                     result_data = {
@@ -140,7 +142,11 @@ class AgentRunner:
             returncode = await self._process.wait()
             await stderr_task
 
-            if returncode != 0:
+            # A successful run emits a "result" event before exiting. If we already
+            # captured that result, a non-zero exit code (CLI cleanup/stdin quirks)
+            # must NOT turn a completed task into a false failure — only report an
+            # error when no result was produced.
+            if returncode != 0 and not got_result:
                 stderr_text = "\n".join(stderr_lines).strip()
                 error_msg = stderr_text or f"Claude CLI exited with code {returncode}"
                 logger.error(f"Claude CLI failed (code {returncode}): {error_msg}")
