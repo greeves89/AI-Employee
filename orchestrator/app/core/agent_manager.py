@@ -211,7 +211,11 @@ DEFAULT_CLAUDE_MD = """# Agent System Instructions
 - Workspace: `/workspace/` (persistent across tasks)
 - Shared files: `/shared/` (all agents can read/write)
 - Team directory: `/shared/team.json`
+- **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
+
+## Self-diagnosis
+- To see YOUR OWN recent container logs (e.g. after a failed task/tool call), use the `read_logs` tool. A team lead can also pass a team member's agent id. Use it to find the real error (401, stack trace, missing env) and fix it.
 $MOUNTS_SECTION
 
 ## MCP Tools (IMPORTANT!)

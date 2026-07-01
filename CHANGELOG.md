@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.95.1] — 2026-07-01
+
+### Added
+- **Plattform-Fehler-Log für Agenten (`/shared/platform-errors.log`).** Der Orchestrator spiegelt seine WARNING/ERROR-Logs (secret-redacted, rotierend) in eine Datei auf dem bereits geteilten Volume `ai-employee-shared`, das in Orchestrator **und** jedem Agenten unter `/shared` gemountet ist. Agenten lesen Plattform-Fehler damit mit ihren normalen Datei-Tools — **ohne Docker-Socket, ohne neuen Endpoint**. Ergänzt das `read_logs`-Tool (eigene Container-Logs) um die Plattform-Sicht für „an der Plattform selbst arbeiten". Das Agenten-CLAUDE.md weist auf die Datei + `read_logs` hin. (`orchestrator/app/core/platform_error_log.py`)
+
 ## [1.95.0] — 2026-07-01
 
 ### Added

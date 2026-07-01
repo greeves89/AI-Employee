@@ -710,6 +710,12 @@ async def lifespan(app: FastAPI):
     # Validate config on startup
     _validate_config()
 
+    # Mirror WARNING+ logs (redacted) to /shared/platform-errors.log so agents can
+    # read platform errors from the shared volume and help fix the platform.
+    from app.core.platform_error_log import setup_platform_error_log
+    if setup_platform_error_log():
+        logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
+
     # Run Alembic migrations to create/update tables
     # If Alembic fails (fresh DB, broken migration chain), fall back to
     # creating tables directly from SQLAlchemy models + stamp HEAD.
