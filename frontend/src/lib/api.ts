@@ -105,6 +105,14 @@ export async function getTeams(): Promise<{ teams: AgentTeam[] }> {
   return fetchJSON(`${getBase()}/teams/`);
 }
 
+/** Delegation edges: tasks one agent handed to another (delegator -> assignee). */
+export async function getDelegations(minutes: number = 1440): Promise<{
+  edges: { from: string; to: string; count: number; last_title: string; last_at: string | null }[];
+  total: number;
+}> {
+  return fetchJSON(`${getBase()}/agents/team/delegations?minutes=${minutes}`);
+}
+
 export async function updateAgentModel(
   agentId: string,
   modelProvider: string,

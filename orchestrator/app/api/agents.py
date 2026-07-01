@@ -178,6 +178,53 @@ async def get_agent_messages(
     }
 
 
+@router.get("/team/delegations")
+async def get_agent_delegations(
+    minutes: int = 1440,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delegation edges: tasks one agent handed to another (delegator -> assignee).
+
+    A delegated task carries a parent_task_id; the parent's agent_id is the
+    delegator, the child task's own agent_id is the assignee. Grouped into edges
+    for the agent-network graph.
+    """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select
+    from sqlalchemy.orm import aliased
+    from app.models.task import Task
+
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    Parent = aliased(Task)
+    rows = (await db.execute(
+        select(Parent.agent_id, Task.agent_id, Task.title, Task.created_at)
+        .join(Parent, Task.parent_task_id == Parent.id)
+        .where(
+            Task.created_at >= since,
+            Task.agent_id.is_not(None),
+            Parent.agent_id.is_not(None),
+            Task.agent_id != Parent.agent_id,
+        )
+        .order_by(Task.created_at.desc())
+        .limit(1000)
+    )).all()
+
+    edges: dict[tuple[str, str], dict] = {}
+    for delegator, assignee, title, ts in rows:
+        key = (delegator, assignee)
+        if key not in edges:
+            edges[key] = {
+                "from": delegator,
+                "to": assignee,
+                "count": 0,
+                "last_title": (title or "")[:60],
+                "last_at": ts.isoformat() if ts else None,
+            }
+        edges[key]["count"] += 1
+    return {"edges": list(edges.values()), "total": sum(e["count"] for e in edges.values())}
+
+
 @router.get("/team/conversation")
 async def get_agent_conversation(
     agent_a: str,

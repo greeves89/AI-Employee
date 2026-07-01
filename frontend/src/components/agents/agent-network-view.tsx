@@ -118,6 +118,8 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [timeFilter, setTimeFilter] = useState(60); // minutes
   const [teams, setTeams] = useState<AgentTeam[]>([]);
 
+  const [delegations, setDelegations] = useState<{ from: string; to: string; count: number; last_title: string }[]>([]);
+
   // Load teams so the network can be grouped by team (PR #256)
   useEffect(() => {
     let alive = true;
@@ -160,6 +162,12 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       setMessageCount(data.total);
     } catch {
       // API might not be available yet
+    }
+    try {
+      const del = await api.getDelegations(timeFilter);
+      setDelegations(del.edges);
+    } catch {
+      // delegations endpoint might not be available yet
     }
   }, [timeFilter]);
 
@@ -258,6 +266,13 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       }))
       .filter((c) => c.fromIdx !== undefined && c.toIdx !== undefined);
   }, [connections, agentIndexMap]);
+
+  // Delegation edges (directional: delegator -> assignee)
+  const mappedDelegations = useMemo(() => {
+    return delegations
+      .map((d) => ({ fromIdx: agentIndexMap[d.from], toIdx: agentIndexMap[d.to], count: d.count, title: d.last_title }))
+      .filter((d) => d.fromIdx !== undefined && d.toIdx !== undefined);
+  }, [delegations, agentIndexMap]);
 
   // One bubble per connection — the LATEST message only
   const mappedBubbles = useMemo(() => {
@@ -362,6 +377,9 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
             <stop offset="0%" stopColor="rgb(165,180,252)" stopOpacity={1} />
             <stop offset="100%" stopColor="rgb(99,102,241)" stopOpacity={0} />
           </radialGradient>
+          <marker id="delegArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(251,191,36)" fillOpacity={0.85} />
+          </marker>
         </defs>
 
         {/* Team boundaries — one soft ring + label per team (PR #256 grouping) */}
@@ -432,6 +450,27 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                 <text x={ctrlX} y={ctrlY + 1} textAnchor="middle" dominantBaseline="middle"
                   className="text-[9px] font-bold" fill="rgb(165,180,252)">{conn.count}</text>
               </g>
+            </g>
+          );
+        })}
+        {/* Delegation edges — directional task handoffs (delegator -> assignee) */}
+        {mappedDelegations.map((d, i) => {
+          const from = positions[d.fromIdx];
+          const to = positions[d.toIdx];
+          if (!from || !to) return null;
+          const midX = (from.x + to.x) / 2;
+          const midY = (from.y + to.y) / 2;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          // curve the opposite way from the message lines so both stay readable
+          const ctrlX = midX + dy * 0.2;
+          const ctrlY = midY - dx * 0.2;
+          const pathD = `M ${from.x} ${from.y} Q ${ctrlX} ${ctrlY} ${to.x} ${to.y}`;
+          return (
+            <g key={`deleg-${i}`}>
+              <path d={pathD} fill="none" stroke="rgb(251,191,36)" strokeWidth={Math.min(1.5 + d.count * 0.4, 4)} strokeOpacity={0.6} strokeDasharray="2 5" markerEnd="url(#delegArrow)" />
+              <rect x={ctrlX - 8} y={ctrlY - 7} width={16} height={14} rx={4} fill="rgba(251,191,36,0.18)" />
+              <text x={ctrlX} y={ctrlY + 1} textAnchor="middle" dominantBaseline="middle" className="text-[8px] font-bold" fill="rgb(251,191,36)">{d.count}</text>
             </g>
           );
         })}
@@ -631,6 +670,14 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-4 rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 opacity-60" />
             <span className="text-[10px] text-muted-foreground">Active link</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-1.5 w-4 rounded-full opacity-80" style={{ backgroundImage: "repeating-linear-gradient(90deg, rgb(251,191,36) 0 3px, transparent 3px 6px)" }} />
+            <span className="text-[10px] text-muted-foreground">Delegation</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Crown className="h-3 w-3 text-amber-400" />
+            <span className="text-[10px] text-muted-foreground">Team-Lead</span>
           </div>
         </div>
       </motion.div>
