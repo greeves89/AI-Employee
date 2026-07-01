@@ -182,7 +182,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     function measure() {
       const el = document.getElementById("network-container");
       if (el) {
-        setContainerSize({ w: el.clientWidth, h: Math.max(el.clientHeight, 520) });
+        setContainerSize({ w: el.clientWidth, h: Math.max(el.clientHeight, 620) });
       }
     }
     measure();
@@ -232,28 +232,31 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       return { positions: pos, teamRegions: regions };
     }
     const G = groups.length;
-    const clusterR = G <= 1 ? 0 : Math.min(cx, cy) - 110;
+    const bound = Math.min(cx, cy) - 50;
+    const clusterRing = G <= 1 ? 0 : bound * 0.52;
     groups.forEach((g, gi) => {
+      const ang = (2 * Math.PI * gi) / G - Math.PI / 2;
       const gc = G <= 1
         ? { x: cx, y: cy }
-        : {
-            x: cx + clusterR * Math.cos((2 * Math.PI * gi) / G - Math.PI / 2),
-            y: cy + clusterR * Math.sin((2 * Math.PI * gi) / G - Math.PI / 2),
-          };
-      const leadIdx = g.leadId != null ? agentIndexMap[g.leadId] : undefined;
-      const others = g.indices.filter((i) => i !== leadIdx);
-      const memR = Math.max(84, 48 + others.length * 20);
-      if (leadIdx !== undefined) pos[leadIdx] = { x: gc.x, y: gc.y };
-      else if (g.indices.length === 1) pos[g.indices[0]] = { x: gc.x, y: gc.y };
-      const denom = Math.max(1, others.length);
-      others.forEach((idx, oi) => {
-        const a = (2 * Math.PI * oi) / denom - Math.PI / 2;
-        pos[idx] = { x: gc.x + memR * Math.cos(a), y: gc.y + memR * Math.sin(a) };
-      });
-      regions.push({ name: g.name, cx: gc.x, cy: gc.y, r: memR + 58 });
+        : { x: cx + clusterRing * Math.cos(ang), y: cy + clusterRing * Math.sin(ang) };
+      // All team members evenly on a ring (lead is marked by the crown, not centered)
+      // so nodes never stack on top of each other; ring grows with member count.
+      const idxs = g.indices;
+      const n = idxs.length;
+      const capR = G <= 1 ? bound * 0.7 : bound * 0.34;
+      const memR = n <= 1 ? 0 : Math.min(capR, Math.max(150, 52 * n));
+      if (n === 1) {
+        pos[idxs[0]] = { x: gc.x, y: gc.y };
+      } else {
+        idxs.forEach((idx, k) => {
+          const a = (2 * Math.PI * k) / n - Math.PI / 2;
+          pos[idx] = { x: gc.x + memR * Math.cos(a), y: gc.y + memR * Math.sin(a) };
+        });
+      }
+      regions.push({ name: g.name, cx: gc.x, cy: gc.y, r: (memR || 60) + 55 });
     });
     return { positions: pos, teamRegions: regions };
-  }, [agents, teams.length, groups, agentIndexMap, cx, cy, radius]);
+  }, [agents, teams.length, groups, agentIndexMap, cx, cy]);
 
   // Map API connections to position indices
   const mappedConnections = useMemo(() => {
@@ -345,7 +348,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     <div
       id="network-container"
       className="relative w-full rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm overflow-hidden"
-      style={{ minHeight: 520 }}
+      style={{ minHeight: 620 }}
     >
       {/* Background grid */}
       <div
