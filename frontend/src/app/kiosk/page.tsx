@@ -108,6 +108,18 @@ export default function KioskPage() {
     return () => { alive = false; clearInterval(t); };
   }, [idle]);
 
+  // Deep-linking: /kiosk?tab=agents or ?chat=<agentId> (also handy for debugging)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+    if (t) setTab(t);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined" || !data) return;
+    const cid = new URLSearchParams(window.location.search).get("chat");
+    if (cid && !chatAgent) { const a = data.agents.find((x) => x.id === cid); if (a) setChatAgent(a); }
+  }, [data, chatAgent]);
+
   if (chatAgent) return <ChatOverlay agent={chatAgent} onBack={() => { lastActivity.current = Date.now(); setChatAgent(null); }} />;
   if (idle) return <Screensaver now={now} power={data?.power} temp={data?.pi.temp_c ?? null} working={data?.agents_working ?? 0} />;
 
@@ -205,21 +217,22 @@ function AgentsView({ data, onOpen }: { data: Overview | null; onOpen: (id: stri
   const agents = (data?.agents ?? []).slice().sort((a, b) => rank(b.state) - rank(a.state));
   return (
     <div className="h-full overflow-y-auto kiosk-scroll">
-      {agents.length === 0 && <Empty text="Keine Agenten" />}
-      <div className="grid grid-cols-3 gap-3">
+      {!data && <Empty text="lädt…" />}
+      {data && agents.length === 0 && <Empty text="Keine Agenten vorhanden" />}
+      <div className="grid grid-cols-2 gap-3">
         {agents.map((a) => {
           const c = stateColor(a.state);
           return (
-            <button key={a.id} onClick={() => onOpen(a.id)} className="text-left rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] active:scale-[0.99] transition p-3">
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className={`w-10 h-10 rounded-xl grid place-items-center bg-gradient-to-br from-slate-700 to-slate-800 ${c.glow}`}><span className="text-lg font-bold">{a.name?.[0]?.toUpperCase() ?? "?"}</span></div>
+            <button key={a.id} onClick={() => onOpen(a.id)} className="text-left rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] active:scale-[0.99] transition p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className={`w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-slate-700 to-slate-800 ${c.glow}`}><span className="text-2xl font-bold">{a.name?.[0]?.toUpperCase() ?? "?"}</span></div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold truncate">{a.name}</div>
-                  <div className="flex items-center gap-1 text-[11px]"><span className={`w-1.5 h-1.5 rounded-full ${c.dot} ${a.state === "working" ? "animate-pulse" : ""}`} /><span className={c.text}>{a.state}</span></div>
+                  <div className="text-lg font-semibold truncate">{a.name}</div>
+                  <div className="flex items-center gap-1.5 text-sm"><span className={`w-2.5 h-2.5 rounded-full ${c.dot} ${a.state === "working" ? "animate-pulse" : ""}`} /><span className={c.text}>{a.state}</span></div>
                 </div>
               </div>
-              <div className="text-[11px] text-slate-400 truncate">{a.model}</div>
-              <div className="text-[11px] text-slate-500 truncate mt-0.5">{a.current_task || "—"}</div>
+              <div className="text-sm text-slate-400 truncate">{a.model}</div>
+              <div className="text-sm text-slate-500 truncate mt-0.5">{a.current_task || "bereit"}</div>
             </button>
           );
         })}
@@ -463,11 +476,59 @@ function ChatOverlay({ agent, onBack }: { agent: AgentInfo; onBack: () => void }
         ))}
         {sending && <div className="flex justify-start"><div className="bg-white/[0.06] rounded-2xl px-4 py-2.5"><span className="kiosk-typing" /></div></div>}
       </div>
-      <div className="p-3 border-t border-white/5 flex items-center gap-2">
-        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Nachricht an den Agenten…" className="flex-1 h-12 rounded-xl bg-white/[0.05] border border-white/10 px-4 text-base outline-none focus:border-cyan-400/50" />
-        <button onClick={send} disabled={!text.trim() || sending} className="h-12 w-12 rounded-xl bg-gradient-to-br from-cyan-500 to-violet-500 grid place-items-center disabled:opacity-40 active:scale-95"><Send className="w-5 h-5 text-white" /></button>
+      <div className="px-3 pt-2 flex items-center gap-2 border-t border-white/5">
+        <div className="flex-1 h-12 rounded-xl bg-white/[0.05] border border-white/10 px-4 flex items-center text-base overflow-x-auto whitespace-nowrap kiosk-scroll">
+          {text ? <span>{text}<span className="kiosk-caret" /></span> : <span className="text-slate-500">Nachricht an den Agenten…</span>}
+        </div>
+        <button onClick={send} disabled={!text.trim() || sending} className="h-12 w-12 rounded-xl bg-gradient-to-br from-cyan-500 to-violet-500 grid place-items-center disabled:opacity-40 active:scale-95 shrink-0"><Send className="w-5 h-5 text-white" /></button>
+      </div>
+      <OnScreenKeyboard onKey={(c) => setText((t) => t + c)} onBackspace={() => setText((t) => t.slice(0, -1))} onSpace={() => setText((t) => t + " ")} onEnter={send} />
+    </div>
+  );
+}
+
+/* ------------------------ on-screen keyboard (touch) -------------------- */
+
+const KB_ROWS = [
+  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+  ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p"],
+  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ä"],
+  ["y", "x", "c", "v", "b", "n", "m", "ö", "ü"],
+];
+
+function OnScreenKeyboard({ onKey, onBackspace, onSpace, onEnter }: { onKey: (c: string) => void; onBackspace: () => void; onSpace: () => void; onEnter: () => void }) {
+  const [shift, setShift] = useState(false);
+  const [sym, setSym] = useState(false);
+  const symRows = [["!", "?", ".", ",", ":", ";", "-", "_", "/", "@"], ["+", "*", "#", "(", ")", "\"", "'", "=", "%", "&"], ["ß", "€", "$", "<", ">", "[", "]", "{", "}", "|"]];
+  const rows = sym ? symRows : KB_ROWS;
+  const press = (k: string) => onKey(shift && !sym ? k.toUpperCase() : k);
+  return (
+    <div className="bg-[#0a0f1a] border-t border-white/10 p-1.5 space-y-1.5 select-none shrink-0">
+      {rows.map((row, ri) => (
+        <div key={ri} className="flex gap-1.5 justify-center">
+          {!sym && ri === 3 && <KbKey label="⇧" wide active={shift} onClick={() => setShift((s) => !s)} />}
+          {row.map((k) => <KbKey key={k} label={shift && !sym ? k.toUpperCase() : k} onClick={() => press(k)} />)}
+          {!sym && ri === 3 && <KbKey label="⌫" wide onClick={onBackspace} />}
+          {sym && ri === 2 && <KbKey label="⌫" wide onClick={onBackspace} />}
+        </div>
+      ))}
+      <div className="flex gap-1.5 justify-center">
+        <KbKey label={sym ? "abc" : "?123"} wide onClick={() => setSym((s) => !s)} />
+        <KbKey label="Leerzeichen" grow onClick={onSpace} />
+        <KbKey label="Senden" grow accent onClick={onEnter} />
       </div>
     </div>
+  );
+}
+
+function KbKey({ label, onClick, wide, grow, active, accent }: { label: string; onClick: () => void; wide?: boolean; grow?: boolean; active?: boolean; accent?: boolean }) {
+  return (
+    <button
+      onPointerDown={(e) => { e.preventDefault(); onClick(); }}
+      className={`h-12 rounded-lg text-lg font-medium active:scale-95 transition ${grow ? "flex-1" : wide ? "px-4 min-w-[52px]" : "flex-1 max-w-[10%]"} ${accent ? "bg-gradient-to-br from-cyan-500 to-violet-500 text-white" : active ? "bg-cyan-500/30 text-cyan-200" : "bg-white/[0.08] text-slate-100 active:bg-white/[0.15]"}`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -505,6 +566,8 @@ function KioskStyles() {
       .kiosk-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
       .kiosk-input { width:100%; height:44px; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); padding:0 14px; font-size:16px; color:#fff; outline:none; }
       .kiosk-input:focus { border-color: rgba(34,211,238,0.5); }
+      .kiosk-caret { display:inline-block; width:2px; height:1.1em; background:#22d3ee; margin-left:2px; vertical-align:text-bottom; animation: kioskBlink 1s steps(2) infinite; }
+      @keyframes kioskBlink { 50% { opacity: 0 } }
       .kiosk-typing { display:inline-block; width:28px; height:8px; background: radial-gradient(circle 3px at 4px 4px, #64748b 90%, transparent) 0 0/12px 100% repeat-x; animation: kioskType 1s steps(3) infinite; }
       @keyframes kioskType { to { background-position: 12px 0 } }
     `}</style>
