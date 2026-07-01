@@ -17,6 +17,8 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+_TELEGRAM_MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MB — Telegram Bot API hard limit
+
 import redis.asyncio as aioredis
 from app.config import settings
 from app.dependencies import verify_agent_token
@@ -46,18 +48,23 @@ async def _get_bot_token(agent_id: str, db: AsyncSession) -> str:
 async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None, timeout: int = 30) -> dict:
     """Make a request to the Telegram Bot API."""
     url = f"{TG_API.format(token=token)}/{method}"
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        if files:
-            resp = await client.post(url, data=data or {}, files=files)
-        else:
-            resp = await client.post(url, json=data or {})
-        result = resp.json()
-        if not result.get("ok"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
-            )
-        return result.get("result", {})
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if files:
+                resp = await client.post(url, data=data or {}, files=files)
+            else:
+                resp = await client.post(url, json=data or {})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"Telegram API timeout after {timeout}s for {method}")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Telegram API connection error: {exc}")
+    result = resp.json()
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
+        )
+    return result.get("result", {})
 
 
 # --- Models ---
@@ -369,6 +376,8 @@ async def send_voice(
     """Send a voice message (OGG/OPUS) to a Telegram chat."""
     token = await _get_bot_token(agent_auth["agent_id"], db)
     audio_bytes = base64.b64decode(body.voice_base64)
+    if len(audio_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
     data = {"chat_id": str(body.chat_id)}
     if body.caption:
         data["caption"] = body.caption
@@ -379,7 +388,7 @@ async def send_voice(
     if body.reply_markup:
         data["reply_markup"] = json.dumps(body.reply_markup)
     files = {"voice": ("voice.ogg", audio_bytes, "audio/ogg")}
-    return await _tg_request(token, "sendVoice", data, files=files)
+    return await _tg_request(token, "sendVoice", data, files=files, timeout=120)
 
 
 @router.post("/send-photo")
@@ -423,6 +432,11 @@ async def send_document(
     """Send a document/file to a Telegram chat."""
     token = await _get_bot_token(agent_auth["agent_id"], db)
     doc_bytes = base64.b64decode(body.document_base64)
+    if len(doc_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="File exceeds Telegram's 50 MB limit. Use /send-document-upload for large files.",
+        )
     data = {"chat_id": str(body.chat_id)}
     if body.caption:
         data["caption"] = body.caption
@@ -431,7 +445,7 @@ async def send_document(
     if body.reply_markup:
         data["reply_markup"] = json.dumps(body.reply_markup)
     files = {"document": (body.filename, doc_bytes, "application/octet-stream")}
-    return await _tg_request(token, "sendDocument", data, files=files)
+    return await _tg_request(token, "sendDocument", data, files=files, timeout=120)
 
 
 @router.post("/send-document-upload")
