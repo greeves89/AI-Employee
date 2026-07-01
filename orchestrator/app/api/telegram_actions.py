@@ -46,18 +46,29 @@ async def _get_bot_token(agent_id: str, db: AsyncSession) -> str:
 async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None, timeout: int = 30) -> dict:
     """Make a request to the Telegram Bot API."""
     url = f"{TG_API.format(token=token)}/{method}"
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        if files:
-            resp = await client.post(url, data=data or {}, files=files)
-        else:
-            resp = await client.post(url, json=data or {})
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if files:
+                resp = await client.post(url, data=data or {}, files=files)
+            else:
+                resp = await client.post(url, json=data or {})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"Telegram API timeout after {timeout}s for {method}")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Telegram API connection error: {exc}")
+    try:
         result = resp.json()
-        if not result.get("ok"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
-            )
-        return result.get("result", {})
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram returned non-JSON response (HTTP {resp.status_code})",
+        )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
+        )
+    return result.get("result", {})
 
 
 # --- Models ---
@@ -388,6 +399,8 @@ async def send_photo(
         return await _tg_request(token, "sendPhoto", data)
     elif body.photo_base64:
         photo_bytes = base64.b64decode(body.photo_base64)
+        if len(photo_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
         data = {"chat_id": str(body.chat_id)}
         if body.caption:
             data["caption"] = body.caption
@@ -396,7 +409,7 @@ async def send_photo(
         if body.reply_markup:
             data["reply_markup"] = json.dumps(body.reply_markup)
         files = {"photo": ("photo.jpg", photo_bytes, "image/jpeg")}
-        return await _tg_request(token, "sendPhoto", data, files=files)
+        return await _tg_request(token, "sendPhoto", data, files=files, timeout=120)
     else:
         raise HTTPException(status_code=400, detail="Provide photo_base64 or photo_url")
 
@@ -563,6 +576,8 @@ async def send_video(
         return await _tg_request(token, "sendVideo", data)
     elif body.video_base64:
         video_bytes = base64.b64decode(body.video_base64)
+        if len(video_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
         data = {"chat_id": str(body.chat_id)}
         if body.caption:
             data["caption"] = body.caption
@@ -571,7 +586,7 @@ async def send_video(
         if body.reply_markup:
             data["reply_markup"] = json.dumps(body.reply_markup)
         files = {"video": ("video.mp4", video_bytes, "video/mp4")}
-        return await _tg_request(token, "sendVideo", data, files=files)
+        return await _tg_request(token, "sendVideo", data, files=files, timeout=120)
     else:
         raise HTTPException(status_code=400, detail="Provide video_base64 or video_url")
 
@@ -625,6 +640,8 @@ async def send_animation(
         return await _tg_request(token, "sendAnimation", data)
     elif body.animation_base64:
         anim_bytes = base64.b64decode(body.animation_base64)
+        if len(anim_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
         data = {"chat_id": str(body.chat_id)}
         if body.caption:
             data["caption"] = body.caption
@@ -633,7 +650,7 @@ async def send_animation(
         if body.reply_markup:
             data["reply_markup"] = json.dumps(body.reply_markup)
         files = {"animation": ("animation.gif", anim_bytes, "image/gif")}
-        return await _tg_request(token, "sendAnimation", data, files=files)
+        return await _tg_request(token, "sendAnimation", data, files=files, timeout=120)
     else:
         raise HTTPException(status_code=400, detail="Provide animation_base64 or animation_url")
 
