@@ -140,31 +140,41 @@ RULES:
 
 ORCHESTRATOR TELEGRAM API (use these curl commands):
 
+IMPORTANT — File sending: ALWAYS use the multipart-upload endpoints below (no base64!).
+They support up to 50 MB and work for any file size.
+
 Send a document/file to the user:
-  curl -X POST {api_base}/send-document {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "document_base64": "'$(base64 -w0 /path/to/file)'", "filename": "report.pdf"}}'
+  curl -X POST {api_base}/send-document-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/file;filename=report.pdf"
+
+Send an MP3/audio file (shows Telegram audio player with title):
+  curl -X POST {api_base}/send-audio-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/podcast.mp3;filename=podcast.mp3" \\
+    -F "title=Morgen-Podcast" \\
+    -F "performer=AI Agent"
 
 Send a voice message (MUST be OGG OPUS — convert with ffmpeg first):
   ffmpeg -i input.mp3 -c:a libopus -b:a 64k output.ogg
-  curl -X POST {api_base}/send-voice {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "voice_base64": "'$(base64 -w0 output.ogg)'"}}'
+  curl -X POST {api_base}/send-voice-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@output.ogg"
 
 Send a photo (from file):
-  curl -X POST {api_base}/send-photo {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "photo_base64": "'$(base64 -w0 /path/to/image.jpg)'"}}'
+  curl -X POST {api_base}/send-photo-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/image.jpg"
 
-Send a photo (from URL):
+Send a photo (from URL — still use JSON for URL-only):
   curl -X POST {api_base}/send-photo {auth} \\
     -H 'Content-Type: application/json' \\
     -d '{{"chat_id": {chat_id}, "photo_url": "https://example.com/img.jpg"}}'
 
 Send a video:
-  curl -X POST {api_base}/send-video {auth} \\
-    -H 'Content-Type: application/json' \\
-    -d '{{"chat_id": {chat_id}, "video_base64": "'$(base64 -w0 /path/to/video.mp4)'"}}'
+  curl -X POST {api_base}/send-video-upload {auth} \\
+    -F "chat_id={chat_id}" \\
+    -F "file=@/path/to/video.mp4;filename=video.mp4"
 
 Send a text message with inline keyboard:
   curl -X POST {api_base}/send-message {auth} \\
@@ -190,6 +200,22 @@ Download a file the user sent you (use the file_id from the header above):
   #   curl -s -X POST {api_base}/get-file {auth} -H 'Content-Type: application/json' \\
   #     -d '{{"file_id": "THE_FILE_ID"}}' \\
   #     | python3 -c 'import sys,json,base64; d=json.load(sys.stdin); open("/workspace/"+d["filename"],"wb").write(base64.b64decode(d["file_base64"])); print("saved", d["filename"])'
+
+Send a rich message (Telegram Bot API 10.1 — headings, tables, LaTeX, checklists, maps, audio):
+  Pass CommonMark markdown in the "markdown" field — Telegram renders it natively with
+  headings, tables, code blocks, checkboxes, LaTeX math, etc.
+  curl -X POST {api_base}/send-rich-message {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "markdown": "## My Heading\\n\\nBody text here.\\n\\n| Col A | Col B |\\n|-------|-------|\\n| 1     | 2     |\\n\\n- [x] Done\\n- [ ] Todo\\n\\n$$E=mc^2$$"}}'
+
+  Stream partial rich message (progressive render while building content):
+  curl -X POST {api_base}/send-rich-message-draft {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": {chat_id}, "markdown": "## Draft heading\\n\\nContent so far..."}}'
+
+  You can also pass raw Telegram HTML via the "html" field instead of "markdown".
+  Supported markdown features: headings (##), tables, fenced code, checklists (- [x]),
+  LaTeX math ($$...$$), blockquotes, bold, italic, strikethrough, links.
 
 Other endpoints: /send-animation, /send-sticker, /send-location, /send-chat-action, /edit-message, /pin-message, /answer-callback, GET /info, GET /get-commands"""
 
@@ -249,13 +275,17 @@ def _build_channel_prompt(text: str, source: str, is_new_session: bool) -> str:
 
 class ChatConsumer:
     """Consumes chat messages from the Redis queue and processes them via
-    ChatHandler / LLMChatHandler.
+    per-channel ChatHandler instances.
 
-    Live steering: messages that arrive while the agent is responding are NOT
-    interrupted. The handler pulls them in mid-flow (via `pending_drain`) and
-    folds them into the SAME conversation — just like a person adding a remark
-    while you're still working.
+    Each source channel (ios, telegram:<chat_id>, webapp:<session_id>) gets its
+    own ChatHandler with an independent Claude Code session. Handlers resume via
+    --resume after agent restarts (session IDs are persisted in Redis for 7 days).
+
+    Live steering: messages that arrive while a handler is responding are folded
+    into the running conversation for that same channel only.
     """
+
+    _CLAUDE_SESSION_TTL = 86400 * 7  # 7 days
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -263,11 +293,78 @@ class ChatConsumer:
         self.queue_name = f"agent:{agent_id}:chat"
         self.cancel_channel = f"agent:{agent_id}:chat:cancel"
         self.running = True
-        self._handler = None  # ChatHandler or LLMChatHandler
+        self._handlers: dict[str, object] = {}   # source_key → handler
+        self._active_source_key: str | None = None
         self._cancel_listener_task: asyncio.Task | None = None
 
+    # ------------------------------------------------------------------ #
+    # Source-key routing                                                   #
+    # ------------------------------------------------------------------ #
+
+    def _source_key(self, source: str, chat_session_id: str | None, telegram_ctx: dict | None) -> str:
+        """Derive a stable per-channel routing key."""
+        if telegram_ctx:
+            return f"telegram:{telegram_ctx.get('chat_id', 'unknown')}"
+        if source in ("ios", "iphone", "ipad"):
+            return "ios"
+        if source in ("webapp_voice", "voice"):
+            return f"voice:{chat_session_id or 'default'}"
+        if source == "scheduler":
+            return "scheduler"
+        return f"webapp:{chat_session_id or 'default'}"
+
+    # ------------------------------------------------------------------ #
+    # Handler lifecycle                                                    #
+    # ------------------------------------------------------------------ #
+
+    async def _get_or_create_handler(self, source_key: str) -> object:
+        """Return the handler for this channel, creating and restoring it if needed."""
+        if source_key in self._handlers:
+            return self._handlers[source_key]
+
+        log_publisher = LogPublisher(self.redis, self.agent_id)
+        if settings.agent_mode == "custom_llm":
+            from app.llm_chat_handler import LLMChatHandler
+            handler = LLMChatHandler(log_publisher)
+        elif settings.agent_mode == "codex_cli":
+            from app.codex_runner import CodexChatHandler
+            handler = CodexChatHandler(log_publisher)
+        else:
+            from app.chat_handler import ChatHandler
+            handler = ChatHandler(log_publisher)
+
+        # Restore persisted Claude session so --resume works after restarts
+        stored = await self.redis.get(f"agent:{self.agent_id}:claude_session:{source_key}")
+        if stored and hasattr(handler, "session_id"):
+            handler.session_id = stored.decode() if isinstance(stored, bytes) else stored
+            logger.info("Restored Claude session %s for %s", handler.session_id, source_key)
+
+        self._handlers[source_key] = handler
+        return handler
+
+    async def _persist_session(self, source_key: str, handler: object) -> None:
+        """Save the handler's Claude session ID to Redis."""
+        session_id = getattr(handler, "session_id", None)
+        if session_id:
+            await self.redis.setex(
+                f"agent:{self.agent_id}:claude_session:{source_key}",
+                self._CLAUDE_SESSION_TTL,
+                session_id,
+            )
+
+    async def _reset_handler(self, source_key: str) -> None:
+        """Clear session for one channel (new chat)."""
+        handler = self._handlers.get(source_key)
+        if handler and hasattr(handler, "reset_session"):
+            await handler.reset_session()
+        await self.redis.delete(f"agent:{self.agent_id}:claude_session:{source_key}")
+
+    # ------------------------------------------------------------------ #
+    # Cancel listener                                                      #
+    # ------------------------------------------------------------------ #
+
     async def _listen_for_cancel(self) -> None:
-        """Listen on Redis PubSub for cancel signals and stop the handler."""
+        """Stop whichever channel is currently processing."""
         cancel_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         pubsub = cancel_redis.pubsub()
         await pubsub.subscribe(self.cancel_channel)
@@ -277,8 +374,10 @@ class ChatConsumer:
                     ignore_subscribe_messages=True, timeout=1.0
                 )
                 if message and message["type"] == "message":
-                    if self._handler and self._handler.is_running:
-                        await self._handler.stop_current()
+                    if self._active_source_key:
+                        handler = self._handlers.get(self._active_source_key)
+                        if handler and getattr(handler, "is_running", False):
+                            await handler.stop_current()
                 await asyncio.sleep(0.05)
         except asyncio.CancelledError:
             pass
@@ -289,47 +388,54 @@ class ChatConsumer:
             await pubsub.aclose()
             await cancel_redis.aclose()
 
-    async def _drain_pending(self) -> list[str]:
-        """Pop every queued chat message (oldest first) and return prepared
-        texts. The handler calls this mid-response to fold newly-arrived
-        messages into the running conversation. `/reset` is honored inline.
-        """
+    # ------------------------------------------------------------------ #
+    # Message preparation                                                  #
+    # ------------------------------------------------------------------ #
+
+    async def _drain_pending(self, source_key: str) -> list[str]:
+        """Pop queued messages for this channel; re-queue messages from other channels."""
         texts: list[str] = []
+        requeue: list[bytes] = []
         if not self.redis:
             return texts
         while True:
-            queued = await self.redis.rpop(self.queue_name)
-            if queued is None:
+            raw = await self.redis.rpop(self.queue_name)
+            if raw is None:
                 break
-            qmsg = json.loads(queued)
+            qmsg = json.loads(raw)
+            qkey = self._source_key(
+                qmsg.get("source", "webapp"),
+                qmsg.get("chat_session_id"),
+                qmsg.get("telegram"),
+            )
+            if qkey != source_key:
+                requeue.append(raw)
+                continue
             if qmsg.get("text", "").strip() == "/reset":
-                if self._handler:
-                    await self._handler.reset_session()
+                await self._reset_handler(source_key)
                 texts.clear()
                 continue
-            texts.append(
-                self._prepare_text(
-                    qmsg["text"],
-                    qmsg.get("telegram"),
-                    qmsg.get("source", "webapp"),
-                )
-            )
+            handler = self._handlers.get(source_key)
+            texts.append(self._prepare_text(
+                qmsg["text"], qmsg.get("telegram"), qmsg.get("source", "webapp"),
+                handler,
+            ))
+        for msg in requeue:
+            await self.redis.rpush(self.queue_name, msg)
         return texts
 
-    def _is_new_session(self) -> bool:
-        """Check if the handler has no active session (first message)."""
-        if self._handler and hasattr(self._handler, "session_id"):
-            return self._handler.session_id is None
+    def _is_new_session(self, handler: object) -> bool:
+        if hasattr(handler, "session_id"):
+            return handler.session_id is None
         return True
 
-    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str = "webapp") -> str:
-        """Prepare message text, adding Telegram context if present."""
-        # Approval rules apply to all messages
+    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
         from app.runner_hooks import get_approval_rules_prefix
         rules_prefix = get_approval_rules_prefix()
+        is_new = self._is_new_session(handler)
         if telegram_ctx:
-            return rules_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=self._is_new_session())
-        return rules_prefix + _build_channel_prompt(text, source, self._is_new_session())
+            return rules_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
+        return rules_prefix + _build_channel_prompt(text, source, is_new)
 
     def _save_images(self, message_id: str, images: list[dict]) -> list[str]:
         """Decode base64 images to workspace files (for the CLI handler).
@@ -368,17 +474,6 @@ class ChatConsumer:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         log_publisher = LogPublisher(self.redis, self.agent_id)
 
-        # Choose handler based on agent mode
-        if settings.agent_mode == "custom_llm":
-            from app.llm_chat_handler import LLMChatHandler
-            self._handler = LLMChatHandler(log_publisher)
-        elif settings.agent_mode == "codex_cli":
-            from app.codex_runner import CodexChatHandler
-            self._handler = CodexChatHandler(log_publisher)
-        else:
-            from app.chat_handler import ChatHandler
-            self._handler = ChatHandler(log_publisher)
-
         # Start cancel listener in background
         self._cancel_listener_task = asyncio.create_task(self._listen_for_cancel())
 
@@ -396,14 +491,19 @@ class ChatConsumer:
                 model = msg.get("model")
                 telegram_ctx = msg.get("telegram")
                 source = msg.get("source", "telegram" if telegram_ctx else "webapp")
+                chat_session_id = msg.get("chat_session_id")
                 images = msg.get("images") or None
+
+                # Route to the correct per-channel handler
+                source_key = self._source_key(source, chat_session_id, telegram_ctx)
+                handler = await self._get_or_create_handler(source_key)
 
                 # Handle special commands
                 if text.strip() == "/reset":
-                    await self._handler.reset_session()
+                    await self._reset_handler(source_key)
                     continue
 
-                text = self._prepare_text(text, telegram_ctx, source)
+                text = self._prepare_text(text, telegram_ctx, source, handler)
 
                 # Images: the custom-LLM handler sees them natively. The
                 # Claude Code CLI handler can't take inline images, so save
@@ -422,19 +522,17 @@ class ChatConsumer:
                             )
 
                 # Mark as working while processing chat
+                self._active_source_key = source_key
                 await log_publisher.publish_status("working", f"chat:{message_id}")
 
-                # Live steering: the handler pulls newly-arrived messages into
-                # the running conversation via this hook (no interruption).
-                if hasattr(self._handler, "pending_drain"):
-                    self._handler.pending_drain = self._drain_pending
+                # Live steering: fold newly-arrived messages from the same channel
+                if hasattr(handler, "pending_drain"):
+                    handler.pending_drain = lambda: self._drain_pending(source_key)
 
                 timeout = _chat_turn_timeout()
                 try:
-                    # Watchdog: a hung turn (stuck CLI / network) must not
-                    # block the whole queue forever. Abort and move on.
                     await asyncio.wait_for(
-                        self._handler.handle_message(
+                        handler.handle_message(
                             message_id=message_id,
                             text=text,
                             model=model,
@@ -442,14 +540,16 @@ class ChatConsumer:
                         ),
                         timeout=timeout,
                     )
+                    # Persist Claude session ID so we can --resume after restart
+                    await self._persist_session(source_key, handler)
                 except asyncio.TimeoutError:
                     logger.error(
                         "Chat turn %s timed out after %ss — aborting",
                         message_id, timeout,
                     )
                     try:
-                        if hasattr(self._handler, "stop_current"):
-                            await self._handler.stop_current()
+                        if hasattr(handler, "stop_current"):
+                            await handler.stop_current()
                     except Exception:  # noqa: BLE001
                         pass
                     await log_publisher.publish_chat(
@@ -461,20 +561,17 @@ class ChatConsumer:
                         message_id, "done", {"status": "timeout"}
                     )
                 finally:
+                    self._active_source_key = None
                     await log_publisher.publish_status("idle")
 
             except aioredis.TimeoutError:
-                # BRPOP is our idle wait for new chat messages. Treat Redis
-                # read timeouts during that wait as "nothing arrived", not as a
-                # user-visible chat failure.
                 continue
             except aioredis.ConnectionError:
                 await asyncio.sleep(2)
             except Exception as e:
                 if self.redis:
                     try:
-                        log_publisher = LogPublisher(self.redis, self.agent_id)
-                        await log_publisher.publish_chat(
+                        await LogPublisher(self.redis, self.agent_id).publish_chat(
                             "", "error", {"message": f"Chat error: {e}"}
                         )
                     except Exception:

@@ -24,6 +24,7 @@ from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
 from app.models.test_run import TestRun
 from app.models.meeting_room import MeetingRoom
+from app.models.team import Team  # noqa: F401
 from app.models.approval_rule import ApprovalRule
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.models.event_trigger import EventTrigger
@@ -35,6 +36,7 @@ from app.models.agent_secret import AgentSecret, AgentSecretAssignment, SecretTy
 from app.models.user_mount_access import UserMountAccess
 from app.models.custom_role import CustomRole
 from app.models.ai_account import AIAccount
+from app.models.second_brain import SecondBrain
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -50,6 +52,7 @@ __all__ = [
     "TaskRating",
     "TestRun",
     "MeetingRoom",
+    "Team",
     "ApprovalRule",
     "KnowledgeFeed", "KnowledgeFeedItem",
     "EventTrigger",
@@ -58,5 +61,5 @@ __all__ = [
     "UrlAllowlistTemplate", "UrlAllowlistTemplateEntry", "AgentUrlAllowlist",
     "UserProfile", "UserProfileEvent",
     "AgentSecret", "AgentSecretAssignment", "SecretType",
-    "UserMountAccess", "CustomRole", "AIAccount",
+    "UserMountAccess", "CustomRole", "AIAccount", "SecondBrain",
 ]

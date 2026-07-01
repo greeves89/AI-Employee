@@ -29,6 +29,20 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color
 
 const EMPTY_SKILL = { name: "", description: "", content: "" };
 
+/** Download a skill as a SKILL.md file (client-side, no backend needed). */
+function downloadSkillAsMd(skill: { name?: string; description?: string; content?: string }) {
+  const md = skill.content || `# ${skill.name || "skill"}\n\n${skill.description || ""}`;
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${skill.name || "skill"}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -89,8 +103,9 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
     setDownloadingFile(filename);
     try {
       await api.downloadSkillFile(skill.id, filename);
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("Skill-Download fehlgeschlagen:", e);
+      alert(`Download fehlgeschlagen: ${e instanceof Error ? e.message : "Unbekannter Fehler"}`);
     } finally {
       setDownloadingFile(null);
     }
@@ -299,7 +314,15 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end px-6 py-4 border-t border-foreground/[0.06] shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-foreground/[0.06] shrink-0">
+          <button
+            onClick={() => downloadSkillAsMd(skill)}
+            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm text-foreground bg-foreground/[0.06] hover:bg-foreground/[0.10] transition-all"
+            title="Skill als SKILL.md herunterladen"
+          >
+            <Download className="h-4 w-4" />
+            Herunterladen
+          </button>
           <button
             onClick={onClose}
             className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
@@ -494,7 +517,11 @@ export default function SkillsPage() {
   };
 
   const handleInstall = async (skill: CatalogSkill) => {
-    if (!selectedAgent || installing) return;
+    if (installing) return;
+    if (!selectedAgent) {
+      alert("Bitte zuerst oben einen Agenten auswählen, in den der Skill installiert werden soll.");
+      return;
+    }
     setInstalling(skill.name);
     try {
       if (skill.type === "db" && skill.id) {
@@ -503,8 +530,9 @@ export default function SkillsPage() {
         await api.installSkill(selectedAgent.id, skill.repo, skill.name);
       }
       await refreshAgentSkills(selectedAgent);
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("Skill-Installation fehlgeschlagen:", e);
+      alert(`Installation fehlgeschlagen: ${e instanceof Error ? e.message : "Unbekannter Fehler"}`);
     } finally {
       setInstalling(null);
     }
@@ -751,24 +779,34 @@ export default function SkillsPage() {
                       {skill.description || "No description available"}
                     </p>
 
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleInstall(skill); }}
-                      disabled={installed || isInstalling || !selectedAgent}
-                      className={cn(
-                        "w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all",
-                        installed
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
-                      )}
-                    >
-                      {isInstalling ? (
-                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Installiere...</>
-                      ) : installed ? (
-                        <><CheckCircle2 className="h-3.5 w-3.5" /> Installiert</>
-                      ) : (
-                        <><Download className="h-3.5 w-3.5" /> Installieren</>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleInstall(skill); }}
+                        disabled={installed || isInstalling || !selectedAgent}
+                        title={!selectedAgent ? "Zuerst oben einen Agenten wählen" : undefined}
+                        className={cn(
+                          "flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all disabled:opacity-50",
+                          installed
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+                        )}
+                      >
+                        {isInstalling ? (
+                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Installiere...</>
+                        ) : installed ? (
+                          <><CheckCircle2 className="h-3.5 w-3.5" /> Installiert</>
+                        ) : (
+                          <><Plus className="h-3.5 w-3.5" /> Installieren</>
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); downloadSkillAsMd(skill); }}
+                        className="shrink-0 flex items-center justify-center rounded-lg py-2 px-2.5 text-xs border border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.06] transition-colors"
+                        title="Skill als SKILL.md herunterladen"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}

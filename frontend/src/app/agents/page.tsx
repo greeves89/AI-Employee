@@ -1,19 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle, ArrowUpCircle } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, Users, StopCircle, ArrowUpCircle, Crown } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import type { AgentTeam } from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
-type ViewMode = "grid" | "network";
+type ViewMode = "grid" | "network" | "teams";
 
 const CreateAgentModal = dynamic(
   () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
+  { ssr: false },
+);
+
+const TeamsSection = dynamic(
+  () => import("@/components/agents/teams-section").then((m) => m.TeamsSection),
   { ssr: false },
 );
 
@@ -41,6 +47,28 @@ export default function AgentsPage() {
   const [updatingAgent, setUpdatingAgent] = useState<string | null>(null);
 
   const agentsNeedingUpdate = agents.filter((a) => a.update_available);
+
+  const [teams, setTeams] = useState<AgentTeam[]>([]);
+  useEffect(() => {
+    api.getTeams().then((d) => setTeams(d.teams || [])).catch(() => {});
+  }, []);
+
+  // Group agents by team for the grid view (teams first, "Ohne Team" last)
+  const agentGroups = useMemo(() => {
+    const teamOf: Record<string, AgentTeam> = {};
+    for (const t of teams) for (const m of t.member_agent_ids) if (!teamOf[m]) teamOf[m] = t;
+    const byKey: Record<string, { key: string; name: string; isTeam: boolean; leadName: string | null; agents: typeof agents }> = {};
+    for (const a of agents) {
+      const t = teamOf[a.id];
+      const key = t ? t.id : "__none__";
+      if (!byKey[key]) {
+        const leadName = t?.lead_agent_id ? (agents.find((x) => x.id === t.lead_agent_id)?.name ?? null) : null;
+        byKey[key] = { key, name: t ? t.name : "Ohne Team", isTeam: !!t, leadName, agents: [] };
+      }
+      byKey[key].agents.push(a);
+    }
+    return Object.values(byKey).sort((a, b) => (a.isTeam === b.isTeam ? 0 : a.isTeam ? -1 : 1));
+  }, [agents, teams]);
 
   const handleUpdateAll = async () => {
     const ok = await confirm({
@@ -172,6 +200,16 @@ export default function AgentsPage() {
               >
                 <Network className="h-4 w-4" />
               </button>
+              <button
+                onClick={() => setViewMode("teams")}
+                className={cn(
+                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
+                  viewMode === "teams" && "bg-foreground/[0.08] text-foreground"
+                )}
+                title="Teams View"
+              >
+                <Users className="h-4 w-4" />
+              </button>
             </div>
 
             {/* Update All — only visible when at least one agent has an update */}
@@ -235,7 +273,9 @@ export default function AgentsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {loading && agents.length === 0 ? (
+        {viewMode === "teams" ? (
+          <TeamsSection agents={agents} />
+        ) : loading && agents.length === 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
               <div
@@ -264,8 +304,19 @@ export default function AgentsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {agents.map((agent, i) => (
+          <div className="space-y-7">
+            {agentGroups.map((g) => (
+            <section key={g.key}>
+              {(agentGroups.length > 1 || g.isTeam) && (
+                <div className="flex items-center gap-2 mb-3">
+                  {g.isTeam ? <Users className="h-4 w-4 text-violet-400" /> : <Bot className="h-4 w-4 text-muted-foreground" />}
+                  <h3 className="text-sm font-semibold">{g.name}</h3>
+                  {g.leadName && <span className="flex items-center gap-1 text-[11px] text-amber-400"><Crown className="h-3 w-3" /> {g.leadName} · Lead</span>}
+                  <span className="text-[11px] text-muted-foreground">· {g.agents.length} Agent{g.agents.length !== 1 ? "s" : ""}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {g.agents.map((agent, i) => (
               <motion.div
                 key={agent.id}
                 initial={{ opacity: 0, y: 8 }}
@@ -320,6 +371,9 @@ export default function AgentsPage() {
                   )}
                 </div>
               </motion.div>
+                ))}
+              </div>
+            </section>
             ))}
           </div>
         )}

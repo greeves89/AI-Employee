@@ -20,7 +20,7 @@ from typing import AsyncIterator
 import httpx
 
 from app import multimodal
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
+from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,15 @@ def _data_uri(img: dict) -> str:
 
 
 def _chat_image_parts(images: list[dict]) -> list[dict]:
-    """Generic image blocks → OpenAI chat-completions image_url parts."""
-    return [{"type": "image_url", "image_url": {"url": _data_uri(im)}} for im in images]
+    """Generic image blocks → OpenAI chat-completions image_url parts.
+
+    Runs every block through the safety net first so an image whose bytes are not
+    a genuinely supported format can never reach the API (which would 400 the
+    whole call); such blocks are dropped, the rest go through with a corrected
+    media_type.
+    """
+    return [{"type": "image_url", "image_url": {"url": _data_uri(im)}}
+            for im in multimodal.safe_image_blocks(images)]
 
 # Model-name substrings that require the Responses API instead of
 # Chat Completions. The GPT-5.x family ("gpt-5", "gpt-5.4", "gpt-5.4-mini",
@@ -249,7 +256,7 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text="Request timed out")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {e}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
@@ -287,7 +294,7 @@ class OpenAIProvider(BaseLLMProvider):
                         "role": "user",
                         "content": [
                             {"type": "input_text", "text": "Image(s) returned by the previous tool call:"},
-                            *[{"type": "input_image", "image_url": _data_uri(im)} for im in images],
+                            *[{"type": "input_image", "image_url": _data_uri(im)} for im in multimodal.safe_image_blocks(images)],
                         ],
                     })
             elif msg.role == "assistant":
@@ -310,7 +317,7 @@ class OpenAIProvider(BaseLLMProvider):
             else:
                 # user messages — may carry attached images
                 user_content: list[dict] = [{"type": "input_text", "text": content}]
-                for im in images:
+                for im in multimodal.safe_image_blocks(images):
                     user_content.append({"type": "input_image", "image_url": _data_uri(im)})
                 input_items.append({
                     "type": "message",
@@ -449,7 +456,7 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text="Request timed out")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {e}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
@@ -651,7 +658,7 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text="Request timed out")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {e}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)

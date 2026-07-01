@@ -118,6 +118,27 @@ async def register_device(
 
 # --- UI-facing: list, count, mark read ---
 
+async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
+    """Agent ids whose notifications this user may see: own + unowned (system) +
+    explicitly shared. Notifications are keyed by ``agent_id`` (no per-user
+    recipient column), so without this scope every user would see every agent's
+    notifications — a cross-user data leak. Mirrors the agent team-directory
+    visibility model.
+    """
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+
+    owned = (await db.execute(
+        select(Agent.id).where(
+            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+        )
+    )).scalars().all()
+    shared = (await db.execute(
+        select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
+    )).scalars().all()
+    return list(set(owned) | set(shared))
+
+
 @router.get("/")
 async def list_notifications(
     unread_only: bool = Query(False),
@@ -125,8 +146,9 @@ async def list_notifications(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List notifications for the UI notification center."""
-    query = select(Notification)
+    """List notifications for the UI notification center (scoped to the user's agents)."""
+    visible = await _visible_agent_ids(user, db)
+    query = select(Notification).where(Notification.agent_id.in_(visible))
     if unread_only:
         query = query.where(Notification.read == False)  # noqa: E712
     query = query.order_by(Notification.created_at.desc()).limit(limit)
@@ -137,9 +159,13 @@ async def list_notifications(
 
 @router.get("/count")
 async def unread_count(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Get unread notification count (for badge)."""
+    """Get unread notification count for the badge (scoped to the user's agents)."""
+    visible = await _visible_agent_ids(user, db)
     result = await db.execute(
-        select(func.count(Notification.id)).where(Notification.read == False)  # noqa: E712
+        select(func.count(Notification.id)).where(
+            Notification.read == False,  # noqa: E712
+            Notification.agent_id.in_(visible),
+        )
     )
     count = result.scalar() or 0
     return {"unread": count}
@@ -161,6 +187,8 @@ async def respond_to_approval(
     result = await db.execute(select(Notification).where(Notification.id == notification_id))
     notif = result.scalar_one_or_none()
     if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if notif.agent_id not in await _visible_agent_ids(user, db):
         raise HTTPException(status_code=404, detail="Notification not found")
     if notif.type != "approval":
         raise HTTPException(status_code=400, detail="Not an approval notification")
@@ -243,6 +271,8 @@ async def mark_read(notification_id: int, user=Depends(require_auth), db: AsyncS
     notif = result.scalar_one_or_none()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
+    if notif.agent_id not in await _visible_agent_ids(user, db):
+        raise HTTPException(status_code=404, detail="Notification not found")
     notif.read = True
     await db.commit()
     return {"status": "read"}
@@ -250,10 +280,14 @@ async def mark_read(notification_id: int, user=Depends(require_auth), db: AsyncS
 
 @router.post("/read-all")
 async def mark_all_read(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Mark all notifications as read."""
+    """Mark all of the user's notifications as read (scoped to the user's agents)."""
+    visible = await _visible_agent_ids(user, db)
     await db.execute(
         update(Notification)
-        .where(Notification.read == False)  # noqa: E712
+        .where(
+            Notification.read == False,  # noqa: E712
+            Notification.agent_id.in_(visible),
+        )
         .values(read=True)
     )
     await db.commit()
@@ -268,6 +302,8 @@ async def delete_notification(notification_id: int, user=Depends(require_auth), 
     )
     notif = result.scalar_one_or_none()
     if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if notif.agent_id not in await _visible_agent_ids(user, db):
         raise HTTPException(status_code=404, detail="Notification not found")
     await db.delete(notif)
     await db.commit()

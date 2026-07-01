@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bot, Eye, EyeOff, LogIn } from "lucide-react";
+import { Bot, Eye, EyeOff, LogIn, Clock } from "lucide-react";
 import { login, getSSOProviders, type SSOProvider } from "@/lib/auth";
 
 import { getApiUrl } from "@/lib/config";
@@ -17,13 +17,23 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
+  const [ssoOnly, setSsoOnly] = useState(false);
+  const [pending, setPending] = useState(false);
 
-  // Load SSO providers and check for SSO errors in URL
+  // Load SSO providers and check for SSO errors / pending-approval in URL
   useEffect(() => {
-    getSSOProviders().then(setSsoProviders).catch(() => {});
+    getSSOProviders()
+      .then((res) => {
+        setSsoProviders(res.providers);
+        setSsoOnly(res.sso_only);
+      })
+      .catch(() => {});
     const ssoError = searchParams.get("error");
     if (ssoError) {
       setError(`SSO login failed: ${ssoError}`);
+    }
+    if (searchParams.get("pending")) {
+      setPending(true);
     }
   }, [searchParams]);
 
@@ -38,7 +48,17 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push("/dashboard");
+      // Honour a same-origin ?redirect= (e.g. the OAuth /authorize URL that
+      // bounced us here). Full navigation since it may be an /api/* route.
+      const redirectTo = searchParams.get("redirect");
+      // Same-origin path only: must start with "/" followed by a non-slash/backslash
+      // char, so "//evil.com" and "/\evil.com" (protocol-relative open redirects,
+      // which browsers normalise to "//") are rejected.
+      if (redirectTo && /^\/[^/\\]/.test(redirectTo)) {
+        window.location.href = redirectTo;
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -60,14 +80,36 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
+        {error && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
+        {pending && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-amber-500/20 bg-card p-8 text-center shadow-2xl">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15">
+                <Clock className="h-8 w-8 text-amber-400" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Warten auf Freischaltung</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Dein Konto wurde angelegt und muss erst von einem <b className="text-foreground">Administrator freigeschaltet</b> werden.
+                Sobald das erledigt ist, kannst du dich anmelden.
+              </p>
+              <button
+                onClick={() => { setPending(false); router.replace("/login"); }}
+                className="mt-6 w-full rounded-lg bg-foreground/[0.06] px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.1]"
+              >
+                Verstanden
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Form (password login — hidden when SSO-only is enforced) */}
+        {!ssoOnly && (
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
               Email
@@ -125,10 +167,19 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+        )}
+
+        {/* SSO-only hint */}
+        {ssoOnly && (
+          <p className="text-center text-xs text-muted-foreground">
+            Anmeldung nur über Microsoft (SSO)
+          </p>
+        )}
 
         {/* SSO Buttons */}
         {ssoProviders.length > 0 && (
           <div className="space-y-3">
+            {!ssoOnly && (
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border" />
@@ -137,6 +188,7 @@ export default function LoginPage() {
                 <span className="bg-background px-2 text-muted-foreground">or continue with</span>
               </div>
             </div>
+            )}
 
             <div className="grid gap-2">
               {ssoProviders.map((provider) => (
@@ -169,12 +221,14 @@ export default function LoginPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="text-primary hover:underline">
-            Register
-          </Link>
-        </p>
+        {!ssoOnly && (
+          <p className="text-center text-xs text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="text-primary hover:underline">
+              Register
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -41,8 +41,8 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
 }
 
 // Agents
-export async function getAgents(): Promise<{ agents: Agent[]; total: number }> {
-  return fetchJSON(`${getBase()}/agents/`);
+export async function getAgents(scope: "own" | "all" = "own"): Promise<{ agents: Agent[]; total: number }> {
+  return fetchJSON(`${getBase()}/agents/?scope=${scope}`);
 }
 
 export async function getAgent(id: string): Promise<Agent> {
@@ -92,6 +92,27 @@ export async function getAgentConversation(agentA: string, agentB: string): Prom
   return fetchJSON(`${getBase()}/agents/team/conversation?agent_a=${agentA}&agent_b=${agentB}`);
 }
 
+export interface AgentTeam {
+  id: string;
+  name: string;
+  description?: string;
+  member_agent_ids: string[];
+  lead_agent_id: string | null;
+  is_active?: boolean;
+}
+
+export async function getTeams(): Promise<{ teams: AgentTeam[] }> {
+  return fetchJSON(`${getBase()}/teams/`);
+}
+
+/** Delegation edges: tasks one agent handed to another (delegator -> assignee). */
+export async function getDelegations(minutes: number = 1440): Promise<{
+  edges: { from: string; to: string; count: number; last_title: string; last_at: string | null }[];
+  total: number;
+}> {
+  return fetchJSON(`${getBase()}/agents/team/delegations?minutes=${minutes}`);
+}
+
 export async function updateAgentModel(
   agentId: string,
   modelProvider: string,
@@ -101,6 +122,28 @@ export async function updateAgentModel(
     method: "PATCH",
     body: JSON.stringify({ model_provider: modelProvider, model }),
   });
+}
+
+export interface ModelCatalogModel {
+  value: string;
+  label: string;
+  tier: string;
+}
+export interface ModelCatalogProvider {
+  provider: string;
+  models: ModelCatalogModel[];
+}
+export interface ModelCatalogMode {
+  mode: string;
+  label: string;
+  default_provider: string;
+  default_model: string;
+  providers: ModelCatalogProvider[];
+}
+// Provider/model catalog per harness — single source of truth served by the
+// backend so create-modal and settings don't keep divergent hardcoded lists.
+export async function getModelCatalog(): Promise<{ modes: ModelCatalogMode[] }> {
+  return fetchJSON(`${getBase()}/agents/models`);
 }
 
 export async function updateLLMConfig(
@@ -185,6 +228,13 @@ export async function setIdleStopMax(max_idle_minutes: number): Promise<{ max_id
   });
 }
 
+export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph_mcp_external_enabled: boolean }> {
+  return fetchJSON(`${getBase()}/settings/msgraph-mcp-external`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function setAgentIdleStop(agentId: string, idle_stop_minutes: number): Promise<{ agent_id: string; idle_stop_minutes: number | null }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/idle-stop`, {
     method: "PATCH",
@@ -197,6 +247,9 @@ export interface RolePermissions {
   template_ids?: number[] | null;
   llm_providers?: string[] | null;
   mount_labels?: string[] | null;
+  ai_account_ids?: number[] | null;
+  secret_ids?: number[] | null;
+  mcp_server_ids?: number[] | null;
   url_host_patterns?: string[] | null;
   menu_paths?: string[] | null;
 }
@@ -521,14 +574,25 @@ export async function disconnectIntegration(provider: string): Promise<void> {
   await fetchJSON(`${getBase()}/integrations/${provider}`, { method: "DELETE" });
 }
 
-export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[] }> {
+export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/integrations`);
 }
 
-export async function updateAgentIntegrations(agentId: string, integrations: string[]): Promise<void> {
+export async function updateAgentIntegrations(agentId: string, integrations: string[], msgraphAccess?: string, exchangeAccess?: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/integrations`, {
     method: "PATCH",
-    body: JSON.stringify({ integrations }),
+    body: JSON.stringify({
+      integrations,
+      ...(msgraphAccess ? { msgraph_access: msgraphAccess } : {}),
+      ...(exchangeAccess ? { exchange_access: exchangeAccess } : {}),
+    }),
+  });
+}
+
+export async function updateAgentAppearance(agentId: string, icon: string, color: string): Promise<void> {
+  await fetchJSON(`${getBase()}/agents/${agentId}/appearance`, {
+    method: "PATCH",
+    body: JSON.stringify({ icon, color }),
   });
 }
 
@@ -678,7 +742,12 @@ export async function getProactiveConfig(agentId: string): Promise<ProactiveResp
 
 export async function updateProactiveConfig(
   agentId: string,
-  config: { enabled: boolean; interval_seconds: number; prompt?: string },
+  config: {
+    enabled: boolean;
+    interval_seconds: number;
+    prompt?: string;
+    custom_instructions?: string;
+  },
 ): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {
     method: "POST",
@@ -704,6 +773,7 @@ export interface McpServerInfo {
   url: string;
   tools: McpTool[];
   enabled: boolean;
+  has_auth?: boolean;
   created_at: string | null;
 }
 
@@ -717,10 +787,10 @@ export async function getMcpServers(): Promise<{ servers: McpServerInfo[] }> {
   return fetchJSON(`${getBase()}/mcp-servers`);
 }
 
-export async function addMcpServer(name: string, url: string): Promise<McpServerInfo> {
+export async function addMcpServer(name: string, url: string, bearerToken?: string): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers`, {
     method: "POST",
-    body: JSON.stringify({ name, url }),
+    body: JSON.stringify({ name, url, ...(bearerToken ? { bearer_token: bearerToken } : {}) }),
   });
 }
 
@@ -756,6 +826,7 @@ export async function createUser(data: {
   email: string;
   password: string;
   role?: string;
+  custom_role_id?: number | null;
 }): Promise<AdminUser> {
   return fetchJSON(`${getBase()}/auth/users`, {
     method: "POST",
@@ -765,7 +836,7 @@ export async function createUser(data: {
 
 export async function updateUser(
   userId: string,
-  data: { name?: string; role?: string; is_active?: boolean },
+  data: { name?: string; role?: string; is_active?: boolean; approved?: boolean },
 ): Promise<AdminUser> {
   return fetchJSON(`${getBase()}/auth/users/${userId}`, {
     method: "PATCH",
@@ -870,6 +941,95 @@ export async function updateAIAccount(id: number, payload: Partial<AIAccountPayl
 
 export async function deleteAIAccount(id: number): Promise<{ ok: boolean; id: number }> {
   return fetchJSON(`${getBase()}/ai-accounts/${id}`, { method: "DELETE" });
+}
+
+// ── Second Brains (department-shared knowledge vaults) ──
+export interface SecondBrainPayload {
+  name: string;
+  slug?: string;
+  default_mode?: "ro" | "rw";
+  standard?: "freeform" | "wikimedia" | "it_support";
+  description?: string | null;
+  is_active?: boolean;
+}
+
+export interface BrainFileEntry {
+  path: string;
+  name: string;
+  type: "dir" | "file";
+}
+
+export async function getBrainTree(id: number): Promise<{ entries: BrainFileEntry[]; standard: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/tree`);
+}
+
+export async function getBrainFile(id: number, path: string): Promise<{ path: string; content: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/file?path=${encodeURIComponent(path)}`);
+}
+
+export async function saveBrainFile(id: number, path: string, content: string): Promise<{ ok: boolean; path: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/file`, { method: "PUT", body: JSON.stringify({ path, content }) });
+}
+
+export async function deleteBrainFile(id: number, path: string): Promise<{ ok: boolean; path: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/file?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+}
+
+// ── Vault knowledge graph (Obsidian-style: notes = nodes, [[wikilinks]] = edges) ──
+// Named "Vault*" to stay distinct from getBrainGraph() (the personal Knowledge
+// Base graph at /brain/graph) — same brain-vs-vault split as the backend tools.
+export interface VaultGraphNode {
+  id: string;
+  name: string;
+  path: string;
+  folder: string;
+  tags: string[];
+  in: number;
+  out: number;
+  degree: number;
+}
+
+export interface VaultGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface VaultGraph {
+  nodes: VaultGraphNode[];
+  edges: VaultGraphEdge[];
+  truncated?: boolean;
+  brain?: { id: number; name: string; slug: string };
+}
+
+export async function getVaultGraph(id: number): Promise<VaultGraph> {
+  return fetchJSON(`${getBase()}/brains/${id}/graph`);
+}
+
+export async function listSecondBrains(activeOnly = false): Promise<SecondBrain[]> {
+  return fetchJSON(`${getBase()}/brains/?active_only=${activeOnly}`);
+}
+
+export async function createSecondBrain(payload: SecondBrainPayload): Promise<SecondBrain> {
+  return fetchJSON(`${getBase()}/brains/`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateSecondBrain(id: number, payload: Partial<SecondBrainPayload>): Promise<SecondBrain> {
+  return fetchJSON(`${getBase()}/brains/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: number }> {
+  return fetchJSON(`${getBase()}/brains/${id}`, { method: "DELETE" });
+}
+
+// MCP exposure: generate/rotate the Bearer token (plaintext returned ONCE), or disable.
+export async function generateBrainMcpToken(
+  id: number,
+): Promise<{ mcp_enabled: boolean; mcp_path: string; token: string }> {
+  return fetchJSON(`${getBase()}/brains/${id}/mcp/token`, { method: "POST" });
+}
+
+export async function disableBrainMcp(id: number): Promise<{ ok: boolean; mcp_enabled: boolean }> {
+  return fetchJSON(`${getBase()}/brains/${id}/mcp`, { method: "DELETE" });
 }
 
 export async function updateAgentAIAccount(
@@ -1012,6 +1172,32 @@ export async function assignAgentToUser(userId: string, templateId: number, name
   return fetchJSON(`${getBase()}/admin/assign-agent`, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, template_id: templateId, name: name || undefined, budget_usd: budgetUsd || undefined }),
+  });
+}
+
+export interface DistributeResult {
+  status: string;
+  source_agent_id: string;
+  source_agent_name: string;
+  created: { user_id: string; user_name: string; agent_id: string; agent_name: string }[];
+  skipped: { user_id: string; user_name?: string; reason: string; agent_id?: string }[];
+  created_count: number;
+  skipped_count: number;
+}
+
+// Distribute a trained agent as an independent per-user copy (explicit users + a role's members).
+export async function distributeAgent(
+  sourceAgentId: string,
+  opts: { userIds?: string[]; roleId?: number | null; namePrefix?: string },
+): Promise<DistributeResult> {
+  return fetchJSON(`${getBase()}/admin/distribute-agent`, {
+    method: "POST",
+    body: JSON.stringify({
+      source_agent_id: sourceAgentId,
+      user_ids: opts.userIds || [],
+      role_id: opts.roleId ?? null,
+      name_prefix: opts.namePrefix || undefined,
+    }),
   });
 }
 
@@ -1628,9 +1814,11 @@ export async function uploadSkillFile(skillId: number, file: File): Promise<Skil
 
 export async function downloadSkillFile(skillId: number, filename: string): Promise<void> {
   const base = getBase();
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  // Cookie-based auth like the rest of the API — the auth cookie is only sent
+  // with credentials:"include" (the old Bearer-from-localStorage was always null
+  // → 401 → silent failure / "click does nothing").
   const res = await fetch(`${base}/skills/marketplace/${skillId}/files/${encodeURIComponent(filename)}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
   });
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
@@ -1638,7 +1826,9 @@ export async function downloadSkillFile(skillId: number, filename: string): Prom
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a); // some browsers require the anchor in the DOM
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
 
@@ -1902,6 +2092,7 @@ export async function createMeetingRoom(data: {
   max_rounds?: number;
   stages_config?: { name: string; rounds: number; focus: string }[] | null;
   use_moderator?: boolean;
+  moderator_ai_account_id?: string;
 }): Promise<MeetingRoom> {
   return fetchJSON(`${getBase()}/meeting-rooms/`, {
     method: "POST",
@@ -2137,4 +2328,76 @@ export async function provisionVerticalPack(slug: string): Promise<{
   demo_task_id: string | null;
 }> {
   return fetchJSON(`${getBase()}/vertical-packs/${slug}/provision`, { method: "POST" });
+}
+
+// Teams
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  member_agent_ids: string[];
+  lead_agent_id: string | null;
+  is_active: boolean;
+  created_by: string | null;
+}
+
+export async function listTeams(): Promise<{ teams: Team[] }> {
+  return fetchJSON(`${getBase()}/teams/`);
+}
+
+export async function createTeam(body: {
+  name: string;
+  description?: string;
+  member_agent_ids?: string[];
+  lead_agent_id?: string | null;
+}): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getTeam(id: string): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}`);
+}
+
+export async function updateTeam(
+  id: string,
+  body: { name?: string; description?: string; member_agent_ids?: string[]; lead_agent_id?: string | null },
+): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  await fetchJSON(`${getBase()}/teams/${id}`, { method: "DELETE" });
+}
+
+export async function changeTeamMembers(
+  id: string,
+  changes: { add?: string[]; remove?: string[] },
+): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}/members`, {
+    method: "POST",
+    body: JSON.stringify(changes),
+  });
+}
+
+export async function setTeamLead(id: string, leadAgentId: string | null): Promise<Team> {
+  return fetchJSON(`${getBase()}/teams/${id}/lead`, {
+    method: "PATCH",
+    body: JSON.stringify({ lead_agent_id: leadAgentId }),
+  });
+}
+
+export async function delegateToTeam(
+  id: string,
+  body: { title: string; prompt: string; priority?: number },
+): Promise<{ task_id: string; lead_agent_id: string; status: string }> {
+  return fetchJSON(`${getBase()}/teams/${id}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

@@ -144,6 +144,15 @@ def register_mcp_servers() -> None:
                 "AGENT_TOKEN": settings.agent_token,
             },
         },
+        "read-logs": {
+            "command": "node",
+            "args": ["/opt/mcp/read-logs-server.mjs"],
+            "env": {
+                "ORCHESTRATOR_URL": settings.orchestrator_url,
+                "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
+            },
+        },
     }
 
     for name, cfg in builtin_servers.items():

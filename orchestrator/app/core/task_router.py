@@ -15,8 +15,10 @@ from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.services.redis_service import RedisService
 from app.services.skill_auto_injector import auto_inject_skills
 
-# Eviction grace period for completed tasks (seconds)
-TASK_EVICT_GRACE_SECONDS = int(300)
+# Eviction grace period for completed tasks (seconds). Must outlive the
+# notification that points at the task — otherwise clicking a "Task fertig"
+# notification 404s because the task was already GC'd. 7 days.
+TASK_EVICT_GRACE_SECONDS = int(7 * 24 * 3600)
 
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
@@ -406,6 +408,20 @@ class TaskRouter:
         schedule_id = (task.metadata_ or {}).get("schedule_id")
         if schedule_id:
             await self._update_schedule_stats(schedule_id, data)
+
+        # Meeting tasks: mark the linked structured TODOs as completed once the agent's
+        # task finishes — so they show as done in the Todo tab and the event-based
+        # follow-up (which keys on task completion) reflects real progress. The agent
+        # does NOT need to call complete_todo itself (it may be lazy-loaded out).
+        if task.status == TaskStatus.COMPLETED and (task.metadata_ or {}).get("source") == "meeting":
+            from app.models.agent_todo import AgentTodo, TodoStatus
+            mtodos = (await self.db.execute(
+                select(AgentTodo).where(AgentTodo.task_id == task.id)
+            )).scalars().all()
+            for _td in mtodos:
+                if _td.status != TodoStatus.COMPLETED:
+                    _td.status = TodoStatus.COMPLETED
+                    _td.completed_at = datetime.now(timezone.utc)
 
         await self.db.commit()
 
@@ -1079,6 +1095,18 @@ class TaskRouter:
             if not parent_task or not parent_task.agent_id:
                 return
 
+            # Wake the parent agent if it idle-stopped while waiting, so it
+            # actually consumes the queued completion message (mirrors dispatch).
+            if self.docker:
+                try:
+                    from app.services.user_lifecycle import wake_agent
+                    await wake_agent(self.db, self.docker, parent_task.agent_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not wake parent agent {parent_task.agent_id} "
+                        f"for subtask {subtask.id}: {e}"
+                    )
+
             status = "completed" if subtask.status == TaskStatus.COMPLETED else "failed"
             result_preview = (subtask.result or subtask.error or "")[:500]
 
@@ -1157,6 +1185,18 @@ class TaskRouter:
         try:
             status = "completed" if task.status == TaskStatus.COMPLETED else "failed"
             result_preview = (task.result or task.error or "No output")[:800]
+
+            # Wake the delegating agent if it idle-stopped while waiting, so it
+            # actually consumes the queued result (mirrors dispatch).
+            if self.docker:
+                try:
+                    from app.services.user_lifecycle import wake_agent
+                    await wake_agent(self.db, self.docker, delegator_agent_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not wake delegating agent {delegator_agent_id} "
+                        f"for task {task.id}: {e}"
+                    )
 
             # Push structured message to delegating agent's message queue
             message = json.dumps({

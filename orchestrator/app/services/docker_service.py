@@ -125,6 +125,29 @@ class DockerService:
     def get_container(self, container_id: str):
         return self.client.containers.get(container_id)
 
+    def get_container_logs(self, container_id: str, tail: int = 200,
+                           since_seconds: int | None = None) -> str:
+        """Return the tail of a container's combined stdout/stderr.
+
+        ``tail`` is hard-capped at 1000 lines so an agent can't drain the host.
+        Raw secrets are NOT stripped here — callers that expose logs to agents
+        must run the output through app.core.log_redaction.redact_logs first.
+        """
+        import time
+        container = self.client.containers.get(container_id)
+        kwargs: dict = {
+            "tail": max(1, min(int(tail), 1000)),
+            "timestamps": True,
+            "stdout": True,
+            "stderr": True,
+        }
+        if since_seconds:
+            kwargs["since"] = int(time.time()) - int(since_seconds)
+        raw = container.logs(**kwargs)
+        if isinstance(raw, (bytes, bytearray)):
+            return raw.decode("utf-8", errors="replace")
+        return str(raw)
+
     def stop_container(self, container_id: str) -> None:
         container = self.client.containers.get(container_id)
         container.stop(timeout=30)
@@ -136,6 +159,34 @@ class DockerService:
     def remove_container(self, container_id: str, force: bool = True) -> None:
         container = self.client.containers.get(container_id)
         container.remove(force=force)
+
+    def copy_workspace_volume(self, src_volume: str, dst_volume: str,
+                              image: str = "ai-employee-agent:latest") -> None:
+        """Clone the entire contents of one workspace volume into another.
+
+        Used to give a distributed agent copy the *trained brain* of its source:
+        knowledge.md, installed skills (/workspace/.claude/skills), CLAUDE.md and
+        any docs the source built up. Excludes ``.git`` and resets the per-agent
+        task log (``.agent_state.md``) so each copy starts its own history fresh.
+        Runs a short-lived helper container that mounts both volumes.
+        """
+        script = (
+            "cp -a /from/. /to/ 2>/dev/null || true; "
+            "rm -rf /to/.git /to/.agent_state.md; "
+            "chmod -R u+rwX /to 2>/dev/null || true"
+        )
+        self.client.containers.run(
+            image=image,
+            entrypoint="",
+            command=["sh", "-c", script],
+            volumes={
+                src_volume: {"bind": "/from", "mode": "ro"},
+                dst_volume: {"bind": "/to", "mode": "rw"},
+            },
+            remove=True,
+            detach=False,
+            labels={"ai-employee.type": "clone-helper"},
+        )
 
     def remove_volume(self, volume_name: str) -> None:
         try:

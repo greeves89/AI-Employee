@@ -1,4 +1,6 @@
-"""Second Brain API — unified semantic knowledge graph, user-scoped.
+"""Knowledge Base API — a user's personal, account-bound semantic knowledge graph
+(the "Knowledge" tab). NOTE: this is NOT the shared Second Brain vault (department
+Markdown under /mnt/brains, managed in brains.py) — keep the two apart.
 
 User-facing:  GET  /brain/graph          full graph (nodes + semantic edges)
               GET  /brain/search          semantic search across full brain

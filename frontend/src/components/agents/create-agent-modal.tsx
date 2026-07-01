@@ -45,7 +45,9 @@ import {
 import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { AgentAvatar, AVATAR_ICONS, AVATAR_COLORS } from "@/components/agents/agent-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { useAuthStore } from "@/lib/auth";
 
 const PERMISSION_ICON_MAP: Record<string, React.ElementType> = {
   package: Package,
@@ -116,7 +118,7 @@ const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noK
   },
   anthropic: {
     endpoint: "https://api.anthropic.com/v1",
-    models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-6", "claude-opus-4-6", "claude-sonnet-4-5-20250929"],
+    models: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-5"],
   },
   google: {
     endpoint: "https://generativelanguage.googleapis.com/v1beta",
@@ -179,6 +181,8 @@ export function CreateAgentModal({
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
+  const [avatarIcon, setAvatarIcon] = useState("Cpu");
+  const [avatarColor, setAvatarColor] = useState("violet");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [budgetUsd, setBudgetUsd] = useState<string>("");
   const [budgetExceededAction, setBudgetExceededAction] = useState<"haiku" | "stop">("haiku");
@@ -188,6 +192,9 @@ export function CreateAgentModal({
 
   // Mode selection
   const [mode, setMode] = useState<AgentMode>("claude_code");
+  // Only admins may type an arbitrary custom provider/model; normal users pick from
+  // the available AI-Accounts (group-filtered) or connected OAuth harnesses.
+  const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
 
   // Autonomy level
   const [autonomyLevel, setAutonomyLevel] = useState("l3");
@@ -366,8 +373,9 @@ export function CreateAgentModal({
     try {
       const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
 
+      let created: Awaited<ReturnType<typeof api.createAgent>> | undefined;
       if (aiAccountId !== null) {
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim() || selectedTemplate?.name || "agent",
           aiAccountModel || undefined,
           role.trim() || selectedTemplate?.role || undefined,
@@ -380,14 +388,14 @@ export function CreateAgentModal({
           aiAccountId,
         );
       } else if (selectedTemplate && mode === "claude_code") {
-        await api.createAgentFromTemplate(
+        created = await api.createAgentFromTemplate(
           selectedTemplate.id,
           name.trim() || undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           budgetExceededAction,
         );
       } else if (mode === "codex_cli") {
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim() || selectedTemplate?.name || "codex-agent",
           "gpt-5.5",
           role.trim() || selectedTemplate?.role || undefined,
@@ -409,7 +417,7 @@ export function CreateAgentModal({
           system_prompt: llmSystemPrompt.trim(),
           tools_enabled: llmToolsEnabled,
         };
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim(),
           llmModelName.trim(),
           role.trim() || undefined,
@@ -421,7 +429,7 @@ export function CreateAgentModal({
           budgetExceededAction,
         );
       } else {
-        await api.createAgent(
+        created = await api.createAgent(
           name.trim(),
           undefined,
           role.trim() || undefined,
@@ -432,6 +440,11 @@ export function CreateAgentModal({
           autonomyLevel,
           budgetExceededAction,
         );
+      }
+      if (created?.id) {
+        try {
+          await api.updateAgentAppearance(created.id, avatarIcon, avatarColor);
+        } catch { /* cosmetic — ignore */ }
       }
       setName("");
       setRole("");
@@ -592,7 +605,9 @@ export function CreateAgentModal({
                           Account & Harness
                         </label>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {accountOptions.map((option) => {
+                            {/* Only show harnesses that are actually available:
+                                connected OAuth (Claude/Codex) + active AI-Accounts. */}
+                            {accountOptions.filter((o) => o.connected).map((option) => {
                               const Icon = option.mode === "codex_cli" ? Sparkles : option.mode === "claude_code" ? Zap : Plug;
                               const selected = selectedAccountKey === option.id;
                               return (
@@ -700,8 +715,53 @@ export function CreateAgentModal({
                         />
                       </div>
 
-                      {/* ===== CUSTOM LLM FIELDS (hidden in simple mode) ===== */}
-                      {!simpleMode && mode === "custom_llm" && aiAccountId === null && (
+                      {/* Symbol & Farbe */}
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Symbol &amp; Farbe
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <AgentAvatar config={{ avatar: { icon: avatarIcon, color: avatarColor } }} />
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(AVATAR_ICONS).map(([n, Icon]) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setAvatarIcon(n)}
+                                className={cn(
+                                  "flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
+                                  avatarIcon === n
+                                    ? "border-primary/50 bg-primary/10"
+                                    : "border-transparent hover:bg-foreground/[0.06]",
+                                )}
+                                title={n}
+                              >
+                                <Icon className="h-3.5 w-3.5" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {Object.entries(AVATAR_COLORS).map(([n, c]) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setAvatarColor(n)}
+                              className={cn(
+                                "h-5 w-5 rounded-full transition-all",
+                                c.dot,
+                                avatarColor === n
+                                  ? "ring-2 ring-offset-2 ring-offset-background ring-foreground/40"
+                                  : "",
+                              )}
+                              title={n}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* ===== CUSTOM LLM FIELDS (admins only; users pick an AI-Account) ===== */}
+                      {!simpleMode && isAdmin && mode === "custom_llm" && aiAccountId === null && (
                         <>
                           {/* Provider */}
                           <div>

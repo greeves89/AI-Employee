@@ -48,6 +48,9 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         max_turns=settings.max_turns,
         max_agents=settings.max_agents,
         registration_open=settings.registration_open,
+        sso_only_login=settings.sso_only_login,
+        require_user_approval=settings.require_user_approval,
+        revoke_msgraph_on_logout=settings.revoke_msgraph_on_logout,
         # Provider info
         model_provider=settings.model_provider,
         has_bedrock=bool(settings.aws_access_key_id and settings.aws_secret_access_key),
@@ -61,6 +64,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         has_google_oauth=bool(settings.oauth_google_client_id),
         has_microsoft_oauth=bool(settings.oauth_microsoft_client_id),
         has_apple_oauth=bool(settings.oauth_apple_client_id),
+        msgraph_mcp_external_enabled=(await svc.get("msgraph_mcp_external_enabled") or "false").lower() in ("true", "1", "yes"),
         # Lifecycle
         agent_idle_timeout_minutes=int(await svc.get("agent_idle_timeout_minutes") or "30"),
         # Improvement engine thresholds
@@ -70,6 +74,9 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         improvement_min_skill_usages=int(await svc.get("improvement_min_skill_usages") or "5"),
         improvement_skill_threshold=float(await svc.get("improvement_skill_threshold") or "3.0"),
         improvement_analysis_interval=int(await svc.get("improvement_analysis_interval") or "3600"),
+        meeting_planner_plan_id=await svc.get("meeting_planner_plan_id") or "",
+        meeting_moderator_ai_account_id=await svc.get("meeting_moderator_ai_account_id") or "",
+        dreaming_enabled=(await svc.get("dreaming_enabled") or "false").lower() in ("true", "1", "yes"),
     )
 
 
@@ -80,6 +87,9 @@ _FIELD_MAP: dict[str, str] = {
     "max_turns": "max_turns",
     "max_agents": "max_agents",
     "registration_open": "registration_open",
+    "sso_only_login": "sso_only_login",
+    "require_user_approval": "require_user_approval",
+    "revoke_msgraph_on_logout": "revoke_msgraph_on_logout",
     "anthropic_api_key": "anthropic_api_key",
     "aws_access_key_id": "aws_access_key_id",
     "aws_secret_access_key": "aws_secret_access_key",
@@ -162,11 +172,31 @@ async def update_settings(
         "voice_stt_provider", "voice_tts_provider", "voice_tts_voice",
         "voice_llm_model", "voice_language",
         "voice_openai_api_key", "voice_elevenlabs_api_key",
+        "voice_azure_speech_key", "voice_azure_speech_region",
     ]
     for field_name in _VOICE_FIELDS:
         value = getattr(data, field_name, None)
         if value is not None:
             await svc.set(field_name, str(value))
+
+    # On-prem Exchange (EWS) connection config — stored DB-only (read by the MCP
+    # transport via SettingsService); not mirrored into the config singleton.
+    _EXCHANGE_FIELDS = [
+        "exchange_server_url", "exchange_auth_mode",
+        "exchange_service_account_user", "exchange_service_account_password",
+        "exchange_tenant_id",
+        "meeting_planner_plan_id",
+        "meeting_moderator_ai_account_id",
+    ]
+    for field_name in _EXCHANGE_FIELDS:
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
+    if data.exchange_mcp_external_enabled is not None:
+        await svc.set("exchange_mcp_external_enabled",
+                      "true" if data.exchange_mcp_external_enabled else "false")
+    if data.dreaming_enabled is not None:
+        await svc.set("dreaming_enabled", "true" if data.dreaming_enabled else "false")
 
     await db.commit()
     return {"status": "updated"}
@@ -183,7 +213,8 @@ async def get_voice_settings(
     # Currently only edge_tts exposes a curated voice list synchronously;
     # ElevenLabs voices are fetched on-demand by the frontend when that
     # provider is selected (requires an API key call).
-    voices = EDGE_VOICES if cfg["tts_provider"] == "edge_tts" else []
+    # Edge and Azure Speech share the same neural-voice IDs → reuse the list.
+    voices = EDGE_VOICES if cfg["tts_provider"] in ("edge_tts", "azure_speech") else []
     return VoiceSettings(
         stt_provider=cfg["stt_provider"],
         tts_provider=cfg["tts_provider"],
@@ -196,6 +227,8 @@ async def get_voice_settings(
         available_voices=voices,
         has_openai_key=cfg["has_openai_key"],
         has_elevenlabs_key=cfg["has_elevenlabs_key"],
+        has_azure_speech_key=cfg.get("has_azure_speech_key", False),
+        azure_speech_region=cfg.get("azure_speech_region", ""),
     )
 
 
@@ -210,12 +243,12 @@ async def get_agent_mount_catalog(
     Non-admin sees only labels granted via user_mount_access, with the
     grant's `mode` (which may be downgraded to "ro" from the catalog's "rw").
     """
-    from app.core.mounts import parse_mount_catalog
+    from app.core.mounts import get_effective_catalog
     from app.models.user import UserRole
     from app.models.user_mount_access import UserMountAccess
     from sqlalchemy import select
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    catalog = await get_effective_catalog(db)
 
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         # Admin: full catalog
@@ -226,10 +259,12 @@ async def get_agent_mount_catalog(
             ]
         }
 
-    # Non-admin: intersect with grants
+    # Non-admin: a label is available if granted per-user (user_mount_access) OR
+    # via the user's group/role (custom_role.permissions.mount_labels). The two
+    # are a UNION — group grant + manual per-user grant.
     from app.core.permissions import get_effective_permissions
     perms = await get_effective_permissions(user, db)
-    role_mount_labels = perms.get("mount_labels")
+    role_mount_labels = set(perms.get("mount_labels") or [])
 
     grants = (await db.execute(
         select(UserMountAccess).where(UserMountAccess.user_id == user.id)
@@ -238,12 +273,16 @@ async def get_agent_mount_catalog(
 
     out = []
     for label, entry in catalog.items():
-        if label not in grant_by_label:
+        user_mode = grant_by_label.get(label)
+        role_granted = label in role_mount_labels
+        if user_mode is None and not role_granted:
             continue
-        if role_mount_labels is not None and label not in role_mount_labels:
-            continue
-        # Effective mode = stricter of catalog mode and grant mode (rw vs ro → ro wins)
-        eff_mode = "ro" if "ro" in (entry.mode, grant_by_label[label]) else "rw"
+        # Per-user grant mode is stricter-capped against the catalog; a pure group
+        # grant uses the catalog's default mode for the mount/brain.
+        if user_mode is not None:
+            eff_mode = "ro" if "ro" in (entry.mode, user_mode) else "rw"
+        else:
+            eff_mode = entry.mode
         out.append({"label": label, "container_path": entry.container_path, "mode": eff_mode})
     return {"mounts": out}
 
@@ -296,7 +335,8 @@ async def set_user_mount_access(
     if not isinstance(new_grants, list):
         raise HTTPException(status_code=422, detail="grants must be a list")
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    from app.core.mounts import get_effective_catalog
+    catalog = await get_effective_catalog(db)
     valid_labels = set(catalog.keys())
 
     # Validate
@@ -363,3 +403,30 @@ async def set_idle_stop_max(
         db.add(PlatformSettings(key="max_idle_minutes", value=str(minutes)))
     await db.commit()
     return {"max_idle_minutes": minutes}
+
+
+@router.put("/msgraph-mcp-external")
+async def set_msgraph_mcp_external(
+    body: dict,
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: expose the MS Graph MCP server to external LLM clients (OpenWebUI).
+
+    Refuses to enable without a configured Microsoft app registration, so the
+    toggle can never be switched on into a dead end. Takes effect immediately
+    (live ``settings`` update) and persists across restarts.
+    """
+    from fastapi import HTTPException
+
+    enable = bool(body.get("enabled", False))
+    if enable and not settings.oauth_microsoft_client_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Configure the Microsoft app registration (OAUTH_MICROSOFT_CLIENT_ID) first.",
+        )
+    svc = SettingsService(db)
+    await svc.set("msgraph_mcp_external_enabled", "true" if enable else "false")
+    await db.commit()  # SettingsService.set() does not commit; persist explicitly
+    settings.msgraph_mcp_external_enabled = enable  # live effect, no restart needed
+    return {"msgraph_mcp_external_enabled": enable}

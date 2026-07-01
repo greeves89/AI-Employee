@@ -1,6 +1,8 @@
 """Meeting Room model — group chat between 3-4 agents with round-robin messaging."""
 
-from sqlalchemy import String, Text, Integer, Boolean
+from datetime import datetime
+
+from sqlalchemy import String, Text, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +30,14 @@ class MeetingRoom(Base, TimestampMixin):
     stages_config: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
     # Whether a virtual moderator directs each turn
     use_moderator: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Per-meeting moderator LLM: AI-Account id the moderator uses (None = global default)
+    moderator_ai_account_id: Mapped[str | None] = mapped_column(String(36), nullable=True, default=None)
+    # Follow-up auto-start: this (idle) room starts when all action-item TODOs of the
+    # parent meeting are completed (event-based) — scheduled_for is only the safety cap
+    # (start no later than this, even if tasks aren't all done).
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    # Parent meeting id — the follow-up waits for THAT meeting's assigned TODOs to finish.
+    parent_room_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None, index=True)
     # Message history stored as JSONB array
     messages: Mapped[list] = mapped_column(JSONB, default=list)
     # Creator

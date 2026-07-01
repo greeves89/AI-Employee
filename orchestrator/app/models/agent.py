@@ -38,6 +38,12 @@ class Agent(Base, TimestampMixin):
     template_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("agent_templates.id"), nullable=True, index=True
     )
+    # When this agent is a distributed CLONE of a "trained" source agent, this
+    # points at the original. Each clone is a fully independent agent (own
+    # container/workspace, owned by the target user) — never a shared instance.
+    source_agent_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Optional link to a reusable, admin-managed AI model account.
     # When set, the agent uses that account's provider/credentials/model.
     ai_account_id: Mapped[int | None] = mapped_column(

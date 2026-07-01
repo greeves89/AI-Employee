@@ -5,7 +5,9 @@ Permissions JSON shape:
   "max_agents": int | null,            # null = unlimited
   "template_ids": int[] | null,        # null = all templates allowed
   "llm_providers": string[] | null,    # null = all providers allowed
-  "mount_labels": string[] | null,     # null = inherits user_mount_access only
+  "mount_labels": string[] | null,     # null = inherits user_mount_access only; listed = GRANTED to the group (union with per-user grants)
+  "ai_account_ids": int[] | null,      # null = all AI accounts usable; listed = only these
+  "secret_ids": int[] | null,          # null = all secrets usable; listed = only these
   "url_host_patterns": string[] | null,# null = no extra restrictions
   "menu_paths": string[] | null        # null = all menus visible
 }

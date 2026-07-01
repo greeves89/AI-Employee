@@ -2,10 +2,11 @@
 
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, MessageSquare, Users, X, ArrowRight } from "lucide-react";
+import { Bot, MessageSquare, Users, X, ArrowRight, Crown } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import type { AgentTeam } from "@/lib/api";
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -115,6 +116,16 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [bubbles, setBubbles] = useState<ApiBubble[]>([]);
   const [messageCount, setMessageCount] = useState(0);
   const [timeFilter, setTimeFilter] = useState(60); // minutes
+  const [teams, setTeams] = useState<AgentTeam[]>([]);
+
+  const [delegations, setDelegations] = useState<{ from: string; to: string; count: number; last_title: string }[]>([]);
+
+  // Load teams so the network can be grouped by team (PR #256)
+  useEffect(() => {
+    let alive = true;
+    api.getTeams().then((d) => { if (alive) setTeams(d.teams || []); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // Conversation modal
   const [convoOpen, setConvoOpen] = useState(false);
@@ -152,6 +163,12 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     } catch {
       // API might not be available yet
     }
+    try {
+      const del = await api.getDelegations(timeFilter);
+      setDelegations(del.edges);
+    } catch {
+      // delegations endpoint might not be available yet
+    }
   }, [timeFilter]);
 
   useEffect(() => {
@@ -165,7 +182,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     function measure() {
       const el = document.getElementById("network-container");
       if (el) {
-        setContainerSize({ w: el.clientWidth, h: Math.max(el.clientHeight, 520) });
+        setContainerSize({ w: el.clientWidth, h: Math.max(el.clientHeight, 620) });
       }
     }
     measure();
@@ -184,16 +201,75 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     return map;
   }, [agents]);
 
-  // Calculate circular positions (scales with agent count)
-  const positions = useMemo(() => {
-    return agents.map((_, i) => {
-      const angle = (2 * Math.PI * i) / agents.length - Math.PI / 2;
-      return {
-        x: cx + radius * Math.cos(angle),
-        y: cy + radius * Math.sin(angle),
-      };
+  // Team grouping: lead set + groups (one per team present, plus an ungrouped bucket)
+  const { leadIds, groups, teamOf } = useMemo(() => {
+    const teamOf: Record<string, AgentTeam> = {};
+    const leads = new Set<string>();
+    for (const t of teams) {
+      if (t.lead_agent_id) leads.add(t.lead_agent_id);
+      for (const m of t.member_agent_ids) if (!teamOf[m]) teamOf[m] = t;
+    }
+    const byKey: Record<string, { key: string; name: string; leadId: string | null; indices: number[] }> = {};
+    agents.forEach((a, i) => {
+      const t = teamOf[a.id];
+      const key = t ? t.id : "__none__";
+      if (!byKey[key]) byKey[key] = { key, name: t ? t.name : "Ohne Team", leadId: t ? t.lead_agent_id : null, indices: [] };
+      byKey[key].indices.push(i);
     });
-  }, [agents.length, cx, cy, radius]);
+    return { leadIds: leads, groups: Object.values(byKey), teamOf };
+  }, [teams, agents]);
+
+  // Phase 3 — cross-team lead messaging: a connection counts when the two agents
+  // sit in DIFFERENT teams and at least one endpoint is a team lead (inter-team
+  // traffic routes through leads). These edges get their own emerald styling so
+  // "who talked to the other team's lead" is visible at a glance.
+  const isCrossTeamLead = useMemo(() => {
+    return (fromId: string, toId: string) => {
+      const ta = teamOf[fromId];
+      const tb = teamOf[toId];
+      if (!ta || !tb || ta.id === tb.id) return false;
+      return leadIds.has(fromId) || leadIds.has(toId);
+    };
+  }, [teamOf, leadIds]);
+
+  // Positions: clustered per team (lead centered, members ringed). Falls back to a
+  // single circle when there are no teams, so nothing breaks without the feature.
+  const { positions, teamRegions } = useMemo(() => {
+    const pos: { x: number; y: number }[] = new Array(agents.length);
+    const regions: { name: string; cx: number; cy: number; r: number }[] = [];
+    if (teams.length === 0 || groups.length === 0) {
+      agents.forEach((_, i) => {
+        const angle = (2 * Math.PI * i) / agents.length - Math.PI / 2;
+        pos[i] = { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
+      });
+      return { positions: pos, teamRegions: regions };
+    }
+    const G = groups.length;
+    const bound = Math.min(cx, cy) - 50;
+    const clusterRing = G <= 1 ? 0 : bound * 0.52;
+    groups.forEach((g, gi) => {
+      const ang = (2 * Math.PI * gi) / G - Math.PI / 2;
+      const gc = G <= 1
+        ? { x: cx, y: cy }
+        : { x: cx + clusterRing * Math.cos(ang), y: cy + clusterRing * Math.sin(ang) };
+      // All team members evenly on a ring (lead is marked by the crown, not centered)
+      // so nodes never stack on top of each other; ring grows with member count.
+      const idxs = g.indices;
+      const n = idxs.length;
+      const capR = G <= 1 ? bound * 0.7 : bound * 0.34;
+      const memR = n <= 1 ? 0 : Math.min(capR, Math.max(150, 52 * n));
+      if (n === 1) {
+        pos[idxs[0]] = { x: gc.x, y: gc.y };
+      } else {
+        idxs.forEach((idx, k) => {
+          const a = (2 * Math.PI * k) / n - Math.PI / 2;
+          pos[idx] = { x: gc.x + memR * Math.cos(a), y: gc.y + memR * Math.sin(a) };
+        });
+      }
+      regions.push({ name: g.name, cx: gc.x, cy: gc.y, r: (memR || 60) + 55 });
+    });
+    return { positions: pos, teamRegions: regions };
+  }, [agents, teams.length, groups, agentIndexMap, cx, cy]);
 
   // Map API connections to position indices
   const mappedConnections = useMemo(() => {
@@ -203,9 +279,17 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         toIdx: agentIndexMap[conn.to],
         count: conn.count,
         active: true,
+        crossTeamLead: isCrossTeamLead(conn.from, conn.to),
       }))
       .filter((c) => c.fromIdx !== undefined && c.toIdx !== undefined);
-  }, [connections, agentIndexMap]);
+  }, [connections, agentIndexMap, isCrossTeamLead]);
+
+  // Delegation edges (directional: delegator -> assignee)
+  const mappedDelegations = useMemo(() => {
+    return delegations
+      .map((d) => ({ fromIdx: agentIndexMap[d.from], toIdx: agentIndexMap[d.to], count: d.count, title: d.last_title }))
+      .filter((d) => d.fromIdx !== undefined && d.toIdx !== undefined);
+  }, [delegations, agentIndexMap]);
 
   // One bubble per connection — the LATEST message only
   const mappedBubbles = useMemo(() => {
@@ -271,14 +355,14 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         ))}
       </div>
       <span className="text-[10px] text-muted-foreground/50">
-        {messageCount} Nachrichten · {connections.length} Verbindungen
+        {messageCount} Nachrichten · {connections.length} Verbindungen{teams.length > 0 ? ` · ${teams.length} Team${teams.length !== 1 ? "s" : ""}` : ""}
       </span>
     </div>
 
     <div
       id="network-container"
       className="relative w-full rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm overflow-hidden"
-      style={{ minHeight: 520 }}
+      style={{ minHeight: 620 }}
     >
       {/* Background grid */}
       <div
@@ -288,6 +372,23 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           backgroundSize: "24px 24px",
         }}
       />
+
+      {/* Edge legend — only lists edge types that are actually present */}
+      <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1 rounded-lg bg-card/80 backdrop-blur-md border border-foreground/[0.08] px-2.5 py-1.5 text-[9px] text-muted-foreground shadow">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-[2px] w-4 rounded-full" style={{ background: "rgb(99,102,241)" }} /> Nachrichten
+        </div>
+        {mappedDelegations.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-[2px] w-4 rounded-full" style={{ background: "rgb(251,191,36)" }} /> Delegierte Tasks
+          </div>
+        )}
+        {mappedConnections.some((c) => c.crossTeamLead) && (
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-[2px] w-4 rounded-full" style={{ background: "rgb(52,211,153)" }} /> <span className="text-emerald-400">♛</span> Cross-Team → Lead
+          </div>
+        )}
+      </div>
 
       {/* SVG layer */}
       <svg
@@ -310,7 +411,18 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
             <stop offset="0%" stopColor="rgb(165,180,252)" stopOpacity={1} />
             <stop offset="100%" stopColor="rgb(99,102,241)" stopOpacity={0} />
           </radialGradient>
+          <marker id="delegArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(251,191,36)" fillOpacity={0.85} />
+          </marker>
         </defs>
+
+        {/* Team boundaries — one soft ring + label per team (PR #256 grouping) */}
+        {teamRegions.map((tr, i) => (
+          <g key={`team-${i}`}>
+            <circle cx={tr.cx} cy={tr.cy} r={tr.r} fill="rgba(139,92,246,0.05)" stroke="rgba(139,92,246,0.28)" strokeWidth={1.2} strokeDasharray="7 7" />
+            <text x={tr.cx} y={tr.cy - tr.r + 18} textAnchor="middle" className="text-[12px] font-semibold" fill="rgba(196,181,253,0.95)">{tr.name}</text>
+          </g>
+        ))}
 
         {/* Connection lines (from real data) */}
         {mappedConnections.map((conn, i) => {
@@ -344,9 +456,9 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               <motion.path
                 d={pathD}
                 fill="none"
-                stroke="url(#lineGradientActive)"
-                strokeWidth={isHighlighted ? strokeW + 1 : strokeW}
-                strokeOpacity={isHighlighted ? 1 : 0.6}
+                stroke={conn.crossTeamLead ? "rgb(52,211,153)" : "url(#lineGradientActive)"}
+                strokeWidth={conn.crossTeamLead ? (isHighlighted ? strokeW + 1.5 : strokeW + 0.5) : (isHighlighted ? strokeW + 1 : strokeW)}
+                strokeOpacity={isHighlighted ? 1 : conn.crossTeamLead ? 0.85 : 0.6}
                 initial={{ pathLength: 0 }}
                 animate={{ pathLength: 1 }}
                 transition={{ duration: 1, delay: i * 0.1, ease: "easeOut" }}
@@ -355,9 +467,9 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               <motion.path
                 d={pathD}
                 fill="none"
-                stroke="rgb(165,180,252)"
+                stroke={conn.crossTeamLead ? "rgb(110,231,183)" : "rgb(165,180,252)"}
                 strokeWidth={1}
-                strokeOpacity={0.4}
+                strokeOpacity={conn.crossTeamLead ? 0.6 : 0.4}
                 strokeDasharray="4 8"
                 initial={{ strokeDashoffset: 0 }}
                 animate={{ strokeDashoffset: -24 }}
@@ -366,12 +478,40 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               {/* Particles */}
               <FlowingParticle x1={from.x} y1={from.y} x2={to.x} y2={to.y} delay={i * 0.6} duration={3} />
               <FlowingParticle x1={from.x} y1={from.y} x2={to.x} y2={to.y} delay={i * 0.6 + 1.5} duration={3} />
-              {/* Message count badge at midpoint */}
+              {/* Message count badge at midpoint — emerald + crown marker for
+                  cross-team lead traffic, indigo otherwise. */}
               <g>
-                <circle cx={ctrlX} cy={ctrlY} r={10} fill="rgba(99,102,241,0.15)" />
+                <circle cx={ctrlX} cy={ctrlY} r={conn.crossTeamLead ? 11 : 10}
+                  fill={conn.crossTeamLead ? "rgba(16,185,129,0.2)" : "rgba(99,102,241,0.15)"}
+                  stroke={conn.crossTeamLead ? "rgba(52,211,153,0.6)" : "none"} strokeWidth={conn.crossTeamLead ? 1 : 0} />
                 <text x={ctrlX} y={ctrlY + 1} textAnchor="middle" dominantBaseline="middle"
-                  className="text-[9px] font-bold" fill="rgb(165,180,252)">{conn.count}</text>
+                  className="text-[9px] font-bold" fill={conn.crossTeamLead ? "rgb(52,211,153)" : "rgb(165,180,252)"}>{conn.count}</text>
+                {conn.crossTeamLead && (
+                  <text x={ctrlX} y={ctrlY - 15} textAnchor="middle" dominantBaseline="middle"
+                    className="text-[10px]" fill="rgb(52,211,153)">♛</text>
+                )}
               </g>
+            </g>
+          );
+        })}
+        {/* Delegation edges — directional task handoffs (delegator -> assignee) */}
+        {mappedDelegations.map((d, i) => {
+          const from = positions[d.fromIdx];
+          const to = positions[d.toIdx];
+          if (!from || !to) return null;
+          const midX = (from.x + to.x) / 2;
+          const midY = (from.y + to.y) / 2;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          // curve the opposite way from the message lines so both stay readable
+          const ctrlX = midX + dy * 0.2;
+          const ctrlY = midY - dx * 0.2;
+          const pathD = `M ${from.x} ${from.y} Q ${ctrlX} ${ctrlY} ${to.x} ${to.y}`;
+          return (
+            <g key={`deleg-${i}`}>
+              <path d={pathD} fill="none" stroke="rgb(251,191,36)" strokeWidth={Math.min(1.5 + d.count * 0.4, 4)} strokeOpacity={0.6} strokeDasharray="2 5" markerEnd="url(#delegArrow)" />
+              <rect x={ctrlX - 8} y={ctrlY - 7} width={16} height={14} rx={4} fill="rgba(251,191,36,0.18)" />
+              <text x={ctrlX} y={ctrlY + 1} textAnchor="middle" dominantBaseline="middle" className="text-[8px] font-bold" fill="rgb(251,191,36)">{d.count}</text>
             </g>
           );
         })}
@@ -453,6 +593,13 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
 
             {/* Status dot */}
             <div className={cn("absolute -bottom-0.5 right-1 h-3 w-3 rounded-full border-2 border-card", colors.dot)} />
+
+            {/* Team-Lead crown */}
+            {leadIds.has(agent.id) && (
+              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-amber-400 grid place-items-center border-2 border-card shadow" title="Team Lead">
+                <Crown className="h-3 w-3 text-amber-950" />
+              </div>
+            )}
 
             {/* Name + connection count */}
             <motion.div
@@ -564,6 +711,14 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-4 rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 opacity-60" />
             <span className="text-[10px] text-muted-foreground">Active link</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-1.5 w-4 rounded-full opacity-80" style={{ backgroundImage: "repeating-linear-gradient(90deg, rgb(251,191,36) 0 3px, transparent 3px 6px)" }} />
+            <span className="text-[10px] text-muted-foreground">Delegation</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Crown className="h-3 w-3 text-amber-400" />
+            <span className="text-[10px] text-muted-foreground">Team-Lead</span>
           </div>
         </div>
       </motion.div>

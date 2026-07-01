@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.55.19"
+LABEL ai-employee.version="1.95.1"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -75,6 +75,7 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
 
 COPY app/ ./app/
+RUN chmod -R a+rX /opt/agent/app/
 
 # Install ai-team CLI helper (allows agents to call orchestrator API)
 COPY scripts/ai-team /usr/local/bin/ai-team

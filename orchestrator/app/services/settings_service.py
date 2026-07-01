@@ -30,8 +30,11 @@ SECRET_KEYS = {
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
+    "voice_azure_speech_key",
     # APNs auth key (.p8 contents)
     "apns_auth_key",
+    # On-prem Exchange: service-account password (basic/NTLM) — secret
+    "exchange_service_account_password",
 }
 
 # All settings keys that can be persisted
@@ -46,13 +49,19 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "foundry_resource",
     "telegram_chat_id",
     "registration_open",
+    "sso_only_login",
+    "require_user_approval",
+    "revoke_msgraph_on_logout",
     # OAuth non-secret fields
+    "oauth_microsoft_tenant_id",
     "oauth_apple_team_id",
     "oauth_apple_key_id",
     # License
     "license_key",
     # Lifecycle configuration
     "agent_idle_timeout_minutes",
+    # Expose MS Graph MCP server to external LLM clients (OpenWebUI)
+    "msgraph_mcp_external_enabled",
     # Improvement engine thresholds
     "improvement_suggestion_model",
     "improvement_min_ratings",
@@ -66,11 +75,26 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "voice_tts_voice",
     "voice_llm_model",
     "voice_language",
+    "voice_azure_speech_region",
     # APNs push config
     "apns_key_id",
     "apns_team_id",
     "apns_bundle_id",
     "apns_sandbox",
+    # On-prem Exchange (EWS) — admin connection config (per-user auth via impersonation)
+    "exchange_server_url",            # e.g. "mail.klinikum-bs.de" (EWS host)
+    "exchange_auth_mode",             # "service_account" | "modern_auth" | "basic"
+    "exchange_service_account_user",  # service-account UPN (service_account mode)
+    "exchange_tenant_id",             # Entra tenant (modern_auth mode)
+    "exchange_mcp_external_enabled",  # expose Exchange MCP to external LLM clients
+    # Meeting → MS Planner: target plan for mirrored action items (empty = off)
+    "meeting_planner_plan_id",
+    # Meeting moderator: AI-Account the moderator agent uses (empty = first available)
+    "meeting_moderator_ai_account_id",
+    # Meeting → generate a real decision doc + slide deck from the result (default off)
+    "meeting_artifact_enabled",
+    # "Dreaming": periodic adaptive user-profile refresh (default off)
+    "dreaming_enabled",
 }
 
 

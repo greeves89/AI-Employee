@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
+# "Dreaming": periodic adaptive user-profile refresh from accumulated memories
+# (heuristic, no LLM cost). Gated by the dreaming_enabled setting (default off).
+_DREAMING_INTERVAL_SECONDS = 3600
 
 
 class SchedulerService:
@@ -35,6 +38,7 @@ class SchedulerService:
         self._feeds_counter = 0
         self._idle_stop_counter = 0
         self._failure_watchdog_last_run: datetime | None = None
+        self._dreaming_counter = 0
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -49,6 +53,12 @@ class SchedulerService:
         while True:
             try:
                 await self._check_due_schedules()
+                try:
+                    started = await self._start_due_followups()
+                    if started:
+                        print(f"[Scheduler] Auto-started {started} follow-up meeting(s)")
+                except Exception as e:
+                    print(f"[Scheduler] Follow-up auto-start error: {e}")
                 self._gc_counter += 30
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
@@ -90,9 +100,97 @@ class SchedulerService:
                         )
                 except Exception as e:
                     print(f"[Scheduler] TrendScan error: {e}")
+                # "Dreaming": refresh adaptive user profiles from memories (gated)
+                self._dreaming_counter += 30
+                if self._dreaming_counter >= _DREAMING_INTERVAL_SECONDS:
+                    self._dreaming_counter = 0
+                    try:
+                        n = await self._run_dreaming()
+                        if n > 0:
+                            print(f"[Scheduler] Dreaming: refreshed {n} user profile(s)")
+                    except Exception as e:
+                        print(f"[Scheduler] Dreaming error: {e}")
             except Exception as e:
                 print(f"[Scheduler] ERROR: {e}")
             await asyncio.sleep(30)
+
+    async def _start_due_followups(self) -> int:
+        """Auto-start idle follow-up meeting rooms — EVENT-BASED: start once the agents
+        have FINISHED their assigned tasks from the parent meeting (the agents reliably
+        complete tasks; they don't always tick the TODOs, so we key on task completion),
+        or, as a safety net, once scheduled_for (the cap) is reached."""
+        from datetime import datetime, timezone
+        from sqlalchemy import select, and_, or_
+        from app.db.session import async_session_factory
+        from app.models.meeting_room import MeetingRoom
+        from app.models.task import Task, TaskStatus
+        from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
+
+        now = datetime.now(timezone.utc)
+        started = 0
+        async with async_session_factory() as db:
+            rows = (await db.execute(
+                select(MeetingRoom).where(and_(
+                    MeetingRoom.state == "idle",
+                    MeetingRoom.is_active == True,
+                    or_(MeetingRoom.parent_room_id.isnot(None), MeetingRoom.scheduled_for.isnot(None)),
+                ))
+            )).scalars().all()
+            for room in rows:
+                if room.id in _running_rooms:
+                    continue
+                cap_due = room.scheduled_for is not None and room.scheduled_for <= now
+                tasks_done = False
+                if room.parent_room_id:
+                    statuses = (await db.execute(
+                        select(Task.status).where(Task.metadata_.op("->>")("room_id") == room.parent_room_id)
+                    )).scalars().all()
+                    # Ready once every assigned meeting task has reached a terminal state
+                    # (COMPLETED/FAILED) — i.e. the agents are done working.
+                    if statuses:
+                        tasks_done = all(s not in (TaskStatus.PENDING, TaskStatus.RUNNING) for s in statuses)
+                if not (cap_due or tasks_done):
+                    continue
+                room.state = "running"
+                room.current_turn = 0
+                room.scheduled_for = None
+                room.parent_room_id = None  # consume so it fires once
+                await db.commit()
+                mod_agent_id = None
+                if room.use_moderator and self.docker:
+                    from app.config import settings as _settings
+                    mod_agent_id = await _start_moderator_container(room.id, self.docker, _settings.redis_url_internal)
+                task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
+                _running_rooms[room.id] = task
+                started += 1
+                reason = "alle Aufgaben erledigt" if tasks_done else "Cap erreicht"
+                print(f"[Scheduler] Auto-started follow-up {room.id} ({reason}): {room.name}")
+        return started
+
+    async def _run_dreaming(self) -> int:
+        """'Dreaming': rebuild each active user's adaptive profile from their
+        accumulated memories (heuristic, no LLM cost). Gated by ``dreaming_enabled``
+        (default off). Per-user failures are isolated — never break the loop."""
+        from app.services.settings_service import SettingsService
+        from app.services.profile_extractor import extract_profile
+        from app.models.agent import Agent
+        async with async_session_factory() as db:
+            enabled = (await SettingsService(db).get("dreaming_enabled")) or ""
+            if enabled.lower() not in ("true", "1", "yes"):
+                return 0
+            rows = await db.execute(
+                select(Agent.user_id).where(Agent.user_id.isnot(None)).distinct()
+            )
+            user_ids = [u for u in rows.scalars().all() if u]
+            n = 0
+            for uid in user_ids:
+                try:
+                    await extract_profile(db, uid)
+                    n += 1
+                except Exception:
+                    logger.warning("Dreaming: profile extract failed for user %s", uid, exc_info=True)
+            await db.commit()
+            return n
 
     async def _gc_expired_tasks(self) -> None:
         """Garbage-collect tasks whose evict_after timestamp has passed.
@@ -196,9 +294,23 @@ class SchedulerService:
             return
 
         # For proactive schedules: always use the latest PROACTIVE_PROMPT from code
-        # so prompt improvements apply immediately to all agents without DB migration
+        # so prompt improvements apply immediately to all agents without DB migration.
+        # Per-agent additions (admin/user editable in the UI) are appended to the
+        # code base — stored as data in agent.config, never duplicating the base.
         is_proactive = schedule.name.startswith("[Proactive]")
-        prompt = PROACTIVE_PROMPT if is_proactive else schedule.prompt
+        if is_proactive:
+            prompt = PROACTIVE_PROMPT
+            extra = await self._proactive_custom_instructions(db, schedule.agent_id)
+            if extra:
+                prompt = (
+                    prompt
+                    + "\n\n## Zusätzliche Anweisungen (vom Nutzer)\n"
+                    + "Diese ergänzen die Schritte oben — befolge sie zusätzlich, "
+                    + "ohne die Basisregeln zu verletzen.\n\n"
+                    + extra
+                )
+        else:
+            prompt = schedule.prompt
 
         task = await router.create_and_route_task(
             title=f"[Scheduled] {schedule.name}",
@@ -219,6 +331,26 @@ class SchedulerService:
             f"next run at {schedule.next_run_at.isoformat()}"
         )
 
+    async def _proactive_custom_instructions(
+        self, db: AsyncSession, agent_id: str | None
+    ) -> str:
+        """Per-agent proactive additions from agent.config['proactive']['custom_instructions'].
+
+        Appended to the code-level PROACTIVE_PROMPT at fire time so the base stays
+        centralized in code (one source of truth) while each agent can carry its own
+        extra instructions as plain data.
+        """
+        if not agent_id:
+            return ""
+        from sqlalchemy import select
+        from app.models.agent import Agent
+
+        result = await db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if not agent:
+            return ""
+        proactive = (agent.config or {}).get("proactive", {}) or {}
+        return (proactive.get("custom_instructions", "") or "").strip()
 
     async def _tick_failure_watchdog(self) -> None:
         """Detect schedules that fired but whose task never reached a terminal
@@ -338,6 +470,20 @@ class SchedulerService:
                 )).scalar_one_or_none()
                 if active_task:
                     print(f"[IdleStop] Skip {agent.id} ({agent.name}) — task {active_task} is still RUNNING")
+                    continue
+
+                # Keep-warm: don't reap an agent that is a participant of a RUNNING meeting —
+                # it idles between its turns but is needed again seconds later (avoids the
+                # stop/restart churn and "[Agent hat nicht geantwortet]").
+                from app.models.meeting_room import MeetingRoom as _MeetingRoom
+                in_meeting = (await db.execute(
+                    select(_MeetingRoom.id).where(
+                        _MeetingRoom.state == "running",
+                        _MeetingRoom.agent_ids.contains([agent.id]),
+                    ).limit(1)
+                )).scalar_one_or_none()
+                if in_meeting:
+                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — active in meeting {in_meeting}")
                     continue
 
                 cfg = agent.config or {}

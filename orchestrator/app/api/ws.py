@@ -127,6 +127,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         return
 
     agent_container_id: str | None = None
+    agent_mode: str = "claude_code"
 
     # Check if agent container is alive before accepting
     if _docker:
@@ -144,6 +145,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     await websocket.close(code=4010, reason="Agent has no container")
                     return
                 agent_container_id = agent.container_id
+                agent_mode = agent.mode or "claude_code"
                 status = _docker.get_container_status(agent.container_id)
                 if status not in ("running", "created"):
                     await websocket.close(code=4010, reason=f"Agent container is {status}")
@@ -631,12 +633,21 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             message_id = uuid.uuid4().hex[:12]
             _pending_message_ids.add(message_id)
             source = str(msg.get("source") or "webapp")
+            # Per-message model override must belong to the agent's harness — a
+            # claude_code agent can't run a GPT model and vice-versa. Drop an
+            # incompatible override so the agent falls back to its own model.
+            override_model = msg.get("model")
+            if override_model:
+                from app.core.model_catalog import is_model_allowed_for_mode
+                if not is_model_allowed_for_mode(agent_mode, override_model):
+                    override_model = None
             chat_payload = json.dumps({
                 "id": message_id,
                 "text": text,
-                "model": msg.get("model"),
+                "model": override_model,
                 "images": images,
                 "source": source,
+                "chat_session_id": _session["id"],
             })
 
             # Save user message to DB
@@ -857,6 +868,27 @@ async def ws_agent_voice(
             pass
 
 
+async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
+    """Agent ids whose notifications a user may receive on the live stream
+    (own + unowned + shared) — same scope as the REST notification endpoints,
+    so the live push never leaks another user's agent notifications."""
+    if not user_id:
+        return set()
+    from sqlalchemy import or_, select
+
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+
+    async with async_session_factory() as db:
+        owned = (await db.execute(
+            select(Agent.id).where(or_(Agent.user_id == user_id, Agent.user_id.is_(None)))
+        )).scalars().all()
+        shared = (await db.execute(
+            select(AgentAccess.agent_id).where(AgentAccess.user_id == user_id)
+        )).scalars().all()
+    return set(owned) | set(shared)
+
+
 @router.websocket("/notifications")
 async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
@@ -868,10 +900,16 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
         return
 
     await websocket.accept()
+    user_id = getattr(websocket.state, "user_id", None)
+    visible = await _notif_visible_agent_ids(user_id)
     pubsub = await _redis.subscribe("notifications:live")
 
     try:
+        ticks = 0
         while True:
+            ticks += 1
+            if ticks % 60 == 0:  # refresh visibility (~30s) to pick up new agents/access
+                visible = await _notif_visible_agent_ids(user_id)
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=0.5
             )
@@ -879,6 +917,13 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
                 data = message["data"]
                 if isinstance(data, bytes):
                     data = data.decode("utf-8")
+                # Scope: only forward notifications for agents this user may see.
+                try:
+                    aid = (json.loads(data).get("data") or {}).get("agent_id")
+                except Exception:
+                    aid = None
+                if aid not in visible:
+                    continue
                 await websocket.send_text(data)
             await asyncio.sleep(0.05)
     except WebSocketDisconnect:

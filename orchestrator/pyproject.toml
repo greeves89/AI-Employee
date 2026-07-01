@@ -26,6 +26,8 @@ dependencies = [
     "edge-tts>=6.1",
     # APNs push — HTTP/2 for the Apple gateway
     "h2>=4.1",
+    # On-prem Exchange MCP — EWS (Exchange Web Services) client
+    "exchangelib>=5.4",
 ]
 
 [build-system]

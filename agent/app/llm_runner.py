@@ -19,20 +19,26 @@ from app.runner_hooks import (
     get_improvement_context,
     get_marketplace_skill_suggestions,
     get_memory_preload,
+    get_mounts_context,
     get_skill_preload,
     get_skills_context,
 )
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolExecutor
 from app.tools.mcp_client import MCPHTTPClient
+# Lazy tool loading (shared with the chat handler) — keeps the per-request tool
+# array under the 128-tool cap that OpenAI/Azure enforce.
+from app.llm_chat_handler import (
+    CORE_TOOL_NAMES, SEARCH_TOOLS_DEF, MAX_ACTIVATED_TOOLS, _search_catalog,
+)
 
 logger = logging.getLogger(__name__)
 
 # Safety upper-bound; actual cap comes from settings.max_turns
 MAX_TURNS_HARD_CAP = 200
 
-# Trigger context compression at this fraction of the model's context window
-COMPACTION_THRESHOLD = 0.75
+# Context compression triggers at context_compressor.effective_threshold_tokens
+# (min of 75% of the model window or an absolute token budget).
 
 TOOL_USAGE_RULES = """
 TOOL USAGE RULES (follow strictly):
@@ -69,7 +75,14 @@ class LLMRunner:
         self._provider: BaseLLMProvider | None = None
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
+        # The executor must call MCP tools on the SAME client that ran discovery —
+        # otherwise its lazily-created client has an empty registry and every MCP
+        # tool call fails with "Unknown MCP tool".
+        self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None
+        # Lazy tool loading: tools activated on demand via search_tools (LRU-capped).
+        # Only CORE + search_tools + these are sent per request → under the 128 cap.
+        self._activated: list[str] = []
         self._context_window: int = 0
 
     def _get_context_window(self) -> int:
@@ -92,10 +105,8 @@ class LLMRunner:
             gaps.append("call skill_rate for the marketplace skill you installed")
         return gaps
 
-    async def _get_tools(self) -> list[dict] | None:
-        """Get combined built-in + MCP tool definitions."""
-        if not settings.llm_tools_enabled:
-            return None
+    async def _get_catalog(self) -> list[dict]:
+        """Full tool catalog (built-in + MCP), cached + searchable by search_tools."""
         if self._all_tools is not None:
             return self._all_tools
         self._all_tools = list(TOOL_DEFINITIONS)
@@ -107,6 +118,37 @@ class LLMRunner:
         except Exception as e:
             logger.warning(f"MCP tool discovery failed: {e}")
         return self._all_tools
+
+    async def _get_tools(self) -> list[dict] | None:
+        """Tools actually SENT to the LLM this turn: CORE set + search_tools +
+        on-demand activated tools. The full catalog (which can exceed 128) is
+        reachable only via search_tools — that's what keeps each request under the
+        OpenAI/Azure 128-tool cap. Identical mechanism to the chat handler."""
+        if not settings.llm_tools_enabled:
+            return None
+        catalog = await self._get_catalog()
+        active = set(self._activated)
+        sent = [t for t in catalog if t["function"]["name"] in CORE_TOOL_NAMES]
+        sent.append(SEARCH_TOOLS_DEF)
+        sent += [t for t in catalog
+                 if t["function"]["name"] in active and t["function"]["name"] not in CORE_TOOL_NAMES]
+        return sent
+
+    def _handle_search_tools(self, query: str) -> str:
+        """Search the catalog and activate the best matches for the next turn."""
+        matches = _search_catalog(self._all_tools or [], query, CORE_TOOL_NAMES | {"search_tools"})
+        if not matches:
+            return f"Keine passenden Tools für '{query}' gefunden. Versuch andere Stichwörter."
+        lines = []
+        for tool in matches:
+            name = tool["function"]["name"]
+            if name in self._activated:
+                self._activated.remove(name)
+            self._activated.append(name)
+            lines.append(f"- {name}: {(tool['function'].get('description') or '')[:160]}")
+        if len(self._activated) > MAX_ACTIVATED_TOOLS:
+            self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
+        return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
@@ -144,13 +186,18 @@ class LLMRunner:
         base_system = base_system + MULTIMODAL_CAPABILITY_NOTE
 
         skills_ctx = get_skills_context()
+        # Host mounts / Second Brain awareness — custom_llm builds its own system
+        # prompt and never reads the instruction file, so inject it here (parity
+        # with the CLI runtimes, which get it via the bundle / CLAUDE.md).
+        mounts_ctx = get_mounts_context()
 
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
-            system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES
+            system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
-            enhanced_prompt = CHAT_STARTUP_PREFIX + prompt
+            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
+            enhanced_prompt = CHAT_STARTUP_PREFIX + marketplace_suggestions + prompt
         else:
             memory_preload = get_memory_preload()
             approval_rules = get_approval_rules_prefix()
@@ -160,6 +207,7 @@ class LLMRunner:
                 + "\n\n"
                 + TOOL_USAGE_RULES
                 + approval_rules
+                + mounts_ctx
                 + memory_preload
                 + improvement_ctx
             )
@@ -197,6 +245,7 @@ class LLMRunner:
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
+                tools = await self._get_tools()  # re-fetch each turn: picks up search_tools activations
 
                 async for event in provider.stream_completion(messages, tools):
                     if event.type == "text_delta":
@@ -303,16 +352,25 @@ class LLMRunner:
                     )
                     break
 
+                # search_tools is handled in-runner (it owns the catalog + activation),
+                # NOT dispatched to the executor.
+                results_map: dict[str, str] = {}
+                for tc in turn_tool_calls:
+                    if tc["name"] == "search_tools":
+                        results_map[tc["id"]] = self._handle_search_tools(
+                            (tc.get("input") or {}).get("query", "")
+                        )
+                _dispatch = [tc for tc in turn_tool_calls if tc["name"] != "search_tools"]
+
                 # Execute tool calls — parallelize concurrent-safe, serialize writes
                 from app.tools.executor import CONCURRENT_SAFE_TOOLS
                 _WRITE_TOOLS = {"write_file", "edit_file", "multi_edit", "bash"}
 
-                concurrent = [tc for tc in turn_tool_calls if tc["name"] in CONCURRENT_SAFE_TOOLS]
-                write_ops = [tc for tc in turn_tool_calls if tc["name"] in _WRITE_TOOLS]
-                other_ops = [tc for tc in turn_tool_calls if tc not in concurrent and tc not in write_ops]
+                concurrent = [tc for tc in _dispatch if tc["name"] in CONCURRENT_SAFE_TOOLS]
+                write_ops = [tc for tc in _dispatch if tc["name"] in _WRITE_TOOLS]
+                other_ops = [tc for tc in _dispatch if tc not in concurrent and tc not in write_ops]
 
                 # Run concurrent-safe tools in parallel (semaphore-capped inside executor)
-                results_map: dict[str, str] = {}
                 if concurrent:
                     parallel_results = await asyncio.gather(
                         *[self._tool_executor.execute(tc["name"], tc["input"]) for tc in concurrent],
@@ -338,12 +396,13 @@ class LLMRunner:
 
                 # Context compression: check after each tool round
                 window = self._get_context_window()
+                threshold = context_compressor.effective_threshold_tokens(window)
                 if total_input_tokens > 0:
-                    usage_pct = total_input_tokens / window
+                    current_tokens = total_input_tokens
                 else:
-                    usage_pct = context_compressor.estimate_tokens(messages) / window
+                    current_tokens = context_compressor.estimate_tokens(messages)
 
-                if usage_pct >= COMPACTION_THRESHOLD:
+                if current_tokens >= threshold:
                     await self.log_publisher.publish(
                         task_id, "system", {"message": "[Context compressing...]"}
                     )
@@ -356,9 +415,9 @@ class LLMRunner:
                         logger.info(f"[Context] Runner layers {applied} applied")
                         total_input_tokens = 0  # Re-measure on next API call
 
-                    # Layer 4: LLM summarization if still over threshold
+                    # Layer 4: rolling summary if still over threshold
                     estimated = context_compressor.estimate_tokens(messages)
-                    if estimated > int(window * COMPACTION_THRESHOLD):
+                    if estimated > threshold:
                         new_msgs = await context_compressor.summarize_messages(
                             messages, provider
                         )

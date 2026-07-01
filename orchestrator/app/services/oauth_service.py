@@ -16,6 +16,7 @@ from app.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.core.oauth_providers import (
     PROVIDERS,
+    apply_tenant,
     get_provider,
     get_provider_client_id,
     get_provider_client_secret,
@@ -89,7 +90,7 @@ class OAuthService:
                 **provider.auth_extra_params,
             }
 
-        return f"{provider.authorization_url}?{urlencode(params)}"
+        return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
 
     async def exchange_code(self, provider_name: str, code: str, state: str) -> OAuthIntegration:
         """Exchange authorization code for tokens, encrypt and store them."""
@@ -134,7 +135,7 @@ class OAuthService:
                 await self.redis.client.delete(verifier_key)
 
                 token_response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "authorization_code",
                         "code": code,
@@ -150,7 +151,7 @@ class OAuthService:
                 )
             else:
                 token_response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "authorization_code",
                         "code": code,
@@ -170,6 +171,18 @@ class OAuthService:
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
 
+        return await self.persist_tokens(provider_name, user_id, token_data)
+
+    async def persist_tokens(
+        self, provider_name: str, user_id: str | None, token_data: dict
+    ) -> OAuthIntegration:
+        """Encrypt + upsert tokens from a finished code exchange.
+
+        Shared by the integration connect flow (exchange_code) AND the SSO login
+        flow (sso_service), so Graph access/refresh tokens are stored in exactly
+        one place regardless of which flow obtained them.
+        """
+        provider = get_provider(provider_name)
         access_token = token_data.get("access_token", "")
         refresh_token = token_data.get("refresh_token")
         expires_in = token_data.get("expires_in")
@@ -199,6 +212,13 @@ class OAuthService:
                 logger.warning("Could not fetch user info for %s: %s", provider_name, e)
 
         provider_enum = OAuthProvider(provider_name)
+        # Global providers (Anthropic, GitHub, …) store a single shared token
+        # with user_id=NULL. The auth-URL endpoint passes the calling user's ID
+        # for all providers, which causes the SELECT to miss the existing row and
+        # triggers a UniqueViolation on re-auth. Normalise here so all callers
+        # behave correctly regardless of what user_id they received.
+        if not _is_per_user(provider_name):
+            user_id = None
         result = await self.db.execute(
             select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
         )
@@ -206,7 +226,9 @@ class OAuthService:
 
         if integration:
             integration.access_token_encrypted = encrypt_token(access_token)
-            integration.refresh_token_encrypted = encrypt_token(refresh_token) if refresh_token else None
+            # Keep an existing refresh token if this exchange didn't return a new one.
+            if refresh_token:
+                integration.refresh_token_encrypted = encrypt_token(refresh_token)
             integration.token_type = token_type
             integration.expires_at = expires_at
             integration.scopes = scope
@@ -265,7 +287,7 @@ class OAuthService:
         async with httpx.AsyncClient() as client:
             if provider.token_exchange_method == "anthropic_oauth":
                 response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "refresh_token",
                         "refresh_token": refresh_token,
@@ -278,7 +300,7 @@ class OAuthService:
                 )
             else:
                 response = await client.post(
-                    provider.token_url,
+                    apply_tenant(provider.token_url),
                     data={
                         "grant_type": "refresh_token",
                         "refresh_token": refresh_token,
@@ -306,6 +328,8 @@ class OAuthService:
     async def store_pat(self, provider_name: str, token: str, user_id: str | None = None) -> OAuthIntegration:
         """Store a Personal Access Token (e.g., GitHub PAT)."""
         provider_enum = OAuthProvider(provider_name)
+        if not _is_per_user(provider_name):
+            user_id = None
         provider = get_provider(provider_name)
         account_label = None
         if provider.userinfo_url:
@@ -374,6 +398,8 @@ class OAuthService:
             raise ValueError("Codex auth.json is missing tokens.access_token")
 
         provider_enum = OAuthProvider(provider_name)
+        if not _is_per_user(provider_name):
+            user_id = None
         result = await self.db.execute(
             select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
         )
@@ -466,6 +492,31 @@ class OAuthService:
                 "auth_type": "auth_json" if is_auth_json_provider else ("pat" if is_pat_provider else "oauth"),
                 "per_user": name in PER_USER_PROVIDERS,
             })
+
+        # On-prem Exchange is NOT an OAuth provider — it's configured by the admin
+        # at the platform level (server URL + auth mode). Surface it as an
+        # available integration once the admin has set the server; per-user auth
+        # happens via impersonation on the user's own email (no OAuth connect).
+        from app.services.settings_service import SettingsService
+        _ssvc = SettingsService(self.db)
+        ex_server = await _ssvc.get("exchange_server_url")
+        ex_mode = (await _ssvc.get("exchange_auth_mode")) or "service_account"
+        ex_connected = bool(ex_server)
+        if ex_mode == "basic":
+            ex_connected = connected.get("exchange_onprem") is not None
+        integrations.append({
+            "provider": "exchange_onprem",
+            "display_name": "Exchange (on-prem)",
+            "icon": "Mail",
+            "description": "On-prem Exchange — Mail & Kalender (benutzerspezifisch via Impersonation)",
+            "connected": ex_connected,
+            "account_label": None,
+            "expires_at": None,
+            "scopes": "",
+            "available": bool(ex_server),
+            "auth_type": "admin",
+            "per_user": True,
+        })
         return integrations
 
     async def get_tokens_for_agent(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:

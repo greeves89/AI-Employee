@@ -566,14 +566,60 @@ async def _init_db_from_models() -> None:
     import subprocess
 
     from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy import text as _sql_text
 
     from app.models import Base  # noqa: F401
 
     engine = create_async_engine(settings.database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
     logger.info("Tables created from SQLAlchemy models")
+
+    # pgvector must ALWAYS be present. The embedding columns are pgvector
+    # `vector(1024)` added via raw-SQL migrations, NOT in the SQLAlchemy models —
+    # so on a fresh DB (create_all + `alembic stamp head` below) they would be
+    # skipped. Ensure the extension + columns + HNSW indexes here, idempotently,
+    # on every startup so semantic search (brain/skill/memory) always works.
+    # Kept in its own transaction so a missing extension can never block startup.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text("CREATE EXTENSION IF NOT EXISTS vector"))
+            for _tbl in ("knowledge_entries", "agent_memories", "skills"):
+                await conn.execute(_sql_text(f"ALTER TABLE {_tbl} ADD COLUMN IF NOT EXISTS embedding vector(1024)"))
+                await conn.execute(_sql_text(
+                    f"CREATE INDEX IF NOT EXISTS ix_{_tbl}_embedding ON {_tbl} USING hnsw (embedding vector_cosine_ops)"
+                ))
+        logger.info("pgvector extension + embedding columns ensured (local bge-m3, 1024-dim)")
+    except Exception as e:
+        logger.warning(f"Could not ensure pgvector/embedding columns: {e}")
+
+    # Second Brain MCP exposure columns: added to the model, but create_all never
+    # ALTERs existing tables — ensure them idempotently so the MCP token endpoints
+    # work on already-provisioned databases without a manual migration.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS mcp_enabled boolean NOT NULL DEFAULT false"
+            ))
+            await conn.execute(_sql_text(
+                "ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS mcp_token_encrypted text"
+            ))
+        logger.info("second_brains MCP columns ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure second_brains MCP columns: {e}")
+
+    # Agent clone origin: distributed copies of a "trained" source agent track it
+    # via agents.source_agent_id. Ensure idempotently (create_all never ALTERs).
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE agents ADD COLUMN IF NOT EXISTS source_agent_id varchar"
+            ))
+        logger.info("agents.source_agent_id ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure agents.source_agent_id: {e}")
+
+    await engine.dispose()
 
     result = subprocess.run(
         ["alembic", "stamp", "head"],
@@ -664,6 +710,12 @@ async def lifespan(app: FastAPI):
     # Validate config on startup
     _validate_config()
 
+    # Mirror WARNING+ logs (redacted) to /shared/platform-errors.log so agents can
+    # read platform errors from the shared volume and help fix the platform.
+    from app.core.platform_error_log import setup_platform_error_log
+    if setup_platform_error_log():
+        logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
+
     # Run Alembic migrations to create/update tables
     # If Alembic fails (fresh DB, broken migration chain), fall back to
     # creating tables directly from SQLAlchemy models + stamp HEAD.
@@ -685,6 +737,41 @@ async def lifespan(app: FastAPI):
     except subprocess.TimeoutExpired:
         logger.warning("Alembic migration timed out, falling back to direct init ...")
         await _init_db_from_models()
+
+    # Ensure the oauth_clients table (built-in MCP authorization server) exists on
+    # every startup, independent of Alembic — no migration ships for it. Idempotent.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS oauth_clients ("
+                "client_id varchar(64) PRIMARY KEY, "
+                "client_secret_hash varchar(128), "
+                "client_name varchar(255), "
+                "redirect_uris text, "
+                "grant_types varchar(255), "
+                "token_endpoint_auth_method varchar(32), "
+                "scope text, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+        logger.info("oauth_clients table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure oauth_clients table: {e}")
+
+    # Ensure users.approved (admin-approval gate). Default true so existing users stay
+    # usable; new self-registered users get false when require_user_approval is on.
+    try:
+        from app.db.session import engine as _eng2
+        from sqlalchemy import text as _txt2
+        async with _eng2.begin() as conn:
+            await conn.execute(_txt2(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS approved boolean NOT NULL DEFAULT true"
+            ))
+        logger.info("users.approved column ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure users.approved: {e}")
 
     # Seed autonomy preset rules (defaults per level into DB if not yet present)
     try:
@@ -737,6 +824,180 @@ async def lifespan(app: FastAPI):
         logger.info(f"Seeded/synced {len(BUILTIN_TEMPLATES)} builtin agent templates")
     except Exception as e:
         logger.warning(f"Failed to seed templates: {e}")
+
+    # Seed builtin skills (feierabend, morning_briefing, daily_log_check)
+    try:
+        from app.db.session import async_session_factory as _sf_skills
+        from app.models.skill import Skill, SkillStatus, SkillCategory
+        from sqlalchemy import select as _sel_skills
+
+        _BUILTIN_SKILLS = [
+            {
+                "name": "feierabend",
+                "description": "End-of-day skill: summarises the daily log, marks open items, updates agent state. Run when the workday ends.",
+                "category": SkillCategory.ROUTINE if hasattr(SkillCategory, "ROUTINE") else "routine",
+                "content": """\
+# Feierabend Skill
+
+Use this at the end of every workday to close out the daily log.
+
+## Steps
+
+1. Read today's daily log:
+```bash
+cat /workspace/daily/$(date +%Y-%m-%d).md 2>/dev/null || echo "(no entries today)"
+```
+
+2. Write a clean summary + open items section **at the bottom** of today's log:
+```bash
+DATE=$(date +%Y-%m-%d)
+cat >> /workspace/daily/${DATE}.md << 'FEIERABEND'
+
+## Summary
+<2-3 sentences: what was accomplished today>
+
+## Open Items
+- [ ] <unfinished task 1>
+- [ ] <unfinished task 2>
+FEIERABEND
+```
+
+3. Update `/workspace/.agent_state.md` — set **Next Steps** to the open items from above.
+
+4. Confirm to the user: "Feierabend! Tageslog unter /workspace/daily/DATE.md abgeschlossen. N offene Punkte für morgen gespeichert."
+
+## Rules
+- Never mark something as done if it wasn't actually completed.
+- If there are no open items, say so explicitly — don't invent tasks.
+- Keep the summary factual and short.
+""",
+            },
+            {
+                "name": "morning_briefing",
+                "description": "Start-of-day skill: reads the last 5 daily logs, lists all open items, and presents a focused briefing for the new day.",
+                "category": SkillCategory.ROUTINE if hasattr(SkillCategory, "ROUTINE") else "routine",
+                "content": """\
+# Morning Briefing Skill
+
+Run this at the start of every workday before taking any user requests.
+
+## Steps
+
+1. Check open items from the last 5 days:
+```bash
+ls /workspace/daily/*.md 2>/dev/null | sort | tail -5 | while read f; do
+  echo "=== $(basename $f) ==="; grep -A 30 "## Open Items" "$f" 2>/dev/null || echo "(no open items)"; echo
+done
+```
+
+2. Read today's knowledge context:
+```bash
+cat /workspace/knowledge.md 2>/dev/null | head -60
+```
+
+3. Call `brain_search` with a query about recent work and priorities.
+
+4. Call `memory_search` with room matching the active channel.
+
+5. Present a compact briefing to the user:
+```
+Guten Morgen! Hier dein Briefing:
+
+**Offene Punkte aus den letzten Tagen:**
+- [ ] <item from day X>
+- [ ] <item from day Y>
+
+**Heutiger Fokus:** <1 sentence based on agent_state.md Next Steps>
+
+Womit sollen wir starten?
+```
+
+## Rules
+- Skip days with no log file (don't error, just continue).
+- List only genuinely open items (not already completed ones).
+- Keep the briefing concise — max 10 open items, group by topic if needed.
+""",
+            },
+            {
+                "name": "secondbrain_lookup",
+                "description": "Second Brain: search the shared department knowledge vault (Markdown under /mnt/brains/*) before answering support/how-to/troubleshooting questions, cite the source, and contribute new learnings back.",
+                "category": SkillCategory.WORKFLOW if hasattr(SkillCategory, "WORKFLOW") else "WORKFLOW",
+                "content": """\
+# Second Brain Lookup Skill
+
+A shared **department knowledge base** may be mounted into this agent as a
+Markdown vault under `/mnt/brains/<name>/` (e.g. `/mnt/brains/it_operations/`).
+It is the single source of truth for department know-how (runbooks, error-code
+fixes, how-tos). Use it whenever a question could be answered from documented
+knowledge — especially support, troubleshooting and "how do I…" questions.
+
+## When to use
+- The user reports an error code (e.g. `x17137`), a device/system problem, or asks "how do I…".
+- Any factual department question that is likely documented.
+
+## 1. Find the vault(s)
+```bash
+ls -d /mnt/brains/*/ 2>/dev/null || echo "(no Second Brain mounted)"
+```
+If none is mounted, answer normally (no department vault assigned to this agent).
+
+## 2. Search FIRST (before answering)
+Grep for the concrete keywords / error code, then read the matches:
+```bash
+Q="x17137"   # the user's error code / keywords
+grep -ril "$Q" /mnt/brains/*/ 2>/dev/null | head
+```
+Open the best matches with `read_file` and answer **from their content**. Always
+**cite the source file** (e.g. "laut `it_operations/Drucker/x17137.md`"). If grep
+finds nothing, broaden the terms (synonyms, German+English) before giving up.
+
+## 3. Contribute back (if you have write access)
+If you learned something new, or fixed a problem that wasn't documented, add or
+update a concise article so the whole department benefits:
+- One `.md` per topic, **Wikimedia-style** folders (`Drucker/`, `Netzwerk/`, `Zugaenge/`).
+- Speaking file names; put error codes / keywords in plain text so grep finds them.
+- Link related articles with `[[Titel]]`.
+- Update the vault's `index.md` to link the new article.
+```bash
+# only if the mount is writable (rw)
+mkdir -p /mnt/brains/it_operations/Drucker
+write_file /mnt/brains/it_operations/Drucker/x17137.md  # title + cause + step-by-step fix
+```
+File history is versioned automatically (local git on the server) — just write
+clean Markdown; you don't need to commit.
+
+## Rules
+- **Search before you answer** — never guess if the vault might hold the answer.
+- Cite the source `.md`. Don't invent file names.
+- Only write if the mount is read-write; never delete others' articles.
+- Keep articles short, factual, and reusable.
+""",
+            },
+        ]
+
+        async with _sf_skills() as db:
+            for skill_data in _BUILTIN_SKILLS:
+                existing = await db.scalar(
+                    _sel_skills(Skill).where(Skill.name == skill_data["name"])
+                )
+                if not existing:
+                    db.add(Skill(
+                        name=skill_data["name"],
+                        description=skill_data["description"],
+                        content=skill_data["content"],
+                        category=skill_data["category"],
+                        status=SkillStatus.ACTIVE,
+                        created_by="builtin",
+                    ))
+                else:
+                    # Always sync builtin skill content
+                    existing.description = skill_data["description"]
+                    existing.content = skill_data["content"]
+                    existing.status = SkillStatus.ACTIVE
+            await db.commit()
+        logger.info(f"Seeded/synced {len(_BUILTIN_SKILLS)} builtin skills")
+    except Exception as e:
+        logger.warning(f"Failed to seed builtin skills: {e}")
 
     # Load persisted settings from DB
     try:
@@ -1044,6 +1305,11 @@ else:
     )
 
 app.include_router(api_router, prefix="/api/v1")
+
+# OAuth discovery documents (RFC 8414 / RFC 9728) MUST live at well-known ROOT
+# paths so MCP clients (e.g. OpenWebUI) can discover the authorization server.
+from app.api.oauth_as import wellknown_router as oauth_wellknown_router
+app.include_router(oauth_wellknown_router)
 
 # Computer-Use bridge WebSocket — mounted at root (not under /api/v1) so
 # the bridge client can connect at ws://host/ws/computer-use/bridge

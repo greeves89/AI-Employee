@@ -16,15 +16,19 @@ type VoiceConfig = {
   available_voices: { id: string; label: string; lang: string }[];
   has_openai_key: boolean;
   has_elevenlabs_key: boolean;
+  has_azure_speech_key?: boolean;
+  azure_speech_region?: string;
 };
 
 const STT_LABELS: Record<string, string> = {
   faster_whisper: "faster-whisper (lokal, kostenlos)",
   openai_whisper: "OpenAI Whisper API",
+  azure_speech: "Azure Speech (Microsoft, STT)",
 };
 const TTS_LABELS: Record<string, string> = {
   edge_tts: "Microsoft Edge-TTS (kostenlos)",
   elevenlabs: "ElevenLabs (premium)",
+  azure_speech: "Azure Speech (Microsoft Neural Voices)",
 };
 const LLM_LABELS: Record<string, string> = {
   "claude-haiku-4-5-20251001": "Claude Haiku 4.5 (schnell, empfohlen)",
@@ -35,6 +39,8 @@ export function VoiceSettings() {
   const [cfg, setCfg] = useState<VoiceConfig | null>(null);
   const [openaiKey, setOpenaiKey] = useState("");
   const [elevenKey, setElevenKey] = useState("");
+  const [azureKey, setAzureKey] = useState("");
+  const [azureRegion, setAzureRegion] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -163,7 +169,7 @@ export function VoiceSettings() {
             </select>
           </Field>
 
-          {cfg.tts_provider === "edge_tts" && cfg.available_voices.length > 0 && (
+          {(cfg.tts_provider === "edge_tts" || cfg.tts_provider === "azure_speech") && cfg.available_voices.length > 0 && (
             <Field label="Stimme">
               <select
                 value={cfg.tts_voice}
@@ -204,6 +210,47 @@ export function VoiceSettings() {
                 >
                   Speichern
                 </button>
+              </div>
+            </Field>
+          )}
+
+          {(cfg.stt_provider === "azure_speech" || cfg.tts_provider === "azure_speech") && (
+            <Field
+              label={`Azure Speech Key + Region ${cfg.has_azure_speech_key ? "(gesetzt)" : ""}`}
+            >
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={azureRegion}
+                  onChange={(e) => setAzureRegion(e.target.value)}
+                  placeholder={cfg.azure_speech_region || "Region, z.B. germanywestcentral"}
+                  className="w-full rounded-md bg-background border border-foreground/10 px-3 py-2 text-sm font-mono"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={azureKey}
+                    onChange={(e) => setAzureKey(e.target.value)}
+                    placeholder={cfg.has_azure_speech_key ? "•••••••• (ändern)" : "Azure Speech Key"}
+                    className="flex-1 rounded-md bg-background border border-foreground/10 px-3 py-2 text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => {
+                      const body: Record<string, unknown> = {};
+                      if (azureKey) body.voice_azure_speech_key = azureKey;
+                      if (azureRegion) body.voice_azure_speech_region = azureRegion;
+                      if (Object.keys(body).length) patch(body);
+                      setAzureKey("");
+                    }}
+                    disabled={(!azureKey && !azureRegion) || saving}
+                    className="rounded-md bg-foreground/[0.06] hover:bg-foreground/[0.10] px-3 text-xs disabled:opacity-40"
+                  >
+                    Speichern
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground/50">
+                  Offizielle Microsoft-Stimmen (gleiche IDs wie Edge) + STT über euren Azure-Speech-Key. Region z.B. germanywestcentral.
+                </p>
               </div>
             </Field>
           )}

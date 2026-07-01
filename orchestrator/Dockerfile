@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl nodejs npm \
+    curl git nodejs npm \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g @openai/codex \
     && apt-get clean && rm -rf /var/lib/apt/lists/*

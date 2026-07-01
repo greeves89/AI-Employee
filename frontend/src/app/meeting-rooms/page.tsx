@@ -25,7 +25,8 @@ import remarkGfm from "remark-gfm";
 import { Header } from "@/components/layout/header";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
-import type { MeetingRoom, Agent } from "@/lib/types";
+import type { MeetingRoom, Agent, AIAccount } from "@/lib/types";
+import type { Team } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const STATE_COLORS: Record<string, string> = {
@@ -41,6 +42,7 @@ export default function MeetingRoomsPage() {
   const toast = useToast();
   const [rooms, setRooms] = useState<MeetingRoom[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -49,12 +51,16 @@ export default function MeetingRoomsPage() {
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [teamOverflow, setTeamOverflow] = useState(false);
   const [maxRounds, setMaxRounds] = useState(5);
   const [creating, setCreating] = useState(false);
   // Advanced settings
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [useStages, setUseStages] = useState(true);
   const [useModerator, setUseModerator] = useState(true);
+  const [moderatorAiAccountId, setModeratorAiAccountId] = useState("");
+  const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
   const [customStages, setCustomStages] = useState([
     { name: "Eröffnung", rounds: 1 },
     { name: "Analyse", rounds: 2 },
@@ -91,6 +97,8 @@ export default function MeetingRoomsPage() {
   useEffect(() => {
     fetchRooms();
     api.getAgents().then((d) => setAgents(d.agents)).catch(() => {});
+    api.listTeams().then((d) => setTeams(d.teams)).catch(() => {});
+    api.listAIAccounts(true).then(setAiAccounts).catch(() => {});
     const interval = setInterval(fetchRooms, 5000);
     return () => clearInterval(interval);
   }, [fetchRooms]);
@@ -118,9 +126,11 @@ export default function MeetingRoomsPage() {
         max_rounds: stages ? stages.reduce((s, r) => s + r.rounds, 0) : maxRounds,
         stages_config: stages,
         use_moderator: useModerator,
+        moderator_ai_account_id: useModerator ? (moderatorAiAccountId || undefined) : undefined,
       });
       setShowCreate(false);
       setName(""); setTopic(""); setSelectedAgents([]);
+      setSelectedTeamId(""); setTeamOverflow(false);
       setMaxRounds(5); setShowAdvanced(false);
       setCustomStages([{ name: "Eröffnung", rounds: 1 }, { name: "Analyse", rounds: 2 }, { name: "Synthese", rounds: 1 }]);
       router.push(`/meeting-rooms/${room.id}`);
@@ -176,6 +186,30 @@ export default function MeetingRoomsPage() {
           ? [...prev, agentId]
           : prev,
     );
+  };
+
+  // Lead of the currently picked team (for the "Lead" badge in the agent list)
+  const selectedTeamLeadId = teams.find((t) => t.id === selectedTeamId)?.lead_agent_id ?? null;
+
+  // Picking a team pre-fills the agent selection with its members (lead first),
+  // filtered to selectable agents and capped at the 6-member meeting limit.
+  const handleSelectTeam = (teamId: string) => {
+    setSelectedTeamId(teamId);
+    if (!teamId) {
+      setTeamOverflow(false);
+      return;
+    }
+    const team = teams.find((t) => t.id === teamId);
+    if (!team) return;
+    const selectable = new Set(runningAgents.map((a) => a.id));
+    const ordered = [
+      ...(team.lead_agent_id && selectable.has(team.lead_agent_id) ? [team.lead_agent_id] : []),
+      ...team.member_agent_ids.filter(
+        (id) => id !== team.lead_agent_id && selectable.has(id),
+      ),
+    ];
+    setTeamOverflow(ordered.length > 6);
+    setSelectedAgents(ordered.slice(0, 6));
   };
 
   const handleSummaryPDF = (room: MeetingRoom) => {
@@ -293,6 +327,27 @@ export default function MeetingRoomsPage() {
                   )}
                 </div>
 
+                {/* Team picker — pre-fills the agent selection below */}
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                    Team auswählen <span className="normal-case">(optional)</span>
+                  </label>
+                  <select
+                    value={selectedTeamId}
+                    onChange={(e) => handleSelectTeam(e.target.value)}
+                    disabled={teams.length === 0}
+                    className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-card px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                  >
+                    <option value="">{teams.length === 0 ? "Keine Teams" : "Kein Team (manuell wählen)"}</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[10px] text-muted-foreground/60">
+                    Ein Team füllt die Agenten-Auswahl vor — du kannst sie danach anpassen.
+                  </p>
+                </div>
+
                 {/* Agents */}
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
@@ -317,10 +372,20 @@ export default function MeetingRoomsPage() {
                         >
                           <Bot className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{agent.name}</span>
+                          {selectedAgents.includes(agent.id) && agent.id === selectedTeamLeadId && (
+                            <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-amber-400">
+                              Lead
+                            </span>
+                          )}
                         </button>
                       ))
                     )}
                   </div>
+                  {teamOverflow && (
+                    <p className="mt-1.5 text-[11px] text-amber-400">
+                      Team hat mehr als 6 Mitglieder — 6 vorausgewählt, bitte anpassen.
+                    </p>
+                  )}
                   {selectedAgents.length > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">{selectedAgents.length} ausgewählt</p>
                   )}
@@ -367,6 +432,26 @@ export default function MeetingRoomsPage() {
                           )} />
                         </button>
                       </div>
+
+                      {/* Moderator-LLM (pro-Meeting-Override) */}
+                      {useModerator && (
+                        <div className="pl-11 -mt-1">
+                          <label className="block text-[11px] text-muted-foreground mb-1">Moderator-LLM</label>
+                          <select
+                            value={moderatorAiAccountId}
+                            onChange={(e) => setModeratorAiAccountId(e.target.value)}
+                            className="w-full rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-sm outline-none focus:border-primary/40"
+                          >
+                            <option value="">Standard (globale Einstellung)</option>
+                            {aiAccounts.map((a) => (
+                              <option key={a.id} value={String(a.id)}>{a.name}</option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-muted-foreground/60 mt-1">
+                            Welches LLM den Moderator antreibt. Leer = globaler Default.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Stages toggle */}
                       <div className="flex items-start justify-between gap-4">
@@ -541,6 +626,13 @@ export default function MeetingRoomsPage() {
                     {room.rounds_completed}/{room.max_rounds} rounds
                   </span>
                 </div>
+
+                {room.scheduled_for && room.state === "idle" && (
+                  <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-400">
+                    <Clock className="h-3.5 w-3.5 shrink-0" />
+                    Folgetermin: startet automatisch, sobald die Aufgaben erledigt sind (spätestens {new Date(room.scheduled_for).toLocaleString("de-DE")})
+                  </div>
+                )}
 
                 <div
                   className="flex items-center gap-2"

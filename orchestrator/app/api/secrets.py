@@ -114,6 +114,17 @@ async def list_secrets(
 ):
     result = await db.execute(select(AgentSecret).order_by(AgentSecret.name))
     secrets = result.scalars().all()
+
+    # Non-admins only see the secrets their group/role allows
+    # (custom_role.permissions.secret_ids; None = all).
+    from app.models.user import UserRole
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        from app.core.permissions import get_effective_permissions
+        perms = await get_effective_permissions(user, db)
+        allowed = perms.get("secret_ids")
+        if allowed is not None:
+            allowed_set = set(allowed)
+            secrets = [s for s in secrets if s.id in allowed_set]
     return {"secrets": [_serialize(s) for s in secrets]}
 
 
@@ -224,6 +235,17 @@ async def assign_secret(
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
+
+    # Non-admins may only assign secrets their group/role allows.
+    from app.models.user import UserRole
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        from app.core.permissions import get_effective_permissions, can_use_secret
+        perms = await get_effective_permissions(user, db)
+        if not can_use_secret(perms, secret_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Dieser Key/Secret ist für deine Gruppe nicht freigegeben.",
+            )
 
     existing = await db.execute(
         select(AgentSecretAssignment).where(

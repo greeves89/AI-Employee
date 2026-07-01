@@ -20,6 +20,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const isPublicPage = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
+  // Kiosk: local-only fullscreen display on the Pi. No auth, no sidebar, no
+  // redirect — rendered immediately. (Reachability is restricted to the device
+  // by Caddy, which 404s /kiosk for tunnel traffic.)
+  if (pathname.startsWith("/kiosk")) {
+    return <>{children}</>;
+  }
+
   // Show loading spinner while checking auth
   if (loading) {
     return (
@@ -66,7 +73,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="ml-[260px] flex-1 min-h-screen">{children}</main>
+      <main className="ml-[260px] flex-1 min-w-0 min-h-screen">{children}</main>
     </div>
   );
 }

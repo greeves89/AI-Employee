@@ -40,10 +40,19 @@ class AnthropicVoiceLLM(VoiceLLMProvider):
         system_prompt: str,
     ) -> AsyncIterator[str]:
         client = self._client()
+        # Cache the system prompt: voice sessions reuse the same prompt across
+        # many turns, so a single ephemeral breakpoint cuts ~90% of system-prompt
+        # input tokens on every turn after the first within the 5-min TTL.
         async with client.messages.stream(
             model=self.model,
             max_tokens=1024,
-            system=system_prompt,
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=messages,
         ) as stream:
             async for text in stream.text_stream:

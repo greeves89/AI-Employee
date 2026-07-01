@@ -16,13 +16,7 @@ from app.config import settings
 from app.log_publisher import LogPublisher
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
-    TASK_STARTUP_PREFIX,
-    get_improvement_context,
-    get_marketplace_skill_suggestions,
-    get_memory_preload,
-    get_skill_preload,
-    get_skills_context,
-    get_user_feedback,
+    compose_prompt_bundle,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,21 +159,14 @@ class CodexAgentRunner:
         self.is_running = True
 
         task_id_line = f"CURRENT_TASK_ID: {task_id}\n\n"
-        if lightweight:
-            enhanced_prompt = task_id_line + prompt
-        else:
-            enhanced_prompt = (
-                task_id_line
-                + TASK_STARTUP_PREFIX
-                + get_memory_preload()
-                + get_user_feedback()
-                + get_skill_preload()
-                + get_skills_context()
-                + get_marketplace_skill_suggestions(prompt[:200])
-                + get_improvement_context()
-                + prompt
-                + SELF_IMPROVEMENT_SUFFIX
-            )
+        # Unified context bundle (shared via runner_hooks) — same blocks as the
+        # Claude and custom_llm runtimes, incl. host mounts / Second Brain awareness.
+        enhanced_prompt = (
+            task_id_line
+            + compose_prompt_bundle(prompt, lightweight)
+            + prompt
+            + SELF_IMPROVEMENT_SUFFIX
+        )
 
         await self.log_publisher.publish(
             task_id, "system", {"message": f"Starting Codex task with model {model}"}
@@ -204,6 +191,7 @@ class CodexAgentRunner:
         stderr_lines: list[str] = []
         text_output: list[str] = []
         result_data: dict = {"status": "completed", "result": ""}
+        completed_seen = False
 
         async def collect_stderr(proc: asyncio.subprocess.Process) -> None:
             if not proc.stderr:
@@ -257,6 +245,7 @@ class CodexAgentRunner:
                     )
 
                 if str(event.get("type", "")).endswith("completed"):
+                    completed_seen = True
                     usage = event.get("usage", {}) if isinstance(event.get("usage"), dict) else {}
                     result_data.update({
                         "input_tokens": usage.get("input_tokens"),
@@ -270,9 +259,19 @@ class CodexAgentRunner:
             result_data["text"] = final_text
 
             if returncode != 0:
-                error = "\n".join(stderr_lines).strip() or f"Codex CLI exited with code {returncode}"
-                result_data = {"status": "error", "error": error}
-                await _publish(self.log_publisher, stream, target_id, "error", {"message": error})
+                stderr_text = "\n".join(stderr_lines).strip()
+                # The Codex CLI runs with stdin=DEVNULL: after finishing its turn it
+                # tries to read more input, hits EOF and prints "Reading additional
+                # input from stdin..." then exits non-zero. That is NOT a task
+                # failure. Treat the run as successful when a completion event was
+                # seen (or the only issue is that benign stdin-EOF after real
+                # output); report an error only for a run that genuinely produced
+                # neither a completion nor any output.
+                benign_stdin = "reading additional input from stdin" in stderr_text.lower()
+                if not (completed_seen or (benign_stdin and final_text.strip())):
+                    error = stderr_text or f"Codex CLI exited with code {returncode}"
+                    result_data = {"status": "error", "error": error}
+                    await _publish(self.log_publisher, stream, target_id, "error", {"message": error})
         except asyncio.CancelledError:
             await self.interrupt()
             result_data = {"status": "cancelled"}
@@ -322,8 +321,128 @@ class CodexChatHandler:
 
 def _codex_env() -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("CODEX_HOME", "/home/agent/.codex")
+    codex_home = env.setdefault("CODEX_HOME", "/home/agent/.codex")
+    _ensure_codex_mcp_config(codex_home, env)
     return env
+
+
+_SAFE_MCP_NAME_RE = __import__("re").compile(r"^[A-Za-z0-9_]+$")
+
+
+def _toml_escape(value: str) -> str:
+    """Escape a value for embedding in a TOML double-quoted string."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _valid_http_url(url: str) -> bool:
+    import urllib.parse
+    try:
+        p = urllib.parse.urlparse(url)
+        return p.scheme in ("http", "https") and bool(p.netloc) and "\n" not in url
+    except Exception:
+        return False
+
+
+def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
+    """Write ~/.codex/config.toml with built-in + custom MCP servers.
+
+    Called once per Codex invocation. Idempotent — overwrites the server
+    sections so new agents or updated CUSTOM_MCP_SERVERS are always current.
+    """
+    import pathlib
+
+    # Restrict directory to owner-only — file will contain AGENT_TOKEN
+    os.makedirs(codex_home, mode=0o700, exist_ok=True)
+    config_path = pathlib.Path(codex_home) / "config.toml"
+
+    orch_url = env.get("ORCHESTRATOR_URL", "http://ai-employee-orchestrator:8000")
+    if not _valid_http_url(orch_url):
+        orch_url = "http://ai-employee-orchestrator:8000"
+    agent_token = env.get("AGENT_TOKEN", "")
+    agent_id = env.get("AGENT_ID", "")
+    agent_name = env.get("AGENT_NAME", "") or agent_id
+    default_model = env.get("DEFAULT_MODEL", "")
+
+    # Built-in AI Employee MCP servers (stdio)
+    builtin_servers = {
+        "brain": "/opt/mcp/brain-server.mjs",
+        "skill": "/opt/mcp/skill-server.mjs",
+        "memory": "/opt/mcp/memory-server.mjs",
+        "notification": "/opt/mcp/notification-server.mjs",
+        "orchestrator": "/opt/mcp/orchestrator-server.mjs",
+        "read_logs": "/opt/mcp/read-logs-server.mjs",
+    }
+
+    lines: list[str] = [
+        '[projects."/workspace"]',
+        'trust_level = "trusted"',
+        "",
+    ]
+
+    # Stdio built-in servers
+    for name, script in builtin_servers.items():
+        if not os.path.exists(script):
+            continue
+        # Codex only exposes the env vars declared in this [env] block to the
+        # MCP server — it does NOT inherit the agent container's environment.
+        # The built-in servers authenticate to the orchestrator with the agent
+        # HMAC token, which is keyed on AGENT_ID; if AGENT_ID is missing the
+        # .mjs servers fall back to "unknown" and every call is rejected (401).
+        server_env = [
+            f"[mcp_servers.{name}.env]",
+            f'ORCHESTRATOR_URL = "{_toml_escape(orch_url)}"',
+            f'AGENT_ID = "{_toml_escape(agent_id)}"',
+            f'AGENT_TOKEN = "{_toml_escape(agent_token)}"',
+        ]
+        if name == "orchestrator":
+            server_env += [
+                f'AGENT_NAME = "{_toml_escape(agent_name)}"',
+                f'DEFAULT_MODEL = "{_toml_escape(default_model)}"',
+            ]
+        lines += [
+            f"[mcp_servers.{name}]",
+            'command = "node"',
+            f'args = ["{script}"]',
+            "",
+            *server_env,
+            "",
+        ]
+
+    # Custom HTTP MCP servers from CUSTOM_MCP_SERVERS env var
+    custom_raw = env.get("CUSTOM_MCP_SERVERS", "")
+    auth_raw = env.get("CUSTOM_MCP_AUTH", "")
+    if custom_raw:
+        try:
+            custom_servers: dict = json.loads(custom_raw)
+            auth_map: dict = json.loads(auth_raw) if auth_raw else {}
+            for srv_name, srv_url in custom_servers.items():
+                safe_name = srv_name.replace("-", "_").replace(" ", "_")
+                if not _SAFE_MCP_NAME_RE.match(safe_name):
+                    logger.warning("Skipping MCP server with unsafe name: %r", srv_name)
+                    continue
+                if not _valid_http_url(srv_url):
+                    logger.warning("Skipping MCP server %r with invalid URL: %r", srv_name, srv_url)
+                    continue
+                lines += [
+                    f"[mcp_servers.{safe_name}]",
+                    f'url = "{_toml_escape(srv_url)}"',
+                ]
+                if srv_name in auth_map:
+                    token_env_var = f"MCP_TOKEN_{safe_name}"
+                    env[token_env_var] = auth_map[srv_name]
+                    lines.append(f'bearer_token_env_var = "{token_env_var}"')
+                lines.append("")
+        except Exception as e:
+            logger.warning("Failed to parse CUSTOM_MCP_SERVERS for Codex config: %s", e)
+
+    # Write with owner-only permissions (0o600) — contains AGENT_TOKEN
+    data = "\n".join(lines).encode()
+    fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+    logger.debug("Written Codex MCP config to %s (%d built-in servers)", config_path, len(builtin_servers))
 
 
 async def _publish(

@@ -79,6 +79,85 @@ async def get_permission_packages(user=Depends(require_auth)):
     return {"packages": packages, "defaults": DEFAULT_PERMISSIONS}
 
 
+@router.get("/models")
+async def get_model_catalog(user=Depends(require_auth)):
+    """Provider/model catalog per harness (mode). The create modal and the
+    per-agent settings render their provider + model dropdowns straight from
+    this — one source of truth instead of hardcoded lists in three UI files."""
+    from app.core.model_catalog import catalog_payload
+    return catalog_payload()
+
+
+@router.get("/logs")
+async def read_agent_logs(
+    target_agent_id: str | None = Query(None),
+    tail: int = Query(200, ge=1, le=1000),
+    since_minutes: int | None = Query(None, ge=1, le=1440),
+    auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """An agent reads container logs to diagnose and improve itself.
+
+    This is the SAFE path for the self-improvement loop — the orchestrator is the
+    only component with docker access; the agent never touches the socket. Scope:
+    an agent always reads its OWN logs; a team lead may also read the logs of its
+    own team members. Output is secret-redacted (app.core.log_redaction) and every
+    read is written to the audit log. tail is capped at 1000 lines.
+    """
+    caller_id = auth["agent_id"]
+    target_id = target_agent_id or caller_id
+
+    # Scope: own logs always; a lead may read its team members' logs.
+    if target_id != caller_id:
+        from app.models.team import Team
+        teams = (await db.execute(select(Team).where(Team.is_active.is_(True)))).scalars().all()
+        allowed = any(
+            t.lead_agent_id == caller_id and target_id in (t.member_agent_ids or [])
+            for t in teams
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Zugriff nur auf eigene Logs — oder als Team-Lead auf die des eigenen Teams.",
+            )
+
+    target = (await db.execute(select(Agent).where(Agent.id == target_id))).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not target.container_id:
+        raise HTTPException(status_code=409, detail="Agent hat keinen laufenden Container")
+
+    from app.core.log_redaction import redact_logs
+    try:
+        raw = docker.get_container_logs(
+            target.container_id,
+            tail=tail,
+            since_seconds=since_minutes * 60 if since_minutes else None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Logs konnten nicht gelesen werden: {e}")
+    logs = redact_logs(raw)
+
+    # Audit trail — who read whose logs, when, how much.
+    from app.models.audit_log import AuditLog, AuditEventType
+    db.add(AuditLog(
+        agent_id=caller_id,
+        event_type=AuditEventType.LOGS_READ.value,
+        command="read_logs",
+        outcome="success",
+        meta={"target_agent_id": target_id, "tail": tail, "since_minutes": since_minutes},
+    ))
+    await db.commit()
+
+    return {
+        "agent_id": target_id,
+        "tail": tail,
+        "since_minutes": since_minutes,
+        "logs": logs,
+    }
+
+
 # --- Team routes (MUST be before /{agent_id} to avoid path conflicts) ---
 
 
@@ -88,10 +167,28 @@ async def get_team_directory(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Get the team directory - all agents with their roles and status."""
+    """Team directory. Users see their accessible agents; an agent sees its own
+    team members + the leads of other teams (all agents when no teams exist)."""
     from app.models.user import UserRole
     agents = await manager.list_agents()
-    if hasattr(user, "role") and user.role != UserRole.ADMIN and not is_agent_principal(user):
+    if is_agent_principal(user):
+        # An agent only sees its OWN team's members + the LEADS of other teams —
+        # not every agent on the platform. If no teams are defined yet, behaviour
+        # is unchanged (the agent still sees all) so nothing breaks pre-teams.
+        from app.models.team import Team
+        teams = (await db.execute(select(Team).where(Team.is_active.is_(True)))).scalars().all()
+        if teams:
+            my_team_members: set[str] = set()
+            other_leads: set[str] = set()
+            for t in teams:
+                members = set(t.member_agent_ids or [])
+                if user.id in members:
+                    my_team_members |= members
+                elif t.lead_agent_id:
+                    other_leads.add(t.lead_agent_id)
+            visible = my_team_members | other_leads | {user.id}
+            agents = [a for a in agents if a.id in visible]
+    elif hasattr(user, "role") and user.role != UserRole.ADMIN:
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
@@ -176,6 +273,53 @@ async def get_agent_messages(
         "messages": recent_bubbles,
         "total": len(messages),
     }
+
+
+@router.get("/team/delegations")
+async def get_agent_delegations(
+    minutes: int = 1440,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delegation edges: tasks one agent handed to another (delegator -> assignee).
+
+    A delegated task carries a parent_task_id; the parent's agent_id is the
+    delegator, the child task's own agent_id is the assignee. Grouped into edges
+    for the agent-network graph.
+    """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select
+    from sqlalchemy.orm import aliased
+    from app.models.task import Task
+
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    Parent = aliased(Task)
+    rows = (await db.execute(
+        select(Parent.agent_id, Task.agent_id, Task.title, Task.created_at)
+        .join(Parent, Task.parent_task_id == Parent.id)
+        .where(
+            Task.created_at >= since,
+            Task.agent_id.is_not(None),
+            Parent.agent_id.is_not(None),
+            Task.agent_id != Parent.agent_id,
+        )
+        .order_by(Task.created_at.desc())
+        .limit(1000)
+    )).all()
+
+    edges: dict[tuple[str, str], dict] = {}
+    for delegator, assignee, title, ts in rows:
+        key = (delegator, assignee)
+        if key not in edges:
+            edges[key] = {
+                "from": delegator,
+                "to": assignee,
+                "count": 0,
+                "last_title": (title or "")[:60],
+                "last_at": ts.isoformat() if ts else None,
+            }
+        edges[key]["count"] += 1
+    return {"edges": list(edges.values()), "total": sum(e["count"] for e in edges.values())}
 
 
 @router.get("/team/conversation")
@@ -293,6 +437,7 @@ async def poll_reply(
 @router.get("/", response_model=AgentListResponse)
 async def list_agents(
     lite: bool = False,
+    scope: str = "own",
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
@@ -300,8 +445,11 @@ async def list_agents(
     from app.models.user import UserRole
 
     agents = await manager.list_agents()
-    # Non-admins only see their own agents (+ unowned + shared via AgentAccess)
-    if user.role != UserRole.ADMIN:
+    # Personal view (default): everyone — INCLUDING admins — sees only their own
+    # agents (+ unowned + shared). The global "all agents" view is the Admin-Konsole,
+    # which passes scope=all (admins only).
+    is_admin = getattr(user, "role", None) == UserRole.ADMIN
+    if not (is_admin and scope == "all"):
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
@@ -364,7 +512,9 @@ async def list_agents(
 @router.post("/", response_model=AgentResponse, status_code=201)
 async def create_agent(
     data: AgentCreate,
-    user=Depends(require_manager),
+    # Any authenticated user may create agents; the per-role max_agents limit
+    # (enforced below) governs how many — VIEWER roles have a limit of 0.
+    user=Depends(require_auth),
     manager: AgentManager = Depends(_get_agent_manager),
     db: AsyncSession = Depends(get_db),
 ):
@@ -402,6 +552,7 @@ async def create_agent(
             from app.core.permissions import (
                 get_effective_permissions,
                 can_use_llm_provider,
+                can_use_ai_account,
             )
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
@@ -418,12 +569,40 @@ async def create_agent(
                         status_code=403,
                         detail=f"Agent-Limit erreicht ({max_agents}). Bitte einen bestehenden Agent löschen.",
                     )
-            # 2) LLM provider
-            llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
-            if not can_use_llm_provider(perms, llm_type):
+            # 2) AI-Account (group/role may restrict which accounts are usable)
+            if not can_use_ai_account(perms, data.ai_account_id):
                 raise HTTPException(
                     status_code=403,
-                    detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                    detail="Dieser AI-Account ist für deine Gruppe nicht freigegeben.",
+                )
+            # 3) LLM provider whitelist — only for the manual/custom path. When a
+            #    (granted) AI-Account is chosen, the account grant is the
+            #    authorization; its provider string (e.g. azure-openai) must NOT be
+            #    re-checked against the role's llm_providers list.
+            if data.ai_account_id is None:
+                llm_type = data.llm_config.provider_type if data.llm_config else account_provider_type
+                if not can_use_llm_provider(perms, llm_type):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
+                    )
+
+        # Guard: the model must belong to the harness that will run it. A
+        # claude_code agent may only use Claude models, a codex_cli agent only
+        # GPT/o-series — otherwise the CLI fails at runtime ("claude model not
+        # supported with a ChatGPT account"). custom_llm is exempt (its model
+        # comes from the account/llm_config). Single source: model_catalog.
+        final_mode = _mode_for_ai_account_provider(account_provider_type, data.mode)
+        if data.ai_account_id is None and data.model:
+            from app.core.model_catalog import is_model_allowed_for_mode, default_model_for_mode
+            if not is_model_allowed_for_mode(final_mode, data.model):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Modell '{data.model}' passt nicht zum Provider "
+                        f"'{final_mode}'. Erlaubt sind z. B. "
+                        f"'{default_model_for_mode(final_mode)}'."
+                    ),
                 )
 
         # Don't set user_id for anonymous (setup mode) users
@@ -433,7 +612,7 @@ async def create_agent(
             integrations=data.integrations, permissions=data.permissions,
             user_id=uid, budget_usd=data.budget_usd,
             budget_exceeded_action=data.budget_exceeded_action,
-            mode=_mode_for_ai_account_provider(account_provider_type, data.mode),
+            mode=final_mode,
             llm_config=data.llm_config.model_dump() if data.llm_config else None,
             ai_account_id=data.ai_account_id,
             browser_mode=data.browser_mode,
@@ -622,6 +801,19 @@ async def update_agent_model(
                 detail=f"Model-Provider '{body.model_provider}' ist für deine Rolle nicht erlaubt.",
             )
         agent = await manager._get_agent(agent_id)
+        # Guard: a claude_code agent may only switch to Claude models, a
+        # codex_cli agent only to GPT/o-series. Prevents mismatching the harness
+        # via settings. custom_llm agents use the AI-account path, not this one.
+        from app.core.model_catalog import is_model_allowed_for_mode, default_model_for_mode
+        if not is_model_allowed_for_mode(agent.mode, body.model):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Modell '{body.model}' passt nicht zum Provider "
+                    f"'{agent.mode}'. Erlaubt sind z. B. "
+                    f"'{default_model_for_mode(agent.mode)}'."
+                ),
+            )
         agent.model = body.model
         config = dict(agent.config or {})
         config["model_provider"] = body.model_provider
@@ -646,6 +838,53 @@ async def update_agent_model(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+class AgentAppearanceUpdate(BaseModel):
+    icon: str | None = None
+    color: str | None = None
+
+
+# Curated lucide icon set + color tokens the UI offers — block arbitrary values
+# (avatar is rendered client-side by mapping these names to lucide components).
+_AVATAR_ICONS = {
+    "Bot", "Cpu", "Brain", "Sparkles", "Rocket", "Briefcase", "Cog",
+    "MessageSquare", "Code", "Database", "Mail", "Calendar", "FileText",
+    "Headphones", "ShieldCheck", "Stethoscope", "FlaskConical", "Bug",
+}
+_AVATAR_COLORS = {
+    "violet", "blue", "emerald", "amber", "rose", "cyan", "fuchsia", "slate", "orange",
+}
+
+
+@router.patch("/{agent_id}/appearance")
+async def update_agent_appearance(
+    agent_id: str,
+    body: AgentAppearanceUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set the agent's custom icon + color (cosmetic — stored in config, no restart)."""
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = dict(agent.config or {})
+        avatar = dict(config.get("avatar") or {})
+        if body.icon is not None:
+            if body.icon and body.icon not in _AVATAR_ICONS:
+                raise HTTPException(status_code=400, detail="Unknown icon")
+            avatar["icon"] = body.icon
+        if body.color is not None:
+            if body.color and body.color not in _AVATAR_COLORS:
+                raise HTTPException(status_code=400, detail="Unknown color")
+            avatar["color"] = body.color
+        config["avatar"] = avatar
+        agent.config = config
+        await db.commit()
+        return {"agent_id": agent_id, "avatar": avatar, "status": "updated"}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 class AgentBudgetUpdate(BaseModel):
     budget_usd: float | None  # None = unlimited
     budget_exceeded_action: BudgetExceededAction | None = None
@@ -659,8 +898,14 @@ async def update_agent_budget(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Set or clear the monthly budget cap + over-budget action (admin or owner)."""
-    await _check_owner(agent_id, user, db)
+    """Set or clear the monthly budget cap + over-budget action.
+
+    Budget is an admin governance control: only admins may set it; owners see it
+    read-only in the agent settings.
+    """
+    from app.models.user import UserRole
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Nur Admins können das Budget festlegen.")
     try:
         agent = await manager._get_agent(agent_id)
         agent.budget_usd = body.budget_usd
@@ -1405,7 +1650,11 @@ async def get_agent_integrations(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        return {"agent_id": agent_id, "integrations": config.get("integrations", [])}
+        return {
+            "agent_id": agent_id,
+            "integrations": config.get("integrations", []),
+            "msgraph_access": (config or {}).get("msgraph_access", "read"),
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -1426,16 +1675,34 @@ async def update_agent_integrations(
         old_integrations = set(config.get("integrations", []))
         new_integrations = body.get("integrations", [])
         config["integrations"] = new_integrations
+
+        # Optional: Microsoft Graph read/write mode for this agent.
+        old_msgraph_access = config.get("msgraph_access", "read")
+        if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
+            config["msgraph_access"] = body["msgraph_access"]
+        msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
+
+        # Optional: on-prem Exchange read/write mode for this agent.
+        old_exchange_access = config.get("exchange_access", "read")
+        if "exchange_access" in body and body["exchange_access"] in ("read", "write"):
+            config["exchange_access"] = body["exchange_access"]
+        exchange_access_changed = config.get("exchange_access", "read") != old_exchange_access
+
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
 
-        # Auto-restart running agents so new tokens are injected
-        if set(new_integrations) != old_integrations and agent.state == AgentState.RUNNING:
+        # Auto-restart running agents so new tokens / access mode are applied
+        if (set(new_integrations) != old_integrations or msgraph_access_changed or exchange_access_changed) and agent.state == AgentState.RUNNING:
             await manager.restart_agent(agent_id)
 
-        return {"agent_id": agent_id, "integrations": config["integrations"]}
+        return {
+            "agent_id": agent_id,
+            "integrations": config["integrations"],
+            "msgraph_access": config.get("msgraph_access", "read"),
+            "exchange_access": config.get("exchange_access", "read"),
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -1526,44 +1793,44 @@ async def update_agent_mounts(
     user_mount_access. Admins can assign any catalog mount.
     """
     await _check_owner(agent_id, user, db)
-    from app.core.mounts import parse_mount_catalog
+    from app.core.mounts import get_effective_catalog
     from app.models.user import UserRole
     from app.models.user_mount_access import UserMountAccess
 
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    # Effective catalog = static env catalog + DB-managed Second Brains, so brains
+    # created in the UI are assignable here too.
+    catalog = await get_effective_catalog(db)
     new_mounts: list[str] = body.get("mounts", [])
     unknown = [m for m in new_mounts if m not in catalog]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
 
-    # Non-admin: enforce per-user grants
+    # Non-admin: a mount is authorized if granted per-user OR via the user's
+    # group/role (custom_role.permissions.mount_labels) — a UNION of both.
     effective_modes: dict[str, str] = {}
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         from app.core.permissions import get_effective_permissions
 
         perms = await get_effective_permissions(user, db)
-        role_mount_labels = perms.get("mount_labels")
-        if role_mount_labels is not None:
-            role_denied = [m for m in new_mounts if m not in role_mount_labels]
-            if role_denied:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Mount(s) not allowed by role: {role_denied}",
-                )
+        role_mount_labels = set(perms.get("mount_labels") or [])
 
         grants = (await db.execute(
             select(UserMountAccess).where(UserMountAccess.user_id == user.id)
         )).scalars().all()
         grant_by_label = {g.mount_label: g.mode for g in grants}
-        granted_labels = set(grant_by_label)
+        granted_labels = set(grant_by_label) | role_mount_labels
         denied = [m for m in new_mounts if m not in granted_labels]
         if denied:
             raise HTTPException(
                 status_code=403,
-                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access in /admin → User → Mount Permissions.",
+                detail=f"Not authorized for mount(s): {denied}. Ask an admin to grant access via your group/role or in /admin → User → Mount Permissions.",
             )
+        # Per-user grant caps the mode; a pure group grant uses the catalog default.
         effective_modes = {
-            label: ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+            label: (
+                ("ro" if "ro" in (catalog[label].mode, grant_by_label[label]) else "rw")
+                if label in grant_by_label else catalog[label].mode
+            )
             for label in new_mounts
         }
     else:
@@ -1597,7 +1864,10 @@ async def update_agent_mounts(
 class ProactiveUpdate(BaseModel):
     enabled: bool = True
     interval_seconds: int = 3600
-    prompt: str | None = None
+    prompt: str | None = None  # legacy/unused: base prompt always lives in code
+    # Per-agent additions appended to the code base prompt at fire time.
+    # None = leave unchanged (toggle/interval-only saves); "" = clear.
+    custom_instructions: str | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -1631,10 +1901,12 @@ async def get_proactive_config(
                     "fail_count": schedule.fail_count,
                 }
 
+        from app.core.agent_manager import PROACTIVE_PROMPT
         return {
             "agent_id": agent_id,
             "proactive": proactive,
             "schedule": schedule_stats,
+            "base_prompt": PROACTIVE_PROMPT,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -1662,14 +1934,21 @@ async def update_proactive_config(
         schedule_id = proactive.get("schedule_id")
         now = datetime.now(tz.utc)
 
+        # Preserve existing custom instructions unless the caller explicitly sends
+        # a new value — toggle/interval-only updates omit it and must not wipe it.
+        existing_custom = (proactive or {}).get("custom_instructions", "")
+        new_custom = (
+            body.custom_instructions
+            if body.custom_instructions is not None
+            else existing_custom
+        )
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
             if schedule:
                 schedule.enabled = body.enabled
                 schedule.interval_seconds = body.interval_seconds
-                if body.prompt:
-                    schedule.prompt = body.prompt
                 if body.enabled:
                     schedule.next_run_at = now + timedelta(seconds=body.interval_seconds)
             else:
@@ -1680,7 +1959,9 @@ async def update_proactive_config(
             schedule = Schedule(
                 id=schedule_id,
                 name=f"[Proactive] {agent.name}",
-                prompt=body.prompt or PROACTIVE_PROMPT,
+                # Base prompt always comes from code at fire time (scheduler);
+                # this stored copy is only a placeholder for the schedule row.
+                prompt=PROACTIVE_PROMPT,
                 interval_seconds=body.interval_seconds,
                 priority=0,
                 agent_id=agent_id,
@@ -1693,6 +1974,7 @@ async def update_proactive_config(
             "enabled": body.enabled,
             "schedule_id": schedule_id,
             "interval_seconds": body.interval_seconds,
+            "custom_instructions": new_custom,
         }
         config["proactive"] = proactive
         agent.config = config

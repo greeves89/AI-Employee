@@ -211,7 +211,11 @@ DEFAULT_CLAUDE_MD = """# Agent System Instructions
 - Workspace: `/workspace/` (persistent across tasks)
 - Shared files: `/shared/` (all agents can read/write)
 - Team directory: `/shared/team.json`
+- **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
+
+## Self-diagnosis
+- To see YOUR OWN recent container logs (e.g. after a failed task/tool call), use the `read_logs` tool. A team lead can also pass a team member's agent id. Use it to find the real error (401, stack trace, missing env) and fix it.
 $MOUNTS_SECTION
 
 ## MCP Tools (IMPORTANT!)
@@ -430,21 +434,59 @@ DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
 """
 
 
-def _build_mounts_section(mount_labels: list[str]) -> str:
-    """Return a CLAUDE.md section listing mounted host directories, or empty string."""
+def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) -> str:
+    """Return a CLAUDE.md section listing mounted host directories, or empty string.
+
+    ``catalog`` should be the effective catalog (env + DB Second Brains). When not
+    provided it falls back to the static env catalog so callers without a DB session
+    still work.
+    """
     if not mount_labels:
         return ""
-    from app.core.mounts import parse_mount_catalog
-    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    if catalog is None:
+        from app.core.mounts import parse_mount_catalog
+        catalog = parse_mount_catalog(settings.agent_mount_catalog)
     lines = ["\n## Host Mounts"]
     lines.append("The following directories from the host are mounted into this container:")
+    has_brain = False
     for label in mount_labels:
         entry = catalog.get(label)
         if entry:
             mode_note = "(read-only)" if entry.mode == "ro" else "(read-write)"
-            lines.append(f"- `{entry.container_path}` — {label} {mode_note}")
+            is_brain = label.startswith("brain-")
+            note = " — shared department Second Brain (Markdown knowledge base)" if is_brain else ""
+            lines.append(f"- `{entry.container_path}` — {label} {mode_note}{note}")
+            has_brain = has_brain or is_brain
     lines.append("\nWhen the user asks about their local files, always check these paths first.")
+    if has_brain:
+        lines.append(
+            "\n### Second Brain lookup (IMPORTANT)\n"
+            "A shared department knowledge base is mounted above (a `brain-*` path under "
+            "`/mnt/brains/`). For support, how-to or troubleshooting questions (e.g. error "
+            "codes like `x17137`), **search it FIRST** before answering: use `grep` for "
+            "keywords/error codes and `read_file` on the matches, then answer from the found "
+            "`.md` content and cite the file. If you learn something new and have read-write "
+            "access, add or update a concise `.md` article (Markdown, `[[wikilinks]]` between "
+            "topics) so the knowledge is preserved for the whole department."
+        )
     return "\n".join(lines)
+
+
+def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
+                      workspace_size_gb: float | None = None) -> str:
+    """Render the agent CLAUDE.md from its template — the SINGLE place that fills
+    its placeholders (workspace soft-quota + host-mounts section). Used by the
+    create / update / restart paths, so the substitution lives in exactly one spot.
+
+    ``workspace_size_gb`` defaults to the global setting; pass a per-agent value to
+    honour an individual agent's quota override (``config["workspace_size_gb"]``).
+    """
+    size = settings.agent_workspace_size_gb if workspace_size_gb is None else workspace_size_gb
+    return (
+        DEFAULT_CLAUDE_MD
+        .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
+        .replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts, catalog))
+    )
 
 
 class AgentManager:
@@ -666,15 +708,50 @@ class AgentManager:
         if agent_mcp_ids is not None:
             servers = [s for s in servers if s.id in agent_mcp_ids]
 
-        mcp_map = {s.name: s.url for s in servers}
+        # Role/group restriction: limit to MCP servers the agent owner's group allows
+        # (custom_role.permissions.mcp_server_ids; None = all). Admins are unrestricted.
+        if agent_id:
+            try:
+                from app.models.agent import Agent as _Ag
+                from app.models.user import User as _U
+                from app.core.permissions import get_effective_permissions
+                ag = await self.db.get(_Ag, agent_id)
+                owner = await self.db.get(_U, ag.user_id) if (ag and ag.user_id) else None
+                if owner:
+                    perms = await get_effective_permissions(owner, self.db)
+                    allowed = perms.get("mcp_server_ids")
+                    if allowed is not None:
+                        allowed_set = set(allowed)
+                        servers = [s for s in servers if s.id in allowed_set]
+            except Exception as e:
+                logger.warning(f"MCP role filter failed for agent {agent_id}: {e}")
 
-        # Auto-inject MS Graph MCP server when agent has microsoft integration
+        mcp_map = {s.name: s.url for s in servers}
+        # Bearer tokens passed alongside so the agent can authenticate per server.
+        auth_map = {
+            s.name: decrypt_token(s.auth_token_encrypted)
+            for s in servers if s.auth_token_encrypted
+        }
+
+        # Auto-inject MS Graph MCP server when agent has microsoft integration.
+        # The agent's MCP client authenticates with the agent's HMAC bearer token
+        # (via CUSTOM_MCP_AUTH); without it the msgraph endpoint returns 401.
         if agent_id and agent_integrations and "microsoft" in agent_integrations:
             mcp_map["msgraph"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/msgraph/{agent_id}"
+            auth_map["msgraph"] = make_agent_token(agent_id)
+
+        # Auto-inject the on-prem Exchange MCP when the agent has the exchange
+        # integration. Per-user: the endpoint resolves the agent owner's mailbox.
+        if agent_id and agent_integrations and "exchange_onprem" in agent_integrations:
+            mcp_map["exchange_onprem"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/exchange-onprem/{agent_id}"
+            auth_map["exchange_onprem"] = make_agent_token(agent_id)
 
         if not mcp_map:
             return {}
-        return {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
+        env = {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
+        if auth_map:
+            env["CUSTOM_MCP_AUTH"] = json.dumps(auth_map)
+        return env
 
     async def _get_integration_env(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:
         """Get environment variables for agent integrations (e.g., GitHub token)."""
@@ -748,6 +825,12 @@ class AgentManager:
             mode = self._mode_for_ai_provider(account.provider_type if account else None, mode)
         elif mode == "claude_code" and settings.model_provider == "codex":
             mode = "codex_cli"
+
+        # Last-line defense: never launch a harness with a model it can't run.
+        # e.g. a codex_cli agent with the platform default claude-sonnet-4-6, or
+        # a claude_code agent handed a GPT model. custom_llm is left untouched.
+        from app.core.model_catalog import coerce_model_for_mode
+        model = coerce_model_for_mode(mode, model)
 
         # Resolve the effective LLM config (account takes precedence over inline).
         effective_llm = await self._effective_llm_config(ai_account_id, llm_config, model)
@@ -834,9 +917,7 @@ class AgentManager:
 
         # Initialize workspace files
         agent_mounts = []
-        claude_md = DEFAULT_CLAUDE_MD.replace(
-            "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-        ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
+        claude_md = _render_claude_md(agent_mounts)
         if mode == "claude_code":
             # Claude Code: full CLAUDE.md + knowledge.md
             try:
@@ -862,6 +943,14 @@ class AgentManager:
                 logger.info(f"Initialized AGENT.md + knowledge.md for custom_llm agent {agent_id}")
             except Exception as e:
                 logger.warning(f"Could not initialize agent files: {e}")
+
+        # write_file_in_container writes as root; the agent runs as uid 1000 and MUST be
+        # able to write its own /workspace/knowledge.md (otherwise "save results to
+        # knowledge.md" fails with Permission denied). Hand the workspace to the agent.
+        try:
+            self.docker.exec_in_container(container.id, ["chown", "-R", "1000:1000", "/workspace"], user="root")
+        except Exception as e:
+            logger.warning(f"Could not chown workspace for agent {agent_id}: {e}")
 
         # Update shared team registry
         try:
@@ -1015,6 +1104,8 @@ class AgentManager:
         mode = agent.mode or "claude_code"
         if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
             mode = "codex_cli"
+        from app.core.model_catalog import coerce_model_for_mode
+        model = coerce_model_for_mode(mode, model)
 
         env_vars: dict[str, str] = {
             "AGENT_ID": agent_id,
@@ -1060,8 +1151,8 @@ class AgentManager:
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
-        catalog = parse_mount_catalog(settings.agent_mount_catalog)
+        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
@@ -1094,9 +1185,7 @@ class AgentManager:
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
-            fresh_claude_md = DEFAULT_CLAUDE_MD.replace(
-                "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-            ).replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts))
+            fresh_claude_md = _render_claude_md(agent_mounts, catalog)
             mode = agent.mode or config.get("mode", "claude_code")
             target_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
             self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
@@ -1177,6 +1266,8 @@ class AgentManager:
         mode = agent.mode or "claude_code"
         if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
             mode = "codex_cli"
+        from app.core.model_catalog import coerce_model_for_mode
+        model = coerce_model_for_mode(mode, model)
 
         env_vars: dict[str, str] = {
             "AGENT_ID": agent_id,
@@ -1227,8 +1318,8 @@ class AgentManager:
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import parse_mount_catalog, resolve_agent_mounts, mounts_to_docker_volumes
-        catalog = parse_mount_catalog(settings.agent_mount_catalog)
+        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         container = self.docker.create_container(
@@ -1258,9 +1349,7 @@ class AgentManager:
                 self.docker.write_file_in_container(
                     container.id,
                     "/workspace/CLAUDE.md",
-                    DEFAULT_CLAUDE_MD.replace(
-                        "$AGENT_WORKSPACE_SIZE_GB", str(settings.agent_workspace_size_gb)
-                    ).replace("$MOUNTS_SECTION", _build_mounts_section(_agent_mounts)),
+                    _render_claude_md(_agent_mounts, catalog),
                 )
                 logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
             except Exception as e:

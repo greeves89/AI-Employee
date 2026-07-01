@@ -9,6 +9,8 @@
     "orchestrator": "node orchestrator-server.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0"
+    "@hono/node-server": "^2.0.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "hono": "^4.12.23"
   }
 }

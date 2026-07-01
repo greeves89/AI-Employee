@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 import redis.asyncio as aioredis
@@ -43,21 +43,32 @@ async def _get_bot_token(agent_id: str, db: AsyncSession) -> str:
     return token
 
 
-async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None) -> dict:
+async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None, timeout: int = 30) -> dict:
     """Make a request to the Telegram Bot API."""
     url = f"{TG_API.format(token=token)}/{method}"
-    async with httpx.AsyncClient(timeout=30) as client:
-        if files:
-            resp = await client.post(url, data=data or {}, files=files)
-        else:
-            resp = await client.post(url, json=data or {})
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if files:
+                resp = await client.post(url, data=data or {}, files=files)
+            else:
+                resp = await client.post(url, json=data or {})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"Telegram API timeout after {timeout}s for {method}")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Telegram API connection error: {exc}")
+    try:
         result = resp.json()
-        if not result.get("ok"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
-            )
-        return result.get("result", {})
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram returned non-JSON response (HTTP {resp.status_code})",
+        )
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
+        )
+    return result.get("result", {})
 
 
 # --- Models ---
@@ -176,6 +187,24 @@ class SendAnimationRequest(BaseModel):
     reply_markup: dict | None = None
 
 
+class SendRichMessageRequest(BaseModel):
+    """Bot API 10.1 — sendRichMessage with block-level content.
+
+    blocks: list of RichBlock* objects as defined in the Telegram Bot API 10.1 docs.
+    Passed through as-is so Telegram validates the schema server-side.
+
+    Supported block types (RichBlock*):
+      Paragraph, SectionHeading, Preformatted, Table, List, BlockQuotation,
+      PullQuotation, Collage, Slideshow, Details, Map,
+      Animation, Audio, Photo, Video, VoiceNote, Thinking
+    """
+    chat_id: int | str
+    blocks: list[dict]          # InputRichMessage blocks — raw, forwarded to Telegram
+    reply_markup: dict | None = None
+    reply_to_message_id: int | None = None
+    disable_notification: bool = False
+
+
 # --- Endpoints ---
 
 
@@ -285,6 +314,50 @@ async def send_message(
     return await _tg_request(token, "sendMessage", data)
 
 
+@router.post("/send-rich-message")
+async def send_rich_message(
+    body: SendRichMessageRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a rich message using Telegram Bot API 10.1 sendRichMessage.
+
+    Forwards blocks as InputRichMessage to Telegram unchanged.
+    Telegram validates block types server-side.
+    """
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    data: dict = {
+        "chat_id": body.chat_id,
+        "rich_message": {"blocks": body.blocks},
+    }
+    if body.reply_markup:
+        data["reply_markup"] = body.reply_markup
+    if body.reply_to_message_id:
+        data["reply_to_message_id"] = body.reply_to_message_id
+    if body.disable_notification:
+        data["disable_notification"] = True
+    return await _tg_request(token, "sendRichMessage", data)
+
+
+@router.post("/send-rich-message-draft")
+async def send_rich_message_draft(
+    body: SendRichMessageRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a partial rich message (sendRichMessageDraft) — for progressive rendering."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    data: dict = {
+        "chat_id": body.chat_id,
+        "rich_message": {"blocks": body.blocks},
+    }
+    if body.reply_markup:
+        data["reply_markup"] = body.reply_markup
+    if body.reply_to_message_id:
+        data["reply_to_message_id"] = body.reply_to_message_id
+    return await _tg_request(token, "sendRichMessageDraft", data)
+
+
 @router.post("/send-voice")
 async def send_voice(
     body: SendVoiceRequest,
@@ -326,6 +399,8 @@ async def send_photo(
         return await _tg_request(token, "sendPhoto", data)
     elif body.photo_base64:
         photo_bytes = base64.b64decode(body.photo_base64)
+        if len(photo_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
         data = {"chat_id": str(body.chat_id)}
         if body.caption:
             data["caption"] = body.caption
@@ -334,7 +409,7 @@ async def send_photo(
         if body.reply_markup:
             data["reply_markup"] = json.dumps(body.reply_markup)
         files = {"photo": ("photo.jpg", photo_bytes, "image/jpeg")}
-        return await _tg_request(token, "sendPhoto", data, files=files)
+        return await _tg_request(token, "sendPhoto", data, files=files, timeout=120)
     else:
         raise HTTPException(status_code=400, detail="Provide photo_base64 or photo_url")
 
@@ -359,6 +434,129 @@ async def send_document(
     return await _tg_request(token, "sendDocument", data, files=files)
 
 
+@router.post("/send-document-upload")
+async def send_document_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a document via multipart upload (no base64, supports up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    fname = filename or file.filename or "file"
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    files = {"document": (fname, content, file.content_type or "application/octet-stream")}
+    return await _tg_request(token, "sendDocument", data, files=files, timeout=120)
+
+
+@router.post("/send-audio-upload")
+async def send_audio_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    title: str = Form(None),
+    performer: str = Form(None),
+    duration: int = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send an audio file via multipart upload — shows Telegram's audio player (up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    fname = filename or file.filename or "audio.mp3"
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    if title:
+        data["title"] = title
+    if performer:
+        data["performer"] = performer
+    if duration:
+        data["duration"] = str(duration)
+    files = {"audio": (fname, content, file.content_type or "audio/mpeg")}
+    return await _tg_request(token, "sendAudio", data, files=files, timeout=120)
+
+
+@router.post("/send-voice-upload")
+async def send_voice_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    caption: str = Form(None),
+    duration: int = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a voice message via multipart upload — file must be OGG/OPUS (up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if duration:
+        data["duration"] = str(duration)
+    files = {"voice": (file.filename or "voice.ogg", content, "audio/ogg")}
+    return await _tg_request(token, "sendVoice", data, files=files, timeout=120)
+
+
+@router.post("/send-photo-upload")
+async def send_photo_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a photo via multipart upload (up to 10 MB visible, 50 MB file)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    files = {"photo": (file.filename or "photo.jpg", content, file.content_type or "image/jpeg")}
+    return await _tg_request(token, "sendPhoto", data, files=files, timeout=120)
+
+
+@router.post("/send-video-upload")
+async def send_video_upload(
+    chat_id: str = Form(...),
+    file: UploadFile = File(...),
+    filename: str = Form(None),
+    caption: str = Form(None),
+    parse_mode: str = Form(None),
+    duration: int = Form(None),
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a video via multipart upload (up to 50 MB)."""
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    content = await file.read()
+    fname = filename or file.filename or "video.mp4"
+    data = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    if duration:
+        data["duration"] = str(duration)
+    files = {"video": (fname, content, file.content_type or "video/mp4")}
+    return await _tg_request(token, "sendVideo", data, files=files, timeout=120)
+
+
 @router.post("/send-video")
 async def send_video(
     body: SendVideoRequest,
@@ -378,6 +576,8 @@ async def send_video(
         return await _tg_request(token, "sendVideo", data)
     elif body.video_base64:
         video_bytes = base64.b64decode(body.video_base64)
+        if len(video_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
         data = {"chat_id": str(body.chat_id)}
         if body.caption:
             data["caption"] = body.caption
@@ -386,7 +586,7 @@ async def send_video(
         if body.reply_markup:
             data["reply_markup"] = json.dumps(body.reply_markup)
         files = {"video": ("video.mp4", video_bytes, "video/mp4")}
-        return await _tg_request(token, "sendVideo", data, files=files)
+        return await _tg_request(token, "sendVideo", data, files=files, timeout=120)
     else:
         raise HTTPException(status_code=400, detail="Provide video_base64 or video_url")
 
@@ -440,6 +640,8 @@ async def send_animation(
         return await _tg_request(token, "sendAnimation", data)
     elif body.animation_base64:
         anim_bytes = base64.b64decode(body.animation_base64)
+        if len(anim_bytes) > _TELEGRAM_MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
         data = {"chat_id": str(body.chat_id)}
         if body.caption:
             data["caption"] = body.caption
@@ -448,7 +650,7 @@ async def send_animation(
         if body.reply_markup:
             data["reply_markup"] = json.dumps(body.reply_markup)
         files = {"animation": ("animation.gif", anim_bytes, "image/gif")}
-        return await _tg_request(token, "sendAnimation", data, files=files)
+        return await _tg_request(token, "sendAnimation", data, files=files, timeout=120)
     else:
         raise HTTPException(status_code=400, detail="Provide animation_base64 or animation_url")
 

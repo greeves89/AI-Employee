@@ -15,6 +15,7 @@ import {
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
+import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -35,6 +36,9 @@ import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
+import { BrainBrowser } from "@/app/second-brains/brain-browser";
+import type { SecondBrain } from "@/lib/types";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -62,7 +66,7 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
 type SubKey =
   | "chat" | "todos" | "terminal" | "history"
   | "files" | "apps" | "computer-use"
-  | "knowledge" | "memory" | "skills"
+  | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
 
 type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2; simpleVisible: boolean };
@@ -86,6 +90,7 @@ const tabGroups: TabGroup[] = [
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
     { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
+    { key: "secondbrain", label: "Second Brain", icon: Brain, simpleVisible: true },
     { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
     { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
   ] },
@@ -341,6 +346,7 @@ export default function AgentDetailPage() {
           {activeSub === "apps" && <DockerAppsTab agentId={agentId} />}
           {activeSub === "history" && <TaskHistory tasks={tasks} />}
           {activeSub === "knowledge" && <KnowledgePanel agentId={agentId} />}
+          {activeSub === "secondbrain" && <AgentSecondBrains agentId={agentId} />}
           {activeSub === "memory" && <MemoryTab agentId={agentId} />}
           {activeSub === "integrations" && <IntegrationSelector agentId={agentId} />}
           {activeSub === "command-policies" && <CommandPoliciesTab agentId={agentId} />}
@@ -571,6 +577,111 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
           </Link>
         );
       })}
+    </div>
+  );
+}
+
+function AgentSecondBrains({ agentId }: { agentId: string }) {
+  const [allBrains, setAllBrains] = useState<SecondBrain[]>([]);
+  const [catalog, setCatalog] = useState<import("@/lib/api").MountCatalogEntry[]>([]);
+  const [assigned, setAssigned] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [browsing, setBrowsing] = useState<SecondBrain | null>(null);
+
+  useEffect(() => {
+    Promise.all([api.getAgentMountCatalog(), api.getAgentMounts(agentId), api.listSecondBrains()])
+      .then(([cat, ag, all]) => {
+        setCatalog((cat.mounts ?? []).filter((e) => e.label.startsWith("brain-")));
+        setAssigned(ag.mounts ?? []);
+        setAllBrains(all);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  const brainByLabel = (label: string) => allBrains.find((b) => b.label === label);
+  const toggle = (label: string) => {
+    setAssigned((prev) => (prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]));
+    setSaved(false);
+  };
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.updateAgentMounts(agentId, assigned); // preserves non-brain mounts (kept in `assigned`)
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="h-20 animate-pulse rounded-xl bg-foreground/[0.04]" />;
+  if (catalog.length === 0)
+    return (
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-6 text-center text-sm text-muted-foreground">
+        Für diesen Agenten sind (noch) keine Second Brains freigegeben. Ein Admin gibt sie unter
+        <b> Admin → Rollen → Mountshares</b> (pro Gruppe) oder <b>Admin → Users → Mount-Rechte</b> (pro Person) frei.
+      </div>
+    );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Aktiviere ein Second Brain, um dem Agenten Zugriff zu geben. Änderungen starten den Agenten neu.
+        </p>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : null}
+          {saved ? "Gespeichert & Neustart" : "Speichern & Neu starten"}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {catalog.map((entry) => {
+          const enabled = assigned.includes(entry.label);
+          const b = brainByLabel(entry.label);
+          return (
+            <div
+              key={entry.label}
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-all",
+                enabled ? "border-blue-500/20 bg-blue-500/5" : "border-foreground/[0.06] bg-card/80 hover:bg-foreground/[0.04]"
+              )}
+            >
+              <button onClick={() => toggle(entry.label)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <div className={cn(
+                  "h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-all",
+                  enabled ? "bg-blue-500 border-blue-500" : "border-foreground/[0.25]"
+                )}>
+                  {enabled && <Check className="h-2.5 w-2.5 text-white" />}
+                </div>
+                <Brain className={cn("h-4 w-4 shrink-0", enabled ? "text-blue-400" : "text-muted-foreground/50")} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{b?.name ?? entry.label}</p>
+                  <p className="truncate text-[11px] text-muted-foreground/60 font-mono">{entry.container_path} · {entry.mode}</p>
+                </div>
+              </button>
+              {b && (
+                <button
+                  onClick={() => setBrowsing(b)}
+                  className="shrink-0 rounded-lg border border-foreground/[0.1] px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
+                >
+                  Inhalt
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {browsing && <BrainBrowser brain={browsing} onClose={() => setBrowsing(null)} />}
     </div>
   );
 }
@@ -1083,39 +1194,45 @@ function AgentSettings({
   const [agentModel, setAgentModel] = useState(agent.model);
   const [agentProvider, setAgentProvider] = useState<string>(agent.model_provider || "anthropic");
   const [modelSaving, setModelSaving] = useState(false);
+  // Provider/model catalog from the backend (single source of truth). Falls
+  // back to the built-in Claude list below while it loads / if it fails.
+  const [modelCatalog, setModelCatalog] = useState<api.ModelCatalogMode[] | null>(null);
+  useEffect(() => {
+    api.getModelCatalog().then((c) => setModelCatalog(c.modes)).catch(() => {});
+  }, []);
 
   const CLAUDE_MODELS: Record<string, { value: string; label: string; tier: string }[]> = {
     anthropic: [
-      { value: "claude-opus-4-7", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-haiku-4-6", label: "Haiku 4.6", tier: "Fast" },
-      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
-      { value: "claude-sonnet-4-5-20250929", label: "Sonnet 4.5", tier: "Legacy" },
-      { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", tier: "Legacy" },
+      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
+      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
     ],
     bedrock: [
-      { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
-      { value: "us.anthropic.claude-sonnet-4-6-v1:0", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "us.anthropic.claude-haiku-4-6-v1:0", label: "Haiku 4.6", tier: "Fast" },
-      { value: "us.anthropic.claude-opus-4-6-v1:0", label: "Opus 4.6", tier: "Powerful" },
-      { value: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Legacy" },
-      { value: "us.anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Legacy" },
+      { value: "anthropic.claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
+      { value: "anthropic.claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
+      { value: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Fast" },
+      { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7", tier: "Legacy" },
+      { value: "anthropic.claude-opus-4-6-v1", label: "Opus 4.6", tier: "Legacy" },
+      { value: "anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Legacy" },
     ],
     vertex: [
-      { value: "claude-opus-4-7@latest", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
-      { value: "claude-sonnet-4-6@latest", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-haiku-4-6@latest", label: "Haiku 4.6", tier: "Fast" },
-      { value: "claude-opus-4-6@latest", label: "Opus 4.6", tier: "Powerful" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
+      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
       { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Legacy" },
-      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Legacy" },
     ],
     foundry: [
-      { value: "claude-opus-4-7", label: "Opus 4.7 (Latest)", tier: "Most Powerful" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
       { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-haiku-4-6", label: "Haiku 4.6", tier: "Fast" },
-      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Powerful" },
+      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
+      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
       { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
-      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Legacy" },
     ],
   };
 
@@ -1124,15 +1241,27 @@ function AgentSettings({
     bedrock: "Amazon Bedrock",
     vertex: "Google Vertex",
     foundry: "Azure Foundry",
+    codex: "OpenAI Codex",
   };
 
-  const modelOptions = CLAUDE_MODELS[agentProvider] || CLAUDE_MODELS.anthropic;
-  const modelChanged = agentModel !== agent.model || agentProvider !== (agent.model_provider || "anthropic");
+  // Providers + models for THIS agent's harness. Prefer the backend catalog;
+  // fall back to the built-in Claude list for claude_code while it loads.
+  const catalogForMode = modelCatalog?.find((m) => m.mode === agent.mode);
+  const providersForMode: Record<string, { value: string; label: string; tier: string }[]> =
+    catalogForMode
+      ? Object.fromEntries(catalogForMode.providers.map((p) => [p.provider, p.models]))
+      : (agent.mode === "claude_code" ? CLAUDE_MODELS : {});
+  const providerKeys = Object.keys(providersForMode);
+  // Keep the selected provider valid for the mode (a codex agent has no "anthropic").
+  const activeProvider = providersForMode[agentProvider] ? agentProvider : (providerKeys[0] || "anthropic");
+  const modelOptions = providersForMode[activeProvider] || [];
+  const showModelPanel = agent.mode === "claude_code" || agent.mode === "codex_cli";
+  const modelChanged = agentModel !== agent.model || activeProvider !== (agent.model_provider || providerKeys[0] || "anthropic");
 
   const handleModelSave = async () => {
     setModelSaving(true);
     try {
-      await api.updateAgentModel(agentId, agentProvider, agentModel);
+      await api.updateAgentModel(agentId, activeProvider, agentModel);
       setMessage({ type: "success", text: "Modell aktualisiert. Agent wird neu gestartet." });
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
@@ -1143,13 +1272,12 @@ function AgentSettings({
     }
   };
 
-  // When provider changes, reset model to first option
+  // When the provider set or selection changes, keep the chosen model valid.
   useEffect(() => {
-    const models = CLAUDE_MODELS[agentProvider] || [];
-    if (models.length && !models.some((m) => m.value === agentModel)) {
-      setAgentModel(models[0].value);
+    if (modelOptions.length && !modelOptions.some((m) => m.value === agentModel)) {
+      setAgentModel(modelOptions[0].value);
     }
-  }, [agentProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProvider, catalogForMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
 
@@ -1236,6 +1364,15 @@ function AgentSettings({
 
   return (
     <div className="space-y-6 overflow-auto h-full pb-4">
+      {/* Aussehen / Symbol */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="mb-3">
+          <div className="text-sm font-medium">Symbol &amp; Farbe</div>
+          <div className="text-[11px] text-muted-foreground/60">Eigenes Icon + Farbe für diesen Agent (Anzeige auf den Karten).</div>
+        </div>
+        <AgentAppearanceInline agentId={agentId} config={agent.config} />
+      </div>
+
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
 
@@ -1304,15 +1441,15 @@ function AgentSettings({
         </div>
       </div>
 
-      {/* Model Selection (Claude Code agents) */}
-      {agent.mode === "claude_code" && (
+      {/* Model Selection (Claude Code + Codex CLI agents) */}
+      {showModelPanel && (
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-blue-400" />
               <span className="text-sm font-medium">Modell</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
-                {PROVIDER_LABELS[agentProvider] || agentProvider}
+                {PROVIDER_LABELS[activeProvider] || activeProvider}
               </span>
             </div>
             {modelChanged && (
@@ -1327,26 +1464,29 @@ function AgentSettings({
             )}
           </div>
           <div className="p-5 space-y-4">
-            {/* Provider */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground/70">Provider</label>
-              <div className="flex gap-1.5">
-                {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setAgentProvider(key)}
-                    className={cn(
-                      "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
-                      agentProvider === key
-                        ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                        : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground border border-transparent"
-                    )}
-                  >
-                    {label.split(" ")[0]}
-                  </button>
-                ))}
+            {/* Provider — only shown when the harness offers more than one
+                (Claude runs on anthropic/bedrock/vertex/foundry; Codex only OpenAI). */}
+            {providerKeys.length > 1 && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground/70">Provider</label>
+                <div className="flex gap-1.5">
+                  {providerKeys.map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => setAgentProvider(key)}
+                      className={cn(
+                        "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
+                        activeProvider === key
+                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                          : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      {(PROVIDER_LABELS[key] || key).split(" ")[0]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             {/* Model */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-medium text-muted-foreground/70">Model</label>
@@ -1928,25 +2068,37 @@ function AgentSettings({
 }
 
 function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string; agent: Agent; onUpdated: (a: Agent) => void }) {
+  const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const currentTimeout = agent.config?.idle_timeout_minutes ?? "";
   const currentQuota = agent.config?.workspace_size_gb ?? "";
+  const currentBudget = agent.budget_usd != null ? String(agent.budget_usd) : "";
+  const currentAction = (agent.budget_exceeded_action as "haiku" | "stop") ?? "haiku";
 
   const [idleTimeout, setIdleTimeout] = useState(String(currentTimeout));
   const [workspaceGb, setWorkspaceGb] = useState(String(currentQuota));
+  const [budgetUsd, setBudgetUsd] = useState(currentBudget);
+  const [budgetAction, setBudgetAction] = useState<"haiku" | "stop">(currentAction);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const hasChanges = idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota);
+  const budgetChanged = isAdmin && (budgetUsd !== currentBudget || budgetAction !== currentAction);
+  const hasChanges = idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota) || budgetChanged;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const timeoutVal = idleTimeout === "" ? null : parseInt(idleTimeout);
-      const quotaVal = workspaceGb === "" ? null : parseFloat(workspaceGb);
-      await api.updateAgentResourceLimits(agentId, {
-        idle_timeout_minutes: timeoutVal,
-        workspace_size_gb: quotaVal,
-      });
+      if (idleTimeout !== String(currentTimeout) || workspaceGb !== String(currentQuota)) {
+        const timeoutVal = idleTimeout === "" ? null : parseInt(idleTimeout);
+        const quotaVal = workspaceGb === "" ? null : parseFloat(workspaceGb);
+        await api.updateAgentResourceLimits(agentId, {
+          idle_timeout_minutes: timeoutVal,
+          workspace_size_gb: quotaVal,
+        });
+      }
+      if (budgetChanged) {
+        const b = budgetUsd.trim() === "" ? null : parseFloat(budgetUsd);
+        await api.updateAgentBudget(agentId, b, budgetAction);
+      }
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
       setSaved(true);
@@ -2026,6 +2178,44 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
             </p>
           </div>
         </div>
+
+        {/* Budget — admin sets the cap; non-admin users see it read-only */}
+        <div className="space-y-2">
+          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+            Budget / Monat {!isAdmin && <span className="normal-case text-muted-foreground/40">(nur Admin änderbar)</span>}
+          </label>
+          {isAdmin ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={budgetUsd}
+                  onChange={(e) => setBudgetUsd(e.target.value)}
+                  placeholder="kein Limit"
+                  className="w-28 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              </div>
+              <select
+                value={budgetAction}
+                onChange={(e) => setBudgetAction(e.target.value as "haiku" | "stop")}
+                className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+              >
+                <option value="haiku">Bei Limit: auf Haiku umschalten</option>
+                <option value="stop">Bei Limit: Agent stoppen</option>
+              </select>
+              <p className="text-xs text-muted-foreground/50">Leer = kein Limit.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-foreground/80">
+              {currentBudget
+                ? `$${currentBudget} / Monat · bei Überschreitung: ${currentAction === "stop" ? "Agent stoppt" : "Haiku-Modus"}`
+                : "Kein Budget-Limit gesetzt."}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2101,16 +2291,19 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
             <div className="space-y-2">
               {catalog.map((entry) => {
                 const enabled = assigned.includes(entry.label);
+                const isBrain = entry.label.startsWith("brain-");
                 return (
                   <div
                     key={entry.label}
+                    title={isBrain ? "Second Brains werden über den Wissen-Tab → Second Brain verwaltet" : undefined}
                     className={cn(
-                      "flex items-center justify-between rounded-lg border px-3 py-2.5 transition-all cursor-pointer",
+                      "flex items-center justify-between rounded-lg border px-3 py-2.5 transition-all",
+                      isBrain ? "cursor-not-allowed opacity-50" : "cursor-pointer",
                       enabled
                         ? "border-blue-500/20 bg-blue-500/5"
                         : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
                     )}
-                    onClick={() => toggle(entry.label)}
+                    onClick={() => { if (!isBrain) toggle(entry.label); }}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <FolderOpen className={cn("h-4 w-4 shrink-0", enabled ? "text-blue-400" : "text-muted-foreground/40")} />

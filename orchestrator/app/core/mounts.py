@@ -69,6 +69,32 @@ def parse_mount_catalog(raw: str) -> dict[str, MountEntry]:
     return catalog
 
 
+async def get_effective_catalog(db) -> dict[str, MountEntry]:
+    """Mount catalog = static env catalog (AGENT_MOUNT_CATALOG) merged with the
+    DB-managed Second Brain vaults.
+
+    Resolved fresh on every agent start / catalog read, so a brain created in the
+    UI is usable immediately — no orchestrator restart. Imports are local to keep
+    this module free of DB/app import cycles at load time.
+    """
+    from app.config import settings
+    from sqlalchemy import select
+    from app.models.second_brain import SecondBrain
+
+    catalog = parse_mount_catalog(settings.agent_mount_catalog)
+    rows = (await db.execute(select(SecondBrain).where(SecondBrain.is_active.is_(True)))).scalars().all()
+    for b in rows:
+        if not _LABEL_RE.match(b.label):
+            continue
+        catalog[b.label] = MountEntry(
+            label=b.label,
+            host_path=b.host_path,
+            container_path=b.container_path,
+            mode="ro" if b.default_mode == "ro" else "rw",
+        )
+    return catalog
+
+
 def _stricter_mode(catalog_mode: str, requested_mode: str | None) -> str:
     """Return the effective Docker mount mode. read-only always wins over read-write."""
     if catalog_mode == "ro" or requested_mode == "ro":

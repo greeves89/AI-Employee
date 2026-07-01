@@ -60,6 +60,23 @@ export interface AIAccount {
   updated_at: string;
 }
 
+// Second Brain — department-shared knowledge vault (DB-managed mount entry).
+export interface SecondBrain {
+  id: number;
+  label: string;            // mount label (access grants hang on this), e.g. brain-it_operations
+  name: string;             // display / department name
+  slug: string;
+  container_path: string;   // where it mounts in agents, e.g. /mnt/brains/it_operations
+  default_mode: "ro" | "rw";
+  standard: "freeform" | "wikimedia" | "it_support";
+  description: string | null;
+  is_active: boolean;
+  mcp_enabled?: boolean;
+  mcp_path?: string | null;   // relative MCP endpoint; prepend window.location.origin
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -107,6 +124,7 @@ export interface AdminUser {
   role: UserRole;
   custom_role_id?: number | null;
   is_active: boolean;
+  approved?: boolean;
 }
 
 export interface Integration {
@@ -224,6 +242,15 @@ export interface Settings {
   has_google_oauth: boolean;
   has_microsoft_oauth: boolean;
   has_apple_oauth: boolean;
+  msgraph_mcp_external_enabled: boolean;
+  // Security / Login
+  sso_only_login?: boolean;
+  require_user_approval?: boolean;
+  revoke_msgraph_on_logout?: boolean;
+  // Meeting → MS Planner + "Dreaming"-Memory
+  meeting_planner_plan_id?: string;
+  meeting_moderator_ai_account_id?: string;
+  dreaming_enabled?: boolean;
 }
 
 export interface AgentMemory {
@@ -255,6 +282,7 @@ export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
+  custom_instructions?: string;
 }
 
 export interface ProactiveResponse {
@@ -269,6 +297,7 @@ export interface ProactiveResponse {
     success_count: number;
     fail_count: number;
   } | null;
+  base_prompt?: string;
 }
 
 export interface PermissionPackage {
@@ -489,4 +518,5 @@ export interface MeetingRoom {
   messages?: MeetingMessage[];
   message_count?: number;
   created_at: string | null;
+  scheduled_for?: string | null;  // follow-up auto-start time (ISO) when set
 }

@@ -69,11 +69,12 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Human-in-the-loop approvals | Yes | Partial | Yes | Partial | Yes (Agents SDK) |
 | Governance audit trail | Yes | Yes | Yes | Yes (Business+) | Yes (Enterprise) |
 | Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
+| Persistent agent teams + lead-routing | Yes | No | Partial | No | No |
 | DSGVO-compliant by default | Yes* | Partial | BYO | No | No |
 | Telegram + Voice (STT/TTS) | Yes | Yes | BYO | No | No |
 | Agents deploy Docker apps | Yes | No | No | No | No |
-| 25 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
-| LLM-agnostic (Claude / GPT-4o / Gemini / local) | Yes | Yes | Yes | No | No |
+| 26 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
+| LLM-agnostic (Claude / GPT-5.x via Codex / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | No | No |
 
 For a detailed, honest comparison including scenarios where competitors are a better fit, see **[COMPARISON.md](COMPARISON.md)**.
 
@@ -116,7 +117,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 - **Docker-isolated agents** — Every agent runs in its own container with its own workspace, filesystem, and resource limits. True isolation, not shared scratch dirs.
 - **Claude Code CLI runtime** — Battle-tested headless Claude with native tool use, file editing, and shell access.
-- **LLM-agnostic** — Swap in GPT-4o, Gemini 2.0, Mistral Large, or local Ollama models via the custom-LLM adapter.
+- **LLM-agnostic** — Native Claude Code and OpenAI Codex (GPT-5.x) harnesses, plus Gemini (Vertex), AWS Bedrock, Azure Foundry, or local Ollama/LM-Studio models via the custom-LLM adapter.
 - **Auto-scaling** — Load balancer distributes tasks across available agent containers.
 - **Live log streaming** — WebSocket-powered log viewer, no polling.
 
@@ -130,6 +131,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 - **Semantic memory** — Each agent has its own vector memory powered by **BAAI/bge-m3 embeddings** (1024-dim, multilingual, runs locally — no OpenAI embedding fees, no data leaving your server).
 - **Per-user knowledge base** — Each user has their own isolated knowledge graph with `[[backlinks]]`, `#tags`, and markdown. All of that user's agents share the same KB — they read and write to it as a first-class tool. Other users see nothing.
+- **Second Brains — department-shared vaults** — Admins create a shared Markdown vault per department in the UI (under `/srv/secondbrain/<slug>/`). It's a DB-managed mount entry, so per-person read/write is set in the existing mount-permissions modal (and groups via custom roles), and assigned agents mount it at `/mnt/brains/<slug>`. Agents auto-search the vault (`grep`) before answering support questions and cite the source `.md`. File history is tracked via a **local** git repo per vault (no remote — nothing leaves the server) plus `FILE_WRITTEN` audit events.
 - **Self-improvement loop** — After every task, agents reflect on what worked, extract lessons, and save them to memory. The `ImprovementEngine` periodically analyzes ratings and distils patterns.
 - **Task ratings** — Users rate completed tasks via Telegram inline keyboards; poor ratings feed the improvement loop.
 - **Skill Analytics Dashboard** — `/analytics` shows time savings per skill (vs. manual baseline), ROI, daily task volume, per-agent success rate, cost, and average duration. Set manual effort estimates per skill to calculate real productivity gains.
@@ -139,6 +141,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 - **Autonomy Levels L1–L4** — Assign each agent a level that defines exactly what it may do without asking. L1 = read-only research, L2 = recommendations + workspace writes, L3 = full execution (shell, packages), L4 = fully autonomous. The level is enforced via a whitelist injected into every prompt.
 - **Whitelist-based approval model** — Instead of listing what agents must ask about (blacklist), you define what they *may* do freely. Everything outside the whitelist automatically triggers an approval request — no gaps, no forgotten rules.
 - **DB-backed level presets** — The allowed-action sets per level are stored in the database and editable in the UI. Add domain-specific permissions to a level without touching code. Seeded automatically on first startup.
+- **Group-based resource grants (Custom Roles)** — Bundle access into a group and assign users to it: a role can grant **Second Brains/mounts**, **AI-Accounts (models)** and **Keys/Secrets** directly (plus templates, LLM-providers, menu paths, URL allowlist, agent limits). Group grants union with per-user grants, so a user inherits the group and can still get manual extras. All editable as multi-selects in the Roles admin UI.
 - **Approval rules & inline Telegram approvals** — Define additional natural-language rules on top of the level preset. Agents call the `request_approval` MCP tool and wait. Approve or deny with a single Telegram button tap.
 - **Full governance audit trail** — Every governance event is written to `audit_logs`: approval requests, approvals/denials, level changes, rule edits, preset changes. Enterprise-ready traceability out of the box.
 - **Multi-tenant isolation** — Complete data isolation at both the API and database layer (PostgreSQL RLS). Users see only their own agents, tasks, schedules, knowledge entries, approval rules, and memories. Agents of the same user share one knowledge base; agents of different users are completely isolated.
@@ -224,6 +227,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 | 23 | **Medical Assistant** | Triage notes, documentation, appointment prep |
 | 24 | **Personal Assistant** | Calendar, email triage, reminders |
 | 25 | **Executive Assistant** | Briefings, travel, meeting prep, minutes |
+| 26 | **OS Agent (Brain)** | Orchestrator — decomposes goals, delegates to specialist agents, monitors, learns |
 
 Each template ships with a role prompt, recommended skills, default approval rules, and example tasks.
 
@@ -249,7 +253,7 @@ What's actively in development or planned next:
 ### In Progress
 - **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via Playwright MCP. Fill forms, scrape dynamic pages, interact with web UIs that have no API.
 - **Desktop Bridge** — Native macOS/Windows tray app connects your local desktop to the AI-Employee server. Agents can take screenshots, click, type, open apps and run shell commands on your machine. Download via the agent's Computer-Use tab or from the [latest release](https://github.com/greeves89/AI-Employee/releases/tag/bridge-latest). Granular capability permissions (screenshots, mouse, keyboard, clipboard, shell) and folder-access restrictions configurable from the tray menu.
-- **Per-Agent Model Selection** — Switch any agent to a different LLM (GPT-4o, Gemini, local Ollama) without restarting. Model choice persists per agent.
+- **Per-Agent Model Selection** — Switch any agent to a different LLM (Claude, GPT-5.x via Codex, Gemini, local Ollama) without restarting. Model choice persists per agent.
 - **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
 
 ### Planned

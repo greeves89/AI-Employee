@@ -16,10 +16,13 @@ class OAuthProvider(str, enum.Enum):
     GITHUB = "github"
     ANTHROPIC = "anthropic"
     CODEX = "codex"
+    EXCHANGE_ONPREM = "exchange_onprem"
 
 
-# Providers where each user has their own token (vs. global/admin token)
-PER_USER_PROVIDERS = {"microsoft", "google"}
+# Providers where each user has their own token/credential (vs. global/admin token).
+# exchange_onprem only stores a per-user secret in the "basic" auth mode; the
+# service_account / modern_auth modes need no per-user record (impersonation by email).
+PER_USER_PROVIDERS = {"microsoft", "google", "exchange_onprem"}
 
 
 class OAuthIntegration(Base, TimestampMixin):

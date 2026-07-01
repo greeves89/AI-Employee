@@ -85,7 +85,7 @@ async def list_triggers(
     return {"triggers": [_to_response(t) for t in triggers], "total": total}
 
 
-@router.get("/{trigger_id}")
+@router.get("/{trigger_id:int}")
 async def get_trigger(
     trigger_id: int,
     user=Depends(require_auth),
@@ -123,7 +123,7 @@ async def create_trigger(
     return _to_response(trigger)
 
 
-@router.put("/{trigger_id}")
+@router.put("/{trigger_id:int}")
 async def update_trigger(
     trigger_id: int,
     body: EventTriggerUpdate,
@@ -144,7 +144,7 @@ async def update_trigger(
     return _to_response(trigger)
 
 
-@router.delete("/{trigger_id}")
+@router.delete("/{trigger_id:int}")
 async def delete_trigger(
     trigger_id: int,
     user=Depends(require_auth),
@@ -160,7 +160,7 @@ async def delete_trigger(
     return {"deleted": trigger_id}
 
 
-@router.post("/{trigger_id}/toggle")
+@router.post("/{trigger_id:int}/toggle")
 async def toggle_trigger(
     trigger_id: int,
     user=Depends(require_auth),
@@ -261,7 +261,7 @@ async def toggle_trigger_for_agent(
     return _to_response(trigger)
 
 
-@router.post("/{trigger_id}/test")
+@router.post("/{trigger_id:int}/test")
 async def test_trigger(
     trigger_id: int,
     payload: dict,

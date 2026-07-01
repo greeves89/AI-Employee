@@ -35,6 +35,51 @@ shared across ALL agents of this user. It grows as agents contribute to it.
 
 Tools: `brain_search(q, include_memories=false)` | `brain_contribute(title, content, tags=[])`
 
+## Daily Log System (MANDATORY — every agent, every day)
+
+Every agent **must** maintain a daily log at `/workspace/daily/YYYY-MM-DD.md`.
+
+### During any task or chat turn
+Append a brief entry to today's log:
+```bash
+mkdir -p /workspace/daily
+DATE=$(date +%Y-%m-%d)
+cat >> /workspace/daily/${DATE}.md << 'EOF'
+- HH:MM — <1-sentence description of what was done / decided>
+EOF
+```
+Keep entries short (one line per action). Do NOT rewrite the whole file — always append.
+
+### At session end (feierabend)
+Run the built-in `feierabend` skill (install via `skill_install` if not present):
+- Reads today's log
+- Writes a clean **## Summary** + **## Open Items** section at the bottom
+- Updates `.agent_state.md` with the open items as Next Steps
+
+### At the start of a new day
+Before responding to any message, check the last 5 days:
+```bash
+ls /workspace/daily/*.md 2>/dev/null | sort | tail -5 | xargs grep -h "^## Open Items" -A 20 2>/dev/null || echo "No open items found"
+```
+Summarise all open items and present them to the user before starting new work.
+**Never skip this** — open items from previous days are unfinished commitments.
+
+### Log format
+```markdown
+# Daily Log — 2026-06-14
+
+- 09:05 — Analysed Garrit Wilson comparison, drafted feature plan
+- 09:47 — Updated claude-global.md with daily log system
+- 10:12 — Rebuilt agent container image
+
+## Summary  ← written by feierabend skill
+Everything committed. Image rebuilt and deployed.
+
+## Open Items  ← written by feierabend skill
+- [ ] Test rich markdown rendering on live device
+- [ ] Verify sendRichMessage on Telegram after server pull
+```
+
 ## Agent State File (CRITICAL — read at start, update at end)
 
 Every run — task, proactive, or chat — must maintain `/workspace/.agent_state.md`.
