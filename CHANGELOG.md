@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.95.0] — 2026-07-01
+
+### Added
+- **Provider-abhängiger Modell-Guard.** Ein Agent kann nur noch Modelle seiner eigenen Harness bekommen: `claude_code` ⇒ ausschließlich Claude-Modelle, `codex_cli` ⇒ ausschließlich GPT/o-Serie, `custom_llm` bleibt frei (Account/Config). Behebt „the claude model is not supported with a ChatGPT account" systemisch. Neue Single-Source-of-Truth `orchestrator/app/core/model_catalog.py` (ersetzt drei divergierende, hartkodierte Frontend-Listen) + neuer `GET /agents/models`. Gates an allen Eintrittspunkten: `POST /agents` (422), `PATCH /agents/{id}/model` (422), `AgentManager` Create + beide Recreate-Pfade (Last-Line-Coerce — fängt auch einen falschen `DEFAULT_MODEL`), WS-Chat-Override (droppt inkompatibles Per-Message-Modell). Der Modell-Selektor in den Agent-Settings funktioniert jetzt auch für **Codex-Agenten** (vorher nur Claude) und zieht die Liste data-driven aus dem Katalog.
+- **`read_logs` MCP-Tool (Agent-Self-Improvement).** Agenten können ihre eigenen Container-Logs lesen, um Fehler selbst zu diagnostizieren (401, Stacktrace, fehlende Env) und daraus Issues/PRs zu machen. Sauber verzahnt statt roher Docker-Socket: der Orchestrator ist die einzige Instanz mit Docker-Zugriff. Neuer `GET /agents/logs` (`verify_agent_token`): eigene Logs immer, ein Team-Lead zusätzlich die seiner Team-Mitglieder, sonst 403. Secret-Redaction (Bearer/JWT/`sk-`/`gh_`/AWS/`KEY=VALUE`/PEM, fail-closed) + Audit (`AuditEventType.LOGS_READ`) + `tail`-Cap 1000. MCP-Server in beiden Runnern (Codex + Claude) registriert.
+- **Agent-Network-View Phase 3:** Nachrichten zwischen verschiedenen Teams, an denen ein Lead beteiligt ist, werden in Emerald mit Kronen-Marker hervorgehoben; neue Kanten-Legende (Nachrichten / delegierte Tasks / Cross-Team-Lead), die nur vorhandene Kantentypen einblendet.
+
+### Security
+- Container-Logs werden vor Herausgabe an Agenten secret-redacted (`orchestrator/app/core/log_redaction.py`, 7 Regressionstests). Jeder Log-Zugriff wird auditiert und ist auf das eigene Team gescoped.
+
 ## [1.94.0] — 2026-07-01
 
 ### Added
