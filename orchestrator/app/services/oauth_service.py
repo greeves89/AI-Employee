@@ -212,6 +212,13 @@ class OAuthService:
                 logger.warning("Could not fetch user info for %s: %s", provider_name, e)
 
         provider_enum = OAuthProvider(provider_name)
+        # Global providers (Anthropic, GitHub, …) store a single shared token
+        # with user_id=NULL. The auth-URL endpoint passes the calling user's ID
+        # for all providers, which causes the SELECT to miss the existing row and
+        # triggers a UniqueViolation on re-auth. Normalise here so all callers
+        # behave correctly regardless of what user_id they received.
+        if not _is_per_user(provider_name):
+            user_id = None
         result = await self.db.execute(
             select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
         )
