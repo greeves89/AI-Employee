@@ -1436,6 +1436,14 @@ function FeedbackTab({
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<number | null>(null);
   const [noteText, setNoteText] = useState("");
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api.getIntegrations().then((data) => {
+      const gh = data.integrations.find((i) => i.provider === "github");
+      setGithubConnected(!!gh?.connected);
+    }).catch(() => setGithubConnected(false));
+  }, []);
 
   const handleStatusChange = async (f: Feedback, newStatus: FeedbackStatus) => {
     setActionLoading(f.id);
@@ -1463,12 +1471,29 @@ function FeedbackTab({
   };
 
   const handleCreateIssue = async (f: Feedback) => {
+    if (githubConnected === false) {
+      toast.warning(
+        "GitHub nicht verbunden",
+        "Bitte zuerst unter Einstellungen → Integrationen einen GitHub-Account (PAT) verbinden."
+      );
+      return;
+    }
     setActionLoading(f.id);
     try {
       const result = await api.createGithubIssueFromFeedback(f.id);
       onUpdate(result.feedback);
+      toast.success("GitHub Issue erstellt", result.issue_url);
     } catch (e) {
-      toast.error("Failed to create GitHub issue", e instanceof Error ? e.message : undefined);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.toLowerCase().includes("not connected") || msg.toLowerCase().includes("integration not connected")) {
+        setGithubConnected(false);
+        toast.warning(
+          "GitHub nicht verbunden",
+          "Bitte zuerst unter Einstellungen → Integrationen einen GitHub-Account (PAT) verbinden."
+        );
+      } else {
+        toast.error("GitHub Issue konnte nicht erstellt werden", msg);
+      }
     } finally {
       setActionLoading(null);
     }
@@ -1599,9 +1624,18 @@ function FeedbackTab({
                   {!f.github_issue_url && (
                     <button
                       onClick={() => handleCreateIssue(f)}
-                      disabled={actionLoading === f.id}
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
-                      title="GitHub Issue erstellen"
+                      disabled={actionLoading === f.id || githubConnected === false}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors disabled:opacity-40",
+                        githubConnected === false
+                          ? "text-muted-foreground/40 cursor-not-allowed"
+                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
+                      )}
+                      title={
+                        githubConnected === false
+                          ? "GitHub nicht verbunden — unter Einstellungen → Integrationen verbinden"
+                          : "GitHub Issue erstellen"
+                      }
                     >
                       {actionLoading === f.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
