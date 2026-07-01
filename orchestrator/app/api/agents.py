@@ -88,10 +88,28 @@ async def get_team_directory(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Get the team directory - all agents with their roles and status."""
+    """Team directory. Users see their accessible agents; an agent sees its own
+    team members + the leads of other teams (all agents when no teams exist)."""
     from app.models.user import UserRole
     agents = await manager.list_agents()
-    if hasattr(user, "role") and user.role != UserRole.ADMIN and not is_agent_principal(user):
+    if is_agent_principal(user):
+        # An agent only sees its OWN team's members + the LEADS of other teams —
+        # not every agent on the platform. If no teams are defined yet, behaviour
+        # is unchanged (the agent still sees all) so nothing breaks pre-teams.
+        from app.models.team import Team
+        teams = (await db.execute(select(Team).where(Team.is_active.is_(True)))).scalars().all()
+        if teams:
+            my_team_members: set[str] = set()
+            other_leads: set[str] = set()
+            for t in teams:
+                members = set(t.member_agent_ids or [])
+                if user.id in members:
+                    my_team_members |= members
+                elif t.lead_agent_id:
+                    other_leads.add(t.lead_agent_id)
+            visible = my_team_members | other_leads | {user.id}
+            agents = [a for a in agents if a.id in visible]
+    elif hasattr(user, "role") and user.role != UserRole.ADMIN:
         from app.models.agent_access import AgentAccess
         access_result = await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
