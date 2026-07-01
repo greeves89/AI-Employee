@@ -1,0 +1,15 @@
+[Unit]
+Description=AI-Employee kiosk host metrics + power collector
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pi
+SupplementaryGroups=video
+ExecStart=/opt/repos/AI-Employee/scripts/kiosk-power-collector.sh
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

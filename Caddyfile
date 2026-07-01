@@ -12,6 +12,24 @@
 		-Server
 	}
 
+	# Kiosk is LOCAL-ONLY. Requests coming through the Cloudflare tunnel carry a
+	# Cf-Ray header → 404. Requests from the Pi's own browser hit Caddy directly
+	# and have no such header → served. (handle blocks are matched most-specific
+	# first, so these win over /api/* and the catch-all.)
+	@tunnel header Cf-Ray *
+	handle /api/v1/kiosk* {
+		route {
+			respond @tunnel "Not found" 404
+			reverse_proxy ai-employee-orchestrator:8000
+		}
+	}
+	handle /kiosk* {
+		route {
+			respond @tunnel "Not found" 404
+			reverse_proxy ai-employee-frontend:3000
+		}
+	}
+
 	# API + health endpoints → orchestrator
 	handle /api/* {
 		reverse_proxy ai-employee-orchestrator:8000

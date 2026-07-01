@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # Host base dir (must be bind-mounted into the orchestrator rw for provisioning)
     # and the container path prefix where each brain is mounted in agents.
     secondbrain_base: str = "/srv/secondbrain"
+
+    # Kiosk (local-only on-device status display on the Raspberry Pi)
+    # Live electricity price for the power-cost estimate (env: ELECTRICITY_PRICE_EUR_KWH).
+    electricity_price_eur_kwh: float = 0.35
+    # Host metrics JSON written by the host power collector (bind-mounted read-only).
+    kiosk_metrics_path: str = "/kiosk-metrics/metrics.json"
     secondbrain_container_base: str = "/mnt/brains"
 
     # Telegram
