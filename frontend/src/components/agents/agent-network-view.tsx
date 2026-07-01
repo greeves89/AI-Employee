@@ -202,7 +202,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   }, [agents]);
 
   // Team grouping: lead set + groups (one per team present, plus an ungrouped bucket)
-  const { leadIds, groups } = useMemo(() => {
+  const { leadIds, groups, teamOf } = useMemo(() => {
     const teamOf: Record<string, AgentTeam> = {};
     const leads = new Set<string>();
     for (const t of teams) {
@@ -216,8 +216,21 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       if (!byKey[key]) byKey[key] = { key, name: t ? t.name : "Ohne Team", leadId: t ? t.lead_agent_id : null, indices: [] };
       byKey[key].indices.push(i);
     });
-    return { leadIds: leads, groups: Object.values(byKey) };
+    return { leadIds: leads, groups: Object.values(byKey), teamOf };
   }, [teams, agents]);
+
+  // Phase 3 — cross-team lead messaging: a connection counts when the two agents
+  // sit in DIFFERENT teams and at least one endpoint is a team lead (inter-team
+  // traffic routes through leads). These edges get their own emerald styling so
+  // "who talked to the other team's lead" is visible at a glance.
+  const isCrossTeamLead = useMemo(() => {
+    return (fromId: string, toId: string) => {
+      const ta = teamOf[fromId];
+      const tb = teamOf[toId];
+      if (!ta || !tb || ta.id === tb.id) return false;
+      return leadIds.has(fromId) || leadIds.has(toId);
+    };
+  }, [teamOf, leadIds]);
 
   // Positions: clustered per team (lead centered, members ringed). Falls back to a
   // single circle when there are no teams, so nothing breaks without the feature.
@@ -266,9 +279,10 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         toIdx: agentIndexMap[conn.to],
         count: conn.count,
         active: true,
+        crossTeamLead: isCrossTeamLead(conn.from, conn.to),
       }))
       .filter((c) => c.fromIdx !== undefined && c.toIdx !== undefined);
-  }, [connections, agentIndexMap]);
+  }, [connections, agentIndexMap, isCrossTeamLead]);
 
   // Delegation edges (directional: delegator -> assignee)
   const mappedDelegations = useMemo(() => {
@@ -359,6 +373,23 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         }}
       />
 
+      {/* Edge legend — only lists edge types that are actually present */}
+      <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1 rounded-lg bg-card/80 backdrop-blur-md border border-foreground/[0.08] px-2.5 py-1.5 text-[9px] text-muted-foreground shadow">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-[2px] w-4 rounded-full" style={{ background: "rgb(99,102,241)" }} /> Nachrichten
+        </div>
+        {mappedDelegations.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-[2px] w-4 rounded-full" style={{ background: "rgb(251,191,36)" }} /> Delegierte Tasks
+          </div>
+        )}
+        {mappedConnections.some((c) => c.crossTeamLead) && (
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-[2px] w-4 rounded-full" style={{ background: "rgb(52,211,153)" }} /> <span className="text-emerald-400">♛</span> Cross-Team → Lead
+          </div>
+        )}
+      </div>
+
       {/* SVG layer */}
       <svg
         className="absolute inset-0 w-full h-full"
@@ -425,9 +456,9 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               <motion.path
                 d={pathD}
                 fill="none"
-                stroke="url(#lineGradientActive)"
-                strokeWidth={isHighlighted ? strokeW + 1 : strokeW}
-                strokeOpacity={isHighlighted ? 1 : 0.6}
+                stroke={conn.crossTeamLead ? "rgb(52,211,153)" : "url(#lineGradientActive)"}
+                strokeWidth={conn.crossTeamLead ? (isHighlighted ? strokeW + 1.5 : strokeW + 0.5) : (isHighlighted ? strokeW + 1 : strokeW)}
+                strokeOpacity={isHighlighted ? 1 : conn.crossTeamLead ? 0.85 : 0.6}
                 initial={{ pathLength: 0 }}
                 animate={{ pathLength: 1 }}
                 transition={{ duration: 1, delay: i * 0.1, ease: "easeOut" }}
@@ -436,9 +467,9 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               <motion.path
                 d={pathD}
                 fill="none"
-                stroke="rgb(165,180,252)"
+                stroke={conn.crossTeamLead ? "rgb(110,231,183)" : "rgb(165,180,252)"}
                 strokeWidth={1}
-                strokeOpacity={0.4}
+                strokeOpacity={conn.crossTeamLead ? 0.6 : 0.4}
                 strokeDasharray="4 8"
                 initial={{ strokeDashoffset: 0 }}
                 animate={{ strokeDashoffset: -24 }}
@@ -447,11 +478,18 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               {/* Particles */}
               <FlowingParticle x1={from.x} y1={from.y} x2={to.x} y2={to.y} delay={i * 0.6} duration={3} />
               <FlowingParticle x1={from.x} y1={from.y} x2={to.x} y2={to.y} delay={i * 0.6 + 1.5} duration={3} />
-              {/* Message count badge at midpoint */}
+              {/* Message count badge at midpoint — emerald + crown marker for
+                  cross-team lead traffic, indigo otherwise. */}
               <g>
-                <circle cx={ctrlX} cy={ctrlY} r={10} fill="rgba(99,102,241,0.15)" />
+                <circle cx={ctrlX} cy={ctrlY} r={conn.crossTeamLead ? 11 : 10}
+                  fill={conn.crossTeamLead ? "rgba(16,185,129,0.2)" : "rgba(99,102,241,0.15)"}
+                  stroke={conn.crossTeamLead ? "rgba(52,211,153,0.6)" : "none"} strokeWidth={conn.crossTeamLead ? 1 : 0} />
                 <text x={ctrlX} y={ctrlY + 1} textAnchor="middle" dominantBaseline="middle"
-                  className="text-[9px] font-bold" fill="rgb(165,180,252)">{conn.count}</text>
+                  className="text-[9px] font-bold" fill={conn.crossTeamLead ? "rgb(52,211,153)" : "rgb(165,180,252)"}>{conn.count}</text>
+                {conn.crossTeamLead && (
+                  <text x={ctrlX} y={ctrlY - 15} textAnchor="middle" dominantBaseline="middle"
+                    className="text-[10px]" fill="rgb(52,211,153)">♛</text>
+                )}
               </g>
             </g>
           );
