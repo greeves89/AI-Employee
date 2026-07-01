@@ -911,6 +911,12 @@ async def agent_search_skills(
         query = query.order_by(Skill.usage_count.desc()).limit(limit)
         skills = list((await db.execute(query)).scalars().all())
 
+    # Build the response BEFORE any commit below. The usage-tracking block
+    # commits/rolls back, which expires the ORM objects; accessing their
+    # columns afterwards would trigger an async lazy-load -> MissingGreenlet
+    # -> 500. Serialising here (objects still fresh) makes the search robust.
+    skill_responses = [_to_response(s) for s in skills]
+
     # Implicit usage tracking
     if skills:
         agent_id = auth["agent_id"]
@@ -966,7 +972,7 @@ async def agent_search_skills(
                     await db.rollback()
                     logger.warning("skill usage tracking failed (non-fatal): %s", e)
 
-    return {"skills": [_to_response(s) for s in skills], "total": len(skills), "mode": search_mode}
+    return {"skills": skill_responses, "total": len(skills), "mode": search_mode}
 
 
 @router.get("/agent/{agent_id}")
