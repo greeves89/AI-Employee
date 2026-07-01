@@ -922,7 +922,11 @@ async def agent_search_skills(
         agent_id = auth["agent_id"]
         resolved_task_id = task_id
         if not resolved_task_id:
-            from app.models.task import Task, TaskStatus
+            # NOTE: do NOT import Task here — it is already imported at module
+            # scope. A local `import Task` would make Task a function-local for
+            # the whole scope, so line ~955 (reached when task_id is supplied
+            # and this block is skipped) would raise UnboundLocalError.
+            from app.models.task import TaskStatus
             running = (await db.execute(
                 select(Task.id).where(
                     Task.agent_id == agent_id,
