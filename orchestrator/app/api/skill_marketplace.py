@@ -3,17 +3,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, func, delete, cast, Text
+from sqlalchemy import select, func, delete, cast, Text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import io
+import logging
 import re
 from datetime import datetime, timezone
 
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
+from app.models.task import Task
 from app.models.audit_log import AuditLog, AuditEventType
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/skills", tags=["skills-marketplace"])
 
@@ -931,19 +935,36 @@ async def agent_search_skills(
                 )
             )).scalar_one_or_none()
             if not existing:
+                # Usage tracking is a best-effort side effect — it must NEVER turn
+                # the skill search into a 500. Two fixes vs. the old code:
+                #  1) resolved_task_id can be a synthetic chat id (not a real Task),
+                #     which violated the tasks FK. Only put it in task_id when it is
+                #     a real task; otherwise record it as a chat usage.
+                #  2) Increment the counter with an atomic UPDATE — never read an
+                #     expired ORM attribute after a rollback (that caused the
+                #     MissingGreenlet -> 500). On any failure: rollback + log, and
+                #     still return the search result.
                 try:
+                    is_real_task = bool(await db.scalar(
+                        select(Task.id).where(Task.id == resolved_task_id)
+                    ))
                     db.add(SkillTaskUsage(
                         skill_id=top_skill.id,
-                        task_id=resolved_task_id,
+                        task_id=resolved_task_id if is_real_task else None,
+                        chat_session_id=None if is_real_task else resolved_task_id,
+                        source="task" if is_real_task else "chat",
                         agent_id=agent_id,
                         skill_version=top_skill.current_version,
                     ))
-                    top_skill.usage_count = (top_skill.usage_count or 0) + 1
+                    await db.execute(
+                        update(Skill)
+                        .where(Skill.id == top_skill.id)
+                        .values(usage_count=func.coalesce(Skill.usage_count, 0) + 1)
+                    )
                     await db.commit()
-                except Exception:
+                except Exception as e:
                     await db.rollback()
-                    top_skill.usage_count = (top_skill.usage_count or 0) + 1
-                    await db.commit()
+                    logger.warning("skill usage tracking failed (non-fatal): %s", e)
 
     return {"skills": [_to_response(s) for s in skills], "total": len(skills), "mode": search_mode}
 
