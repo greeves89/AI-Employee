@@ -39,6 +39,9 @@ class SchedulerService:
         self._idle_stop_counter = 0
         self._failure_watchdog_last_run: datetime | None = None
         self._dreaming_counter = 0
+        # Per-schedule drift value at which we last alerted; prevents hourly spam
+        # for a stuck schedule — only re-alerts when drift increases.
+        self._watchdog_alerted: dict[str, int] = {}
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -387,11 +390,22 @@ class SchedulerService:
                 stale_for = now - s.last_run_at
                 if stale_for < timedelta(hours=2):
                     continue
+                # De-dup: only alert when drift increases beyond last alerted level.
+                # Without this the same alert fires every hour indefinitely.
+                if drift <= self._watchdog_alerted.get(s.id, 0):
+                    continue
                 if not self.redis or not self.redis.client:
                     continue
+                safe_name = (
+                    s.name.replace("\\", "\\\\")
+                    .replace("_", "\\_")
+                    .replace("*", "\\*")
+                    .replace("`", "\\`")
+                    .replace("[", "\\[")
+                )
                 payload = {
                     "text": (
-                        f"⚠️ Schedule *{s.name}* has {drift} unaccounted runs "
+                        f"⚠️ Schedule *{safe_name}* has {drift} unaccounted runs "
                         f"(total={s.total_runs}, ok={s.success_count}, "
                         f"fail={s.fail_count}).\n"
                         f"Last run {s.last_run_at.isoformat()} "
@@ -403,6 +417,7 @@ class SchedulerService:
                     await self.redis.client.publish(
                         "telegram:notification", _json.dumps(payload)
                     )
+                    self._watchdog_alerted[s.id] = drift
                 except Exception as e:
                     print(f"[Scheduler] FailureWatchdog publish error: {e}")
 

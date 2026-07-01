@@ -594,12 +594,22 @@ class TaskRouter:
                 return
             error = (result_data.get("error") or "").strip()
             error_snippet = (error[:200] + "…") if len(error) > 200 else error
+
+            def _md(s: str) -> str:
+                return (
+                    s.replace("\\", "\\\\")
+                    .replace("_", "\\_")
+                    .replace("*", "\\*")
+                    .replace("`", "\\`")
+                    .replace("[", "\\[")
+                )
+
             text_lines = [
-                f"⚠️ Schedule failed: *{schedule.name}*",
+                f"⚠️ Schedule failed: *{_md(schedule.name)}*",
                 f"ID: `{schedule.id}` · fail_count={schedule.fail_count}",
             ]
             if error_snippet:
-                text_lines.append(f"Error: {error_snippet}")
+                text_lines.append(f"Error: {_md(error_snippet)}")
             text_lines.append(f"Next run: {schedule.next_run_at.isoformat() if schedule.next_run_at else '—'}")
             payload = {"text": "\n".join(text_lines), "parse_mode": "Markdown"}
             await self.redis.client.publish(
