@@ -27,6 +27,7 @@ from app.db.session import get_db
 from app.dependencies import get_redis_service
 from app.models.agent import Agent
 from app.models.task import Task, TaskStatus
+from app.models.team import Team
 from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/mcp", tags=["mcp-agent"])
@@ -85,6 +86,18 @@ AGENT_TOOLS = [
                     "description": "Number of tasks to return (default: 10, max: 50).",
                 },
             },
+        },
+    },
+    {
+        "name": "list_my_team",
+        "description": (
+            "List the team(s) YOU belong to, with each team's members (name, id, role) "
+            "and which member is the lead. The team-scoped counterpart to list_team "
+            "(which lists ALL agents). Use this to see only your own teams."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
         },
     },
     {
@@ -239,8 +252,65 @@ async def _handle_rpc(req: dict, agent: Agent, db: AsyncSession, redis: RedisSer
     return _mcp_error(rpc_id, -32601, f"Method not found: {method}")
 
 
+def _teams_for_agent(teams: list, agent_id: str) -> list:
+    """Pure selection: the subset of teams whose member roster includes agent_id.
+
+    JSONB containment queries vary across drivers, so membership is filtered in
+    Python on the (already active-filtered) team list — clear and portable.
+    """
+    return [t for t in teams if agent_id in (t.member_agent_ids or [])]
+
+
+async def _list_my_team(agent: Agent, db: AsyncSession) -> list[dict]:
+    """Return the active teams the calling agent belongs to, each with its roster.
+
+    Team-scoped counterpart to list_team (which returns ALL agents). For each team
+    the calling agent is a member of, returns:
+        {team_id, name, lead_agent_id, members: [{id, name, role, is_lead}]}
+    Member names/roles are resolved from the Agent model in a single query.
+    """
+    teams_res = await db.execute(select(Team).where(Team.is_active.is_(True)))
+    my_teams = _teams_for_agent(list(teams_res.scalars().all()), agent.id)
+    if not my_teams:
+        return []
+
+    member_ids = sorted({mid for t in my_teams for mid in (t.member_agent_ids or [])})
+    name_by_id: dict[str, str] = {}
+    role_by_id: dict[str, str | None] = {}
+    if member_ids:
+        agents_res = await db.execute(select(Agent).where(Agent.id.in_(member_ids)))
+        for a in agents_res.scalars().all():
+            name_by_id[a.id] = a.name
+            role_by_id[a.id] = (a.config or {}).get("role")
+
+    out: list[dict] = []
+    for t in my_teams:
+        members = [
+            {
+                "id": mid,
+                "name": name_by_id.get(mid, mid),
+                "role": role_by_id.get(mid),
+                "is_lead": mid == t.lead_agent_id,
+            }
+            for mid in (t.member_agent_ids or [])
+        ]
+        out.append({
+            "team_id": t.id,
+            "name": t.name,
+            "lead_agent_id": t.lead_agent_id,
+            "members": members,
+        })
+    return out
+
+
 async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redis: RedisService) -> dict:
     """Execute an agent tool and return an MCP tool result."""
+
+    if name == "list_my_team":
+        teams = await _list_my_team(agent, db)
+        if not teams:
+            return _tool_result("You are not a member of any active team.")
+        return _tool_result(json.dumps({"teams": teams}, ensure_ascii=False))
 
     if name == "send_task":
         prompt = args.get("prompt", "").strip()

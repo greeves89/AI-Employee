@@ -3,17 +3,22 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, StopCircle, ArrowUpCircle } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, Users, StopCircle, ArrowUpCircle } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
-type ViewMode = "grid" | "network";
+type ViewMode = "grid" | "network" | "teams";
 
 const CreateAgentModal = dynamic(
   () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
+  { ssr: false },
+);
+
+const TeamsSection = dynamic(
+  () => import("@/components/agents/teams-section").then((m) => m.TeamsSection),
   { ssr: false },
 );
 
@@ -172,6 +177,16 @@ export default function AgentsPage() {
               >
                 <Network className="h-4 w-4" />
               </button>
+              <button
+                onClick={() => setViewMode("teams")}
+                className={cn(
+                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
+                  viewMode === "teams" && "bg-foreground/[0.08] text-foreground"
+                )}
+                title="Teams View"
+              >
+                <Users className="h-4 w-4" />
+              </button>
             </div>
 
             {/* Update All — only visible when at least one agent has an update */}
@@ -235,7 +250,9 @@ export default function AgentsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {loading && agents.length === 0 ? (
+        {viewMode === "teams" ? (
+          <TeamsSection agents={agents} />
+        ) : loading && agents.length === 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
               <div
