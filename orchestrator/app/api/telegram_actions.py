@@ -17,8 +17,6 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
-_TELEGRAM_MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MB — Telegram Bot API hard limit
-
 import redis.asyncio as aioredis
 from app.config import settings
 from app.dependencies import verify_agent_token
@@ -190,17 +188,18 @@ class SendAnimationRequest(BaseModel):
 
 
 class SendRichMessageRequest(BaseModel):
-    """Bot API 10.1 — sendRichMessage.
+    """Bot API 10.1 — sendRichMessage with block-level content.
 
-    Provide content as either `markdown` (CommonMark) or `html` (Telegram HTML subset).
-    Telegram parses it server-side and renders headings, tables, LaTeX, checklists, etc.
+    blocks: list of RichBlock* objects as defined in the Telegram Bot API 10.1 docs.
+    Passed through as-is so Telegram validates the schema server-side.
 
-    Exactly one of markdown / html must be set.
+    Supported block types (RichBlock*):
+      Paragraph, SectionHeading, Preformatted, Table, List, BlockQuotation,
+      PullQuotation, Collage, Slideshow, Details, Map,
+      Animation, Audio, Photo, Video, VoiceNote, Thinking
     """
     chat_id: int | str
-    markdown: str | None = None   # CommonMark source
-    html: str | None = None       # Telegram HTML subset
-    skip_entity_detection: bool = False
+    blocks: list[dict]          # InputRichMessage blocks — raw, forwarded to Telegram
     reply_markup: dict | None = None
     reply_to_message_id: int | None = None
     disable_notification: bool = False
@@ -315,20 +314,6 @@ async def send_message(
     return await _tg_request(token, "sendMessage", data)
 
 
-def _build_rich_message_payload(body: SendRichMessageRequest) -> dict:
-    """Build the InputRichMessage dict from request body."""
-    if not body.markdown and not body.html:
-        raise HTTPException(status_code=422, detail="Provide markdown or html content")
-    rm: dict = {}
-    if body.markdown:
-        rm["markdown"] = body.markdown
-    else:
-        rm["html"] = body.html
-    if body.skip_entity_detection:
-        rm["skip_entity_detection"] = True
-    return rm
-
-
 @router.post("/send-rich-message")
 async def send_rich_message(
     body: SendRichMessageRequest,
@@ -337,13 +322,13 @@ async def send_rich_message(
 ):
     """Send a rich message using Telegram Bot API 10.1 sendRichMessage.
 
-    Pass CommonMark `markdown` or Telegram HTML as `html`.
-    Telegram parses it and renders headings, tables, LaTeX, checklists, maps, etc.
+    Forwards blocks as InputRichMessage to Telegram unchanged.
+    Telegram validates block types server-side.
     """
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data: dict = {
-        "chat_id": str(body.chat_id),
-        "rich_message": _build_rich_message_payload(body),
+        "chat_id": body.chat_id,
+        "rich_message": {"blocks": body.blocks},
     }
     if body.reply_markup:
         data["reply_markup"] = body.reply_markup
@@ -363,8 +348,8 @@ async def send_rich_message_draft(
     """Stream a partial rich message (sendRichMessageDraft) — for progressive rendering."""
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data: dict = {
-        "chat_id": str(body.chat_id),
-        "rich_message": _build_rich_message_payload(body),
+        "chat_id": body.chat_id,
+        "rich_message": {"blocks": body.blocks},
     }
     if body.reply_markup:
         data["reply_markup"] = body.reply_markup
@@ -382,8 +367,6 @@ async def send_voice(
     """Send a voice message (OGG/OPUS) to a Telegram chat."""
     token = await _get_bot_token(agent_auth["agent_id"], db)
     audio_bytes = base64.b64decode(body.voice_base64)
-    if len(audio_bytes) > _TELEGRAM_MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds Telegram's 50 MB limit")
     data = {"chat_id": str(body.chat_id)}
     if body.caption:
         data["caption"] = body.caption
@@ -394,7 +377,7 @@ async def send_voice(
     if body.reply_markup:
         data["reply_markup"] = json.dumps(body.reply_markup)
     files = {"voice": ("voice.ogg", audio_bytes, "audio/ogg")}
-    return await _tg_request(token, "sendVoice", data, files=files, timeout=120)
+    return await _tg_request(token, "sendVoice", data, files=files)
 
 
 @router.post("/send-photo")
@@ -440,11 +423,6 @@ async def send_document(
     """Send a document/file to a Telegram chat."""
     token = await _get_bot_token(agent_auth["agent_id"], db)
     doc_bytes = base64.b64decode(body.document_base64)
-    if len(doc_bytes) > _TELEGRAM_MAX_FILE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail="File exceeds Telegram's 50 MB limit. Use /send-document-upload for large files.",
-        )
     data = {"chat_id": str(body.chat_id)}
     if body.caption:
         data["caption"] = body.caption
@@ -453,7 +431,7 @@ async def send_document(
     if body.reply_markup:
         data["reply_markup"] = json.dumps(body.reply_markup)
     files = {"document": (body.filename, doc_bytes, "application/octet-stream")}
-    return await _tg_request(token, "sendDocument", data, files=files, timeout=120)
+    return await _tg_request(token, "sendDocument", data, files=files)
 
 
 @router.post("/send-document-upload")
