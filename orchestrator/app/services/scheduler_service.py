@@ -37,7 +37,11 @@ class SchedulerService:
         self._gc_counter = 0
         self._feeds_counter = 0
         self._idle_stop_counter = 0
+        self._failure_watchdog_last_run: datetime | None = None
         self._dreaming_counter = 0
+        # Per-schedule drift value at which we last alerted; prevents hourly spam
+        # for a stuck schedule — only re-alerts when drift increases.
+        self._watchdog_alerted: dict[str, int] = {}
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -83,6 +87,12 @@ class SchedulerService:
                             )
                     except Exception as e:
                         print(f"[Scheduler] KnowledgeFeeds error: {e}")
+                # Missed-run watchdog: catches schedules whose task never reported
+                # a terminal status (silent drops). Self-throttles to once per hour.
+                try:
+                    await self._tick_failure_watchdog()
+                except Exception as e:
+                    print(f"[Scheduler] FailureWatchdog error: {e}")
                 # Trend scan: runs daily (TrendService.tick() self-throttles)
                 try:
                     result = await trend_service.tick()
@@ -344,6 +354,72 @@ class SchedulerService:
             return ""
         proactive = (agent.config or {}).get("proactive", {}) or {}
         return (proactive.get("custom_instructions", "") or "").strip()
+
+    async def _tick_failure_watchdog(self) -> None:
+        """Detect schedules that fired but whose task never reached a terminal
+        status (silent drop) and publish a Telegram alert.
+
+        Symptom we are guarding against: the scheduled task gets created and
+        even runs, but no completion event reaches the orchestrator (agent
+        crashed, network blip, lost Redis pubsub). `success_count + fail_count`
+        then drifts below `total_runs` and nobody notices — the operator only
+        sees the missing artifact (e.g. morning podcast) hours later.
+
+        We run once per hour, lazily, from inside the main scheduler loop.
+        """
+        import json as _json
+
+        now = datetime.now(timezone.utc)
+        if (
+            self._failure_watchdog_last_run is not None
+            and (now - self._failure_watchdog_last_run) < timedelta(hours=1)
+        ):
+            return
+        self._failure_watchdog_last_run = now
+
+        async with async_session_factory() as db:
+            schedules = (
+                await db.execute(select(Schedule).where(Schedule.enabled == True))  # noqa: E712
+            ).scalars().all()
+            for s in schedules:
+                drift = s.total_runs - (s.success_count + s.fail_count)
+                # Only alert on at least 2 outstanding runs to dampen the noise
+                # from a single in-flight task that hasn't reported back yet.
+                if drift < 2 or not s.last_run_at:
+                    continue
+                stale_for = now - s.last_run_at
+                if stale_for < timedelta(hours=2):
+                    continue
+                # De-dup: only alert when drift increases beyond last alerted level.
+                # Without this the same alert fires every hour indefinitely.
+                if drift <= self._watchdog_alerted.get(s.id, 0):
+                    continue
+                if not self.redis or not self.redis.client:
+                    continue
+                safe_name = (
+                    s.name.replace("\\", "\\\\")
+                    .replace("_", "\\_")
+                    .replace("*", "\\*")
+                    .replace("`", "\\`")
+                    .replace("[", "\\[")
+                )
+                payload = {
+                    "text": (
+                        f"⚠️ Schedule *{safe_name}* has {drift} unaccounted runs "
+                        f"(total={s.total_runs}, ok={s.success_count}, "
+                        f"fail={s.fail_count}).\n"
+                        f"Last run {s.last_run_at.isoformat()} "
+                        f"({int(stale_for.total_seconds() // 3600)}h ago)."
+                    ),
+                    "parse_mode": "Markdown",
+                }
+                try:
+                    await self.redis.client.publish(
+                        "telegram:notification", _json.dumps(payload)
+                    )
+                    self._watchdog_alerted[s.id] = drift
+                except Exception as e:
+                    print(f"[Scheduler] FailureWatchdog publish error: {e}")
 
     async def _stop_idle_agents(self) -> int:
         """Stop agents that have been idle longer than their configured limit.
