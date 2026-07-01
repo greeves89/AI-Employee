@@ -328,6 +328,8 @@ class OAuthService:
     async def store_pat(self, provider_name: str, token: str, user_id: str | None = None) -> OAuthIntegration:
         """Store a Personal Access Token (e.g., GitHub PAT)."""
         provider_enum = OAuthProvider(provider_name)
+        if not _is_per_user(provider_name):
+            user_id = None
         provider = get_provider(provider_name)
         account_label = None
         if provider.userinfo_url:
@@ -396,6 +398,8 @@ class OAuthService:
             raise ValueError("Codex auth.json is missing tokens.access_token")
 
         provider_enum = OAuthProvider(provider_name)
+        if not _is_per_user(provider_name):
+            user_id = None
         result = await self.db.execute(
             select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
         )

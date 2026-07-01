@@ -91,6 +91,21 @@ class PersistTokensGlobalProviderTests(unittest.IsolatedAsyncioTestCase):
         assert len(inserted) == 1, "Expected exactly one INSERT"
         assert inserted[0].user_id is None, "Global provider row must have user_id=NULL"
 
+    @patch("app.services.oauth_service.encrypt_token", side_effect=_mock_encrypt)
+    @patch("app.services.oauth_service.httpx.AsyncClient")
+    async def test_reauth_per_user_provider_preserves_user_id(self, _http, _enc):
+        """persist_tokens for a per-user provider (Microsoft) must keep user_id."""
+        service = await self._make_service(existing_row=None)
+
+        inserted = []
+        service.db.add = MagicMock(side_effect=inserted.append)
+
+        token_data = {"access_token": "ms-token", "token_type": "Bearer"}
+        await service.persist_tokens("microsoft", "user-xyz", token_data)
+
+        assert len(inserted) == 1, "Expected exactly one INSERT"
+        assert inserted[0].user_id == "user-xyz", "Per-user provider must preserve user_id"
+
 
 if __name__ == "__main__":
     unittest.main()
