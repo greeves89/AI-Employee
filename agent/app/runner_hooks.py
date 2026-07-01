@@ -160,6 +160,9 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
 
 3. **REFLECT — what went wrong?**: Look back at this task critically. Answer these for yourself:
    - What errors did I hit? (compile errors, runtime errors, wrong assumptions, denied commands)
+     To see the REAL error, use the `read_logs` tool for your own recent container logs; for
+     platform-side failures read `/shared/platform-errors.log` (the platform's redacted
+     WARNING/ERROR log). Turn a recurring platform error into a GitHub issue or PR.
    - What took longer than it should have?
    - What did I do that I should NOT do next time?
    - What did I do right that I should keep doing?
