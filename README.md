@@ -69,11 +69,12 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Human-in-the-loop approvals | Yes | Partial | Yes | Partial | Yes (Agents SDK) |
 | Governance audit trail | Yes | Yes | Yes | Yes (Business+) | Yes (Enterprise) |
 | Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
+| Persistent agent teams + lead-routing | Yes | No | Partial | No | No |
 | DSGVO-compliant by default | Yes* | Partial | BYO | No | No |
 | Telegram + Voice (STT/TTS) | Yes | Yes | BYO | No | No |
 | Agents deploy Docker apps | Yes | No | No | No | No |
-| 25 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
-| LLM-agnostic (Claude / GPT-4o / Gemini / local) | Yes | Yes | Yes | No | No |
+| 26 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
+| LLM-agnostic (Claude / GPT-5.x via Codex / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | No | No |
 
 For a detailed, honest comparison including scenarios where competitors are a better fit, see **[COMPARISON.md](COMPARISON.md)**.
 
@@ -116,7 +117,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 - **Docker-isolated agents** — Every agent runs in its own container with its own workspace, filesystem, and resource limits. True isolation, not shared scratch dirs.
 - **Claude Code CLI runtime** — Battle-tested headless Claude with native tool use, file editing, and shell access.
-- **LLM-agnostic** — Swap in GPT-4o, Gemini 2.0, Mistral Large, or local Ollama models via the custom-LLM adapter.
+- **LLM-agnostic** — Native Claude Code and OpenAI Codex (GPT-5.x) harnesses, plus Gemini (Vertex), AWS Bedrock, Azure Foundry, or local Ollama/LM-Studio models via the custom-LLM adapter.
 - **Auto-scaling** — Load balancer distributes tasks across available agent containers.
 - **Live log streaming** — WebSocket-powered log viewer, no polling.
 
@@ -226,6 +227,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 | 23 | **Medical Assistant** | Triage notes, documentation, appointment prep |
 | 24 | **Personal Assistant** | Calendar, email triage, reminders |
 | 25 | **Executive Assistant** | Briefings, travel, meeting prep, minutes |
+| 26 | **OS Agent (Brain)** | Orchestrator — decomposes goals, delegates to specialist agents, monitors, learns |
 
 Each template ships with a role prompt, recommended skills, default approval rules, and example tasks.
 
@@ -251,7 +253,7 @@ What's actively in development or planned next:
 ### In Progress
 - **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via Playwright MCP. Fill forms, scrape dynamic pages, interact with web UIs that have no API.
 - **Desktop Bridge** — Native macOS/Windows tray app connects your local desktop to the AI-Employee server. Agents can take screenshots, click, type, open apps and run shell commands on your machine. Download via the agent's Computer-Use tab or from the [latest release](https://github.com/greeves89/AI-Employee/releases/tag/bridge-latest). Granular capability permissions (screenshots, mouse, keyboard, clipboard, shell) and folder-access restrictions configurable from the tray menu.
-- **Per-Agent Model Selection** — Switch any agent to a different LLM (GPT-4o, Gemini, local Ollama) without restarting. Model choice persists per agent.
+- **Per-Agent Model Selection** — Switch any agent to a different LLM (Claude, GPT-5.x via Codex, Gemini, local Ollama) without restarting. Model choice persists per agent.
 - **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
 
 ### Planned

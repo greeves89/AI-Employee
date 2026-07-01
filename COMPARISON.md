@@ -39,6 +39,7 @@ If you are evaluating AI agent platforms for:
 | Self-hostable | Yes | Yes | Yes | **No** | **No** | Yes | Yes | Yes |
 | Open source | Yes (Fair-Code) | Yes | Yes (MIT) | **No** | **No** | Yes (MIT) | Yes (MIT) | Yes (Fair-Code) |
 | Multi-agent | Yes | **No** | Yes | Partial | Partial | Yes | Yes | No |
+| Persistent agent teams + lead-routing | **Yes** | No | Partial | No | No | Partial | Partial | No |
 | Docker isolation per agent | **Yes** | No (shared FS) | No | N/A | N/A | No | No | No |
 | Multi-user / team | Yes | Partial | No | Yes | Yes | No | No | Yes |
 | Cloud option available | Planned | Yes | Cloud only | Yes | Yes | No | No | Yes |
@@ -49,7 +50,7 @@ If you are evaluating AI agent platforms for:
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Claude (Anthropic) | Yes (native) | Yes | Yes | Yes | No | Yes | Yes | Yes |
-| GPT-4o / OpenAI | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| OpenAI GPT-5.x (Codex) | Yes (native) | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Gemini | Yes | Yes | Yes | No | No | Yes | Yes | Yes |
 | Local models (Ollama) | Yes | Yes | Yes | No | No | Yes | Yes | Yes |
 | Multi-model per agent | Yes | No | Yes | No | No | Yes | Yes | No |
@@ -106,7 +107,7 @@ If you are evaluating AI agent platforms for:
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Pre-built agent templates | **25** | Marketplace | No | ~50 | GPT Store | No | No | Templates |
+| Pre-built agent templates | **26** | Marketplace | No | ~50 | GPT Store | No | No | Templates |
 | Custom skills system | Yes | Plugins | Tools | No | Actions | Tools | Tools | Nodes |
 | Meeting rooms (multi-agent chat) | **Yes** | No | Partial | No | No | Partial | Yes | No |
 | Agent deploys Docker apps | **Yes** | No | No | No | No | No | No | No |
@@ -284,7 +285,7 @@ Pick AI-Employee if any of the following describe you:
 3. **You want governance built in** — approval rules, audit logs, configurable rate limits on spending/actions.
 4. **You want true agent isolation** via Docker containers, not shared-filesystem "multi-agent".
 5. **You need meeting rooms** where 3-4 specialized agents can debate and reach a decision.
-6. **You want to avoid OpenAI lock-in** — run Claude, GPT-4o, Gemini, or a local Ollama model, swap at any time.
+6. **You want to avoid OpenAI lock-in** — run Claude, OpenAI GPT-5.x (Codex), Gemini, or a local Ollama model, swap at any time.
 
 ## When NOT to choose AI-Employee
 
