@@ -347,6 +347,9 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
     if not _valid_http_url(orch_url):
         orch_url = "http://ai-employee-orchestrator:8000"
     agent_token = env.get("AGENT_TOKEN", "")
+    agent_id = env.get("AGENT_ID", "")
+    agent_name = env.get("AGENT_NAME", "") or agent_id
+    default_model = env.get("DEFAULT_MODEL", "")
 
     # Built-in AI Employee MCP servers (stdio)
     builtin_servers = {
@@ -367,14 +370,28 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
     for name, script in builtin_servers.items():
         if not os.path.exists(script):
             continue
+        # Codex only exposes the env vars declared in this [env] block to the
+        # MCP server — it does NOT inherit the agent container's environment.
+        # The built-in servers authenticate to the orchestrator with the agent
+        # HMAC token, which is keyed on AGENT_ID; if AGENT_ID is missing the
+        # .mjs servers fall back to "unknown" and every call is rejected (401).
+        server_env = [
+            f"[mcp_servers.{name}.env]",
+            f'ORCHESTRATOR_URL = "{_toml_escape(orch_url)}"',
+            f'AGENT_ID = "{_toml_escape(agent_id)}"',
+            f'AGENT_TOKEN = "{_toml_escape(agent_token)}"',
+        ]
+        if name == "orchestrator":
+            server_env += [
+                f'AGENT_NAME = "{_toml_escape(agent_name)}"',
+                f'DEFAULT_MODEL = "{_toml_escape(default_model)}"',
+            ]
         lines += [
             f"[mcp_servers.{name}]",
             'command = "node"',
             f'args = ["{script}"]',
             "",
-            f"[mcp_servers.{name}.env]",
-            f'ORCHESTRATOR_URL = "{_toml_escape(orch_url)}"',
-            f'AGENT_TOKEN = "{_toml_escape(agent_token)}"',
+            *server_env,
             "",
         ]
 
