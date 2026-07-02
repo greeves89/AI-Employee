@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.97.0] — 2026-07-02
+
+### Added
+- **Chat-Konsole UX (Teil 1):** Der „Neuer Chat"-Button sitzt jetzt **links** und ist als gefüllter Primary-Button klar sichtbar. Chats lassen sich **umbenennen** (Doppelklick auf den Tab oder Stift-Icon) und **anpinnen** (Pin-Icon; angepinnte Chats stehen vorn). Neben dem einzelnen Löschen gibt es **„Alle Chats löschen"** (mit Bestätigung). Neue **Schriftgrößen-Steuerung** (A−/A+, persistiert in localStorage, skaliert den Verlauf per `zoom`). **Drag & Drop** von Dateien direkt in den Chat-Verlauf lädt sie nach `/workspace` hoch (mit Drop-Overlay). Backend: neues `ChatSession`-Metadaten-Modell (title/pinned, lazy angelegt) + Endpoints `PATCH /agents/{id}/chat/sessions/{session_id}` (rename/pin) und `DELETE /agents/{id}/chat/sessions` (alle löschen); die Session-Liste liefert nun `title` + `pinned` und sortiert angepinnte zuerst.
+
 ## [1.96.2] — 2026-07-02
 
 ### Changed

@@ -5,6 +5,7 @@ import {
   Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
   Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
+  Pin, Pencil, Trash2, Check, Type,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -71,6 +72,8 @@ interface SessionTab {
   id: string;
   label: string;
   preview: string;
+  title?: string | null;   // custom rename; falls back to preview
+  pinned?: boolean;
   isNew?: boolean;
 }
 
@@ -181,6 +184,23 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  // Chat management UX
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
+  // Font size (persisted): 0.85–1.4, applied to the whole chat via CSS var.
+  const [fontScale, setFontScale] = useState(1);
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("chatFontScale") : null;
+    if (saved) setFontScale(Math.min(1.4, Math.max(0.85, parseFloat(saved) || 1)));
+  }, []);
+  const changeFontScale = (delta: number) => {
+    setFontScale((prev) => {
+      const next = Math.min(1.4, Math.max(0.85, Math.round((prev + delta) * 100) / 100));
+      if (typeof window !== "undefined") window.localStorage.setItem("chatFontScale", String(next));
+      return next;
+    });
+  };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
@@ -239,6 +259,8 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
             id: s.id,
             label: `Chat ${sessionsToUse.length - i}`,
             preview: s.preview || "",
+            title: s.title ?? null,
+            pinned: !!s.pinned,
           }));
           setSessions(tabs);
           // Only auto-select a session if explicitly requested (e.g. from conversation list)
@@ -833,6 +855,47 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
     }
   }, [agentId, activeSessionId, sessions]);
 
+  const startRename = (session: SessionTab) => {
+    setEditingSessionId(session.id);
+    setEditValue(session.title || session.preview || session.label);
+  };
+
+  const saveRename = useCallback(async (sessionId: string) => {
+    const title = editValue.trim();
+    setEditingSessionId(null);
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: title || null } : s)));
+    try {
+      await api.updateChatSession(agentId, sessionId, { title });
+    } catch {
+      // keep optimistic value; a failed rename just isn't persisted
+    }
+  }, [agentId, editValue]);
+
+  const togglePin = useCallback(async (session: SessionTab) => {
+    const pinned = !session.pinned;
+    setSessions((prev) => {
+      const next = prev.map((s) => (s.id === session.id ? { ...s, pinned } : s));
+      return [...next].sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1));
+    });
+    try {
+      await api.updateChatSession(agentId, session.id, { pinned });
+    } catch {
+      // ignore
+    }
+  }, [agentId]);
+
+  const deleteAllSessions = useCallback(async () => {
+    if (!window.confirm("Wirklich ALLE Chats dieses Agenten löschen? Das kann nicht rückgängig gemacht werden.")) return;
+    try {
+      await api.deleteAllChatSessions(agentId);
+      setSessions([]);
+      setActiveSessionId(null);
+      setMessages([]);
+    } catch {
+      // ignore
+    }
+  }, [agentId]);
+
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setIsUploading(true);
@@ -924,8 +987,20 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       )}
       {/* Session tabs */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
+        {/* New chat — left, high contrast */}
+        <button
+          onClick={createNewSession}
+          disabled={!isConnected}
+          className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 transition-all shrink-0"
+          title="Neuer Chat"
+        >
+          <Plus className="h-3.5 w-3.5" /> Neu
+        </button>
+
         <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
-          {sessions.map((session) => (
+          {sessions.map((session) => {
+            const shown = session.title || session.preview;
+            return (
             <div
               key={session.id}
               className={cn(
@@ -935,34 +1010,59 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
                   : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-foreground/[0.04]"
               )}
             >
-              <button
-                onClick={() => switchSession(session.id)}
-                className="inline-flex items-center gap-1.5"
-              >
-                <MessageSquare className="h-3 w-3" />
-                {session.preview ? session.preview.slice(0, 20) + (session.preview.length > 20 ? "..." : "") : session.label}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteSession(session.id);
-                }}
-                className="ml-0.5 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/[0.1] transition-all"
-                title="Close session"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
+              {session.pinned && <Pin className="h-2.5 w-2.5 text-amber-400 shrink-0 fill-amber-400/30" />}
+              {editingSessionId === session.id ? (
+                <input
+                  autoFocus
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={() => saveRename(session.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveRename(session.id);
+                    if (e.key === "Escape") setEditingSessionId(null);
+                  }}
+                  className="w-28 bg-transparent border-b border-primary/60 outline-none text-[11px]"
+                />
+              ) : (
+                <button
+                  onClick={() => switchSession(session.id)}
+                  onDoubleClick={() => startRename(session)}
+                  className="inline-flex items-center gap-1.5"
+                  title="Doppelklick zum Umbenennen"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  {shown ? shown.slice(0, 22) + (shown.length > 22 ? "…" : "") : session.label}
+                </button>
+              )}
+              {editingSessionId !== session.id && (
+                <span className="inline-flex items-center opacity-0 group-hover/tab:opacity-100 transition-all">
+                  <button onClick={(e) => { e.stopPropagation(); togglePin(session); }} className="ml-0.5 rounded p-0.5 hover:bg-foreground/[0.1]" title={session.pinned ? "Loslösen" : "Anpinnen"}>
+                    <Pin className={cn("h-2.5 w-2.5", session.pinned && "text-amber-400")} />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); startRename(session); }} className="rounded p-0.5 hover:bg-foreground/[0.1]" title="Umbenennen">
+                    <Pencil className="h-2.5 w-2.5" />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }} className="rounded p-0.5 hover:bg-foreground/[0.1]" title="Löschen">
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
-        <button
-          onClick={createNewSession}
-          disabled={!isConnected}
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-all shrink-0 ml-auto"
-          title="New chat session"
-        >
-          <Plus className="h-3 w-3" />
-        </button>
+
+        {/* Right controls: font size · delete all · connection */}
+        <div className="flex items-center gap-0.5 shrink-0 border-l border-border pl-2 ml-1">
+          <button onClick={() => changeFontScale(-0.1)} disabled={fontScale <= 0.85} className="rounded px-1 py-0.5 text-[11px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift kleiner">A−</button>
+          <Type className="h-3 w-3 text-muted-foreground/40" />
+          <button onClick={() => changeFontScale(0.1)} disabled={fontScale >= 1.4} className="rounded px-1 py-0.5 text-[13px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift größer">A+</button>
+          {sessions.length > 0 && (
+            <button onClick={deleteAllSessions} className="ml-1 rounded p-1 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Alle Chats löschen">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
         {/* Connection status */}
         <div className="flex items-center gap-1.5 ml-1 shrink-0 border-l border-border pl-2">
@@ -986,8 +1086,29 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
         </div>
       </div>
 
-      {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]">
+      {/* Messages area — font size via zoom, drag&drop file upload */}
+      <div
+        ref={scrollRef}
+        className={cn(
+          "relative flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]",
+          isDragOver && "ring-2 ring-inset ring-primary/50"
+        )}
+        style={{ zoom: fontScale }}
+        onDragOver={(e) => { e.preventDefault(); if (!isDragOver) setIsDragOver(true); }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragOver(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragOver(false);
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
+        }}
+      >
+        {isDragOver && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary/50 bg-card/90 px-5 py-3 text-sm font-medium text-primary shadow-lg">
+              <Paperclip className="h-4 w-4" /> Dateien hier ablegen zum Hochladen
+            </div>
+          </div>
+        )}
         {messages.length === 0 && !connectionFailed && historyLoaded && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Bot className="h-8 w-8 mb-2" />

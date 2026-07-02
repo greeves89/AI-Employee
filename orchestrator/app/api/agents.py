@@ -1436,18 +1436,30 @@ async def get_chat_sessions(
     if not valid_sessions:
         valid_sessions = list(sessions)
 
-    return {
-        "sessions": [
-            {
-                "id": s.session_id,
-                "started_at": s.started_at.isoformat() if s.started_at else None,
-                "last_message_at": s.last_message_at.isoformat() if s.last_message_at else None,
-                "message_count": s.message_count,
-                "preview": previews.get(s.session_id, ""),
-            }
-            for s in valid_sessions
-        ],
-    }
+    # Merge in per-session metadata (custom title + pin). A session without a
+    # row keeps its derived preview and is unpinned — nothing breaks pre-feature.
+    from app.models.chat_session import ChatSession
+    meta_rows = (await db.execute(
+        select(ChatSession.session_id, ChatSession.title, ChatSession.pinned)
+        .where(ChatSession.agent_id == agent_id)
+    )).all()
+    meta = {m.session_id: (m.title, m.pinned) for m in meta_rows}
+
+    out = []
+    for s in valid_sessions:
+        title, pinned = meta.get(s.session_id, (None, False))
+        out.append({
+            "id": s.session_id,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "last_message_at": s.last_message_at.isoformat() if s.last_message_at else None,
+            "message_count": s.message_count,
+            "preview": previews.get(s.session_id, ""),
+            "title": title,
+            "pinned": bool(pinned),
+        })
+    # Pinned first, then keep the existing recency order (query already desc).
+    out.sort(key=lambda x: 0 if x["pinned"] else 1)
+    return {"sessions": out}
 
 
 @router.get("/{agent_id}/chat/history")
@@ -1531,13 +1543,77 @@ async def delete_chat_session(
     """Delete all messages in a chat session."""
     await _check_owner(agent_id, user, db)
     from sqlalchemy import delete as sql_delete
+    from app.models.chat_session import ChatSession
     result = await db.execute(
         sql_delete(ChatMessage)
         .where(ChatMessage.agent_id == agent_id)
         .where(ChatMessage.session_id == session_id)
     )
+    await db.execute(
+        sql_delete(ChatSession)
+        .where(ChatSession.agent_id == agent_id)
+        .where(ChatSession.session_id == session_id)
+    )
     await db.commit()
     return {"deleted": result.rowcount}
+
+
+@router.delete("/{agent_id}/chat/sessions")
+async def delete_all_chat_sessions(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete ALL chat sessions (messages + metadata) for an agent."""
+    await _check_owner(agent_id, user, db)
+    from sqlalchemy import delete as sql_delete
+    from app.models.chat_session import ChatSession
+    result = await db.execute(
+        sql_delete(ChatMessage).where(ChatMessage.agent_id == agent_id)
+    )
+    await db.execute(
+        sql_delete(ChatSession).where(ChatSession.agent_id == agent_id)
+    )
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
+class ChatSessionUpdate(BaseModel):
+    title: str | None = None   # non-empty → set custom title; "" / null → clear to derived preview
+    pinned: bool | None = None
+
+
+@router.patch("/{agent_id}/chat/sessions/{session_id}")
+async def update_chat_session(
+    agent_id: str,
+    session_id: str,
+    body: ChatSessionUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename and/or pin a chat session. Upserts the metadata row lazily."""
+    await _check_owner(agent_id, user, db)
+    from app.models.chat_session import ChatSession
+    row = (await db.execute(
+        select(ChatSession).where(
+            ChatSession.agent_id == agent_id,
+            ChatSession.session_id == session_id,
+        )
+    )).scalar_one_or_none()
+    if row is None:
+        row = ChatSession(agent_id=agent_id, session_id=session_id)
+        db.add(row)
+    if body.title is not None:
+        cleaned = body.title.strip()[:120]
+        row.title = cleaned or None
+    if body.pinned is not None:
+        row.pinned = body.pinned
+    await db.commit()
+    return {
+        "id": session_id,
+        "title": row.title,
+        "pinned": bool(row.pinned),
+    }
 
 
 class PermissionsUpdate(BaseModel):

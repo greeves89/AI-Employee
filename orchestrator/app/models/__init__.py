@@ -4,6 +4,7 @@ from app.models.task import Task, TaskStatus, TaskPriority
 from app.models.task_step import TaskStep
 from app.models.schedule import Schedule
 from app.models.chat_message import ChatMessage
+from app.models.chat_session import ChatSession
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.memory import AgentMemory, AgentMemoryTag, AgentMemoryLink
 from app.models.notification import Notification

@@ -532,12 +532,34 @@ export interface ChatSession {
   last_message_at: string | null;
   message_count: number;
   preview: string;
+  title?: string | null;   // custom rename; falls back to preview when null
+  pinned?: boolean;
 }
 
 export async function getChatSessions(
   agentId: string,
 ): Promise<{ sessions: ChatSession[] }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions`);
+}
+
+// Rename and/or pin a chat session (metadata is created lazily server-side).
+export async function updateChatSession(
+  agentId: string,
+  sessionId: string,
+  patch: { title?: string | null; pinned?: boolean },
+): Promise<{ id: string; title: string | null; pinned: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteAllChatSessions(
+  agentId: string,
+): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions`, {
+    method: "DELETE",
+  });
 }
 
 export async function getChatHistory(
