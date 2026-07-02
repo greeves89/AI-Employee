@@ -1,10 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Pin, X, ArrowRight, Loader2, RefreshCw, Bot, User, Clock } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { MessageSquare, Pin, X, ArrowRight, Loader2, Clock } from "lucide-react";
 import * as api from "@/lib/api";
-import type { ChatSession, ChatHistoryMessage } from "@/lib/api";
+import type { ChatSession } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+// Load the full chat lazily to avoid a static circular import (chat.tsx imports
+// ChatOverview). Rendered inside the modal so a chat session is fully usable
+// (send messages, streaming) — not just a read-only viewer.
+const EmbeddedChat = dynamic(() => import("./chat").then((m) => m.AgentChat), {
+  ssr: false,
+  loading: () => (
+    <div className="flex flex-1 items-center justify-center text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
+    </div>
+  ),
+});
 
 function relTime(iso: string | null): string {
   if (!iso) return "";
@@ -143,63 +156,34 @@ function ChatViewModal({
   onClose: () => void;
   onOpenSession?: (sessionId: string) => void;
 }) {
-  const [messages, setMessages] = useState<ChatHistoryMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const wasAtBottom = useRef(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const { messages } = await api.getChatHistory(agentId, 500, sessionId);
-      setMessages(messages);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [agentId, sessionId]);
-
+  // Close on Escape (but not while typing — the embedded chat owns the input).
   useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 4000); // "live" view
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  // Keep the view pinned to the bottom while new messages stream in.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && wasAtBottom.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !(e.target as HTMLElement)?.closest("textarea,input")) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-foreground/[0.1] bg-card shadow-2xl"
+        className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-foreground/[0.1] bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5 shrink-0">
           <div className="flex min-w-0 items-center gap-2">
             <MessageSquare className="h-4 w-4 shrink-0 text-primary/70" />
             <span className="truncate text-sm font-medium">{title}</span>
-            <span className="flex items-center gap-1 text-[10px] text-emerald-500">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              </span>
-              live
-            </span>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={refresh} className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground" title="Aktualisieren">
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
             {onOpenSession && (
               <button
                 onClick={() => { onOpenSession(sessionId); onClose(); }}
-                className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
-                title="Im Chat öffnen"
+                className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.1]"
+                title="Als Haupt-Chat öffnen"
               >
-                Im Chat öffnen <ArrowRight className="h-3 w-3" />
+                Vollbild <ArrowRight className="h-3 w-3" />
               </button>
             )}
             <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground" title="Schließen">
@@ -208,29 +192,9 @@ function ChatViewModal({
           </div>
         </div>
 
-        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          {loading ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
-          ) : messages.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Keine Nachrichten.</div>
-          ) : (
-            messages.map((m) => (
-              <div key={m.id} className={cn("flex gap-2", m.role === "user" ? "flex-row-reverse" : "flex-row")}>
-                <div className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
-                  m.role === "user" ? "bg-primary/15 text-primary" : m.role === "error" ? "bg-red-500/15 text-red-400" : "bg-foreground/[0.06] text-muted-foreground"
-                )}>
-                  {m.role === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-                </div>
-                <div className={cn(
-                  "max-w-[78%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm",
-                  m.role === "user" ? "bg-primary text-primary-foreground" : m.role === "error" ? "bg-red-500/10 text-red-300" : "bg-foreground/[0.05] text-foreground"
-                )}>
-                  {m.content || (m.toolCalls?.length ? `(${m.toolCalls.length} Tool-Aufruf${m.toolCalls.length > 1 ? "e" : ""})` : "…")}
-                </div>
-              </div>
-            ))
-          )}
+        {/* Full interactive chat for this session (embedded, no tab bar) */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <EmbeddedChat agentId={agentId} initialSessionId={sessionId} embedded />
         </div>
       </div>
     </div>

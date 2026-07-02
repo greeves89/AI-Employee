@@ -181,7 +181,7 @@ function extractResultContent(content: unknown): string {
 
 /* ─── Main Component ────────────────────────────────────────────────── */
 
-export function AgentChat({ agentId, initialSessionId }: { agentId: string; initialSessionId?: string | null }) {
+export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: string; initialSessionId?: string | null; embedded?: boolean }) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -979,7 +979,10 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   /* ─── Render ──────────────────────────────────────────────────────── */
 
   return (
-    <div className="flex flex-col h-full min-h-0 rounded-xl border border-border bg-card/80 backdrop-blur-sm overflow-hidden">
+    <div className={cn(
+      "flex flex-col h-full min-h-0 overflow-hidden",
+      !embedded && "rounded-xl border border-border bg-card/80 backdrop-blur-sm"
+    )}>
       {voiceOpen && (
         <VoiceSessionModal
           agentId={agentId}
@@ -987,7 +990,8 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
           onClose={() => setVoiceOpen(false)}
         />
       )}
-      {/* Session tabs */}
+      {/* Session tabs — hidden in embedded (modal) mode */}
+      {!embedded && (
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
         {/* New chat — left, high contrast, icon only */}
         <button
@@ -1099,6 +1103,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
           )}
         </div>
       </div>
+      )}
 
       {/* Chat overview (tiles + live modal) */}
       {viewMode === "overview" && (
