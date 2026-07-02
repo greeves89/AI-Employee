@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.3] — 2026-07-02
+
+### Fixed
+- **Second-Brain-Graph: kein schwarzer Crash mehr bei fehlendem/verlorenem WebGL.** Der Vault-Graph rendert über `react-force-graph-3d` (three.js/WebGL). In abgeschotteten Umgebungen (Klinik-VDI, GPU-gesperrter Browser) sowie nach wiederholtem Öffnen/Schließen (three.js gibt den WebGL-Context nicht sauber frei → Browser erschöpft sein Context-Budget) crashte die Render-Schleife mit `Cannot read properties of undefined (reading 'tick')` auf schwarzem Canvas. Neu: **WebGL-Probe vor dem Mount**, **Laufzeit-`webglcontextlost`-Handler** (live-Umschaltung) und **`pauseAnimation()` beim Unmount** (gibt den Context früher frei). Fällt sauber auf einen **dependency-freien 2D-SVG-Graphen** zurück (gleiche Klick-/Detail-Logik, Pan/Zoom, Nachbar-Highlight, Hinweis „· 2D-Ansicht"). (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+- **Custom-LLM-Harness: `temperature` bei temperatur-gesperrten Modellen weglassen.** Beim Wechsel von z. B. `gpt-5.4` auf ein `gpt-chat-latest`-Deployment schickte der Provider weiter `temperature=0.7` → **HTTP 400** („temperature does not support 0.7 … only default (1)"). Neuer `_supports_custom_temperature()` erkennt Responses-Modelle (GPT-5/codex), die o-Serie (o1/o3/o4) und die `*-chat-latest`-Aliasse und lässt `temperature` dann weg; zusätzlich ein rekursiver 400-Retry als Netz für sonstige gesperrte Modelle. 19 Tests. (`agent/app/providers/openai_provider.py`, `agent/tests/test_openai_temperature.py`)
+
 ## [1.99.1] — 2026-07-02
 
 ### Added

@@ -69,6 +69,20 @@ class OpenAIProvider(BaseLLMProvider):
         model_lower = self.model_name.lower()
         return any(p in model_lower for p in _RESPONSES_API_PATTERNS)
 
+    def _supports_custom_temperature(self) -> bool:
+        """False for models that only accept the default temperature (1) and
+        400 on any custom value: GPT-5/codex (Responses API), the o-series
+        reasoning models, and the *-chat-latest aliases (e.g. Azure
+        ``gpt-chat-latest``). For these we omit ``temperature`` entirely."""
+        m = self.model_name.lower()
+        if self._is_responses_model():
+            return False
+        if m.startswith(("o1", "o3", "o4")):
+            return False
+        if "chat-latest" in m or "gpt-chat" in m:
+            return False
+        return True
+
     def _azure_version(self, fmt: str = "chat") -> str:
         """api-version for Azure requests (account value, else a sane default).
 
@@ -388,6 +402,15 @@ class OpenAIProvider(BaseLLMProvider):
                         ):
                             yield event
                         return
+                    # Some models (gpt-chat-latest, o-series) reject any custom
+                    # temperature and 400 with "temperature does not support ...".
+                    # Retry once without it rather than failing the whole turn.
+                    if "temperature" in error_text and "temperature" in body:
+                        retry_body = dict(body)
+                        retry_body.pop("temperature", None)
+                        async for event in self._stream_chat_with_body(url, headers, retry_body):
+                            yield event
+                        return
                     correct_key = _extract_tokens_error(error_text)
                     if correct_key:
                         wrong_key = "max_tokens" if correct_key == "max_completion_tokens" else "max_completion_tokens"
@@ -581,7 +604,8 @@ class OpenAIProvider(BaseLLMProvider):
             body["max_completion_tokens"] = self.max_tokens
         else:
             body["max_tokens"] = self.max_tokens
-            body["temperature"] = self.temperature
+            if self._supports_custom_temperature():
+                body["temperature"] = self.temperature
 
         if tools:
             body["tools"] = tools
