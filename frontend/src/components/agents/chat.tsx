@@ -5,8 +5,9 @@ import {
   Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
   Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
-  Pin, Pencil, Trash2, Check, Type,
+  Pin, Pencil, Trash2, Check, Type, LayoutGrid,
 } from "lucide-react";
+import { ChatOverview } from "./chat-overview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
@@ -185,6 +186,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // Chat management UX
+  const [viewMode, setViewMode] = useState<"chat" | "overview">("chat");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1052,8 +1054,20 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
           })}
         </div>
 
-        {/* Right controls: font size · delete all · connection */}
+        {/* Right controls: overview toggle · font size · delete all · connection */}
         <div className="flex items-center gap-0.5 shrink-0 border-l border-border pl-2 ml-1">
+          <button
+            onClick={() => setViewMode((m) => (m === "chat" ? "overview" : "chat"))}
+            className={cn(
+              "rounded-lg p-1.5 transition-all mr-0.5",
+              viewMode === "overview"
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06]"
+            )}
+            title={viewMode === "overview" ? "Zur Chat-Ansicht" : "Chat-Übersicht (Kacheln)"}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
           <button onClick={() => changeFontScale(-0.1)} disabled={fontScale <= 0.85} className="rounded px-1 py-0.5 text-[11px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift kleiner">A−</button>
           <Type className="h-3 w-3 text-muted-foreground/40" />
           <button onClick={() => changeFontScale(0.1)} disabled={fontScale >= 1.4} className="rounded px-1 py-0.5 text-[13px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift größer">A+</button>
@@ -1086,11 +1100,22 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
         </div>
       </div>
 
+      {/* Chat overview (tiles + live modal) */}
+      {viewMode === "overview" && (
+        <div className="flex-1 overflow-hidden">
+          <ChatOverview
+            agentId={agentId}
+            onOpenSession={(sid) => { setActiveSessionId(sid); setViewMode("chat"); }}
+          />
+        </div>
+      )}
+
       {/* Messages area — font size via zoom, drag&drop file upload */}
       <div
         ref={scrollRef}
         className={cn(
           "relative flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]",
+          viewMode === "overview" && "hidden",
           isDragOver && "ring-2 ring-inset ring-primary/50"
         )}
         style={{ zoom: fontScale }}
@@ -1204,7 +1229,7 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       )}
 
       {/* Input area */}
-      <div className="border-t border-border p-4">
+      <div className={cn("border-t border-border p-4", viewMode === "overview" && "hidden")}>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handleFileUpload(e.target.files)} />
         {pendingImages.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2.5">

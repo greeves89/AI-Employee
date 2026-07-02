@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.98.0] — 2026-07-02
+
+### Added
+- **Chat-Konsole UX (Teil 2) — Kachel-Übersicht + Live-Modal.** Neuer Umschalter (Kachel-Icon) in der Chat-Leiste zeigt alle Chats des Agenten als **Kacheln** (Titel/Preview, Nachrichten-Anzahl, letzte Aktivität, Pin). Klick auf eine Kachel öffnet ein **Modal mit dem Verlauf**, das sich alle 4s aktualisiert (Live) — plus „Im Chat öffnen", das direkt in die volle Chat-Ansicht dieser Session springt. Neue gekapselte Komponente `chat-overview.tsx`, nutzt die vorhandenen Session-/History-APIs (kein neues Backend).
+
 ## [1.97.0] — 2026-07-02
 
 ### Added
