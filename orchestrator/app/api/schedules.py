@@ -122,8 +122,10 @@ async def update_schedule(
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)
 
-    # Recalculate next_run if timing changed
-    if data.interval_seconds is not None or data.cron_expression is not None:
+    # Recalculate next_run if timing or timezone changed
+    if (data.interval_seconds is not None
+            or data.cron_expression is not None
+            or data.timezone is not None):
         now = datetime.now(timezone.utc)
         schedule.next_run_at = _calc_next_run(schedule, now)
 
