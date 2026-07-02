@@ -89,6 +89,7 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
         prompt=data.prompt,
         interval_seconds=data.interval_seconds,
         cron_expression=data.cron_expression,
+        timezone=data.timezone,
         priority=data.priority,
         agent_id=data.agent_id,
         model=data.model,

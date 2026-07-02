@@ -325,6 +325,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               "'*/15 * * * *'=every 15 minutes, '0 9 * * 1'=Mondays at 09:00. " +
               "Use this instead of interval_seconds when the time of day matters.",
           },
+          timezone: {
+            type: "string",
+            description:
+              "IANA timezone the cron_expression is evaluated in (DST-aware). Default 'UTC'. " +
+              "Example: 'Europe/Berlin' so '0 6 * * *' fires at 06:00 local time year-round. " +
+              "Ignored for interval_seconds schedules.",
+          },
         },
         required: ["name", "prompt"],
       },
@@ -971,6 +978,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (args.cron_expression) {
         body.cron_expression = args.cron_expression;
         body.interval_seconds = 0;
+        if (args.timezone) body.timezone = args.timezone;
       } else {
         body.interval_seconds = args.interval_seconds;
       }
