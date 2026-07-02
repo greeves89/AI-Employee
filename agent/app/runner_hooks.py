@@ -156,7 +156,11 @@ MANDATORY REFLECTION (do ALL of these BEFORE finishing — no exceptions):
    Fix all errors before considering the task done. NEVER claim success on broken code.
 
 2. **Push your work**: Commit with conventional-commit message, then `git push`.
-   Never leave finished work only local.
+   Never leave finished work only local. BEFORE you push or merge, re-read your own
+   diff for the Coding & Security Discipline (see your CLAUDE.md): untrusted input
+   validated server-side, filesystem paths jailed (no traversal), no unvalidated
+   pub-sub/webhook routing fields, authz on new endpoints, no secrets. A green build
+   is NOT enough to merge a change that touches auth, input, paths or payloads.
 
 3. **REFLECT — what went wrong?**: Look back at this task critically. Answer these for yourself:
    - What errors did I hit? (compile errors, runtime errors, wrong assumptions, denied commands)

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.96.2] — 2026-07-02
+
+### Changed
+- **Coding- & Security-Disziplin in den Agenten-CLAUDE.md** (`agent/claude-global.md`): neuer Pflicht-Abschnitt für Agenten, die Code schreiben/ändern — „erst sichten, dann dübeln" (Code/Memory/Brain lesen bevor gebaut wird), **keine Insellösungen** (verzahnen statt parallel implementieren), **Secure Coding** (Input serverseitig validieren, Pfade jailen/kein Path-Traversal, keine ungeprüften Pub-Sub-/Webhook-Routing-Felder, parametrisiertes SQL, AuthZ+Ownership pro Endpoint, keine Secrets), **Verification-Loop + Security-Test pro Route**, und **Security-Selbstreview des Diffs VOR jedem Merge** (grüner Build allein genügt nicht). Zusätzlich im geteilten `SELF_IMPROVEMENT_SUFFIX` (jede Task) als Merge-Gate verankert. Adressiert direkt die Klasse von Regressionen aus #237 (ungeprüftes Pub-Sub-Payload) und #271 (Path-Traversal).
+
 ## [1.96.1] — 2026-07-02
 
 ### Security
