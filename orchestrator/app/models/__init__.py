@@ -37,6 +37,7 @@ from app.models.user_mount_access import UserMountAccess
 from app.models.custom_role import CustomRole
 from app.models.ai_account import AIAccount
 from app.models.second_brain import SecondBrain
+from app.models.job_state import JobState
 
 __all__ = [
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
@@ -62,4 +63,5 @@ __all__ = [
     "UserProfile", "UserProfileEvent",
     "AgentSecret", "AgentSecretAssignment", "SecretType",
     "UserMountAccess", "CustomRole", "AIAccount", "SecondBrain",
+    "JobState",
 ]

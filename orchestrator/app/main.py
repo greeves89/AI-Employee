@@ -1142,6 +1142,34 @@ clean Markdown; you don't need to commit.
     except Exception as e:
         logger.warning(f"Agent startup recovery failed: {e}")
 
+    # Resume long-running jobs that were checkpointing before shutdown (issue #211).
+    # Jobs with a fresh heartbeat are resumable; stale ones are marked crashed and
+    # the user is alerted so no long job silently dies across a container restart.
+    try:
+        from app.db.session import async_session_factory as _sf_jobs
+        from app.services.job_state import recover_jobs_on_startup
+
+        async with _sf_jobs() as db:
+            resumable, crashed = await recover_jobs_on_startup(db)
+            if resumable:
+                logger.info(f"[Startup] {len(resumable)} long job(s) resumable after restart")
+            for job in crashed:
+                logger.warning(f"[Startup] Job {job.id} ({job.kind}) crashed across restart — no heartbeat")
+                try:
+                    await app.state.redis.publish(
+                        "telegram:notification",
+                        json.dumps({
+                            "type": "error",
+                            "title": "Job nach Neustart abgestürzt",
+                            "message": f"Job '{job.kind}' ({job.id}) hat den Container-Neustart nicht überlebt (kein Heartbeat).",
+                            "priority": "high",
+                        }),
+                    )
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Job-state recovery failed: {e}")
+
     # Start background task listener (completions + starts)
     completion_task = asyncio.create_task(_listen_task_events(app.state.redis))
 
