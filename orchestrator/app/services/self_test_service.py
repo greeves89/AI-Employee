@@ -76,7 +76,7 @@ class SelfTestService:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"[SelfTest] Unhandled error: {e}")
+                logger.error("[SelfTest] Unhandled error: %s", e, exc_info=True)
 
             await asyncio.sleep(RUN_INTERVAL_SECONDS)
 

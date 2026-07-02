@@ -33,7 +33,7 @@ class DiskMonitorService:
             try:
                 await self._check_all_agents()
             except Exception as exc:
-                logger.error("Disk monitor cycle failed: %s", exc)
+                logger.error("Disk monitor cycle failed: %s", exc, exc_info=True)
             await asyncio.sleep(_CHECK_INTERVAL)
 
     def stop(self) -> None:

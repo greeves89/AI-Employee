@@ -84,7 +84,7 @@ class SkillCrawlerService:
             try:
                 await self.crawl()
             except Exception as e:
-                logger.error(f"Skill crawler error: {e}")
+                logger.error("Skill crawler error: %s", e, exc_info=True)
             await asyncio.sleep(CRAWL_INTERVAL)
 
     async def crawl(self) -> list[dict]:
