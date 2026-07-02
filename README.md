@@ -41,9 +41,9 @@
 
 ---
 
-> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Neu in v1.31: Self-Improvement-Engine — Skills mit schlechten Bewertungen werden automatisch von Agents verbessert. Skill-Analytics zeigt jetzt korrekte Nutzungszahlen. Positiver Feedback-Loop in usage_count gefixt. Neu in v1.29: Agent Detail Modal im Analytics-Dashboard, `skill_record_usage` MCP-Tool für präzises Skill-Tracking mit Task-Kontext, "Update All"-Button für Agent-Container-Updates, und dynamische Versionserkennung ohne Hardcoding. Neu in v1.28: Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Approval-Regeln und eine eigene Knowledge Base (die automatisch von allen seinen Agents geteilt wird). Skill Analytics Dashboard — Zeitersparnis, ROI pro Skill und Agent-Performance auf einen Blick. Autonomie-Level L1–L4 mit Whitelist-Modell; alles außerhalb der Whitelist löst automatisch eine Freigabe-Anfrage aus. Native Microsoft 365-Integration über 25 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für private Nutzung — gewerbliche Nutzung erfordert eine kommerzielle Lizenz. Kontakt: daniel.alisch@me.com
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Regeln und eine eigene Knowledge Base (automatisch von allen seinen Agents geteilt). Autonomie als **3-stufige Fähigkeits-Matrix (Erlaubt/Freigabe/Verboten)** mit L1–L4-Presets — alles auf „Freigabe" löst automatisch eine Freigabe-Anfrage aus, „Verboten" wird nie ausgeführt. Native Microsoft 365-Integration über 47 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für private Nutzung — gewerbliche Nutzung erfordert eine kommerzielle Lizenz. Kontakt: daniel.alisch@me.com
 
-> **Neu in v1.55:** Native APNs-Pushes, kanalbewusste Agent-Kommunikation (iOS, Telegram, Webapp), voll integrierte Approval-Anfragen, DB-/UI-gesteuerte Command Policies fuer Bash-Befehle, Dateien/PDFs/Audio direkt im iOS- und Webapp-Chat, Live-Voice-Session mit STT/TTS und deutscher STT-Standardsprache, neues AI-Employee-App-Icon, robuste Agent-Chat-Verarbeitung mit Turn-Timeouts, OpenAI Codex/ChatGPT-OAuth als Agent-Harness, einheitlichere AI-Account-Erstellung, SSO/OAuth/API-Key-Secrets im Key Management und sauberes Inter-Agent-Messaging mit abrufbarem Nachrichten- und Conversation-Verlauf.
+> **Aktuell (v1.99):** 3-stufige **Autonomie-Matrix** (Erlaubt/Freigabe/Verboten) mit L1–L4-Presets · überarbeitete **Chat-Konsole** (Chats umbenennen/anpinnen/löschen, Kachel-Übersicht mit interaktivem Live-Modal, Datei-Drag&Drop, Schriftgröße) · **provider-abhängige Modellauswahl** (Claude / GPT-5.x via Codex / Custom-LLM) mit Guard, der jeder Harness nur passende Modelle erlaubt · **Agenten-Selbstdiagnose** über die eigenen Container-Logs plus secret-redigiertes **Plattform-Fehler-Log** · **Second-Brain-Schreiben** per MCP (Notizen anlegen/aktualisieren) · **Coding-&-Security-Disziplin** für die Agenten (Secure-Coding-Regeln + Security-Selbstreview vor Merge) · persistente **Agenten-Teams mit Lead-Routing** · **47 MS-Graph-Tools** inkl. Datei-Kopieren.
 
 ---
 
@@ -138,7 +138,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 ### Governance & Compliance
 
-- **Autonomy Levels L1–L4** — Assign each agent a level that defines exactly what it may do without asking. L1 = read-only research, L2 = recommendations + workspace writes, L3 = full execution (shell, packages), L4 = fully autonomous. The level is enforced via a whitelist injected into every prompt.
+- **Autonomy Matrix (3-state) + L1–L4 presets** — Every capability is set to **Allow / Ask / Deny**, grouped into *own container* (read/write files, shell, packages) and *external tools* (email/M365, web, external APIs, messaging, git push, purchases). The L1–L4 buttons fill the matrix as a starting point (L1 = read-only, L2 = recommendations + workspace writes, L3 = full container execution, L4 = fully autonomous), then every cell is fine-tunable → "custom". The matrix is rendered into every prompt: Allow = do freely, Ask = call `request_approval` first, Deny = refuse.
 - **Whitelist-based approval model** — Instead of listing what agents must ask about (blacklist), you define what they *may* do freely. Everything outside the whitelist automatically triggers an approval request — no gaps, no forgotten rules.
 - **DB-backed level presets** — The allowed-action sets per level are stored in the database and editable in the UI. Add domain-specific permissions to a level without touching code. Seeded automatically on first startup.
 - **Group-based resource grants (Custom Roles)** — Bundle access into a group and assign users to it: a role can grant **Second Brains/mounts**, **AI-Accounts (models)** and **Keys/Secrets** directly (plus templates, LLM-providers, menu paths, URL allowlist, agent limits). Group grants union with per-user grants, so a user inherits the group and can still get manual extras. All editable as multi-selects in the Roles admin UI.
@@ -150,7 +150,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 ### Integrations
 
 - **Per-agent Telegram bots** — Each agent can have its own Telegram bot with voice STT/TTS.
-- **Microsoft 365 (MS Graph MCP)** — Native Office 365 integration via a built-in MCP server with 25 tools: read/send Outlook mail, manage Calendar events, post to Teams channels and 1:1 chats, Planner tasks, Microsoft To-Do lists, and OneDrive file search/read. Each user connects their own M365 account via OAuth — tokens are stored per-user, never shared. Admin configures the Azure App Registration once in Settings; users sign in individually.
+- **Microsoft 365 (MS Graph MCP)** — Native Office 365 integration via a built-in MCP server with 47 tools: read/send Outlook mail, manage Calendar events, post to Teams channels and 1:1 chats, Planner tasks, Microsoft To-Do lists, and OneDrive file search/read/move/copy. Each user connects their own M365 account via OAuth — tokens are stored per-user, never shared. Admin configures the Azure App Registration once in Settings; users sign in individually.
 - **OAuth integrations** — Per-user Google and Microsoft accounts with encrypted token storage. Gmail, Calendar, Outlook, Drive, OneDrive. Apple account support also included.
 - **MCP servers** — Memory, Knowledge, Notifications, Orchestrator, Skills, MS Graph. Plug in any third-party MCP server too.
 - **Skills system** — Reusable capability modules (e.g. `invoice-parser`, `pdf-signer`, `contract-diff`) that any agent can pick up. Skills can carry file attachments (scripts, configs) that are pushed into the agent workspace automatically.
@@ -198,7 +198,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 ## Agent Templates
 
-25 pre-configured roles, ready to launch with one click:
+26 pre-configured roles, ready to launch with one click:
 
 | # | Template | Description |
 |---|---|---|
@@ -253,7 +253,6 @@ What's actively in development or planned next:
 ### In Progress
 - **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via Playwright MCP. Fill forms, scrape dynamic pages, interact with web UIs that have no API.
 - **Desktop Bridge** — Native macOS/Windows tray app connects your local desktop to the AI-Employee server. Agents can take screenshots, click, type, open apps and run shell commands on your machine. Download via the agent's Computer-Use tab or from the [latest release](https://github.com/greeves89/AI-Employee/releases/tag/bridge-latest). Granular capability permissions (screenshots, mouse, keyboard, clipboard, shell) and folder-access restrictions configurable from the tray menu.
-- **Per-Agent Model Selection** — Switch any agent to a different LLM (Claude, GPT-5.x via Codex, Gemini, local Ollama) without restarting. Model choice persists per agent.
 - **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
 
 ### Planned
