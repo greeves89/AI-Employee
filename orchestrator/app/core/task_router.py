@@ -64,6 +64,50 @@ def _compute_formula_rating(task: "Task") -> int:  # noqa: F821
     return max(1, min(5, score))
 
 
+def _parse_reflection_stdout(stdout: bytes, stderr: bytes, returncode: "int | None") -> tuple[int, str]:
+    """Parse `claude -p --output-format json` output into (rating, reflection).
+
+    Pure and import-free so it is unit-testable without the app or a live subprocess.
+    Raises ValueError with a descriptive message on any unusable output — empty stdout,
+    a non-JSON envelope, an error envelope, or an empty/non-JSON `result`. Previously the
+    unguarded json.loads(result) raised the generic "Expecting value: line 1 column 1",
+    which masked the real cause (auth/quota failure) in the platform log (#272).
+    """
+    if not stdout.strip():
+        excerpt = stderr.decode(errors="replace")[:300].strip() if stderr else ""
+        raise ValueError(
+            f"claude subprocess exited {returncode} with empty stdout"
+            + (f": {excerpt}" if excerpt else "")
+        )
+    try:
+        envelope = json.loads(stdout.decode())
+    except json.JSONDecodeError as je:
+        raise ValueError(
+            f"claude stdout is not JSON (rc={returncode}): "
+            f"{stdout.decode(errors='replace')[:300]}"
+        ) from je
+    # The envelope carries an error flag plus the model reply in `result`. On auth/quota
+    # failures `result` is a plain-text error (or empty), so guard before json.loads.
+    text = (envelope.get("result") or "").strip()
+    if envelope.get("is_error") or not text:
+        raise ValueError(
+            f"claude reflection unusable (is_error={envelope.get('is_error')}, "
+            f"subtype={envelope.get('subtype')!r}): {text[:300] or '<empty result>'}"
+        )
+    # Strip markdown fences, then extract the JSON object if the model wrapped it in prose.
+    if text.startswith("```"):
+        text = "\n".join(text.split("\n")[1:]).split("```")[0].strip()
+    if not text.startswith("{"):
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            raise ValueError(f"no JSON object in claude reflection result: {text[:300]}")
+        text = text[start:end + 1]
+    parsed = json.loads(text)
+    rating = max(1, min(5, int(parsed["rating"])))
+    reflection = str(parsed.get("reflection", ""))[:500]
+    return rating, reflection
+
+
 async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
     """Ask Claude CLI to self-reflect on a completed task and return (rating, reflection).
 
@@ -103,22 +147,7 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
             env=env,
         )
         stdout, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=20.0)
-        if not stdout.strip():
-            stderr_excerpt = stderr_bytes.decode(errors="replace")[:300].strip() if stderr_bytes else ""
-            raise ValueError(
-                f"claude subprocess exited {proc.returncode} with empty stdout"
-                + (f": {stderr_excerpt}" if stderr_excerpt else "")
-            )
-        output = json.loads(stdout.decode())
-        text = output.get("result", "")
-        # Strip markdown fences
-        text = text.strip()
-        if text.startswith("```"):
-            text = "\n".join(text.split("\n")[1:]).split("```")[0]
-        parsed = json.loads(text)
-        rating = max(1, min(5, int(parsed["rating"])))
-        reflection = str(parsed.get("reflection", ""))[:500]
-        return rating, reflection
+        return _parse_reflection_stdout(stdout, stderr_bytes, proc.returncode)
     except Exception as exc:
         logger.warning(f"LLM self-reflection failed for task {task.id}, falling back to formula: {exc}")
         return _compute_formula_rating(task), "auto-rated (formula fallback)"
