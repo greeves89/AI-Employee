@@ -7,7 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ## [1.99.4] — 2026-07-02
 
-> Orchestrator- + Frontend-Hotfix. **Agent-Image bleibt unverändert bei 1.99.3** — kein Agent-Update/Recreate nötig, kein „Update verfügbar"-Banner.
+> Security-Hotfix (Orchestrator + Frontend). Version über alle Artefakte vereinheitlicht — **git-Tag = `VERSION` = Dockerfile-Label = Agent-Image = 1.99.4** (Agent-Image inhaltsgleich zu 1.99.3, nur neu gelabelt), damit die im Header angezeigte Software-Version dem Release entspricht.
 
 ### Security
 - **CRITICAL: Autonomie-Matrix-Feintuning hebelte die harte Tool-Whitelist aus (Fail-Open, Broken Access Control).** Sobald im 3-Status-Matrix-Editor **eine einzige Zelle** vom Preset abwich, wurde `autonomy_level = "custom"`. Für „custom" gab es keine `ApprovalRule`-Zeilen und kein Preset → `get_active_rules_for_agent` lieferte eine **leere** Liste → der Tool-Executor wertet „keine Regeln" als „keine Einschränkung" (Fail-Open) → der Agent hatte ab da **uneingeschränkten** bash-/Datei-/Messaging-Zugriff im Container, ohne Rückfrage, während die UI weiter das (nicht mehr wirksame) Level anzeigte. Genau beim Härten fiel die Sperre weg. **Fix:** Für Nicht-Preset-Level wird die Whitelist jetzt aus der Matrix abgeleitet (`allow` → Kategorie erlaubt; `ask`/`deny` → hart geblockt); fehlende Matrix → **fail-closed auf L1** statt leer. Neuer `allowed_categories_from_matrix()`. `autonomy_level` ist im Schema jetzt ein `Literal["l1".."l4","custom"]` (blockiert den Direkt-Injection-Weg über `POST /agents`). 10 neue Tests (6 pur + 4 Integration). (`orchestrator/app/api/approval_rules.py`, `orchestrator/app/core/autonomy_matrix.py`, `orchestrator/app/schemas/agent.py`)
