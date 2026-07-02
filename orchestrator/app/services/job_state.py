@@ -13,11 +13,15 @@ heartbeat are resumable (the container restarted but the job's last checkpoint i
 recent), rows whose heartbeat is older than the stale threshold are marked crashed.
 """
 
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
 from app.models.job_state import JobState
+
+logger = logging.getLogger(__name__)
 
 # A running job whose last heartbeat is within this window is considered
 # resumable after a restart. Beyond it we assume the job died mid-flight.
@@ -85,6 +89,60 @@ async def recover_jobs_on_startup(db, now: datetime | None = None) -> tuple[list
     return resumable, crashed
 
 
+# Resume-handler registry: each long-runner registers an async handler for its
+# `kind`. On startup the caller passes the resumable rows to `relaunch_resumable_jobs`
+# which dispatches each to its handler so the runner picks up from the persisted
+# `step`/`job_metadata`. Kept as a plain dict (no imports) so this module stays
+# dependency-light and unit-testable — services register at wiring time in main.py.
+ResumeHandler = Callable[[JobState], Awaitable[None]]
+_RESUME_HANDLERS: dict[str, ResumeHandler] = {}
+
+
+def register_resume_handler(kind: str, handler: ResumeHandler) -> None:
+    """Register the coroutine that re-launches a resumable job of the given kind."""
+    _RESUME_HANDLERS[kind] = handler
+
+
+def get_resume_handler(kind: str) -> ResumeHandler | None:
+    return _RESUME_HANDLERS.get(kind)
+
+
+def clear_resume_handlers() -> None:
+    """Test helper — reset the registry between cases."""
+    _RESUME_HANDLERS.clear()
+
+
+async def relaunch_resumable_jobs(
+    resumable: list[JobState],
+    *,
+    schedule: Callable[[Awaitable[None]], object] | None = None,
+) -> list[tuple[JobState, bool]]:
+    """Dispatch each resumable job to its registered handler.
+
+    `schedule` is normally `asyncio.create_task` so re-launched jobs run in the
+    background without blocking startup; when omitted the handler is awaited inline
+    (used by tests). Returns (job, launched?) — launched is False when no handler
+    is registered for the job's kind, so the caller can log the orphan.
+    """
+    outcomes: list[tuple[JobState, bool]] = []
+    for job in resumable:
+        handler = _RESUME_HANDLERS.get(job.kind)
+        if handler is None:
+            logger.warning(
+                "No resume handler registered for job kind '%s' (job %s) — cannot re-launch",
+                job.kind, job.id,
+            )
+            outcomes.append((job, False))
+            continue
+        coro = handler(job)
+        if schedule is not None:
+            schedule(coro)
+        else:
+            await coro
+        outcomes.append((job, True))
+    return outcomes
+
+
 async def checkpoint(
     db,
     job_id: str,
@@ -135,3 +193,19 @@ async def checkpoint(
 
     await db.commit()
     return job
+
+
+async def delete_job(db, job_id: str) -> bool:
+    """Delete a job row once its run has finished (kept-table stays bounded).
+
+    A completed agent task deletes its checkpoint so only in-flight jobs ever
+    leave a `running` row for the startup classifier to find. Returns True if a
+    row was removed.
+    """
+    result = await db.execute(select(JobState).where(JobState.id == job_id))
+    job = result.scalars().first()
+    if job is None:
+        return False
+    await db.delete(job)
+    await db.commit()
+    return True

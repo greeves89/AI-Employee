@@ -363,6 +363,29 @@ class TaskRouter:
         await self.db.commit()
         logger.info(f"Task {task_id} is now running on agent {data.get('agent_id')}")
 
+        # Persist a job-state checkpoint so a task interrupted mid-run by a
+        # container restart can be re-enqueued instead of silently lost (#211/#282).
+        # Non-blocking: a checkpoint failure must never prevent the task from running.
+        try:
+            from app.services.job_state import checkpoint
+
+            await checkpoint(
+                self.db,
+                f"task:{task_id}",
+                kind="agent_task",
+                ref_id=task_id,
+                status="running",
+                metadata={
+                    "agent_id": data.get("agent_id") or task.agent_id,
+                    "title": task.title,
+                    "prompt": task.prompt,
+                    "priority": task.priority,
+                    "model": task.model,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"job_state checkpoint (start) failed for {task_id}: {e}")
+
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task. Only non-running tasks can be deleted."""
         result = await self.db.execute(select(Task).where(Task.id == task_id))
@@ -459,6 +482,15 @@ class TaskRouter:
                     _td.completed_at = datetime.now(timezone.utc)
 
         await self.db.commit()
+
+        # The run finished (success or failure): drop its job-state checkpoint so
+        # startup recovery only ever sees genuinely in-flight jobs (#211/#282).
+        try:
+            from app.services.job_state import delete_job
+
+            await delete_job(self.db, f"task:{task_id}")
+        except Exception as e:
+            logger.warning(f"job_state cleanup failed for {task_id}: {e}")
 
         # Auto-rate the task based on outcome metrics
         await self._auto_rate_task(task)
