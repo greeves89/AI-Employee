@@ -99,10 +99,16 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
             "--model", _REFLECTION_MODEL,
             "--max-turns", "1",
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             env=env,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=20.0)
+        stdout, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=20.0)
+        if not stdout.strip():
+            stderr_excerpt = stderr_bytes.decode(errors="replace")[:300].strip() if stderr_bytes else ""
+            raise ValueError(
+                f"claude subprocess exited {proc.returncode} with empty stdout"
+                + (f": {stderr_excerpt}" if stderr_excerpt else "")
+            )
         output = json.loads(stdout.decode())
         text = output.get("result", "")
         # Strip markdown fences
@@ -438,9 +444,11 @@ class TaskRouter:
 
         # Delegation callback: notify the agent that created/delegated this task
         delegator_id = (task.metadata_ or {}).get("created_by_agent")
-        print(f"[TaskCompletion] Task {task.id}: metadata={task.metadata_}, delegator={delegator_id}, agent={agent_id}")
+        logger.debug(
+            "Task %s completion: delegator=%s agent=%s", task.id, delegator_id, agent_id
+        )
         if delegator_id and delegator_id != agent_id:
-            print(f"[TaskCompletion] Firing delegation callback for task {task.id} → delegator {delegator_id}")
+            logger.info("Firing delegation callback for task %s → delegator %s", task.id, delegator_id)
             await self._notify_delegating_agent(task, delegator_id)
 
         # Request user rating via notification + Telegram inline keyboard
@@ -1221,11 +1229,9 @@ class TaskRouter:
             })
 
             if self.redis.client:
-                print(f"[DelegationCallback] Pushing to agent:{delegator_agent_id}:messages")
                 await self.redis.client.lpush(
                     f"agent:{delegator_agent_id}:messages", message
                 )
-                print(f"[DelegationCallback] Message pushed OK")
 
                 # Also push to the delegating agent's chat queue so it
                 # picks up the result in the next chat interaction.
