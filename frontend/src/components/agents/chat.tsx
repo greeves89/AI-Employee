@@ -987,14 +987,14 @@ export function AgentChat({ agentId, initialSessionId }: { agentId: string; init
       )}
       {/* Session tabs */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
-        {/* New chat — left, high contrast */}
+        {/* New chat — left, high contrast, icon only */}
         <button
           onClick={createNewSession}
           disabled={!isConnected}
-          className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 transition-all shrink-0"
+          className="inline-flex items-center justify-center rounded-lg bg-primary p-1.5 text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 transition-all shrink-0"
           title="Neuer Chat"
         >
-          <Plus className="h-3.5 w-3.5" /> Neu
+          <Plus className="h-4 w-4" />
         </button>
 
         <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
