@@ -1,7 +1,7 @@
 """Add timezone to schedules (DST-aware cron evaluation)
 
 Revision ID: c3d4e5f6a7b8
-Revises: b1c2d3e4f5g6
+Revises: c1d2e3f4a5b7
 Create Date: 2026-07-02
 
 Adds an IANA timezone column to the schedules table. When a
