@@ -24,11 +24,22 @@ def _validate_cron(expr: str) -> str:
     return expr
 
 
+def _validate_timezone(tz: str) -> str:
+    """Validate an IANA timezone name (e.g. 'Europe/Berlin')."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        raise ValueError(f"Invalid timezone: {tz!r}")
+    return tz
+
+
 class ScheduleCreate(BaseModel):
     name: str
     prompt: str
     interval_seconds: int = 0
     cron_expression: str | None = None
+    timezone: str = "UTC"
     priority: int = 1
     agent_id: str | None = None
     model: str | None = None
@@ -39,6 +50,7 @@ class ScheduleCreate(BaseModel):
             raise ValueError("Provide either a valid cron_expression or interval_seconds >= 60")
         if self.cron_expression:
             self.cron_expression = _validate_cron(self.cron_expression)
+        self.timezone = _validate_timezone(self.timezone)
         return self
 
 
@@ -47,9 +59,17 @@ class ScheduleUpdate(BaseModel):
     prompt: str | None = None
     interval_seconds: int | None = None
     cron_expression: str | None = None
+    timezone: str | None = None
     priority: int | None = None
     agent_id: str | None = None
     model: str | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_timezone(v)
+        return v
 
     @field_validator("interval_seconds")
     @classmethod
@@ -72,6 +92,7 @@ class ScheduleResponse(BaseModel):
     prompt: str
     interval_seconds: int
     cron_expression: str | None
+    timezone: str
     priority: int
     agent_id: str | None
     model: str | None
@@ -98,6 +119,7 @@ class ScheduleResponse(BaseModel):
             prompt=schedule.prompt,
             interval_seconds=schedule.interval_seconds,
             cron_expression=getattr(schedule, "cron_expression", None),
+            timezone=getattr(schedule, "timezone", None) or "UTC",
             priority=schedule.priority,
             agent_id=schedule.agent_id,
             model=schedule.model,

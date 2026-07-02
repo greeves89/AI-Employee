@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 try:
     from croniter import croniter
@@ -578,15 +579,24 @@ class SchedulerService:
 
 
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
-    """Return the next fire time for a schedule.
+    """Return the next fire time (UTC) for a schedule.
 
-    If cron_expression is set and croniter is available, use it.
+    If cron_expression is set and croniter is available, the expression is
+    evaluated in the schedule's IANA timezone so "0 6 * * *" fires at 06:00
+    wall-clock time year-round (DST-aware), then converted back to UTC.
     Otherwise fall back to interval_seconds.
     """
     if schedule.cron_expression and _CRONITER_AVAILABLE:
         try:
-            cron = croniter(schedule.cron_expression, now)
-            return cron.get_next(datetime).replace(tzinfo=timezone.utc)
+            tz_name = getattr(schedule, "timezone", None) or "UTC"
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                print(f"[Scheduler] Unknown timezone '{tz_name}' — evaluating cron in UTC")
+                tz = timezone.utc
+            base = now.astimezone(tz)
+            cron = croniter(schedule.cron_expression, base)
+            return cron.get_next(datetime).astimezone(timezone.utc)
         except Exception as e:
             print(f"[Scheduler] Invalid cron expression '{schedule.cron_expression}': {e} — falling back to interval")
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
