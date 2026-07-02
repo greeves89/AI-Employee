@@ -482,7 +482,18 @@ async def get_rules_for_agent(
 ):
     """Public endpoint — agents fetch their own applicable rules without auth required."""
     rules = await get_active_rules_for_agent(db, agent_id)
+    # Surface the autonomy level so the agent prompt can be level-aware: at L4
+    # (fully autonomous) the agent must NOT ask for approval at all, instead of
+    # falling back to the generic "when in doubt, always ask" — which made L4
+    # agents still request approval for e.g. M365/OneDrive access.
+    from app.models.agent import Agent
+    level = (await db.execute(
+        select(Agent.autonomy_level).where(Agent.id == agent_id)
+    )).scalar_one_or_none()
+    level = (level or "l3").lower()
     return {
+        "autonomy_level": level,
+        "unrestricted": level == "l4",
         "rules": [
             {
                 "name": r.name,

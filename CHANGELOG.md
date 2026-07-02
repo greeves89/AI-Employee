@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.98.1] — 2026-07-02
+
+### Fixed
+- **L4-Agenten fragen nicht mehr trotzdem nach Freigabe** (z. B. bei M365/OneDrive). Ursache: der `for-agent`-Whitelist-Endpoint lieferte kein Autonomie-Level, und der Agent-Prompt hängte bedingungslos „when in doubt, always ask" an — das übersteuerte das L4-„Alles erlaubt". Fix (Autonomie-Matrix Stufe 1): `GET /approval-rules/for-agent/{id}` liefert jetzt `autonomy_level` + `unrestricted`; bei L4 injiziert der Agent einen **harten No-Ask-Block** („You are FULLY AUTONOMOUS … do NOT call request_approval") statt der Whitelist. Die generische „ALWAYS ask before external"-Zeile in der Agent-CLAUDE.md deferiert jetzt auf diesen autoritativen Autonomie-Block.
+
 ## [1.98.0] — 2026-07-02
 
 ### Added

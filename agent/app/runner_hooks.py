@@ -356,6 +356,20 @@ def get_approval_rules_prefix() -> str:
         req = urllib.request.Request(url, headers={"X-Agent-Token": settings.agent_token})
         with urllib.request.urlopen(req, timeout=5) as response:
             data = _json.loads(response.read())
+        # L4 = fully autonomous: a HARD no-ask override. Without this the generic
+        # "when in doubt, always ask" below made L4 agents still request approval
+        # for e.g. M365/OneDrive. Emitted INSTEAD of the whitelist.
+        if data.get("unrestricted"):
+            return (
+                "\n=== AUTONOMY: FULL (L4) ===\n"
+                "You are FULLY AUTONOMOUS. Perform ALL actions WITHOUT asking — "
+                "reading/writing files, shell, installing packages, external "
+                "communication (email/M365/Teams/OneDrive), web/API calls, git "
+                "push, purchases and system changes. Do NOT call `request_approval`; "
+                "just do the task end-to-end. The ONLY exception: stop and ask if an "
+                "action is destructive AND irreversible AND clearly outside what the "
+                "user asked for.\n=== END AUTONOMY ===\n"
+            )
         rules = data.get("rules", [])
         if not rules:
             return ""
