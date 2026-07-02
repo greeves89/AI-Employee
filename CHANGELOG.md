@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.1] — 2026-07-02
+
+### Added
+- **M365/OneDrive: `ms_copy_item`-Tool (Datei/Ordner kopieren).** Bisher gab es nur `ms_move_item` (verschieben) — ein Agent, der eine Datei KOPIEREN sollte, improvisierte einen rohen Graph-`/copy`-Aufruf und bekam **HTTP 400** (Graph-Copy ist asynchron und braucht eine `parentReference` mit `driveId`+Ordner-`id`, keinen reinen Pfad). Das neue Tool löst Ziel-`driveId` + Ordner-`id` sauber auf, sendet den korrekten Copy-Request und behandelt die 202-Async-Antwort. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.0] — 2026-07-02
 
 ### Added

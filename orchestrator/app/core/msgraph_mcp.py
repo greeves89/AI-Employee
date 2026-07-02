@@ -566,6 +566,19 @@ MSGRAPH_TOOLS = [
             "required": ["path"],
         },
     },
+    {
+        "name": "ms_copy_item",
+        "description": "COPY a OneDrive file or folder into another folder (the original stays). Use this to duplicate a file — do NOT try a raw Graph copy call.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path of the source file/folder relative to root, e.g. 'Präsentationen/deck.pptx'."},
+                "dest_parent_path": {"type": "string", "description": "Destination folder path relative to root (empty = root), e.g. 'Agent_Ordner'."},
+                "new_name": {"type": "string", "description": "Optional name for the copy (defaults to the source name)."},
+            },
+            "required": ["path", "dest_parent_path"],
+        },
+    },
     # --- Contacts: full CRUD ---------------------------------------------------
     {
         "name": "ms_list_contacts",
@@ -650,6 +663,7 @@ WRITE_TOOLS = {
     "ms_share_file",
     "ms_delete_item",
     "ms_move_item",
+    "ms_copy_item",
     # Contacts write
     "ms_create_contact",
     "ms_update_contact",
@@ -1293,6 +1307,34 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
             return "Error: provide new_name and/or new_parent_path."
         data = await _graph("PATCH", f"/me/drive/root:/{rel}", token, content=json.dumps(payload))
         return f"Verschoben/umbenannt: '{data.get('name')}'\nURL: {data.get('webUrl', '')}"
+
+    elif name == "ms_copy_item":
+        rel = _drive_path(args["path"])
+        if not rel:
+            return "Error: path required."
+        dest_rel = _drive_path(args.get("dest_parent_path", ""))
+        # Graph copy needs a parentReference with driveId + folder id — a path-only
+        # reference is exactly what returns HTTP 400. Resolve both explicitly.
+        drive = await _graph("GET", "/me/drive", token)
+        dest = await _graph("GET", f"/me/drive/root:/{dest_rel}" if dest_rel else "/me/drive/root", token)
+        body = {"parentReference": {"driveId": drive.get("id"), "id": dest.get("id")}}
+        if args.get("new_name"):
+            body["name"] = str(args["new_name"])
+        # Copy is ASYNC → 202 Accepted, empty body + Location monitor URL. _graph
+        # would choke on the empty body, so make the raw call here.
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                f"{GRAPH_BASE}/me/drive/root:/{rel}:/copy",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                content=json.dumps(body),
+            )
+        if resp.status_code not in (200, 202):
+            logger.warning("Graph copy %s on %s: %s", resp.status_code, rel, resp.text[:300])
+            return f"Kopieren fehlgeschlagen (HTTP {resp.status_code})."
+        src_name = str(args["path"]).rstrip("/").split("/")[-1]
+        as_name = f" als '{args['new_name']}'" if args.get("new_name") else ""
+        return (f"Kopiert: '{src_name}' → '{args.get('dest_parent_path') or 'root'}'{as_name} "
+                "(Graph kopiert asynchron, i.d.R. in Sekunden fertig).")
 
     elif name == "ms_list_contacts":
         limit = min(int(args.get("limit", 25)), 50)
