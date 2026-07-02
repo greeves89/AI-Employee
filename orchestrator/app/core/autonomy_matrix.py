@@ -93,6 +93,27 @@ def is_unrestricted(matrix: dict[str, str]) -> bool:
     return all(matrix.get(k) == ALLOW for k in CAPABILITY_KEYS)
 
 
+def allowed_categories_from_matrix(matrix: dict[str, str]) -> set[str]:
+    """Legacy ApprovalRule categories the agent may use WITHOUT approval.
+
+    Maps the 3-state matrix onto the old category whitelist that the tool
+    executor enforces at code level: ``allow`` → category is whitelisted;
+    ``ask``/``deny`` → NOT whitelisted, so the executor hard-blocks the tool and
+    forces ``request_approval`` (the ask/deny distinction lives in the prompt).
+
+    Note: several external capabilities share the legacy category ``custom``
+    (email_m365, external_api, messaging, git_push) — if ANY of them is ``allow``
+    the shared bucket is whitelisted. Precise per-capability hard-gating within
+    that bucket would need dedicated categories; the prompt still enforces the
+    finer distinction. file/shell/system/web/purchase are gated precisely.
+    """
+    return {
+        _CAP_BY_KEY[k]["legacy_category"]
+        for k in CAPABILITY_KEYS
+        if matrix.get(k) == ALLOW
+    }
+
+
 def matrix_to_prompt(matrix: dict[str, str]) -> str:
     """Render the matrix as an authoritative autonomy block for the agent prompt."""
     if is_unrestricted(matrix):

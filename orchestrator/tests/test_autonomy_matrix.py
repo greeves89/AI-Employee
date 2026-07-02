@@ -55,6 +55,39 @@ class AutonomyMatrixTests(unittest.TestCase):
         self.assertEqual(len(t["capabilities"]), 10)
         self.assertEqual(set(t["presets"]), {"l1", "l2", "l3", "l4"})
 
+    # --- allowed_categories_from_matrix (C-1: powers the hard tool gate) -------
+
+    def test_categories_l1_only_read_and_web(self):
+        cats = am.allowed_categories_from_matrix(am.matrix_for_level("l1"))
+        self.assertEqual(cats, {"file_read", "web_search"})
+
+    def test_categories_l3_container_but_no_external(self):
+        cats = am.allowed_categories_from_matrix(am.matrix_for_level("l3"))
+        self.assertEqual(cats, {"file_read", "file_write", "shell_exec", "system_config", "web_search"})
+        self.assertNotIn("custom", cats)     # email/messaging/git stay gated
+        self.assertNotIn("purchase", cats)
+
+    def test_categories_l4_covers_all(self):
+        cats = am.allowed_categories_from_matrix(am.matrix_for_level("l4"))
+        self.assertEqual(cats, {"file_read", "file_write", "shell_exec",
+                                "system_config", "web_search", "custom", "purchase"})
+
+    def test_ask_and_deny_are_excluded(self):
+        # The exact CRITICAL repro: L3 with purchases hardened to deny.
+        m = am.normalize_matrix({"purchases": "deny"}, "l3")
+        cats = am.allowed_categories_from_matrix(m)
+        self.assertNotIn("purchase", cats)   # deny → NOT whitelisted → hard-blocked
+        self.assertIn("shell_exec", cats)    # untouched cells still enforced
+
+    def test_all_denied_yields_empty(self):
+        m = {k: am.DENY for k in am.CAPABILITY_KEYS}
+        self.assertEqual(am.allowed_categories_from_matrix(m), set())
+
+    def test_shared_custom_bucket(self):
+        # Only messaging allowed among the external "custom" group → bucket present.
+        m = am.normalize_matrix({"messaging": "allow"}, "l1")
+        self.assertIn("custom", am.allowed_categories_from_matrix(m))
+
 
 if __name__ == "__main__":
     unittest.main()

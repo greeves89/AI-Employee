@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.models.agent import AgentState
 
 AgentMode = Literal["claude_code", "codex_cli", "custom_llm"]
+AutonomyLevel = Literal["l1", "l2", "l3", "l4", "custom"]
 LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
 
 # What happens when an agent's monthly budget is exhausted:
@@ -65,7 +66,7 @@ class AgentCreate(BaseModel):
     llm_config: LLMConfig | None = None  # custom_llm: inline config …
     ai_account_id: int | None = None     # … or a reusable, admin-managed AI account
     browser_mode: bool = False  # Enable Playwright browser control inside agent container
-    autonomy_level: str = "l3"
+    autonomy_level: AutonomyLevel = "l3"  # constrained: no free strings → no fail-open level
 
 
 class AgentResponse(BaseModel):

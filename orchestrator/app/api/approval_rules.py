@@ -1,12 +1,14 @@
 """Approval Rules API — user-defined rules that tell agents when to request approval."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import hmac
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, make_agent_token
 from app.models.approval_rule import ApprovalRule
 from app.models.autonomy_preset_rule import AutonomyPresetRule
 
@@ -320,18 +322,60 @@ async def get_active_rules_for_agent(db: AsyncSession, agent_id: str) -> list[Ap
     rules = list(result.scalars().all())
     if not any(r.agent_id == agent_id for r in rules):
         from app.models.agent import Agent as _Agent
-        level = (await db.scalar(select(_Agent.autonomy_level).where(_Agent.id == agent_id))) or "l3"
-        presets = list((await db.execute(
-            select(AutonomyPresetRule)
-            .where(AutonomyPresetRule.level == level)
-            .order_by(AutonomyPresetRule.sort_order, AutonomyPresetRule.id)
-        )).scalars().all())
-        # Transient (not persisted) — just feed the prompt's whitelist for this read.
-        for pr in presets:
-            rules.append(ApprovalRule(
-                name=pr.name, description=pr.description,
-                category=pr.category, agent_id=agent_id, is_active=True,
-            ))
+        from app.core import autonomy_matrix as am
+        row = (await db.execute(
+            select(_Agent.autonomy_level, _Agent.config).where(_Agent.id == agent_id)
+        )).first()
+        level = ((row[0] if row else None) or "l3").lower()
+        cfg = (row[1] if row else None) or {}
+
+        if level in ("l1", "l2", "l3", "l4"):
+            # Preset level → existing (tested) preset-rule path.
+            presets = list((await db.execute(
+                select(AutonomyPresetRule)
+                .where(AutonomyPresetRule.level == level)
+                .order_by(AutonomyPresetRule.sort_order, AutonomyPresetRule.id)
+            )).scalars().all())
+            for pr in presets:
+                rules.append(ApprovalRule(
+                    name=pr.name, description=pr.description,
+                    category=pr.category, agent_id=agent_id, is_active=True,
+                ))
+        else:
+            # Fine-tuned ("custom") or unknown level: there is NO preset for it, so
+            # derive the whitelist from the agent's matrix (the single source of
+            # truth). SECURITY: never fall through to an empty rule set here — the
+            # executor treats "no rules" as "no restrictions" (fail-open), which
+            # would silently drop the hard tool gate. Missing matrix → fail-closed
+            # to the most restrictive L1 preset.
+            raw_matrix = cfg.get("autonomy_matrix")
+            if isinstance(raw_matrix, dict):
+                matrix = am.normalize_matrix(raw_matrix, "l1")
+                allowed = am.allowed_categories_from_matrix(matrix)
+                for cat in sorted(allowed):
+                    rules.append(ApprovalRule(
+                        name=f"custom:{cat}", description="Aus Autonomie-Matrix abgeleitet.",
+                        category=cat, agent_id=agent_id, is_active=True,
+                    ))
+                if not rules:
+                    # Matrix present but nothing allowed → block all gated tools.
+                    # A single non-matching rule keeps the executor out of its
+                    # fail-open "no rules" branch while whitelisting nothing.
+                    rules.append(ApprovalRule(
+                        name="custom:none", description="Autonomie-Matrix: nichts freigegeben.",
+                        category="__none__", agent_id=agent_id, is_active=True,
+                    ))
+            else:
+                presets = list((await db.execute(
+                    select(AutonomyPresetRule)
+                    .where(AutonomyPresetRule.level == "l1")
+                    .order_by(AutonomyPresetRule.sort_order, AutonomyPresetRule.id)
+                )).scalars().all())
+                for pr in presets:
+                    rules.append(ApprovalRule(
+                        name=pr.name, description=pr.description,
+                        category=pr.category, agent_id=agent_id, is_active=True,
+                    ))
     return rules
 
 
@@ -478,9 +522,14 @@ async def delete_preset_rule(
 @router.get("/for-agent/{agent_id}")
 async def get_rules_for_agent(
     agent_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public endpoint — agents fetch their own applicable rules without auth required.
+    """Agents fetch their own applicable rules. Authenticated with the agent's
+    own HMAC token (``X-Agent-Token``, which every caller already sends) so the
+    autonomy matrix + rendered ``autonomy_prompt`` are not exposed to anyone who
+    merely knows an agent_id — that prompt reveals whether an agent acts without
+    approval and is valuable reconnaissance for prompt-injection.
 
     Returns the 3-state autonomy MATRIX (the single source of truth) plus a
     fully-rendered ``autonomy_prompt`` the agent injects verbatim. The matrix is
@@ -488,6 +537,9 @@ async def get_rules_for_agent(
     the agent's level, so nothing breaks pre-matrix. ``rules`` stays for
     backward compatibility.
     """
+    token = request.headers.get("X-Agent-Token", "")
+    if not token or not hmac.compare_digest(token, make_agent_token(agent_id)):
+        raise HTTPException(status_code=403, detail="Invalid agent token")
     from app.models.agent import Agent
     from app.core import autonomy_matrix as am
     rules = await get_active_rules_for_agent(db, agent_id)

@@ -91,7 +91,7 @@ export function ChatOverview({
               key={s.id}
               onClick={() => { setOpenId(s.id); setOpenTitle(title); }}
               className={cn(
-                "group relative flex flex-col gap-2.5 rounded-2xl border p-4 text-left transition-all duration-200",
+                "group relative flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200",
                 "bg-gradient-to-b from-card/80 to-card/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5",
                 s.pinned
                   ? "border-amber-500/25 hover:border-amber-500/50"
@@ -99,17 +99,17 @@ export function ChatOverview({
               )}
             >
               {s.pinned && (
-                <span className="absolute right-2.5 top-2.5 text-amber-400" title="Angepinnt">
+                <span className="absolute right-2.5 top-2.5 z-10 text-amber-400" title="Angepinnt">
                   <Pin className="h-3.5 w-3.5 fill-amber-400/30" />
                 </span>
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <MessageSquare className="h-3.5 w-3.5" />
                 </span>
-                <span className="truncate pr-5 text-sm font-semibold">{title}</span>
+                <span className="min-w-0 flex-1 truncate pr-5 text-sm font-semibold">{title}</span>
               </div>
-              <p className="line-clamp-2 min-h-[2rem] text-xs leading-relaxed text-muted-foreground/80">
+              <p className="line-clamp-2 min-h-[2rem] break-words text-xs leading-relaxed text-muted-foreground/80">
                 {s.title ? (s.preview || "—") : "Chat öffnen für den Verlauf"}
               </p>
               <div className="mt-auto flex items-center gap-2 pt-1 text-[10px] text-muted-foreground/60">
