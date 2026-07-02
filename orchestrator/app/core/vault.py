@@ -73,6 +73,56 @@ def read_file(host_path: str, rel_path: str) -> str:
         return fh.read()
 
 
+# --- Write side (used by the MCP endpoint when the brain is rw) ---------------
+
+_WRITABLE_SUFFIXES = (".md", ".markdown", ".txt")
+
+
+def write_file(host_path: str, rel_path: str, content: str, *, overwrite: bool = True) -> dict:
+    """Create or overwrite a Markdown note in the vault (jailed).
+
+    Only text/markdown files may be written — the vault is a knowledge base, not
+    a binary store. Parent folders are created. Write is atomic (tmp + rename).
+    Raises ``ValueError`` (bad path/suffix/size) or ``FileExistsError`` (overwrite=False).
+    """
+    target = resolve_path(host_path, rel_path)
+    if not target.lower().endswith(_WRITABLE_SUFFIXES):
+        raise ValueError("only .md/.markdown/.txt files can be written")
+    if len(content.encode("utf-8")) > MAX_FILE_BYTES:
+        raise ValueError("content too large")
+    existed = os.path.isfile(target)
+    if existed and not overwrite:
+        raise FileExistsError(rel_path)
+    os.makedirs(os.path.dirname(target) or os.path.realpath(host_path), exist_ok=True)
+    tmp = target + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    os.replace(tmp, target)
+    return {"path": rel_path, "created": not existed, "bytes": len(content.encode("utf-8"))}
+
+
+def delete_file(host_path: str, rel_path: str) -> None:
+    """Delete a vault file (jailed). Raises ``FileNotFoundError`` / ``ValueError``."""
+    target = resolve_path(host_path, rel_path)
+    if not os.path.isfile(target):
+        raise FileNotFoundError(rel_path)
+    os.remove(target)
+
+
+def tree_text(host_path: str) -> str:
+    """Render the vault folder/file structure as an indented tree (from list_entries)."""
+    entries = list_entries(host_path)
+    if not entries:
+        return "(empty)"
+    lines = []
+    for e in entries:
+        depth = e["path"].count(os.sep)
+        indent = "  " * depth
+        marker = "/" if e["type"] == "dir" else ""
+        lines.append(f"{indent}{e['name']}{marker}")
+    return "\n".join(lines)
+
+
 def search(host_path: str, query: str, limit: int = 10) -> list[dict]:
     """Case-insensitive grep over the vault's Markdown/text files.
 

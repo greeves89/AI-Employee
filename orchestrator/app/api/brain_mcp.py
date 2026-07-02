@@ -15,6 +15,7 @@ Supported MCP methods:
   tools/call                → execute a tool against the vault
 """
 import hmac
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -35,6 +36,7 @@ from app.db.session import get_db
 from app.models.second_brain import SecondBrain
 
 router = APIRouter(prefix="/mcp", tags=["mcp-brain"])
+logger = logging.getLogger(__name__)
 
 BRAIN_TOOLS = [
     {
@@ -77,6 +79,49 @@ BRAIN_TOOLS = [
         "name": "brain_list",
         "description": "List all files in this vault so you can pick one to read.",
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "brain_tree",
+        "description": "Show the folder/file STRUCTURE of this vault as an indented tree — use to understand how the knowledge base is organised before writing a new note.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "brain_write",
+        "description": (
+            "Create or update a Markdown note in this Second Brain. Use to save "
+            "research, articles, procedures or decisions so the knowledge base "
+            "grows. Only .md/.markdown/.txt paths; parent folders are created "
+            "automatically. Requires a read-write brain."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Vault-relative target path, e.g. 'Wiki/skbs-ai.md'. Must end in .md/.markdown/.txt.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full Markdown content of the note (overwrites the file if it already exists).",
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "Overwrite an existing file. Default true. Set false to fail if the file already exists.",
+                },
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "brain_delete",
+        "description": "Delete a note from this Second Brain by its vault-relative path. Requires a read-write brain.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Vault-relative file path to delete."},
+            },
+            "required": ["path"],
+        },
     },
 ]
 
@@ -201,5 +246,41 @@ def _call_tool(name: str, args: dict, brain: SecondBrain) -> dict:
         return _tool_result(
             f"{len(files)} file(s) in {brain.name}:\n" + "\n".join(f"  {p}" for p in files)
         )
+
+    if name == "brain_tree":
+        return _tool_result(f"Structure of {brain.name}:\n{vault.tree_text(brain.host_path)}")
+
+    if name == "brain_write":
+        if (brain.default_mode or "rw").lower() != "rw":
+            return _tool_result(f"'{brain.name}' is read-only — writing is not permitted.", is_error=True)
+        path = (args.get("path") or "").strip()
+        content = args.get("content")
+        if not path or content is None:
+            return _tool_result("Error: 'path' and 'content' are required", is_error=True)
+        overwrite = args.get("overwrite", True) is not False
+        try:
+            res = vault.write_file(brain.host_path, path, str(content), overwrite=overwrite)
+        except FileExistsError:
+            return _tool_result(f"File already exists: {path} (set overwrite=true to replace).", is_error=True)
+        except ValueError as e:
+            return _tool_result(f"Error: {e}", is_error=True)
+        logger.info("brain_write brain=%s path=%s created=%s bytes=%s", brain.slug, path, res["created"], res["bytes"])
+        verb = "Created" if res["created"] else "Updated"
+        return _tool_result(f"{verb} {path} in {brain.name} ({res['bytes']} bytes).")
+
+    if name == "brain_delete":
+        if (brain.default_mode or "rw").lower() != "rw":
+            return _tool_result(f"'{brain.name}' is read-only — deleting is not permitted.", is_error=True)
+        path = (args.get("path") or "").strip()
+        if not path:
+            return _tool_result("Error: 'path' is required", is_error=True)
+        try:
+            vault.delete_file(brain.host_path, path)
+        except FileNotFoundError:
+            return _tool_result(f"File not found: {path}", is_error=True)
+        except ValueError as e:
+            return _tool_result(f"Error: {e}", is_error=True)
+        logger.info("brain_delete brain=%s path=%s", brain.slug, path)
+        return _tool_result(f"Deleted {path} from {brain.name}.")
 
     return _tool_result(f"Unknown tool: {name}", is_error=True)

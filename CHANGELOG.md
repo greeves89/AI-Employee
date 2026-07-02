@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.96.0] — 2026-07-02
+
+### Added
+- **Second-Brain-MCP kann jetzt schreiben.** Der per-Brain MCP-Server (`brain_mcp.py`) hatte nur `brain_search`/`brain_read`/`brain_list` (read-only) — Agenten (z. B. via OpenWebUI) konnten nichts ins Second Brain schreiben. Neu: **`brain_write`** (Markdown-Notiz anlegen/aktualisieren, Ordner werden erzeugt, atomar), **`brain_tree`** (Ordner-/Datei-Struktur als eingerückter Baum) und **`brain_delete`**. Schreiben/Löschen sind an `default_mode == "rw"` des Brains gebunden (read-only Brains lehnen ab). Alles über `vault.resolve_path` gesandboxt: kein Path-Escape, kein `.git`, nur `.md/.markdown/.txt`, 2-MB-Cap. Neue Helfer `vault.write_file/delete_file/tree_text` + 9 Sicherheits-Regressionstests (`test_vault_write.py`).
+
 ## [1.95.1] — 2026-07-01
 
 ### Added
