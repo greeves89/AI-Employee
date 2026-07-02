@@ -117,6 +117,7 @@ class AgentRunner:
                     seen_file_paths.add(path)
                     presented_files.append(payload)
                     await self._mirror_present_file_to_chat(task_id, payload)
+                    await self._deliver_present_file_via_telegram(payload)
 
                 # Collect assistant text output
                 if event.get("type") == "assistant":
@@ -331,6 +332,44 @@ class AgentRunner:
             await self.log_publisher.publish_chat(task_id, "file", payload)
         except Exception:
             logger.warning("Failed to mirror present_file to chat channel", exc_info=True)
+
+    async def _deliver_present_file_via_telegram(self, payload: dict) -> None:
+        """Reliably push a scheduler/task present_file to the user via Telegram.
+
+        The chat mirror in _mirror_present_file_to_chat only reaches WebSocket
+        clients that happen to be connected. Scheduled runs (e.g. the 06:00
+        podcast) fire when no client is attached, so the file silently never
+        arrives (issue #208). Telegram's Bot API is a durable push channel, so
+        we also base64-encode the file onto agent:{id}:telegram:send, which the
+        agent bot delivers as a document. It is a no-op for agents that have no
+        authorized Telegram chats, so inter-agent tasks are unaffected.
+        """
+        path = str(payload.get("path") or "")
+        if not path or not os.path.isfile(path):
+            return
+        try:
+            import base64
+
+            size = os.path.getsize(path)
+            # The agent bot decodes the whole file in memory; match the 20 MB
+            # cap used by the send_telegram tool. Larger files stay chat-only.
+            if size <= 0 or size > 20 * 1024 * 1024:
+                return
+            with open(path, "rb") as f:
+                raw = f.read()
+            tg_payload = {
+                "agent_id": self.log_publisher.agent_id,
+                "file_b64": base64.b64encode(raw).decode("ascii"),
+                "media_type": payload.get("media_type") or "application/octet-stream",
+                "filename": payload.get("filename") or os.path.basename(path),
+                "caption": payload.get("caption") or "",
+            }
+            await self.log_publisher.redis.publish(
+                f"agent:{self.log_publisher.agent_id}:telegram:send",
+                json.dumps(tg_payload),
+            )
+        except Exception:
+            logger.warning("Failed to deliver present_file via Telegram", exc_info=True)
 
     async def _publish_scheduler_chat_completion(
         self,
