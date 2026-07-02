@@ -47,7 +47,7 @@ class SchedulerService:
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
         knowledge-feeds every 5 minutes, trend scan every 24h."""
-        print("[Scheduler] Service started")
+        logger.info("[Scheduler] Service started")
         from app.services.knowledge_feed_service import KnowledgeFeedService
         from app.services.trend_service import TrendService
         from app.config import settings as _settings
@@ -60,9 +60,9 @@ class SchedulerService:
                 try:
                     started = await self._start_due_followups()
                     if started:
-                        print(f"[Scheduler] Auto-started {started} follow-up meeting(s)")
+                        logger.info("[Scheduler] Auto-started %s follow-up meeting(s)", started)
                 except Exception as e:
-                    print(f"[Scheduler] Follow-up auto-start error: {e}")
+                    logger.warning("[Scheduler] Follow-up auto-start error: %s", e)
                 self._gc_counter += 30
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
@@ -73,37 +73,37 @@ class SchedulerService:
                     try:
                         n = await self._stop_idle_agents()
                         if n > 0:
-                            print(f"[Scheduler] IdleStop: stopped {n} idle agent(s)")
+                            logger.info("[Scheduler] IdleStop: stopped %s idle agent(s)", n)
                     except Exception as e:
-                        print(f"[Scheduler] IdleStop error: {e}")
+                        logger.warning("[Scheduler] IdleStop error: %s", e)
                 self._feeds_counter += 30
                 if self._feeds_counter >= 300:  # every 5 min
                     self._feeds_counter = 0
                     try:
                         summary = await feed_service.tick()
                         if summary.get("ran", 0) > 0:
-                            print(
-                                f"[Scheduler] KnowledgeFeeds: ran={summary['ran']} "
-                                f"new={summary['new_items']} err={summary['errors']}"
+                            logger.info(
+                                "[Scheduler] KnowledgeFeeds: ran=%s new=%s err=%s",
+                                summary["ran"], summary["new_items"], summary["errors"],
                             )
                     except Exception as e:
-                        print(f"[Scheduler] KnowledgeFeeds error: {e}")
+                        logger.warning("[Scheduler] KnowledgeFeeds error: %s", e)
                 # Missed-run watchdog: catches schedules whose task never reported
                 # a terminal status (silent drops). Self-throttles to once per hour.
                 try:
                     await self._tick_failure_watchdog()
                 except Exception as e:
-                    print(f"[Scheduler] FailureWatchdog error: {e}")
+                    logger.warning("[Scheduler] FailureWatchdog error: %s", e)
                 # Trend scan: runs daily (TrendService.tick() self-throttles)
                 try:
                     result = await trend_service.tick()
                     if not result.get("skipped") and result.get("generated", 0) > 0:
-                        print(
-                            f"[Scheduler] TrendScan: scanned={result['scanned']} "
-                            f"new={result['new']} generated={result['generated']} err={result['errors']}"
+                        logger.info(
+                            "[Scheduler] TrendScan: scanned=%s new=%s generated=%s err=%s",
+                            result["scanned"], result["new"], result["generated"], result["errors"],
                         )
                 except Exception as e:
-                    print(f"[Scheduler] TrendScan error: {e}")
+                    logger.warning("[Scheduler] TrendScan error: %s", e)
                 # "Dreaming": refresh adaptive user profiles from memories (gated)
                 self._dreaming_counter += 30
                 if self._dreaming_counter >= _DREAMING_INTERVAL_SECONDS:
@@ -111,11 +111,11 @@ class SchedulerService:
                     try:
                         n = await self._run_dreaming()
                         if n > 0:
-                            print(f"[Scheduler] Dreaming: refreshed {n} user profile(s)")
+                            logger.info("[Scheduler] Dreaming: refreshed %s user profile(s)", n)
                     except Exception as e:
-                        print(f"[Scheduler] Dreaming error: {e}")
+                        logger.warning("[Scheduler] Dreaming error: %s", e)
             except Exception as e:
-                print(f"[Scheduler] ERROR: {e}")
+                logger.error("[Scheduler] ERROR: %s", e, exc_info=True)
             await asyncio.sleep(30)
 
     async def _start_due_followups(self) -> int:
@@ -168,7 +168,7 @@ class SchedulerService:
                 _running_rooms[room.id] = task
                 started += 1
                 reason = "alle Aufgaben erledigt" if tasks_done else "Cap erreicht"
-                print(f"[Scheduler] Auto-started follow-up {room.id} ({reason}): {room.name}")
+                logger.info("[Scheduler] Auto-started follow-up %s (%s): %s", room.id, reason, room.name)
         return started
 
     async def _run_dreaming(self) -> int:
@@ -226,9 +226,9 @@ class SchedulerService:
                 for task in expired:
                     await db.delete(task)
                 await db.commit()
-                print(f"[Scheduler] GC: evicted {len(expired)} expired task(s)")
+                logger.info("[Scheduler] GC: evicted %s expired task(s)", len(expired))
             except Exception as e:
-                print(f"[Scheduler] GC error: {e}")
+                logger.warning("[Scheduler] GC error: %s", e)
 
     async def _check_due_schedules(self) -> None:
         now = datetime.now(timezone.utc)
@@ -254,7 +254,7 @@ class SchedulerService:
                     await db.commit()
                 except Exception as e:
                     await db.rollback()
-                    print(f"[Scheduler] Failed to execute schedule {schedule.id}: {e}")
+                    logger.warning("[Scheduler] Failed to execute schedule %s: %s", schedule.id, e)
 
     async def _execute_schedule(
         self,
@@ -277,9 +277,9 @@ class SchedulerService:
             )
             if is_busy_with_task:
                 schedule.next_run_at = _calc_next_run(schedule, now)
-                print(
-                    f"[Scheduler] Proactive {schedule.name} skipped - "
-                    f"agent busy (queue={queue_depth}, task={current_task!r})"
+                logger.info(
+                    "[Scheduler] Proactive %s skipped - agent busy (queue=%s, task=%r)",
+                    schedule.name, queue_depth, current_task,
                 )
                 return
 
@@ -294,7 +294,7 @@ class SchedulerService:
                 schedule.next_run_at = now  # won't fire again since disabled
             else:
                 schedule.next_run_at = _calc_next_run(schedule, now)
-            print(f"[Scheduler] Meeting schedule {schedule.name} executed")
+            logger.info("[Scheduler] Meeting schedule %s executed", schedule.name)
             return
 
         # For proactive schedules: always use the latest PROACTIVE_PROMPT from code
@@ -330,9 +330,9 @@ class SchedulerService:
         schedule.total_runs += 1
         schedule.next_run_at = _calc_next_run(schedule, now)
 
-        print(
-            f"[Scheduler] {schedule.name} triggered task {task.id}, "
-            f"next run at {schedule.next_run_at.isoformat()}"
+        logger.info(
+            "[Scheduler] %s triggered task %s, next run at %s",
+            schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
 
     async def _proactive_custom_instructions(
@@ -420,7 +420,7 @@ class SchedulerService:
                     )
                     self._watchdog_alerted[s.id] = drift
                 except Exception as e:
-                    print(f"[Scheduler] FailureWatchdog publish error: {e}")
+                    logger.warning("[Scheduler] FailureWatchdog publish error: %s", e)
 
     async def _stop_idle_agents(self) -> int:
         """Stop agents that have been idle longer than their configured limit.
@@ -463,7 +463,7 @@ class SchedulerService:
 
             for agent in agents:
                 if agent.state == AgentState.WORKING:
-                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — DB state is WORKING")
+                    logger.debug("[IdleStop] Skip %s (%s) — DB state is WORKING", agent.id, agent.name)
                     continue
 
                 try:
@@ -473,9 +473,9 @@ class SchedulerService:
                 live_state = live_status.get("state")
                 current_task = live_status.get("current_task")
                 if live_state == "working" or current_task:
-                    print(
-                        f"[IdleStop] Skip {agent.id} ({agent.name}) — "
-                        f"live state={live_state!r} current_task={current_task!r}"
+                    logger.debug(
+                        "[IdleStop] Skip %s (%s) — live state=%r current_task=%r",
+                        agent.id, agent.name, live_state, current_task,
                     )
                     continue
 
@@ -485,7 +485,7 @@ class SchedulerService:
                     .limit(1)
                 )).scalar_one_or_none()
                 if active_task:
-                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — task {active_task} is still RUNNING")
+                    logger.debug("[IdleStop] Skip %s (%s) — task %s is still RUNNING", agent.id, agent.name, active_task)
                     continue
 
                 # Keep-warm: don't reap an agent that is a participant of a RUNNING meeting —
@@ -499,7 +499,7 @@ class SchedulerService:
                     ).limit(1)
                 )).scalar_one_or_none()
                 if in_meeting:
-                    print(f"[IdleStop] Skip {agent.id} ({agent.name}) — active in meeting {in_meeting}")
+                    logger.debug("[IdleStop] Skip %s (%s) — active in meeting %s", agent.id, agent.name, in_meeting)
                     continue
 
                 cfg = agent.config or {}
@@ -525,9 +525,9 @@ class SchedulerService:
                     try:
                         await mgr.stop_agent(agent.id)
                         stopped += 1
-                        print(f"[IdleStop] {agent.id} ({agent.name}) idle for {idle_for} > {limit_min}min — stopped")
+                        logger.info("[IdleStop] %s (%s) idle for %s > %smin — stopped", agent.id, agent.name, idle_for, limit_min)
                     except Exception as e:
-                        print(f"[IdleStop] Failed to stop {agent.id}: {e}")
+                        logger.warning("[IdleStop] Failed to stop %s: %s", agent.id, e)
 
         return stopped
 
@@ -541,7 +541,7 @@ class SchedulerService:
         try:
             config = _json.loads(schedule.prompt[len("__meeting__:"):])
         except Exception as e:
-            print(f"[Scheduler] Bad meeting config for {schedule.id}: {e}")
+            logger.warning("[Scheduler] Bad meeting config for %s: %s", schedule.id, e)
             return
 
         room = MeetingRoom(
@@ -575,7 +575,7 @@ class SchedulerService:
         import asyncio
         task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
         _running_rooms[room.id] = task
-        print(f"[Scheduler] Started scheduled meeting {room.id}: {room.name}")
+        logger.info("[Scheduler] Started scheduled meeting %s: %s", room.id, room.name)
 
 
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
@@ -592,11 +592,11 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
             try:
                 tz = ZoneInfo(tz_name)
             except Exception:
-                print(f"[Scheduler] Unknown timezone '{tz_name}' — evaluating cron in UTC")
+                logger.warning("[Scheduler] Unknown timezone '%s' — evaluating cron in UTC", tz_name)
                 tz = timezone.utc
             base = now.astimezone(tz)
             cron = croniter(schedule.cron_expression, base)
             return cron.get_next(datetime).astimezone(timezone.utc)
         except Exception as e:
-            print(f"[Scheduler] Invalid cron expression '{schedule.cron_expression}': {e} — falling back to interval")
+            logger.warning("[Scheduler] Invalid cron expression '%s': %s — falling back to interval", schedule.cron_expression, e)
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
