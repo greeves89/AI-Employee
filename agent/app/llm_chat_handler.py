@@ -241,6 +241,20 @@ class LLMChatHandler:
         except Exception as e:
             logger.warning(f"MCP tool discovery failed: {e}")
         self._all_tools = catalog
+        # Pre-activate the agent's integration MCP tools (M365/msgraph, Exchange, …)
+        # so they are ALWAYS callable. Without this they're only reachable via
+        # search_tools, and the model unreliably claims "no M365 tool available"
+        # instead of searching (the "mal da / mal nicht" flakiness). Capped to
+        # leave headroom for on-demand search_tools activations under the 128 limit.
+        if not self._activated:
+            mcp_names = [
+                t["function"]["name"] for t in catalog
+                if str(t.get("function", {}).get("name", "")).startswith("mcp_")
+                and t["function"]["name"] not in CORE_TOOL_NAMES
+            ]
+            if mcp_names:
+                self._activated = mcp_names[: max(1, MAX_ACTIVATED_TOOLS - 15)]
+                logger.info(f"Pre-activated {len(self._activated)} integration MCP tools")
         return catalog
 
     async def _get_tools(self) -> list[dict] | None:

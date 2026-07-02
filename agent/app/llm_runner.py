@@ -117,6 +117,18 @@ class LLMRunner:
                 logger.info(f"Discovered {len(mcp_tools)} MCP tools")
         except Exception as e:
             logger.warning(f"MCP tool discovery failed: {e}")
+        # Pre-activate integration MCP tools (M365/msgraph, Exchange, …) so they are
+        # always callable instead of only via search_tools — same reliability fix as
+        # the chat handler. Capped to leave headroom under the 128-tool limit.
+        if not self._activated:
+            mcp_names = [
+                t["function"]["name"] for t in self._all_tools
+                if str(t.get("function", {}).get("name", "")).startswith("mcp_")
+                and t["function"]["name"] not in CORE_TOOL_NAMES
+            ]
+            if mcp_names:
+                self._activated = mcp_names[: max(1, MAX_ACTIVATED_TOOLS - 15)]
+                logger.info(f"Pre-activated {len(self._activated)} integration MCP tools")
         return self._all_tools
 
     async def _get_tools(self) -> list[dict] | None:

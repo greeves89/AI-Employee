@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.98.2] — 2026-07-02
+
+### Fixed
+- **M365-Tools „mal da / mal nicht" behoben** (custom_llm/Azure-Agenten). Wegen des 128-Tool-Limits sendet der Agent nur ein CORE-Set + `search_tools`; M365/Exchange-Tools waren nur per `search_tools` erreichbar, und das Modell behauptete unzuverlässig „kein M365-Tool verfügbar" statt zu suchen. Fix: die Integrations-MCP-Tools (`mcp_msgraph_*`, `mcp_exchange_*`, …) werden beim Katalog-Laden **vor-aktiviert** (mit Headroom unter dem Limit) — in Chat- UND Task-Pfad. M365 ist damit zuverlässig sofort aufrufbar.
+
 ## [1.98.1] — 2026-07-02
 
 ### Fixed
