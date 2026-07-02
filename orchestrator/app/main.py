@@ -791,6 +791,41 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")
 
+    # Ensure the job_state table (long-running job checkpoints + auto-resume) on
+    # every startup, independent of Alembic — no migration ships for it, and on an
+    # already-provisioned DB `alembic upgrade head` succeeds so the create_all
+    # fallback never runs. Idempotent. Without it, the startup recovery hook 500s
+    # with relation "job_state" does not exist on every restart.
+    try:
+        from app.db.session import engine as _eng_js
+        from sqlalchemy import text as _txt_js
+        async with _eng_js.begin() as conn:
+            await conn.execute(_txt_js(
+                "CREATE TABLE IF NOT EXISTS job_state ("
+                "id varchar PRIMARY KEY, "
+                "kind varchar(100) NOT NULL, "
+                "ref_id varchar, "
+                "step varchar NOT NULL DEFAULT '', "
+                "progress_pct double precision NOT NULL DEFAULT 0.0, "
+                "status varchar(20) NOT NULL DEFAULT 'running', "
+                "last_heartbeat timestamptz NOT NULL DEFAULT now(), "
+                "resume_count integer NOT NULL DEFAULT 0, "
+                "error text, "
+                "job_metadata json NOT NULL DEFAULT '{}'::json, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_js(
+                "CREATE INDEX IF NOT EXISTS ix_job_state_ref_id ON job_state (ref_id)"
+            ))
+            await conn.execute(_txt_js(
+                "CREATE INDEX IF NOT EXISTS ix_job_state_status_heartbeat "
+                "ON job_state (status, last_heartbeat)"
+            ))
+        logger.info("job_state table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure job_state table: {e}")
+
     # Ensure users.approved (admin-approval gate). Default true so existing users stay
     # usable; new self-registered users get false when require_user_approval is on.
     try:
