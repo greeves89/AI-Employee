@@ -663,8 +663,9 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
         # different strategy (alternative dimension). Runs at most once per
         # plateau — the "plateau" status is cleared when a new version lands.
         history = await _skill_helpfulness_history(db, skill.id)
-        if is_plateaued(history + [avg_h]) and skill.improvement_status != "plateau":
-            await _handle_skill_plateau(db, skill)
+        if is_plateaued(history + [avg_h]):
+            if skill.improvement_status != "plateau":
+                await _handle_skill_plateau(db, skill)
             continue
 
         new_content = await _generate_skill_improvement(skill, avg_h, rated_count)
