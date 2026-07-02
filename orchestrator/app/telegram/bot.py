@@ -128,7 +128,13 @@ class TelegramBot:
                     continue
                 try:
                     data = json.loads(message["data"])
-                    chat_id = data.get("chat_id") or settings.telegram_chat_id
+                    # SECURITY: never honour a chat_id from the payload. Any
+                    # component with Redis access (including agents) can publish
+                    # here, so trusting the payload's chat_id would let them spoof
+                    # messages to arbitrary chats (e.g. a fake "approval granted"
+                    # to the operator). All legitimate publishers target the
+                    # configured operator chat anyway.
+                    chat_id = settings.telegram_chat_id
                     if not chat_id or not self.app:
                         continue
                     await self.app.bot.send_message(

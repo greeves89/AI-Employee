@@ -345,8 +345,23 @@ class AgentRunner:
         authorized Telegram chats, so inter-agent tasks are unaffected.
         """
         path = str(payload.get("path") or "")
-        if not path or not os.path.isfile(path):
+        if not path:
             return
+        # SECURITY: only deliver files from THIS agent's own workspace. Never an
+        # arbitrary container path — otherwise an agent could exfiltrate mounted
+        # brain vaults, /shared, or container secrets out via Telegram, bypassing
+        # the autonomy/approval controls. present_file is meant for /workspace output.
+        try:
+            real = os.path.realpath(path)
+            ws = os.path.realpath(settings.workspace_dir)
+            if real != ws and not real.startswith(ws + os.sep):
+                logger.warning("present_file path outside workspace refused: %s", path)
+                return
+        except Exception:
+            return
+        if not os.path.isfile(real):
+            return
+        path = real
         try:
             import base64
 

@@ -466,8 +466,10 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
             "codes like `x17137`), **search it FIRST** before answering: use `grep` for "
             "keywords/error codes and `read_file` on the matches, then answer from the found "
             "`.md` content and cite the file. If you learn something new and have read-write "
-            "access, add or update a concise `.md` article (Markdown, `[[wikilinks]]` between "
-            "topics) so the knowledge is preserved for the whole department."
+            "access, **write it back**: use your normal file/Write tool to create or update a "
+            "concise `.md` article directly at `/mnt/brains/<slug>/<Ordner>/<thema>.md` "
+            "(Markdown, `[[wikilinks]]` between topics). No special tool needed — the vault is "
+            "mounted read-write, so a plain file write preserves the knowledge for the whole department."
         )
     return "\n".join(lines)
 

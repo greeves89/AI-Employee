@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.96.1] — 2026-07-02
+
+### Security
+- **Telegram-Notification-Spoofing behoben** (`telegram/bot.py`): Der Redis-Listener `telegram:notification` übernahm die `chat_id` **ungeprüft aus dem Payload**. Da jeder Komponente mit Redis-Zugriff (inkl. Agenten) dorthin publishen kann, hätte ein Agent Nachrichten an beliebige dem Bot bekannte Chats spoofen können (z. B. gefälschte „Freigabe erteilt"-Meldung an den Operator). Fix: `chat_id` wird nie mehr aus dem Payload übernommen — immer der konfigurierte Operator-Chat. (Regression aus PR #237.)
+- **present_file: Arbitrary-File-Read/Workspace-Scope-Bypass behoben** (`agent/app/agent_runner.py`): `_deliver_present_file_via_telegram` öffnete den vom Agenten gelieferten Pfad ohne Jailing und schickte ihn per Telegram raus — ein Agent hätte gemountete fremde Brain-Vaults, `/shared` oder Container-Secrets an der Freigabe vorbei exfiltrieren können. Fix: Pfad wird realpath-jailed auf `/workspace`; alles außerhalb wird abgelehnt. (Regression aus PR #271.)
+
+### Changed
+- Agent-CLAUDE.md geschärft: Second-Brain-Vaults sind rw unter `/mnt/brains/<slug>` gemountet — Agenten schreiben Artikel mit ihrem normalen Write-Tool direkt dorthin (kein Extra-Tool nötig).
+
 ## [1.96.0] — 2026-07-02
 
 ### Added
