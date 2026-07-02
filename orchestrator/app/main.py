@@ -760,6 +760,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure oauth_clients table: {e}")
 
+    # Ensure the chat_sessions table (per-chat title/pin metadata) on every
+    # startup, independent of Alembic (10 heads → `upgrade head` may not run the
+    # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.
+    try:
+        from app.db.session import engine as _eng_cs
+        from sqlalchemy import text as _txt_cs
+        async with _eng_cs.begin() as conn:
+            await conn.execute(_txt_cs(
+                "CREATE TABLE IF NOT EXISTS chat_sessions ("
+                "id serial PRIMARY KEY, "
+                "agent_id varchar NOT NULL, "
+                "session_id varchar NOT NULL, "
+                "title text, "
+                "pinned boolean NOT NULL DEFAULT false, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_cs(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_sessions_agent_session "
+                "ON chat_sessions (agent_id, session_id)"
+            ))
+            await conn.execute(_txt_cs(
+                "CREATE INDEX IF NOT EXISTS ix_chat_sessions_agent_id ON chat_sessions (agent_id)"
+            ))
+            await conn.execute(_txt_cs(
+                "CREATE INDEX IF NOT EXISTS ix_chat_sessions_session_id ON chat_sessions (session_id)"
+            ))
+        logger.info("chat_sessions table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure chat_sessions table: {e}")
+
     # Ensure users.approved (admin-approval gate). Default true so existing users stay
     # usable; new self-registered users get false when require_user_approval is on.
     try:
