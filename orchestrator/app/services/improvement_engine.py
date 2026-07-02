@@ -114,7 +114,7 @@ class ImprovementEngine:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"[ImprovementEngine] Analysis error: {e}")
+                logger.error("[ImprovementEngine] Analysis error: %s", e, exc_info=True)
 
             await asyncio.sleep(interval)
 

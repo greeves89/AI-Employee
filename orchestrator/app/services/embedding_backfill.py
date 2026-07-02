@@ -164,5 +164,5 @@ async def run_backfill_loop(db_factory) -> None:
                 )
                 await asyncio.sleep(2)
         except Exception as e:
-            logger.error(f"[EmbeddingBackfill] Error: {e}")
+            logger.error("[EmbeddingBackfill] Error: %s", e, exc_info=True)
             await asyncio.sleep(300)

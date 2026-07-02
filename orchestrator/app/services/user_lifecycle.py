@@ -60,7 +60,7 @@ class UserLifecycleService:
             try:
                 await self._sweep()
             except Exception as e:
-                logger.error(f"[UserLifecycle] Sweep error: {e}")
+                logger.error("[UserLifecycle] Sweep error: %s", e, exc_info=True)
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
     def stop(self) -> None:
