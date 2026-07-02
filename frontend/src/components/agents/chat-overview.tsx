@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Pin, X, ArrowRight, Loader2, RefreshCw, Bot, User } from "lucide-react";
+import { MessageSquare, Pin, X, ArrowRight, Loader2, RefreshCw, Bot, User, Clock } from "lucide-react";
 import * as api from "@/lib/api";
 import type { ChatSession, ChatHistoryMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -72,23 +72,45 @@ export function ChatOverview({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {sessions.map((s) => {
           const title = s.title || s.preview || "Chat";
+          const recent = !!s.last_message_at && (Date.now() - new Date(s.last_message_at).getTime()) < 5 * 60 * 1000;
           return (
             <button
               key={s.id}
               onClick={() => { setOpenId(s.id); setOpenTitle(title); }}
-              className="group flex flex-col gap-2 rounded-xl border border-foreground/[0.08] bg-card/60 p-3.5 text-left transition-all hover:border-primary/40 hover:bg-card hover:shadow-md"
-            >
-              <div className="flex items-center gap-1.5">
-                {s.pinned && <Pin className="h-3 w-3 shrink-0 fill-amber-400/30 text-amber-400" />}
-                <MessageSquare className="h-3.5 w-3.5 shrink-0 text-primary/70" />
-                <span className="truncate text-sm font-medium">{title}</span>
-              </div>
-              {s.preview && s.title && (
-                <p className="line-clamp-2 text-xs text-muted-foreground/80">{s.preview}</p>
+              className={cn(
+                "group relative flex flex-col gap-2.5 rounded-2xl border p-4 text-left transition-all duration-200",
+                "bg-gradient-to-b from-card/80 to-card/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5",
+                s.pinned
+                  ? "border-amber-500/25 hover:border-amber-500/50"
+                  : "border-foreground/[0.08] hover:border-primary/40"
               )}
-              <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-muted-foreground/60">
-                <span>{s.message_count} Nachrichten</span>
-                <span>{relTime(s.last_message_at)}</span>
+            >
+              {s.pinned && (
+                <span className="absolute right-2.5 top-2.5 text-amber-400" title="Angepinnt">
+                  <Pin className="h-3.5 w-3.5 fill-amber-400/30" />
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                </span>
+                <span className="truncate pr-5 text-sm font-semibold">{title}</span>
+              </div>
+              <p className="line-clamp-2 min-h-[2rem] text-xs leading-relaxed text-muted-foreground/80">
+                {s.title ? (s.preview || "—") : "Chat öffnen für den Verlauf"}
+              </p>
+              <div className="mt-auto flex items-center gap-2 pt-1 text-[10px] text-muted-foreground/60">
+                {recent && (
+                  <span className="flex items-center gap-1 text-emerald-500" title="gerade aktiv">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> aktiv
+                  </span>
+                )}
+                <span className="flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3 opacity-60" /> {s.message_count}
+                </span>
+                <span className="ml-auto flex items-center gap-1">
+                  <Clock className="h-3 w-3 opacity-60" /> {relTime(s.last_message_at)}
+                </span>
               </div>
             </button>
           );
