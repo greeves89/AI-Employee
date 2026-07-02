@@ -77,6 +77,34 @@ export async function setAgentAutonomyLevel(
   });
 }
 
+// --- Autonomy capability matrix (3-state: allow/ask/deny) ---
+export type AutonomyState = "allow" | "ask" | "deny";
+export interface AutonomyCapability { key: string; group: string; label: string; description: string; }
+export interface AutonomyTaxonomy {
+  groups: { key: string; label: string }[];
+  states: AutonomyState[];
+  capabilities: AutonomyCapability[];
+  presets: Record<string, { label: string; matrix: Record<string, AutonomyState> }>;
+}
+export interface AutonomyMatrixResponse {
+  agent_id: string;
+  autonomy_level: string;
+  matrix: Record<string, AutonomyState>;
+  taxonomy: AutonomyTaxonomy;
+}
+export async function getAutonomyMatrix(agentId: string): Promise<AutonomyMatrixResponse> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/autonomy-matrix`);
+}
+export async function updateAutonomyMatrix(
+  agentId: string,
+  matrix: Record<string, AutonomyState>,
+): Promise<{ agent_id: string; autonomy_level: string; matrix: Record<string, AutonomyState> }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/autonomy-matrix`, {
+    method: "PUT",
+    body: JSON.stringify({ matrix }),
+  });
+}
+
 export async function getAgentMessages(minutes: number = 60): Promise<{
   connections: { from: string; to: string; count: number; last_at: string }[];
   messages: { from: string; to: string; text: string; from_name: string; timestamp: string }[];

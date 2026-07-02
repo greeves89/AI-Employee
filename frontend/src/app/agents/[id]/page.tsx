@@ -23,6 +23,7 @@ import {
 } from "@/components/files/file-preview";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
+import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
@@ -1281,25 +1282,8 @@ function AgentSettings({
 
   const providerLabel = agent.llm_config?.provider_type === "openai" ? "OpenAI" : agent.llm_config?.provider_type === "google" ? "Google" : agent.llm_config?.provider_type === "anthropic" ? "Anthropic" : agent.llm_config?.provider_type ?? "";
 
-  // Autonomy level state
+  // Autonomy level (badge in the header; the matrix component below owns editing)
   const [autonomyLevel, setAutonomyLevel] = useState(agent.autonomy_level ?? "l3");
-  const [autonomySaving, setAutonomySaving] = useState(false);
-  const autonomyChanged = autonomyLevel !== (agent.autonomy_level ?? "l3");
-
-  const handleAutonomySave = async () => {
-    setAutonomySaving(true);
-    setMessage(null);
-    try {
-      await api.setAgentAutonomyLevel(agentId, autonomyLevel);
-      setMessage({ type: "success", text: "Autonomie-Level aktualisiert. Restart erforderlich." });
-      const updated = await api.getAgent(agentId);
-      onUpdated(updated as Agent);
-    } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Fehler" });
-    } finally {
-      setAutonomySaving(false);
-    }
-  };
 
   // Webhook state
   const [webhookEnabled, setWebhookEnabled] = useState(agent.webhook_enabled ?? false);
@@ -1392,52 +1376,9 @@ function AgentSettings({
               {autonomyLevel.toUpperCase()}
             </span>
           </div>
-          {autonomyChanged && (
-            <button
-              onClick={handleAutonomySave}
-              disabled={autonomySaving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-amber-500 disabled:opacity-40 transition-all"
-            >
-              {autonomySaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Speichern
-            </button>
-          )}
         </div>
-        <div className="p-5 space-y-3">
-          {[
-            { value: "l1", label: "L1 — Nur lesen & suchen", desc: "Agent kann nur lesen und suchen — keine Aktionen.", color: "border-blue-500/30 bg-blue-500/[0.06] text-blue-400" },
-            { value: "l2", label: "L2 — Empfehlungen erstellen", desc: "Agent erstellt Empfehlungen und Entwuerfe — fuehrt nichts aus.", color: "border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-400" },
-            { value: "l3", label: "L3 — Aktionen mit Freigabe", desc: "Agent fragt vor jeder Aktion um Erlaubnis (empfohlen).", color: "border-amber-500/30 bg-amber-500/[0.06] text-amber-400" },
-            { value: "l4", label: "L4 — Vollstaendig autonom", desc: "Agent handelt eigenstaendig ohne Rueckfragen.", color: "border-red-500/30 bg-red-500/[0.06] text-red-400" },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setAutonomyLevel(opt.value)}
-              className={cn(
-                "w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200",
-                autonomyLevel === opt.value
-                  ? opt.color
-                  : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
-              )}
-            >
-              <div className="flex-1 min-w-0">
-                <span className={cn("text-sm font-medium", autonomyLevel === opt.value ? "" : "text-muted-foreground")}>
-                  {opt.label}
-                </span>
-                <p className="text-xs text-muted-foreground/70 mt-0.5">{opt.desc}</p>
-              </div>
-              <div className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all mt-0.5",
-                autonomyLevel === opt.value ? "border-current bg-current" : "border-foreground/20"
-              )}>
-                {autonomyLevel === opt.value && <Check className="h-3 w-3 text-background" />}
-              </div>
-            </button>
-          ))}
-          <p className="text-[11px] text-muted-foreground/50 pt-1">
-            Aenderungen werden nach dem naechsten Neustart des Agents wirksam.
-          </p>
+        <div className="p-5">
+          <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
         </div>
       </div>
 

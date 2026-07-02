@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.0] — 2026-07-02
+
+### Added
+- **Autonomie-Matrix (3-stufig) mit Presets.** Neue Fähigkeits-Matrix pro Agent: jede Fähigkeit ist **Erlaubt / Freigabe / Verboten**, gruppiert in **Eigener Container** (Dateien lesen/schreiben, Shell, Pakete) und **Externe Tools** (Web, E-Mail/M365, externe API, Chat/Telegram, Git-Push, Käufe). Die **L1–L4-Buttons füllen die Matrix** als Vorlage; danach ist jede Zelle einzeln justierbar (→ „Custom"). Single-Source `orchestrator/app/core/autonomy_matrix.py` (Taxonomie + Presets + Prompt-Rendering); Endpoints `GET/PUT /agents/{id}/autonomy-matrix`, und `POST /autonomy-level` füllt die Matrix mit. Der `for-agent`-Endpoint liefert die Matrix + einen fertig gerenderten, autoritativen `autonomy_prompt` (Erlaubt→ohne Nachfrage, Freigabe→`request_approval`, Verboten→ablehnen; Vollautonomie=L4=harter No-Ask-Block). Frontend: Matrix-Editor im Agenten-Autonomie-Tab. 8 Tests. Enthält den L4-Fix aus 1.98.1 als Vollautonomie-Fall.
+
 ## [1.98.2] — 2026-07-02
 
 ### Fixed

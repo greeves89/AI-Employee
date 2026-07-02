@@ -480,20 +480,28 @@ async def get_rules_for_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public endpoint — agents fetch their own applicable rules without auth required."""
-    rules = await get_active_rules_for_agent(db, agent_id)
-    # Surface the autonomy level so the agent prompt can be level-aware: at L4
-    # (fully autonomous) the agent must NOT ask for approval at all, instead of
-    # falling back to the generic "when in doubt, always ask" — which made L4
-    # agents still request approval for e.g. M365/OneDrive access.
+    """Public endpoint — agents fetch their own applicable rules without auth required.
+
+    Returns the 3-state autonomy MATRIX (the single source of truth) plus a
+    fully-rendered ``autonomy_prompt`` the agent injects verbatim. The matrix is
+    stored on the agent; if none is set yet it falls back to the L1–L4 preset for
+    the agent's level, so nothing breaks pre-matrix. ``rules`` stays for
+    backward compatibility.
+    """
     from app.models.agent import Agent
-    level = (await db.execute(
-        select(Agent.autonomy_level).where(Agent.id == agent_id)
-    )).scalar_one_or_none()
-    level = (level or "l3").lower()
+    from app.core import autonomy_matrix as am
+    rules = await get_active_rules_for_agent(db, agent_id)
+    agent = (await db.execute(
+        select(Agent.autonomy_level, Agent.config).where(Agent.id == agent_id)
+    )).first()
+    level = ((agent[0] if agent else None) or "l3").lower()
+    cfg = (agent[1] if agent else None) or {}
+    matrix = am.normalize_matrix(cfg.get("autonomy_matrix"), level)
     return {
         "autonomy_level": level,
-        "unrestricted": level == "l4",
+        "matrix": matrix,
+        "unrestricted": am.is_unrestricted(matrix),
+        "autonomy_prompt": am.matrix_to_prompt(matrix),
         "rules": [
             {
                 "name": r.name,

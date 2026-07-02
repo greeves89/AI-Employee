@@ -661,9 +661,13 @@ async def set_autonomy_level(
         raise HTTPException(status_code=404, detail="Agent not found")
     previous_level = agent.autonomy_level
     agent.autonomy_level = level
+    # Applying an L1–L4 preset also fills the 3-state autonomy matrix (single
+    # source that drives the agent prompt). Users can fine-tune cells afterwards.
+    from app.core import autonomy_matrix as am
+    agent.config = {**(agent.config or {}), "autonomy_matrix": am.matrix_for_level(level)}
     await db.commit()
 
-    # Apply the matching approval rule preset for this level
+    # Apply the matching approval rule preset for this level (legacy compat)
     from app.api.approval_rules import apply_autonomy_preset
     rules = await apply_autonomy_preset(db, agent_id, level)
 
@@ -684,6 +688,66 @@ async def set_autonomy_level(
         "autonomy_level": agent.autonomy_level,
         "rules_applied": len(rules),
         "rule_names": [r.name for r in rules],
+    }
+
+
+@router.get("/{agent_id}/autonomy-matrix")
+async def get_autonomy_matrix(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Capability taxonomy + the agent's current 3-state autonomy matrix."""
+    await _check_owner(agent_id, user, db)
+    from app.core import autonomy_matrix as am
+    agent = (await db.execute(
+        select(Agent.autonomy_level, Agent.config).where(Agent.id == agent_id)
+    )).first()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    level = (agent[0] or "l3").lower()
+    matrix = am.normalize_matrix((agent[1] or {}).get("autonomy_matrix"), level)
+    return {
+        "agent_id": agent_id,
+        "autonomy_level": level,
+        "matrix": matrix,
+        "taxonomy": am.taxonomy_payload(),
+    }
+
+
+class AutonomyMatrixUpdate(BaseModel):
+    matrix: dict[str, str]
+
+
+@router.put("/{agent_id}/autonomy-matrix")
+async def update_autonomy_matrix(
+    agent_id: str,
+    body: AutonomyMatrixUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set a custom 3-state matrix (fine-tuning after a preset). Level → 'custom'
+    when the matrix no longer matches its L1–L4 preset."""
+    await _check_owner(agent_id, user, db)
+    from app.core import autonomy_matrix as am
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    level = (agent.autonomy_level or "l3").lower()
+    matrix = am.normalize_matrix(body.matrix, level)
+    # If the edited matrix still equals a preset, keep that level label; else custom.
+    matched = next((lvl for lvl in ("l1", "l2", "l3", "l4")
+                    if am.matrix_for_level(lvl) == matrix), None)
+    agent.config = {**(agent.config or {}), "autonomy_matrix": matrix}
+    if matched:
+        agent.autonomy_level = matched
+    elif agent.autonomy_level in ("l1", "l2", "l3", "l4"):
+        agent.autonomy_level = "custom"
+    await db.commit()
+    return {
+        "agent_id": agent_id,
+        "autonomy_level": agent.autonomy_level,
+        "matrix": matrix,
     }
 
 
