@@ -19,6 +19,13 @@ from app.db.session import async_session_factory
 from app.models.schedule import Schedule
 from app.models.task import Task
 from app.services.redis_service import RedisService
+from app.services.watchdog import (
+    as_utc,
+    find_missed_schedules,
+    find_stale_tasks,
+    mark_task_stale,
+    md_escape,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +50,9 @@ class SchedulerService:
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
+        # Per-schedule missed slot (next_run_at iso) already alerted; prevents
+        # re-alerting the same missed window every 30s tick.
+        self._missed_alerted: dict[str, str] = {}
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -56,7 +66,18 @@ class SchedulerService:
 
         while True:
             try:
+                # Missed-schedule watchdog runs BEFORE _check_due_schedules, which
+                # would otherwise fire+advance the slipped run and hide the miss.
+                try:
+                    await self._tick_missed_schedule_watchdog()
+                except Exception as e:
+                    logger.warning("[Scheduler] MissedScheduleWatchdog error: %s", e)
                 await self._check_due_schedules()
+                # Stale-task watchdog: flag RUNNING tasks with no heartbeat >30min.
+                try:
+                    await self._tick_stale_task_watchdog()
+                except Exception as e:
+                    logger.warning("[Scheduler] StaleTaskWatchdog error: %s", e)
                 try:
                     started = await self._start_due_followups()
                     if started:
@@ -421,6 +442,91 @@ class SchedulerService:
                     self._watchdog_alerted[s.id] = drift
                 except Exception as e:
                     logger.warning("[Scheduler] FailureWatchdog publish error: %s", e)
+
+    async def _tick_stale_task_watchdog(self) -> None:
+        """Mark RUNNING tasks that stopped heart-beating (>30min) as stale.
+
+        A worker that crashes mid-job (container OOM, network drop) leaves its
+        task pinned in RUNNING forever. updated_at stops advancing, so we flip
+        such tasks to FAILED with a `stale` metadata flag and alert the owner —
+        instead of the operator discovering a missing artifact hours later.
+        """
+        import json as _json
+
+        now = datetime.now(timezone.utc)
+        async with async_session_factory() as db:
+            stale = await find_stale_tasks(db, now)
+            if not stale:
+                return
+            from app.models.notification import Notification
+
+            for task in stale:
+                mark_task_stale(task, now)
+                db.add(
+                    Notification(
+                        agent_id=task.agent_id or "system",
+                        type="error",
+                        title="Task stale (kein Heartbeat)",
+                        message=(
+                            f'Task "{task.title}" hat seit über 30min kein '
+                            "Lebenszeichen gesendet und wurde als stale markiert."
+                        )[:240],
+                        priority="high",
+                        action_url=f"/tasks/{task.id}",
+                        meta={"type": "task_stale", "task_id": task.id},
+                    )
+                )
+                if self.redis and self.redis.client:
+                    payload = {
+                        "text": (
+                            f"⚠️ Task *{md_escape(task.title)}* stale — kein "
+                            f"Heartbeat >30min (id `{task.id}`), als fehlgeschlagen markiert."
+                        ),
+                        "parse_mode": "Markdown",
+                    }
+                    try:
+                        await self.redis.client.publish(
+                            "telegram:notification", _json.dumps(payload)
+                        )
+                    except Exception as e:
+                        logger.warning("[Scheduler] StaleTaskWatchdog publish error: %s", e)
+            await db.commit()
+            logger.info("[Scheduler] StaleTaskWatchdog: marked %s task(s) stale", len(stale))
+
+    async def _tick_missed_schedule_watchdog(self) -> None:
+        """Alert on enabled schedules whose fire window was missed (>5min late).
+
+        Under normal operation the main loop fires due schedules every 30s, so
+        next_run_at is always in the future. A next_run_at that slipped well
+        into the past means the scheduler was down during the window (container
+        restart) — the run is caught up late, but the owner is told it slipped.
+        """
+        import json as _json
+
+        now = datetime.now(timezone.utc)
+        async with async_session_factory() as db:
+            missed = await find_missed_schedules(db, now)
+            for s in missed:
+                slot_key = as_utc(s.next_run_at).isoformat()
+                if self._missed_alerted.get(s.id) == slot_key:
+                    continue
+                self._missed_alerted[s.id] = slot_key
+                if not self.redis or not self.redis.client:
+                    continue
+                late_min = int((now - as_utc(s.next_run_at)).total_seconds() // 60)
+                payload = {
+                    "text": (
+                        f"⚠️ Schedule *{md_escape(s.name)}* verpasst — geplant "
+                        f"{slot_key} (überfällig {late_min} min). Wird nachgeholt."
+                    ),
+                    "parse_mode": "Markdown",
+                }
+                try:
+                    await self.redis.client.publish(
+                        "telegram:notification", _json.dumps(payload)
+                    )
+                except Exception as e:
+                    logger.warning("[Scheduler] MissedScheduleWatchdog publish error: %s", e)
 
     async def _stop_idle_agents(self) -> int:
         """Stop agents that have been idle longer than their configured limit.
