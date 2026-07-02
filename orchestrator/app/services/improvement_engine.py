@@ -24,6 +24,7 @@ from app.models.agent import Agent
 from app.models.notification import Notification
 from app.models.task_rating import TaskRating
 from app.models.skill import Skill, SkillTaskUsage
+from app.services.skill_plateau import is_plateaued
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +496,118 @@ async def _generate_skill_improvement(
         return None
 
 
+async def _skill_helpfulness_history(db: AsyncSession, skill_id: int, limit: int = 4) -> list[float]:
+    """Return the most recent per-version avg helpfulness snapshots, chronological."""
+    from app.models.skill import SkillVersion
+
+    rows = (await db.execute(
+        select(SkillVersion.avg_helpfulness_at_snapshot)
+        .where(SkillVersion.skill_id == skill_id)
+        .order_by(SkillVersion.version_number.desc())
+        .limit(limit)
+    )).scalars().all()
+    # rows come newest-first; reverse to chronological and drop NULL snapshots
+    return [float(h) for h in reversed(rows) if h is not None]
+
+
+async def _skill_changed_dimensions(db: AsyncSession, skill_id: int, limit: int = 4) -> list[str]:
+    """Best-effort extraction of dimensions changed in recent versions.
+
+    Dimensions are read from SkillVersion.change_reason when it carries a JSON
+    payload with a "changed_dimensions" list (written by the plateau-aware
+    improvement path). Older/plain change_reason strings contribute nothing —
+    the recommendation then just steers toward any unchanged dimension.
+    """
+    from app.models.skill import SkillVersion
+
+    rows = (await db.execute(
+        select(SkillVersion.change_reason)
+        .where(SkillVersion.skill_id == skill_id)
+        .order_by(SkillVersion.version_number.desc())
+        .limit(limit)
+    )).scalars().all()
+    dims: list[str] = []
+    for reason in rows:
+        if not reason:
+            continue
+        try:
+            payload = json.loads(reason)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(payload, dict):
+            for d in payload.get("changed_dimensions", []) or []:
+                if isinstance(d, str):
+                    dims.append(d)
+    return dims
+
+
+async def _handle_skill_plateau(db: AsyncSession, skill: "Skill") -> None:
+    """Emit an alternative-strategy alert + KB entry when a skill has plateaued.
+
+    Called instead of generating yet another generic rewrite once the last few
+    versions show no significant rating gain.
+    """
+    from app.services.skill_plateau import recommend_alternative_strategy
+    from app.models.knowledge import KnowledgeEntry
+
+    dims = await _skill_changed_dimensions(db, skill.id)
+    rec = recommend_alternative_strategy(dims)
+
+    db.add(Notification(
+        agent_id="system",
+        type="warning",
+        title=f"Skill-Plateau: '{skill.name}' verbessert sich nicht mehr",
+        message=(
+            f"Mehrere Versionen ohne signifikante Verbesserung. {rec['message']} "
+            f"Empfohlene nächste Dimension: {rec['recommended_dimension']}."
+        )[:240],
+        priority="high",
+        action_url=f"/skills/{skill.id}",
+        meta={
+            "type": "skill_plateau",
+            "skill_id": skill.id,
+            "skill_name": skill.name,
+            "recommended_dimension": rec["recommended_dimension"],
+            "tried_dimensions": rec["tried"],
+        },
+    ))
+
+    title = f"Skill-Plateau: {skill.name}"
+    body = (
+        f"# {title}\n\n"
+        f"Der Skill **{skill.name}** (id {skill.id}) steckt in einem "
+        f"Verbesserungs-Plateau: die letzten Versionen brachten keine "
+        f"signifikante Rating-Steigerung (< 0.2).\n\n"
+        f"## Empfehlung\n{rec['message']}\n\n"
+        f"- Bereits (erfolglos) geänderte Dimensionen: "
+        f"{', '.join(rec['tried']) or '—'}\n"
+        f"- Nächste zu testende Dimension (nur EINE ändern): "
+        f"**{rec['recommended_dimension']}**\n"
+        f"- Weitere Kandidaten: {', '.join(rec['candidates'])}\n\n"
+        f"#skill-improvement #plateau [[Skill improvement plateau]]\n"
+    )
+    existing = (await db.execute(
+        select(KnowledgeEntry).where(KnowledgeEntry.title == title)
+    )).scalar_one_or_none()
+    if existing:
+        existing.content = body
+        existing.updated_by = "improvement_engine"
+    else:
+        db.add(KnowledgeEntry(
+            title=title,
+            content=body,
+            tags=["skill-improvement", "plateau"],
+            created_by="improvement_engine",
+            updated_by="improvement_engine",
+        ))
+
+    skill.improvement_status = "plateau"
+    logger.info(
+        "[ImprovementEngine] Skill '%s' (id=%s) PLATEAU — recommended dimension '%s'",
+        skill.name, skill.id, rec["recommended_dimension"],
+    )
+
+
 async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
     """Find skills with low helpfulness ratings and create improvement *proposals*.
 
@@ -544,6 +657,16 @@ async def _improve_poorly_rated_skills(db: AsyncSession) -> None:
 
         avg_h = float(row.avg_helpfulness)
         rated_count = int(row.rated_count)
+
+        # Plateau guard: if the last few versions produced no real gain, stop
+        # generating another same-flavour rewrite and instead recommend a
+        # different strategy (alternative dimension). Runs at most once per
+        # plateau — the "plateau" status is cleared when a new version lands.
+        history = await _skill_helpfulness_history(db, skill.id)
+        if is_plateaued(history + [avg_h]):
+            if skill.improvement_status != "plateau":
+                await _handle_skill_plateau(db, skill)
+            continue
 
         new_content = await _generate_skill_improvement(skill, avg_h, rated_count)
         if not new_content or new_content.strip() == (skill.content or "").strip():
