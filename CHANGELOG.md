@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.43] — 2026-07-03
+
+### Fixed
+- **Meeting-Rooms-Karten Grid-Blowout behoben.** Der `1fr`-Grid-Track hat default `min-width:auto` → eine Karte mit langem Inhalt blähte den Track über die Viewport-Breite auf. Fix: `min-w-0` auf der Karte, damit sie schrumpfen kann und Titel/Beschreibung sauber kürzen statt rechts rauszulaufen. (`app/meeting-rooms/page.tsx`)
+
 ## [1.99.42] — 2026-07-03
 
 ### Fixed

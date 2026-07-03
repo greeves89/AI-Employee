@@ -591,7 +591,7 @@ export default function MeetingRoomsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
                 onClick={() => router.push(`/meeting-rooms/${room.id}`)}
-                className="group cursor-pointer rounded-2xl border border-border bg-card/50 p-5 hover:border-primary/30 hover:bg-card/80 transition-all"
+                className="group min-w-0 cursor-pointer rounded-2xl border border-border bg-card/50 p-5 hover:border-primary/30 hover:bg-card/80 transition-all"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
