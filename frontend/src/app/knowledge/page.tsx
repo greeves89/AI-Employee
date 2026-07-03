@@ -713,13 +713,14 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
       degreeMap.set(e.target, (degreeMap.get(e.target) ?? 0) + 1);
     }
 
-    // Lay out in a FIXED SQUARE virtual space (independent of the canvas aspect
-    // ratio) so nodes form a nice 2D blob instead of being squished into a line on
-    // a wide/short canvas. fit-to-view later scales this blob onto the real canvas.
-    const V = Math.max(700, Math.sqrt(nodes.length) * 190);  // virtual size ~ density
-    const cx = V / 2;
-    const cy = V / 2;
-    const spread = V * 0.35;
+    // Lay out in the ACTUAL canvas rectangle so nodes fill BOTH width and height of
+    // the (often wide/short) card. Weak gravity + strong repulsion push them apart
+    // until bounded by the clamp → they spread to fill the whole area, not a band.
+    const W = dimensions.width || 800;
+    const H = dimensions.height || 500;
+    const cx = W / 2;
+    const cy = H / 2;
+    const spread = Math.min(W, H) * 0.42;
     const angle = (2 * Math.PI) / nodes.length;
 
     const initialNodes: SimNode[] = nodes.map((n, i) => ({
@@ -792,8 +793,8 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
       for (const n of sn) {
         n.vx *= DAMPING;
         n.vy *= DAMPING;
-        n.x = Math.max(20, Math.min(V - 20, n.x + n.vx));
-        n.y = Math.max(20, Math.min(V - 20, n.y + n.vy));
+        n.x = Math.max(20, Math.min(W - 20, n.x + n.vx));
+        n.y = Math.max(20, Math.min(H - 20, n.y + n.vy));
       }
 
       iteration++;
@@ -803,7 +804,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
     animRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animRef.current);
-  }, [nodes, edges]);
+  }, [nodes, edges, dimensions]);
 
   const idToNode = useMemo(() => {
     const map = new Map<number, SimNode>();
