@@ -270,10 +270,20 @@ class NovaSonicSession:
             pcm = base64.b64decode(payload.get("content", ""))
             await self._safe_emit("audio", {"pcm": pcm})
         elif kind == "textOutput":
-            await self._safe_emit("text", {
-                "text": payload.get("content", ""),
-                "role": payload.get("role", ""),
-            })
+            content = payload.get("content", "")
+            # Nova sometimes emits a JSON metadata blob (e.g. {"interrupted": true})
+            # as textOutput content — that's a signal, not spoken text. Never show it.
+            s = content.strip() if isinstance(content, str) else ""
+            if s.startswith("{") and s.endswith("}"):
+                try:
+                    meta = json.loads(s)
+                except Exception:  # noqa: BLE001
+                    meta = None
+                if isinstance(meta, dict):
+                    if meta.get("interrupted"):
+                        await self._safe_emit("interrupted", {})
+                    return
+            await self._safe_emit("text", {"text": content, "role": payload.get("role", "")})
         elif kind == "toolUse":
             await self._safe_emit("tool_use", {
                 "tool_use_id": payload.get("toolUseId", ""),

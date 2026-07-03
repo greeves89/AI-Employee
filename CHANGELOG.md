@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.27] — 2026-07-03
+
+### Fixed
+- **`{"interrupted": true}` leakt nicht mehr in den Transkript-Text.** Nova Sonic sendet solche JSON-Metadaten-Blobs als textOutput — die werden jetzt erkannt, aus dem Text gefiltert und als Interrupt-Signal genutzt (→ server-seitiger Audio-Drop). (`realtime_nova_sonic.py`, `realtime_voice_session.py`)
+- **Jarvis-3-Spalten-Layout überläuft nicht mehr bei mittlerer Breite** (Orb ragte ins rechte Panel). 3 Spalten erst ab `lg`, darunter gestapelt, + `min-w-0`. (`voice-session.tsx`)
+
+### Changed
+- **Keine erfundenen Fakten mehr (Anti-Halluzination).** System-Prompt: der Sprach-Agent darf Zahlen/Aufgaben/Task-Nummern/Dateinamen NICHT erfinden — nur Tool-Daten nennen, bei Unbekanntem web_search/ask_agent nutzen oder ehrlich „das prüfe ich" sagen. (Hintergrund: Agent behauptete „188 Aufgaben", real 52.)
+- **Parallel-Delegation:** Bei mehreren parallelen Aufgaben ruft der Sprach-Agent `ask_agent` jetzt MEHRFACH (eine pro Aufgabe → getrennte Sessions laufen parallel) statt einer Sammel-Anweisung.
+
+### Added
+- **Präsentierte Dateien im Voice-Panel sind klickbar** (Download über `/agents/{id}/files/download`). Der `path` wird im media-Event mitgegeben. (`realtime_voice_session.py`, `voice-session.tsx`)
+
 ## [1.99.26] — 2026-07-03
 
 ### Fixed

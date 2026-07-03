@@ -75,7 +75,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
-  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string }[]>([]);
+  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string }[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   // Append a conversation turn, coalescing consecutive same-role events into ONE
@@ -227,6 +227,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
               b64: data.b64 ? String(data.b64) : undefined,
               filename: String(data.filename || ""),
               caption: String(data.caption || ""),
+              path: data.path ? String(data.path) : undefined,
             },
             ...prev,
           ].slice(0, 8)
@@ -567,9 +568,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
 
           {isRealtime ? (
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[1fr_minmax(260px,1.1fr)_1fr] md:items-stretch">
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch">
               {/* LEFT — conversation transcript */}
-              <div className="order-2 flex max-h-[60vh] min-h-[48vh] flex-col rounded-xl border border-border bg-foreground/[0.02] md:order-1">
+              <div className="order-2 flex max-h-[60vh] min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1">
                 <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                   Gespräch
                 </div>
@@ -602,7 +603,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
               </div>
 
               {/* CENTER — animated presence + controls */}
-              <div className="order-1 flex flex-col items-center justify-center gap-5 py-2 md:order-2">
+              <div className="order-1 flex min-w-0 flex-col items-center justify-center gap-5 py-2 lg:order-2">
                 <JarvisCore state={state} />
                 <StatusPill state={state} realtime />
                 {statusMsg && state !== "error" && (
@@ -628,7 +629,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}
-              <div className="order-3 flex max-h-[60vh] min-h-[48vh] flex-col rounded-xl border border-border bg-foreground/[0.02]">
+              <div className="order-3 flex max-h-[60vh] min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]">
                 <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                   Aufgaben &amp; Aktivität
                 </div>
@@ -642,6 +643,36 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
                           alt={m.caption || "Bild"}
                           className="max-h-64 w-full rounded object-contain"
                         />
+                      ) : m.path ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const r = await fetch(
+                                `${getBase()}/agents/${agentId}/files/download?path=${encodeURIComponent(m.path!)}`,
+                                { credentials: "include" }
+                              );
+                              if (!r.ok) return;
+                              const blob = await r.blob();
+                              const u = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = u;
+                              a.download = m.filename || "download";
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
+                              URL.revokeObjectURL(u);
+                            } catch {
+                              /* ignore */
+                            }
+                          }}
+                          className="flex w-full items-center gap-2 text-left text-xs hover:opacity-80"
+                          title="Herunterladen"
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-sky-400" />
+                          <span className="truncate underline decoration-dotted underline-offset-2">
+                            {m.filename || "Datei"}
+                          </span>
+                        </button>
                       ) : (
                         <div className="flex items-center gap-2 text-xs">
                           <FileText className="h-4 w-4 shrink-0 text-sky-400" />

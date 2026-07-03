@@ -210,7 +210,17 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "Du bekommst SOFORT eine kurze Quittung zum Aussprechen (z. B. 'ich habe nachgefragt, "
         "ich melde mich'); die eigentliche Antwort des Agenten kommt Sekunden später von "
         "selbst und du sprichst sie dann aus — der Nutzer kann derweil weiterreden.\n"
-        "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool. "
+        "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool.\n"
+        "NIEMALS RATEN / KEINE ERFUNDENEN FAKTEN: Erfinde NIE Zahlen, Aufgaben, Task-Nummern, "
+        "Dateinamen oder Details. Nenne nur, was ein Tool tatsächlich zurückgibt. Weißt du etwas "
+        "nicht (z. B. eine PR-/Ticket-Nummer, einen Fakt), nutze web_search oder ask_agent — oder "
+        "sag ehrlich, dass du es nachschauen musst. Lieber 'das prüfe ich' als eine erfundene Zahl.\n"
+        "MEHRERE AUFGABEN PARALLEL: Will der Nutzer mehrere Dinge PARALLEL erledigt, rufe ask_agent "
+        "MEHRFACH auf — EINEN Aufruf PRO Aufgabe (getrennte Sessions laufen dann wirklich parallel). "
+        "Fasse sie NICHT in eine einzige Sammel-Anweisung zusammen.\n"
+        "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
+        "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
+        "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
         "Halte gesprochene Antworten kurz — keine Aufzählungen, kein Code, sprich wie ein Mensch."
     )
 
@@ -412,6 +422,9 @@ class RealtimeVoiceSession:
             # A new content block started → the interrupted turn is over; let the
             # next turn's audio through again.
             self._drop_audio = False
+        elif kind == "interrupted":
+            # Nova Sonic detected a barge-in itself → skip the rest of this turn.
+            self._drop_audio = True
         elif kind == "text":
             role = (data.get("role") or "").upper()
             text = data.get("text", "")
@@ -527,6 +540,7 @@ class RealtimeVoiceSession:
                 "filename": str(edata.get("filename") or "Datei"),
                 "media_type": str(edata.get("media_type") or ""),
                 "caption": str(edata.get("caption") or ""),
+                "path": str(edata.get("path") or ""),  # for the download link
             }})
 
     async def _delegate_and_report(self, instruction: str) -> None:
