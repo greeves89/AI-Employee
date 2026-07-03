@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.55] — 2026-07-03
+
+### Fixed
+- **Knowledge-Graph füllt die Fläche (Layout im festen Quadrat-Raum).** Die Simulation rechnete in den Canvas-Maßen — auf breit/flachem Canvas wurden die Knoten zur horizontalen Linie gequetscht. Neu: Layout in einem festen quadratischen Virtual-Space (unabhängig vom Canvas), danach per Fit auf den Canvas skaliert → schöner 2D-Cluster, zentriert, füllend. (`frontend/src/app/knowledge/page.tsx`)
+
 ## [1.99.54] — 2026-07-03
 
 ### Fixed
