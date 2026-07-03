@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.35] — 2026-07-03
+
+### Fixed
+- **Voice-UI: „Aufgabe erledigt" trotz laufender Aufgabe.** Das generische `response`-Event feuert auch für Novas EIGENE Sprache — es setzte fälschlich den Fertig-Status. Neu: dediziertes `delegate_done`-Event vom Server pro abgeschlossener Delegation; die UI markiert nur die passende Aufgabe als fertig. (`orchestrator/app/services/realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
+- **Parallele Aufgaben jetzt EINZELN sichtbar.** Statt einer Sammelbox („Aufgabe: …" × N unter einer „erledigt"-Kachel) bekommt jede delegierte Aufgabe eine EIGENE Karte mit eigenem Live-Status (Spinner „Läuft" → grüner Haken „Erledigt"). (`frontend/src/components/agents/voice-session.tsx`)
+
+### Added
+- **Voice-Direkt-Tools `save_memory` + `list_todos`.** „Merk dir …" schreibt sofort ins Langzeitgedächtnis (pgvector), „was sind meine To-dos" liest die Aufgabenliste — beides ohne Agent-Round-trip. (`orchestrator/app/services/realtime_voice_session.py`)
+- **System-Prompt: volles Skillset explizit.** Nova weiß nun, dass sie via `ask_agent` ALLES kann, was der Agent kann (Dateien, bash, M365/Outlook/Exchange, Brain, Inter-Agent-Team) — und sagt nie mehr „das kann ich nicht".
+
 ## [1.99.34] — 2026-07-03
 
 ### Added

@@ -74,7 +74,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [activity, setActivity] = useState<{ kind: string; label: string; detail: string }[]>([]);
-  const [delegating, setDelegating] = useState(false);
+  // Each delegated task is its own card with its own status — several run in parallel,
+  // so we track them individually instead of one shared "delegating" flag.
+  const [tasks, setTasks] = useState<{ instruction: string; done: boolean }[]>([]);
+  const delegating = tasks.some((t) => !t.done); // any task still running
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
@@ -230,8 +233,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         }
         break;
       case "response":
+        // Fires for MY OWN speech AND for delegation reports — must NOT flip a task to
+        // "erledigt" here (that's delegate_done's job), else a task reads done while it
+        // is still running.
         setResponse(String(data.text || ""));
-        setDelegating(false); // final report arrived → agent finished the delegated task
         if (modeRef.current === "nova_sonic") upsertTurn("assistant", String(data.text || ""));
         break;
       case "media":
@@ -264,15 +269,28 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       case "status":
         setStatusMsg(String(data.message || ""));
         break;
-      case "delegate":
-        setStatusMsg(`Ich kümmere mich um: ${String(data.instruction || "")}`);
-        setDelegating(true);
-        // Append (don't reset) so several PARALLEL delegations all stay visible.
-        setActivity((prev) => {
-          const next = [...prev, { kind: "header", label: String(data.instruction || ""), detail: "" }];
-          return next.length > 60 ? next.slice(-60) : next;
+      case "delegate": {
+        const instruction = String(data.instruction || "");
+        setStatusMsg(`Ich kümmere mich um: ${instruction}`);
+        // One card per delegation → several PARALLEL tasks each with their own status.
+        setTasks((prev) => [...prev, { instruction, done: false }]);
+        break;
+      }
+      case "delegate_done": {
+        // Mark the first still-running task with this instruction as done (checkmark).
+        const instruction = String(data.instruction || "");
+        setTasks((prev) => {
+          let flipped = false;
+          return prev.map((t) => {
+            if (!flipped && !t.done && t.instruction === instruction) {
+              flipped = true;
+              return { ...t, done: true };
+            }
+            return t;
+          });
         });
         break;
+      }
       case "activity": {
         // Live view of the delegated agent's work — same chat-stream events the
         // text chat / LiveTerminal render (tool_call / text), surfaced in real time.
@@ -738,6 +756,29 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                       )}
                     </div>
                   ))}
+                  {/* One card per delegated task — each with its own live status. */}
+                  {tasks.map((t, ti) => (
+                    <div
+                      key={ti}
+                      className={`flex items-start gap-2 rounded-lg border p-2.5 text-xs ${
+                        t.done
+                          ? "border-emerald-500/30 bg-emerald-500/[0.06]"
+                          : "border-amber-500/30 bg-amber-500/[0.05]"
+                      }`}
+                    >
+                      {t.done ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                      ) : (
+                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-400" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                          {t.done ? "Erledigt" : "Läuft"}
+                        </div>
+                        <div className="text-foreground/90">{t.instruction}</div>
+                      </div>
+                    </div>
+                  ))}
                   {activity.length > 0 && (
                     <div className="rounded-lg border border-border bg-black/40 p-2.5">
                       <button
@@ -749,12 +790,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                         ) : (
                           <ChevronRight className="h-3 w-3" />
                         )}
-                        {delegating ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
-                        ) : (
-                          <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                        )}
-                        {delegating ? "Agent arbeitet" : "Aufgabe erledigt"}
+                        Live-Aktivität
                       </button>
                       <div
                         ref={activityRef}
@@ -810,7 +846,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                       </div>
                     </div>
                   ))}
-                  {activity.length === 0 && webResults.length === 0 && media.length === 0 && (
+                  {tasks.length === 0 && activity.length === 0 && webResults.length === 0 && media.length === 0 && (
                     <p className="text-xs text-muted-foreground/50">
                       Hier erscheint live, was der Agent tut — und Web-Ergebnisse, wenn ich etwas nachschlage.
                     </p>

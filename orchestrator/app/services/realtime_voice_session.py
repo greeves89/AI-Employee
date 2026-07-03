@@ -135,6 +135,36 @@ SEARCH_KNOWLEDGE_TOOL = {
     }
 }
 
+SAVE_MEMORY_TOOL = {
+    "toolSpec": {
+        "name": "save_memory",
+        "description": (
+            "Remember something for later — save a fact/preference/decision/contact into MY "
+            "long-term memory. Use when the user says 'merk dir…', 'behalte…', 'für später:…'. "
+            "Fast, direct write. Confirm briefly that you saved it."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "The information to remember."},
+                "key": {"type": "string", "description": "Short label/topic for it (optional)."},
+            },
+            "required": ["content"],
+        })},
+    }
+}
+
+LIST_TODOS_TOOL = {
+    "toolSpec": {
+        "name": "list_todos",
+        "description": (
+            "List MY current to-dos (open/in-progress tasks on my board) instantly. Use for "
+            "'was steht an', 'was hast du noch offen', 'zeig mir deine Todos'. Fast, direct read."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
 SET_AUTONOMY_TOOL = {
     "toolSpec": {
         "name": "set_autonomy",
@@ -244,14 +274,20 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "Projekt/Kontakt/Verfahren) → search_knowledge (sofort, durchsucht mein Gedächtnis).\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
+        "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
+        "Langzeitgedächtnis). Bestätige gesprochen kurz.\n"
+        "• Nutzer fragt nach meinen offenen To-dos / meiner Aufgabenliste → list_todos (sofort).\n"
         "• Nutzer will meine Autonomie ändern → set_autonomy (l1–l4). Nutzer will mein Modell "
         "wechseln ('nimm Opus/Sonnet/Haiku') → set_agent_model. Bestätige die Änderung gesprochen. "
         "Einen Harness-Wechsel (Claude↔Codex) kann ich NICHT per Sprache — dann sag, das geht in "
         "den Einstellungen.\n"
         "Diese Tools antworten in Millisekunden — nutze sie IMMER für Daten-/Status-/Wissensfragen, "
         "statt den Agenten zu fragen.\n"
-        "• Nur für echte ARBEIT (Dateien ändern, E-Mail, Code, komplexe Aufgaben, tiefe Recherche "
-        "mit den Web-Funden) → ask_agent. "
+        "• Nur für echte ARBEIT → ask_agent. Darüber kann ich ALLES, was ich als Agent kann: "
+        "Dateien lesen/schreiben, Code & Terminal (bash), E-Mail/Kalender/Kontakte über M365 & "
+        "Outlook/Exchange, mein zweites Gehirn (Brain/Vault), und ich kann mit meinen Kollegen-"
+        "Agenten sprechen oder ihnen Aufgaben geben (Team). Wenn der Nutzer so etwas will, sage "
+        "NIE 'das kann ich nicht' — ich delegiere es per ask_agent und melde das Ergebnis. "
         "Du bekommst SOFORT eine kurze Quittung zum Aussprechen (z. B. 'ich habe nachgefragt, "
         "ich melde mich'); die eigentliche Antwort des Agenten kommt Sekunden später von "
         "selbst und du sprichst sie dann aus — der Nutzer kann derweil weiterreden.\n"
@@ -293,6 +329,10 @@ class RealtimeVoiceSession:
     _persist_role: str = ""
     _persist_mid: str = ""
     _resume_summary: str = ""  # prior conversation context when continuing a session
+    # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
+    # (the ones shown live on the right), not the agent's unrelated global lane.
+    # Each: {"instruction": str, "done": bool, "last": str, "result": str}
+    _delegations: list = field(default_factory=list)
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -354,6 +394,8 @@ class RealtimeVoiceSession:
                 GET_AGENT_ACTIVITY_TOOL,
                 WEB_SEARCH_TOOL,
                 SEARCH_KNOWLEDGE_TOOL,
+                SAVE_MEMORY_TOOL,
+                LIST_TODOS_TOOL,
                 SET_AUTONOMY_TOOL,
                 SET_MODEL_TOOL,
                 ASK_AGENT_TOOL,
@@ -583,6 +625,12 @@ class RealtimeVoiceSession:
         if name == "search_knowledge":
             await self._respond(tool_use_id, await self._search_knowledge(str(args.get("query") or "")))
             return
+        if name == "save_memory":
+            await self._respond(tool_use_id, await self._save_memory(str(args.get("content") or ""), str(args.get("key") or "")))
+            return
+        if name == "list_todos":
+            await self._respond(tool_use_id, await self._list_todos())
+            return
         if name == "set_autonomy":
             await self._respond(tool_use_id, await self._set_autonomy(str(args.get("level") or "")))
             return
@@ -670,20 +718,43 @@ class RealtimeVoiceSession:
     async def _delegate_and_report(self, instruction: str) -> None:
         """Run the (slow) delegation in the background, then voice the result."""
         await self._emit({"type": "delegate", "data": {"instruction": instruction}})
+        # Track THIS delegation so get_agent_activity reports my real tasks, not the
+        # agent's global lane. Live steps update rec["last"] via a per-task callback.
+        rec = {"instruction": instruction, "done": False, "last": "", "result": ""}
+        self._delegations.append(rec)
+
+        async def _on_step(kind: str, edata: dict) -> None:
+            try:
+                if kind == "tool_call":
+                    rec["last"] = f"nutzt {edata.get('tool', 'Tool')}"
+                elif kind == "text":
+                    t = str(edata.get("text") or "").strip()
+                    if t:
+                        rec["last"] = t[:160]
+            except Exception:  # noqa: BLE001
+                pass
+            await self._emit_activity(kind, edata)
+
         try:
             # Unique session per delegation → its own lane in the agent, so several
             # voice-delegated tasks can run in parallel (when the agent has
             # MAX_PARALLEL_CHATS>1) instead of queuing behind each other.
             answer = await ask_agent_via_chat(
                 self.redis, self.agent_id, instruction, source="realtime_voice", timeout=180.0,
-                on_event=self._emit_activity,
+                on_event=_on_step,
                 chat_session_id=f"voice-{uuid.uuid4().hex[:8]}",
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("realtime delegation failed agent=%s: %s", self.agent_id, e, exc_info=True)
             answer = "Der Agent konnte die Aufgabe gerade nicht bearbeiten."
+        rec["done"] = True
+        rec["result"] = (answer or "")[:300]
         if self._closed:
             return
+        # Distinct "this delegation finished" signal — the UI uses THIS (not the
+        # generic response event, which also fires on my own speech) to know a task
+        # is done. Carries the instruction so the right task can be marked complete.
+        await self._emit({"type": "delegate_done", "data": {"instruction": instruction}})
         await self._emit({"type": "response", "data": {"text": answer}})
         if self._nova:
             await self._nova.inject_user_text(
@@ -727,6 +798,24 @@ class RealtimeVoiceSession:
         Combines the most recent task (title + goal + result/error) from the DB with the
         live step stream (``agent:{id}:activity``) and the status hash. No agent round-trip.
         """
+        # 0) MY OWN delegations from this call take priority — they are exactly what the
+        # user sees live on the right, so "wie ist der Stand" must match them (not the
+        # agent's unrelated global lane, which caused the "sieht den Stand nicht"-bug).
+        if self._delegations:
+            done = [d for d in self._delegations if d["done"]]
+            running = [d for d in self._delegations if not d["done"]]
+            lines = [
+                f"Ich habe {len(self._delegations)} Aufgabe(n) gestartet, "
+                f"{len(done)} fertig, {len(running)} laufen noch."
+            ]
+            for d in self._delegations:
+                if d["done"]:
+                    lines.append(f"FERTIG: {d['instruction']}" + (f" — {d['result']}" if d['result'] else ""))
+                else:
+                    step = f" (gerade: {d['last']})" if d["last"] else ""
+                    lines.append(f"LÄUFT: {d['instruction']}{step}")
+            return " ".join(lines)
+
         # 1) Live step stream + current-task label
         current = ""
         try:
@@ -915,6 +1004,58 @@ class RealtimeVoiceSession:
             for r in hits[:5]
         ]
         return f"Aus meinem Wissen zu „{q}“:\n" + "\n".join(lines)
+
+    async def _save_memory(self, content: str, key: str = "") -> str:
+        """Write a memory into the agent's own long-term store (same table the
+        memory MCP tool uses) — direct, with embedding for later recall."""
+        c = (content or "").strip()
+        if not c:
+            return "Was soll ich mir merken?"
+        k = (key or "").strip() or c[:40]
+        from app.db.session import async_session_factory
+        from app.models.memory import AgentMemory
+        from app.services.embedding_service import get_embedding_service
+        try:
+            vec = None
+            svc = get_embedding_service()
+            if getattr(svc, "enabled", False):
+                vec = await svc.embed(f"{k}: {c}")
+            async with async_session_factory() as db:
+                mem = AgentMemory(agent_id=self.agent_id, category="fact", key=k, content=c)
+                if vec is not None:
+                    try:
+                        mem.embedding = vec
+                    except Exception:  # noqa: BLE001
+                        pass
+                db.add(mem)
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.warning("voice save_memory failed agent=%s", self.agent_id, exc_info=True)
+            return "Das Merken hat gerade nicht geklappt."
+        return f"Gemerkt: {k}."
+
+    async def _list_todos(self) -> str:
+        """List the agent's open to-dos directly from the DB (no agent round-trip)."""
+        from app.db.session import async_session_factory
+        from app.models.agent_todo import AgentTodo
+        from sqlalchemy import select
+        try:
+            async with async_session_factory() as db:
+                rows = (await db.execute(
+                    select(AgentTodo).where(AgentTodo.agent_id == self.agent_id)
+                    .order_by(AgentTodo.priority.asc(), AgentTodo.id.desc()).limit(20)
+                )).scalars().all()
+        except Exception:  # noqa: BLE001
+            logger.warning("voice list_todos failed agent=%s", self.agent_id, exc_info=True)
+            return "Meine To-dos konnte ich gerade nicht laden."
+        open_rows = [
+            r for r in rows
+            if str(getattr(r.status, "value", r.status)).lower() not in ("done", "completed", "cancelled")
+        ]
+        if not open_rows:
+            return "Meine To-do-Liste ist gerade leer — nichts offen."
+        lines = [f"- {r.title}" for r in open_rows[:10]]
+        return "Meine offenen To-dos:\n" + "\n".join(lines)
 
     # ── Settings writers (voice) — same AuthZ as the HTTP endpoints ──
 
