@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.40] — 2026-07-03
+
+### Fixed
+- **Mobile/Responsive: Sidebar ist jetzt ein Off-Canvas-Drawer.** Der Hauptinhalt hatte ein hartes `ml-[260px]` (auf dem Handy wurde alles 260px nach rechts geschoben und abgeschnitten). Neu: geteilter Sidebar-Context (collapsed + mobileOpen), Content voll-breit auf Mobile (`lg:ml-…` erst ab Desktop), Sidebar slidet als Drawer ein (Hamburger oben links + Backdrop, Auto-Close beim Navigieren). Betrifft alle Menüpunkte. (`frontend/src/hooks/use-sidebar.ts`, `components/auth/auth-guard.tsx`, `components/layout/sidebar.tsx`, `components/layout/header.tsx`)
+
+### Security
+- **App-Proxy: agenten-geschriebene Apps laufen jetzt sandboxed.** Der Reverse-Proxy servierte App-HTML/JS von der Plattform-Origin → der App-Code hätte same-origin mit dem Ambient-Cookie die Plattform-API als Nutzer aufrufen können. Neu: erzwungenes `Content-Security-Policy: sandbox` (opaque Origin, kein Zugriff auf Plattform-Cookies/API) + `X-Content-Type-Options: nosniff`; eine vom App gesetzte CSP wird überschrieben. (`orchestrator/app/api/docker_apps.py`)
+
 ## [1.99.39] — 2026-07-03
 
 ### Added

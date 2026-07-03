@@ -2,8 +2,11 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Menu } from "lucide-react";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { SidebarProvider, useSidebarCollapsed } from "@/hooks/use-sidebar";
+import { cn } from "@/lib/utils";
 
 const PUBLIC_PATHS = ["/login", "/register"];
 const CUSTOM_LAYOUT_PATHS = ["/chat"];
@@ -71,9 +74,48 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Authenticated - show full layout with sidebar
   return (
-    <div className="flex min-h-screen">
+    <SidebarProvider>
+      <AppShell>{children}</AppShell>
+    </SidebarProvider>
+  );
+}
+
+/** App shell: fixed sidebar on desktop, off-canvas drawer on mobile. The main content
+ *  is full-width on mobile (no left margin) and offset by the sidebar width on lg+. */
+function AppShell({ children }: { children: React.ReactNode }) {
+  const { collapsed, mobileOpen, setMobileOpen } = useSidebarCollapsed();
+  return (
+    <div className="min-h-screen">
       <Sidebar />
-      <main className="ml-[260px] flex-1 min-w-0 min-h-screen">{children}</main>
+
+      {/* Mobile backdrop — tap to close the drawer */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* Mobile hamburger — only when the drawer is closed */}
+      {!mobileOpen && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="fixed left-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/80 text-foreground backdrop-blur-xl shadow-lg lg:hidden"
+          aria-label="Menü öffnen"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+
+      <main
+        className={cn(
+          "min-h-screen min-w-0 transition-[margin] duration-300",
+          collapsed ? "lg:ml-[64px]" : "lg:ml-[260px]"
+        )}
+      >
+        {children}
+      </main>
     </div>
   );
 }

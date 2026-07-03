@@ -120,7 +120,19 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const { collapsed, toggle } = useSidebarCollapsed();
+  const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
+  // The desktop icon-rail (collapsed) must NOT apply on mobile — there the sidebar is
+  // an off-canvas drawer that always shows the full menu. Track the lg breakpoint.
+  const [isDesktop, setIsDesktop] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  const effectiveCollapsed = isDesktop && collapsed;
+  const closeMobile = () => setMobileOpen(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
   const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
@@ -199,18 +211,21 @@ export function Sidebar() {
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 h-screen border-r border-border bg-card/50 backdrop-blur-xl flex flex-col transition-all duration-300",
-        collapsed ? "w-[64px]" : "w-[260px]"
+        effectiveCollapsed ? "w-[64px]" : "w-[260px]",
+        // Mobile: off-canvas drawer (hidden unless opened). Desktop (lg+): always shown.
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        "lg:translate-x-0"
       )}
     >
       {/* Logo */}
       <div className={cn(
         "flex h-14 items-center border-b border-border shrink-0",
-        collapsed ? "justify-center px-0" : "gap-3 px-5"
+        effectiveCollapsed ? "justify-center px-0" : "gap-3 px-5"
       )}>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
           <Bot className="h-4 w-4 text-white" />
         </div>
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <>
             <div className="flex-1 min-w-0">
               <span className="text-sm font-semibold tracking-tight">AI Employee</span>
@@ -237,7 +252,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 scrollbar-thin">
-        {collapsed ? (
+        {effectiveCollapsed ? (
           // Collapsed: just icons
           allItems.map((item) => {
             const Icon = item.icon;
@@ -247,6 +262,7 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 title={item.label}
+                onClick={closeMobile}
                 className={cn(
                   "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
                   isActive
@@ -292,6 +308,7 @@ export function Sidebar() {
                         <Link
                           key={item.href}
                           href={item.href}
+                          onClick={closeMobile}
                           className={cn(
                             "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
                             isActive
@@ -321,12 +338,12 @@ export function Sidebar() {
       </nav>
 
       {/* Update Banner (only when expanded) */}
-      {!collapsed && <UpdateBanner />}
+      {!effectiveCollapsed && <UpdateBanner />}
 
       {/* Bottom */}
       <div className={cn(
         "border-t border-border py-2 shrink-0 mt-auto",
-        collapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 space-y-0.5"
+        effectiveCollapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 space-y-0.5"
       )}>
         {collapsed ? (
           <>
@@ -419,7 +436,7 @@ export function Sidebar() {
       <button
         onClick={toggle}
         className={cn(
-          "absolute -right-3 top-[54px] z-50 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card shadow-md text-muted-foreground hover:text-foreground transition-all hover:scale-110"
+          "absolute -right-3 top-[54px] z-50 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-card shadow-md text-muted-foreground hover:text-foreground transition-all hover:scale-110 lg:flex"
         )}
         title={collapsed ? "Sidebar erweitern" : "Sidebar einklappen"}
       >

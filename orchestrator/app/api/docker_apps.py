@@ -717,8 +717,15 @@ async def proxy_app(
         raise HTTPException(status_code=502, detail=f"App nicht erreichbar: {type(e).__name__}")
 
     resp_headers = {
-        k: v for k, v in upstream.headers.items() if k.lower() not in _HOP_BY_HOP
+        k: v for k, v in upstream.headers.items()
+        if k.lower() not in _HOP_BY_HOP and k.lower() != "content-security-policy"
     }
+    # The app is agent-authored code served from the PLATFORM origin. Without this it
+    # would run same-origin and could call the platform API with the owner's ambient
+    # cookie. Force a CSP sandbox → the document gets an opaque origin (no access to
+    # platform cookies/localStorage/API), while its own scripts/forms still run.
+    resp_headers["content-security-policy"] = "sandbox allow-scripts allow-forms allow-popups allow-modals;"
+    resp_headers["x-content-type-options"] = "nosniff"
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
