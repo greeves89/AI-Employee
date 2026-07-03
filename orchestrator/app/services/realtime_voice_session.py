@@ -103,8 +103,8 @@ class RealtimeVoiceSession:
         from app.models.agent import Agent
         agent = (await db.execute(select(Agent).where(Agent.id == self.agent_id))).scalar_one_or_none()
         agent_name = agent.name if agent else self.agent_id
-        agent_role = (agent.role if agent else "") or ""
         cfg = (agent.config if agent else {}) or {}
+        agent_role = cfg.get("role") or ""  # role lives in config, not on the ORM row
 
         svc = SettingsService(db)
         language = (await svc.get("voice_language")) or "de"

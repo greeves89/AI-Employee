@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.6] — 2026-07-03
+
+### Fixed
+- **Realtime-Voice (Nova Sonic): Session-Start scheiterte mit `'Agent' object has no attribute 'role'`.** `RealtimeVoiceSession.init` las die Agenten-Rolle über `agent.role` — die existiert auf dem ORM-Modell nicht (Rolle liegt in `config["role"]`). Jetzt aus `config` gelesen. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.5] — 2026-07-03
 
 ### Added
