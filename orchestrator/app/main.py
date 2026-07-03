@@ -1211,14 +1211,82 @@ clean Markdown; you don't need to commit.
     # Resume long-running jobs that were checkpointing before shutdown (issue #211).
     # Jobs with a fresh heartbeat are resumable; stale ones are marked crashed and
     # the user is alerted so no long job silently dies across a container restart.
+    async def _resume_agent_task(job):
+        """Re-enqueue an agent task interrupted mid-run by a container restart (#282).
+
+        The original task (if still present) is marked failed and its stale queue
+        entry dropped so it cannot also be picked up — the replacement is the only
+        executor. The job row is deleted so a second restart never re-launches it.
+        """
+        from app.core.load_balancer import LoadBalancer
+        from app.core.task_router import TaskRouter
+        from app.db.session import async_session_factory as _sf_resume
+        from app.models.task import Task, TaskStatus, is_terminal_task_status
+        from app.services.job_state import delete_job
+        from sqlalchemy import select as _sel
+
+        meta = dict(job.job_metadata or {})
+        prompt = meta.get("prompt")
+        if not prompt:
+            logger.warning(f"[Resume] Job {job.id} has no persisted prompt — cannot re-launch")
+            async with _sf_resume() as db:
+                await delete_job(db, job.id)
+            return
+
+        async with _sf_resume() as db:
+            lb = LoadBalancer(app.state.redis)
+            router = TaskRouter(db, app.state.redis, lb, docker_service=app.state.docker)
+
+            orig = None
+            if job.ref_id:
+                orig = (await db.execute(_sel(Task).where(Task.id == job.ref_id))).scalar_one_or_none()
+
+            # Already finished after the crash was recorded — nothing to redo.
+            if orig is not None and orig.status == TaskStatus.COMPLETED:
+                await delete_job(db, job.id)
+                logger.info(f"[Resume] Job {job.id} original task {job.ref_id} already completed — skipping")
+                return
+
+            # Retire a non-terminal original so it can't run alongside the replacement.
+            if orig is not None and not is_terminal_task_status(orig.status):
+                if orig.status == TaskStatus.QUEUED and orig.agent_id:
+                    await router._remove_from_queue(orig.agent_id, orig.id)
+                orig.status = TaskStatus.FAILED
+                orig.error = "Superseded by auto-resume after container restart"
+                orig.completed_at = datetime.now(timezone.utc)
+                orig.notified = True
+                await db.commit()
+
+            new_task = await router.create_and_route_task(
+                title=meta.get("title") or f"[Resumed] {job.ref_id or job.id}",
+                prompt=prompt,
+                priority=int(meta.get("priority") or 5),
+                agent_id=meta.get("agent_id"),
+                model=meta.get("model"),
+                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id},
+            )
+            await delete_job(db, job.id)
+            logger.info(
+                f"[Resume] Re-enqueued interrupted job {job.id} (task {job.ref_id}) as new task {new_task.id}"
+            )
+
     try:
         from app.db.session import async_session_factory as _sf_jobs
-        from app.services.job_state import recover_jobs_on_startup
+        from app.services.job_state import (
+            recover_jobs_on_startup,
+            register_resume_handler,
+            relaunch_resumable_jobs,
+        )
+
+        register_resume_handler("agent_task", _resume_agent_task)
 
         async with _sf_jobs() as db:
             resumable, crashed = await recover_jobs_on_startup(db)
             if resumable:
                 logger.info(f"[Startup] {len(resumable)} long job(s) resumable after restart")
+                outcomes = await relaunch_resumable_jobs(resumable, schedule=asyncio.create_task)
+                launched = sum(1 for _job, ok in outcomes if ok)
+                logger.info(f"[Startup] Re-launched {launched}/{len(resumable)} resumable job(s)")
             for job in crashed:
                 logger.warning(f"[Startup] Job {job.id} ({job.kind}) crashed across restart — no heartbeat")
                 try:

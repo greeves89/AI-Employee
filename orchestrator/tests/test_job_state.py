@@ -8,8 +8,13 @@ from app.models.job_state import JobState
 from app.services.job_state import (
     _RESUME_STALE_AFTER,
     classify_on_startup,
+    clear_resume_handlers,
+    delete_job,
+    get_resume_handler,
     is_resumable,
     recover_jobs_on_startup,
+    register_resume_handler,
+    relaunch_resumable_jobs,
 )
 
 
@@ -33,6 +38,17 @@ def _mock_db(rows):
     result = MagicMock()
     result.scalars.return_value.all.return_value = rows
     db.execute = AsyncMock(return_value=result)
+    db.commit = AsyncMock()
+    return db
+
+
+def _mock_db_first(row):
+    """Mock a db whose execute().scalars().first() returns `row`."""
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = row
+    db.execute = AsyncMock(return_value=result)
+    db.delete = AsyncMock()
     db.commit = AsyncMock()
     return db
 
@@ -120,6 +136,72 @@ class TestRecoverOnStartup(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([j.id for j in crashed], ["stale"])
         self.assertEqual(fresh.resume_count, 1)
         self.assertEqual(stale.status, "crashed")
+
+
+class TestDeleteJob(unittest.IsolatedAsyncioTestCase):
+    async def test_delete_removes_existing_row(self):
+        job = _job(id="done-1", status="completed")
+        db = _mock_db_first(job)
+        removed = await delete_job(db, "done-1")
+        self.assertTrue(removed)
+        db.delete.assert_awaited_once_with(job)
+        db.commit.assert_awaited()
+
+    async def test_delete_missing_row_is_noop(self):
+        db = _mock_db_first(None)
+        removed = await delete_job(db, "ghost")
+        self.assertFalse(removed)
+        db.delete.assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+
+class TestRelaunchResumable(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        clear_resume_handlers()
+
+    def tearDown(self):
+        clear_resume_handlers()
+
+    async def test_dispatches_to_registered_handler_inline(self):
+        seen = []
+
+        async def handler(job):
+            seen.append(job.id)
+
+        register_resume_handler("agent_task", handler)
+        job = _job(id="t-1", kind="agent_task")
+        outcomes = await relaunch_resumable_jobs([job])
+        self.assertEqual(seen, ["t-1"])
+        self.assertEqual(outcomes, [(job, True)])
+
+    async def test_unregistered_kind_reports_not_launched(self):
+        job = _job(id="orphan", kind="unknown_kind")
+        outcomes = await relaunch_resumable_jobs([job])
+        self.assertEqual(outcomes, [(job, False)])
+
+    async def test_schedule_callback_defers_execution(self):
+        scheduled = []
+
+        async def handler(job):
+            raise AssertionError("handler must not run inline when schedule is given")
+
+        def schedule(coro):
+            scheduled.append(coro)
+            coro.close()  # avoid 'coroutine was never awaited' warning
+
+        register_resume_handler("agent_task", handler)
+        job = _job(id="t-2", kind="agent_task")
+        outcomes = await relaunch_resumable_jobs([job], schedule=schedule)
+        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(outcomes, [(job, True)])
+
+    def test_register_and_get_handler(self):
+        async def handler(job):
+            return None
+
+        register_resume_handler("agent_task", handler)
+        self.assertIs(get_resume_handler("agent_task"), handler)
+        self.assertIsNone(get_resume_handler("nope"))
 
 
 if __name__ == "__main__":
