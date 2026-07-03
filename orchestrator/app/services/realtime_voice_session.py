@@ -82,6 +82,41 @@ GET_AGENT_SETTINGS_TOOL = {
     }
 }
 
+GET_AGENT_ACTIVITY_TOOL = {
+    "toolSpec": {
+        "name": "get_agent_activity",
+        "description": (
+            "See what the agent is doing RIGHT NOW — the live activity feed: the task "
+            "it currently works on and its latest concrete steps (tool calls like reading/"
+            "writing files, running commands, and its latest output). Use whenever the user "
+            "asks 'what is it doing right now', 'what's the progress', 'where are we'. Fast — "
+            "reads the live activity stream directly, does NOT disturb the agent."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
+WEB_SEARCH_TOOL = {
+    "toolSpec": {
+        "name": "web_search",
+        "description": (
+            "Search the public web for CURRENT information (news, weather, prices, facts, "
+            "docs) and get back the top results with titles, links and short snippets. Use "
+            "this yourself for quick lookups — it is fast and does NOT need the agent. Only "
+            "delegate to the agent (ask_agent) when the user wants something DONE with the "
+            "findings (save a file, send an email, deeper research)."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The search query in the user's language."},
+                "max_results": {"type": "integer", "description": "How many results, default 5, max 10."},
+            },
+            "required": ["query"],
+        })},
+    }
+}
+
 # Slow tool: hand real work to the container agent.
 ASK_AGENT_TOOL = {
     "toolSpec": {
@@ -120,9 +155,15 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Fragen nach Status/Was-machst-du → get_agent_status (sofort).\n"
         "• Fragen nach Aufgaben/was lief/was fehlschlug → list_agent_tasks (sofort).\n"
         "• Fragen nach den Einstellungen (Modell, Modus, Autonomie) → get_agent_settings (sofort).\n"
-        "Diese drei Tools antworten in Millisekunden — nutze sie IMMER für Daten-/Status-Fragen, "
+        "• Fragen 'was machst du GERADE / wie ist der Fortschritt / wo stehen wir' → "
+        "get_agent_activity (sofort — zeigt die laufende Aufgabe + die letzten konkreten Schritte "
+        "des Agenten aus dem Live-Feed).\n"
+        "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
+        "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
+        "Diese Tools antworten in Millisekunden — nutze sie IMMER für Daten-/Status-/Wissensfragen, "
         "statt den Agenten zu fragen.\n"
-        "• Nur für echte ARBEIT (Dateien ändern, E-Mail, Code, komplexe Aufgaben) → ask_agent. "
+        "• Nur für echte ARBEIT (Dateien ändern, E-Mail, Code, komplexe Aufgaben, tiefe Recherche "
+        "mit den Web-Funden) → ask_agent. "
         "Du bekommst SOFORT eine kurze Quittung zum Aussprechen (z. B. 'ich habe nachgefragt, "
         "ich melde mich'); die eigentliche Antwort des Agenten kommt Sekunden später von "
         "selbst und du sprichst sie dann aus — der Nutzer kann derweil weiterreden.\n"
@@ -179,6 +220,8 @@ class RealtimeVoiceSession:
                 GET_AGENT_STATUS_TOOL,
                 LIST_AGENT_TASKS_TOOL,
                 GET_AGENT_SETTINGS_TOOL,
+                GET_AGENT_ACTIVITY_TOOL,
+                WEB_SEARCH_TOOL,
                 ASK_AGENT_TOOL,
             ],
             voice_id=voice_id,
@@ -334,6 +377,15 @@ class RealtimeVoiceSession:
         if name == "get_agent_settings":
             await self._respond(tool_use_id, await self._fast_settings())
             return
+        if name == "get_agent_activity":
+            await self._respond(tool_use_id, await self._fast_activity())
+            return
+        if name == "web_search":
+            await self._respond(
+                tool_use_id,
+                await self._web_search(args.get("query") or "", int(args.get("max_results") or 5)),
+            )
+            return
 
         # ── Slow tool: real work via the container agent (ASYNC report) ──
         if name != "ask_agent":
@@ -419,6 +471,79 @@ class RealtimeVoiceSession:
             parts.append(f"arbeitet gerade an „{current}“")
         parts.append(f"{qd} Aufgaben in der Warteschlange")
         return "; ".join(parts) + "."
+
+    async def _fast_activity(self) -> str:
+        """What the agent is doing RIGHT NOW: current task + latest concrete steps.
+
+        Reads the same live activity stream the UI shows (``agent:{id}:activity``,
+        last 200 events) plus the status hash — no agent round-trip.
+        """
+        current = ""
+        try:
+            st = await self.redis.get_agent_status(self.agent_id)
+            current = (st or {}).get("current_task") or ""
+        except Exception:  # noqa: BLE001
+            pass
+        events: list[dict] = []
+        try:
+            raw = await self.redis.client.lrange(f"agent:{self.agent_id}:activity", -12, -1)
+            for item in raw or []:
+                if isinstance(item, bytes):
+                    item = item.decode("utf-8", "ignore")
+                try:
+                    events.append(json.loads(item))
+                except (json.JSONDecodeError, TypeError):
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Distill recent concrete steps into a short, spoken-friendly summary.
+        tool_steps: list[str] = []
+        last_text = ""
+        for ev in events:
+            etype = ev.get("type")
+            edata = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+            if etype in ("tool_call", "tool_use"):
+                tool_steps.append(str(edata.get("tool") or edata.get("name") or "Tool"))
+            elif etype == "text":
+                t = str(edata.get("text") or "").strip()
+                if t:
+                    last_text = t
+        recent: list[str] = []
+        for s in tool_steps[-5:]:
+            if not recent or recent[-1] != s:
+                recent.append(s)
+
+        if not current and not recent and not last_text:
+            return "Der Agent ist gerade untätig — keine laufende Aufgabe und keine jüngste Aktivität."
+        parts = []
+        if current:
+            parts.append(f"Arbeitet gerade an: {current}")
+        if recent:
+            parts.append("letzte Schritte: " + ", ".join(recent))
+        if last_text:
+            parts.append("zuletzt: " + last_text[:180])
+        return ". ".join(parts) + "."
+
+    async def _web_search(self, query: str, max_results: int) -> str:
+        """Direct keyless web search (DuckDuckGo) — no agent round-trip."""
+        from app.core.web_search import web_search as _do_search
+        query = (query or "").strip()
+        if not query:
+            return "Keine Suchanfrage erkannt."
+        results = await _do_search(query, max_results)
+        if not results:
+            return f"Zu „{query}“ habe ich im Web nichts gefunden."
+        # Surface the results to the Jarvis UI too (cards/links), not just to voice.
+        try:
+            await self._emit({"type": "web_results", "data": {"query": query, "results": results}})
+        except Exception:  # noqa: BLE001
+            pass
+        lines = [
+            f"{i}. {r.get('title') or r.get('url')}: {(r.get('snippet') or '')[:200]}"
+            for i, r in enumerate(results, 1)
+        ]
+        return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
 
     async def _fast_tasks(self, limit: int) -> str:
         from collections import Counter

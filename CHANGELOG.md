@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.14] — 2026-07-03
+
+### Added
+- **Jarvis-Redesign der Realtime-Sprach-Front.** Das Live-Gespräch (Nova Sonic) ist jetzt ein breites 3-Spalten-Cockpit: **links** der laufende Gesprächsverlauf (Sprechblasen User/Agent), **Mitte** eine animierte „Präsenz" (`JarvisCore` — reagiert farblich/animiert auf Zuhören/Sprechen/Denken), **rechts** der Aufgaben-/Aktivitäts-Bereich (Live-Tool-Schritte des delegierten Agenten + Web-Ergebnis-Karten). Pure Tailwind, CSP-safe, responsive (stapelt auf schmalen Screens). Klassischer Push-to-Talk-Modus unverändert. (`frontend/src/components/agents/jarvis-core.tsx`, `frontend/src/components/agents/voice-session.tsx`)
+- **Websuche direkt im Interaction Layer.** Nova Sonic hat ein neues `web_search`-Tool (DuckDuckGo, **kein API-Key** → läuft auf jedem Deployment) und beantwortet Wissensfragen sofort selbst, ohne den Agenten zu bemühen. Ergebnisse werden gesprochen zusammengefasst UND als `web_results`-Event an die UI (Karten mit Titel/Link/Snippet) gegeben. Der frühere „Brave"-Provider war nur ein Config-Stub. (`orchestrator/app/core/web_search.py`, `orchestrator/app/services/realtime_voice_session.py`)
+- **`get_agent_activity`-Tool für die Sprach-Front.** Nova Sonic kann jetzt aktiv abfragen, was der Agent GERADE tut (laufende Aufgabe + letzte konkrete Schritte aus dem Live-Feed `agent:{id}:activity`/`:status`) und es dem Nutzer erzählen — schnelles Direkt-Daten-Tool, kein Agent-Round-Trip. (`orchestrator/app/services/realtime_voice_session.py`)
+
+### Fixed
+- **Notifications-WebSocket brach ab** („The network connection was lost"). Die `/ws/notifications`-Route sendete keinen Keepalive → Cloudflare/Caddy kappte die idle-Verbindung nach ~100 s. Jetzt periodischer Ping (~27 s). (`orchestrator/app/api/ws.py`)
+
 ## [1.99.13] — 2026-07-03
 
 ### Fixed

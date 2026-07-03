@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
+import { JarvisCore } from "./jarvis-core";
+
+type Turn = { role: "user" | "assistant"; text: string };
+type WebResult = { title: string; url: string; snippet: string };
+type WebResultSet = { query: string; results: WebResult[] };
 
 type VoiceState = "connecting" | "ready" | "listening" | "processing" | "speaking" | "error";
 type Mode = "classic" | "nova_sonic";
@@ -65,6 +70,24 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   const [activity, setActivity] = useState<{ kind: string; label: string; detail: string }[]>([]);
   const [delegating, setDelegating] = useState(false);
   const activityRef = useRef<HTMLDivElement>(null);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [webResults, setWebResults] = useState<WebResultSet[]>([]);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+
+  // Append a conversation turn, coalescing consecutive same-role deltas into one
+  // bubble (Nova Sonic streams partials) so the transcript reads cleanly.
+  const upsertTurn = useCallback((role: "user" | "assistant", text: string) => {
+    const t = String(text || "").trim();
+    if (!t) return;
+    setTurns((prev) => {
+      if (prev.length && prev[prev.length - 1].role === role) {
+        const next = prev.slice();
+        next[next.length - 1] = { role, text: t };
+        return next;
+      }
+      return [...prev, { role, text: t }];
+    });
+  }, []);
 
   const wsRef = useRef<WebSocket | null>(null);
   const modeRef = useRef<Mode>("classic");
@@ -137,6 +160,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
     if (activityRef.current) activityRef.current.scrollTop = activityRef.current.scrollHeight;
   }, [activity]);
 
+  // Auto-scroll the conversation transcript to the newest turn.
+  useEffect(() => {
+    if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+  }, [turns, transcript]);
+
   // ── Server event handler ───────────────────────────────────
   const handleServerEvent = useCallback(async (raw: string) => {
     let evt: { type: string; data?: Record<string, unknown> };
@@ -157,12 +185,28 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
       }
       case "transcript":
         setTranscript(String(data.text || ""));
-        if (modeRef.current === "classic") setState("processing");
-        else suppressAudioRef.current = false;  // new user turn -> allow the response audio
+        if (modeRef.current === "classic") {
+          setState("processing");
+        } else {
+          suppressAudioRef.current = false;  // new user turn -> allow the response audio
+          upsertTurn("user", String(data.text || ""));
+        }
         break;
       case "response":
         setResponse(String(data.text || ""));
         setDelegating(false); // final report arrived → agent finished the delegated task
+        if (modeRef.current === "nova_sonic") upsertTurn("assistant", String(data.text || ""));
+        break;
+      case "web_results":
+        setWebResults((prev) =>
+          [
+            {
+              query: String(data.query || ""),
+              results: Array.isArray(data.results) ? (data.results as WebResult[]) : [],
+            },
+            ...prev,
+          ].slice(0, 5)
+        );
         break;
       case "status":
         setStatusMsg(String(data.message || ""));
@@ -450,7 +494,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl"
+        className={`relative w-full rounded-2xl border border-border bg-card shadow-2xl ${
+          isRealtime ? "max-w-6xl" : "max-w-lg"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -480,51 +526,145 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
             )}
           </div>
 
-          <StatusPill state={state} realtime={isRealtime} />
+          {!isRealtime && <StatusPill state={state} realtime={isRealtime} />}
 
           {isRealtime ? (
-            /* ── Realtime UI: continuous, no push-to-talk ── */
-            <>
-              <div className="my-6 flex justify-center">
-                <div
-                  className={`flex h-24 w-24 items-center justify-center rounded-full transition-all ${
-                    state === "speaking"
-                      ? "bg-emerald-500/20 border-2 border-emerald-500 scale-105"
-                      : state === "listening"
-                      ? "bg-fuchsia-500/15 border-2 border-fuchsia-500 animate-pulse"
-                      : state === "error"
-                      ? "bg-red-500/10 border-2 border-red-500/40"
-                      : "bg-primary/10 border-2 border-primary/30"
-                  }`}
-                >
-                  {state === "connecting" ? (
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  ) : state === "speaking" ? (
-                    <Volume2 className="h-8 w-8 text-emerald-500 animate-pulse" />
-                  ) : state === "error" ? (
-                    <MicOff className="h-8 w-8 text-red-400" />
+            /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[1fr_minmax(260px,1.1fr)_1fr] md:items-stretch">
+              {/* LEFT — conversation transcript */}
+              <div className="order-2 flex max-h-[60vh] min-h-[48vh] flex-col rounded-xl border border-border bg-foreground/[0.02] md:order-1">
+                <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                  Gespräch
+                </div>
+                <div ref={transcriptRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  {turns.length === 0 ? (
+                    <p className="text-xs text-muted-foreground/50">Sprich einfach los …</p>
                   ) : (
-                    <Mic className={`h-8 w-8 ${live ? "text-fuchsia-400" : "text-primary"}`} />
+                    turns.map((t, i) => (
+                      <div key={i} className={t.role === "user" ? "text-right" : "text-left"}>
+                        <div
+                          className={`inline-block max-w-[92%] rounded-2xl px-3 py-1.5 text-sm ${
+                            t.role === "user"
+                              ? "bg-fuchsia-500/15 text-foreground"
+                              : "border border-primary/20 bg-primary/10 text-foreground"
+                          }`}
+                        >
+                          {t.text}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {transcript && state === "listening" && (
+                    <div className="text-right">
+                      <div className="inline-block max-w-[92%] rounded-2xl bg-fuchsia-500/10 px-3 py-1.5 text-sm italic text-muted-foreground">
+                        {transcript}…
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
-              <div className="flex justify-center gap-2">
-                {state === "speaking" && (
-                  <button
-                    onClick={bargeIn}
-                    className="rounded-md bg-foreground/[0.06] px-3 py-1.5 text-xs hover:bg-foreground/[0.10]"
-                  >
-                    Unterbrechen
-                  </button>
+
+              {/* CENTER — animated presence + controls */}
+              <div className="order-1 flex flex-col items-center justify-center gap-5 py-2 md:order-2">
+                <JarvisCore state={state} />
+                <StatusPill state={state} realtime />
+                {statusMsg && state !== "error" && (
+                  <p className="max-w-[240px] text-center text-xs text-muted-foreground/70">{statusMsg}</p>
                 )}
-                <button
-                  onClick={endLive}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20"
-                >
-                  <PhoneOff className="h-3.5 w-3.5" /> Gespräch beenden
-                </button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {state === "speaking" && (
+                    <button
+                      onClick={bargeIn}
+                      className="rounded-md bg-foreground/[0.06] px-3 py-1.5 text-xs hover:bg-foreground/[0.10]"
+                    >
+                      Unterbrechen
+                    </button>
+                  )}
+                  <button
+                    onClick={endLive}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20"
+                  >
+                    <PhoneOff className="h-3.5 w-3.5" /> Gespräch beenden
+                  </button>
+                </div>
+                {error && <div className="text-center text-xs text-red-400">{error}</div>}
               </div>
-            </>
+
+              {/* RIGHT — tasks, live activity, web results */}
+              <div className="order-3 flex max-h-[60vh] min-h-[48vh] flex-col rounded-xl border border-border bg-foreground/[0.02]">
+                <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                  Aufgaben &amp; Aktivität
+                </div>
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                  {activity.length > 0 && (
+                    <div className="rounded-lg border border-border bg-black/40 p-2.5">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                        {delegating ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+                        ) : (
+                          <Radio className="h-3 w-3 text-emerald-400" />
+                        )}
+                        {delegating ? "Agent arbeitet" : "Aufgabe erledigt"}
+                      </div>
+                      <div ref={activityRef} className="max-h-52 overflow-y-auto font-mono text-[11px] leading-relaxed">
+                        {activity.map((a, i) => (
+                          <div
+                            key={i}
+                            className={
+                              a.kind === "header"
+                                ? "mb-1 text-foreground/90"
+                                : a.kind === "tool"
+                                ? "text-sky-400"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {a.kind === "header" && (
+                              <>
+                                <span className="text-muted-foreground/60">Aufgabe: </span>
+                                {a.label}
+                              </>
+                            )}
+                            {a.kind === "tool" && (
+                              <>
+                                <span className="text-amber-400">[{a.label}]</span>
+                                {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
+                              </>
+                            )}
+                            {a.kind === "text" && <span>{a.label}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {webResults.map((w, wi) => (
+                    <div key={wi} className="rounded-lg border border-border bg-foreground/[0.03] p-2.5">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                        <Search className="h-3 w-3 text-indigo-400" /> {w.query}
+                      </div>
+                      <div className="space-y-1.5">
+                        {w.results.map((r, ri) => (
+                          <a
+                            key={ri}
+                            href={r.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block rounded-md p-1.5 hover:bg-foreground/[0.04]"
+                          >
+                            <div className="truncate text-xs font-medium text-indigo-300">{r.title || r.url}</div>
+                            <div className="line-clamp-2 text-[11px] text-muted-foreground/70">{r.snippet}</div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {activity.length === 0 && webResults.length === 0 && (
+                    <p className="text-xs text-muted-foreground/50">
+                      Hier erscheint live, was der Agent tut — und Web-Ergebnisse, wenn ich etwas nachschlage.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
           ) : (
             /* ── Classic push-to-talk UI ── */
             <>
@@ -578,11 +718,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
             </>
           )}
 
-          {statusMsg && state !== "error" && (
+          {!isRealtime && statusMsg && state !== "error" && (
             <p className="mt-4 text-center text-xs text-muted-foreground/70">{statusMsg}</p>
           )}
 
-          {transcript && (
+          {!isRealtime && transcript && (
             <div className="mb-3 mt-4 rounded-lg bg-foreground/[0.04] p-3">
               <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                 Du sagtest
@@ -590,7 +730,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
               <p className="text-sm">{transcript}</p>
             </div>
           )}
-          {activity.length > 0 && (
+          {!isRealtime && activity.length > 0 && (
             <div className="mb-3 mt-4 rounded-lg border border-border bg-black/40 p-3">
               <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                 {delegating ? (
@@ -633,7 +773,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
               </div>
             </div>
           )}
-          {response && (
+          {!isRealtime && response && (
             <div className="rounded-lg border border-primary/20 bg-primary/10 p-3">
               <div className="mb-1 text-[10px] uppercase tracking-wider text-primary/80">
                 {agentName} antwortet
@@ -642,7 +782,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
             </div>
           )}
 
-          {error && <div className="mt-3 text-sm text-red-400">{error}</div>}
+          {!isRealtime && error && <div className="mt-3 text-sm text-red-400">{error}</div>}
         </div>
       </div>
     </div>

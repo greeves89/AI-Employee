@@ -945,6 +945,11 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
             ticks += 1
             if ticks % 60 == 0:  # refresh visibility (~30s) to pick up new agents/access
                 visible = await _notif_visible_agent_ids(user_id)
+            if ticks % 50 == 0:  # keepalive (~27s) so Cloudflare/Caddy doesn't drop the idle WS
+                try:
+                    await websocket.send_text('{"type":"ping"}')
+                except Exception:  # noqa: BLE001
+                    break
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=0.5
             )
