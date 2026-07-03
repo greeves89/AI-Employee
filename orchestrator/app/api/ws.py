@@ -866,7 +866,7 @@ async def ws_agent_voice(
                     try:
                         chunk = base64.b64decode(b64)
                         session.push_audio_chunk(chunk)
-                        logger.warning(
+                        logger.debug(
                             "voice ws chunk agent=%s session=%s bytes=%d",
                             agent_id,
                             session.session_id,
@@ -877,7 +877,7 @@ async def ws_agent_voice(
             elif mtype == "commit":
                 lang = mdata.get("language")
                 # Process turn in background so we keep accepting interrupts
-                logger.warning(
+                logger.debug(
                     "voice ws commit agent=%s session=%s language=%s",
                     agent_id,
                     session.session_id,
