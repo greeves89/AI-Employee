@@ -152,6 +152,21 @@ export async function updateAgentModel(
   });
 }
 
+/** Set the agent's realtime voice front (Nova Sonic) — null = classic pipeline. */
+export async function updateAgentInteractionModel(
+  agentId: string,
+  interactionModel: string | null,
+  interactionVoice?: string | null,
+): Promise<{ agent_id: string; interaction_model: string | null; interaction_voice: string | null }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/interaction-model`, {
+    method: "PUT",
+    body: JSON.stringify({
+      interaction_model: interactionModel,
+      interaction_voice: interactionVoice ?? null,
+    }),
+  });
+}
+
 export interface ModelCatalogModel {
   value: string;
   label: string;

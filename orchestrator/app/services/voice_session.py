@@ -252,53 +252,14 @@ class VoiceSession:
     async def _delegate_to_container(self, transcript: str, timeout: float = 90.0) -> str:
         """Push the transcript to the agent's chat queue, await the 'done' event.
 
-        Mirrors the WS chat handler: publishes user message to
-        agent:{id}:chat and subscribes to agent:{id}:chat:response,
-        collecting the streamed text until 'done'.
+        Thin wrapper over the shared chat bridge (same seam the Nova Sonic
+        realtime front uses via its ``ask_agent`` tool).
         """
-        assert self.redis and self.redis.client
-        message_id = uuid.uuid4().hex[:12]
-        chat_payload = json.dumps({
-            "id": message_id,
-            "text": transcript,
-            "model": None,
-            "images": [],
-            "source": "webapp_voice",
-        })
-        channel = f"agent:{self.agent_id}:chat:response"
-        pubsub = await self.redis.subscribe(channel)
-        await self.redis.client.lpush(f"agent:{self.agent_id}:chat", chat_payload)
-
-        collected: list[str] = []
-        deadline = asyncio.get_event_loop().time() + timeout
-        try:
-            while asyncio.get_event_loop().time() < deadline:
-                msg = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=0.5
-                )
-                if not msg or msg.get("type") != "message":
-                    continue
-                data = msg.get("data")
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
-                try:
-                    evt = json.loads(data)
-                except (json.JSONDecodeError, TypeError):
-                    continue
-                if evt.get("message_id") != message_id:
-                    continue
-                etype = evt.get("type")
-                edata = evt.get("data") or {}
-                if etype == "text":
-                    collected.append(str(edata.get("text", "")))
-                elif etype == "done":
-                    break
-                elif etype == "error":
-                    return f"[Fehler: {edata.get('message', 'unbekannt')}]"
-        finally:
-            await pubsub.unsubscribe(channel)
-            await pubsub.aclose()
-        return "".join(collected).strip()
+        from app.services.agent_chat_bridge import ask_agent_via_chat
+        return await ask_agent_via_chat(
+            self.redis, self.agent_id, transcript,
+            source="webapp_voice", timeout=timeout,
+        )
 
     async def _make_spoken(self, text: str) -> str:
         """If response is short and natural, speak verbatim. Else summarise via Haiku."""

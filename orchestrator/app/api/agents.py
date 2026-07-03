@@ -1094,6 +1094,53 @@ async def update_agent_idle_stop(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+# Realtime voice interaction models the agent can front with (besides the classic
+# staged STT→LLM→TTS pipeline). Keep in sync with the frontend selector.
+INTERACTION_MODELS = {"nova_sonic"}
+
+
+@router.put("/{agent_id}/interaction-model")
+async def update_agent_interaction_model(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set the agent's realtime voice interaction front.
+
+    Body: {"interaction_model": "nova_sonic" | null, "interaction_voice": str | null}
+    null / "" → classic staged STT→LLM→TTS voice pipeline (default).
+    """
+    await _check_owner(agent_id, user, db)
+    model = (body.get("interaction_model") or "").strip() or None
+    if model is not None and model not in INTERACTION_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"interaction_model must be one of {sorted(INTERACTION_MODELS)} or null",
+        )
+    voice = (body.get("interaction_voice") or "").strip() or None
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        if model is None:
+            cfg.pop("interaction_model", None)
+            cfg.pop("interaction_voice", None)
+        else:
+            cfg["interaction_model"] = model
+            if voice:
+                cfg["interaction_voice"] = voice
+            else:
+                cfg.pop("interaction_voice", None)
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {"agent_id": agent_id, "interaction_model": model, "interaction_voice": voice}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.delete("/{agent_id}")
 async def remove_agent(
     agent_id: str,

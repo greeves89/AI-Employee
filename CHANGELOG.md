@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.5] — 2026-07-03
+
+### Added
+- **Realtime-Sprach-Interaktion pro Agent (AWS Bedrock Nova Sonic 2).** Neuer Speech-to-Speech-Front pro Agent als Alternative zur klassischen Aufnehmen→STT→LLM→TTS-Pipeline: Nova Sonic (`amazon.nova-2-sonic-v1:0`) hört durchgehend zu, spricht natürlich in Echtzeit und **delegiert echte Aufgaben über ein `ask_agent`-Tool an genau seinen Agenten-Container** — über denselben Chat-Kanal (`agent:{id}:chat`), den auch der Text-Chat nutzt (keine Insellösung). Das schwere Modell läuft in der AWS-Cloud → **null Last auf dem Gerät** (ideal für den Pi).
+  - Backend: `orchestrator/app/services/voice_providers/realtime_nova_sonic.py` (bidirektionaler Bedrock-Stream + Tool-Use via `aws-sdk-bedrock-runtime`), `realtime_voice_session.py` (Browser-PCM ↔ Nova Sonic ↔ Agent), gemeinsamer Delegations-Helper `agent_chat_bridge.py` (auch von der klassischen `VoiceSession` genutzt). WS-Route wählt den Pfad per `agent.config["interaction_model"]`. Endpoint `PUT /agents/{id}/interaction-model`.
+  - Frontend: kontinuierlicher 16-kHz-PCM-Aufnahme-/24-kHz-Wiedergabe-Modus im Voice-Modal (`voice-session.tsx`), Per-Agent-Selektor „Sprach-Interaktion" (`interaction-model-card.tsx`).
+  - Verifiziert: echte deutsche Sprache → Transkription → `ask_agent`-Tool-Call → Tool-Ergebnis → gesprochene Antwort, end-to-end gegen echtes AWS Bedrock (Raspberry Pi, ARM). Der Browser-Mic-Test steht noch aus.
+  - AWS-Zugangsdaten sind **Pi-only** (in der Pi-`.env`), nicht auf SKBS.
+
 ## [1.99.4] — 2026-07-02
 
 > Security-Hotfix (Orchestrator + Frontend). Version über alle Artefakte vereinheitlicht — **git-Tag = `VERSION` = Dockerfile-Label = Agent-Image = 1.99.4** (Agent-Image inhaltsgleich zu 1.99.3, nur neu gelabelt), damit die im Header angezeigte Software-Version dem Release entspricht.

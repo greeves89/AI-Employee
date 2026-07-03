@@ -24,6 +24,7 @@ import {
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
+import { InteractionModelCard } from "@/components/agents/interaction-model-card";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
@@ -1381,6 +1382,9 @@ function AgentSettings({
           <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
         </div>
       </div>
+
+      {/* Voice interaction front (classic pipeline vs. Nova Sonic realtime) */}
+      <InteractionModelCard agentId={agentId} current={agent.interaction_model} />
 
       {/* Model Selection (Claude Code + Codex CLI agents) */}
       {showModelPanel && (

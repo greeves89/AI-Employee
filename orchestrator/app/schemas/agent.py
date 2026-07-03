@@ -91,6 +91,7 @@ class AgentResponse(BaseModel):
     monthly_cost_usd: float = 0.0
     browser_mode: bool = False
     autonomy_level: str = "l3"
+    interaction_model: str | None = None  # "nova_sonic" | null (classic voice pipeline)
     webhook_enabled: bool = False
     webhook_token: str | None = None
     total_cost_usd: float = 0.0

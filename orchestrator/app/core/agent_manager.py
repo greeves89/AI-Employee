@@ -1579,6 +1579,7 @@ class AgentManager:
             "created_at": agent.created_at,
             "updated_at": agent.updated_at,
             "knowledge_template": config.get("knowledge_template", ""),
+            "interaction_model": config.get("interaction_model"),
             "config": config,
         }
 

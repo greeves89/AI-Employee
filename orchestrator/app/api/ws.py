@@ -763,7 +763,8 @@ async def ws_agent_voice(
     except Exception:
         pass
 
-    # Verify agent container is alive
+    # Verify agent container is alive + read the configured interaction model
+    interaction_model: str | None = None
     if _docker:
         from app.models.agent import Agent
         from sqlalchemy import select
@@ -779,14 +780,34 @@ async def ws_agent_voice(
                 if status not in ("running", "created"):
                     await websocket.close(code=4010, reason=f"Agent is {status}")
                     return
+                interaction_model = ((agent.config or {}).get("interaction_model") or "").strip() or None
         except Exception:
             pass
 
     await websocket.accept()
 
-    session = VoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)
-    async with async_session_factory() as db:
-        await session.init(db)
+    # Realtime speech-to-speech front (Nova Sonic) vs. the staged STT→LLM→TTS pipeline.
+    # Both expose the same session interface (init/outbound/push_audio_chunk/commit_turn/
+    # interrupt/close), so the receive loop below is identical.
+    if interaction_model == "nova_sonic":
+        from app.services.realtime_voice_session import RealtimeVoiceSession
+        session = RealtimeVoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)
+    else:
+        session = VoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)
+    try:
+        async with async_session_factory() as db:
+            await session.init(db)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("voice session init failed agent=%s model=%s", agent_id, interaction_model)
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "data": {"message": f"Sprach-Session konnte nicht starten: {e}"},
+            }))
+        except Exception:
+            pass
+        await websocket.close(code=1011, reason="voice init failed")
+        return
 
     async def pump_outbound():
         try:
@@ -814,7 +835,12 @@ async def ws_agent_voice(
     try:
         await websocket.send_text(json.dumps({
             "type": "ready",
-            "data": {"session_id": session.session_id},
+            "data": {
+                "session_id": session.session_id,
+                # "nova_sonic" → client streams continuous 16 kHz PCM and plays
+                # 24 kHz PCM; "classic" → push-to-talk webm/opus + MP3 playback.
+                "mode": "nova_sonic" if interaction_model == "nova_sonic" else "classic",
+            },
         }))
         while True:
             raw = await websocket.receive_text()

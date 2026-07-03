@@ -99,6 +99,7 @@ export interface Agent {
   monthly_cost_usd: number;
   browser_mode: boolean;
   autonomy_level?: string;
+  interaction_model?: string | null;
   webhook_enabled?: boolean;
   webhook_token?: string | null;
   total_cost_usd: number;

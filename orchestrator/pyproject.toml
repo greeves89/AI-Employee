@@ -28,6 +28,9 @@ dependencies = [
     "h2>=4.1",
     # On-prem Exchange MCP — EWS (Exchange Web Services) client
     "exchangelib>=5.4",
+    # Realtime voice front — AWS Bedrock Nova Sonic bidirectional streaming
+    # (plain boto3 has no bidirectional stream). Pulls in smithy-aws-core.
+    "aws-sdk-bedrock-runtime>=0.7,<1.0",
 ]
 
 [build-system]
