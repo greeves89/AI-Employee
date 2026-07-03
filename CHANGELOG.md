@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.22] — 2026-07-03
+
+### Added
+- **Agenten-Webhooks sind jetzt OpenAPI-tauglich.** Neuer Endpoint `GET /webhooks/agents/{id}/openapi.json` liefert eine OpenAPI-3.1-Beschreibung des Agenten-Webhooks (die POST-Operation „send_to_agent" inkl. Bearer-Token-Security), sodass der Webhook direkt als **OpenAPI-Tool-Server** (z. B. in Open WebUI) eingebunden werden kann. Die Webhook-Endpoints senden jetzt **CORS-Header** (`Access-Control-Allow-Origin: *` — token-authentifiziert, ohne Cookies, daher sicher) inkl. Preflight (OPTIONS), womit die zuvor geblockten Cross-Origin-Fetches funktionieren. **Wichtig:** In OWUI die **HTTPS-Public-URL** eintragen (nicht die interne `http://…`-URL) — sonst blockt der Browser wegen Mixed-Content. (`orchestrator/app/api/webhooks.py`)
+
 ## [1.99.21] — 2026-07-03
 
 ### Added

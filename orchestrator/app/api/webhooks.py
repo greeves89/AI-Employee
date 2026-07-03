@@ -6,7 +6,8 @@ import json
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,6 +99,7 @@ async def regenerate_webhook_token(
 async def receive_webhook(
     agent_id: str,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     redis: RedisService = Depends(get_redis_service),
 ):
@@ -107,6 +109,8 @@ async def receive_webhook(
     Supports JSON, form data, or raw text.
     Auth: Authorization: Bearer <webhook_token> (per-agent token from settings).
     """
+    # CORS for cross-origin tool hosts (Open WebUI); token-authed, no cookies.
+    response.headers.update(_WEBHOOK_CORS)
     # --- AgentGuard: Rate limiting ---
     if not webhook_rate_limiter.check(agent_id):
         raise HTTPException(status_code=429, detail="Rate limit exceeded for this agent")
@@ -250,6 +254,113 @@ async def receive_webhook(
         "tasks": tasks_created,
         "agent_id": agent_id,
     }
+
+
+# --- OpenAPI tool-server surface (e.g. Open WebUI) -------------------------- #
+# CORS is permissive here on purpose: these endpoints are token-authenticated
+# (Bearer), carry no cookies, and are meant to be consumed cross-origin by an
+# external tool host. `*` without credentials is safe for that.
+_WEBHOOK_CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Webhook-Source, X-Webhook-Event",
+    "Access-Control-Max-Age": "600",
+}
+
+
+def _public_base(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    return f"{proto}://{host}"
+
+
+@router.options("/agents/{agent_id}")
+@router.options("/agents/{agent_id}/openapi.json")
+async def webhook_cors_preflight(agent_id: str):
+    """CORS preflight for the OpenAPI tool-server endpoints."""
+    return Response(status_code=204, headers=_WEBHOOK_CORS)
+
+
+@router.get("/agents/{agent_id}/openapi.json")
+async def webhook_openapi(agent_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """OpenAPI 3.1 spec for THIS agent's webhook so it can be registered as an
+    OpenAPI tool server (Open WebUI etc.). Describes the single POST operation
+    that hands a message/event to the agent.
+
+    Note: consume this over the PUBLIC HTTPS URL, not an internal http:// URL —
+    a browser tool host on https would otherwise block it as mixed content.
+    """
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        return JSONResponse({"detail": "Agent not found"}, status_code=404, headers=_WEBHOOK_CORS)
+    if not agent.webhook_enabled:
+        return JSONResponse(
+            {"detail": "Webhook access is not enabled for this agent"},
+            status_code=403, headers=_WEBHOOK_CORS,
+        )
+    base = _public_base(request)
+    path = f"/webhooks/agents/{agent_id}"
+    spec = {
+        "openapi": "3.1.0",
+        "info": {
+            "title": f"AI-Employee Agent Webhook — {agent.name}",
+            "description": (
+                "Send a message or event to this AI-Employee agent; it turns the payload "
+                "into a task and works on it. Use this as a tool to delegate work to the agent."
+            ),
+            "version": "1.0.0",
+        },
+        "servers": [{"url": f"{base}/api/v1"}],
+        "components": {
+            "securitySchemes": {
+                "webhookToken": {
+                    "type": "http", "scheme": "bearer",
+                    "description": "The agent's webhook token (from the agent's webhook settings).",
+                }
+            }
+        },
+        "security": [{"webhookToken": []}],
+        "paths": {
+            path: {
+                "post": {
+                    "operationId": "send_to_agent",
+                    "summary": f"Send a message/task to the agent {agent.name}",
+                    "description": (
+                        "Hands the agent a message/event. The agent creates a task from it "
+                        "and processes it."
+                    ),
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {"type": "string", "description": "The instruction/message for the agent."},
+                                        "source": {"type": "string", "description": "Optional source label (e.g. 'openwebui')."},
+                                        "event_type": {"type": "string", "description": "Optional event type."},
+                                    },
+                                    "required": ["message"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {"description": "Accepted — task(s) created.",
+                                "content": {"application/json": {"schema": {"type": "object"}}}},
+                        "401": {"description": "Invalid or missing webhook token."},
+                        "403": {"description": "Webhook not enabled for this agent."},
+                        "429": {"description": "Rate limit exceeded."},
+                    },
+                }
+            }
+        },
+    }
+    return JSONResponse(spec, headers=_WEBHOOK_CORS)
 
 
 @router.post("/github")
