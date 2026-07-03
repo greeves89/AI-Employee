@@ -31,6 +31,7 @@ async def ask_agent_via_chat(
     source: str = "realtime_voice",
     timeout: float = 90.0,
     chat_session_id: str | None = None,
+    on_event=None,
 ) -> str:
     """Send ``text`` to the agent and return its full text answer (or an error marker).
 
@@ -72,6 +73,11 @@ async def ask_agent_via_chat(
                 continue
             etype = evt.get("type")
             edata = evt.get("data") or {}
+            if on_event is not None and etype in ("tool_call", "tool_result", "text"):
+                try:
+                    await on_event(etype, edata)
+                except Exception:  # noqa: BLE001
+                    logger.debug("on_event callback error", exc_info=True)
             if etype == "text":
                 collected.append(str(edata.get("text", "")))
             elif etype == "done":

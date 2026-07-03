@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.12] — 2026-07-03
+
+### Fixed
+- **Barge-in leert jetzt die GANZE Audio-Queue.** Beim Unterbrechen stoppte `flushPlayback()` zwar die aktuell eingeplanten Audio-Nodes, aber Nova Sonic streamt nach dem Cut-in noch kurz weiter — die nachkommenden `audio_chunk`-Events des unterbrochenen Turns wurden neu eingeplant und liefen weiter. Neu: `beginBargeIn()` stoppt alle Nodes **und** setzt `suppressAudioRef` — eingehendes Audio des unterbrochenen Turns wird ab dann verworfen. Die Unterdrückung endet automatisch beim nächsten User-Transkript (= neuer Turn) oder nach 1,5 s Sicherheits-Timer. (`frontend/src/components/agents/voice-session.tsx`)
+
+### Added
+- **Live-Status/Activity-Log im Voice-Gespräch, während der Agent an einer delegierten Aufgabe arbeitet.** Sobald der Voice-Agent per `ask_agent` eine Aufgabe an seinen Container-Agenten übergibt, zeigt das Voice-Modal in Echtzeit, was der Agent tut (Tool-Aufrufe + Text) — dieselben `tool_call`/`text`-Events, die auch der Text-Chat und das LiveTerminal rendern, **kein neuer Mechanismus**. `ask_agent_via_chat()` bekam einen optionalen `on_event`-Callback (rückwärtskompatibel), `RealtimeVoiceSession._emit_activity` reicht die Events als `activity`-Events an die Voice-UI weiter. Panel zeigt „Agent arbeitet an der Aufgabe" (Spinner) und nach dem Report „Aufgabe erledigt". (`orchestrator/app/services/agent_chat_bridge.py`, `orchestrator/app/services/realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.11] — 2026-07-03
 
 ### Security

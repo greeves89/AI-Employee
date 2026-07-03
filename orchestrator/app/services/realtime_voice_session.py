@@ -352,12 +352,37 @@ class RealtimeVoiceSession:
             "dass du nachgefragt hast und dich meldest, sobald die Antwort da ist.",
         )
 
+    async def _emit_activity(self, kind: str, edata: dict) -> None:
+        """Forward the delegated agent's live work to the voice UI.
+
+        These are the exact same chat-stream events the text chat / LiveTerminal
+        render (``tool_call`` / ``text`` / ``tool_result`` on ``chat:response``) —
+        no new agent mechanism, just surfaced live while the agent works.
+        """
+        if self._closed:
+            return
+        if kind == "tool_call":
+            raw = edata.get("input")
+            inp = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
+            await self._emit({"type": "activity", "data": {
+                "kind": "tool",
+                "tool": str(edata.get("tool", "")),
+                "input": (inp or "")[:160],
+            }})
+        elif kind == "tool_result":
+            await self._emit({"type": "activity", "data": {"kind": "tool_result"}})
+        elif kind == "text":
+            t = str(edata.get("text", "")).strip()
+            if t:
+                await self._emit({"type": "activity", "data": {"kind": "text", "text": t[:400]}})
+
     async def _delegate_and_report(self, instruction: str) -> None:
         """Run the (slow) delegation in the background, then voice the result."""
         await self._emit({"type": "delegate", "data": {"instruction": instruction}})
         try:
             answer = await ask_agent_via_chat(
                 self.redis, self.agent_id, instruction, source="realtime_voice", timeout=180.0,
+                on_event=self._emit_activity,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("realtime delegation failed agent=%s: %s", self.agent_id, e, exc_info=True)

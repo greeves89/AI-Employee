@@ -62,6 +62,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
+  const [activity, setActivity] = useState<{ kind: string; label: string; detail: string }[]>([]);
+  const [delegating, setDelegating] = useState(false);
+  const activityRef = useRef<HTMLDivElement>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const modeRef = useRef<Mode>("classic");
@@ -77,6 +80,8 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   const outCtxRef = useRef<AudioContext | null>(null);
   const nextPlayRef = useRef(0);
   const liveSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const suppressAudioRef = useRef(false);
+  const suppressTimerRef = useRef<number | undefined>(undefined);
 
   // ── WebSocket connect ──────────────────────────────────────
   useEffect(() => {
@@ -127,6 +132,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 
+  // Auto-scroll the live activity log to the newest line.
+  useEffect(() => {
+    if (activityRef.current) activityRef.current.scrollTop = activityRef.current.scrollHeight;
+  }, [activity]);
+
   // ── Server event handler ───────────────────────────────────
   const handleServerEvent = useCallback(async (raw: string) => {
     let evt: { type: string; data?: Record<string, unknown> };
@@ -148,16 +158,36 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
       case "transcript":
         setTranscript(String(data.text || ""));
         if (modeRef.current === "classic") setState("processing");
+        else suppressAudioRef.current = false;  // new user turn -> allow the response audio
         break;
       case "response":
         setResponse(String(data.text || ""));
+        setDelegating(false); // final report arrived → agent finished the delegated task
         break;
       case "status":
         setStatusMsg(String(data.message || ""));
         break;
       case "delegate":
         setStatusMsg(`Agent bearbeitet: ${String(data.instruction || "")}`);
+        setDelegating(true);
+        setActivity([{ kind: "header", label: String(data.instruction || ""), detail: "" }]);
         break;
+      case "activity": {
+        // Live view of the delegated agent's work — same chat-stream events the
+        // text chat / LiveTerminal render (tool_call / text), surfaced in real time.
+        const kind = String(data.kind || "");
+        if (kind === "tool_result") break; // result just confirms the tool; no new row
+        const item =
+          kind === "tool"
+            ? { kind, label: String(data.tool || "Tool"), detail: String(data.input || "") }
+            : { kind: "text", label: String(data.text || ""), detail: "" };
+        if (!item.label) break;
+        setActivity((prev) => {
+          const next = [...prev, item];
+          return next.length > 40 ? next.slice(-40) : next;
+        });
+        break;
+      }
       case "tts_start":
         setState("speaking");
         break;
@@ -168,6 +198,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
         const b64 = String(data.b64 || "");
         if (!b64) break;
         if (modeRef.current === "nova_sonic" || data.mime === "audio/pcm") {
+          if (suppressAudioRef.current) break;
           setState("speaking");
           playPcmChunk(b64, Number(data.rate) || 24000);
         } else {
@@ -266,6 +297,18 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
     nextPlayRef.current = 0;
   }, []);
 
+  // Barge-in: stop the agent NOW and drop audio still arriving from the
+  // interrupted turn (Nova Sonic keeps streaming a moment after the user cuts in).
+  // Suppression lifts on the next user transcript (= new turn) or a safety timer.
+  const beginBargeIn = useCallback(() => {
+    flushPlayback();
+    suppressAudioRef.current = true;
+    if (suppressTimerRef.current) window.clearTimeout(suppressTimerRef.current);
+    suppressTimerRef.current = window.setTimeout(() => {
+      suppressAudioRef.current = false;
+    }, 1500);
+  }, [flushPlayback]);
+
   // ── Realtime capture (continuous 16 kHz PCM) ─────────────────
   const startLive = useCallback(async () => {
     if (inCtxRef.current) return; // already live
@@ -294,7 +337,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
           const rms = Math.sqrt(sum / input.length);
           vadHigh = rms > 0.025 ? vadHigh + 1 : 0;
           if (vadHigh >= 2) {
-            flushPlayback();
+            beginBargeIn();
             setState("listening");
             vadHigh = 0;
           }
@@ -343,12 +386,12 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   }, [teardownRealtime, onClose]);
 
   const bargeIn = useCallback(() => {
-    flushPlayback();
+    beginBargeIn();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "interrupt" }));
     }
     setState("listening");
-  }, [flushPlayback]);
+  }, [beginBargeIn]);
 
   // ── Classic push-to-talk recording ──────────────────────────
   const startRecording = useCallback(async () => {
@@ -545,6 +588,49 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
                 Du sagtest
               </div>
               <p className="text-sm">{transcript}</p>
+            </div>
+          )}
+          {activity.length > 0 && (
+            <div className="mb-3 mt-4 rounded-lg border border-border bg-black/40 p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                {delegating ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+                ) : (
+                  <Radio className="h-3 w-3 text-emerald-400" />
+                )}
+                {delegating ? "Agent arbeitet an der Aufgabe" : "Aufgabe erledigt"}
+              </div>
+              <div
+                ref={activityRef}
+                className="max-h-40 overflow-y-auto font-mono text-[11px] leading-relaxed"
+              >
+                {activity.map((a, i) => (
+                  <div
+                    key={i}
+                    className={
+                      a.kind === "header"
+                        ? "mb-1 text-foreground/90"
+                        : a.kind === "tool"
+                        ? "text-sky-400"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {a.kind === "header" && (
+                      <>
+                        <span className="text-muted-foreground/60">Aufgabe: </span>
+                        {a.label}
+                      </>
+                    )}
+                    {a.kind === "tool" && (
+                      <>
+                        <span className="text-amber-400">[{a.label}]</span>
+                        {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
+                      </>
+                    )}
+                    {a.kind === "text" && <span>{a.label}</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {response && (
