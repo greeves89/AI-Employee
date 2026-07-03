@@ -467,7 +467,7 @@ export default function KnowledgePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex-1 min-h-[72dvh] rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden relative"
+            className="h-[72dvh] rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden relative"
           >
             <ForceGraph
               nodes={graphData.nodes}
