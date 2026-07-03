@@ -387,11 +387,29 @@ class RealtimeVoiceSession:
         return
 
     async def interrupt(self) -> None:
-        """Barge-in. Skip the ENTIRE interrupted turn, not just the current chunk:
-        stop forwarding any further audio of it (server-side drop) AND tell the
-        client to flush what it already buffered. Audio resumes only when Nova
-        Sonic starts the next content block (handled in _on_nova_event)."""
+        """Barge-in. Skip the ENTIRE interrupted turn, not just the current chunk.
+
+        Three things must happen so nothing of the old turn is heard:
+        1. Stop FUTURE audio of this turn (``_drop_audio`` until the next content block).
+        2. PURGE audio already sitting in the outbound queue — Nova generates faster
+           than realtime, so many chunks are already queued for the client; without
+           this they'd still be delivered and played. (This is the key fix.)
+        3. Tell the client to flush whatever it already buffered locally.
+        """
         self._drop_audio = True
+        if self._out_queue is not None:
+            kept: list = []
+            while True:
+                try:
+                    evt = self._out_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                # Drop queued audio; keep everything else (transcript/response/None…).
+                if isinstance(evt, dict) and evt.get("type") == "audio_chunk":
+                    continue
+                kept.append(evt)
+            for evt in kept:
+                self._out_queue.put_nowait(evt)
         await self._emit({"type": "clear_audio", "data": {}})
 
     # ── outbound (Nova Sonic → browser) ─────────────────────────────

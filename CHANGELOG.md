@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.28] — 2026-07-03
+
+### Fixed
+- **Barge-in verwirft jetzt auch die bereits generierten Audio-Chunks (der eigentliche Fix).** Nova Sonic generiert schneller als Echtzeit, daher lagen beim Unterbrechen schon viele Audio-Chunks in der server-seitigen Outbound-Queue (`_out_queue`) und wurden weiter an den Client gesendet — `_drop_audio` stoppte nur NEUE Emissionen. `interrupt()` **leert jetzt die Outbound-Queue von allen bereits eingereihten `audio_chunk`-Events** (behält Transkript/Response), zusätzlich zu Nova-Stopp + Client-Flush. Damit ist der unterbrochene Turn wirklich sofort still. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.27] — 2026-07-03
 
 ### Fixed
