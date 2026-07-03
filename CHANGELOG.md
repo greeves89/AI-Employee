@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.7] — 2026-07-03
+
+### Added
+- **Realtime-Voice: schnelle Direkt-Daten-Tools + Barge-in + Sprech-Füller.** Nova Sonic muss nicht mehr für jede Frage den (langsamen) Agenten anschreiben:
+  - **Direkt-Tools (Millisekunden, kein Agent-Round-Trip):** `get_agent_status` (läuft/idle, aktuelle Aufgabe, Queue), `list_agent_tasks` (letzte Aufgaben inkl. Fehlerursache), `get_agent_settings` (Modell/Modus/Provider/Autonomie/Budget) — lesen direkt aus DB/Redis. Nur echte **Arbeit** geht noch über `ask_agent`.
+  - **Sprech-Füller:** Vor einer Delegation (`ask_agent`, dauert Sekunden) sagt Nova Sonic jetzt kurz etwas („Moment, ich kümmere mich darum"), damit keine Stille entsteht.
+  - **Barge-in:** Redet der Nutzer, während der Agent spricht, stoppt die Audio-Ausgabe sofort (Energie-VAD im Browser) — plus „Unterbrechen"-Button. (`orchestrator/app/services/realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
+- **Plattform-Default-Interaktionsmodell.** Neuer Fallback: Agenten ohne eigene Einstellung folgen einer Plattform-Vorgabe (`voice_interaction_model`), sodass **alle Agenten einheitlich** dasselbe Sprach-Verhalten haben — auf dem Pi „nova_sonic", auf SKBS leer (klassisch). Ein Per-Agent-Wert überschreibt weiterhin. (`orchestrator/app/api/ws.py`)
+
 ## [1.99.6] — 2026-07-03
 
 ### Fixed

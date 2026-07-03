@@ -38,16 +38,61 @@ from app.services.voice_providers.realtime_nova_sonic import (
 
 logger = logging.getLogger(__name__)
 
-# Tool that lets Nova Sonic hand real work to the container agent.
+# --- Nova Sonic tools -------------------------------------------------------
+# Fast tools answer directly from orchestrator data (DB/Redis, milliseconds).
+# The slow ask_agent tool spins up a full agent turn in the container — only for
+# real work that needs the agent's brain/tools.
+
+GET_AGENT_STATUS_TOOL = {
+    "toolSpec": {
+        "name": "get_agent_status",
+        "description": (
+            "Get the agent's CURRENT status instantly: running/idle, what it is doing "
+            "right now, and how many tasks are queued. Use for 'what are you doing', "
+            "'what's your status'. Fast — reads live data directly, does NOT disturb the agent."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
+LIST_AGENT_TASKS_TOOL = {
+    "toolSpec": {
+        "name": "list_agent_tasks",
+        "description": (
+            "List the agent's recent tasks with their outcome (completed/failed/running) "
+            "instantly. Use for 'what are your tasks', 'what did you do', 'what failed'. "
+            "Fast — reads directly from the database, does NOT disturb the agent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "description": "How many, default 8."}},
+        })},
+    }
+}
+
+GET_AGENT_SETTINGS_TOOL = {
+    "toolSpec": {
+        "name": "get_agent_settings",
+        "description": (
+            "Read the agent's current settings instantly: model, mode/harness, provider, "
+            "autonomy level, budget. Use for 'which model do you use', 'what's your setup'. "
+            "Fast — reads directly, does NOT disturb the agent."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
+# Slow tool: hand real work to the container agent.
 ASK_AGENT_TOOL = {
     "toolSpec": {
         "name": "ask_agent",
         "description": (
-            "Delegate a task or question to the AI agent that does the real work: "
-            "reading or writing files, email/M365/calendar, running code, looking up "
-            "the user's data, web tasks. Call this whenever the user wants something "
-            "DONE or asks about their files, data, projects or accounts. Do NOT call it "
-            "for pure smalltalk, greetings or clarifying questions — answer those yourself."
+            "Delegate real WORK to the AI agent: writing/changing files, sending "
+            "email/M365, running code, config changes, or anything that needs the agent "
+            "to actually DO something or reason deeply. This takes a few seconds. Do NOT "
+            "use it for status/task questions (use the fast tools) or smalltalk. IMPORTANT: "
+            "say a short spoken filler FIRST (e.g. 'Moment, ich kümmere mich darum') so there "
+            "is no silence while the agent works."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
@@ -68,12 +113,19 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     role = f" Deine Rolle: {agent_role}." if agent_role else ""
     return (
         f"Du bist die Sprach-Front des KI-Agenten „{agent_name}“.{role} "
-        f"Du sprichst {lang}, natürlich und knapp, wie am Telefon. "
-        "Du BIST der Agent gegenüber dem Nutzer. Wenn der Nutzer etwas erledigt haben "
-        "will oder nach seinen Dateien, Daten, Projekten, E-Mails oder Aufgaben fragt, "
-        "rufe das Tool ask_agent mit einer klaren Instruktion auf und lies dann dessen "
-        "Ergebnis vor. Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst, "
-        "ohne das Tool. Halte gesprochene Antworten kurz — keine Aufzählungen, kein Code."
+        f"Du sprichst {lang}, natürlich und knapp, wie am Telefon. Du BIST der Agent "
+        "gegenüber dem Nutzer.\n"
+        "TOOL-WAHL (wichtig für Tempo):\n"
+        "• Fragen nach Status/Was-machst-du → get_agent_status (sofort).\n"
+        "• Fragen nach Aufgaben/was lief/was fehlschlug → list_agent_tasks (sofort).\n"
+        "• Fragen nach den Einstellungen (Modell, Modus, Autonomie) → get_agent_settings (sofort).\n"
+        "Diese drei Tools antworten in Millisekunden — nutze sie IMMER für Daten-/Status-Fragen, "
+        "statt den Agenten zu fragen.\n"
+        "• Nur für echte ARBEIT (Dateien ändern, E-Mail, Code, komplexe Aufgaben) → ask_agent. "
+        "Das dauert ein paar Sekunden — sag deshalb VORHER kurz einen Füller wie "
+        "„Moment, ich kümmere mich darum“, damit keine Stille entsteht.\n"
+        "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool. "
+        "Halte gesprochene Antworten kurz — keine Aufzählungen, kein Code, sprich wie ein Mensch."
     )
 
 
@@ -118,7 +170,12 @@ class RealtimeVoiceSession:
             secret_key=creds["secret_key"],
             session_token=creds["session_token"],
             system_prompt=_system_prompt(agent_name, agent_role, language),
-            tools=[ASK_AGENT_TOOL],
+            tools=[
+                GET_AGENT_STATUS_TOOL,
+                LIST_AGENT_TASKS_TOOL,
+                GET_AGENT_SETTINGS_TOOL,
+                ASK_AGENT_TOOL,
+            ],
             voice_id=voice_id,
             on_event=self._on_nova_event,
         )
@@ -203,24 +260,40 @@ class RealtimeVoiceSession:
             await self._emit({"type": "done", "data": {}})
             await self._emit(None)  # end the outbound stream
 
+    async def _respond(self, tool_use_id: str, text: str) -> None:
+        if self._nova:
+            await self._nova.send_tool_result(tool_use_id, text)
+
     async def _handle_tool_use(self, data: dict) -> None:
         tool_use_id = data.get("tool_use_id", "")
         name = data.get("name", "")
         raw = data.get("input", "") or ""
-        if name != "ask_agent":
-            if self._nova:
-                await self._nova.send_tool_result(tool_use_id, "Unbekanntes Tool.")
-            return
         try:
-            instruction = json.loads(raw).get("instruction", "") if raw else ""
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            instruction = raw
-        instruction = (instruction or "").strip()
-        if not instruction:
-            if self._nova:
-                await self._nova.send_tool_result(tool_use_id, "Keine Instruktion erkannt.")
+            args = json.loads(raw) if raw else {}
+            if not isinstance(args, dict):
+                args = {}
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+
+        # ── Fast tools: read orchestrator data directly (ms, no agent round-trip) ──
+        if name == "get_agent_status":
+            await self._respond(tool_use_id, await self._fast_status())
+            return
+        if name == "list_agent_tasks":
+            await self._respond(tool_use_id, await self._fast_tasks(int(args.get("limit") or 8)))
+            return
+        if name == "get_agent_settings":
+            await self._respond(tool_use_id, await self._fast_settings())
             return
 
+        # ── Slow tool: real work via the container agent ──
+        if name != "ask_agent":
+            await self._respond(tool_use_id, "Unbekanntes Tool.")
+            return
+        instruction = (args.get("instruction") or "").strip()
+        if not instruction:
+            await self._respond(tool_use_id, "Keine Instruktion erkannt.")
+            return
         await self._emit({"type": "status", "data": {"message": "Agent arbeitet…"}})
         await self._emit({"type": "delegate", "data": {"instruction": instruction}})
         try:
@@ -230,8 +303,71 @@ class RealtimeVoiceSession:
         except Exception as e:  # noqa: BLE001
             logger.warning("realtime delegation failed agent=%s: %s", self.agent_id, e, exc_info=True)
             answer = "Der Agent konnte die Aufgabe gerade nicht bearbeiten."
-        if self._nova:
-            await self._nova.send_tool_result(tool_use_id, answer or "Der Agent hat keine Antwort geliefert.")
+        await self._respond(tool_use_id, answer or "Der Agent hat keine Antwort geliefert.")
+
+    # ── Fast direct-data readers (no agent round-trip) ──────────────
+
+    async def _fast_status(self) -> str:
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent
+        from sqlalchemy import select
+        state = "unbekannt"
+        async with async_session_factory() as db:
+            a = (await db.execute(select(Agent).where(Agent.id == self.agent_id))).scalar_one_or_none()
+            if a:
+                state = a.state.value if hasattr(a.state, "value") else str(a.state)
+        current, qd = "", 0
+        try:
+            st = await self.redis.get_agent_status(self.agent_id)
+            current = (st or {}).get("current_task") or ""
+            qd = await self.redis.get_queue_depth(self.agent_id)
+        except Exception:  # noqa: BLE001
+            pass
+        parts = [f"Status: {state}"]
+        if current:
+            parts.append(f"arbeitet gerade an „{current}“")
+        parts.append(f"{qd} Aufgaben in der Warteschlange")
+        return "; ".join(parts) + "."
+
+    async def _fast_tasks(self, limit: int) -> str:
+        from collections import Counter
+        from app.db.session import async_session_factory
+        from app.models.task import Task, TaskStatus
+        from sqlalchemy import select
+        limit = max(1, min(limit, 20))
+        async with async_session_factory() as db:
+            rows = (await db.execute(
+                select(Task).where(Task.agent_id == self.agent_id)
+                .order_by(Task.created_at.desc()).limit(limit)
+            )).scalars().all()
+        if not rows:
+            return "Keine Aufgaben für diesen Agenten gefunden."
+        counts = Counter((t.status.value if hasattr(t.status, "value") else str(t.status)) for t in rows)
+        summary = ", ".join(f"{n} {k}" for k, n in counts.items())
+        lines = []
+        for t in rows:
+            s = t.status.value if hasattr(t.status, "value") else str(t.status)
+            line = f"- {t.title} ({s})"
+            if t.status == TaskStatus.FAILED and t.error:
+                line += f": {t.error[:100]}"
+            lines.append(line)
+        return f"Letzte {len(rows)} Aufgaben ({summary}):\n" + "\n".join(lines)
+
+    async def _fast_settings(self) -> str:
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent
+        from sqlalchemy import select
+        async with async_session_factory() as db:
+            a = (await db.execute(select(Agent).where(Agent.id == self.agent_id))).scalar_one_or_none()
+            if not a:
+                return "Agent nicht gefunden."
+            cfg = a.config or {}
+            budget = f"{a.budget_usd} USD/Monat" if a.budget_usd else "kein Limit"
+            return (
+                f"Modell: {a.model}; Modus/Harness: {a.mode}; "
+                f"Provider: {cfg.get('model_provider', 'Standard')}; "
+                f"Autonomie: {(a.autonomy_level or 'l3').upper()}; Budget: {budget}."
+            )
 
     # ── teardown ────────────────────────────────────────────────────
 

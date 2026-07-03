@@ -781,6 +781,15 @@ async def ws_agent_voice(
                     await websocket.close(code=4010, reason=f"Agent is {status}")
                     return
                 interaction_model = ((agent.config or {}).get("interaction_model") or "").strip() or None
+                # Fall back to the platform-wide default so ALL agents behave the
+                # same without per-agent config (set to "nova_sonic" on the Pi where
+                # AWS creds exist; empty on SKBS → classic pipeline). A per-agent
+                # value always wins.
+                if not interaction_model:
+                    from app.services.settings_service import SettingsService
+                    interaction_model = (
+                        (await SettingsService(db).get("voice_interaction_model")) or ""
+                    ).strip() or None
         except Exception:
             pass
 

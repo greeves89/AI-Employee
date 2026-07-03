@@ -280,9 +280,25 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
       srcNodeRef.current = source;
       const proc = ctx.createScriptProcessor(4096, 1, 1);
       procRef.current = proc;
+      let vadHigh = 0;
       proc.onaudioprocess = (e) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const input = e.inputBuffer.getChannelData(0);
+        // Barge-in: if the agent is speaking and the user starts talking, stop the
+        // agent's (buffered) audio immediately so the user can cut in. Echo from the
+        // speakers is largely removed by echoCancellation; require a few consecutive
+        // loud frames to avoid false triggers.
+        if (liveSourcesRef.current.length > 0) {
+          let sum = 0;
+          for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+          const rms = Math.sqrt(sum / input.length);
+          vadHigh = rms > 0.025 ? vadHigh + 1 : 0;
+          if (vadHigh >= 2) {
+            flushPlayback();
+            setState("listening");
+            vadHigh = 0;
+          }
+        }
         const ds = downsample(input, ctx.sampleRate, 16000);
         const b64 = bufToBase64(floatTo16LE(ds));
         wsRef.current.send(JSON.stringify({ type: "audio_chunk", data: { b64 } }));
