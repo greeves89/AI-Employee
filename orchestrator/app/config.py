@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     secondbrain_base: str = "/srv/secondbrain"
 
     # Kiosk (local-only on-device status display on the Raspberry Pi)
+    # The kiosk router is UNAUTHENTICATED by design (local Pi browser). It must
+    # only be mounted on an actual kiosk device. Default off so non-kiosk
+    # deployments (e.g. a shared VPS) never expose the unauthenticated router.
+    kiosk_enabled: bool = False
     # Live electricity price for the power-cost estimate (env: ELECTRICITY_PRICE_EUR_KWH).
     electricity_price_eur_kwh: float = 0.35
     # Host metrics JSON written by the host power collector (bind-mounted read-only).

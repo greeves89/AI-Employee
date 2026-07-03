@@ -2355,12 +2355,17 @@ async def send_telegram_message(
     agent_id: str,
     body: TelegramSendMessage,
     manager: AgentManager = Depends(_get_agent_manager),
+    agent_auth: dict = Depends(verify_agent_token),
 ):
     """Send a direct Telegram message to all authorized users of this agent.
 
-    Called by the agent's MCP send_telegram tool (no user auth needed,
-    agent authenticates via AGENT_TOKEN header).
+    Called by the agent's MCP send_telegram tool. The caller must present a
+    valid agent token (Authorization: Bearer + X-Agent-ID) whose agent_id
+    matches the path — otherwise any unauthenticated caller could send Telegram
+    messages in an agent's name.
     """
+    if agent_auth["agent_id"] != agent_id:
+        raise HTTPException(status_code=403, detail="Agent token does not match target agent")
     sent_to = 0
     try:
         import app.main as main_mod

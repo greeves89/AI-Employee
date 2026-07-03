@@ -537,6 +537,7 @@ async def search_memories(
 @router.get("/preload/{agent_id}")
 async def preload_critical_memories(
     agent_id: str,
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Return the agent's most critical memories for prompt injection.
@@ -546,8 +547,20 @@ async def preload_critical_memories(
     - categories: credentials, preference, procedure
     - recent learnings (last 10)
 
-    Open endpoint (no auth) — agents fetch their own preload on every task start.
+    Requires user or agent auth. This response includes credential-category
+    memories in clear text, so it must never be unauthenticated: an agent
+    principal may only preload its own memories; a user must own the agent.
     """
+    if hasattr(user, "role"):
+        from app.models.user import UserRole
+        from app.models.agent import Agent
+        if is_agent_principal(user):
+            if user.id != agent_id:
+                raise HTTPException(status_code=403, detail="Agent can only preload its own memories")
+        elif user.role != UserRole.ADMIN:
+            agent_obj = await db.get(Agent, agent_id)
+            if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
+                raise HTTPException(status_code=403, detail="Access denied")
     # Critical memories (importance = 5) — ALWAYS preloaded, no limit compromise
     critical_result = await db.execute(
         select(AgentMemory)
