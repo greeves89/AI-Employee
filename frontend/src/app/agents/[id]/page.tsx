@@ -346,8 +346,8 @@ export default function AgentDetailPage() {
 
         {/* Grouped tab switcher (groups + sub-reiter) */}
         <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit overflow-x-auto">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] max-w-full overflow-x-auto scrollbar-thin">
               {groupsForMode.map((group) => {
                 const Icon = group.icon;
                 const isActive = activeGroup?.key === group.key;

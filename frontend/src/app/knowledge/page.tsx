@@ -201,10 +201,10 @@ export default function KnowledgePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-1 gap-6 min-h-0"
+            className="flex flex-1 flex-col lg:flex-row gap-6 min-h-0"
           >
             {/* Main list */}
-            <div className="flex flex-1 flex-col gap-4 min-h-0">
+            <div className="flex flex-1 flex-col gap-4 min-h-0 min-w-0">
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />

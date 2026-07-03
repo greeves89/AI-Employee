@@ -213,7 +213,7 @@ function SingleTasksView() {
       transition={{ duration: 0.3 }}
     >
       {/* Filter tabs */}
-      <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit">
+      <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit max-w-full overflow-x-auto scrollbar-thin">
         {filterTabs.map((tab) => {
           const count = tab.key === "active"
             ? activeCount
@@ -225,7 +225,7 @@ function SingleTasksView() {
               key={tab.key}
               onClick={() => setFilter(tab.key)}
               className={cn(
-                "rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
+                "shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
                 filter === tab.key
                   ? "bg-foreground/[0.08] text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"

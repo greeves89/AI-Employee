@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.41] — 2026-07-03
+
+### Fixed
+- **Mobile: horizontaler Overflow auf mehreren Seiten behoben** (per iOS-Simulator-Durchlauf gefunden). (1) Shared Header stapelt auf Mobile (Titel oben, Actions darunter mit Umbruch) statt Buttons rechts abzuschneiden — behebt Agents/Knowledge/Agent-Detail. (2) Tab-/Filter-Reihen (Tasks-Filter, Agent-Detail-Sub-Reiter) scrollen jetzt horizontal statt zu clippen (`max-w-full overflow-x-auto` + `whitespace-nowrap`). (3) Knowledge-Zwei-Spalten-Layout stapelt auf Mobile (`flex-col lg:flex-row` + `min-w-0`) → Karten-Text bricht/kürzt korrekt statt rechts rauszulaufen. (`components/layout/header.tsx`, `app/tasks/page.tsx`, `app/agents/[id]/page.tsx`, `app/knowledge/page.tsx`)
+
 ## [1.99.40] — 2026-07-03
 
 ### Fixed
