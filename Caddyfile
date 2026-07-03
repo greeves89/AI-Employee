@@ -57,16 +57,18 @@
 
 	# Immutable hashed build assets (JS/CSS chunks) — safe to cache forever.
 	handle /_next/static/* {
-		reverse_proxy ai-employee-frontend:3000
-		header Cache-Control "public, max-age=31536000, immutable"
+		reverse_proxy ai-employee-frontend:3000 {
+			header_down Cache-Control "public, max-age=31536000, immutable"
+		}
 	}
 
 	# Everything else → frontend. The HTML shell must NOT be long-cached by the CDN/
 	# browser (Next.js sends s-maxage=1y) — otherwise a new deploy stays invisible
-	# because the cached HTML keeps referencing the OLD hashed bundles. Force
-	# revalidation so users always get the current build.
+	# because the cached HTML keeps referencing the OLD hashed bundles. header_down
+	# overrides the upstream Cache-Control so users always get the current build.
 	handle {
-		reverse_proxy ai-employee-frontend:3000
-		header Cache-Control "no-cache, must-revalidate"
+		reverse_proxy ai-employee-frontend:3000 {
+			header_down Cache-Control "no-cache, must-revalidate"
+		}
 	}
 }
