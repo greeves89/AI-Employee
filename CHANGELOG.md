@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.48] — 2026-07-03
+
+### Fixed
+- **HOTFIX: Orchestrator-Crash-Loop / 502 behoben.** PR #290 hatte in `router.py` `settings.kiosk_enabled`, wobei `settings` durch den nachfolgenden `from app.api import ... settings`-Import das **Modul** statt des Config-Objekts war → `AttributeError` beim Import → Orchestrator startete nicht, ganze Seite 502. Config-Import auf `app_config` aliasiert. (`orchestrator/app/api/router.py`)
+
 ## [1.99.47] — 2026-07-03
 
 ### Fixed
