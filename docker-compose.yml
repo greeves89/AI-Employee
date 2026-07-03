@@ -138,7 +138,7 @@ services:
       # Kiosk router: mounts the UNAUTHENTICATED /api/v1/kiosk/* endpoints (local Pi
       # browser). Empty/false by default → router not mounted, endpoints 404. Set to
       # "true" ONLY on the single-user Pi kiosk, NEVER on multi-tenant/VPS boxes.
-      KIOSK_ENABLED: ${KIOSK_ENABLED:-}
+      KIOSK_ENABLED: ${KIOSK_ENABLED:-false}
       # How many different chat sessions ONE agent processes concurrently (1 =
       # serial default). >1 → independent sessions/tasks run in parallel in one
       # container. Passed through to each agent container.

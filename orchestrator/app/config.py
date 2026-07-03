@@ -1,5 +1,6 @@
 import os
 import pathlib
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 def _read_version() -> str:
@@ -81,6 +82,17 @@ class Settings(BaseSettings):
     # only be mounted on an actual kiosk device. Default off so non-kiosk
     # deployments (e.g. a shared VPS) never expose the unauthenticated router.
     kiosk_enabled: bool = False
+
+    @field_validator("kiosk_enabled", mode="before")
+    @classmethod
+    def _empty_str_is_false(cls, v):
+        """Treat an empty-string env (KIOSK_ENABLED=) as False. Compose passes empty
+        strings for unset vars (``${KIOSK_ENABLED:-}``) which pydantic can't parse as
+        bool → would crash the whole orchestrator at startup."""
+        if isinstance(v, str) and v.strip() == "":
+            return False
+        return v
+
     # Live electricity price for the power-cost estimate (env: ELECTRICITY_PRICE_EUR_KWH).
     electricity_price_eur_kwh: float = 0.35
     # Host metrics JSON written by the host power collector (bind-mounted read-only).

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.50] — 2026-07-03
+
+### Fixed
+- **Orchestrator-Crash bei leerem `KIOSK_ENABLED` behoben (aus #290).** Compose reichte `${KIOSK_ENABLED:-}` (leerer String) durch, und `kiosk_enabled: bool` ließ sich nicht parsen → `pydantic ValidationError` → Crash-Loop beim `compose up`. Neu: Field-Validator (leerer String → False) + Compose-Default `false`. (`orchestrator/app/config.py`, `docker-compose.yml`)
+
 ## [1.99.49] — 2026-07-03
 
 ### Added
