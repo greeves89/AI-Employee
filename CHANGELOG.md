@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.52] — 2026-07-03
+
+### Fixed
+- **Knowledge-Graph: Auto-Fit statt winziger Knoten-Klumpen abseits der Ansicht.** Der Graph zoomte/zentrierte nicht — die Knoten saßen off-screen und wirkten winzig. Neu: nach dem Settle wird die Bounding-Box aller Knoten berechnet und der Graph mittig auf ~85% des Canvas eingepasst (Auto-Fit, re-fit bei Resize); der Maximieren-Button macht ebenfalls „einpassen". (`frontend/src/app/knowledge/page.tsx`)
+
 ## [1.99.51] — 2026-07-03
 
 ### Fixed

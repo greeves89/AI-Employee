@@ -674,6 +674,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
   const [hoveredNode, setHoveredNode] = useState<SimNode | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [simDone, setSimDone] = useState(false);
   const animRef = useRef<number>(0);
   const simRef = useRef<SimNode[]>([]);
   const isPanning = useRef(false);
@@ -702,6 +703,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
   useEffect(() => {
     cancelAnimationFrame(animRef.current);
+    setSimDone(false);
     if (nodes.length === 0) return;
 
     const degreeMap = new Map<number, number>();
@@ -738,7 +740,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
     function tick() {
       const sn = simRef.current;
-      if (iteration >= MAX_ITER) { setSimNodes([...sn]); return; }
+      if (iteration >= MAX_ITER) { setSimNodes([...sn]); setSimDone(true); return; }
 
       const alpha = Math.max(0.005, 1 - iteration / MAX_ITER);
       const k = alpha * 0.18;
@@ -838,7 +840,38 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
     isPanning.current = false;
   }, []);
 
-  const resetView = useCallback(() => setTransform({ x: 0, y: 0, scale: 1 }), []);
+  // Fit the whole graph into the viewport: bounding box → centered + scaled to fill
+  // ~85% of the canvas. Fixes "nodes clustered off-screen / too small to see".
+  const fitToView = useCallback(() => {
+    const sn = simRef.current;
+    if (!sn.length || !dimensions.width || !dimensions.height) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of sn) {
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+    const bw = Math.max(maxX - minX, 1);
+    const bh = Math.max(maxY - minY, 1);
+    const pad = 80;
+    const scale = Math.max(0.2, Math.min(2.5,
+      Math.min((dimensions.width - pad * 2) / bw, (dimensions.height - pad * 2) / bh)));
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    setTransform({
+      x: dimensions.width / 2 - cx * scale,
+      y: dimensions.height / 2 - cy * scale,
+      scale,
+    });
+  }, [dimensions]);
+
+  const resetView = useCallback(() => fitToView(), [fitToView]);
+
+  // Auto-fit once the layout has settled (and re-fit if the canvas resizes).
+  useEffect(() => {
+    if (simDone) fitToView();
+  }, [simDone, dimensions, fitToView]);
 
   if (nodes.length === 0) {
     return (
