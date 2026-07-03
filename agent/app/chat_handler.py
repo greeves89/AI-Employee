@@ -9,6 +9,7 @@ from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
+from app.runner_hooks import feed_prompt_via_stdin
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +91,9 @@ class ChatHandler:
         if self.session_id:
             cmd.extend(["--resume", self.session_id])
 
+        # Prompt via stdin, not argv — avoids "Argument list too long" on large input.
         cmd.extend([
-            "-p", text,
+            "-p",
             "--output-format", "stream-json",
             "--verbose",
             "--dangerously-skip-permissions",
@@ -157,13 +159,18 @@ class ChatHandler:
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,
                 env=env,
             )
 
-            # Read stderr in background so we capture it even if CLI crashes
+            # Feed the prompt via stdin; read stderr in background so we capture it
+            # even if the CLI crashes.
+            stdin_task = asyncio.create_task(
+                feed_prompt_via_stdin(self._process, text)
+            )
             stderr_task = asyncio.create_task(_collect_stderr(self._process))
 
             full_text = ""
@@ -289,8 +296,9 @@ class ChatHandler:
                             )
 
             returncode = await self._process.wait()
-            # Ensure stderr collection is complete
+            # Ensure stderr collection and stdin feed are complete
             await stderr_task
+            await stdin_task
 
             if returncode != 0 and not stream_had_error:
                 # Code -2 (SIGINT) = graceful interrupt for queued messages — not an error

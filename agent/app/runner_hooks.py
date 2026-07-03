@@ -4,6 +4,7 @@ Provides startup context (knowledge/memory/approval rules) and end-of-task
 reflection prompts so both runners behave consistently.
 """
 
+import asyncio
 import json as _json
 import logging
 import os
@@ -12,6 +13,29 @@ import urllib.request
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+async def feed_prompt_via_stdin(proc: "asyncio.subprocess.Process", prompt: str) -> None:
+    """Write the prompt to the CLI's stdin, then close it.
+
+    The prompt MUST NOT be passed on argv: a large PR diff overflows the kernel's
+    per-argument limit (MAX_ARG_STRLEN, 128 KB) and exec fails with
+    "[Errno 7] Argument list too long: 'claude'". Piping via stdin has no such cap.
+    Runs as a background task so a prompt larger than the pipe buffer can't deadlock
+    against the CLI, which streams stdout while still reading stdin.
+    """
+    if proc.stdin is None:
+        return
+    try:
+        proc.stdin.write(prompt.encode("utf-8"))
+        await proc.stdin.drain()
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
 
 
 TASK_STARTUP_PREFIX = """
