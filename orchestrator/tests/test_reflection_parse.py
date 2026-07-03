@@ -7,7 +7,7 @@ and masked the real auth/quota failure in the platform log.
 import json
 import unittest
 
-from app.core.task_router import _parse_reflection_stdout
+from app.core.task_router import _build_reflection_prompt, _parse_reflection_stdout
 
 
 def _envelope(result, is_error=False, subtype="success"):
@@ -69,6 +69,38 @@ class ParseReflectionStdoutTests(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             _parse_reflection_stdout(out, b"", 0)
         self.assertIn("no JSON object", str(cm.exception))
+
+
+class BuildReflectionPromptTests(unittest.TestCase):
+    def _prompt(self, **kw):
+        base = dict(
+            title="Fix bug", status="completed", duration_s=12.3,
+            num_turns=4, cost_usd=0.02, error="",
+        )
+        base.update(kw)
+        return _build_reflection_prompt(**base)
+
+    def test_forbids_asking_for_context(self):
+        # The 00:20 prod failure: model replied "I don't have enough context..." with no
+        # JSON. The prompt must explicitly forbid that so a rating is always produced.
+        p = self._prompt().lower()
+        self.assertIn("do not ask for more information", p)
+        self.assertIn("only the metrics provided", p)
+
+    def test_demands_bare_json_object(self):
+        p = self._prompt()
+        self.assertIn('{"rating": <1-5>, "reflection": "<one sentence>"}', p)
+        self.assertIn("Output ONLY this JSON object", p)
+
+    def test_includes_metrics_and_rubric(self):
+        p = self._prompt(title="Deploy", status="failed", error="boom")
+        self.assertIn("Deploy", p)
+        self.assertIn("failed", p)
+        self.assertIn("boom", p)
+        self.assertIn("Scoring guide", p)
+
+    def test_empty_title_falls_back_to_untitled(self):
+        self.assertIn("Task: Untitled", self._prompt(title=""))
 
 
 if __name__ == "__main__":

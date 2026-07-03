@@ -108,6 +108,32 @@ def _parse_reflection_stdout(stdout: bytes, stderr: bytes, returncode: "int | No
     return rating, reflection
 
 
+def _build_reflection_prompt(
+    title: str, status: str, duration_s: float, num_turns: int, cost_usd: float, error: str
+) -> str:
+    """Build the claude-CLI reflection prompt. Pure/import-free so it is unit-testable.
+
+    The metrics below are the ONLY context the rater gets, so the prompt must forbid the
+    model from asking for more (it otherwise replies with prose like "I don't have enough
+    context to rate this task fairly", which has no JSON object and forces a formula
+    fallback — the LLM rating then never runs). We give an explicit scoring rubric and
+    demand a bare JSON object so a best-guess rating is always produced from the metrics.
+    """
+    return (
+        "You are an automated task-quality rater. Rate the AI agent task below 1-5 stars "
+        "using ONLY the metrics provided — they are the complete context. Do NOT ask for "
+        "more information and do NOT write any prose outside the JSON.\n\n"
+        f"Task: {title or 'Untitled'}\n"
+        f"Status: {status}\n"
+        f"Duration: {duration_s}s | Turns: {num_turns or 0} | Cost: ${cost_usd or 0:.4f}\n"
+        f"Error: {error or 'none'}\n\n"
+        "Scoring guide: completed with no error and reasonable cost/turns = 4-5; "
+        "completed but slow, costly, or many turns = 3; failed or errored = 1-2.\n"
+        'Output ONLY this JSON object and nothing else: '
+        '{"rating": <1-5>, "reflection": "<one sentence>"}'
+    )
+
+
 async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
     """Ask Claude CLI to self-reflect on a completed task and return (rating, reflection).
 
@@ -121,13 +147,13 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
         return _compute_formula_rating(task), "auto-rated (claude CLI not found)"
 
     duration_s = round((task.duration_ms or 0) / 1000, 1)
-    prompt = (
-        "Rate this AI agent task 1-5 stars and give a one-sentence reflection.\n\n"
-        f"Task: {task.title or 'Untitled'}\n"
-        f"Status: {task.status.value}\n"
-        f"Duration: {duration_s}s | Turns: {task.num_turns or 0} | Cost: ${task.cost_usd or 0:.4f}\n"
-        f"Error: {task.error or 'none'}\n\n"
-        'Respond with JSON only: {"rating": <1-5>, "reflection": "<one sentence>"}'
+    prompt = _build_reflection_prompt(
+        title=task.title or "",
+        status=task.status.value,
+        duration_s=duration_s,
+        num_turns=task.num_turns or 0,
+        cost_usd=task.cost_usd or 0,
+        error=task.error or "",
     )
 
     try:
