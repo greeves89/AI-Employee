@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.37] — 2026-07-03
+
+### Fixed
+- **Erzeugte Dateien werden jetzt zuverlässig als klickbare Karten gezeigt (Auto-Scan).** Der `present_file`-Hinweis (v1.99.36) reichte nicht — der Agent nannte oft nur den Pfad im Text. Neu: nach jeder Delegation scannt die Voice-Session `/workspace/transfer/` (inkl. Unterordner) und emittiert für jede noch nicht gezeigte Datei eine Download-Karte. Nutzt denselben FileManager/Download-Pfad wie der Datei-Browser, kein neuer Mechanismus. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.36] — 2026-07-03
 
 ### Fixed

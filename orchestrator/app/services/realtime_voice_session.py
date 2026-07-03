@@ -333,6 +333,8 @@ class RealtimeVoiceSession:
     # (the ones shown live on the right), not the agent's unrelated global lane.
     # Each: {"instruction": str, "done": bool, "last": str, "result": str}
     _delegations: list = field(default_factory=list)
+    _container_id: str = ""            # agent container, for scanning produced files
+    _shown_files: set = field(default_factory=set)  # paths already surfaced as cards
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -342,6 +344,7 @@ class RealtimeVoiceSession:
         agent_name = agent.name if agent else self.agent_id
         cfg = (agent.config if agent else {}) or {}
         agent_role = cfg.get("role") or ""  # role lives in config, not on the ORM row
+        self._container_id = (agent.container_id if agent else "") or ""  # for workspace file scan
 
         # Resuming an existing chat session by voice: load the recent turns so the
         # greeting can pick up where the conversation left off (text OR voice).
@@ -715,6 +718,67 @@ class RealtimeVoiceSession:
                 "path": str(edata.get("path") or ""),  # for the download link
             }})
 
+    async def _surface_new_files(self) -> None:
+        """Auto-show files the agent produced in /workspace/transfer as clickable cards.
+
+        The agent often writes deliverables via bash/python and only *mentions* the
+        path in text instead of calling present_file — so nothing shows up. We scan the
+        transfer dir (the deliverables drop-zone) and emit a media card for every file
+        we have not surfaced yet this call. Reuses the same FileManager/download path
+        the file browser uses — no new mechanism.
+        """
+        if self._closed or not self._container_id:
+            return
+        try:
+            from app.core.file_manager import FileManager
+            from app.services.docker_service import DockerService
+            fm = FileManager(DockerService())
+
+            def _collect() -> list[dict]:
+                found: list[dict] = []
+                try:
+                    top = fm.list_directory(self._container_id, "/workspace/transfer")
+                except Exception:  # noqa: BLE001 — dir may not exist yet
+                    return found
+                for e in top:
+                    if e.get("type") == "file" and e.get("size", 0) > 0:
+                        found.append(e)
+                    elif e.get("type") == "directory":
+                        try:
+                            for sub in fm.list_directory(self._container_id, e["path"]):
+                                if sub.get("type") == "file" and sub.get("size", 0) > 0:
+                                    found.append(sub)
+                        except Exception:  # noqa: BLE001
+                            continue
+                return found
+
+            entries = await asyncio.to_thread(_collect)
+        except Exception:  # noqa: BLE001
+            return
+        # Newest first, only files we have not shown yet, capped to avoid flooding.
+        entries.sort(key=lambda e: e.get("modified", 0), reverse=True)
+        for e in entries:
+            path = e.get("path") or ""
+            if not path or path in self._shown_files:
+                continue
+            self._shown_files.add(path)
+            name = e.get("name") or path.split("/")[-1]
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            media_type = {
+                "pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg",
+                "jpeg": "image/jpeg", "html": "text/html", "pptx":
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            }.get(ext, "application/octet-stream")
+            await self._emit({"type": "media", "data": {
+                "kind": "file",
+                "filename": name,
+                "media_type": media_type,
+                "caption": "",
+                "path": path,
+            }})
+            if len(self._shown_files) >= 24:  # hard cap per call
+                break
+
     async def _delegate_and_report(self, instruction: str) -> None:
         """Run the (slow) delegation in the background, then voice the result."""
         await self._emit({"type": "delegate", "data": {"instruction": instruction}})
@@ -761,6 +825,8 @@ class RealtimeVoiceSession:
         rec["result"] = (answer or "")[:300]
         if self._closed:
             return
+        # Surface any files the agent produced — even if it only mentioned the path.
+        await self._surface_new_files()
         # Distinct "this delegation finished" signal — the UI uses THIS (not the
         # generic response event, which also fires on my own speech) to know a task
         # is done. Carries the instruction so the right task can be marked complete.
