@@ -400,7 +400,7 @@ export default function KnowledgePage() {
             <div className="flex-1 min-h-0 flex gap-4">
               {showPreview ? (
                 <div className="flex-1 overflow-y-auto rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-6">
-                  <div className="prose prose-sm prose-invert max-w-none">
+                  <div className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-foreground/5 prose-pre:text-foreground/80">
                     <BacklinkMarkdown content={editContent} onBacklinkClick={handleBacklinkClick} />
                   </div>
                 </div>
@@ -518,7 +518,7 @@ export default function KnowledgePage() {
 
                   {/* Content */}
                   <div className="flex-1 overflow-y-auto px-4 py-4">
-                    <div className="prose prose-sm prose-invert max-w-none prose-p:text-muted-foreground/80 prose-headings:text-foreground prose-strong:text-foreground prose-code:text-primary">
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:text-muted-foreground/80 prose-headings:text-foreground prose-strong:text-foreground prose-code:text-primary prose-pre:bg-foreground/5 prose-pre:text-foreground/80">
                       <BacklinkMarkdown
                         content={graphPreview.content}
                         onBacklinkClick={(title) => {
