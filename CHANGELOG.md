@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.26] — 2026-07-03
+
+### Fixed
+- **Barge-in überspringt jetzt den GANZEN Rest-Turn, nicht nur den aktuellen Chunk.** Bisher stoppte das Unterbrechen nur das aktuell abgespielte Audio; Nova Sonic generierte server-seitig weiter, und nach dem Client-Timer liefen die nächsten Chunks/Sätze weiter. **Neu:** Beim Unterbrechen setzt die `RealtimeVoiceSession` ein `_drop_audio`-Flag und **verwirft alle weiteren Audio-Chunks des unterbrochenen Turns server-seitig** — es kommt gar nichts mehr beim Client an. Aufgehoben wird das erst, wenn Nova Sonic den nächsten Content-Block startet (echter neuer Turn; `contentStart`-Event wird dafür jetzt ausgewertet). Zusätzlich sendet jetzt auch das Reinreden (VAD-Barge-in), nicht nur der Button, den Interrupt an den Server. (`orchestrator/app/services/realtime_voice_session.py`, `orchestrator/app/services/voice_providers/realtime_nova_sonic.py`, `frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.25] — 2026-07-03
 
 ### Changed

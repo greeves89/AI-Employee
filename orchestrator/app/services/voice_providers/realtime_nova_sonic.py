@@ -282,7 +282,14 @@ class NovaSonicSession:
             })
         elif kind == "usageEvent":
             await self._safe_emit("usage", payload)
-        # contentStart/contentEnd/completionStart/completionEnd: lifecycle only
+        elif kind == "contentStart":
+            # Start of a new content block = a new turn segment. The session uses
+            # this as the authoritative "the interrupted audio is over now" signal.
+            await self._safe_emit("content_start", {
+                "role": payload.get("role", ""),
+                "type": payload.get("type", ""),
+            })
+        # contentEnd/completionStart/completionEnd: lifecycle only
 
     async def _safe_emit(self, kind: str, data: dict) -> None:
         try:

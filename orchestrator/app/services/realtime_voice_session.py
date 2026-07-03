@@ -228,6 +228,10 @@ class RealtimeVoiceSession:
     _pump_task: asyncio.Task | None = None
     _closed: bool = False
     _greeted: bool = False
+    # Barge-in: while True, ALL outgoing audio is dropped (the whole interrupted
+    # turn is skipped, not just the current chunk). Cleared when Nova Sonic starts
+    # the next content block (= a genuinely new turn).
+    _drop_audio: bool = False
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -373,8 +377,11 @@ class RealtimeVoiceSession:
         return
 
     async def interrupt(self) -> None:
-        """Barge-in. Nova Sonic handles interruption server-side; tell the client to
-        drop any buffered audio so the old turn stops immediately."""
+        """Barge-in. Skip the ENTIRE interrupted turn, not just the current chunk:
+        stop forwarding any further audio of it (server-side drop) AND tell the
+        client to flush what it already buffered. Audio resumes only when Nova
+        Sonic starts the next content block (handled in _on_nova_event)."""
+        self._drop_audio = True
         await self._emit({"type": "clear_audio", "data": {}})
 
     # ── outbound (Nova Sonic → browser) ─────────────────────────────
@@ -395,10 +402,16 @@ class RealtimeVoiceSession:
 
     async def _on_nova_event(self, kind: str, data: dict) -> None:
         if kind == "audio":
+            if self._drop_audio:
+                return  # interrupted turn — drop the rest of its audio entirely
             b64 = base64.b64encode(data.get("pcm", b"")).decode("ascii")
             await self._emit({"type": "audio_chunk", "data": {
                 "b64": b64, "mime": "audio/pcm", "rate": 24000, "tag": "main",
             }})
+        elif kind == "content_start":
+            # A new content block started → the interrupted turn is over; let the
+            # next turn's audio through again.
+            self._drop_audio = False
         elif kind == "text":
             role = (data.get("role") or "").upper()
             text = data.get("text", "")

@@ -382,6 +382,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
   const beginBargeIn = useCallback(() => {
     flushPlayback();
     suppressAudioRef.current = true;
+    // Tell the server to SKIP the rest of the interrupted turn (drops all further
+    // audio server-side until the next turn), so nothing resumes after the timer.
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "interrupt" }));
+    }
     if (suppressTimerRef.current) window.clearTimeout(suppressTimerRef.current);
     suppressTimerRef.current = window.setTimeout(() => {
       suppressAudioRef.current = false;
@@ -465,10 +470,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
   }, [teardownRealtime, onClose]);
 
   const bargeIn = useCallback(() => {
-    beginBargeIn();
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "interrupt" }));
-    }
+    beginBargeIn(); // already sends the interrupt to the server
     setState("listening");
   }, [beginBargeIn]);
 
