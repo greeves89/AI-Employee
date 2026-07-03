@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     claude_code_oauth_refresh_token: str = ""
     default_model: str = "claude-sonnet-4-6"
     max_turns: int = 100
+    # How many DIFFERENT chat sessions one agent processes concurrently. 1 = serial
+    # (proven default). >1 lets independent sessions/tasks run in parallel in one
+    # container (each its own claude/codex/custom-LLM turn); same session stays serial.
+    max_parallel_chats: int = 1
     extended_thinking: bool = False  # Thinking is model-controlled, not a CLI flag
 
     # Model Provider: "anthropic", "bedrock", "vertex", "foundry"

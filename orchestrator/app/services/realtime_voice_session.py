@@ -520,9 +520,13 @@ class RealtimeVoiceSession:
         """Run the (slow) delegation in the background, then voice the result."""
         await self._emit({"type": "delegate", "data": {"instruction": instruction}})
         try:
+            # Unique session per delegation → its own lane in the agent, so several
+            # voice-delegated tasks can run in parallel (when the agent has
+            # MAX_PARALLEL_CHATS>1) instead of queuing behind each other.
             answer = await ask_agent_via_chat(
                 self.redis, self.agent_id, instruction, source="realtime_voice", timeout=180.0,
                 on_event=self._emit_activity,
+                chat_session_id=f"voice-{uuid.uuid4().hex[:8]}",
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("realtime delegation failed agent=%s: %s", self.agent_id, e, exc_info=True)

@@ -135,6 +135,10 @@ services:
       # kiosk). Empty by default → endpoint 404s. Set to "true" ONLY on the single-
       # user Pi kiosk, NEVER on multi-tenant boxes.
       KIOSK_VOICE_ENABLED: ${KIOSK_VOICE_ENABLED:-}
+      # How many different chat sessions ONE agent processes concurrently (1 =
+      # serial default). >1 → independent sessions/tasks run in parallel in one
+      # container. Passed through to each agent container.
+      MAX_PARALLEL_CHATS: ${MAX_PARALLEL_CHATS:-1}
       # Enterprise Volume Mounts — admin-defined allowlist (host paths never exposed to UI)
       # Format (one per line): label:host_path:container_path:mode  (mode = ro or rw)
       # Example:

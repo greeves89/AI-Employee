@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.23] — 2026-07-03
+
+### Added
+- **Parallele Chat-Sessions pro Agent.** Ein Agent-Container kann jetzt mehrere UNTERSCHIEDLICHE Chat-Sessions gleichzeitig abarbeiten (jede spawnt ihren eigenen claude/codex/custom-LLM-Turn) — dieselbe Session bleibt seriell/geordnet. Umgesetzt als Lane-Modell im `chat_consumer` (eine `asyncio.Queue` pro `source_key`, Concurrency via Semaphore; der Redis-Queue-Consumer bleibt einzig, daher keine rpop/rpush-Races). **Safe-by-default:** gesteuert über `MAX_PARALLEL_CHATS` (default **1** = exakt das bisherige serielle Verhalten, unveränderter Codepfad); erst `>1` aktiviert Parallelität. Jede Voice-Delegation nutzt jetzt eine eigene Session → mehrere per Sprache übergebene Aufgaben laufen parallel statt hintereinander. (`agent/app/chat_consumer.py`, `orchestrator/app/services/realtime_voice_session.py`, `orchestrator/app/core/agent_manager.py`, `config.py`, `docker-compose.yml`)
+
 ## [1.99.22] — 2026-07-03
 
 ### Added

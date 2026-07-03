@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 
 import redis.asyncio as aioredis
 
@@ -13,6 +14,20 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHAT_TURN_TIMEOUT = 600  # seconds
 DEFAULT_CODEX_CHAT_TURN_TIMEOUT = 1800  # seconds
+
+
+def _max_parallel_chats() -> int:
+    """How many chat channels this agent may process concurrently.
+
+    Default 1 = the proven serial behaviour (byte-for-byte the old path). Set
+    MAX_PARALLEL_CHATS>1 to let DIFFERENT chat sessions run at the same time in
+    one container (each spawns its own claude/codex/custom-LLM turn); the same
+    session always stays serial/ordered.
+    """
+    try:
+        return max(1, int(os.getenv("MAX_PARALLEL_CHATS", "1")))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _chat_turn_timeout() -> int:
@@ -294,8 +309,14 @@ class ChatConsumer:
         self.cancel_channel = f"agent:{agent_id}:chat:cancel"
         self.running = True
         self._handlers: dict[str, object] = {}   # source_key → handler
-        self._active_source_key: str | None = None
+        self._active_source_keys: set[str] = set()  # keys currently processing (>1 = parallel)
         self._cancel_listener_task: asyncio.Task | None = None
+        # Parallel mode (opt-in via MAX_PARALLEL_CHATS): one lane (asyncio.Queue)
+        # per source_key; same channel stays serial, different channels run
+        # concurrently up to the semaphore. Empty in serial mode.
+        self._lanes: dict[str, asyncio.Queue] = {}
+        self._lane_tasks: dict[str, asyncio.Task] = {}
+        self._sem: asyncio.Semaphore | None = None
 
     # ------------------------------------------------------------------ #
     # Source-key routing                                                   #
@@ -374,8 +395,11 @@ class ChatConsumer:
                     ignore_subscribe_messages=True, timeout=1.0
                 )
                 if message and message["type"] == "message":
-                    if self._active_source_key:
-                        handler = self._handlers.get(self._active_source_key)
+                    # Stop whichever channel(s) are currently processing. In serial
+                    # mode that's at most one; in parallel mode a global cancel
+                    # stops all in-flight turns (the cancel channel carries no key).
+                    for sk in list(self._active_source_keys):
+                        handler = self._handlers.get(sk)
                         if handler and getattr(handler, "is_running", False):
                             await handler.stop_current()
                 await asyncio.sleep(0.05)
@@ -395,6 +419,26 @@ class ChatConsumer:
     async def _drain_pending(self, source_key: str) -> list[str]:
         """Pop queued messages for this channel; re-queue messages from other channels."""
         texts: list[str] = []
+        lane = self._lanes.get(source_key)
+        if lane is not None:
+            # Parallel mode: same-channel messages wait in THIS lane (the main
+            # loop is the only Redis consumer). Drain them without touching Redis —
+            # they are all this channel, so nothing needs re-queueing.
+            while not lane.empty():
+                try:
+                    qmsg = lane.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if qmsg.get("text", "").strip() == "/reset":
+                    await self._reset_handler(source_key)
+                    texts.clear()
+                    continue
+                handler = self._handlers.get(source_key)
+                texts.append(self._prepare_text(
+                    qmsg["text"], qmsg.get("telegram"),
+                    qmsg.get("source", "webapp"), handler,
+                ))
+            return texts
         requeue: list[bytes] = []
         if not self.redis:
             return texts
@@ -477,106 +521,161 @@ class ChatConsumer:
         # Start cancel listener in background
         self._cancel_listener_task = asyncio.create_task(self._listen_for_cancel())
 
+        parallel = _max_parallel_chats()
+        if parallel > 1:
+            logger.info("Chat consumer: PARALLEL mode (up to %s concurrent channels)", parallel)
+            self._sem = asyncio.Semaphore(parallel)
+            await self._run_parallel(log_publisher)
+        else:
+            await self._run_serial(log_publisher)
+
+    async def _run_serial(self, log_publisher: LogPublisher) -> None:
+        """Proven serial path: exactly one chat turn at a time (default)."""
         while self.running:
             try:
-                # BRPOP blocks until a message is available (timeout 5s)
                 result = await self.redis.brpop(self.queue_name, timeout=5)
                 if result is None:
                     continue
-
                 _, msg_json = result
-                msg = json.loads(msg_json)
-                message_id = msg["id"]
-                text = msg["text"]
-                model = msg.get("model")
-                telegram_ctx = msg.get("telegram")
-                source = msg.get("source", "telegram" if telegram_ctx else "webapp")
-                chat_session_id = msg.get("chat_session_id")
-                images = msg.get("images") or None
-
-                # Route to the correct per-channel handler
-                source_key = self._source_key(source, chat_session_id, telegram_ctx)
-                handler = await self._get_or_create_handler(source_key)
-
-                # Handle special commands
-                if text.strip() == "/reset":
-                    await self._reset_handler(source_key)
-                    continue
-
-                text = self._prepare_text(text, telegram_ctx, source, handler)
-
-                # Images: the custom-LLM handler sees them natively. The
-                # Claude Code CLI handler can't take inline images, so save
-                # them to the workspace and point the agent at the files.
-                handle_kwargs: dict = {}
-                if images:
-                    if settings.agent_mode == "custom_llm":
-                        handle_kwargs["images"] = images
-                    else:
-                        saved = self._save_images(message_id, images)
-                        if saved:
-                            text += (
-                                "\n\n[Attached image(s) saved to the workspace — "
-                                "use the Read tool to view them:]\n"
-                                + "\n".join(saved)
-                            )
-
-                # Mark as working while processing chat
-                self._active_source_key = source_key
-                await log_publisher.publish_status("working", f"chat:{message_id}")
-
-                # Live steering: fold newly-arrived messages from the same channel
-                if hasattr(handler, "pending_drain"):
-                    handler.pending_drain = lambda: self._drain_pending(source_key)
-
-                timeout = _chat_turn_timeout()
-                try:
-                    await asyncio.wait_for(
-                        handler.handle_message(
-                            message_id=message_id,
-                            text=text,
-                            model=model,
-                            **handle_kwargs,
-                        ),
-                        timeout=timeout,
-                    )
-                    # Persist Claude session ID so we can --resume after restart
-                    await self._persist_session(source_key, handler)
-                except asyncio.TimeoutError:
-                    logger.error(
-                        "Chat turn %s timed out after %ss — aborting",
-                        message_id, timeout,
-                    )
-                    try:
-                        if hasattr(handler, "stop_current"):
-                            await handler.stop_current()
-                    except Exception:  # noqa: BLE001
-                        pass
-                    await log_publisher.publish_chat(
-                        message_id, "error",
-                        {"message": "Die Antwort hat zu lange gedauert und "
-                                    "wurde abgebrochen. Bitte erneut versuchen."},
-                    )
-                    await log_publisher.publish_chat(
-                        message_id, "done", {"status": "timeout"}
-                    )
-                finally:
-                    self._active_source_key = None
-                    await log_publisher.publish_status("idle")
-
+                await self._process_one(json.loads(msg_json), log_publisher)
             except aioredis.TimeoutError:
                 continue
             except aioredis.ConnectionError:
                 await asyncio.sleep(2)
-            except Exception as e:
-                if self.redis:
-                    try:
-                        await LogPublisher(self.redis, self.agent_id).publish_chat(
-                            "", "error", {"message": f"Chat error: {e}"}
-                        )
-                    except Exception:
-                        pass
+            except Exception as e:  # noqa: BLE001
+                await self._report_loop_error(e)
                 await asyncio.sleep(1)
+
+    async def _run_parallel(self, log_publisher: LogPublisher) -> None:
+        """Dispatch each message to a per-channel lane. Different channels run
+        concurrently (bounded by the semaphore); the SAME channel stays serial
+        and ordered. The main loop is the only Redis-queue consumer, so there is
+        no rpop/rpush race."""
+        while self.running:
+            try:
+                result = await self.redis.brpop(self.queue_name, timeout=5)
+                if result is None:
+                    continue
+                _, msg_json = result
+                msg = json.loads(msg_json)
+                sk = self._source_key(
+                    msg.get("source", "telegram" if msg.get("telegram") else "webapp"),
+                    msg.get("chat_session_id"),
+                    msg.get("telegram"),
+                )
+                lane = self._lanes.get(sk)
+                if lane is None:
+                    lane = asyncio.Queue()
+                    self._lanes[sk] = lane
+                    self._lane_tasks[sk] = asyncio.create_task(
+                        self._lane_worker(sk, lane, log_publisher)
+                    )
+                await lane.put(msg)
+            except aioredis.TimeoutError:
+                continue
+            except aioredis.ConnectionError:
+                await asyncio.sleep(2)
+            except Exception as e:  # noqa: BLE001
+                await self._report_loop_error(e)
+                await asyncio.sleep(1)
+
+    async def _lane_worker(self, source_key: str, lane: asyncio.Queue, log_publisher: LogPublisher) -> None:
+        """Serially process one channel's messages. Lanes persist for the agent
+        lifetime (an idle lane just blocks cheaply on an empty queue) — no
+        concurrent cleanup, so no lost-message race with the dispatcher."""
+        while self.running:
+            msg = await lane.get()
+            async with self._sem:
+                try:
+                    await self._process_one(msg, log_publisher)
+                except Exception as e:  # noqa: BLE001
+                    await self._report_loop_error(e)
+
+    async def _report_loop_error(self, e: Exception) -> None:
+        if self.redis:
+            try:
+                await LogPublisher(self.redis, self.agent_id).publish_chat(
+                    "", "error", {"message": f"Chat error: {e}"}
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def _process_one(self, msg: dict, log_publisher: LogPublisher) -> None:
+        """Handle a single chat message end-to-end for its channel. Shared by the
+        serial and parallel paths."""
+        message_id = msg["id"]
+        text = msg["text"]
+        model = msg.get("model")
+        telegram_ctx = msg.get("telegram")
+        source = msg.get("source", "telegram" if telegram_ctx else "webapp")
+        chat_session_id = msg.get("chat_session_id")
+        images = msg.get("images") or None
+
+        # Route to the correct per-channel handler
+        source_key = self._source_key(source, chat_session_id, telegram_ctx)
+        handler = await self._get_or_create_handler(source_key)
+
+        # Handle special commands
+        if text.strip() == "/reset":
+            await self._reset_handler(source_key)
+            return
+
+        text = self._prepare_text(text, telegram_ctx, source, handler)
+
+        # Images: the custom-LLM handler sees them natively. The Claude Code CLI
+        # handler can't take inline images, so save them to the workspace and
+        # point the agent at the files.
+        handle_kwargs: dict = {}
+        if images:
+            if settings.agent_mode == "custom_llm":
+                handle_kwargs["images"] = images
+            else:
+                saved = self._save_images(message_id, images)
+                if saved:
+                    text += (
+                        "\n\n[Attached image(s) saved to the workspace — "
+                        "use the Read tool to view them:]\n"
+                        + "\n".join(saved)
+                    )
+
+        # Mark as working while processing chat
+        self._active_source_keys.add(source_key)
+        await log_publisher.publish_status("working", f"chat:{message_id}")
+
+        # Live steering: fold newly-arrived messages from the same channel
+        if hasattr(handler, "pending_drain"):
+            handler.pending_drain = lambda sk=source_key: self._drain_pending(sk)
+
+        timeout = _chat_turn_timeout()
+        try:
+            await asyncio.wait_for(
+                handler.handle_message(
+                    message_id=message_id,
+                    text=text,
+                    model=model,
+                    **handle_kwargs,
+                ),
+                timeout=timeout,
+            )
+            # Persist Claude session ID so we can --resume after restart
+            await self._persist_session(source_key, handler)
+        except asyncio.TimeoutError:
+            logger.error("Chat turn %s timed out after %ss — aborting", message_id, timeout)
+            try:
+                if hasattr(handler, "stop_current"):
+                    await handler.stop_current()
+            except Exception:  # noqa: BLE001
+                pass
+            await log_publisher.publish_chat(
+                message_id, "error",
+                {"message": "Die Antwort hat zu lange gedauert und "
+                            "wurde abgebrochen. Bitte erneut versuchen."},
+            )
+            await log_publisher.publish_chat(message_id, "done", {"status": "timeout"})
+        finally:
+            self._active_source_keys.discard(source_key)
+            if not self._active_source_keys:
+                await log_publisher.publish_status("idle")
 
     async def stop(self) -> None:
         self.running = False
