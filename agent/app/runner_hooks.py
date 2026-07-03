@@ -327,7 +327,11 @@ def get_memory_preload() -> str:
     """
     try:
         url = f"{settings.orchestrator_url}/api/v1/memory/preload/{settings.agent_id}"
-        with urllib.request.urlopen(url, timeout=5) as response:
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
             data = _json.loads(response.read())
 
         critical = data.get("critical", [])
@@ -663,7 +667,11 @@ def get_user_feedback() -> str:
     """
     try:
         url = f"{settings.orchestrator_url}/api/v1/memory/preload/{settings.agent_id}"
-        with urllib.request.urlopen(url, timeout=5) as response:
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
             data = _json.loads(response.read())
 
         # Extract correction-category memories from the critical bucket
@@ -697,7 +705,11 @@ def get_improvement_context() -> str:
     """
     try:
         url = f"{settings.orchestrator_url}/api/v1/memory/preload/{settings.agent_id}"
-        with urllib.request.urlopen(url, timeout=5) as response:
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
             data = _json.loads(response.read())
         critical = data.get("critical", [])
         suggestions = [m for m in critical if m.get("category") == "improvement"]
