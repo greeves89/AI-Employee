@@ -899,7 +899,9 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
     if (!window.confirm("Wirklich ALLE Chats dieses Agenten löschen? Das kann nicht rückgängig gemacht werden.")) return;
     try {
       await api.deleteAllChatSessions(agentId);
-      setSessions([]);
+      // The server KEEPS pinned sessions — so keep their tabs too instead of
+      // wiping the list (which only hid them until a refresh).
+      setSessions((prev) => prev.filter((s) => s.pinned));
       setActiveSessionId(null);
       setMessages([]);
     } catch {

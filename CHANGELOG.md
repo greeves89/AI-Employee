@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.32] — 2026-07-03
+
+### Fixed
+- **„Alle Chats löschen" blendete gepinnte Chats fälschlich aus.** Das Backend behält gepinnte Sessions korrekt (bestätigt), aber das Frontend leerte nach dem Löschen die Tab-Liste komplett (`setSessions([])`) — die gepinnten Chats verschwanden bis zum Reload. Jetzt bleiben die gepinnten Tabs stehen (`filter(s => s.pinned)`). (`frontend/src/components/agents/chat.tsx`)
+
 ## [1.99.31] — 2026-07-03
 
 ### Added
