@@ -9,6 +9,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/components/theme-provider";
 import {
   getKnowledgeEntries, getKnowledgeEntry, createKnowledgeEntry,
   updateKnowledgeEntry, deleteKnowledgeEntry, getKnowledgeTags,
@@ -483,7 +484,7 @@ export default function KnowledgePage() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 24 }}
                   transition={{ duration: 0.18 }}
-                  className="absolute right-0 top-0 h-full w-80 border-l border-foreground/[0.08] bg-black/80 backdrop-blur-md flex flex-col z-20"
+                  className="absolute right-0 top-0 h-full w-80 border-l border-foreground/[0.08] bg-card/90 dark:bg-black/80 backdrop-blur-md flex flex-col z-20"
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-foreground/[0.06]">
@@ -660,6 +661,12 @@ function buildTagColors(nodes: KnowledgeGraphNode[]): Record<string, string> {
 }
 
 function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
+  const { theme } = useTheme();
+  const isLight = theme === "light";
+  // Base (non-hover) edge + label colours must flip for light mode — the graph was
+  // originally dark-only (white edges/labels are invisible on a white canvas).
+  const edgeBase = isLight ? "#475569" : "#ffffff";   // slate-600 / white
+  const labelColor = isLight ? "#1e293b" : "#ffffff"; // slate-800 / white
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
@@ -864,19 +871,19 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <button
           onClick={() => setTransform((t) => ({ ...t, scale: Math.min(4, t.scale * 1.3) }))}
-          className="rounded-lg border border-foreground/[0.08] bg-black/60 backdrop-blur-sm p-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="rounded-lg border border-foreground/[0.08] bg-card/80 dark:bg-black/60 backdrop-blur-sm p-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ZoomIn className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={() => setTransform((t) => ({ ...t, scale: Math.max(0.15, t.scale / 1.3) }))}
-          className="rounded-lg border border-foreground/[0.08] bg-black/60 backdrop-blur-sm p-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="rounded-lg border border-foreground/[0.08] bg-card/80 dark:bg-black/60 backdrop-blur-sm p-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ZoomOut className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={resetView}
-          className="rounded-lg border border-foreground/[0.08] bg-black/60 backdrop-blur-sm p-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="rounded-lg border border-foreground/[0.08] bg-card/80 dark:bg-black/60 backdrop-blur-sm p-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           <Maximize2 className="h-3.5 w-3.5" />
         </button>
@@ -885,7 +892,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
       {/* Bottom-left: tag legend + edge legend */}
       <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-2">
         {/* Tag color legend */}
-        <div className="rounded-lg border border-foreground/[0.08] bg-black/60 backdrop-blur-sm px-3 py-2">
+        <div className="rounded-lg border border-foreground/[0.08] bg-card/80 dark:bg-black/60 backdrop-blur-sm px-3 py-2">
           <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-1.5">Tags</p>
           <div className="flex flex-col gap-1">
             {tagLegend.map(({ tag, count, color }) => (
@@ -907,7 +914,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
           </div>
         </div>
         {/* Edge type legend */}
-        <div className="rounded-lg border border-foreground/[0.08] bg-black/60 backdrop-blur-sm px-3 py-2 flex flex-col gap-1">
+        <div className="rounded-lg border border-foreground/[0.08] bg-card/80 dark:bg-black/60 backdrop-blur-sm px-3 py-2 flex flex-col gap-1">
           {backlinkCount > 0 && (
             <div className="flex items-center gap-2">
               <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="#818cf8" strokeWidth="1.5" /></svg>
@@ -933,7 +940,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.1 }}
-            className="absolute top-3 left-3 z-10 max-w-[200px] rounded-xl border border-foreground/[0.08] bg-black/80 backdrop-blur-md p-3 pointer-events-none"
+            className="absolute top-3 left-3 z-10 max-w-[200px] rounded-xl border border-foreground/[0.08] bg-card/90 dark:bg-black/80 backdrop-blur-md p-3 pointer-events-none"
           >
             <p className="text-xs font-semibold leading-snug text-foreground">{hoveredNode.title}</p>
             {hoveredNode.tags[0] && (
@@ -992,10 +999,10 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
             // Gray base, color on hover
             const color = isHoveredEdge
               ? (isSemantic ? "#34d399" : "#818cf8")
-              : "#ffffff";
-            const opacity = !tagMatch ? 0.02
+              : edgeBase;
+            const opacity = !tagMatch ? (isLight ? 0.04 : 0.02)
               : isHoveredEdge ? 0.9
-              : isSemantic ? 0.1 : 0.14;
+              : isLight ? (isSemantic ? 0.22 : 0.3) : (isSemantic ? 0.1 : 0.14);
             const sw = isHoveredEdge ? 1.5 : 0.6;
             return (
               <line
@@ -1017,9 +1024,9 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
             const isHovered = hoveredNode?.id === node.id;
             const isSelected = selectedTag === tag;
             const isDimmed = selectedTag !== null && !isSelected;
-            // Obsidian: base 3px, scales with connections, max 16px
-            const baseR = Math.max(3, Math.min(16, 3 + node.degree * 1.6 + (node.size ?? 0) * 0.2));
-            const r = isHovered ? baseR + 2.5 : baseR;
+            // Node size: bigger + easier to hit (base 6px, scales with connections, max 24px)
+            const baseR = Math.max(6, Math.min(24, 6 + node.degree * 2.2 + (node.size ?? 0) * 0.25));
+            const r = isHovered ? baseR + 3 : baseR;
             const nodeOpacity = isDimmed ? 0.08 : 1;
             const showLabel = isHovered || isSelected;
             const label = node.title.length > 22 ? node.title.substring(0, 20) + "…" : node.title;
@@ -1040,7 +1047,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
                   r={r}
                   fill={color}
                   fillOpacity={isHovered ? 1 : isDimmed ? 0.4 : 0.9}
-                  stroke={isHovered ? "white" : "none"}
+                  stroke={isHovered ? (isLight ? "#334155" : "white") : "none"}
                   strokeWidth={1}
                   strokeOpacity={0.5}
                 />
@@ -1048,7 +1055,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
                   <text
                     y={r + 11}
                     textAnchor="middle"
-                    fill="white"
+                    fill={labelColor}
                     fillOpacity={isHovered ? 1 : 0.7}
                     fontSize={isHovered ? 10 : 9}
                     fontWeight={isHovered ? 600 : 400}
@@ -1073,7 +1080,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.18 }}
-            className="absolute right-0 top-0 h-full w-60 border-l border-foreground/[0.08] bg-black/80 backdrop-blur-md flex flex-col z-20"
+            className="absolute right-0 top-0 h-full w-60 border-l border-foreground/[0.08] bg-card/90 dark:bg-black/80 backdrop-blur-md flex flex-col z-20"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/[0.06]">

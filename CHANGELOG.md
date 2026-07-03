@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.51] — 2026-07-03
+
+### Fixed
+- **Knowledge-Graph im Light Mode brauchbar + größere Knoten.** Der Graph war dark-only: Kanten `#ffffff` und Labels `fill="white"` waren auf weißem Canvas unsichtbar, Legenden-/Overlay-Boxen hatten `bg-black` (dunkle Kästen im Light Mode). Neu: Kanten/Labels/Hover-Rahmen theme-aware (slate im Light, weiß im Dark), Legenden/Panels `bg-card` (dark bleibt via `dark:bg-black`). Knoten deutlich größer (Basis 3→6px, Max 16→24px) und leichter zu treffen. (`frontend/src/app/knowledge/page.tsx`)
+
 ## [1.99.50] — 2026-07-03
 
 ### Fixed
