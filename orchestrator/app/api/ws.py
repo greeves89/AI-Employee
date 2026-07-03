@@ -126,6 +126,26 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
+    # Ownership gate: the authenticated user must have access to THIS agent
+    # (closes IDOR — chatting drives the agent's container via the chat queue).
+    _chat_uid = getattr(websocket.state, "user_id", None)
+    from app.dependencies import require_agent_access
+    from app.models.user import User as _User
+    from fastapi import HTTPException as _HTTPException
+    try:
+        async with async_session_factory() as db:
+            _user = await db.get(_User, _chat_uid) if _chat_uid and _chat_uid != "unknown" else None
+            if _user is None:
+                await websocket.close(code=4001, reason="Unauthorized")
+                return
+            await require_agent_access(agent_id, _user, db)
+    except _HTTPException:
+        await websocket.close(code=4003, reason="Access denied to this agent")
+        return
+    except Exception:
+        await websocket.close(code=1011, reason="authorization error")
+        return
+
     agent_container_id: str | None = None
     agent_mode: str = "claude_code"
 
@@ -752,16 +772,29 @@ async def ws_agent_voice(
     if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
-    # Resolve user id from the ticket / token. We need it for the session.
-    # (Ticket was consumed in _authenticate_ws; re-fetch user separately.)
-    user_id = "unknown"
+    # Use the user id verified by _authenticate_ws (ticket/JWT) — do NOT re-resolve
+    # from token= (absent in the ticket flow → would degrade to "unknown").
+    user_id = getattr(websocket.state, "user_id", "unknown")
+
+    # Ownership gate: the authenticated user must have access to THIS agent.
+    # Without this, any authenticated user could drive any agent_id (IDOR) — the
+    # voice session exposes ask_agent (delegate work) + settings writers.
+    from app.dependencies import require_agent_access
+    from app.models.user import User as _User
+    from fastapi import HTTPException as _HTTPException
     try:
         async with async_session_factory() as db:
-            user = await get_current_user_ws(token, db) if token else None
-            if user:
-                user_id = str(user.id)
+            _user = await db.get(_User, user_id) if user_id and user_id != "unknown" else None
+            if _user is None:
+                await websocket.close(code=4001, reason="Unauthorized")
+                return
+            await require_agent_access(agent_id, _user, db)
+    except _HTTPException:
+        await websocket.close(code=4003, reason="Access denied to this agent")
+        return
     except Exception:
-        pass
+        await websocket.close(code=1011, reason="authorization error")
+        return
 
     # Verify agent container is alive + read the configured interaction model
     interaction_model: str | None = None

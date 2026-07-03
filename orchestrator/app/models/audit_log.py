@@ -23,6 +23,7 @@ class AuditEventType(str, Enum):
     AGENT_DELETED = "agent_deleted"               # agent deleted
     # Governance / policy changes
     AUTONOMY_LEVEL_CHANGED = "autonomy_level_changed"   # agent autonomy level changed
+    AGENT_MODEL_CHANGED = "agent_model_changed"         # agent model/provider changed
     APPROVAL_RULE_CREATED = "approval_rule_created"     # global/agent approval rule created
     APPROVAL_RULE_UPDATED = "approval_rule_updated"     # approval rule toggled or edited
     APPROVAL_RULE_DELETED = "approval_rule_deleted"     # approval rule deleted

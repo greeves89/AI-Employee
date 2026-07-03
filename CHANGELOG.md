@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.19] — 2026-07-03
+
+### Added
+- **Einstellungen per Sprache.** Nova Sonic kann jetzt auf Zuruf **Autonomiestufe** (`set_autonomy`, l1–l4) und **Modell** (`set_agent_model`, z. B. „nimm Opus/Sonnet/Haiku") ändern. Beide Tools nutzen eine neue gemeinsame Service-Schicht `agent_settings.py` (change_agent_model/change_autonomy_level) mit voller AuthZ — dieselbe Logik, die jetzt auch die HTTP-Endpoints `PATCH /agents/{id}/model` und `POST /agents/{id}/autonomy-level` verwenden (Single Source of Truth). Harness-Wechsel (Claude↔Codex) bleibt bewusst UI-only. (`orchestrator/app/services/agent_settings.py`, `orchestrator/app/services/realtime_voice_session.py`, `orchestrator/app/api/agents.py`)
+
+### Security
+- **IDOR auf den Voice-/Chat-WebSockets geschlossen** (pre-existing, vom Security-Review gefunden). `/ws/agents/{id}/voice` und `/ws/agents/{id}/chat` prüften nur die Nutzer-Auth, aber nicht, ob der Nutzer **Zugriff auf DIESEN Agenten** hat — jeder Angemeldete konnte per fremder `agent_id` Aufgaben delegieren (`ask_agent`) und Daten (Status/Tasks/Budget) lesen. Jetzt Ownership-Gate via `require_agent_access` direkt beim Connect (Admin/Owner/AgentAccess erlaubt, sonst 4003). (`orchestrator/app/api/ws.py`)
+- **Voice-Session-User-Auth korrigiert.** `ws_agent_voice` rekonstruierte die `user_id` aus `token=` (im Ticket-Flow immer leer → immer „unknown") statt aus der bereits verifizierten WS-Auth. Nutzt jetzt `websocket.state.user_id` — dadurch greifen die AuthZ-Checks der Sprach-Settings-Tools überhaupt erst. (`orchestrator/app/api/ws.py`)
+- **Prompt-Injection-Härtung:** Ergebnisse delegierter Aufgaben werden Nova Sonic jetzt klar als DATEN (nicht als Befehl) übergeben — injizierter Fremdtext (z. B. aus einer gelesenen E-Mail) kann so keine Settings/Autonomie/Modell-Änderung auslösen. (`orchestrator/app/services/realtime_voice_session.py`)
+- **Audit-Log für Modelländerungen** (Parität zu Autonomie-Änderungen). (`orchestrator/app/services/agent_settings.py`, `orchestrator/app/models/audit_log.py`)
+
 ## [1.99.18] — 2026-07-03
 
 ### Security

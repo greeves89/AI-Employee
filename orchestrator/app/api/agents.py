@@ -651,44 +651,8 @@ async def set_autonomy_level(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    await _check_owner(agent_id, user, db)
-    level = data.level.lower()
-    if level not in {"l1", "l2", "l3", "l4"}:
-        raise HTTPException(status_code=422, detail="Invalid level. Must be l1, l2, l3, or l4")
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
-    agent = result.scalar_one_or_none()
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    previous_level = agent.autonomy_level
-    agent.autonomy_level = level
-    # Applying an L1–L4 preset also fills the 3-state autonomy matrix (single
-    # source that drives the agent prompt). Users can fine-tune cells afterwards.
-    from app.core import autonomy_matrix as am
-    agent.config = {**(agent.config or {}), "autonomy_matrix": am.matrix_for_level(level)}
-    await db.commit()
-
-    # Apply the matching approval rule preset for this level (legacy compat)
-    from app.api.approval_rules import apply_autonomy_preset
-    rules = await apply_autonomy_preset(db, agent_id, level)
-
-    # Audit log
-    from app.models.audit_log import AuditLog, AuditEventType
-    db.add(AuditLog(
-        agent_id=agent_id,
-        event_type=AuditEventType.AUTONOMY_LEVEL_CHANGED,
-        command=f"autonomy_level: {previous_level} → {level}",
-        outcome="success",
-        user_id=str(user.id),
-        meta={"previous_level": previous_level, "new_level": level, "rules_applied": [r.name for r in rules]},
-    ))
-    await db.commit()
-
-    return {
-        "agent_id": agent.id,
-        "autonomy_level": agent.autonomy_level,
-        "rules_applied": len(rules),
-        "rule_names": [r.name for r in rules],
-    }
+    from app.services.agent_settings import change_autonomy_level
+    return await change_autonomy_level(db, user, agent_id, data.level)
 
 
 @router.get("/{agent_id}/autonomy-matrix")
@@ -855,49 +819,12 @@ async def update_agent_model(
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Update the model provider and model for an agent."""
-    await _check_owner(agent_id, user, db)
+    from app.services.agent_settings import change_agent_model
     try:
-        from app.core.permissions import get_effective_permissions, can_use_llm_provider
-        perms = await get_effective_permissions(user, db)
-        if not can_use_llm_provider(perms, body.model_provider):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Model-Provider '{body.model_provider}' ist für deine Rolle nicht erlaubt.",
-            )
-        agent = await manager._get_agent(agent_id)
-        # Guard: a claude_code agent may only switch to Claude models, a
-        # codex_cli agent only to GPT/o-series. Prevents mismatching the harness
-        # via settings. custom_llm agents use the AI-account path, not this one.
-        from app.core.model_catalog import is_model_allowed_for_mode, default_model_for_mode
-        if not is_model_allowed_for_mode(agent.mode, body.model):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"Modell '{body.model}' passt nicht zum Provider "
-                    f"'{agent.mode}'. Erlaubt sind z. B. "
-                    f"'{default_model_for_mode(agent.mode)}'."
-                ),
-            )
-        agent.model = body.model
-        config = dict(agent.config or {})
-        config["model_provider"] = body.model_provider
-        agent.config = config
-        await db.commit()
-        await db.refresh(agent)
-
-        # Restart container to pick up new model
-        if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
-            try:
-                await manager.restart_agent(agent_id)
-            except Exception:
-                pass  # Non-critical — next task will use new model
-
-        return {
-            "agent_id": agent_id,
-            "model": agent.model,
-            "model_provider": body.model_provider,
-            "status": "updated",
-        }
+        result = await change_agent_model(
+            db, user, agent_id, body.model, body.model_provider, manager
+        )
+        return {**result, "status": "updated"}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
