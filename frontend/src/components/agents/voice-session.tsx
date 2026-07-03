@@ -398,9 +398,25 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
   const startLive = useCallback(async () => {
     if (inCtxRef.current) return; // already live
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-      });
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("Kein Mikrofon-Zugriff (kein sicherer Kontext / mediaDevices fehlt)");
+        setState("error");
+        return;
+      }
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+        });
+      } catch (e) {
+        // Fall back to the simplest constraint if the device rejects the extras
+        // (OverconstrainedError on some USB mics) — then rethrow if that fails too.
+        if ((e as Error)?.name === "OverconstrainedError" || (e as Error)?.name === "NotFoundError") {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } else {
+          throw e;
+        }
+      }
       streamRef.current = stream;
       const ctx = new AudioContext();
       inCtxRef.current = ctx;
@@ -435,8 +451,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
       proc.connect(ctx.destination); // required for onaudioprocess to fire
       setLive(true);
       setState("listening");
-    } catch {
-      setError("Mikrofon-Zugriff verweigert");
+    } catch (e) {
+      const name = (e as Error)?.name || "";
+      const msg = (e as Error)?.message || "";
+      setError(`Mikrofon-Fehler: ${name || "unbekannt"}${msg ? ` — ${msg}` : ""}`);
       setState("error");
     }
   }, []);

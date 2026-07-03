@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.29] — 2026-07-03
+
+### Fixed
+- **Mikrofon-Fehler im Voice-Modal zeigt jetzt die echte Ursache** statt pauschal „Zugriff verweigert" (z. B. `NotAllowedError`/`NotFoundError`/`NotReadableError`). Zusätzlich Fallback auf einfache Audio-Constraints (`audio: true`) bei OverconstrainedError/NotFoundError — behebt manche USB-Mic-Fälle. (`frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.28] — 2026-07-03
 
 ### Fixed
