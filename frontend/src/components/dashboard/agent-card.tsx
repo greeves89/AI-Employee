@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug, Wallet } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug, Wallet, Zap } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** Human-friendly interval label, e.g. 3600 → "1h", 1800 → "30m", 90 → "90s". */
+function formatInterval(sec: number): string {
+  if (!sec || sec <= 0) return "";
+  if (sec % 3600 === 0) return `${sec / 3600}h`;
+  if (sec % 60 === 0) return `${sec / 60}m`;
+  return `${sec}s`;
+}
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 
@@ -92,6 +100,21 @@ export function AgentCard({ agent }: AgentCardProps) {
 
           {/* Status badges */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {(() => {
+              // Proactive mode indicator: lightning + trigger interval (e.g. "1h").
+              const proactive = (agent.config as { proactive?: { enabled?: boolean; interval_seconds?: number } } | null | undefined)?.proactive;
+              if (!proactive?.enabled) return null;
+              const label = formatInterval(proactive.interval_seconds ?? 0);
+              return (
+                <div
+                  title={`Proactive Mode aktiv${label ? ` — alle ${label}` : ""}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-400"
+                >
+                  <Zap className="h-3 w-3 fill-emerald-400/30" />
+                  {label && <span className="tabular-nums">{label}</span>}
+                </div>
+              );
+            })()}
             {agent.mode === "claude_code" ? (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20">
                 <Plug className="h-3 w-3" />

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.54] — 2026-07-03
+
+### Fixed
+- **Knowledge-Graph Auto-Fit jetzt zuverlässig.** Der Fit lief nur bei `simDone`, was bei mehrfachem Resize nie feuerte → Knoten off-screen. Neu: kontinuierlicher Fit während des Settle (auf `simNodes`-Updates), stoppt sobald der Nutzer pannt/zoomt. (`frontend/src/app/knowledge/page.tsx`)
+
+### Added
+- **Proactive-Mode-Indikator auf der Agent-Karte.** Ist der Proaktiv-Modus aktiv, zeigt die Karte einen grünen Blitz + Intervall-Pille (z.B. „1h"). (`frontend/src/components/dashboard/agent-card.tsx`)
+
 ## [1.99.53] — 2026-07-03
 
 ### Fixed

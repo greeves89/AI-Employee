@@ -679,6 +679,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
   const simRef = useRef<SimNode[]>([]);
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const didUserInteract = useRef(false);  // stop auto-fit once the user pans/zooms
 
   const tagColors = useMemo(() => buildTagColors(nodes), [nodes]);
 
@@ -806,6 +807,7 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
   const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
     e.preventDefault();
+    didUserInteract.current = true;
     const factor = e.deltaY < 0 ? 1.12 : 0.89;
     const svg = svgRef.current;
     if (!svg) return;
@@ -868,10 +870,15 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
   const resetView = useCallback(() => fitToView(), [fitToView]);
 
-  // Auto-fit once the layout has settled (and re-fit if the canvas resizes).
+  // Keep the graph fitted WHILE the layout settles. simNodes updates every few ticks
+  // and stops once settled → the last fit lands on the final positions. This is robust
+  // even if the simulation restarts on a resize (then simDone may never fire). Once
+  // settled there are no more simNodes updates, so the user can freely pan/zoom.
   useEffect(() => {
-    if (simDone) fitToView();
-  }, [simDone, dimensions, fitToView]);
+    if (didUserInteract.current) return;
+    if (simNodes.length && dimensions.width && dimensions.height) fitToView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simNodes, dimensions]);
 
   if (nodes.length === 0) {
     return (
