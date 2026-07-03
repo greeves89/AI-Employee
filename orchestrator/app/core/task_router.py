@@ -297,6 +297,12 @@ class TaskRouter:
         # the agent once its (or its owner's) monthly budget is exhausted.
         model = await self._apply_budget_policy(agent_id, model)
 
+        # Harness compatibility: a delegated/inherited model (e.g. a Claude model
+        # from a claude_code delegator) must be coerced to one the target agent's
+        # harness actually supports, or the task fails at runtime (e.g. a codex_cli
+        # agent rejecting claude-* with "not supported using Codex").
+        model = await self._coerce_task_model_for_agent(agent_id, model)
+
         # Create task in DB
         task_metadata = dict(metadata or {})
         if created_by_agent:
@@ -1001,6 +1007,45 @@ class TaskRouter:
             f"[Budget] {reason} → agent {agent_id} downgraded to {BUDGET_FALLBACK_MODEL}"
         )
         return BUDGET_FALLBACK_MODEL
+
+    async def _coerce_task_model_for_agent(
+        self, agent_id: str, model: str | None
+    ) -> str | None:
+        """Coerce the task model to the target agent's harness mode.
+
+        Mirrors the container-launch coercion (agent_manager) so a model that a
+        delegator inherited/picked is validated against where it will actually run.
+        A claude_code agent whose provider is codex is treated as codex_cli. When
+        no model is requested we leave it None so the agent falls back to its own
+        default. Never raises — on any lookup failure the model passes through.
+        """
+        if not model:
+            return model
+        try:
+            from app.config import settings
+            from app.core.model_catalog import coerce_model_for_mode
+            from app.models.agent import Agent
+
+            result = await self.db.execute(select(Agent).where(Agent.id == agent_id))
+            agent = result.scalar_one_or_none()
+            if not agent:
+                return model
+
+            mode = agent.mode or "claude_code"
+            provider = (agent.config or {}).get("model_provider") or settings.model_provider
+            if mode == "claude_code" and provider == "codex":
+                mode = "codex_cli"
+
+            coerced = coerce_model_for_mode(mode, model)
+            if coerced != model:
+                logger.info(
+                    "[ModelCoerce] task model %s incompatible with agent %s (mode=%s) → %s",
+                    model, agent_id, mode, coerced,
+                )
+            return coerced
+        except Exception as e:
+            logger.warning(f"Model coercion skipped for agent {agent_id}: {e}")
+            return model
 
     async def _check_budget_thresholds(self, agent_id: str) -> None:
         """After task completion, check if monthly budget thresholds are reached."""
