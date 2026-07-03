@@ -262,6 +262,10 @@ class RealtimeVoiceSession:
     # turn is skipped, not just the current chunk). Cleared when Nova Sonic starts
     # the next content block (= a genuinely new turn).
     _drop_audio: bool = False
+    # Persistence: the whole voice call is saved as one chat session so it shows in
+    # the agent's chat history and can be continued by text or re-opened by voice.
+    _persist_role: str = ""
+    _persist_mid: str = ""
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -471,8 +475,10 @@ class RealtimeVoiceSession:
                 return
             if role == "USER":
                 await self._emit({"type": "transcript", "data": {"text": text}})
+                await self._persist_turn("user", text)
             else:  # ASSISTANT / other
                 await self._emit({"type": "response", "data": {"text": text}})
+                await self._persist_turn("assistant", text)
         elif kind == "tool_use":
             # Run delegation without blocking the receive loop.
             asyncio.create_task(self._handle_tool_use(data))
@@ -736,6 +742,61 @@ class RealtimeVoiceSession:
             for i, r in enumerate(results, 1)
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
+
+    async def _persist_turn(self, role: str, text: str) -> None:
+        """Save the voice conversation as a chat session (session_id = this call) so
+        the whole call shows in the agent's chat history and can be continued by
+        text — or re-opened by voice. Coalesces streamed deltas into one message
+        per turn."""
+        t = (text or "").strip()
+        if not t:
+            return
+        from app.db.session import async_session_factory
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+        from sqlalchemy import select
+        try:
+            async with async_session_factory() as db:
+                titled = (await db.execute(
+                    select(ChatSession).where(
+                        ChatSession.agent_id == self.agent_id,
+                        ChatSession.session_id == self.session_id,
+                    )
+                )).scalar_one_or_none()
+                if titled is None:
+                    db.add(ChatSession(
+                        agent_id=self.agent_id, session_id=self.session_id,
+                        title="Sprach-Gespräch",
+                    ))
+                    await db.commit()
+                # Same turn continues → update its message; else start a new one.
+                if self._persist_role == role and self._persist_mid:
+                    row = (await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.agent_id == self.agent_id,
+                            ChatMessage.session_id == self.session_id,
+                            ChatMessage.message_id == self._persist_mid,
+                            ChatMessage.role == role,
+                        )
+                    )).scalar_one_or_none()
+                    if row is not None:
+                        cur = row.content or ""
+                        if t.startswith(cur):
+                            row.content = t
+                        elif not (cur.endswith(t) or t in cur):
+                            row.content = f"{cur} {t}"
+                        await db.commit()
+                        return
+                mid = uuid.uuid4().hex[:12]
+                self._persist_role = role
+                self._persist_mid = mid
+                db.add(ChatMessage(
+                    agent_id=self.agent_id, session_id=self.session_id, message_id=mid,
+                    role=role, content=t, meta={"source": "voice"},
+                ))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.debug("voice persist turn failed agent=%s", self.agent_id, exc_info=True)
 
     async def _search_knowledge(self, query: str, limit: int = 5) -> str:
         """Vector-search the agent's own memory/knowledge (the same store the

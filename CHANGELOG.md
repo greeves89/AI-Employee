@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.31] — 2026-07-03
+
+### Added
+- **Voice-Gespräche sind jetzt persistent + als Chat fortsetzbar.** Der ganze Sprach-Call wird als **Chat-Session** („Sprach-Gespräch") gespeichert: die Transkript-Turns (User + Agent) landen als ChatMessages in der DB → das Gespräch taucht in der Chat-Historie des Agenten auf und kann **per Text weitergeführt** werden (Voice-Wiederaufnahme mit Kontext folgt). Streamende Deltas werden pro Turn zu einer Nachricht zusammengefasst. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.30] — 2026-07-03
 
 ### Added
