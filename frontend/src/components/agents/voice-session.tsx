@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 
@@ -75,6 +75,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
+  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string }[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   // Append a conversation turn, coalescing consecutive same-role events into ONE
@@ -215,6 +216,21 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
         setResponse(String(data.text || ""));
         setDelegating(false); // final report arrived → agent finished the delegated task
         if (modeRef.current === "nova_sonic") upsertTurn("assistant", String(data.text || ""));
+        break;
+      case "media":
+        // Agent presented an image/file while working — show it in the Jarvis panel.
+        setMedia((prev) =>
+          [
+            {
+              kind: String(data.kind || ""),
+              media_type: String(data.media_type || ""),
+              b64: data.b64 ? String(data.b64) : undefined,
+              filename: String(data.filename || ""),
+              caption: String(data.caption || ""),
+            },
+            ...prev,
+          ].slice(0, 8)
+        );
         break;
       case "web_results":
         setWebResults((prev) =>
@@ -615,6 +631,26 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
                   Aufgaben &amp; Aktivität
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                  {media.map((m, mi) => (
+                    <div key={mi} className="rounded-lg border border-border bg-foreground/[0.03] p-2">
+                      {m.kind === "image" && m.b64 ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`data:${m.media_type || "image/png"};base64,${m.b64}`}
+                          alt={m.caption || "Bild"}
+                          className="max-h-64 w-full rounded object-contain"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs">
+                          <FileText className="h-4 w-4 shrink-0 text-sky-400" />
+                          <span className="truncate">{m.filename || "Datei"}</span>
+                        </div>
+                      )}
+                      {m.caption && (
+                        <div className="mt-1 text-[11px] text-muted-foreground/70">{m.caption}</div>
+                      )}
+                    </div>
+                  ))}
                   {activity.length > 0 && (
                     <div className="rounded-lg border border-border bg-black/40 p-2.5">
                       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
@@ -676,7 +712,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
                       </div>
                     </div>
                   ))}
-                  {activity.length === 0 && webResults.length === 0 && (
+                  {activity.length === 0 && webResults.length === 0 && media.length === 0 && (
                     <p className="text-xs text-muted-foreground/50">
                       Hier erscheint live, was der Agent tut — und Web-Ergebnisse, wenn ich etwas nachschlage.
                     </p>

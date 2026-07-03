@@ -499,6 +499,22 @@ class RealtimeVoiceSession:
             t = str(edata.get("text", "")).strip()
             if t:
                 await self._emit({"type": "activity", "data": {"kind": "text", "text": t[:400]}})
+        elif kind == "image":
+            b64 = str(edata.get("data") or "")
+            if b64:
+                await self._emit({"type": "media", "data": {
+                    "kind": "image",
+                    "media_type": str(edata.get("media_type") or "image/png"),
+                    "b64": b64,
+                    "caption": str(edata.get("caption") or ""),
+                }})
+        elif kind == "file":
+            await self._emit({"type": "media", "data": {
+                "kind": "file",
+                "filename": str(edata.get("filename") or "Datei"),
+                "media_type": str(edata.get("media_type") or ""),
+                "caption": str(edata.get("caption") or ""),
+            }})
 
     async def _delegate_and_report(self, instruction: str) -> None:
         """Run the (slow) delegation in the background, then voice the result."""

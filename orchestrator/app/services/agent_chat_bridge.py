@@ -73,7 +73,7 @@ async def ask_agent_via_chat(
                 continue
             etype = evt.get("type")
             edata = evt.get("data") or {}
-            if on_event is not None and etype in ("tool_call", "tool_result", "text"):
+            if on_event is not None and etype in ("tool_call", "tool_result", "text", "image", "file"):
                 try:
                     await on_event(etype, edata)
                 except Exception:  # noqa: BLE001

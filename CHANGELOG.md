@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.21] — 2026-07-03
+
+### Added
+- **Jarvis zeigt Bilder & Dateien.** Präsentiert der Agent während einer Voice-Aufgabe ein Bild (`present_image`) oder eine Datei (`present_file`), erscheint es jetzt live im rechten Panel des Jarvis-Cockpits — Bilder inline gerendert, Dateien als Karte mit Name/Beschriftung. Dieselben `image`/`file`-Events, die der Text-Chat rendert, werden über den `on_event`-Callback durchgereicht (`agent_chat_bridge`, `RealtimeVoiceSession._emit_activity` → `media`-Event). (`orchestrator/app/services/agent_chat_bridge.py`, `realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
+
+### Security
+- **Kiosk-Voice-Ticket gehärtet** (Regression aus 1.99.20 behoben, vom Security-Review gefunden). Der token-mintende Endpoint `POST /kiosk/ws-ticket/{id}` ist jetzt (a) **standardmäßig deaktiviert** — nur aktiv wenn `KIOSK_VOICE_ENABLED` gesetzt ist (Pi-Kiosk; auf Multi-Tenant-Boxen wie SKBS 404 → kein Token-Minting), und (b) **least-privilege**: das Ticket wird an den **Agent-Owner** gebunden statt an einen globalen Admin (Admin nur noch Bootstrap-Fallback für Owner-lose Agenten). (`orchestrator/app/api/kiosk.py`)
+
 ## [1.99.20] — 2026-07-03
 
 ### Added

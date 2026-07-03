@@ -269,23 +269,36 @@ async def kiosk_ws_ticket(
     """Issue a short-lived WS ticket so the LOCAL kiosk can open a VOICE session.
 
     The voice WebSocket enforces an ownership gate, so the kiosk (which is itself
-    unauthenticated) needs a ticket bound to a real identity. We bind it to an
-    admin — same trust model as the rest of this router: physical device access =
-    kiosk access. Local-only; never expose beyond the device.
+    unauthenticated) needs a ticket bound to a real identity.
+
+    Security: minting a WS ticket is a higher-risk primitive than the rest of the
+    kiosk API (the ticket is usable on the tunnel-exposed voice WS). Therefore:
+      * DISABLED by default — only active when ``KIOSK_VOICE_ENABLED`` is set
+        (on the single-user Pi kiosk; NEVER on multi-tenant boxes like SKBS,
+        where the endpoint 404s and cannot mint anything).
+      * Least privilege — the ticket is bound to the AGENT'S OWNER, not a broad
+        admin; an admin is only a bootstrap fallback for owner-less agents.
+      * 30 s TTL, single-use (consumed by _authenticate_ws).
     """
+    import os
     from app.models.user import User, UserRole
+    if os.getenv("KIOSK_VOICE_ENABLED", "").strip().lower() not in ("1", "true", "yes", "on"):
+        raise HTTPException(status_code=404, detail="Not found")
     if not redis or not redis.client:
         raise HTTPException(status_code=503, detail="Redis not available")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    admin = await db.scalar(
-        select(User).where(User.role == UserRole.ADMIN).order_by(User.id).limit(1)
-    )
-    if not admin:
-        raise HTTPException(status_code=503, detail="No admin identity for kiosk voice")
+    identity_id = agent.user_id
+    if not identity_id:  # owner-less agent → bootstrap fallback to an admin
+        admin = await db.scalar(
+            select(User).where(User.role == UserRole.ADMIN).order_by(User.id).limit(1)
+        )
+        identity_id = str(admin.id) if admin else None
+    if not identity_id:
+        raise HTTPException(status_code=503, detail="No identity for kiosk voice")
     ticket_id = uuid.uuid4().hex
-    await redis.client.setex(f"ws:ticket:{ticket_id}", 30, str(admin.id))
+    await redis.client.setex(f"ws:ticket:{ticket_id}", 30, str(identity_id))
     return {"ticket": ticket_id}
 
 
