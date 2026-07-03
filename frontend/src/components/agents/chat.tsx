@@ -999,6 +999,7 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
           agentId={agentId}
           agentName={agentId}
           onClose={() => setVoiceOpen(false)}
+          resumeSessionId={activeSessionId ?? undefined}
         />
       )}
       {/* Session tabs — hidden in embedded (modal) mode */}

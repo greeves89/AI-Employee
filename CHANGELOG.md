@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.33] — 2026-07-03
+
+### Added
+- **Voice setzt die offene Chat-Session fort (Kontext-Übernahme).** Öffnet man das Live-Gespräch aus einem Chat heraus, nutzt es dieselbe `session_id` — der Sprach-Agent lädt die letzten Turns (Text ODER Voice) und knüpft in der Begrüßung daran an („Willkommen zurück — wir waren bei …"). Voice + Text teilen sich damit eine durchgängige, fortsetzbare Session. WS-Param `chat_session`, Frontend-Prop `resumeSessionId`. (`orchestrator/app/api/ws.py`, `orchestrator/app/services/realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`, `chat.tsx`)
+
 ## [1.99.32] — 2026-07-03
 
 ### Fixed

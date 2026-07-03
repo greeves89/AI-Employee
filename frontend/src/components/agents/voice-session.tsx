@@ -60,9 +60,12 @@ interface Props {
   /** Optional custom WS-ticket source (e.g. the unauthenticated kiosk). When
    *  omitted, the default authenticated `/ws/ticket` flow (JWT) is used. */
   getTicket?: () => Promise<string>;
+  /** Continue an existing chat session by voice (shared session with the text chat;
+   *  the agent picks up the prior context). */
+  resumeSessionId?: string;
 }
 
-export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Props) {
+export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resumeSessionId }: Props) {
   const [state, setState] = useState<VoiceState>("connecting");
   const [mode, setMode] = useState<Mode>("classic");
   const [transcript, setTranscript] = useState("");
@@ -162,7 +165,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
           }
         }
         if (cancelled) return;
-        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}`;
+        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}${
+          resumeSessionId ? `&chat_session=${encodeURIComponent(resumeSessionId)}` : ""
+        }`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
         ws.onmessage = (e) => handleServerEvent(e.data);

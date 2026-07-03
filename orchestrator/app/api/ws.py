@@ -781,6 +781,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 async def ws_agent_voice(
     websocket: WebSocket, agent_id: str,
     token: str | None = Query(None), ticket: str | None = Query(None),
+    chat_session: str | None = Query(None),  # resume/continue an existing chat session by voice
 ):
     """Live voice session with an agent.
 
@@ -870,7 +871,10 @@ async def ws_agent_voice(
     # interrupt/close), so the receive loop below is identical.
     if interaction_model == "nova_sonic":
         from app.services.realtime_voice_session import RealtimeVoiceSession
-        session = RealtimeVoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)
+        _rt_kwargs = {"agent_id": agent_id, "user_id": user_id, "redis": _redis}
+        if chat_session:  # continue an existing chat session by voice
+            _rt_kwargs["session_id"] = chat_session
+        session = RealtimeVoiceSession(**_rt_kwargs)
     else:
         session = VoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)
     try:
