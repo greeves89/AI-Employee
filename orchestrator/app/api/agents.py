@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -23,6 +24,7 @@ from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+logger = logging.getLogger(__name__)
 
 
 def _mode_for_ai_account_provider(provider_type: str | None, requested_mode: str = "custom_llm") -> str:
@@ -874,6 +876,48 @@ async def update_agent_appearance(
         return {"agent_id": agent_id, "avatar": avatar, "status": "updated"}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+
+class AgentRenameUpdate(BaseModel):
+    name: str
+
+
+@router.patch("/{agent_id}/name")
+async def rename_agent(
+    agent_id: str,
+    body: AgentRenameUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Rename an agent (display name only — no container restart).
+
+    The Docker container keeps its original name (addressed by container ID); only
+    the DB display name + team registry entry change. The container name is re-derived
+    from this name ONLY on the next (re)creation, via a safe slug.
+    """
+    await _check_owner(agent_id, user, db)
+    # Sanitize untrusted input: trim, drop control/non-printable chars, cap length.
+    name = "".join(ch for ch in (body.name or "").strip() if ch.isprintable())
+    if not name:
+        raise HTTPException(status_code=422, detail="Name darf nicht leer sein")
+    if len(name) > 40:
+        raise HTTPException(status_code=422, detail="Name darf höchstens 40 Zeichen haben")
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent.name = name
+    await db.commit()
+    # Keep the team registry display name in sync so team listings show the new name
+    # immediately, without recreating the container.
+    try:
+        if agent.container_id:
+            role = (agent.config or {}).get("role") or "Unassigned"
+            manager._update_team_registry(agent.container_id, agent_id, name, role)
+    except Exception:  # noqa: BLE001 — registry sync is best-effort, never blocks rename
+        logger.warning("team registry name sync failed for agent=%s", agent_id, exc_info=True)
+    return {"agent_id": agent_id, "name": name, "status": "updated"}
 
 
 class AgentBudgetUpdate(BaseModel):

@@ -491,6 +491,19 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     )
 
 
+def _container_slug(name: str) -> str:
+    """Derive a VALID docker-name fragment from a (possibly rich) agent display name.
+
+    Docker names must match [a-zA-Z0-9][a-zA-Z0-9_.-]+ — a display name with slashes,
+    umlauts, spaces or other characters would otherwise produce an invalid/injectable
+    container name at (re)creation. We lower-case, replace any run of non-[a-z0-9]
+    chars with a single hyphen and trim, falling back to "agent" if nothing remains.
+    """
+    import re as _re
+    slug = _re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return slug or "agent"
+
+
 class AgentManager:
     """Manages the lifecycle of agent Docker containers."""
 
@@ -814,7 +827,7 @@ class AgentManager:
 
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
         agent_id = uuid.uuid4().hex[:8]
-        container_name = f"ai-agent-{name.lower().replace(' ', '-')}-{agent_id}"
+        container_name = f"ai-agent-{_container_slug(name)}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
         session_volume = f"claude-session-{agent_id}"
         model = model or settings.default_model
@@ -1103,7 +1116,7 @@ class AgentManager:
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
         role = config.get("role", "")
         model = agent.model or settings.default_model
-        container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
+        container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
         mode = agent.mode or "claude_code"
         if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
             mode = "codex_cli"
@@ -1248,7 +1261,7 @@ class AgentManager:
         config = agent.config or {}
 
         # 1. Stop and remove old container (volumes stay!)
-        container_name = f"ai-agent-{agent.name.lower().replace(' ', '-')}-{agent_id}"
+        container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
         # Try by container_id first, then by name (handles stale IDs)
         for ref in [agent.container_id, container_name]:
             if not ref:

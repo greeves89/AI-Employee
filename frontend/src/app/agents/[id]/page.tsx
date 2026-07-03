@@ -112,6 +112,9 @@ export default function AgentDetailPage() {
   const { tasks } = useTasks(agentId);
   const [activeSub, setActiveSub] = useState<SubKey>("chat");
   const [restarting, setRestarting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
   const { simpleMode } = useSimpleMode();
 
   // In simple mode keep only sub-tabs flagged simpleVisible, then drop empty groups.
@@ -210,6 +213,71 @@ export default function AgentDetailPage() {
                   </span>
                 </div>
               </div>
+            )}
+            {editingName ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={nameInput}
+                  maxLength={40}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Escape") setEditingName(false);
+                    if (e.key === "Enter") {
+                      const n = nameInput.trim();
+                      if (!n || n === agent.name) { setEditingName(false); return; }
+                      setSavingName(true);
+                      try {
+                        await api.renameAgent(agentId, n);
+                        setAgent({ ...agent, name: n } as Agent);
+                        setEditingName(false);
+                      } catch {
+                        /* keep editing on error */
+                      } finally {
+                        setSavingName(false);
+                      }
+                    }
+                  }}
+                  className="w-48 rounded-md border border-foreground/20 bg-background px-2 py-1 text-sm outline-none focus:border-violet-500/50"
+                />
+                <button
+                  onClick={async () => {
+                    const n = nameInput.trim();
+                    if (!n || n === agent.name) { setEditingName(false); return; }
+                    setSavingName(true);
+                    try {
+                      await api.renameAgent(agentId, n);
+                      setAgent({ ...agent, name: n } as Agent);
+                      setEditingName(false);
+                    } catch {
+                      /* keep editing on error */
+                    } finally {
+                      setSavingName(false);
+                    }
+                  }}
+                  disabled={savingName}
+                  title="Speichern"
+                  className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 p-1.5 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
+                >
+                  {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  onClick={() => setEditingName(false)}
+                  title="Abbrechen"
+                  className="inline-flex items-center rounded-full border border-foreground/[0.1] p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setNameInput(agent.name); setEditingName(true); }}
+                title="Agent umbenennen"
+                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/[0.2] hover:bg-foreground/[0.04] transition-all"
+              >
+                <Edit3 className="h-3 w-3" />
+                Umbenennen
+              </button>
             )}
             <button
               onClick={async () => {

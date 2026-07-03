@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.39] — 2026-07-03
+
+### Added
+- **Agenten nachträglich umbenennen.** Neuer Endpoint `PATCH /agents/{id}/name` + Inline-Rename im Agent-Header (Stift-Icon). Ändert nur den Anzeigenamen (DB + Team-Registry), kein Container-Neustart. Input wird validiert (nicht leer, max. 40 Zeichen, Steuerzeichen entfernt), AuthZ per Ownership. (`orchestrator/app/api/agents.py`, `frontend/src/app/agents/[id]/page.tsx`)
+- **Docker-Apps: Ein-Klick-Deploy ohne Port-Konflikt.** Feste Host-Ports (`3001:3000`) scheiterten beim zweiten Deploy an „port is already allocated". Neu: eine generierte Sidecar-Compose-Datei publiziert nur den Container-Port → Docker vergibt automatisch einen freien Host-Port. Original bleibt unangetastet. (`orchestrator/app/api/docker_apps.py`)
+- **Docker-Apps: von außen erreichbar über den Orchestrator-Proxy.** Bisher verlinkte die UI `http://<host>:<hostport>` — das geht NICHT durch den Cloudflare-Tunnel (nur 443/80). Neu: `GET /agents/{id}/apps/proxy/{container}/{port}/…` proxied durch die bestehende Cloudflare+Caddy-Kette an den App-Container. Auth + doppelter Ownership-Gate (Namens-Präfix + Compose-Projekt-Label), Auth-Cookie/Authorization werden NICHT an die App weitergereicht. (`orchestrator/app/api/docker_apps.py`, `frontend/src/components/agents/docker-apps-tab.tsx`)
+
+### Security
+- **Container-Namen-Ableitung gehärtet.** Der Docker-Container-Name wird aus dem Agent-Namen abgeleitet — bisher nur `lower().replace(' ','-')`. Ein Name mit Sonderzeichen/Umlauten hätte einen ungültigen/injizierbaren Docker-Namen bei (Neu-)Erstellung erzeugt. Neu: sauberer Slug (`[a-z0-9]`-Whitelist). (`orchestrator/app/core/agent_manager.py`)
+
 ## [1.99.38] — 2026-07-03
 
 ### Fixed

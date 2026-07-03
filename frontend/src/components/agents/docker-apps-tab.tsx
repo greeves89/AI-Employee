@@ -28,6 +28,7 @@ import {
   restartDockerService,
   getDockerAppLogs,
 } from "@/lib/api";
+import { getBase } from "@/lib/config";
 import type { DockerApp, DockerAppLog } from "@/lib/types";
 
 interface DockerAppsTabProps {
@@ -65,6 +66,14 @@ const BUILD_PHASES = [
   "Pulling dependencies...",
   "Starting containers...",
 ];
+
+// Reach a deployed app THROUGH the platform (Cloudflare+Caddy already forward /api/*
+// to the orchestrator, which proxies to the app container) instead of hostname:hostport
+// which the Cloudflare tunnel does not expose. Auth cookie travels with the new tab.
+function appProxyUrl(agentId: string, containerName: string, containerPort: string): string {
+  const internal = String(containerPort).split("/")[0]; // "3000/tcp" -> "3000"
+  return `${getBase()}/agents/${agentId}/apps/proxy/${encodeURIComponent(containerName)}/${internal}/`;
+}
 
 export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
   const [apps, setApps] = useState<DockerApp[]>([]);
@@ -375,10 +384,10 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           /workspace/{app.path}/{app.compose_file}
                         </p>
                         {/* Auto-detected ports in header */}
-                        {(app.containers || []).flatMap(c => (c.ports || []).map(p => ({ ...p, service: c.service }))).map((p) => (
+                        {(app.containers || []).flatMap(c => (c.ports || []).map(p => ({ ...p, service: c.service, cname: c.name }))).map((p) => (
                           <a
                             key={`hdr-${p.service}-${p.host_port}`}
-                            href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${p.host_port}`}
+                            href={appProxyUrl(agentId, p.cname, p.container_port)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-0.5 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
@@ -530,7 +539,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                     {/* Auto-detected ports from running containers */}
                     {(() => {
                       const allPorts = (app.containers || []).flatMap(c =>
-                        (c.ports || []).map(p => ({ ...p, service: c.service }))
+                        (c.ports || []).map(p => ({ ...p, service: c.service, cname: c.name }))
                       );
                       if (allPorts.length === 0) return null;
                       return (
@@ -539,7 +548,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           {allPorts.map((p) => (
                             <a
                               key={`${p.service}-${p.host_port}`}
-                              href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${p.host_port}`}
+                              href={appProxyUrl(agentId, p.cname, p.container_port)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
@@ -606,7 +615,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                               {container?.ports?.map((p) => (
                                 <a
                                   key={`${p.host_port}-${p.container_port}`}
-                                  href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${p.host_port}`}
+                                  href={appProxyUrl(agentId, container.name, p.container_port)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"

@@ -258,6 +258,14 @@ export async function updateAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}/update`, { method: "POST" });
 }
 
+export async function renameAgent(id: string, name: string): Promise<{ agent_id: string; name: string; status: string }> {
+  return fetchJSON(`${getBase()}/agents/${id}/name`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
 // Volume Mounts
 export interface MountCatalogEntry {
   label: string;

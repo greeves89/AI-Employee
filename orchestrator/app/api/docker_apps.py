@@ -16,9 +16,11 @@ import re
 import shlex
 from typing import Any
 
+import httpx
 import yaml
 from docker.errors import ContainerError, ImageNotFound, NotFound
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -57,6 +59,67 @@ def _project_name(agent_id: str, app_path: str) -> str:
     """Generate a unique docker compose project name."""
     safe = re.sub(r"[^a-z0-9-]", "-", app_path.lower().strip("/"))
     return f"agent-{agent_id[:8]}-{safe}"
+
+
+def _parse_port_target(entry: Any) -> str | None:
+    """Extract the container-side (target) port from a compose ``ports`` entry.
+
+    Handles "3000", "3001:3000", "127.0.0.1:3001:3000", "3000/tcp" and the long
+    form {target: 3000, published: 3001}. Returns None if it can't be determined.
+    """
+    if isinstance(entry, dict):
+        t = entry.get("target")
+        return str(t) if t not in (None, "") else None
+    s = str(entry).split("/", 1)[0]  # drop /tcp|/udp
+    parts = [p for p in s.split(":")]
+    last = parts[-1].strip() if parts else ""
+    return last or None
+
+
+def _prepare_free_port_compose(
+    docker: DockerService, agent: Agent, path: str, compose_file: str
+) -> str:
+    """Rewrite fixed host-port bindings to Docker-auto-assigned free ports.
+
+    True one-click deploy: a compose file with a hard-coded ``3001:3000`` fails the
+    second time (``port is already allocated``). We generate a sidecar compose file
+    (original untouched) where each service publishes ONLY the container port, so
+    Docker picks a guaranteed-free host port. The actual assigned port is read back
+    afterwards via ``_get_project_containers``. Falls back to the original file on
+    any parse issue.
+    """
+    try:
+        ec, content = docker.exec_in_container(agent.container_id, ["cat", compose_file])
+        if ec != 0 or not content:
+            return compose_file
+        data = yaml.safe_load(content)
+        if not isinstance(data, dict) or not isinstance(data.get("services"), dict):
+            return compose_file
+        changed = False
+        for svc in data["services"].values():
+            if not isinstance(svc, dict) or not svc.get("ports"):
+                continue
+            new_ports = []
+            for entry in svc["ports"]:
+                target = _parse_port_target(entry)
+                if target and target.isdigit():
+                    new_ports.append(target)  # container port only → Docker auto-assigns host port
+                    changed = True
+                else:
+                    new_ports.append(entry)
+            svc["ports"] = new_ports
+        if not changed:
+            return compose_file
+        # Write next to the original so relative build/env_file paths still resolve.
+        gen_path = f"/workspace/{path}/docker-compose.aiemployee.yml"
+        docker.write_file_in_container(
+            agent.container_id, gen_path, yaml.safe_dump(data, sort_keys=False)
+        )
+        logger.info(f"Auto free-port compose generated for {path}: {gen_path}")
+        return gen_path
+    except Exception as e:  # noqa: BLE001 — never block deploy on this; use original
+        logger.warning(f"free-port compose prep failed for {path}: {e}")
+        return compose_file
 
 
 def _run_compose(
@@ -325,6 +388,12 @@ async def start_app(
 
     logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
 
+    # One-click: rewrite fixed host ports to auto-assigned free ones so a re-deploy
+    # never fails on "port is already allocated".
+    compose_file = await asyncio.to_thread(
+        _prepare_free_port_compose, docker, agent, path, compose_file
+    )
+
     # Run compose up in background to not block the request
     exit_code, output = await asyncio.to_thread(
         _run_compose,
@@ -513,6 +582,10 @@ async def rebuild_app(
 
     logger.info(f"Rebuilding Docker app: {project_name}")
 
+    compose_file = await asyncio.to_thread(
+        _prepare_free_port_compose, docker, agent, path, compose_file
+    )
+
     exit_code, output = await asyncio.to_thread(
         _run_compose,
         docker, workspace_volume, project_name, compose_file,
@@ -569,3 +642,86 @@ async def restart_service(
         "status": "restarted",
         "containers": containers,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# APP REVERSE-PROXY — reach a deployed app THROUGH the platform (Cloudflare+Caddy
+# already forward /api/* here), instead of hostname:hostport which the tunnel does
+# not expose. Auth + strict ownership so only the owner reaches their own app.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Hop-by-hop headers must not be forwarded by a proxy (RFC 7230 §6.1) + Host/length
+# which httpx sets itself.
+_HOP_BY_HOP = {
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length",
+    "content-encoding",
+}
+
+
+@router.api_route(
+    "/proxy/{container}/{port}/{rest:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+)
+async def proxy_app(
+    agent_id: str,
+    container: str,
+    port: str,
+    rest: str,
+    request: Request,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Reverse-proxy an HTTP request to one of THIS agent's deployed app containers.
+
+    Reachable at ``/agents/{id}/apps/proxy/{container}/{port}/…`` — served through the
+    same Cloudflare+Caddy chain as the rest of ``/api/*`` (no exposed host port needed).
+    Two SSRF gates: (1) the container name must carry this agent's project prefix, and
+    (2) its compose ``project`` label (set server-side via ``-p``) must match too — so a
+    logged-in owner can only ever reach their OWN apps, never platform/other containers.
+    """
+    await _get_agent(agent_id, user, db)  # ownership + running-container check
+
+    prefix = f"agent-{agent_id[:8]}-"
+    if "/" in container or ".." in container or not container.startswith(prefix):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not port.isdigit() or not (1 <= int(port) <= 65535):
+        raise HTTPException(status_code=400, detail="Invalid port")
+
+    # Authoritative check: the container must belong to a compose project we started
+    # for THIS agent (the project label is set by our own `-p`, not by the agent).
+    try:
+        c = docker.client.containers.get(container)
+    except Exception:
+        raise HTTPException(status_code=404, detail="App container not found")
+    if not str(c.labels.get("com.docker.compose.project", "")).startswith(prefix):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    target = f"http://{container}:{int(port)}/{rest}"
+    body = await request.body()
+    # NEVER forward the platform auth credentials to the app — it runs agent-authored
+    # code and could otherwise read the owner's session cookie / bearer token.
+    _strip = _HOP_BY_HOP | {"cookie", "authorization"}
+    fwd_headers = {
+        k: v for k, v in request.headers.items() if k.lower() not in _strip
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            upstream = await client.request(
+                request.method, target,
+                params=dict(request.query_params),
+                headers=fwd_headers, content=body,
+            )
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"App nicht erreichbar: {type(e).__name__}")
+
+    resp_headers = {
+        k: v for k, v in upstream.headers.items() if k.lower() not in _HOP_BY_HOP
+    }
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=resp_headers,
+        media_type=upstream.headers.get("content-type"),
+    )
