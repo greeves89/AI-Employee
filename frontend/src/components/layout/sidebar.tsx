@@ -345,7 +345,7 @@ export function Sidebar() {
         "border-t border-border py-2 shrink-0 mt-auto",
         effectiveCollapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 space-y-0.5"
       )}>
-        {collapsed ? (
+        {effectiveCollapsed ? (
           <>
             <NotificationBell variant="sidebar" collapsed />
             <button

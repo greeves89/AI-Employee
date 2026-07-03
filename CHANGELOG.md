@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.46] — 2026-07-03
+
+### Fixed
+- **Sidebar-Footer im Mobile-Drawer zeigt jetzt Labels.** Der Footer (Notifications/Theme/Star/Über) prüfte `collapsed` (Desktop-Zustand) statt `effectiveCollapsed` → bei desktop-eingeklappter Sidebar erschien er auf dem Handy als karge Icon-Spalte, obwohl die Navigation Labels hatte. (`frontend/src/components/layout/sidebar.tsx`)
+
 ## [1.99.45] — 2026-07-03
 
 ### Fixed
