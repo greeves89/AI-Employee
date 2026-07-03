@@ -31,7 +31,9 @@ async def web_search(query: str, max_results: int = 5) -> list[dict]:
         async with httpx.AsyncClient(
             follow_redirects=True, timeout=15, headers={"User-Agent": _UA}
         ) as client:
-            resp = await client.get(_DDG_URL, params={"q": query})
+            # DDG's HTML endpoint only returns results for POST (form-encoded);
+            # a GET yields a 202 landing page with no result markers.
+            resp = await client.post(_DDG_URL, data={"q": query})
             resp.raise_for_status()
             html = resp.text
     except Exception:  # noqa: BLE001

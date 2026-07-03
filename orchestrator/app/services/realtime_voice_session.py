@@ -148,9 +148,12 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     lang = "Deutsch" if (language or "de").startswith("de") else language
     role = f" Deine Rolle: {agent_role}." if agent_role else ""
     return (
-        f"Du bist die Sprach-Front des KI-Agenten „{agent_name}“.{role} "
-        f"Du sprichst {lang}, natürlich und knapp, wie am Telefon. Du BIST der Agent "
-        "gegenüber dem Nutzer.\n"
+        f"Du bist „{agent_name}“ selbst — der KI-Agent, mit dem der Nutzer spricht.{role} "
+        f"Du sprichst {lang}, natürlich und knapp, wie am Telefon. Sprich AUSSCHLIESSLICH in "
+        "der ICH-Form und sei einfach DER Bot. Erwähne NIEMALS, dass du etwas ‚an den Agenten "
+        "weitergibst‘ oder dass ‚der Agent‘ etwas tut oder gesagt hat — für den Nutzer bist DU "
+        "es, der alles erledigt (‚ich schaue nach‘, ‚ich kümmere mich darum‘, ‚ich habe das "
+        "gemacht‘).\n"
         "TOOL-WAHL (wichtig für Tempo):\n"
         "• Fragen nach Status/Was-machst-du → get_agent_status (sofort).\n"
         "• Fragen nach Aufgaben/was lief/was fehlschlug → list_agent_tasks (sofort).\n"
@@ -184,6 +187,7 @@ class RealtimeVoiceSession:
     _in_queue: asyncio.Queue | None = None
     _pump_task: asyncio.Task | None = None
     _closed: bool = False
+    _greeted: bool = False
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -298,10 +302,29 @@ class RealtimeVoiceSession:
                     break
                 if self._nova:
                     await self._nova.send_audio(chunk)
+                    # Greet proactively once the first audio frame has reached Nova
+                    # Sonic (it needs audio content before an injected text turn speaks).
+                    if not self._greeted:
+                        self._greeted = True
+                        asyncio.create_task(self._greet())
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
             logger.warning("RealtimeVoiceSession audio pump error agent=%s", self.agent_id, exc_info=True)
+
+    async def _greet(self) -> None:
+        """Speak first: greet the user actively right after the session opens."""
+        await asyncio.sleep(0.3)
+        if self._closed or not self._nova:
+            return
+        try:
+            await self._nova.inject_user_text(
+                "Begrüße den Nutzer JETZT aktiv, kurz und natürlich in der ICH-Form "
+                "(z. B. 'Hallo, ich bin da — wie kann ich helfen?') und frag, wobei du "
+                "helfen kannst. Sprich als du selbst, nicht über 'den Agenten'."
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("greeting injection failed agent=%s", self.agent_id, exc_info=True)
 
     async def commit_turn(self, language: str | None = None) -> None:
         """No-op: Nova Sonic detects end-of-turn itself (VAD). Kept for interface parity."""
@@ -400,8 +423,9 @@ class RealtimeVoiceSession:
         asyncio.create_task(self._delegate_and_report(instruction))
         await self._respond(
             tool_use_id,
-            f"Aufgabe „{instruction}“ an den Agenten übergeben. Sag dem Nutzer knapp, "
-            "dass du nachgefragt hast und dich meldest, sobald die Antwort da ist.",
+            f"Du kümmerst dich jetzt selbst um: „{instruction}“. Sag dem Nutzer knapp in der "
+            "ICH-Form, dass du direkt dran bist und dich gleich meldest — sprich NICHT von "
+            "‚dem Agenten‘ oder von ‚weitergeben‘.",
         )
 
     async def _emit_activity(self, kind: str, edata: dict) -> None:
@@ -444,8 +468,9 @@ class RealtimeVoiceSession:
         await self._emit({"type": "response", "data": {"text": answer}})
         if self._nova:
             await self._nova.inject_user_text(
-                f"[Rückmeldung des Agenten zur Aufgabe „{instruction}“]: {answer}\n"
-                "Gib dem Nutzer diese Antwort jetzt kurz und natürlich gesprochen weiter."
+                f"[Ergebnis deiner Aufgabe „{instruction}“]: {answer}\n"
+                "Gib dem Nutzer das Ergebnis jetzt kurz und natürlich in der ICH-Form weiter, "
+                "als DEINE eigene Arbeit — ohne von ‚dem Agenten‘ zu sprechen."
             )
 
     # ── Fast direct-data readers (no agent round-trip) ──────────────
@@ -473,11 +498,13 @@ class RealtimeVoiceSession:
         return "; ".join(parts) + "."
 
     async def _fast_activity(self) -> str:
-        """What the agent is doing RIGHT NOW: current task + latest concrete steps.
+        """What I'm doing / just did — WITH the task's goal and outcome so I can actually
+        summarise it, not just name tools.
 
-        Reads the same live activity stream the UI shows (``agent:{id}:activity``,
-        last 200 events) plus the status hash — no agent round-trip.
+        Combines the most recent task (title + goal + result/error) from the DB with the
+        live step stream (``agent:{id}:activity``) and the status hash. No agent round-trip.
         """
+        # 1) Live step stream + current-task label
         current = ""
         try:
             st = await self.redis.get_agent_status(self.agent_id)
@@ -496,8 +523,6 @@ class RealtimeVoiceSession:
                     continue
         except Exception:  # noqa: BLE001
             pass
-
-        # Distill recent concrete steps into a short, spoken-friendly summary.
         tool_steps: list[str] = []
         last_text = ""
         for ev in events:
@@ -514,15 +539,41 @@ class RealtimeVoiceSession:
             if not recent or recent[-1] != s:
                 recent.append(s)
 
-        if not current and not recent and not last_text:
-            return "Der Agent ist gerade untätig — keine laufende Aufgabe und keine jüngste Aktivität."
-        parts = []
-        if current:
-            parts.append(f"Arbeitet gerade an: {current}")
+        # 2) The most recent task — its GOAL (title/prompt) and OUTCOME (result/error).
+        from app.db.session import async_session_factory
+        from app.models.task import Task
+        from sqlalchemy import select
+        task = None
+        try:
+            async with async_session_factory() as db:
+                task = (await db.execute(
+                    select(Task).where(Task.agent_id == self.agent_id)
+                    .order_by(Task.created_at.desc()).limit(1)
+                )).scalar_one_or_none()
+        except Exception:  # noqa: BLE001
+            pass
+
+        parts: list[str] = []
+        if task:
+            status = task.status.value if hasattr(task.status, "value") else str(task.status)
+            goal = (task.title or "").strip()
+            prompt = (task.prompt or "").strip()
+            parts.append(f"Aktuelle/letzte Aufgabe ({status}): {goal or prompt[:120]}")
+            if goal and prompt and prompt[:120] != goal:
+                parts.append(f"Auftrag im Wortlaut: {prompt[:220]}")
+            outcome = (task.result or task.error or "").strip()
+            if outcome:
+                parts.append(f"Ergebnis: {outcome[:300]}")
+        elif current:
+            parts.append(f"Ich arbeite gerade an: {current}")
+
         if recent:
-            parts.append("letzte Schritte: " + ", ".join(recent))
-        if last_text:
-            parts.append("zuletzt: " + last_text[:180])
+            parts.append("Meine letzten Schritte: " + ", ".join(recent))
+        if last_text and not (task and (task.result or "").strip()):
+            parts.append("Zuletzt: " + last_text[:180])
+
+        if not parts:
+            return "Ich bin gerade untätig — keine laufende oder kürzliche Aufgabe."
         return ". ".join(parts) + "."
 
     async def _web_search(self, query: str, max_results: int) -> str:

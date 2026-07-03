@@ -74,15 +74,24 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
-  // Append a conversation turn, coalescing consecutive same-role deltas into one
-  // bubble (Nova Sonic streams partials) so the transcript reads cleanly.
+  // Append a conversation turn, coalescing consecutive same-role events into ONE
+  // bubble. Nova Sonic emits each sentence as a separate event; naive replace would
+  // show only the last sentence. So: if the new text extends the current bubble
+  // (cumulative) replace it; if it's a fresh delta, append it; skip pure repeats.
   const upsertTurn = useCallback((role: "user" | "assistant", text: string) => {
     const t = String(text || "").trim();
     if (!t) return;
     setTurns((prev) => {
-      if (prev.length && prev[prev.length - 1].role === role) {
+      const last = prev.length ? prev[prev.length - 1] : null;
+      if (last && last.role === role) {
+        const cur = last.text;
+        let merged: string;
+        if (t.startsWith(cur)) merged = t;             // cumulative stream → take the fuller text
+        else if (cur.endsWith(t) || cur.includes(t)) merged = cur;  // duplicate → keep
+        else merged = `${cur} ${t}`;                    // new sentence → append
+        if (merged === cur) return prev;
         const next = prev.slice();
-        next[next.length - 1] = { role, text: t };
+        next[next.length - 1] = { role, text: merged };
         return next;
       }
       return [...prev, { role, text: t }];
@@ -212,7 +221,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
         setStatusMsg(String(data.message || ""));
         break;
       case "delegate":
-        setStatusMsg(`Agent bearbeitet: ${String(data.instruction || "")}`);
+        setStatusMsg(`Ich kümmere mich um: ${String(data.instruction || "")}`);
         setDelegating(true);
         setActivity([{ kind: "header", label: String(data.instruction || ""), detail: "" }]);
         break;

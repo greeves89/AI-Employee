@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.15] — 2026-07-03
+
+### Fixed
+- **Websuche der Sprach-Front lieferte nichts.** DuckDuckGos HTML-Endpoint gibt Treffer nur bei **POST** zurück; der Code nutzte GET → 202-Landing-Page → 0 Ergebnisse → der Bot wimmelte ab. Auf POST umgestellt (verifiziert: liefert Treffer). (`orchestrator/app/core/web_search.py`)
+- **Voice-Transkript zeigte nur den letzten Satz.** Nova Sonic sendet jeden Satz als eigenes Event; die Bubble überschrieb den vorherigen Satz. Jetzt wird der volle Text pro Turn akkumuliert (kumulativ ersetzen, neue Sätze anhängen, Duplikate überspringen). (`frontend/src/components/agents/voice-session.tsx`)
+
+### Changed
+- **`get_agent_activity` liefert jetzt Kontext, nicht nur Tool-Namen.** Zusätzlich zu den letzten Schritten werden **Ziel/Titel + Auftrag im Wortlaut + Ergebnis/Fehler** der aktuellen bzw. letzten Aufgabe aus der DB mitgegeben — die Sprach-Front kann echte Zusammenfassungen geben statt „das Ziel ist nicht verfügbar". (`orchestrator/app/services/realtime_voice_session.py`)
+- **Sprach-Front spricht konsequent in der ICH-Form.** System-Prompt, Delegations-Quittung und Ergebnis-Rückmeldung reframed: Nova Sonic IST der Bot, spricht nie von „dem Agenten" oder „weitergeben" — für den Nutzer erledigt „ich" alles. UI-Label „Ich kümmere mich um …". (`orchestrator/app/services/realtime_voice_session.py`, `voice-session.tsx`)
+
+### Added
+- **Proaktive Begrüßung.** Sobald das Gespräch startet (erstes Audio-Frame erreicht Nova Sonic), begrüßt der Bot aktiv von sich aus in der ICH-Form, statt stumm zu warten. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.14] — 2026-07-03
 
 ### Added
