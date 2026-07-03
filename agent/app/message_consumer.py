@@ -182,17 +182,29 @@ class MessageConsumer:
                 try:
                     decoded = stdout.decode("utf-8", errors="replace")
                     if settings.agent_mode == "codex_cli":
+                        # Reuse the proven Codex event parser (recurses into item/payload
+                        # → agent_message text), NOT a flat top-level key scan. The old
+                        # scan found nothing in the current schema and fell back to raw
+                        # JSON (decoded[:500]) — which leaked the event stream into the
+                        # meeting transcript. Command-execution events carry no text key,
+                        # so tool noise is dropped and only the final message survives.
+                        from app.codex_runner import _extract_text
                         parts = []
                         for line in decoded.splitlines():
+                            line = line.strip()
+                            if not line:
+                                continue
                             try:
                                 ev = json.loads(line)
                             except json.JSONDecodeError:
                                 continue
-                            for key in ("text", "message", "result", "output_text"):
-                                val = ev.get(key)
-                                if isinstance(val, str):
-                                    parts.append(val)
-                        return "".join(parts)[:2000] or decoded[:500]
+                            if isinstance(ev, dict):
+                                t = _extract_text(ev)
+                                if t:
+                                    parts.append(t)
+                        # Never fall back to raw JSON — empty → caller shows a clean
+                        # "nothing to add" placeholder instead of a JSON dump.
+                        return "".join(parts).strip()[:4000]
                     data = json.loads(decoded)
                     return data.get("result", data.get("text", stdout.decode()[:500]))
                 except json.JSONDecodeError:

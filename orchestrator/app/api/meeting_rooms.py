@@ -672,6 +672,17 @@ def _clean_meeting_response(text: str | None) -> str | None:
         return text
     import re as _re
 
+    # A whole message that is just a system placeholder from the agent/moderator
+    # container ("[<id> had nothing to add this turn]", error/timeout markers) is not
+    # real content — drop it so it never shows as a bubble. For a speaking agent the
+    # caller then renders its own name-based "hat nicht geantwortet" placeholder.
+    if _re.match(
+        r"^\[[^\]]*\b(had nothing to add|nothing to add|encountered an error|"
+        r"hat nicht geantwortet|no response|timeout)\b[^\]]*\]$",
+        text.strip(), _re.I,
+    ):
+        return ""
+
     # The "knowledge file" the agents narrate reading — both the literal path and the
     # German synonyms the moderator uses ("Wissensdatei/-basis/-datenbank").
     _KNOW = r"(knowledge\.md|wissens(datei|basis|datenbank|file))"
@@ -834,7 +845,12 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
 
                 # Build context block
                 recent_raw = agent_msgs[-3:] if nonlocal_summary else agent_msgs[-20:]
-                context_lines = [f"[{m.get('agent_id') or 'System'}]: {m['content']}\n" for m in recent_raw]
+                # Label each prior message with the speaker's NAME, not the raw UUID —
+                # otherwise agents cite each other (and themselves) as "2ad91565".
+                context_lines = [
+                    f"[{agent_name_map.get(m.get('agent_id'), m.get('agent_id') or 'System')}]: {m['content']}\n"
+                    for m in recent_raw
+                ]
 
                 if nonlocal_summary:
                     context_block = (

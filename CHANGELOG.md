@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.38] — 2026-07-03
+
+### Fixed
+- **Meeting: kein Roh-JSON mehr von Codex-Agenten.** Codex-Harness-Agenten posteten den rohen Event-Stream (`{"type":"item.started"...}` inkl. `sed`-Kommandos) statt der fertigen Antwort — der Parser in `_execute_cli` suchte Text auf Event-Top-Level, im aktuellen Codex-Schema liegt er aber in `item.text` → nichts gefunden → Fallback auf abgeschnittenes Roh-JSON. Jetzt Wiederverwendung des bewährten `codex_runner._extract_text` (rekursiv in `item`/`payload`), kein Roh-JSON-Fallback mehr. (`agent/app/message_consumer.py`)
+- **Meeting: Agenten referenzieren sich per NAME statt roher UUID.** Der Kontext, den jeder Agent sieht, war mit `agent_id` (z. B. `2ad91565`) statt Namen gelabelt → Agenten zitierten einander/sich selbst als UUID. (`orchestrator/app/api/meeting_rooms.py`)
+- **Meeting: leere Platzhalter-Meldungen erscheinen nicht mehr als Bubble.** `[<id> had nothing to add this turn]`/Fehler/Timeout werden zentral im Cleaner verworfen; ein stummer Sprecher bekommt stattdessen die saubere namensbasierte „hat nicht geantwortet"-Zeile. (`orchestrator/app/api/meeting_rooms.py`)
+
 ## [1.99.37] — 2026-07-03
 
 ### Fixed
