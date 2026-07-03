@@ -585,11 +585,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const isRealtime = mode === "nova_sonic";
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className={`relative w-full rounded-2xl border border-border bg-card shadow-2xl ${
+        className={`relative flex w-full flex-col overflow-y-auto border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
           isRealtime ? "max-w-6xl" : "max-w-lg"
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -602,10 +602,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
           <X className="h-4 w-4" />
         </button>
 
-        <div className="p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <div>
-              <h2 className="text-lg font-semibold">
+        <div className="p-4 sm:p-6">
+          <div className="mb-4 flex items-center gap-2 pr-8">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold truncate">
                 {isRealtime ? "Live-Gespräch" : "Live-Session"}: {agentName}
               </h2>
               <p className="text-xs text-muted-foreground/70 mt-0.5">
@@ -627,7 +627,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch">
               {/* LEFT — conversation transcript */}
-              <div className="order-2 flex max-h-[60vh] min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1">
+              <div className="order-2 flex max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1">
                 <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                   Gespräch
                 </div>
@@ -701,7 +701,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}
-              <div className="order-3 flex max-h-[60vh] min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]">
+              <div className="order-3 flex max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]">
                 <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                   Aufgaben &amp; Aktivität
                 </div>

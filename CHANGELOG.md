@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.44] — 2026-07-03
+
+### Fixed
+- **Voice-Session (Nova Sonic) mobil brauchbar.** Das zentrierte `max-w-6xl`-Modal mit drei je 48–60vh hohen Panes war auf dem Handy oben/unten abgeschnitten (animiertes Gesicht + Steuerung nicht erreichbar). Neu: Vollbild + scrollbar auf Mobile (top-aligned), Panes kompakter (`42vh`/`26vh`), Desktop bleibt der zentrierte Cockpit. (`frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.43] — 2026-07-03
 
 ### Fixed
