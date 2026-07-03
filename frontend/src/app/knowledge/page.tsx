@@ -737,11 +737,13 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
     let iteration = 0;
     const MAX_ITER = 500;
-    // Spread nodes out so the graph fills the canvas (fit-to-view scales the result).
-    const REPULSION = 3800;
-    const LINK_DIST = 85;
+    // Strong repulsion + weak gravity → nodes spread to fill the square virtual space
+    // in BOTH dimensions (not a flat horizontal band). fit-to-view then scales the
+    // roughly-square blob onto the canvas, filling width AND height.
+    const REPULSION = 9000;
+    const LINK_DIST = 90;
     const DAMPING = 0.5;
-    const GRAVITY = 0.012;
+    const GRAVITY = 0.005;
 
     function tick() {
       const sn = simRef.current;
@@ -860,8 +862,9 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
     }
     const bw = Math.max(maxX - minX, 1);
     const bh = Math.max(maxY - minY, 1);
-    const pad = 80;
-    const scale = Math.max(0.2, Math.min(2.5,
+    // ~90% of the canvas: small padding relative to the smaller dimension.
+    const pad = Math.min(dimensions.width, dimensions.height) * 0.05;
+    const scale = Math.max(0.2, Math.min(3,
       Math.min((dimensions.width - pad * 2) / bw, (dimensions.height - pad * 2) / bh)));
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
