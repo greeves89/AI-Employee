@@ -83,6 +83,20 @@ class OpenAIProvider(BaseLLMProvider):
             return False
         return True
 
+    @staticmethod
+    def _parse_function_arguments(arguments_json: str, final_arguments: str | None = None) -> dict:
+        """Parse streamed function-call arguments.
+
+        Some Responses-compatible providers emit no argument deltas and only
+        include the complete JSON string on the final `.done` event. Prefer the
+        accumulated stream, but fall back to that final payload when needed.
+        """
+        raw = arguments_json or final_arguments or ""
+        try:
+            return json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            return {"raw": raw}
+
     def _azure_version(self, fmt: str = "chat") -> str:
         """api-version for Azure requests (account value, else a sane default).
 
@@ -216,7 +230,7 @@ class OpenAIProvider(BaseLLMProvider):
                             pending_calls[item_id] = {
                                 "name": item.get("name", ""),
                                 "call_id": item.get("call_id", item_id),
-                                "arguments_json": "",
+                                "arguments_json": item.get("arguments") or "",
                             }
 
                     # Function call: arguments streaming
@@ -231,10 +245,10 @@ class OpenAIProvider(BaseLLMProvider):
                         item_id = data.get("item_id", "")
                         if item_id in pending_calls:
                             tc = pending_calls.pop(item_id)
-                            try:
-                                tool_input = json.loads(tc["arguments_json"])
-                            except json.JSONDecodeError:
-                                tool_input = {"raw": tc["arguments_json"]}
+                            tool_input = self._parse_function_arguments(
+                                tc["arguments_json"],
+                                data.get("arguments"),
+                            )
                             yield LLMEvent(
                                 type="tool_call",
                                 tool_id=tc["call_id"],
@@ -251,10 +265,7 @@ class OpenAIProvider(BaseLLMProvider):
 
                         # Emit any remaining pending calls
                         for item_id, tc in pending_calls.items():
-                            try:
-                                tool_input = json.loads(tc["arguments_json"])
-                            except json.JSONDecodeError:
-                                tool_input = {"raw": tc["arguments_json"]}
+                            tool_input = self._parse_function_arguments(tc["arguments_json"])
                             yield LLMEvent(
                                 type="tool_call",
                                 tool_id=tc["call_id"],
