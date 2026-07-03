@@ -10,6 +10,7 @@ from app.log_publisher import LogPublisher
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
+    feed_prompt_via_stdin,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,12 @@ class AgentRunner:
             + SELF_IMPROVEMENT_SUFFIX
         )
 
+        # Prompt goes via stdin, NOT argv: a large task prompt (e.g. a PR review
+        # with a big diff) overflows the kernel's per-arg limit and exec fails with
+        # "[Errno 7] Argument list too long: 'claude'".
         cmd = [
             "claude",
-            "-p", enhanced_prompt,
+            "-p",
             "--output-format", "stream-json",
             "--verbose",
             "--dangerously-skip-permissions",
@@ -98,13 +102,17 @@ class AgentRunner:
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,
                 env=env,
             )
 
-            # Read stderr in background
+            # Feed the prompt via stdin and read stderr, both in the background.
+            stdin_task = asyncio.create_task(
+                feed_prompt_via_stdin(self._process, enhanced_prompt)
+            )
             stderr_task = asyncio.create_task(_collect_stderr(self._process))
 
             async for event in self._stream_output(self._process):
@@ -142,6 +150,7 @@ class AgentRunner:
 
             returncode = await self._process.wait()
             await stderr_task
+            await stdin_task
 
             # A successful run emits a "result" event before exiting. If we already
             # captured that result, a non-zero exit code (CLI cleanup/stdin quirks)

@@ -133,6 +133,9 @@ class MessageConsumer:
         if settings.agent_mode == "custom_llm":
             return await self._execute_custom_llm(prompt, model)
 
+        # For the claude CLI the prompt is piped via stdin (not argv) to avoid
+        # "[Errno 7] Argument list too long" on large prompts.
+        stdin_input: bytes | None = None
         if settings.agent_mode == "codex_cli":
             cmd = [
                 "codex", "exec",
@@ -145,9 +148,10 @@ class MessageConsumer:
                 cmd.extend(["-m", model])
             cmd.append(prompt)
         else:
-            cmd = ["claude", "-p", prompt, "--output-format", "json", "--dangerously-skip-permissions"]
+            cmd = ["claude", "-p", "--output-format", "json", "--dangerously-skip-permissions"]
             if model and model != "default":
                 cmd.extend(["--model", model])
+            stdin_input = prompt.encode("utf-8")
 
         env = os.environ.copy()
         if settings.agent_mode == "codex_cli":
@@ -162,14 +166,15 @@ class MessageConsumer:
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdin=asyncio.subprocess.DEVNULL,
+                stdin=(asyncio.subprocess.PIPE if stdin_input is not None
+                       else asyncio.subprocess.DEVNULL),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,
                 env=env,
             )
             stdout, stderr = await asyncio.wait_for(
-                self._process.communicate(), timeout=300
+                self._process.communicate(input=stdin_input), timeout=300
             )
             self._process = None
 
