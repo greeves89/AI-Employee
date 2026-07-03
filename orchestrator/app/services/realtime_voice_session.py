@@ -192,6 +192,23 @@ class RealtimeVoiceSession:
             self.agent_id, self.user_id, creds["region"], voice_id, creds.get("source"),
         )
 
+    async def _user_may_use_account(self, db: AsyncSession, account_id: int) -> bool:
+        """Defense-in-depth: the write endpoint is the primary authz gate; here we
+        also reject a stale/foreign account_id in the agent config that the session
+        user may not use. Unresolvable user -> don't borrow a linked account."""
+        try:
+            from app.models.user import User
+            from app.api.ai_accounts import _allowed_account_ids
+            if not self.user_id or self.user_id == "unknown":
+                return False
+            user = await db.get(User, self.user_id)
+            if user is None:
+                return False
+            allowed = await _allowed_account_ids(user, db)
+            return allowed is None or account_id in allowed
+        except Exception:  # noqa: BLE001
+            return False
+
     async def _resolve_credentials(self, db: AsyncSession, cfg: dict) -> dict | None:
         """Linked AI-Account → platform-default account → env (Pi bootstrap)."""
         from app.core.realtime_catalog import resolve_credentials
@@ -206,7 +223,7 @@ class RealtimeVoiceSession:
                 account_id = None
         if account_id:
             acc = await db.get(AIAccount, int(account_id))
-            if acc and acc.is_active:
+            if acc and acc.is_active and await self._user_may_use_account(db, int(account_id)):
                 resolved = resolve_credentials(acc)
                 if resolved:
                     resolved["source"] = f"ai_account:{account_id}"

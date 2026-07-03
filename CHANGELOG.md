@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.11] — 2026-07-03
+
+### Security
+- **AuthZ auf den neuen AI-Account-Realtime-Endpoints (2× HIGH, aus 1.99.8).** Ein automatischer Security-Review fand: (a) **IDOR** — `PUT /agents/{id}/interaction-model` verknüpfte eine beliebige `interaction_account_id` ohne Zugriffsprüfung → ein Nutzer hätte einen fremden AI-Account (fremde Cloud-Creds) an seinen Agenten hängen können. (b) **Info-Disclosure** — `GET /ai-accounts/realtime-models` listete ALLE aktiven Accounts ungefiltert. **Fix:** beide gaten jetzt über das bestehende Allowlist-Modell (`get_effective_permissions().ai_account_ids`, Admin = alle) wie `list_ai_accounts`; das Link-Endpoint lehnt nicht-zugängliche/aktive Accounts mit 403 ab. Defense-in-depth: `RealtimeVoiceSession` prüft beim Session-Start erneut, ob der Session-Nutzer den verknüpften Account nutzen darf (sonst env-Fallback). (`orchestrator/app/api/agents.py`, `orchestrator/app/api/ai_accounts.py`, `orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.10] — 2026-07-03
 
 ### Fixed

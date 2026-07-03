@@ -1126,6 +1126,16 @@ async def update_agent_interaction_model(
     raw_acc = body.get("interaction_account_id")
     account_id = int(raw_acc) if raw_acc not in (None, "", 0, "0") else None
     model_id = (body.get("interaction_model_id") or "").strip() or None
+    # AuthZ: only link an AI-Account the user is actually allowed to use.
+    if account_id is not None:
+        from app.models.ai_account import AIAccount
+        from app.api.ai_accounts import _allowed_account_ids
+        acc = (await db.execute(
+            select(AIAccount).where(AIAccount.id == account_id, AIAccount.is_active.is_(True))
+        )).scalar_one_or_none()
+        allowed_ids = await _allowed_account_ids(user, db)
+        if not acc or (allowed_ids is not None and account_id not in allowed_ids):
+            raise HTTPException(status_code=403, detail="AI-Account nicht zugänglich")
     try:
         agent = await manager._get_agent(agent_id)
         cfg = dict(agent.config or {})

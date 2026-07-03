@@ -124,6 +124,17 @@ async def list_ai_accounts(
     return [_to_response(a) for a in rows]
 
 
+async def _allowed_account_ids(user, db: AsyncSession) -> set[int] | None:
+    """AI-account ids the user may use; None = unrestricted (admins). Mirrors the
+    permission model of list_ai_accounts (custom_role.ai_account_ids allowlist)."""
+    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+        return None
+    from app.core.permissions import get_effective_permissions
+    perms = await get_effective_permissions(user, db)
+    allowed = perms.get("ai_account_ids")
+    return set(allowed) if allowed is not None else None
+
+
 @router.get("/realtime-models")
 async def list_realtime_models(
     user=Depends(require_auth),
@@ -140,8 +151,11 @@ async def list_realtime_models(
     rows = (await db.execute(
         select(AIAccount).where(AIAccount.is_active.is_(True)).order_by(AIAccount.name)
     )).scalars().all()
+    allowed_ids = await _allowed_account_ids(user, db)
     out: list[dict] = []
     for a in rows:
+        if allowed_ids is not None and a.id not in allowed_ids:
+            continue
         prov = REALTIME_PROVIDERS.get(a.provider_type)
         if not prov:
             continue
