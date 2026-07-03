@@ -131,6 +131,10 @@ services:
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
       AGENT_IMAGE: ai-employee-agent:latest
+      # Kiosk voice: enables POST /kiosk/ws-ticket (mints a WS ticket for the local
+      # kiosk). Empty by default → endpoint 404s. Set to "true" ONLY on the single-
+      # user Pi kiosk, NEVER on multi-tenant boxes.
+      KIOSK_VOICE_ENABLED: ${KIOSK_VOICE_ENABLED:-}
       # Enterprise Volume Mounts — admin-defined allowlist (host paths never exposed to UI)
       # Format (one per line): label:host_path:container_path:mode  (mode = ro or rw)
       # Example:
