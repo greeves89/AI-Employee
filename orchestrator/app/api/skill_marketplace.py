@@ -870,7 +870,7 @@ async def agent_search_skills(
             if svc.enabled:
                 qvec = await svc.embed(q)
                 if qvec is not None:
-                    cat_filter = "AND UPPER(category) = :cat" if category else ""
+                    cat_filter = "AND UPPER(category::text) = :cat" if category else ""
                     rows = (await db.execute(
                         sa_text(
                             f"""

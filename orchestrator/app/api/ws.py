@@ -895,7 +895,10 @@ async def ws_agent_voice(
     async def pump_outbound():
         try:
             async for evt in session.outbound():
-                await websocket.send_text(json.dumps(evt))
+                try:
+                    await websocket.send_text(json.dumps(evt))
+                except (WebSocketDisconnect, RuntimeError):
+                    break
         except Exception:
             logger.warning("voice outbound pump stopped agent=%s", agent_id, exc_info=True)
 
