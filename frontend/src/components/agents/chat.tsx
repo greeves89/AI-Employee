@@ -64,6 +64,7 @@ interface ChatMessage {
 interface ChatEvent {
   agent_id: string;
   message_id: string;
+  session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file";
   data: Record<string, unknown>;
   timestamp: string;
@@ -508,6 +509,14 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
 
   const handleChatEvent = useCallback((event: ChatEvent) => {
     const { message_id, type, data } = event;
+
+    // Session isolation: only render events for the chat currently open. The
+    // server tags each response with its owning session_id; anything from a
+    // different session (another tab, a background task, a voice delegation)
+    // must NOT bleed into this view.
+    if (event.session_id && activeSessionIdRef.current && event.session_id !== activeSessionIdRef.current) {
+      return;
+    }
 
     setMessages((prev) => {
       const msgs = [...prev];

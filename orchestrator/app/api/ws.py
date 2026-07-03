@@ -199,6 +199,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     _forwarded_file_keys: set[tuple[str, str]] = set()
     # Track messages sent but not yet completed (for drain)
     _pending_message_ids: set[str] = set()
+    # message_id → session_id for messages THIS connection sent. Lets us tag each
+    # forwarded response with its session so the client can isolate chat tabs, and
+    # drop responses that belong to no chat of this connection (other sessions,
+    # background tasks, voice delegations) instead of bleeding them into the view.
+    _mid_to_session: dict[str, str] = {}
     # Session tracking - defer session creation until first message
     # so the client can provide an existing session_id
     _session: dict[str, str | None] = {"id": None}
@@ -468,22 +473,52 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                             _forwarded_file_keys.add(file_key)
                             if not _ws_connected:
                                 break
+                            _file_sid = _mid_to_session.get(str(result[1]))
+                            if _file_sid is None:
+                                continue  # foreign message → don't bleed into this chat
                             try:
                                 await websocket.send_text(json.dumps({
                                     "type": "file",
                                     "message_id": result[1],
+                                    "session_id": _file_sid,
                                     "data": file_payload,
                                     "timestamp": datetime.now(timezone.utc).isoformat(),
                                 }))
                             except Exception:
                                 _ws_connected = False
 
-                    # Forward to WebSocket if still connected
+                    # Forward to WebSocket if still connected. Tag with the owning
+                    # session so the client can isolate tabs; DROP responses whose
+                    # message_id belongs to no chat of this connection (another
+                    # session, a background task, or a voice delegation) so they
+                    # never bleed into the open chat. Control events without a
+                    # message_id (e.g. "session") are always forwarded.
                     if _ws_connected:
                         try:
-                            await websocket.send_text(data)
-                        except Exception:
-                            _ws_connected = False
+                            _fwd = json.loads(data)
+                        except Exception:  # noqa: BLE001
+                            _fwd = None
+                        if not isinstance(_fwd, dict):
+                            try:
+                                await websocket.send_text(data)
+                            except Exception:
+                                _ws_connected = False
+                        else:
+                            _mid = str(_fwd.get("message_id") or "")
+                            if _mid:
+                                _sid = _mid_to_session.get(_mid)
+                                if _sid is not None:  # own chat → tag + forward
+                                    _fwd["session_id"] = _sid
+                                    try:
+                                        await websocket.send_text(json.dumps(_fwd))
+                                    except Exception:
+                                        _ws_connected = False
+                                # else: foreign message_id → drop (isolation)
+                            else:
+                                try:
+                                    await websocket.send_text(data)
+                                except Exception:
+                                    _ws_connected = False
 
                     if result:
                         if result[0] == "error":
@@ -652,6 +687,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Generate message ID and push to agent's chat queue
             message_id = uuid.uuid4().hex[:12]
             _pending_message_ids.add(message_id)
+            if _session["id"]:
+                _mid_to_session[message_id] = _session["id"]
             source = str(msg.get("source") or "webapp")
             # Per-message model override must belong to the agent's harness — a
             # claude_code agent can't run a GPT model and vice-versa. Drop an

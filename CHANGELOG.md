@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.24] — 2026-07-03
+
+### Fixed
+- **Chat-Sessions sind jetzt strikt isoliert — kein Bleed mehr zwischen Chats.** Der Agent publiziert alle Antworten auf EINEN Kanal (`agent:{id}:chat:response`), und die WS-Relay leitete bisher JEDES Event an den offenen Chat weiter (kein Session-Filter). Dadurch erschien der Live-Stream einer anderen Session / eines Hintergrund-Tasks / einer Voice-Delegation im gerade offenen Chat („neue Chats synchen sich mit dem aktuellen"). **Fix:** Der Orchestrator merkt sich pro Verbindung `message_id → session_id`, **taggt** jedes weitergeleitete Event mit seiner Session und **verwirft** Events, die zu keinem Chat dieser Verbindung gehören (fremde Session/Task/Voice). Das Frontend rendert nur noch Events der aktuell offenen Session. Jeder Chat-Tab ist damit eine eigene, isolierte Session. (`orchestrator/app/api/ws.py`, `frontend/src/components/agents/chat.tsx`)
+
 ## [1.99.23] — 2026-07-03
 
 ### Added
