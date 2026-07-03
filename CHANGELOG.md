@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.9] — 2026-07-03
+
+### Added
+- **Realtime-Voice: Async-Delegation mit proaktivem Rückmelden.** Delegiert Nova Sonic eine echte Aufgabe an den Agenten (langsam), blockiert es nicht mehr: es **quittiert sofort** („ich habe nachgefragt, ich melde mich"), der Nutzer kann weiterreden, und sobald die Agenten-Antwort da ist, **spricht Nova Sonic sie von selbst aus** — über eine Turn-Injection (`NovaSonicSession.inject_user_text`). (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.8] — 2026-07-03
 
 ### Added

@@ -89,10 +89,11 @@ ASK_AGENT_TOOL = {
         "description": (
             "Delegate real WORK to the AI agent: writing/changing files, sending "
             "email/M365, running code, config changes, or anything that needs the agent "
-            "to actually DO something or reason deeply. This takes a few seconds. Do NOT "
-            "use it for status/task questions (use the fast tools) or smalltalk. IMPORTANT: "
-            "say a short spoken filler FIRST (e.g. 'Moment, ich kümmere mich darum') so there "
-            "is no silence while the agent works."
+            "to actually DO something or reason deeply. Do NOT use it for status/task "
+            "questions (use the fast tools) or smalltalk. You get an immediate short "
+            "acknowledgement to voice ('ich habe nachgefragt, ich melde mich'); the agent's "
+            "answer arrives on its own a few seconds later and is spoken automatically — so "
+            "the user can keep talking meanwhile."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
@@ -122,8 +123,9 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "Diese drei Tools antworten in Millisekunden — nutze sie IMMER für Daten-/Status-Fragen, "
         "statt den Agenten zu fragen.\n"
         "• Nur für echte ARBEIT (Dateien ändern, E-Mail, Code, komplexe Aufgaben) → ask_agent. "
-        "Das dauert ein paar Sekunden — sag deshalb VORHER kurz einen Füller wie "
-        "„Moment, ich kümmere mich darum“, damit keine Stille entsteht.\n"
+        "Du bekommst SOFORT eine kurze Quittung zum Aussprechen (z. B. 'ich habe nachgefragt, "
+        "ich melde mich'); die eigentliche Antwort des Agenten kommt Sekunden später von "
+        "selbst und du sprichst sie dann aus — der Nutzer kann derweil weiterreden.\n"
         "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool. "
         "Halte gesprochene Antworten kurz — keine Aufzählungen, kein Code, sprich wie ein Mensch."
     )
@@ -316,7 +318,7 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._fast_settings())
             return
 
-        # ── Slow tool: real work via the container agent ──
+        # ── Slow tool: real work via the container agent (ASYNC report) ──
         if name != "ask_agent":
             await self._respond(tool_use_id, "Unbekanntes Tool.")
             return
@@ -324,16 +326,33 @@ class RealtimeVoiceSession:
         if not instruction:
             await self._respond(tool_use_id, "Keine Instruktion erkannt.")
             return
-        await self._emit({"type": "status", "data": {"message": "Agent arbeitet…"}})
+        # Acknowledge immediately so neither the model nor the user is blocked while
+        # the agent works; the answer is voiced proactively when it lands.
+        asyncio.create_task(self._delegate_and_report(instruction))
+        await self._respond(
+            tool_use_id,
+            f"Aufgabe „{instruction}“ an den Agenten übergeben. Sag dem Nutzer knapp, "
+            "dass du nachgefragt hast und dich meldest, sobald die Antwort da ist.",
+        )
+
+    async def _delegate_and_report(self, instruction: str) -> None:
+        """Run the (slow) delegation in the background, then voice the result."""
         await self._emit({"type": "delegate", "data": {"instruction": instruction}})
         try:
             answer = await ask_agent_via_chat(
-                self.redis, self.agent_id, instruction, source="realtime_voice", timeout=120.0,
+                self.redis, self.agent_id, instruction, source="realtime_voice", timeout=180.0,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("realtime delegation failed agent=%s: %s", self.agent_id, e, exc_info=True)
             answer = "Der Agent konnte die Aufgabe gerade nicht bearbeiten."
-        await self._respond(tool_use_id, answer or "Der Agent hat keine Antwort geliefert.")
+        if self._closed:
+            return
+        await self._emit({"type": "response", "data": {"text": answer}})
+        if self._nova:
+            await self._nova.inject_user_text(
+                f"[Rückmeldung des Agenten zur Aufgabe „{instruction}“]: {answer}\n"
+                "Gib dem Nutzer diese Antwort jetzt kurz und natürlich gesprochen weiter."
+            )
 
     # ── Fast direct-data readers (no agent round-trip) ──────────────
 

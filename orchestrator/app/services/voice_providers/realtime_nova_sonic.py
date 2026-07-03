@@ -189,6 +189,30 @@ class NovaSonicSession:
             "promptName": self._prompt_name, "contentName": self._audio_content_name, "content": b64,
         }})
 
+    # ── proactive injection ─────────────────────────────────────────
+
+    async def inject_user_text(self, text: str) -> None:
+        """Inject a text turn mid-session to make the model speak proactively.
+
+        Used for the async delegation report: after the agent answers (seconds
+        later), we push the result in as a user turn so Nova Sonic voices it
+        without the user having to ask again.
+        """
+        if self._closed:
+            return
+        content_name = str(uuid.uuid4())
+        await self._send_event({"contentStart": {
+            "promptName": self._prompt_name, "contentName": content_name, "type": "TEXT",
+            "interactive": True, "role": "USER",
+            "textInputConfiguration": {"mediaType": "text/plain"},
+        }})
+        await self._send_event({"textInput": {
+            "promptName": self._prompt_name, "contentName": content_name, "content": text,
+        }})
+        await self._send_event({"contentEnd": {
+            "promptName": self._prompt_name, "contentName": content_name,
+        }})
+
     # ── tool result ─────────────────────────────────────────────────
 
     async def send_tool_result(self, tool_use_id: str, result: str) -> None:
