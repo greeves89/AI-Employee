@@ -137,12 +137,12 @@ export function SystemStatusBar() {
         initial={{ opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
-        className="flex items-center gap-4 rounded-xl border border-foreground/[0.06] bg-card/60 backdrop-blur-sm px-4 py-2"
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-foreground/[0.06] bg-card/60 backdrop-blur-sm px-4 py-2"
       >
         {/* Overall pill */}
         <div
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+            "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-medium",
             loading
               ? "border-foreground/10 text-muted-foreground"
               : overallHealthy
@@ -163,10 +163,10 @@ export function SystemStatusBar() {
           {loading ? "Checking…" : overallHealthy ? "All Systems Go" : "Degraded"}
         </div>
 
-        <div className="h-4 w-px bg-foreground/[0.06]" />
+        <div className="hidden h-4 w-px bg-foreground/[0.06] sm:block" />
 
         {/* Individual service dots */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <StatusDot
             status={apiStatus}
             label="API"

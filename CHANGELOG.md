@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.45] — 2026-07-03
+
+### Fixed
+- **Dashboard-Statusleiste mobil.** Die „All Systems Go"-Pille wurde in eine Zeile gequetscht und brach auf 3 Zeilen um. Neu: Pille `whitespace-nowrap`, Leiste darf umbrechen (`flex-wrap`), Trenner nur ab Desktop. (`frontend/src/components/dashboard/system-status-bar.tsx`)
+
 ## [1.99.44] — 2026-07-03
 
 ### Fixed
