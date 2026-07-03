@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.16] — 2026-07-03
+
+### Fixed
+- **Angepinnte Chats werden nicht mehr gelöscht.** `DELETE /agents/{id}/chat/sessions` (alle löschen) verschont jetzt angepinnte Sessions (Messages + Metadata bleiben); Einzel-Löschen eines angepinnten Chats wird mit 409 blockiert (erst Pin lösen). (`orchestrator/app/api/agents.py`)
+
 ## [1.99.15] — 2026-07-03
 
 ### Fixed

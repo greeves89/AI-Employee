@@ -1673,10 +1673,19 @@ async def delete_chat_session(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete all messages in a chat session."""
+    """Delete all messages in a chat session. Pinned sessions are protected."""
     await _check_owner(agent_id, user, db)
-    from sqlalchemy import delete as sql_delete
+    from sqlalchemy import delete as sql_delete, select
     from app.models.chat_session import ChatSession
+    cs = (await db.execute(
+        select(ChatSession)
+        .where(ChatSession.agent_id == agent_id, ChatSession.session_id == session_id)
+    )).scalar_one_or_none()
+    if cs and cs.pinned:
+        raise HTTPException(
+            status_code=409,
+            detail="Angepinnter Chat kann nicht gelöscht werden. Löse den Pin zuerst.",
+        )
     result = await db.execute(
         sql_delete(ChatMessage)
         .where(ChatMessage.agent_id == agent_id)
@@ -1697,18 +1706,25 @@ async def delete_all_chat_sessions(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete ALL chat sessions (messages + metadata) for an agent."""
+    """Delete ALL chat sessions (messages + metadata) for an agent — EXCEPT pinned ones."""
     await _check_owner(agent_id, user, db)
-    from sqlalchemy import delete as sql_delete
+    from sqlalchemy import delete as sql_delete, select
     from app.models.chat_session import ChatSession
-    result = await db.execute(
-        sql_delete(ChatMessage).where(ChatMessage.agent_id == agent_id)
-    )
+    pinned_ids = list((await db.execute(
+        select(ChatSession.session_id)
+        .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(True))
+    )).scalars().all())
+    del_msgs = sql_delete(ChatMessage).where(ChatMessage.agent_id == agent_id)
+    if pinned_ids:
+        del_msgs = del_msgs.where(ChatMessage.session_id.notin_(pinned_ids))
+    result = await db.execute(del_msgs)
+    # Keep pinned session rows; drop the rest.
     await db.execute(
-        sql_delete(ChatSession).where(ChatSession.agent_id == agent_id)
+        sql_delete(ChatSession)
+        .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(False))
     )
     await db.commit()
-    return {"deleted": result.rowcount}
+    return {"deleted": result.rowcount, "kept_pinned": len(pinned_ids)}
 
 
 class ChatSessionUpdate(BaseModel):
