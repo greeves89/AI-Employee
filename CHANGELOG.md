@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.53] — 2026-07-03
+
+### Fixed
+- **Neue Deploys waren durch CDN-Cache unsichtbar (Kern-Ursache vieler „nichts ändert sich"-Momente).** Die HTML-Shell kam mit `Cache-Control: s-maxage=31536000` (1 Jahr) → Cloudflare lieferte die alte HTML mit alten JS-Bundle-Referenzen. Neu: Caddy setzt für HTML `no-cache, must-revalidate` und nur `/_next/static/*` bleibt immutable-gecacht → neue Builds sind sofort sichtbar, ohne Hard-Refresh. (`Caddyfile`)
+- **Knowledge-Graph füllt die Fläche (Layout-Spread).** Mehr Repulsion/Link-Distanz + weniger Gravity, damit die Knoten sich verteilen statt zu klumpen (zusammen mit Auto-Fit aus 1.99.52). (`frontend/src/app/knowledge/page.tsx`)
+
 ## [1.99.52] — 2026-07-03
 
 ### Fixed

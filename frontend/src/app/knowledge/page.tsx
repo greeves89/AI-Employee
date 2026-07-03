@@ -732,11 +732,11 @@ function ForceGraph({ nodes, edges, onNodeClick }: ForceGraphProps) {
 
     let iteration = 0;
     const MAX_ITER = 500;
-    // Obsidian-style: tight packing, short link distance
-    const REPULSION = 1800;
-    const LINK_DIST = 55;
+    // Spread nodes out so the graph fills the canvas (fit-to-view scales the result).
+    const REPULSION = 3800;
+    const LINK_DIST = 85;
     const DAMPING = 0.5;
-    const GRAVITY = 0.018;
+    const GRAVITY = 0.012;
 
     function tick() {
       const sn = simRef.current;
