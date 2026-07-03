@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.47] — 2026-07-03
+
+### Fixed
+- **Chat hängt nicht mehr auf „Thinking…" nach Agent-Update/Restart.** Wurde ein Agent während einer laufenden Antwort neu erstellt (Update/Restart), wurde der Codex/Claude-Prozess mitten im Stream gekillt und das Frontend bekam nie ein Terminal-Event → ewiges „Thinking…". Neu: `AgentManager` broadcastet vor dem Container-Stop ein `cancelled`-Event (leeres message_id → an alle offenen Chat-Streams des Agenten) auf `agent:{id}:chat:response`; das bestehende Frontend-Handling beendet damit den Warte-Zustand sauber. (`orchestrator/app/core/agent_manager.py`)
+
 ## [1.99.46] — 2026-07-03
 
 ### Fixed

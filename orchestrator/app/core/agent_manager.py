@@ -703,6 +703,29 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not publish event for agent {agent_id}: {e}")
 
+    async def _cancel_open_chats(self, agent_id: str, reason: str) -> None:
+        """Broadcast a terminal ``cancelled`` event to any open chat streams for this
+        agent, so the UI does not hang on "Thinking..." after a recreate/restart kills
+        the in-flight response.
+
+        Empty ``message_id`` is deliberate: the WS forwarder broadcasts message_id-less
+        events to ALL chat connections of the agent (they bypass the per-session
+        filter), and the frontend's ``cancelled`` handler then clears the waiting state.
+        Published on the same channel (``agent:{id}:chat:response``) the agent container
+        streams responses on — no new mechanism.
+        """
+        try:
+            event = json.dumps({
+                "agent_id": agent_id,
+                "message_id": "",
+                "type": "cancelled",
+                "data": {"message": reason},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            await self.redis.client.publish(f"agent:{agent_id}:chat:response", event)
+        except Exception as e:  # noqa: BLE001 — best effort, never block the restart
+            logger.warning(f"Could not cancel open chats for agent {agent_id}: {e}")
+
     async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
 
@@ -1097,6 +1120,8 @@ class AgentManager:
         new environment (MCP servers, integrations, etc).
         """
         await self._publish_event(agent_id, "system", "Agent restarting (recreating container with fresh config)...")
+        # Clear any open chat's "Thinking..." before we kill the in-flight response.
+        await self._cancel_open_chats(agent_id, "Agent wird neu gestartet — laufende Antwort abgebrochen.")
         agent = await self._get_agent(agent_id)
         config = agent.config or {}
 
@@ -1259,6 +1284,9 @@ class AgentManager:
         """Recreate agent container with latest image, preserving all data (volumes)."""
         agent = await self._get_agent(agent_id)
         config = agent.config or {}
+
+        # Clear any open chat's "Thinking..." before we kill the in-flight response.
+        await self._cancel_open_chats(agent_id, "Agent wird aktualisiert — laufende Antwort abgebrochen.")
 
         # 1. Stop and remove old container (volumes stay!)
         container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
