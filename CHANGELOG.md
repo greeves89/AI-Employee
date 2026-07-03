@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.20] — 2026-07-03
+
+### Added
+- **Sprechen im Kiosk.** Der Pi-Kiosk hat pro Agent jetzt einen „Sprechen"-Button, der das Jarvis-Voice-Modal öffnet — reden statt tippen, direkt am 7"-Touchscreen. Da der Kiosk bewusst auth-frei ist (nur lokal am Gerät erreichbar), stellt ein neuer lokaler Endpoint `POST /kiosk/ws-ticket/{agent_id}` ein kurzlebiges WS-Ticket aus, das an eine Admin-Identität gebunden ist — damit passt das (in 1.99.19 ergänzte) Ownership-Gate der Voice-WS, ohne den Kiosk-Trust-Modell aufzuweichen (physischer Gerätezugriff = Kiosk-Zugriff). `VoiceSessionModal` nimmt dafür einen optionalen `getTicket`-Prop (der normale JWT-Flow der Web-App bleibt unverändert). (`orchestrator/app/api/kiosk.py`, `frontend/src/app/kiosk/page.tsx`, `frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.19] — 2026-07-03
 
 ### Added

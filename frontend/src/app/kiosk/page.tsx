@@ -18,8 +18,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   Activity, Bot, Cpu, Gauge, HardDrive, MemoryStick, Zap, Euro, Clock, Thermometer,
   ListTodo, CircleDot, Send, ArrowLeft, Wifi, WifiOff, LayoutDashboard, Users, Server,
-  Settings as SettingsIcon, Coins, Hash, ShieldCheck, Boxes, Save, RefreshCw,
+  Settings as SettingsIcon, Coins, Hash, ShieldCheck, Boxes, Save, RefreshCw, Mic,
 } from "lucide-react";
+import { VoiceSessionModal } from "@/components/agents/voice-session";
 
 type AgentInfo = {
   id: string; name: string; state: string; model: string;
@@ -79,6 +80,7 @@ export default function KioskPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [chatAgent, setChatAgent] = useState<AgentInfo | null>(null);
+  const [voiceAgent, setVoiceAgent] = useState<AgentInfo | null>(null);
   const [idle, setIdle] = useState(false);
   const lastActivity = useRef<number>(Date.now());
 
@@ -89,9 +91,9 @@ export default function KioskPage() {
     const evs = ["pointerdown", "keydown", "touchstart", "mousemove"];
     evs.forEach((e) => window.addEventListener(e, wake, { passive: true }));
     const idleMs = lsGet("kiosk_idle_ms", 90000);
-    const t = setInterval(() => { if (!chatAgent && Date.now() - lastActivity.current > idleMs) setIdle(true); }, 2000);
+    const t = setInterval(() => { if (!chatAgent && !voiceAgent && Date.now() - lastActivity.current > idleMs) setIdle(true); }, 2000);
     return () => { evs.forEach((e) => window.removeEventListener(e, wake)); clearInterval(t); };
-  }, [idle, chatAgent]);
+  }, [idle, chatAgent, voiceAgent]);
 
   useEffect(() => {
     let alive = true;
@@ -126,6 +128,18 @@ export default function KioskPage() {
   return (
     <div className="kiosk-root h-screen w-screen overflow-hidden bg-[#05070d] text-slate-100 select-none flex flex-col">
       <KioskStyles />
+      {voiceAgent && (
+        <VoiceSessionModal
+          agentId={voiceAgent.id}
+          agentName={voiceAgent.name}
+          onClose={() => { lastActivity.current = Date.now(); setVoiceAgent(null); }}
+          getTicket={async () => {
+            const r = await fetch(`/api/v1/kiosk/ws-ticket/${voiceAgent.id}`, { method: "POST" });
+            if (!r.ok) throw new Error("ticket failed");
+            return (await r.json()).ticket as string;
+          }}
+        />
+      )}
       <header className="flex items-center justify-between px-4 h-12 border-b border-white/5 bg-gradient-to-r from-[#0a1020] to-[#0a0f1a] shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-500 grid place-items-center kiosk-glow"><Bot className="w-4 h-4 text-white" /></div>
@@ -143,7 +157,7 @@ export default function KioskPage() {
       <main className="flex-1 min-h-0 overflow-hidden p-3">
         {tab === "overview" && <OverviewView data={data} onOpenAgent={(id) => { setDetailId(id); setTab("agents"); }} />}
         {tab === "agents" && (detailId
-          ? <AgentDetailView id={detailId} onBack={() => setDetailId(null)} onChat={(a) => setChatAgent(a)} />
+          ? <AgentDetailView id={detailId} onBack={() => setDetailId(null)} onChat={(a) => setChatAgent(a)} onVoice={(a) => setVoiceAgent(a)} />
           : <AgentsView data={data} onOpen={(id) => setDetailId(id)} />)}
         {tab === "tasks" && <TasksView data={data} />}
         {tab === "system" && <SystemView data={data} />}
@@ -241,7 +255,7 @@ function AgentsView({ data, onOpen }: { data: Overview | null; onOpen: (id: stri
   );
 }
 
-function AgentDetailView({ id, onBack, onChat }: { id: string; onBack: () => void; onChat: (a: AgentInfo) => void }) {
+function AgentDetailView({ id, onBack, onChat, onVoice }: { id: string; onBack: () => void; onChat: (a: AgentInfo) => void; onVoice: (a: AgentInfo) => void }) {
   const [d, setD] = useState<AgentDetail | null>(null);
   useEffect(() => {
     let alive = true;
@@ -258,6 +272,8 @@ function AgentDetailView({ id, onBack, onChat }: { id: string; onBack: () => voi
           <div className="text-lg font-semibold truncate">{d?.name ?? "…"}</div>
           <div className="flex items-center gap-1.5 text-xs"><span className={`w-2 h-2 rounded-full ${c.dot}`} /><span className={c.text}>{d?.state}</span><span className="text-slate-500">· {d?.model}</span></div>
         </div>
+        {d && <button onClick={() => onVoice({ id: d.id, name: d.name, state: d.state, model: d.model, current_task: d.current_task, has_container: d.has_container })}
+          className="h-10 px-4 rounded-lg bg-gradient-to-br from-fuchsia-500 to-violet-500 flex items-center gap-2 active:scale-95 font-medium"><Mic className="w-4 h-4" />Sprechen</button>}
         {d && <button onClick={() => onChat({ id: d.id, name: d.name, state: d.state, model: d.model, current_task: d.current_task, has_container: d.has_container })}
           className="h-10 px-4 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-500 flex items-center gap-2 active:scale-95 font-medium"><Send className="w-4 h-4" />Chat</button>}
       </div>

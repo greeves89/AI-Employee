@@ -260,6 +260,35 @@ async def kiosk_chat_send(
     return {"session_id": session_id, "message_id": message_id}
 
 
+@router.post("/ws-ticket/{agent_id}")
+async def kiosk_ws_ticket(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Issue a short-lived WS ticket so the LOCAL kiosk can open a VOICE session.
+
+    The voice WebSocket enforces an ownership gate, so the kiosk (which is itself
+    unauthenticated) needs a ticket bound to a real identity. We bind it to an
+    admin — same trust model as the rest of this router: physical device access =
+    kiosk access. Local-only; never expose beyond the device.
+    """
+    from app.models.user import User, UserRole
+    if not redis or not redis.client:
+        raise HTTPException(status_code=503, detail="Redis not available")
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    admin = await db.scalar(
+        select(User).where(User.role == UserRole.ADMIN).order_by(User.id).limit(1)
+    )
+    if not admin:
+        raise HTTPException(status_code=503, detail="No admin identity for kiosk voice")
+    ticket_id = uuid.uuid4().hex
+    await redis.client.setex(f"ws:ticket:{ticket_id}", 30, str(admin.id))
+    return {"ticket": ticket_id}
+
+
 @router.get("/chat/{agent_id}/history")
 async def kiosk_chat_history(
     agent_id: str,

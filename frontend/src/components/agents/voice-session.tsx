@@ -57,9 +57,12 @@ interface Props {
   agentId: string;
   agentName: string;
   onClose: () => void;
+  /** Optional custom WS-ticket source (e.g. the unauthenticated kiosk). When
+   *  omitted, the default authenticated `/ws/ticket` flow (JWT) is used. */
+  getTicket?: () => Promise<string>;
 }
 
-export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
+export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Props) {
   const [state, setState] = useState<VoiceState>("connecting");
   const [mode, setMode] = useState<Mode>("classic");
   const [transcript, setTranscript] = useState("");
@@ -120,23 +123,30 @@ export function VoiceSessionModal({ agentId, agentName, onClose }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const token = localStorage.getItem("token");
-        const tr = await fetch(`${getBase()}/ws/ticket`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!tr.ok) throw new Error("ticket failed");
-        const { ticket } = await tr.json();
-        try {
-          const cfg = await fetch(`${getBase()}/settings/voice`, {
+        let ticket: string;
+        if (getTicket) {
+          // Kiosk / custom flow: caller supplies the ticket (no JWT available).
+          ticket = await getTicket();
+          voiceLanguageRef.current = "de";
+        } else {
+          const token = localStorage.getItem("token");
+          const tr = await fetch(`${getBase()}/ws/ticket`, {
+            method: "POST",
             headers: { Authorization: `Bearer ${token}` },
           });
-          if (cfg.ok) {
-            const voice = await cfg.json();
-            voiceLanguageRef.current = voice.language || "de";
+          if (!tr.ok) throw new Error("ticket failed");
+          ticket = (await tr.json()).ticket;
+          try {
+            const cfg = await fetch(`${getBase()}/settings/voice`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (cfg.ok) {
+              const voice = await cfg.json();
+              voiceLanguageRef.current = voice.language || "de";
+            }
+          } catch {
+            voiceLanguageRef.current = "de";
           }
-        } catch {
-          voiceLanguageRef.current = "de";
         }
         if (cancelled) return;
         const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}`;
