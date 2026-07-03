@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.17] — 2026-07-03
+
+### Changed
+- **Exchange-on-prem-Fehler ist jetzt diagnostizierbar.** Statt der generischen „Exchange request failed. Check the server connection / permissions." wird die echte Fehler-Kategorie (Exception-Klasse wie `ErrorAccessDenied` / `ErrorImpersonateUserDenied` / `ErrorNonExistentMailbox`) plus gekürzte Meldung zurückgegeben — genug, um die Ursache zu pinpointen (Impersonation-Rechte, Mailbox-Zugriff, EWS-Endpoint), ohne Server-/Tenant-Interna zu dumpen. Hintergrund: `ex_whoami` baut nur das Account-Objekt, `ex_list_emails` ist der erste echte EWS-Call — deshalb scheitert erst der. (`orchestrator/app/core/exchange_mcp.py`)
+
 ## [1.99.16] — 2026-07-03
 
 ### Fixed

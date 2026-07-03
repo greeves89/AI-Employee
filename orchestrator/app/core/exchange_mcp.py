@@ -504,11 +504,15 @@ async def handle_mcp_request(
             result_text = await asyncio.to_thread(_run_tool, tool_name, args, ctx, write_enabled)
             return mcp_result(id_, tool_result(result_text)), 200
         except Exception as e:
-            # Log full detail server-side; return a generic message (EWS errors can
-            # leak server/tenant internals).
+            # Log full detail server-side; return the exception CLASS (a safe error
+            # category like ErrorAccessDenied / ErrorImpersonateUserDenied /
+            # ErrorNonExistentMailbox) plus a trimmed message so the cause is
+            # actually diagnosable, without dumping full server/tenant internals.
             logger.error("Exchange tool error [%s]: %s", tool_name, e, exc_info=True)
+            reason = f"{type(e).__name__}: {str(e)[:200]}".strip().rstrip(":").strip()
             return mcp_result(id_, tool_result(
-                "Exchange request failed. Check the server connection / permissions.",
+                f"Exchange request failed ({reason}). Check the mailbox permissions / "
+                "impersonation rights and the EWS server connection.",
                 is_error=True,
             )), 200
 
