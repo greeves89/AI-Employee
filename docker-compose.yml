@@ -143,6 +143,9 @@ services:
       # serial default). >1 → independent sessions/tasks run in parallel in one
       # container. Passed through to each agent container.
       MAX_PARALLEL_CHATS: ${MAX_PARALLEL_CHATS:-1}
+      # How many independent tasks ONE agent runs concurrently (1 = serial default).
+      # Passed through to each agent container.
+      MAX_PARALLEL_TASKS: ${MAX_PARALLEL_TASKS:-1}
       # Enterprise Volume Mounts — admin-defined allowlist (host paths never exposed to UI)
       # Format (one per line): label:host_path:container_path:mode  (mode = ro or rw)
       # Example:

@@ -898,6 +898,7 @@ class AgentManager:
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
             "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
+            "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": autonomy_level.lower(),
         }
 
@@ -1158,6 +1159,7 @@ class AgentManager:
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
             "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
+            "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
@@ -1324,6 +1326,7 @@ class AgentManager:
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
             "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
+            "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # (proven default). >1 lets independent sessions/tasks run in parallel in one
     # container (each its own claude/codex/custom-LLM turn); same session stays serial.
     max_parallel_chats: int = 1
+    # How many independent TASKS (proactive/scheduled/webhook) one agent runs at once.
+    # 1 = serial (default). >1 → each task gets its own runner subprocess.
+    max_parallel_tasks: int = 1
     extended_thinking: bool = False  # Thinking is model-controlled, not a CLI flag
 
     # Model Provider: "anthropic", "bedrock", "vertex", "foundry"

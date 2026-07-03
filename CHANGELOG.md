@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.49] — 2026-07-03
+
+### Added
+- **Echte Task-Parallelität pro Agent (`MAX_PARALLEL_TASKS`).** Bisher liefen proaktive/geplante Tasks strikt seriell (einer nach dem anderen). Neu: der Task-Consumer holt nur einen Task aus Redis, wenn ein Semaphore-Slot frei ist, und führt bis zu N Tasks gleichzeitig aus — **jeder in einer eigenen Runner-Instanz (eigener Subprozess)**, funktioniert für **codex, claude UND custom_llm** (einheitliches `execute_task`/`interrupt`/`is_running`). Default 1 = seriell (unverändert). Durchgereicht via Orchestrator→agent_manager→Container-Env, analog `MAX_PARALLEL_CHATS`. (`agent/app/task_consumer.py`, `orchestrator/app/config.py`, `orchestrator/app/core/agent_manager.py`, `docker-compose.yml`)
+
 ## [1.99.48] — 2026-07-03
 
 ### Fixed
