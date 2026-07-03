@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.30] — 2026-07-03
+
+### Added
+- **Voice-Layer durchsucht direkt sein Wissen** — neues `search_knowledge`-Tool: Nova Sonic sucht das Gedächtnis/Wissen des Agenten per Vektorsuche (`agent_memories`, pgvector) **direkt**, ohne Agent-Round-Trip. Für „was weißt du über…", Kunde/Projekt/Kontakt/Verfahren. (`orchestrator/app/services/realtime_voice_session.py`)
+- **Fokus-/Pause-Modus im Live-Gespräch** — „Fokus"-Button schaltet das Mikro stumm (Session bleibt aktiv, Stille wird gestreamt); der Agent arbeitet weiter und meldet sich per Sprache, wenn etwas fertig ist. „Fortsetzen" reaktiviert. (`voice-session.tsx`)
+
+### Changed
+- **Aufgaben-/Aktivitäts-Panel ist einklappbar** und zeigt bei Fertigstellung einen **grünen Haken (✓)** statt des Radio-Icons. (`voice-session.tsx`)
+
 ## [1.99.29] — 2026-07-03
 
 ### Fixed

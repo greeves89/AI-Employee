@@ -117,6 +117,24 @@ WEB_SEARCH_TOOL = {
     }
 }
 
+SEARCH_KNOWLEDGE_TOOL = {
+    "toolSpec": {
+        "name": "search_knowledge",
+        "description": (
+            "Search MY OWN knowledge/memory — everything I have learned and stored (facts, "
+            "notes, decisions, contacts, procedures). Use for 'was weißt du über…', 'hast du dir "
+            "… gemerkt', 'was weißt du zu diesem Kunden/Projekt'. Fast — searches my memory "
+            "directly (vector search), no agent round-trip. Report only what is found; if nothing "
+            "matches, say so — do NOT invent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "What to look up in my knowledge/memory."}},
+            "required": ["query"],
+        })},
+    }
+}
+
 SET_AUTONOMY_TOOL = {
     "toolSpec": {
         "name": "set_autonomy",
@@ -197,6 +215,8 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Fragen 'was machst du GERADE / wie ist der Fortschritt / wo stehen wir' → "
         "get_agent_activity (sofort — zeigt die laufende Aufgabe + die letzten konkreten Schritte "
         "des Agenten aus dem Live-Feed).\n"
+        "• Fragen nach MEINEM Wissen ('was weißt du über…', 'hast du dir … gemerkt', zu Kunde/"
+        "Projekt/Kontakt/Verfahren) → search_knowledge (sofort, durchsucht mein Gedächtnis).\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer will meine Autonomie ändern → set_autonomy (l1–l4). Nutzer will mein Modell "
@@ -280,6 +300,7 @@ class RealtimeVoiceSession:
                 GET_AGENT_SETTINGS_TOOL,
                 GET_AGENT_ACTIVITY_TOOL,
                 WEB_SEARCH_TOOL,
+                SEARCH_KNOWLEDGE_TOOL,
                 SET_AUTONOMY_TOOL,
                 SET_MODEL_TOOL,
                 ASK_AGENT_TOOL,
@@ -494,6 +515,9 @@ class RealtimeVoiceSession:
                 tool_use_id,
                 await self._web_search(args.get("query") or "", int(args.get("max_results") or 5)),
             )
+            return
+        if name == "search_knowledge":
+            await self._respond(tool_use_id, await self._search_knowledge(str(args.get("query") or "")))
             return
         if name == "set_autonomy":
             await self._respond(tool_use_id, await self._set_autonomy(str(args.get("level") or "")))
@@ -712,6 +736,48 @@ class RealtimeVoiceSession:
             for i, r in enumerate(results, 1)
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
+
+    async def _search_knowledge(self, query: str, limit: int = 5) -> str:
+        """Vector-search the agent's own memory/knowledge (the same store the
+        memory_search MCP tool uses) — direct, no agent round-trip."""
+        q = (query or "").strip()
+        if not q:
+            return "Wonach soll ich in meinem Wissen suchen?"
+        from app.services.embedding_service import get_embedding_service
+        from app.db.session import async_session_factory
+        from sqlalchemy import text as sa_text
+        svc = get_embedding_service()
+        if not getattr(svc, "enabled", False):
+            return "Meine Wissenssuche ist gerade nicht verfügbar."
+        vec = await svc.embed(q)
+        if vec is None:
+            return "Ich konnte die Anfrage gerade nicht verarbeiten."
+        sql = sa_text(
+            """
+            SELECT category, key, content,
+                   1 - (embedding <=> CAST(:qv AS vector)) AS sim
+            FROM agent_memories
+            WHERE agent_id = :aid AND embedding IS NOT NULL AND superseded_by IS NULL
+            ORDER BY embedding <=> CAST(:qv AS vector)
+            LIMIT :lim
+            """
+        )
+        try:
+            async with async_session_factory() as db:
+                rows = (await db.execute(sql, {
+                    "qv": str(vec), "aid": self.agent_id, "lim": max(1, min(limit, 8)),
+                })).mappings().all()
+        except Exception:  # noqa: BLE001
+            logger.warning("voice search_knowledge failed agent=%s", self.agent_id, exc_info=True)
+            return "Meine Wissenssuche hat gerade nicht geklappt."
+        hits = [r for r in rows if float(r["sim"] or 0) >= 0.3]
+        if not hits:
+            return f"Zu „{q}“ habe ich nichts in meinem Wissen gefunden."
+        lines = [
+            f"{r['key']}: {(r['content'] or '').strip().replace(chr(10), ' ')[:220]}"
+            for r in hits[:5]
+        ]
+        return f"Aus meinem Wissen zu „{q}“:\n" + "\n".join(lines)
 
     # ── Settings writers (voice) — same AuthZ as the HTTP endpoints ──
 

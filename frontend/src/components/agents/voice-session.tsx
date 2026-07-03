@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 
@@ -77,6 +77,18 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
   const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string }[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const [paused, setPaused] = useState(false);       // focus mode: mic muted, agent still reports
+  const [activityOpen, setActivityOpen] = useState(true);
+
+  // Focus mode: mute/unmute the mic track. Keeps the session alive (silence is
+  // still streamed) so the agent can proactively speak when a task finishes.
+  const togglePause = useCallback(() => {
+    setPaused((p) => {
+      const next = !p;
+      streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = !next; });
+      return next;
+    });
+  }, []);
 
   // Append a conversation turn, coalescing consecutive same-role events into ONE
   // bubble. Nova Sonic emits each sentence as a separate event; naive replace would
@@ -627,6 +639,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
                 {statusMsg && state !== "error" && (
                   <p className="max-w-[240px] text-center text-xs text-muted-foreground/70">{statusMsg}</p>
                 )}
+                {paused && (
+                  <p className="max-w-[260px] text-center text-xs text-amber-400/90">
+                    Fokus-Modus: Mikro aus — ich arbeite weiter und melde mich, wenn etwas fertig ist.
+                  </p>
+                )}
                 <div className="flex flex-wrap justify-center gap-2">
                   {state === "speaking" && (
                     <button
@@ -636,6 +653,16 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
                       Unterbrechen
                     </button>
                   )}
+                  <button
+                    onClick={togglePause}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
+                      paused
+                        ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                        : "bg-foreground/[0.06] hover:bg-foreground/[0.10]"
+                    }`}
+                  >
+                    {paused ? <><Play className="h-3.5 w-3.5" /> Fortsetzen</> : <><Pause className="h-3.5 w-3.5" /> Fokus</>}
+                  </button>
                   <button
                     onClick={endLive}
                     className="inline-flex items-center gap-1.5 rounded-md bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20"
@@ -704,15 +731,26 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket }: Pr
                   ))}
                   {activity.length > 0 && (
                     <div className="rounded-lg border border-border bg-black/40 p-2.5">
-                      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                      <button
+                        onClick={() => setActivityOpen((o) => !o)}
+                        className="mb-1.5 flex w-full items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground/90"
+                      >
+                        {activityOpen ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
                         {delegating ? (
                           <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
                         ) : (
-                          <Radio className="h-3 w-3 text-emerald-400" />
+                          <CheckCircle2 className="h-3 w-3 text-emerald-400" />
                         )}
                         {delegating ? "Agent arbeitet" : "Aufgabe erledigt"}
-                      </div>
-                      <div ref={activityRef} className="max-h-52 overflow-y-auto font-mono text-[11px] leading-relaxed">
+                      </button>
+                      <div
+                        ref={activityRef}
+                        className={`max-h-52 overflow-y-auto font-mono text-[11px] leading-relaxed ${activityOpen ? "" : "hidden"}`}
+                      >
                         {activity.map((a, i) => (
                           <div
                             key={i}
