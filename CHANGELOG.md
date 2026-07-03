@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.10] — 2026-07-03
+
+### Fixed
+- **Embedding-Cloud-Fallback (OpenAI) tatsächlich implementiert (löst #287).** Der dokumentierte „local → OpenAI"-Fallback war nur ein Stub (`return None` mit Kommentar „would require dim conversion"). Jetzt ruft er bei nicht erreichbarem lokalem bge-m3 **OpenAI `text-embedding-3-small` mit `dimensions=1024`** auf — passt exakt in die bestehende pgvector-Spalte. Damit funktioniert semantische Suche auf dem Pi (wo bge-m3 den Kühler kocht) **ohne lokale Last**, sobald ein OpenAI-Key gesetzt ist. Betrifft `embed()` + `embed_batch()`. (`orchestrator/app/services/embedding_service.py`)
+
 ## [1.99.9] — 2026-07-03
 
 ### Added

@@ -108,6 +108,33 @@ class EmbeddingService:
             )
         return self._openai_client
 
+    async def _openai_embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
+        """Cloud fallback: OpenAI text-embedding-3-small, forced to EMBEDDING_DIM
+        (1024) via the ``dimensions`` param so the vector fits the existing pgvector
+        column (that constraint is why the old fallback was a no-op). Returns vectors
+        aligned to ``texts``, or all-None if the key is unset / the call fails."""
+        if not settings.openai_api_key or not texts:
+            return [None] * len(texts)
+        try:
+            client = await self._get_openai_client()
+            resp = await client.post("/embeddings", json={
+                "model": "text-embedding-3-small",
+                "input": texts,
+                "dimensions": EMBEDDING_DIM,
+            })
+            if resp.status_code != 200:
+                logger.warning("[Embedding] OpenAI fallback HTTP %s: %s", resp.status_code, resp.text[:200])
+                return [None] * len(texts)
+            data = sorted(resp.json().get("data", []), key=lambda d: d.get("index", 0))
+            out = [d.get("embedding") for d in data]
+            if len(out) != len(texts):
+                return [None] * len(texts)
+            self._success_count += 1
+            return out
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Embedding] OpenAI fallback failed: %s", e)
+            return [None] * len(texts)
+
     async def embed(self, text: str) -> Optional[list[float]]:
         """Generate an embedding vector for a single text string.
 
@@ -131,10 +158,10 @@ class EmbeddingService:
                 logger.warning(f"[Embedding] Local call failed: {e}")
                 self._local_available = None  # force re-check next call
 
-        # 2. Cloud fallback would require dim conversion — skip for now.
-        # We've committed to 1024-dim column in the DB, so we can't use OpenAI's 1536.
+        # 2. Cloud fallback: OpenAI @ EMBEDDING_DIM (matches the DB column).
         self._fallback_count += 1
-        return None
+        vecs = await self._openai_embed_batch([text])
+        return vecs[0] if vecs else None
 
     async def embed_batch(self, texts: list[str]) -> list[Optional[list[float]]]:
         """Batch-embed multiple texts."""
@@ -182,6 +209,15 @@ class EmbeddingService:
                 logger.warning(f"[Embedding] Batch local failed: {e}")
                 self._local_available = None
 
+        # Cloud fallback (OpenAI) for anything the local service didn't fill.
+        missing = [i for i, v in enumerate(result) if v is None]
+        idx_to_text = {i: t for i, t in cleaned}
+        fill_idx = [i for i in missing if i in idx_to_text]
+        if fill_idx and settings.openai_api_key:
+            self._fallback_count += 1
+            vecs = await self._openai_embed_batch([idx_to_text[i] for i in fill_idx])
+            for i, v in zip(fill_idx, vecs):
+                result[i] = v
         return result
 
     async def close(self) -> None:
