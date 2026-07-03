@@ -298,25 +298,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "create_schedule",
       description:
-        "Create a recurring schedule that automatically runs a task. " +
-        "Use cron_expression for wall-clock schedules like daily reports, or interval_seconds for simple intervals.",
+        "Schedule YOURSELF to run a task later — you choose the timing. Use instead of sleeping/waiting. " +
+        "run_in_seconds = ONE-SHOT self follow-up ('look at this again in 30 min' → 1800): fires once, then stops. " +
+        "interval_seconds = repeat forever. cron_expression = exact wall-clock times (daily, twice-daily). " +
+        "Provide exactly ONE of the three timing options.",
       inputSchema: {
         type: "object",
         properties: {
           name: {
             type: "string",
-            description: "Name of the schedule (e.g. 'Daily status report', 'Hourly health check').",
+            description: "Name of the schedule (e.g. 'Re-check PR #290 in 30m', 'Daily status report').",
           },
           prompt: {
             type: "string",
-            description: "The task instructions to run each time the schedule triggers.",
+            description: "The task instructions to run when the schedule triggers.",
+          },
+          run_in_seconds: {
+            type: "number",
+            minimum: 30,
+            description:
+              "ONE-SHOT: run once after this many seconds, then auto-disable. " +
+              "Examples: 1800=in 30 minutes, 3600=in 1 hour. Use this for 'follow up later', NOT a sleep.",
           },
           interval_seconds: {
             type: "number",
             minimum: 60,
             description:
-              "Interval between runs in seconds. Examples: 3600=hourly, 86400=daily, 604800=weekly. " +
-              "Minimum: 60 seconds. Prefer cron_expression for exact times like every day at 06:00.",
+              "RECURRING: repeat every N seconds forever. Examples: 3600=hourly, 86400=daily. " +
+              "Minimum: 60 seconds. Prefer cron_expression for exact times.",
           },
           cron_expression: {
             type: "string",
@@ -966,8 +975,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "create_schedule": {
-      if (!args.interval_seconds && !args.cron_expression) {
-        throw new Error("Provide either interval_seconds or cron_expression.");
+      if (!args.run_in_seconds && !args.interval_seconds && !args.cron_expression) {
+        throw new Error("Provide run_in_seconds (one-shot), interval_seconds, or cron_expression.");
       }
       const body = {
         name: args.name,
@@ -975,7 +984,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         agent_id: AGENT_ID,
         model: DEFAULT_MODEL,
       };
-      if (args.cron_expression) {
+      if (args.run_in_seconds) {
+        body.run_in_seconds = args.run_in_seconds;  // one-shot; backend sets interval 0 + disables after firing
+      } else if (args.cron_expression) {
         body.cron_expression = args.cron_expression;
         body.interval_seconds = 0;
         if (args.timezone) body.timezone = args.timezone;
@@ -988,6 +999,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       });
       const timing = result.cron_expression
         ? `cron: ${result.cron_expression}`
+        : args.run_in_seconds
+        ? `one-shot at ${result.next_run_at}`
         : `interval: ${result.interval_seconds}s`;
       const nextRun = result.next_run_at ? `, next: ${result.next_run_at}` : "";
       return {

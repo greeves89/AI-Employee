@@ -152,18 +152,21 @@ class OrchestratorAPIClient:
     # ── Schedule Management (orchestrator-server.mjs) ──
 
     async def create_schedule(self, params: dict) -> str:
-        """Create a recurring schedule."""
+        """Create a schedule — one-shot (run_in_seconds), recurring (interval_seconds) or cron."""
+        run_in_seconds = params.get("run_in_seconds")
         cron_expression = params.get("cron_expression")
         interval_seconds = params.get("interval_seconds")
-        if not cron_expression and not interval_seconds:
-            return "Error: provide either cron_expression or interval_seconds"
+        if not run_in_seconds and not cron_expression and not interval_seconds:
+            return "Error: provide run_in_seconds (one-shot), cron_expression, or interval_seconds"
         body = {
             "name": params.get("name", "Agent Schedule"),
             "prompt": params.get("prompt", ""),
             "agent_id": self.agent_id,
             "model": params.get("model"),
         }
-        if cron_expression:
+        if run_in_seconds:
+            body["run_in_seconds"] = max(int(run_in_seconds), 30)  # one-shot; backend sets interval 0
+        elif cron_expression:
             body["cron_expression"] = cron_expression
             body["interval_seconds"] = 0
         else:
@@ -174,6 +177,8 @@ class OrchestratorAPIClient:
         timing = (
             f"cron: {result.get('cron_expression')}"
             if result.get("cron_expression")
+            else f"one-shot at {result.get('next_run_at')}"
+            if run_in_seconds
             else f"interval: {result.get('interval_seconds')}s"
         )
         next_run = f", next: {result.get('next_run_at')}" if result.get("next_run_at") else ""

@@ -83,6 +83,19 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
     schedule_id = uuid.uuid4().hex[:8]
     now = datetime.now(timezone.utc)
 
+    # Self-scheduling: when an agent creates a schedule without naming a target, it
+    # schedules ITSELF (the agent principal's id is the agent_id).
+    agent_id = data.agent_id
+    if agent_id is None and is_agent_principal(user):
+        agent_id = user.id
+
+    # One-shot ("look at this again in N seconds") fires once at now+run_in_seconds;
+    # interval_seconds==0 + no cron → the scheduler disables it after the single run.
+    if data.run_in_seconds is not None:
+        next_run_at = now + timedelta(seconds=data.run_in_seconds)
+    else:
+        next_run_at = _calc_next_run(data, now)  # type: ignore[arg-type]
+
     schedule = Schedule(
         id=schedule_id,
         name=data.name,
@@ -91,10 +104,10 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
         cron_expression=data.cron_expression,
         timezone=data.timezone,
         priority=data.priority,
-        agent_id=data.agent_id,
+        agent_id=agent_id,
         model=data.model,
         enabled=True,
-        next_run_at=_calc_next_run(data, now),  # type: ignore[arg-type]
+        next_run_at=next_run_at,
         total_runs=0,
         success_count=0,
         fail_count=0,

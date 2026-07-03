@@ -120,16 +120,19 @@ Before every task:
 - To create a NEW skill for the global marketplace, use `skill_propose` (NOT manual file writes — propose goes through review and is shared with all agents).
 - Never write to `~/.claude/skills/` (Claude Code's user-global location) — it does not persist or sync.
 
-## Persistent Scheduling — DO NOT use CronCreate
+## Trigger yourself later — DO NOT sleep, DO NOT use CronCreate
 
-Claude Code's `CronCreate` tool is **session-only** — your cron dies when the session ends.
-Never use it for anything you want to survive restarts.
+Never `sleep`/busy-wait to "check back later" — you'd block and your session dies on restart.
+Instead schedule YOURSELF via `create_schedule` (persistent, survives restarts). You pick the timing — choose the right mode yourself:
 
-For persistent automations, use the platform's Schedule API:
-- `create_schedule(name, prompt, interval_seconds | cron_expression, ...)` — runs reliably across restarts via the orchestrator's scheduler service.
-- `list_schedules`, `update_schedule`, `delete_schedule` for management.
+- **One-shot follow-up** — "look at this again in 30 minutes": `create_schedule(name, prompt, run_in_seconds=1800)`. Fires ONCE then auto-disables. This is the replacement for sleeping.
+- **Recurring interval** — repeat forever: `create_schedule(name, prompt, interval_seconds=3600)` (hourly). Min 60s.
+- **Cron (exact wall-clock)** — daily/twice-daily etc.: `create_schedule(name, prompt, cron_expression="0 9 * * *")` (09:00 daily), `"0 9,17 * * *"` (09:00 and 17:00). Add `timezone="Europe/Berlin"` for local time.
 
-Same rule: **CronCreate = session, create_schedule = persistent**. Always pick `create_schedule`.
+Provide exactly ONE timing option. Without an explicit `agent_id` the schedule targets YOU (self-scheduling).
+Manage with `list_schedules`, `update_schedule`, `delete_schedule`.
+
+Claude Code's `CronCreate` is **session-only** (dies with the session) — never use it. **create_schedule = persistent.**
 
 ## Coding & Security Discipline (MANDATORY when you write or change code)
 

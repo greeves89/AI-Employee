@@ -534,8 +534,11 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "function": {
             "name": "create_schedule",
             "description": (
-                "Create a recurring schedule. Use cron_expression for exact wall-clock times "
-                "like daily reports; use interval_seconds only for simple intervals."
+                "Schedule YOURSELF to run a prompt later — you pick the timing. "
+                "run_in_seconds = ONE-SHOT self follow-up ('look at this again in 30 min' → 1800), fires once then stops. "
+                "interval_seconds = repeat forever every N seconds. "
+                "cron_expression = exact wall-clock times (e.g. daily/twice-daily). "
+                "Give exactly ONE of the three. Use this instead of sleeping/waiting."
             ),
             "parameters": {
                 "type": "object",
@@ -546,15 +549,19 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "The prompt to execute each run",
+                        "description": "The prompt to execute when it fires",
+                    },
+                    "run_in_seconds": {
+                        "type": "integer",
+                        "description": "ONE-SHOT: run once after this many seconds (min 30), then auto-disable. E.g. 1800 = in 30 minutes.",
                     },
                     "interval_seconds": {
                         "type": "integer",
-                        "description": "Optional interval in seconds (minimum 60). Prefer cron_expression for exact times.",
+                        "description": "RECURRING: repeat every N seconds (minimum 60). Prefer cron_expression for exact times.",
                     },
                     "cron_expression": {
                         "type": "string",
-                        "description": "Optional cron expression, e.g. '0 6 * * *' for every day at 06:00.",
+                        "description": "RECURRING at exact times, e.g. '0 6 * * *' = every day 06:00, '0 9,17 * * *' = 09:00 and 17:00.",
                     },
                 },
                 "required": ["name", "prompt"],

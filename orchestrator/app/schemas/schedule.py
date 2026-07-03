@@ -39,6 +39,9 @@ class ScheduleCreate(BaseModel):
     prompt: str
     interval_seconds: int = 0
     cron_expression: str | None = None
+    # One-shot: fire ONCE after this many seconds, then auto-disable. For an agent
+    # saying "look at this again in 30 minutes" (self-follow-up), not a sleep.
+    run_in_seconds: int | None = None
     timezone: str = "UTC"
     priority: int = 1
     agent_id: str | None = None
@@ -46,8 +49,17 @@ class ScheduleCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_timing(self) -> "ScheduleCreate":
-        if not self.cron_expression and self.interval_seconds < 60:
-            raise ValueError("Provide either a valid cron_expression or interval_seconds >= 60")
+        if self.run_in_seconds is not None:
+            if self.run_in_seconds < 30:
+                raise ValueError("run_in_seconds must be at least 30")
+            # One-shot: no recurring config; interval 0 + no cron → scheduler disables
+            # it after the single fire.
+            self.interval_seconds = 0
+            self.cron_expression = None
+        elif not self.cron_expression and self.interval_seconds < 60:
+            raise ValueError(
+                "Provide run_in_seconds (one-shot), a valid cron_expression, or interval_seconds >= 60"
+            )
         if self.cron_expression:
             self.cron_expression = _validate_cron(self.cron_expression)
         self.timezone = _validate_timezone(self.timezone)
