@@ -126,7 +126,7 @@ export default function KioskPage() {
   if (idle) return <Screensaver now={now} power={data?.power} temp={data?.pi.temp_c ?? null} working={data?.agents_working ?? 0} />;
 
   return (
-    <div className="kiosk-root h-screen w-screen overflow-hidden bg-[#05070d] text-slate-100 select-none flex flex-col">
+    <div className="kiosk-root h-screen w-screen overflow-hidden kiosk-bg text-slate-100 select-none flex flex-col">
       <KioskStyles />
       {voiceAgent && (
         <VoiceSessionModal
@@ -237,9 +237,9 @@ function AgentsView({ data, onOpen }: { data: Overview | null; onOpen: (id: stri
         {agents.map((a) => {
           const c = stateColor(a.state);
           return (
-            <button key={a.id} onClick={() => onOpen(a.id)} className="text-left rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] active:scale-[0.99] transition p-4">
+            <button key={a.id} onClick={() => onOpen(a.id)} className="text-left kiosk-card kiosk-card-hover active:scale-[0.99] transition p-4">
               <div className="flex items-center gap-3 mb-2">
-                <div className={`w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-slate-700 to-slate-800 ${c.glow}`}><span className="text-2xl font-bold">{a.name?.[0]?.toUpperCase() ?? "?"}</span></div>
+                <div className={`w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-cyan-500/25 to-violet-500/20 border border-white/10 ${c.glow}`}><span className="text-2xl font-bold">{a.name?.[0]?.toUpperCase() ?? "?"}</span></div>
                 <div className="min-w-0 flex-1">
                   <div className="text-lg font-semibold truncate">{a.name}</div>
                   <div className="flex items-center gap-1.5 text-sm"><span className={`w-2.5 h-2.5 rounded-full ${c.dot} ${a.state === "working" ? "animate-pulse" : ""}`} /><span className={c.text}>{a.state}</span></div>
@@ -287,7 +287,7 @@ function AgentDetailView({ id, onBack, onChat, onVoice }: { id: string; onBack: 
         <KV icon={<Server className="w-4 h-4" />} label="Container" value={d ? (d.has_container ? "aktiv" : "keiner") : "—"} />
         {d?.role && <div className="col-span-2"><KV icon={<Users className="w-4 h-4" />} label="Rolle" value={d.role} /></div>}
 
-        <div className="col-span-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+        <div className="col-span-2 kiosk-card p-3">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5"><Activity className="w-4 h-4 text-violet-400" />Task-Verteilung</div>
           <div className="flex flex-wrap gap-2">
             {d && Object.entries(d.tasks_by_status).map(([s, n]) => (
@@ -297,7 +297,7 @@ function AgentDetailView({ id, onBack, onChat, onVoice }: { id: string; onBack: 
           </div>
         </div>
 
-        <div className="col-span-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+        <div className="col-span-2 kiosk-card p-3">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5"><ListTodo className="w-4 h-4 text-cyan-400" />Letzte Tasks</div>
           <div className="space-y-1.5">
             {(d?.recent_tasks ?? []).length === 0 && <span className="text-slate-500 text-sm">—</span>}
@@ -414,7 +414,7 @@ function SettingsView() {
 
 function Panel({ title, icon, right, compact, children }: { title: string; icon: ReactNode; right?: string; compact?: boolean; children: ReactNode }) {
   return (
-    <div className={`rounded-xl border border-white/5 bg-white/[0.02] ${compact ? "p-2.5" : "p-3"} flex flex-col min-h-0`}>
+    <div className={`kiosk-card ${compact ? "p-2.5" : "p-3"} flex flex-col min-h-0`}>
       <div className="flex items-center justify-between mb-2 shrink-0">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300">{icon}{title}</div>
         {right ? <span className="text-[10px] text-amber-400/80">{right}</span> : null}
@@ -425,7 +425,7 @@ function Panel({ title, icon, right, compact, children }: { title: string; icon:
 }
 function BigStat({ label, value, accent, icon, pulse }: { label: string; value: number | string; accent: string; icon: ReactNode; pulse?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center relative overflow-hidden">
+    <div className="kiosk-card p-3 text-center relative overflow-hidden">
       <div className={`absolute top-2 right-2 ${accent} opacity-50`}>{icon}</div>
       <div className={`text-3xl font-bold tabular-nums ${accent} ${pulse ? "kiosk-glow-text" : ""}`}>{value}</div>
       <div className="text-[11px] text-slate-400 mt-0.5">{label}</div>
@@ -446,7 +446,7 @@ function Bar({ icon, label, value, unit, color, sub }: { icon: ReactNode; label:
 }
 function KV({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+    <div className="kiosk-card p-3">
       <div className="flex items-center gap-1.5 text-[11px] text-slate-400">{icon}{label}</div>
       <div className="text-lg font-semibold truncate mt-0.5">{value}</div>
     </div>
@@ -476,7 +476,7 @@ function ChatOverlay({ agent, onBack }: { agent: AgentInfo; onBack: () => void }
   };
   const c = stateColor(agent.state);
   return (
-    <div className="kiosk-root h-screen w-screen overflow-hidden bg-[#05070d] text-slate-100 flex flex-col select-none">
+    <div className="kiosk-root h-screen w-screen overflow-hidden kiosk-bg text-slate-100 flex flex-col select-none">
       <KioskStyles />
       <header className="flex items-center gap-3 px-3 h-14 border-b border-white/5 bg-gradient-to-r from-[#0a1020] to-[#0a0f1a]">
         <button onClick={onBack} className="w-10 h-10 rounded-lg bg-white/5 active:scale-95 grid place-items-center"><ArrowLeft className="w-5 h-5" /></button>
@@ -574,6 +574,20 @@ function KioskStyles() {
   return (
     <style>{`
       .kiosk-root { font-feature-settings: "tnum"; -webkit-tap-highlight-color: transparent; }
+      .kiosk-bg {
+        background:
+          radial-gradient(1100px 560px at 12% -12%, rgba(56,189,248,0.12), transparent 60%),
+          radial-gradient(1000px 520px at 100% -8%, rgba(139,92,246,0.12), transparent 55%),
+          radial-gradient(900px 620px at 50% 118%, rgba(16,185,129,0.09), transparent 60%),
+          #05070d;
+      }
+      .kiosk-card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02));
+        border: 1px solid rgba(255,255,255,0.09);
+        border-radius: 16px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 28px -16px rgba(0,0,0,0.7);
+      }
+      .kiosk-card-hover:hover { background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)); border-color: rgba(255,255,255,0.16); }
       .kiosk-glow { box-shadow: 0 0 16px 2px rgba(56,189,248,0.35); }
       .kiosk-glow-text { text-shadow: 0 0 18px rgba(52,211,153,0.55); }
       .kiosk-dim { animation: kioskDim 6s ease-in-out infinite; }

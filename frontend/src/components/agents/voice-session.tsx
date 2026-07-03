@@ -267,7 +267,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       case "delegate":
         setStatusMsg(`Ich kümmere mich um: ${String(data.instruction || "")}`);
         setDelegating(true);
-        setActivity([{ kind: "header", label: String(data.instruction || ""), detail: "" }]);
+        // Append (don't reset) so several PARALLEL delegations all stay visible.
+        setActivity((prev) => {
+          const next = [...prev, { kind: "header", label: String(data.instruction || ""), detail: "" }];
+          return next.length > 60 ? next.slice(-60) : next;
+        });
         break;
       case "activity": {
         // Live view of the delegated agent's work — same chat-stream events the

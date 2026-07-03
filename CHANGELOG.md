@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.34] — 2026-07-03
+
+### Added
+- **`delegate_tasks`-Tool für echte Parallelität.** Bisher hoffte man, dass Nova Sonic bei „mach 3 Dinge parallel" 3 separate ask_agent-Calls macht — tat es aber oft nicht (delegierte 1 Sammel-Aufgabe → nicht parallel, verifiziert am Pi: nur 1 Prozess). Neu: ein Tool, das eine **Liste** von Aufgaben nimmt und JEDE als eigene parallele Session startet (1 Tool-Call → N parallele Lanes, gebremst durch MAX_PARALLEL_CHATS). (`orchestrator/app/services/realtime_voice_session.py`)
+- **Kiosk-Facelift.** Ambient-Gradient-Hintergrund, Glas-Cards mit Tiefe (Shadow/Innenkante), State-gefärbte Agenten-Avatare, edlere Panels. (`frontend/src/app/kiosk/page.tsx`)
+
+### Fixed
+- **Parallele Delegationen sind jetzt alle im Voice-Panel sichtbar** — das `delegate`-Event resettete die Aktivitätsliste (nur die letzte Aufgabe blieb sichtbar); jetzt werden mehrere parallele Aufgaben angehängt. (`voice-session.tsx`)
+
 ## [1.99.33] — 2026-07-03
 
 ### Added

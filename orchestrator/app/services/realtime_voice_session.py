@@ -171,6 +171,31 @@ SET_MODEL_TOOL = {
     }
 }
 
+DELEGATE_TASKS_TOOL = {
+    "toolSpec": {
+        "name": "delegate_tasks",
+        "description": (
+            "Delegate SEVERAL independent tasks that should run IN PARALLEL. Pass the list of "
+            "tasks — I start EACH as its own parallel job (separate session) instead of one big "
+            "combined task. Use this whenever the user asks for multiple things 'parallel' or "
+            "'gleichzeitig' (e.g. 'erstelle drei PDFs, jedes als eigene Aufgabe'). For a SINGLE "
+            "task use ask_agent instead. You get an immediate acknowledgement; each result is "
+            "spoken on its own when it lands."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "The independent tasks to run in parallel, one clear instruction each.",
+                }
+            },
+            "required": ["tasks"],
+        })},
+    }
+}
+
 # Slow tool: hand real work to the container agent.
 ASK_AGENT_TOOL = {
     "toolSpec": {
@@ -235,9 +260,10 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "Dateinamen oder Details. Nenne nur, was ein Tool tatsächlich zurückgibt. Weißt du etwas "
         "nicht (z. B. eine PR-/Ticket-Nummer, einen Fakt), nutze web_search oder ask_agent — oder "
         "sag ehrlich, dass du es nachschauen musst. Lieber 'das prüfe ich' als eine erfundene Zahl.\n"
-        "MEHRERE AUFGABEN PARALLEL: Will der Nutzer mehrere Dinge PARALLEL erledigt, rufe ask_agent "
-        "MEHRFACH auf — EINEN Aufruf PRO Aufgabe (getrennte Sessions laufen dann wirklich parallel). "
-        "Fasse sie NICHT in eine einzige Sammel-Anweisung zusammen.\n"
+        "MEHRERE AUFGABEN PARALLEL: Will der Nutzer mehrere Dinge PARALLEL/gleichzeitig erledigt, "
+        "nutze delegate_tasks mit der LISTE der Aufgaben (EIN Aufruf, der Server startet jede als "
+        "eigene parallele Aufgabe). Fasse sie NICHT zu einer einzigen Sammel-Aufgabe zusammen und "
+        "nutze dafür NICHT mehrere ask_agent-Calls.\n"
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
         "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
         "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
@@ -331,6 +357,7 @@ class RealtimeVoiceSession:
                 SET_AUTONOMY_TOOL,
                 SET_MODEL_TOOL,
                 ASK_AGENT_TOOL,
+                DELEGATE_TASKS_TOOL,
             ],
             voice_id=voice_id,
             on_event=self._on_nova_event,
@@ -561,6 +588,24 @@ class RealtimeVoiceSession:
             return
         if name == "set_agent_model":
             await self._respond(tool_use_id, await self._set_model(str(args.get("model") or "")))
+            return
+
+        # ── Parallel delegation: several independent tasks at once ──
+        if name == "delegate_tasks":
+            raw = args.get("tasks")
+            if isinstance(raw, str):
+                raw = [raw]
+            tasks = [str(t).strip() for t in (raw or []) if str(t).strip()][:5]
+            if not tasks:
+                await self._respond(tool_use_id, "Keine Aufgaben erkannt.")
+                return
+            for t in tasks:
+                asyncio.create_task(self._delegate_and_report(t))
+            await self._respond(
+                tool_use_id,
+                f"Ich starte {len(tasks)} Aufgaben PARALLEL (jede als eigene Aufgabe) und melde "
+                "mich zu jeder einzeln, sobald sie fertig ist. Sag dem Nutzer das knapp in der ICH-Form.",
+            )
             return
 
         # ── Slow tool: real work via the container agent (ASYNC report) ──
