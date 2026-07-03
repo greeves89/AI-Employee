@@ -735,12 +735,22 @@ class RealtimeVoiceSession:
                 pass
             await self._emit_activity(kind, edata)
 
+        # Always ask the agent to surface any produced file via present_file, so it
+        # shows up as a clickable card in the voice UI — the agent otherwise often
+        # just writes to /workspace/... via bash/python and the user never sees it.
+        augmented = (
+            f"{instruction}\n\n"
+            "WICHTIG: Falls bei dieser Aufgabe Dateien entstehen oder du dem Nutzer eine "
+            "Datei/ein Ergebnis zeigen sollst, präsentiere JEDE erzeugte Datei am Ende mit "
+            "dem present_file-Tool (nicht nur den Pfad nennen) — nur so wird sie im UI "
+            "klickbar angezeigt."
+        )
         try:
             # Unique session per delegation → its own lane in the agent, so several
             # voice-delegated tasks can run in parallel (when the agent has
             # MAX_PARALLEL_CHATS>1) instead of queuing behind each other.
             answer = await ask_agent_via_chat(
-                self.redis, self.agent_id, instruction, source="realtime_voice", timeout=180.0,
+                self.redis, self.agent_id, augmented, source="realtime_voice", timeout=180.0,
                 on_event=_on_step,
                 chat_session_id=f"voice-{uuid.uuid4().hex[:8]}",
             )

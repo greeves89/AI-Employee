@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.36] — 2026-07-03
+
+### Fixed
+- **Erzeugte Dateien erscheinen wieder klickbar im Voice-UI.** Delegierte Aufgaben, die per bash/python Dateien nach `/workspace/...` schrieben, riefen kein `present_file` auf → keine Download-Karte. Jede delegierte Instruktion bekommt jetzt serverseitig den Zusatz, JEDE erzeugte Datei mit `present_file` zu präsentieren. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.35] — 2026-07-03
 
 ### Fixed
