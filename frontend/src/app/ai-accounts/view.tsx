@@ -14,6 +14,9 @@ const PROVIDERS = [
   { value: "google", label: "Google" },
   { value: "ollama", label: "Ollama" },
   { value: "lm-studio", label: "LM Studio" },
+  { value: "bedrock", label: "AWS Bedrock (Realtime-Sprache)" },
+  { value: "azure-realtime", label: "Azure Realtime (Sprache)" },
+  { value: "brave-search", label: "Brave Websearch" },
 ] as const;
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -23,6 +26,9 @@ const PROVIDER_COLORS: Record<string, string> = {
   google: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   ollama: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   "lm-studio": "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  bedrock: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  "azure-realtime": "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
+  "brave-search": "bg-orange-500/10 text-orange-400 border-orange-500/20",
 };
 
 type ModelRow ={ name: string; provider_type: string; api_endpoint: string };
@@ -34,11 +40,14 @@ type FormState = {
   api_key: string;
   models: ModelRow[];      // each model carries its own surface
   api_version: string;
+  aws_access_key_id: string;
+  aws_region: string;
 };
 
 const EMPTY_FORM: FormState = {
   name: "", provider_type: "azure-openai", api_endpoint: "",
   api_key: "", models: [], api_version: "",
+  aws_access_key_id: "", aws_region: "us-east-1",
 };
 
 const EMPTY_MODEL: ModelRow = { name: "", provider_type: "azure-openai", api_endpoint: "" };
@@ -95,6 +104,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
         name: m.name, provider_type: m.provider_type, api_endpoint: m.api_endpoint || "",
       })),
       api_version: String(extra.api_version || ""),
+      aws_access_key_id: String(extra.aws_access_key_id || ""),
+      aws_region: String(extra.aws_region || "us-east-1"),
     });
     setNewModel({ ...EMPTY_MODEL, provider_type: a.provider_type, api_endpoint: a.api_endpoint || "" });
     setEditingId(a.id);
@@ -115,19 +126,35 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
     setForm((f) => ({ ...f, models: f.models.filter((m) => m.name !== name) }));
 
   const save = async () => {
-    if (!form.name.trim() || form.models.length === 0) {
+    const isBedrock = form.provider_type === "bedrock";
+    const isBrave = form.provider_type === "brave-search";
+    // Realtime/search providers don't need a manually-typed model (Bedrock models
+    // come from the catalog; Brave has none). Auto-fill Bedrock's default.
+    let models = form.models;
+    if (isBedrock && models.length === 0) {
+      models = [{ name: "amazon.nova-2-sonic-v1:0", provider_type: "bedrock", api_endpoint: "" }];
+    }
+    if (!form.name.trim() || (models.length === 0 && !isBrave)) {
       showToast("error", "Name und mindestens ein Modell sind Pflicht");
+      return;
+    }
+    if (isBedrock && !form.aws_access_key_id.trim()) {
+      showToast("error", "AWS Access Key ID ist Pflicht");
       return;
     }
     setSaving(true);
     try {
       const extra: Record<string, unknown> = {};
       if (form.api_version) extra.api_version = form.api_version;
+      if (isBedrock) {
+        extra.aws_access_key_id = form.aws_access_key_id.trim();
+        extra.aws_region = form.aws_region.trim() || "us-east-1";
+      }
       const payload = {
         name: form.name.trim(),
         provider_type: form.provider_type,
         api_endpoint: form.api_endpoint.trim() || null,
-        models: form.models.map((m) => ({
+        models: models.map((m) => ({
           name: m.name,
           provider_type: m.provider_type || form.provider_type,
           api_endpoint: (m.api_endpoint || form.api_endpoint).trim(),
@@ -274,13 +301,34 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                   mehrere Azure-Surfaces ab (Chat, Responses/Codex, Anthropic/Claude).
                 </p>
               </div>
+              {form.provider_type === "bedrock" && (
+                <div className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3">
+                  <div className="col-span-2 text-[11px] text-amber-400/80">
+                    AWS Bedrock für Realtime-Sprache (Nova Sonic). Modelle wählst du danach im Sprach-Setup pro Agent aus.
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">AWS Access Key ID</label>
+                    <input className={inputCls} value={form.aws_access_key_id}
+                      onChange={(e) => setForm({ ...form, aws_access_key_id: e.target.value })}
+                      placeholder="AKIA…" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">AWS Region</label>
+                    <input className={inputCls} value={form.aws_region}
+                      onChange={(e) => setForm({ ...form, aws_region: e.target.value })}
+                      placeholder="us-east-1" />
+                  </div>
+                </div>
+              )}
               <div className="col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
-                  API-Key {editingId && <span className="text-muted-foreground/40">(leer = unverändert)</span>}
+                  {form.provider_type === "bedrock" ? "AWS Secret Access Key"
+                    : form.provider_type === "brave-search" ? "Brave API-Key" : "API-Key"}
+                  {editingId && <span className="text-muted-foreground/40"> (leer = unverändert)</span>}
                 </label>
                 <input className={inputCls} type="password" value={form.api_key}
                   onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                  placeholder="sk-… / Azure-Key" />
+                  placeholder={form.provider_type === "bedrock" ? "AWS Secret Access Key" : "sk-… / Azure-Key"} />
               </div>
               {form.provider_type === "azure-openai" && (
                 <div className="col-span-2">

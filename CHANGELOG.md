@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.8] — 2026-07-03
+
+### Added
+- **Realtime-Sprache über AI-Accounts konfigurierbar (kundenfähig).** AWS-Bedrock-Zugänge (und vorbereitend Azure-Realtime / Brave-Websearch) werden jetzt als **AI-Account** angelegt (verschlüsselte Creds, wiederverwendbar) statt per Server-`.env` hardcodiert. Damit kann jeder Kunde (z. B. SKBS) seinen eigenen AWS-Account eintragen und Nova Sonic nutzen.
+  - AI-Accounts: neue Provider-Typen `bedrock` / `azure-realtime` / `brave-search`; Formular mit AWS Access Key ID + Region + Secret (`frontend/src/app/ai-accounts/view.tsx`, `orchestrator/app/api/ai_accounts.py`).
+  - **Realtime-Modell-Selektor** im Agenten-Sprach-Setup: listet die verfügbaren Realtime-Modelle je konfiguriertem Provider (z. B. „Nova Sonic 2 · AWS Bedrock (Pi)"), Auswahl Modell ↔ Provider. Endpoint `GET /ai-accounts/realtime-models`; Katalog `orchestrator/app/core/realtime_catalog.py`.
+  - `RealtimeVoiceSession` löst die Creds jetzt auf: **verknüpfter AI-Account → Plattform-Default-Account → env** (Pi-Bootstrap bleibt als Fallback). Modell-ID pro Agent wählbar. Config: `interaction_account_id` + `interaction_model_id`.
+
 ## [1.99.7] — 2026-07-03
 
 ### Added

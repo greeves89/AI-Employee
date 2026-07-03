@@ -92,6 +92,8 @@ class AgentResponse(BaseModel):
     browser_mode: bool = False
     autonomy_level: str = "l3"
     interaction_model: str | None = None  # "nova_sonic" | null (classic voice pipeline)
+    interaction_account_id: int | None = None  # linked AI-Account (realtime provider creds)
+    interaction_model_id: str | None = None    # concrete provider model id
     webhook_enabled: bool = False
     webhook_token: str | None = None
     total_cost_usd: float = 0.0

@@ -1580,6 +1580,8 @@ class AgentManager:
             "updated_at": agent.updated_at,
             "knowledge_template": config.get("knowledge_template", ""),
             "interaction_model": config.get("interaction_model"),
+            "interaction_account_id": config.get("interaction_account_id"),
+            "interaction_model_id": config.get("interaction_model_id"),
             "config": config,
         }
 

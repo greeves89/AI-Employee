@@ -66,6 +66,7 @@ class NovaSonicSession:
         on_event: EventCallback,
         max_tokens: int = 1024,
         temperature: float = 0.7,
+        model_id: str = MODEL_ID,
     ) -> None:
         self.region = region
         self._access_key = access_key
@@ -77,6 +78,7 @@ class NovaSonicSession:
         self.on_event = on_event
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.model_id = model_id or MODEL_ID
 
         self._stream: Any = None
         self._client: Any = None
@@ -130,7 +132,7 @@ class NovaSonicSession:
 
         self._client = BedrockRuntimeClient(config=self._config())
         self._stream = await self._client.invoke_model_with_bidirectional_stream(
-            OpInput(model_id=MODEL_ID)
+            OpInput(model_id=self.model_id)
         )
 
         await self._send_event({"sessionStart": {"inferenceConfiguration": {

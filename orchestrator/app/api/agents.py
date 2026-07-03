@@ -1109,8 +1109,11 @@ async def update_agent_interaction_model(
 ):
     """Set the agent's realtime voice interaction front.
 
-    Body: {"interaction_model": "nova_sonic" | null, "interaction_voice": str | null}
-    null / "" → classic staged STT→LLM→TTS voice pipeline (default).
+    Body: {"interaction_model": "nova_sonic" | null, "interaction_account_id": int | null,
+           "interaction_model_id": str | null, "interaction_voice": str | null}
+    null / "" interaction_model → classic staged STT→LLM→TTS pipeline (default).
+    interaction_account_id links the AWS/Azure AI-Account whose creds to use;
+    interaction_model_id is the concrete provider model (e.g. amazon.nova-2-sonic-v1:0).
     """
     await _check_owner(agent_id, user, db)
     model = (body.get("interaction_model") or "").strip() or None
@@ -1120,23 +1123,32 @@ async def update_agent_interaction_model(
             detail=f"interaction_model must be one of {sorted(INTERACTION_MODELS)} or null",
         )
     voice = (body.get("interaction_voice") or "").strip() or None
+    raw_acc = body.get("interaction_account_id")
+    account_id = int(raw_acc) if raw_acc not in (None, "", 0, "0") else None
+    model_id = (body.get("interaction_model_id") or "").strip() or None
     try:
         agent = await manager._get_agent(agent_id)
         cfg = dict(agent.config or {})
-        if model is None:
-            cfg.pop("interaction_model", None)
-            cfg.pop("interaction_voice", None)
-        else:
+        for k in ("interaction_model", "interaction_voice",
+                  "interaction_account_id", "interaction_model_id"):
+            cfg.pop(k, None)
+        if model is not None:
             cfg["interaction_model"] = model
             if voice:
                 cfg["interaction_voice"] = voice
-            else:
-                cfg.pop("interaction_voice", None)
+            if account_id:
+                cfg["interaction_account_id"] = account_id
+            if model_id:
+                cfg["interaction_model_id"] = model_id
         agent.config = cfg
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(agent, "config")
         await db.commit()
-        return {"agent_id": agent_id, "interaction_model": model, "interaction_voice": voice}
+        return {
+            "agent_id": agent_id, "interaction_model": model,
+            "interaction_account_id": account_id, "interaction_model_id": model_id,
+            "interaction_voice": voice,
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

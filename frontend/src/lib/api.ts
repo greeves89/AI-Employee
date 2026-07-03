@@ -152,17 +152,42 @@ export async function updateAgentModel(
   });
 }
 
-/** Set the agent's realtime voice front (Nova Sonic) — null = classic pipeline. */
+export interface RealtimeModelOption {
+  account_id: number;
+  account_name: string;
+  provider_type: string;
+  provider_label: string;
+  engine: string;
+  implemented: boolean;
+  model_id: string;
+  model_label: string;
+  value: string;  // "<account_id>:<model_id>"
+  label: string;  // "<model> · <account>"
+}
+
+/** Realtime voice models available from configured AI-accounts (for the selector). */
+export async function getRealtimeModels(): Promise<RealtimeModelOption[]> {
+  const r = await fetchJSON<{ models: RealtimeModelOption[] }>(`${getBase()}/ai-accounts/realtime-models`);
+  return r.models || [];
+}
+
+/** Set the agent's realtime voice front — null interactionModel = classic pipeline. */
 export async function updateAgentInteractionModel(
   agentId: string,
-  interactionModel: string | null,
-  interactionVoice?: string | null,
-): Promise<{ agent_id: string; interaction_model: string | null; interaction_voice: string | null }> {
+  opts: {
+    interactionModel: string | null;
+    interactionAccountId?: number | null;
+    interactionModelId?: string | null;
+    interactionVoice?: string | null;
+  },
+): Promise<{ agent_id: string; interaction_model: string | null }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/interaction-model`, {
     method: "PUT",
     body: JSON.stringify({
-      interaction_model: interactionModel,
-      interaction_voice: interactionVoice ?? null,
+      interaction_model: opts.interactionModel,
+      interaction_account_id: opts.interactionAccountId ?? null,
+      interaction_model_id: opts.interactionModelId ?? null,
+      interaction_voice: opts.interactionVoice ?? null,
     }),
   });
 }

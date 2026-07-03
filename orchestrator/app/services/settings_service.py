@@ -76,6 +76,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "voice_llm_model",
     "voice_language",
     "voice_azure_speech_region",
+    # Realtime voice front (Nova Sonic): platform-wide default + voice id + account
+    "voice_interaction_model",
+    "voice_interaction_account_id",
+    "nova_sonic_voice",
     # APNs push config
     "apns_key_id",
     "apns_team_id",

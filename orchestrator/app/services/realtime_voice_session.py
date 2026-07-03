@@ -145,18 +145,21 @@ class RealtimeVoiceSession:
     # ── setup ───────────────────────────────────────────────────────
 
     async def init(self, db: AsyncSession) -> None:
-        creds = credentials_from_env()
-        if not creds:
-            raise RuntimeError(
-                "Nova Sonic realtime is selected for this agent but no AWS credentials "
-                "are configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)."
-            )
-
         from app.models.agent import Agent
         agent = (await db.execute(select(Agent).where(Agent.id == self.agent_id))).scalar_one_or_none()
         agent_name = agent.name if agent else self.agent_id
         cfg = (agent.config if agent else {}) or {}
         agent_role = cfg.get("role") or ""  # role lives in config, not on the ORM row
+
+        # Credentials: prefer the linked AI-Account (encrypted, customer-configurable),
+        # then a platform-default account, then env vars (the Pi bootstrap).
+        creds = await self._resolve_credentials(db, cfg)
+        if not creds:
+            raise RuntimeError(
+                "Realtime-Sprache ist aktiv, aber es sind keine Zugangsdaten hinterlegt. "
+                "Lege unter AI-Accounts einen AWS-Bedrock-Account an und wähle ihn im "
+                "Sprach-Setup aus."
+            )
 
         svc = SettingsService(db)
         language = (await svc.get("voice_language")) or "de"
@@ -168,7 +171,7 @@ class RealtimeVoiceSession:
             region=creds["region"],
             access_key=creds["access_key"],
             secret_key=creds["secret_key"],
-            session_token=creds["session_token"],
+            session_token=creds.get("session_token"),
             system_prompt=_system_prompt(agent_name, agent_role, language),
             tools=[
                 GET_AGENT_STATUS_TOOL,
@@ -178,13 +181,40 @@ class RealtimeVoiceSession:
             ],
             voice_id=voice_id,
             on_event=self._on_nova_event,
+            model_id=cfg.get("interaction_model_id") or creds.get("model_id") or "",
         )
         await self._nova.open()
         self._pump_task = asyncio.create_task(self._audio_pump())
         logger.info(
-            "RealtimeVoiceSession init agent=%s user=%s region=%s voice=%s",
-            self.agent_id, self.user_id, creds["region"], voice_id,
+            "RealtimeVoiceSession init agent=%s user=%s region=%s voice=%s source=%s",
+            self.agent_id, self.user_id, creds["region"], voice_id, creds.get("source"),
         )
+
+    async def _resolve_credentials(self, db: AsyncSession, cfg: dict) -> dict | None:
+        """Linked AI-Account → platform-default account → env (Pi bootstrap)."""
+        from app.core.realtime_catalog import resolve_credentials
+        from app.models.ai_account import AIAccount
+
+        account_id = cfg.get("interaction_account_id")
+        if not account_id:
+            try:
+                raw = await SettingsService(db).get("voice_interaction_account_id")
+                account_id = int(raw) if raw else None
+            except Exception:  # noqa: BLE001
+                account_id = None
+        if account_id:
+            acc = await db.get(AIAccount, int(account_id))
+            if acc and acc.is_active:
+                resolved = resolve_credentials(acc)
+                if resolved:
+                    resolved["source"] = f"ai_account:{account_id}"
+                    return resolved
+
+        env = credentials_from_env()
+        if env:
+            env["source"] = "env"
+            return env
+        return None
 
     # ── inbound audio (browser → Nova Sonic) ────────────────────────
 

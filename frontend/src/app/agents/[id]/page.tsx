@@ -1383,8 +1383,13 @@ function AgentSettings({
         </div>
       </div>
 
-      {/* Voice interaction front (classic pipeline vs. Nova Sonic realtime) */}
-      <InteractionModelCard agentId={agentId} current={agent.interaction_model} />
+      {/* Voice interaction front (classic pipeline vs. realtime models) */}
+      <InteractionModelCard
+        agentId={agentId}
+        current={agent.interaction_model}
+        currentAccountId={agent.interaction_account_id}
+        currentModelId={agent.interaction_model_id}
+      />
 
       {/* Model Selection (Claude Code + Codex CLI agents) */}
       {showModelPanel && (

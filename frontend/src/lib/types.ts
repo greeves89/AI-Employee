@@ -100,6 +100,8 @@ export interface Agent {
   browser_mode: boolean;
   autonomy_level?: string;
   interaction_model?: string | null;
+  interaction_account_id?: number | null;
+  interaction_model_id?: string | null;
   webhook_enabled?: boolean;
   webhook_token?: string | null;
   total_cost_usd: number;

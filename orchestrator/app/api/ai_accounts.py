@@ -22,6 +22,8 @@ router = APIRouter(prefix="/ai-accounts", tags=["ai-accounts"])
 
 ProviderType = Literal[
     "azure-openai", "openai", "anthropic", "google", "ollama", "lm-studio",
+    # Realtime voice fronts + tools (configured here, selected in the voice setup)
+    "bedrock", "azure-realtime", "brave-search",
 ]
 
 
@@ -120,6 +122,43 @@ async def list_ai_accounts(
             allowed_set = set(allowed)
             rows = [a for a in rows if a.id in allowed_set]
     return [_to_response(a) for a in rows]
+
+
+@router.get("/realtime-models")
+async def list_realtime_models(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Realtime voice models available from configured AI-accounts.
+
+    Powers the voice-setup selector: for every active AI-account whose provider is
+    a realtime provider (AWS Bedrock, Azure Realtime, …), list the models the user
+    can pick. ``value`` = ``"<account_id>:<model_id>"``.
+    """
+    from app.core.realtime_catalog import REALTIME_PROVIDERS, IMPLEMENTED_ENGINES
+
+    rows = (await db.execute(
+        select(AIAccount).where(AIAccount.is_active.is_(True)).order_by(AIAccount.name)
+    )).scalars().all()
+    out: list[dict] = []
+    for a in rows:
+        prov = REALTIME_PROVIDERS.get(a.provider_type)
+        if not prov:
+            continue
+        for m in prov["models"]:
+            out.append({
+                "account_id": a.id,
+                "account_name": a.name,
+                "provider_type": a.provider_type,
+                "provider_label": prov["label"],
+                "engine": prov["engine"],
+                "implemented": prov["engine"] in IMPLEMENTED_ENGINES,
+                "model_id": m["id"],
+                "model_label": m["label"],
+                "value": f"{a.id}:{m['id']}",
+                "label": f"{m['label']} · {a.name}",
+            })
+    return {"models": out}
 
 
 @router.get("/{account_id}", response_model=AIAccountResponse)
