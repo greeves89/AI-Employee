@@ -664,18 +664,18 @@ export default function SkillsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-1 w-fit">
+        <div className="flex gap-1 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-1 w-fit max-w-full overflow-x-auto scrollbar-thin">
           {[
             { id: "catalog" as const, label: `Katalog (${catalog.length})` },
             { id: "mine" as const, label: `Meine Skills (${agentSkills.length})` },
-            { id: "pending" as const, label: pendingSkills.length > 0 ? `✨ Ausstehend (${pendingSkills.length})` : "Ausstehend" },
-            { id: "improvements" as const, label: improvementSkills.length > 0 ? `🔧 Verbesserungen (${improvementSkills.length})` : "Verbesserungen" },
+            { id: "pending" as const, label: pendingSkills.length > 0 ? `Ausstehend (${pendingSkills.length})` : "Ausstehend" },
+            { id: "improvements" as const, label: improvementSkills.length > 0 ? `Verbesserungen (${improvementSkills.length})` : "Verbesserungen" },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "rounded-lg px-4 py-1.5 text-xs font-medium transition-all",
+                "shrink-0 whitespace-nowrap rounded-lg px-4 py-1.5 text-xs font-medium transition-all",
                 activeTab === tab.id
                   ? "bg-card text-foreground shadow-sm border border-foreground/[0.06]"
                   : "text-muted-foreground hover:text-foreground"

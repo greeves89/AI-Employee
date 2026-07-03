@@ -597,7 +597,7 @@ export default function MeetingRoomsPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold truncate">{room.name}</h3>
                     {room.topic && (
-                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
+                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2 break-words">
                         {room.topic}
                       </p>
                     )}

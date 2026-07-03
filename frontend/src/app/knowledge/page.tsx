@@ -154,8 +154,8 @@ export default function KnowledgePage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col items-start gap-3 pl-10 sm:flex-row sm:items-center sm:justify-between sm:pl-0 lg:pl-0">
+        <div className="flex min-w-0 items-center gap-3">
           {viewMode !== "list" && (
             <button
               onClick={() => setViewMode(viewMode === "editor" ? previousView : "list")}
@@ -165,12 +165,12 @@ export default function KnowledgePage() {
             </button>
           )}
           <BookOpen className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-semibold">Knowledge Base</h1>
-          <span className="rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-xs text-muted-foreground">
+          <h1 className="truncate text-xl font-semibold">Knowledge Base</h1>
+          <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-xs text-muted-foreground">
             {entries.length} entries
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={openGraph}
             className={cn(

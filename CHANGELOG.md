@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.42] — 2026-07-03
+
+### Fixed
+- **Mobile: restliche Overflow-Stellen (2. Simulator-Durchlauf).** Knowledge-eigener Header stapelt jetzt (+ Hamburger-Platz), Skill-Marketplace-Tabs scrollen horizontal, Meeting-Room-Beschreibung mit `break-words`. Globales Sicherheitsnetz: `overflow-x-hidden` am Haupt-Content — keine Seite kann mehr horizontal überlaufen. (`app/knowledge/page.tsx`, `app/skills/page.tsx`, `app/meeting-rooms/page.tsx`, `components/auth/auth-guard.tsx`)
+
+### Changed
+- **Emojis aus den Skill-Marketplace-Tabs entfernt** (Ausstehend/Verbesserungen) — konform zur No-Emoji-Vorgabe. (`app/skills/page.tsx`)
+
 ## [1.99.41] — 2026-07-03
 
 ### Fixed

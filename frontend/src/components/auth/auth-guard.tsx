@@ -110,7 +110,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
       <main
         className={cn(
-          "min-h-screen min-w-0 transition-[margin] duration-300",
+          "min-h-screen min-w-0 overflow-x-hidden transition-[margin] duration-300",
           collapsed ? "lg:ml-[64px]" : "lg:ml-[260px]"
         )}
       >
