@@ -80,7 +80,10 @@ class SkillUpdate(BaseModel):
 
 class SkillAssign(BaseModel):
     agent_id: str
-    skill_id: int
+    # skill_id is taken from the URL path in ``assign_skill`` (the source of truth);
+    # the body field is redundant and optional. Kept for backward-compat with callers
+    # that still send it — a missing body skill_id must NOT 422 the install.
+    skill_id: int | None = None
 
 
 class SkillRate(BaseModel):

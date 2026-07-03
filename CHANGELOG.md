@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.13] — 2026-07-03
+
+### Fixed
+- **Skill-Installation aus dem Katalog schlug mit 422 fehl** (`Field required: body.skill_id`). Der Frontend-Call `assignDbSkill` schickte nur `{agent_id}` an `POST /skills/marketplace/{skill_id}/assign`, das Pydantic-Modell `SkillAssign` verlangte aber zusätzlich ein Pflichtfeld `skill_id` im Body — obwohl der Handler die `skill_id` ausschließlich aus dem URL-Pfad nimmt und das Body-Feld nie liest. **Fix:** `SkillAssign.skill_id` ist jetzt optional (Pfad ist die Quelle der Wahrheit; ein fehlendes Body-`skill_id` darf die Installation nicht mehr blockieren), und `assignDbSkill` sendet die `skill_id` zusätzlich konsistent mit. (`orchestrator/app/api/skill_marketplace.py`, `frontend/src/lib/api.ts`)
+
 ## [1.99.12] — 2026-07-03
 
 ### Fixed

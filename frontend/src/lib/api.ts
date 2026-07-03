@@ -1839,7 +1839,7 @@ export async function assignDbSkill(
 ): Promise<{ status: string }> {
   return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/assign`, {
     method: "POST",
-    body: JSON.stringify({ agent_id: agentId }),
+    body: JSON.stringify({ agent_id: agentId, skill_id: skillId }),
   });
 }
 
