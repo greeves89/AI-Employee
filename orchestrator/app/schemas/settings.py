@@ -59,6 +59,9 @@ class SettingsUpdate(BaseModel):
     voice_elevenlabs_api_key: str | None = None # optional, secret
     voice_azure_speech_key: str | None = None   # Azure Speech (STT/TTS), secret
     voice_azure_speech_region: str | None = None # e.g. "germanywestcentral"
+    # Realtime voice front (Nova Sonic / AWS Bedrock / Azure) — platform default.
+    voice_interaction_model: str | None = None      # "" = classic pipeline; else engine e.g. "nova_sonic"
+    voice_interaction_account_id: str | None = None  # AI-account id providing the realtime creds
     # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
     exchange_server_url: str | None = None               # EWS host, e.g. "mail.klinikum-bs.de"
     exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"
@@ -88,6 +91,9 @@ class VoiceSettings(BaseModel):
     has_elevenlabs_key: bool = False
     has_azure_speech_key: bool = False
     azure_speech_region: str = ""
+    # Realtime voice front (platform default): "" = classic pipeline, else engine.
+    voice_interaction_model: str = ""
+    voice_interaction_account_id: str = ""
 
 
 class SettingsResponse(BaseModel):

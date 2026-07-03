@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.25] — 2026-07-03
+
+### Changed
+- **Voice-Settings sind jetzt realtime-first** und passen zum aktuellen Voice-Layer. Die Provider-Konfiguration zeigt oben die **Echtzeit-Sprachmodelle** (AWS Bedrock Nova Sonic / Azure Realtime — aus den konfigurierten AI-Accounts, via `GET /ai-accounts/realtime-models`) als primäre, empfohlene Auswahl und setzt damit den Plattform-Default (`voice_interaction_model` + `voice_interaction_account_id`). Die alte STT→LLM→TTS-Pipeline (faster-whisper/Edge-TTS/Interaction-LLM) ist in einen eingeklappten **„Klassische Pipeline (Fallback)"**-Bereich gewandert — nicht entfernt, weil Deployments ohne Realtime-Account (z. B. SKBS ohne AWS) sie als Rückfallebene brauchen; „Aktiv"-Badge zeigt, welcher Modus gerade greift. Backend: `/settings/voice` liefert + `PATCH /settings/` akzeptiert die Realtime-Felder. (`orchestrator/app/api/settings.py`, `orchestrator/app/schemas/settings.py`, `frontend/src/components/settings/voice-settings.tsx`)
+
 ## [1.99.24] — 2026-07-03
 
 ### Fixed

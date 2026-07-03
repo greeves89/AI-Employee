@@ -173,6 +173,8 @@ async def update_settings(
         "voice_llm_model", "voice_language",
         "voice_openai_api_key", "voice_elevenlabs_api_key",
         "voice_azure_speech_key", "voice_azure_speech_region",
+        # Realtime front (platform default): "" clears back to the classic pipeline.
+        "voice_interaction_model", "voice_interaction_account_id",
     ]
     for field_name in _VOICE_FIELDS:
         value = getattr(data, field_name, None)
@@ -215,6 +217,9 @@ async def get_voice_settings(
     # provider is selected (requires an API key call).
     # Edge and Azure Speech share the same neural-voice IDs → reuse the list.
     voices = EDGE_VOICES if cfg["tts_provider"] in ("edge_tts", "azure_speech") else []
+    # Realtime front (Nova Sonic / AWS Bedrock / Azure) platform default.
+    interaction_model = (await svc.get("voice_interaction_model")) or ""
+    interaction_account = (await svc.get("voice_interaction_account_id")) or ""
     return VoiceSettings(
         stt_provider=cfg["stt_provider"],
         tts_provider=cfg["tts_provider"],
@@ -229,6 +234,8 @@ async def get_voice_settings(
         has_elevenlabs_key=cfg["has_elevenlabs_key"],
         has_azure_speech_key=cfg.get("has_azure_speech_key", False),
         azure_speech_region=cfg.get("azure_speech_region", ""),
+        voice_interaction_model=interaction_model,
+        voice_interaction_account_id=interaction_account,
     )
 
 
