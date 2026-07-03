@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.18] — 2026-07-03
+
+### Security
+- **Exchange-Fehler leakt keine Interna mehr** (Regression aus 1.99.17 behoben). Der Client bekommt jetzt nur noch die Exception-**Klasse** (sichere Fehler-Kategorie wie `ErrorAccessDenied`/`ErrorImpersonateUserDenied`) — die Freitext-Message (kann Server-URLs, Mailbox-Adressen, Tenant-IDs enthalten) bleibt ausschließlich im Server-Log. (`orchestrator/app/core/exchange_mcp.py`)
+
 ## [1.99.17] — 2026-07-03
 
 ### Changed
