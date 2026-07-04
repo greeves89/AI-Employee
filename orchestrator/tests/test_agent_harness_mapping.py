@@ -93,9 +93,12 @@ class ModelCatalogGuardTests(unittest.TestCase):
         self.assertFalse(is_model_allowed_for_mode("claude_code", "gemini-2.5-pro"))
 
     def test_codex_cli_accepts_only_gpt(self):
-        self.assertTrue(is_model_allowed_for_mode("codex_cli", "gpt-5-codex"))
+        self.assertTrue(is_model_allowed_for_mode("codex_cli", "gpt-5.5"))
         self.assertTrue(is_model_allowed_for_mode("codex_cli", "o3-mini"))
         self.assertFalse(is_model_allowed_for_mode("codex_cli", "claude-sonnet-4-6"))
+        # gpt-5-codex classifies as codex family but is API-key-only; the codex
+        # harness authenticates via a ChatGPT account and rejects it at runtime.
+        self.assertFalse(is_model_allowed_for_mode("codex_cli", "gpt-5-codex"))
 
     def test_custom_llm_accepts_anything(self):
         for model in ["gpt-5.5", "claude-opus-4-8", "gemini-2.5-pro", "llama3.2", ""]:
@@ -104,7 +107,10 @@ class ModelCatalogGuardTests(unittest.TestCase):
     def test_coerce_keeps_valid_and_replaces_invalid(self):
         # Valid stays untouched.
         self.assertEqual(coerce_model_for_mode("claude_code", "claude-opus-4-8"), "claude-opus-4-8")
-        self.assertEqual(coerce_model_for_mode("codex_cli", "gpt-5-codex"), "gpt-5-codex")
+        self.assertEqual(coerce_model_for_mode("codex_cli", "gpt-5.5"), "gpt-5.5")
+        # gpt-5-codex is unsupported on a ChatGPT-account codex harness -> default.
+        self.assertEqual(coerce_model_for_mode("codex_cli", "gpt-5-codex"),
+                         default_model_for_mode("codex_cli"))
         # Invalid / missing -> harness default (this is the "codex agent handed
         # the platform default claude-sonnet-4-6" regression that broke runs).
         self.assertEqual(coerce_model_for_mode("codex_cli", "claude-sonnet-4-6"),
