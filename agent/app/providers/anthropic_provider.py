@@ -33,6 +33,34 @@ def _to_anthropic_blocks(content) -> list[dict]:
     return blocks
 
 
+def _to_anthropic_tools(tools: list[dict]) -> list[dict]:
+    """Convert OpenAI-style function tools to Anthropic tool blocks.
+
+    Anthropic strictly rejects the whole request (400) if a tool name is empty
+    or repeated; OpenAI tolerates duplicates. The upstream catalog can carry
+    name collisions (built-in vs orchestrator API vs MCP), so enforce
+    uniqueness here (first occurrence wins) — this is the single choke point for
+    every Anthropic call (chat, tasks, messages). A single cache breakpoint on
+    the last tool caches the whole static prefix (system + all tool defs).
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    for t in tools or []:
+        func = t.get("function", {})
+        name = func.get("name", "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append({
+            "name": name,
+            "description": func.get("description", ""),
+            "input_schema": func.get("parameters", {}),
+        })
+    if out:
+        out[-1] = {**out[-1], "cache_control": {"type": "ephemeral"}}
+    return out
+
+
 class AnthropicProvider(BaseLLMProvider):
     """Provider for the Anthropic Messages API (claude models via direct API)."""
 
@@ -122,22 +150,9 @@ class AnthropicProvider(BaseLLMProvider):
 
         # Convert OpenAI tool format to Anthropic format
         if tools:
-            anthropic_tools = []
-            for t in tools:
-                func = t.get("function", {})
-                anthropic_tools.append({
-                    "name": func.get("name", ""),
-                    "description": func.get("description", ""),
-                    "input_schema": func.get("parameters", {}),
-                })
+            anthropic_tools = _to_anthropic_tools(tools)
             if anthropic_tools:
-                # One cache breakpoint at the end of the tool list caches the
-                # whole static prefix (system + all tool definitions).
-                anthropic_tools[-1] = {
-                    **anthropic_tools[-1],
-                    "cache_control": {"type": "ephemeral"},
-                }
-            body["tools"] = anthropic_tools
+                body["tools"] = anthropic_tools
 
         headers = {
             "x-api-key": self.api_key,

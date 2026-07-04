@@ -57,3 +57,28 @@ def test_native_anthropic_stays_anthropic_provider():
         model_name="claude",
     )
     assert isinstance(p, AnthropicProvider)
+
+
+def test_anthropic_tools_deduped_and_nonempty():
+    """Anthropic rejects duplicate/empty tool names (400). The converter must
+    drop collisions (first wins) and empty names, and set exactly one cache
+    breakpoint on the last tool."""
+    from app.providers.anthropic_provider import _to_anthropic_tools
+    tools = [
+        {"function": {"name": "a", "description": "1", "parameters": {}}},
+        {"function": {"name": "b", "description": "2", "parameters": {}}},
+        {"function": {"name": "a", "description": "dup", "parameters": {}}},  # dup
+        {"function": {"name": "", "description": "empty", "parameters": {}}},  # empty
+    ]
+    out = _to_anthropic_tools(tools)
+    names = [t["name"] for t in out]
+    assert names == ["a", "b"], names
+    assert out[0]["description"] == "1"  # first occurrence wins
+    assert out[-1].get("cache_control") == {"type": "ephemeral"}
+    assert sum("cache_control" in t for t in out) == 1
+
+
+def test_anthropic_tools_empty_input():
+    from app.providers.anthropic_provider import _to_anthropic_tools
+    assert _to_anthropic_tools([]) == []
+    assert _to_anthropic_tools(None) == []

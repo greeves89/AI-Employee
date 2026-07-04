@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.66] — 2026-07-04
+
+### Fixed
+- **Claude-Chat über Anthropic-API brach mit 400 „Tool names must be unique" ab.** Anthropic lehnt doppelte/leere Tool-Namen strikt ab (OpenAI toleriert sie); der Tool-Katalog kann Namenskollisionen tragen (Built-in vs Orchestrator-API vs MCP). Neu: zentrale Deduplizierung im `AnthropicProvider` (`_to_anthropic_tools`, erste Nennung gewinnt, leere Namen raus) — greift für Chat, Tasks und Messages gleichermaßen. Tritt zusammen mit v1.99.65 auf (dort erst wurde der AnthropicProvider für Azure-Claude überhaupt aktiv). Tests: `agent/tests/test_provider_routing.py`. (`agent/app/providers/anthropic_provider.py`)
+
 ## [1.99.65] — 2026-07-04
 
 ### Fixed
