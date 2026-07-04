@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.68] — 2026-07-04
+
+### Added
+- **Parallele Sessions pro Agent einstellbar.** Im Agent-Reiter „Settings" gibt es jetzt einen Regler „Parallele Sessions" — er legt fest, wie viele Sessions der Agent gleichzeitig bearbeitet (gilt für Aufgaben UND Chats). Alles darüber wird automatisch in die Warteschlange gestellt und startet, sobald ein Platz frei wird. Bisher war das nur global (`MAX_PARALLEL_TASKS`/`MAX_PARALLEL_CHATS`); jetzt pro Agent überschreibbar (`agent.config.parallel_sessions`, 1–16), Fallback auf den globalen Default. Ändern startet den Agenten neu, damit die neue Grenze greift. Queue-Mechanik (Semaphore in `task_consumer`/`chat_consumer`) war bereits vorhanden. (`orchestrator/app/services/agent_settings.py`, `orchestrator/app/api/agents.py`, `orchestrator/app/core/agent_manager.py`, `frontend/src/app/agents/[id]/page.tsx`)
+
 ## [1.99.67] — 2026-07-04
 
 ### Fixed

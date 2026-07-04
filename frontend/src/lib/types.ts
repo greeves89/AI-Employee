@@ -99,6 +99,7 @@ export interface Agent {
   monthly_cost_usd: number;
   browser_mode: boolean;
   autonomy_level?: string;
+  parallel_sessions?: number;
   interaction_model?: string | null;
   interaction_account_id?: number | null;
   interaction_model_id?: string | null;

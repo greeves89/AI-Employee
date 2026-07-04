@@ -77,6 +77,16 @@ export async function setAgentAutonomyLevel(
   });
 }
 
+export async function setAgentParallelSessions(
+  agentId: string,
+  parallel_sessions: number,
+): Promise<{ agent_id: string; parallel_sessions: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/parallel-sessions`, {
+    method: "POST",
+    body: JSON.stringify({ parallel_sessions }),
+  });
+}
+
 // --- Autonomy capability matrix (3-state: allow/ask/deny) ---
 export type AutonomyState = "allow" | "ask" | "deny";
 export interface AutonomyCapability { key: string; group: string; label: string; description: string; }

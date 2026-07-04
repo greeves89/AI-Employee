@@ -13,6 +13,7 @@ import {
   Settings, Package, ShieldOff, ShieldAlert, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
+  Layers,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
@@ -1354,6 +1355,24 @@ function AgentSettings({
   // Autonomy level (badge in the header; the matrix component below owns editing)
   const [autonomyLevel, setAutonomyLevel] = useState(agent.autonomy_level ?? "l3");
 
+  // Parallel sessions — how many tasks/chats run concurrently; beyond it, queued.
+  const [parallelSessions, setParallelSessions] = useState<number>(agent.parallel_sessions ?? 1);
+  const [psSaving, setPsSaving] = useState(false);
+  const savedParallel = agent.parallel_sessions ?? 1;
+  const savePS = async () => {
+    setPsSaving(true);
+    try {
+      await api.setAgentParallelSessions(agent.id, parallelSessions);
+      const fresh = await api.getAgent(agent.id);
+      onUpdated(fresh);
+      setMessage({ type: "success", text: "Parallelität gespeichert. Agent wird neu gestartet." });
+    } catch {
+      setMessage({ type: "error", text: "Speichern fehlgeschlagen." });
+    } finally {
+      setPsSaving(false);
+    }
+  };
+
   // Webhook state
   const [webhookEnabled, setWebhookEnabled] = useState(agent.webhook_enabled ?? false);
   const [webhookToken, setWebhookToken] = useState<string | null>(agent.webhook_token ?? null);
@@ -1448,6 +1467,54 @@ function AgentSettings({
         </div>
         <div className="p-5">
           <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
+        </div>
+      </div>
+
+      {/* Parallele Sessions */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
+          <Layers className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">Parallele Sessions</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full border border-primary/20 bg-primary/10 text-primary font-medium">
+            {savedParallel}×
+          </span>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Wie viele Sessions der Agent <span className="font-medium text-foreground/80">gleichzeitig</span> bearbeitet
+            — gilt für Aufgaben und Chats. Alles darüber wird automatisch in die Warteschlange gestellt und startet,
+            sobald ein Platz frei wird.
+          </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={1}
+              max={8}
+              step={1}
+              value={parallelSessions}
+              onChange={(e) => setParallelSessions(Number(e.target.value))}
+              className="flex-1 accent-primary"
+            />
+            <input
+              type="number"
+              min={1}
+              max={16}
+              value={parallelSessions}
+              onChange={(e) => setParallelSessions(Math.max(1, Math.min(16, Number(e.target.value) || 1)))}
+              className="w-16 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2.5 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+            <button
+              onClick={savePS}
+              disabled={psSaving || parallelSessions === savedParallel}
+              className="flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {psSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Speichern
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground/60">
+            1 = streng nacheinander (Standard). Höhere Werte brauchen mehr CPU/RAM im Container. Ändern startet den Agenten neu.
+          </p>
         </div>
       </div>
 

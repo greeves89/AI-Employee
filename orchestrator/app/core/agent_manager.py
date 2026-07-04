@@ -1158,8 +1158,11 @@ class AgentManager:
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
-            "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
-            "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
+            # Per-agent parallelism (config['parallel_sessions']) overrides the
+            # global default; applies to both tasks and chats. Beyond it, work
+            # queues in Redis. New agents (create path) use the global default.
+            "MAX_PARALLEL_CHATS": str(config.get("parallel_sessions") or settings.max_parallel_chats),
+            "MAX_PARALLEL_TASKS": str(config.get("parallel_sessions") or settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
@@ -1325,8 +1328,11 @@ class AgentManager:
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
-            "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
-            "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
+            # Per-agent parallelism (config['parallel_sessions']) overrides the
+            # global default; applies to both tasks and chats. Beyond it, work
+            # queues in Redis. New agents (create path) use the global default.
+            "MAX_PARALLEL_CHATS": str(config.get("parallel_sessions") or settings.max_parallel_chats),
+            "MAX_PARALLEL_TASKS": str(config.get("parallel_sessions") or settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
@@ -1619,6 +1625,7 @@ class AgentManager:
             "ai_account_provider": ai_account_provider,
             "browser_mode": agent.browser_mode,
             "autonomy_level": agent.autonomy_level or "l3",
+            "parallel_sessions": int(config.get("parallel_sessions") or settings.max_parallel_tasks),
             "webhook_enabled": agent.webhook_enabled,
             "webhook_token": agent.webhook_token,
             "total_cost_usd": config.get("total_cost_usd", 0.0),

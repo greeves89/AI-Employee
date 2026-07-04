@@ -657,6 +657,24 @@ async def set_autonomy_level(
     return await change_autonomy_level(db, user, agent_id, data.level)
 
 
+class ParallelSessionsUpdate(BaseModel):
+    parallel_sessions: int
+
+
+@router.post("/{agent_id}/parallel-sessions")
+async def set_parallel_sessions(
+    agent_id: str,
+    data: ParallelSessionsUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Set how many sessions (tasks + chats) the agent runs in parallel; beyond
+    that, work queues. Recreates the container so the new limit takes effect."""
+    from app.services.agent_settings import change_parallel_sessions
+    return await change_parallel_sessions(db, user, agent_id, data.parallel_sessions, manager)
+
+
 @router.get("/{agent_id}/autonomy-matrix")
 async def get_autonomy_matrix(
     agent_id: str,

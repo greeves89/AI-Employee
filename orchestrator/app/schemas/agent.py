@@ -103,6 +103,8 @@ class AgentResponse(BaseModel):
 
     # Per-agent resource overrides (from agent.config JSON)
     config: dict | None = None
+    # How many sessions (tasks + chats) the agent runs in parallel; beyond it, queued.
+    parallel_sessions: int | None = None
 
     # Live metrics (from Redis, not DB)
     current_task: str | None = None
