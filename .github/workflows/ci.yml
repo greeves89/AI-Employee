@@ -1,0 +1,76 @@
+name: CI
+
+# Catches the class of failures that took the site down (import-time crashes reaching
+# prod) BEFORE a merge/deploy. Agents and humans push to main autonomously, so this is
+# the gate that keeps a broken commit from 502-ing production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Import smoke: would have caught BOTH 502s (router settings-shadow +
+  #    empty KIOSK_ENABLED bool-parse). No DB needed — just imports the app. ──
+  orchestrator-import:
+    name: Orchestrator import smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator
+        working-directory: orchestrator
+        run: pip install --no-cache-dir -e .
+      - name: Import app.main (reproduces empty-string env like compose passes)
+        working-directory: orchestrator
+        env:
+          KIOSK_ENABLED: "" # the exact case that crashed the orchestrator on 2026-07-03
+        run: python -c "import app.main; print('app.main imports OK')"
+
+  # ── Unit tests ──
+  orchestrator-tests:
+    name: Orchestrator pytest
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: ai_employee
+          POSTGRES_USER: ai_employee
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U ai_employee" --health-interval=5s
+          --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator (+ test deps)
+        working-directory: orchestrator
+        run: |
+          pip install --no-cache-dir -e .
+          pip install --no-cache-dir pytest pytest-asyncio
+      - name: Run tests
+        working-directory: orchestrator
+        env:
+          DATABASE_URL: postgresql+asyncpg://ai_employee:testpassword@localhost:5432/ai_employee
+          REDIS_URL: redis://localhost:6379
+          KIOSK_ENABLED: "false"
+        run: pytest -q
+
+  # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
+  compose-config:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose
+        run: docker compose config -q && echo "compose OK"

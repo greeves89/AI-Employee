@@ -133,8 +133,9 @@ class MessageConsumer:
         if settings.agent_mode == "custom_llm":
             return await self._execute_custom_llm(prompt, model)
 
-        # For the claude CLI the prompt is piped via stdin (not argv) to avoid
-        # "[Errno 7] Argument list too long" on large prompts.
+        # Both CLIs get the prompt via STDIN (not argv) to avoid "[Errno 7] Argument
+        # list too long" (E2BIG) on large prompts like PR diffs. codex exec reads the
+        # prompt from stdin when given "-" as the positional prompt.
         stdin_input: bytes | None = None
         if settings.agent_mode == "codex_cli":
             cmd = [
@@ -146,7 +147,8 @@ class MessageConsumer:
             ]
             if model and model != "default":
                 cmd.extend(["-m", model])
-            cmd.append(prompt)
+            cmd.append("-")  # read prompt from stdin
+            stdin_input = prompt.encode("utf-8")
         else:
             cmd = ["claude", "-p", "--output-format", "json", "--dangerously-skip-permissions"]
             if model and model != "default":

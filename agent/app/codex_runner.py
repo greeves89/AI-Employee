@@ -177,6 +177,8 @@ class CodexAgentRunner:
         return result
 
     async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str) -> dict:
+        # Prompt via STDIN ("-") not argv → avoids E2BIG ("Argument list too long")
+        # on large prompts (PR diffs etc.), same reason the claude path pipes stdin.
         cmd = [
             "codex", "exec",
             "--json",
@@ -184,7 +186,7 @@ class CodexAgentRunner:
             "--dangerously-bypass-approvals-and-sandbox",
             "-C", settings.workspace_dir,
             "-m", model,
-            prompt,
+            "-",
         ]
         env = _codex_env()
 
@@ -208,12 +210,17 @@ class CodexAgentRunner:
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdin=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,
                 env=env,
             )
+            # Feed the prompt via stdin, then close so codex starts processing.
+            if self._process.stdin is not None:
+                self._process.stdin.write(prompt.encode("utf-8"))
+                await self._process.stdin.drain()
+                self._process.stdin.close()
             stderr_task = asyncio.create_task(collect_stderr(self._process))
 
             async for event in _stream_jsonl(self._process):
