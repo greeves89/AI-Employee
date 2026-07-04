@@ -65,6 +65,7 @@ class TestImprovementEngineProposes:
             "min_skill_usages": 5, "skill_threshold": 3.0,
         })), patch.object(eng, "_generate_skill_improvement",
                            AsyncMock(return_value="much better rewritten content")), \
+             patch.object(eng, "_skill_helpfulness_history", AsyncMock(return_value=[])), \
              patch.object(eng, "_notify_feedback_contributors", AsyncMock()):
             await eng._improve_poorly_rated_skills(db)
 

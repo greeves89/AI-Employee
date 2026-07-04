@@ -16,6 +16,20 @@ def _make_stub(name: str, **attrs):
     sys.modules[name] = m
     return m
 
+
+# Snapshot originals so the stubs can be rolled back after import. pytest runs
+# every test module in ONE interpreter; a stubbed ``sqlalchemy`` left in
+# sys.modules poisons every later ``from sqlalchemy import ...`` (they'd raise
+# "cannot import name X from 'sqlalchemy' (unknown location)").
+_ORIGINAL_MODULES = {
+    name: sys.modules.get(name)
+    for name in (
+        "sqlalchemy", "sqlalchemy.ext", "sqlalchemy.ext.asyncio", "sqlalchemy.orm",
+        "redis", "redis.asyncio", "app.config", "app.db.session",
+        "app.dependencies", "app.models", "app.models.agent",
+    )
+}
+
 _sqlalchemy = _make_stub("sqlalchemy", select=MagicMock(), text=MagicMock())
 _make_stub("sqlalchemy.ext", asyncio=MagicMock())
 _make_stub("sqlalchemy.ext.asyncio", AsyncSession=MagicMock())
@@ -29,6 +43,14 @@ _make_stub("app.models")
 _make_stub("app.models.agent", Agent=MagicMock())
 
 from app.api.telegram_actions import _tg_request  # noqa: E402
+
+# telegram_actions has captured what it needs; put the real modules back so the
+# stubs don't leak into sibling test modules sharing this interpreter.
+for _name, _orig in _ORIGINAL_MODULES.items():
+    if _orig is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _orig
 
 
 # --- Helpers ---
