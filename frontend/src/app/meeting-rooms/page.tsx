@@ -19,6 +19,7 @@ import {
   FileText,
   Download,
   X,
+  Hammer,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -55,6 +56,8 @@ export default function MeetingRoomsPage() {
   const [teamOverflow, setTeamOverflow] = useState(false);
   const [maxRounds, setMaxRounds] = useState(5);
   const [creating, setCreating] = useState(false);
+  // Taskforce/Deliverable mode: agents build a real artifact together
+  const [deliverable, setDeliverable] = useState(false);
   // Advanced settings
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [useStages, setUseStages] = useState(true);
@@ -127,6 +130,7 @@ export default function MeetingRoomsPage() {
         stages_config: stages,
         use_moderator: useModerator,
         moderator_ai_account_id: useModerator ? (moderatorAiAccountId || undefined) : undefined,
+        deliverable,
       });
       setShowCreate(false);
       setName(""); setTopic(""); setSelectedAgents([]);
@@ -389,6 +393,44 @@ export default function MeetingRoomsPage() {
                   {selectedAgents.length > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">{selectedAgents.length} ausgewählt</p>
                   )}
+                </div>
+
+                {/* Taskforce / Deliverable mode */}
+                <div className={cn(
+                  "rounded-xl border p-4 transition-colors",
+                  deliverable ? "border-primary/40 bg-primary/[0.04]" : "border-foreground/[0.06]",
+                )}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className={cn(
+                        "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        deliverable ? "bg-primary/15" : "bg-foreground/[0.05]",
+                      )}>
+                        <Hammer className={cn("h-4 w-4", deliverable ? "text-primary" : "text-muted-foreground")} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Taskforce — echtes Ergebnis bauen</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Statt nur zu besprechen, bauen die Agenten gemeinsam ein echtes, lauffähiges Ergebnis
+                          (z.B. eine App) in einem geteilten Arbeitsverzeichnis. Ein Koordinator fügt die Teile am
+                          Ende zu einem fertigen Deliverable zusammen.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDeliverable(!deliverable)}
+                      className={cn(
+                        "relative shrink-0 h-6 w-11 rounded-full transition-colors duration-200",
+                        deliverable ? "bg-primary" : "bg-foreground/20",
+                      )}
+                    >
+                      <span className={cn(
+                        "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200",
+                        deliverable ? "translate-x-5" : "translate-x-0",
+                      )} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Advanced Settings (collapsible) */}
@@ -754,8 +796,122 @@ export default function MeetingRoomsPage() {
                   </>
                 );
               })()}
+              {summaryRoom.deliverable && <DeliverableFiles roomId={summaryRoom.id} />}
             </div>
           </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function DeliverableFiles({ roomId }: { roomId: string }) {
+  const [files, setFiles] = useState<api.DeliverableFile[]>([]);
+  const [integrated, setIntegrated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const [openContent, setOpenContent] = useState<string>("");
+  const [openLoading, setOpenLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await api.listDeliverableFiles(roomId);
+        if (!alive) return;
+        setFiles(res.files);
+        setIntegrated(res.deliverable_integrated);
+      } catch {
+        /* ignore — dir may not exist yet */
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+    load();
+    const iv = setInterval(load, 8000); // files appear as agents build
+    return () => { alive = false; clearInterval(iv); };
+  }, [roomId]);
+
+  const openFile = async (path: string) => {
+    setOpenPath(path);
+    setOpenLoading(true);
+    try {
+      const res = await api.getDeliverableFile(roomId, path);
+      setOpenContent(res.content);
+    } catch {
+      setOpenContent("(Datei konnte nicht geladen werden)");
+    } finally {
+      setOpenLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Hammer className="h-4 w-4 text-primary" />
+        <span className="text-sm font-medium text-primary">Taskforce-Ergebnis</span>
+        <span className={cn(
+          "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+          integrated
+            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+        )}>
+          {integrated ? "integriert" : "in Arbeit"}
+        </span>
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> lädt …
+        </div>
+      ) : files.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Noch keine Dateien. Sobald die Agenten bauen, erscheinen die Ergebnisse hier.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {files.map((f) => (
+            <button
+              key={f.path}
+              onClick={() => openFile(f.path)}
+              className={cn(
+                "w-full flex items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-left text-xs transition-colors",
+                openPath === f.path ? "bg-primary/10" : "hover:bg-foreground/[0.04]",
+              )}
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate font-mono">{f.path}</span>
+              </span>
+              <span className="shrink-0 text-muted-foreground/60">{formatBytes(f.size)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {openPath && (
+        <div className="mt-3 rounded-lg border border-border bg-card/60 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
+            <span className="text-[11px] font-mono truncate">{openPath}</span>
+            <button onClick={() => setOpenPath(null)} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="max-h-72 overflow-auto p-3">
+            {openLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : openPath.endsWith(".md") ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none text-xs">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{openContent}</ReactMarkdown>
+              </div>
+            ) : (
+              <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/80">{openContent}</pre>
+            )}
+          </div>
         </div>
       )}
     </div>

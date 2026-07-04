@@ -38,6 +38,13 @@ class MeetingRoom(Base, TimestampMixin):
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     # Parent meeting id — the follow-up waits for THAT meeting's assigned TODOs to finish.
     parent_room_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None, index=True)
+    # Taskforce/Deliverable mode: the meeting doesn't just produce a todo list — the
+    # agents build a REAL artifact together in a shared work dir (/shared/taskforce/{id}/),
+    # then a coordinator integrates the parts into one runnable deliverable. Off =
+    # classic "discuss + assign todos" meeting (unchanged behaviour).
+    deliverable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Fire-once guard: set True once the integration/assembly task has been dispatched.
+    deliverable_integrated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Message history stored as JSONB array
     messages: Mapped[list] = mapped_column(JSONB, default=list)
     # Creator

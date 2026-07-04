@@ -519,6 +519,8 @@ export interface MeetingRoom {
   max_rounds: number;
   stages_config?: MeetingStage[] | null;
   use_moderator?: boolean;
+  deliverable?: boolean;
+  deliverable_integrated?: boolean;
   messages?: MeetingMessage[];
   message_count?: number;
   created_at: string | null;

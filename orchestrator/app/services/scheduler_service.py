@@ -84,6 +84,14 @@ class SchedulerService:
                         logger.info("[Scheduler] Auto-started %s follow-up meeting(s)", started)
                 except Exception as e:
                     logger.warning("[Scheduler] Follow-up auto-start error: %s", e)
+                # Taskforce integration: dispatch the assemble step once every build
+                # sub-task of a deliverable meeting is done.
+                try:
+                    integrated = await self._dispatch_due_integrations()
+                    if integrated:
+                        logger.info("[Scheduler] Dispatched %s taskforce integration(s)", integrated)
+                except Exception as e:
+                    logger.warning("[Scheduler] Taskforce integration error: %s", e)
                 self._gc_counter += 30
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
@@ -191,6 +199,46 @@ class SchedulerService:
                 reason = "alle Aufgaben erledigt" if tasks_done else "Cap erreicht"
                 logger.info("[Scheduler] Auto-started follow-up %s (%s): %s", room.id, reason, room.name)
         return started
+
+    async def _dispatch_due_integrations(self) -> int:
+        """For deliverable/taskforce meetings: once every build sub-task is done,
+        dispatch the coordinator's integration task (assemble the shared work dir into
+        one runnable deliverable). Fires once per meeting (deliverable_integrated guard)."""
+        from sqlalchemy import select, and_
+        from app.db.session import async_session_factory
+        from app.models.meeting_room import MeetingRoom
+        from app.models.task import Task, TaskStatus
+        from app.api.meeting_rooms import dispatch_integration_task
+
+        dispatched = 0
+        async with async_session_factory() as db:
+            rooms = (await db.execute(
+                select(MeetingRoom).where(and_(
+                    MeetingRoom.deliverable == True,
+                    MeetingRoom.deliverable_integrated == False,
+                    MeetingRoom.is_active == True,
+                ))
+            )).scalars().all()
+            for room in rooms:
+                # Only the build sub-tasks (source='meeting'); the integration task
+                # itself carries source='meeting_integration' and must not gate itself.
+                rows = (await db.execute(
+                    select(Task.status, Task.metadata_).where(
+                        Task.metadata_.op("->>")("room_id") == room.id
+                    )
+                )).all()
+                build = [s for (s, m) in rows if (m or {}).get("source") == "meeting"]
+                # Need at least one build task, and all of them terminal.
+                if not build:
+                    continue
+                if not all(s not in (TaskStatus.PENDING, TaskStatus.RUNNING) for s in build):
+                    continue
+                try:
+                    if await dispatch_integration_task(room.id, self.redis, self.docker):
+                        dispatched += 1
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[Scheduler] Integration dispatch failed for %s: %s", room.id, e)
+        return dispatched
 
     async def _run_dreaming(self) -> int:
         """'Dreaming': rebuild each active user's adaptive profile from their

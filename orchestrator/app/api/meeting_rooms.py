@@ -83,6 +83,7 @@ class CreateRoom(BaseModel):
     stages_config: list[StageConfig] | None = None
     use_moderator: bool = False
     moderator_ai_account_id: str | None = None  # per-meeting moderator LLM (None = global default)
+    deliverable: bool = False  # Taskforce mode: agents build a real artifact together
 
 
 class StartRoom(BaseModel):
@@ -118,6 +119,71 @@ async def list_rooms(user=Depends(require_auth), db: AsyncSession = Depends(get_
     }
 
 
+def _taskforce_dir(room_id: str) -> "os.PathLike | str":
+    """Absolute path of a meeting's shared taskforce work dir on the /shared volume."""
+    import os
+    return os.path.realpath(os.path.join("/shared", "taskforce", room_id))
+
+
+@router.get("/{room_id}/deliverable/files")
+async def list_deliverable_files(
+    room_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)
+):
+    """List the files the taskforce produced in /shared/taskforce/{room_id}."""
+    import os
+    room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    base = _taskforce_dir(room_id)
+    out: list[dict] = []
+    if os.path.isdir(base):
+        for root, _dirs, files in os.walk(base):
+            for fn in files:
+                full = os.path.join(root, fn)
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    size = 0
+                out.append({"path": os.path.relpath(full, base), "size": size})
+    out.sort(key=lambda f: f["path"])
+    return {"room_id": room_id, "base": base, "files": out, "deliverable_integrated": room.deliverable_integrated}
+
+
+# Only these extensions are returned inline as text (preview); others are binary.
+_TEXT_PREVIEW_MAX = 200_000  # 200 KB cap for inline preview
+
+
+@router.get("/{room_id}/deliverable/file")
+async def get_deliverable_file(
+    room_id: str, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)
+):
+    """Return the text content of a single taskforce file (path is relative to the
+    taskforce dir). Path traversal outside the dir is rejected."""
+    import os
+    room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    base = _taskforce_dir(room_id)
+    target = os.path.realpath(os.path.join(base, path))
+    # Containment check — target must stay within the taskforce dir.
+    if target != base and not target.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail="File not found")
+    size = os.path.getsize(target)
+    try:
+        with open(target, "r", encoding="utf-8", errors="replace") as fh:
+            content = fh.read(_TEXT_PREVIEW_MAX)
+    except OSError:
+        raise HTTPException(status_code=422, detail="File not readable as text")
+    return {
+        "path": path,
+        "size": size,
+        "truncated": size > _TEXT_PREVIEW_MAX,
+        "content": content,
+    }
+
+
 @router.get("/{room_id}")
 async def get_room(room_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
@@ -142,6 +208,8 @@ async def get_room(room_id: str, user=Depends(require_auth), db: AsyncSession = 
         "max_rounds": room.max_rounds,
         "stages_config": room.stages_config,
         "use_moderator": room.use_moderator,
+        "deliverable": room.deliverable,
+        "deliverable_integrated": room.deliverable_integrated,
         "messages": room.messages or [],
         "created_at": room.created_at.isoformat() if room.created_at else None,
         "scheduled_for": room.scheduled_for.isoformat() if room.scheduled_for else None,
@@ -183,6 +251,7 @@ async def create_room(
         stages_config=stages,
         use_moderator=body.use_moderator,
         moderator_ai_account_id=(body.moderator_ai_account_id or None),
+        deliverable=body.deliverable,
         created_by=user.id if user.id != "__anonymous__" else None,
         messages=[],
     )
@@ -1394,22 +1463,47 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             if not agent_items:
                 continue
             agent_name = agent_name_map[agent_id]
-            task_prompt = (
-                f"Im Meeting **{room.name}** (Thema: {room.topic or 'kein Thema'}) "
-                f"wurden dir folgende Action Items zugewiesen — sie liegen bereits als TODOs in deiner Liste:\n\n"
-                + "\n".join(f"- {it}" for it in agent_items)
-                + "\n\nDiese Punkte sind dir im Meeting zugewiesen — arbeite sie im Rahmen deiner Berechtigungen "
-                "selbstständig ab (Onboarding-Status ist dafür nicht relevant). Brauchst du eine Aktion außerhalb "
-                "deiner Freigaben, fordere sie regulär via request_approval an.\n\n"
-                "So gehst du vor:\n"
-                "1. **Abarbeiten:** Bearbeite jeden Punkt konkret (recherchiere bei Bedarf). Erfinde nichts — "
-                "wo du etwas nicht abschließen kannst, halte den konkreten Zwischenstand + nächsten Schritt fest.\n"
-                "2. **Dokumentieren:** Schreibe deine Ergebnisse in `/workspace/knowledge.md` unter dem Abschnitt "
-                f"'## Meeting-Ergebnisse: {room.name}' — pro Action Item ein kurzer Absatz mit dem Ergebnis. "
-                "Diese Ergebnisse bringst du zum Folgetermin mit.\n"
-                "Du musst KEINE Todo-Tools aufrufen — der Abschluss deiner TODOs wird automatisch gesetzt, "
-                "sobald dieser Task fertig ist."
-            )
+            if room.deliverable:
+                # Taskforce/build mode: every agent produces REAL files into the shared
+                # taskforce dir so a coordinator can assemble one runnable deliverable.
+                work_dir = f"/shared/taskforce/{room.id}"
+                task_prompt = (
+                    f"Im Meeting **{room.name}** (Ziel: {room.topic or 'kein Ziel'}) baut ihr GEMEINSAM ein "
+                    f"echtes, lauffähiges Ergebnis. Deine Teilaufgaben:\n\n"
+                    + "\n".join(f"- {it}" for it in agent_items)
+                    + f"\n\n**Gemeinsames Arbeitsverzeichnis:** `{work_dir}` (auf dem geteilten Volume — für ALLE "
+                    "Taskforce-Agenten sichtbar). Arbeite im Rahmen deiner Berechtigungen selbstständig "
+                    "(Onboarding irrelevant); brauchst du etwas außerhalb deiner Freigaben, fordere es via "
+                    "request_approval an.\n\n"
+                    "So gehst du vor:\n"
+                    f"1. **Anlegen:** `mkdir -p {work_dir}` und lege dort DEINE echten Dateien ab (Code, Configs, "
+                    "Assets) — keine Notizen, sondern das echte Artefakt. Nutze klare Unterordner/Dateinamen, "
+                    "damit sich die Teile der anderen Agenten nicht überschreiben.\n"
+                    f"2. **Koordinieren:** Lies vorhandene Dateien in `{work_dir}` (auch von Kollegen), halte dich an "
+                    f"gemeinsame Schnittstellen. Schreibe deinen Beitrag + offene Punkte kurz in `{work_dir}/PROGRESS.md` "
+                    "(anhängen, nicht überschreiben).\n"
+                    "3. **Lauffähig halten:** Dein Teil soll für sich funktionieren (Abhängigkeiten dokumentieren). "
+                    "Erfinde nichts — wo etwas fehlt, notiere den nächsten Schritt in PROGRESS.md.\n"
+                    "Ein Koordinator führt am Ende alles zu einer lauffähigen Anwendung zusammen. Du musst KEINE "
+                    "Todo-Tools aufrufen — der Abschluss wird automatisch gesetzt, sobald dieser Task fertig ist."
+                )
+            else:
+                task_prompt = (
+                    f"Im Meeting **{room.name}** (Thema: {room.topic or 'kein Thema'}) "
+                    f"wurden dir folgende Action Items zugewiesen — sie liegen bereits als TODOs in deiner Liste:\n\n"
+                    + "\n".join(f"- {it}" for it in agent_items)
+                    + "\n\nDiese Punkte sind dir im Meeting zugewiesen — arbeite sie im Rahmen deiner Berechtigungen "
+                    "selbstständig ab (Onboarding-Status ist dafür nicht relevant). Brauchst du eine Aktion außerhalb "
+                    "deiner Freigaben, fordere sie regulär via request_approval an.\n\n"
+                    "So gehst du vor:\n"
+                    "1. **Abarbeiten:** Bearbeite jeden Punkt konkret (recherchiere bei Bedarf). Erfinde nichts — "
+                    "wo du etwas nicht abschließen kannst, halte den konkreten Zwischenstand + nächsten Schritt fest.\n"
+                    "2. **Dokumentieren:** Schreibe deine Ergebnisse in `/workspace/knowledge.md` unter dem Abschnitt "
+                    f"'## Meeting-Ergebnisse: {room.name}' — pro Action Item ein kurzer Absatz mit dem Ergebnis. "
+                    "Diese Ergebnisse bringst du zum Folgetermin mit.\n"
+                    "Du musst KEINE Todo-Tools aufrufen — der Abschluss deiner TODOs wird automatisch gesetzt, "
+                    "sobald dieser Task fertig ist."
+                )
             import uuid as _uuid
             task = Task(
                 id=_uuid.uuid4().hex[:12],
@@ -1503,12 +1597,92 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             f"[Meeting {room.id}] Task assignment complete: {sum(len(i) for _, _, i, _ in created_tasks)} items → {len(created_tasks)} agents"
         )
 
+    # Deliverable/taskforce meetings don't spawn a discussion follow-up — instead a
+    # coordinator integrates the parts into one runnable artifact once every sub-task
+    # is done (dispatched by the scheduler; see dispatch_integration_task).
+    if room.deliverable:
+        return
+
     # Auto-create a ready-to-start follow-up meeting room (Folgetermin), seeded with
     # the prior context + the action items, so the loop continues additively.
     try:
         await _create_follow_up_room(room, todo_content, items, redis)
     except Exception:
         logger.warning("Follow-up room creation failed for meeting %s", room.id, exc_info=True)
+
+
+async def dispatch_integration_task(room_id: str, redis, docker=None) -> bool:
+    """Taskforce integration: once every build sub-task of a deliverable meeting is
+    done, hand the shared work dir to a coordinator agent to assemble the parts into
+    ONE runnable deliverable. Fires exactly once (guarded by deliverable_integrated).
+
+    Returns True if an integration task was dispatched."""
+    import json as _json
+    import uuid as _uuid
+    from app.db.session import async_session_factory
+    from app.models.task import Task, TaskStatus, TaskPriority
+
+    async with async_session_factory() as db:
+        room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
+        if not room or not room.deliverable or room.deliverable_integrated:
+            return False
+        if not room.agent_ids:
+            return False
+        # Coordinator: prefer the moderator, else the first participant.
+        coordinator_id = room.agent_ids[0]
+        work_dir = f"/shared/taskforce/{room.id}"
+        prompt = (
+            f"**Taskforce-Integration** für das Meeting **{room.name}** (Ziel: {room.topic or 'kein Ziel'}).\n\n"
+            f"Im gemeinsamen Verzeichnis `{work_dir}` liegen die Teilergebnisse aller Agenten. Deine Aufgabe: "
+            "führe sie zu EINER lauffähigen Anwendung zusammen.\n\n"
+            "So gehst du vor:\n"
+            f"1. **Sichten:** Lies alles unter `{work_dir}` (inkl. `PROGRESS.md`). Verschaffe dir einen Überblick über "
+            "die Teile.\n"
+            "2. **Zusammenführen:** Strukturiere das Projekt sauber, löse Konflikte/Duplikate, ergänze fehlende "
+            "Verdrahtung zwischen den Teilen, sodass ein zusammenhängendes, lauffähiges Ergebnis entsteht.\n"
+            "3. **Lauffähig machen:** Stelle sicher, dass es startet (Abhängigkeiten, Build). Teste im Rahmen deiner "
+            "Berechtigungen; wo du etwas nicht ausführen darfst, dokumentiere die genauen Schritte.\n"
+            f"4. **Abschluss:** Schreibe `{work_dir}/README.md` (Was ist es, wie startet man es) und "
+            f"`{work_dir}/RESULT.md` (kurzer Abschlussbericht: was gebaut wurde, Startbefehl, bekannte Lücken).\n\n"
+            "Erfinde nichts — wo Teile fehlen oder nicht laufen, benenne es konkret in RESULT.md. Ergebnis ist das "
+            "echte Artefakt im Verzeichnis, kein Fließtext."
+        )
+        task = Task(
+            id=_uuid.uuid4().hex[:12],
+            title=f"[Taskforce] {room.name}: Integration → lauffähiges Ergebnis",
+            prompt=prompt,
+            status=TaskStatus.PENDING,
+            priority=TaskPriority.HIGH,
+            agent_id=coordinator_id,
+            metadata_={"source": "meeting_integration", "room_id": room.id},
+        )
+        db.add(task)
+        room.deliverable_integrated = True
+        # Announce in the meeting timeline.
+        msg = {
+            "role": "system",
+            "agent_id": None,
+            "content": (
+                "## Integration gestartet\n"
+                "Alle Teilaufgaben sind fertig. Der Koordinator führt die Ergebnisse jetzt zu einem "
+                "lauffähigen Deliverable zusammen."
+            ),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        room.messages = list(room.messages or []) + [msg]
+        await db.commit()
+        task_id = task.id
+        prompt_text = task.prompt
+        priority = task.priority
+
+    await _ensure_agent_running(coordinator_id, docker, redis)
+    await redis.push_task(
+        coordinator_id,
+        _json.dumps({"id": task_id, "prompt": prompt_text, "model": None, "priority": priority}),
+    )
+    await redis.client.publish(f"meeting:{room_id}:updates", _json.dumps(msg))
+    logger.info(f"[Meeting {room_id}] Integration task dispatched to coordinator {coordinator_id}")
+    return True
 
 
 async def _create_follow_up_room(room: MeetingRoom, todo_content: str, items: list[str], redis) -> str | None:

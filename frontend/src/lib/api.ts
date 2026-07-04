@@ -2201,11 +2201,26 @@ export async function createMeetingRoom(data: {
   stages_config?: { name: string; rounds: number; focus: string }[] | null;
   use_moderator?: boolean;
   moderator_ai_account_id?: string;
+  deliverable?: boolean;
 }): Promise<MeetingRoom> {
   return fetchJSON(`${getBase()}/meeting-rooms/`, {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export interface DeliverableFile { path: string; size: number; }
+
+export async function listDeliverableFiles(
+  roomId: string,
+): Promise<{ room_id: string; base: string; files: DeliverableFile[]; deliverable_integrated: boolean }> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${roomId}/deliverable/files`);
+}
+
+export async function getDeliverableFile(
+  roomId: string, path: string,
+): Promise<{ path: string; size: number; truncated: boolean; content: string }> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${roomId}/deliverable/file?path=${encodeURIComponent(path)}`);
 }
 
 export async function deleteMeetingRoom(id: string): Promise<void> {

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.69] — 2026-07-04
+
+### Added
+- **Meeting-Raum „Taskforce"-Modus — echtes, lauffähiges Ergebnis statt nur To-do-Liste.** Neuer Schalter beim Anlegen eines Meetings: „Taskforce — echtes Ergebnis bauen". Ist er an, arbeiten die Agenten nicht nur ihre Action-Items ab, sondern bauen **gemeinsam ein echtes Artefakt** (z.B. eine App) in einem geteilten Arbeitsverzeichnis `/shared/taskforce/{id}/`. Ablauf: Besprechung → parallele Bau-Tasks (jeder Agent produziert echte Dateien, koordiniert über `PROGRESS.md`) → sobald alle Teil-Tasks fertig sind, dispatcht der Scheduler automatisch einen **Integrations-Task** an einen Koordinator, der die Teile zu einer lauffähigen Anwendung zusammenführt (README + RESULT.md). Das Ergebnis (alle Dateien) ist im Meeting-Summary sichtbar/lesbar. Klassische „nur besprechen"-Meetings bleiben unverändert. (`orchestrator/app/models/meeting_room.py` + Migration `c4d5e6f7a8b9`, `orchestrator/app/api/meeting_rooms.py`, `orchestrator/app/services/scheduler_service.py`, `frontend/src/app/meeting-rooms/page.tsx`)
+
 ## [1.99.68] — 2026-07-04
 
 ### Added
