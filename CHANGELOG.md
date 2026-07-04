@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.65] — 2026-07-04
+
+### Fixed
+- **Azure-gehostete Claude-Modelle (Custom-LLM) gaben 401.** Die Azure-„Anthropic/Claude"-Surface (`…/anthropic/v1/messages`) spricht die Anthropic-Messages-API (`x-api-key` + `anthropic-version`), wird aber naturgemäß mit Provider-Typ `azure-openai` konfiguriert → landete im OpenAI-Provider, der eine falsche Deployment-URL baute und `api-key` statt `x-api-key` sendete (401 „invalid subscription key or wrong API endpoint"). Neu: `create_provider` erkennt eine `/anthropic/`-Surface und routet sie auf den `AnthropicProvider` — unabhängig vom `azure-openai`-Typ (der Typ bleibt wichtig, damit die Harness-Mode auf `custom_llm` bleibt und nicht auf die claude_code-CLI umspringt). Beide Endpoint-Formen (`…/anthropic/v1` und `…/anthropic/v1/messages`) werden akzeptiert. Regressionstests: `agent/tests/test_provider_routing.py`. (`agent/app/providers/__init__.py`)
+
 ## [1.99.64] — 2026-07-04
 
 ### Changed
