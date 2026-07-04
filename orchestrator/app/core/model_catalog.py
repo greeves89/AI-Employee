@@ -65,7 +65,6 @@ _CODEX_MODELS: dict[str, list[dict]] = {
     "codex": [
         {"value": "gpt-5.5", "label": "GPT-5.5 (Latest)", "tier": "Most Powerful"},
         {"value": "gpt-5.4", "label": "GPT-5.4", "tier": "Balanced"},
-        {"value": "gpt-5-codex", "label": "GPT-5 Codex", "tier": "Code-optimised"},
     ],
 }
 
@@ -82,13 +81,23 @@ MODEL_CATALOG: dict[str, dict] = {
         "label": "Codex CLI",
         "providers": _CODEX_MODELS,
         "default_provider": "codex",
-        "default_model": "gpt-5-codex",
+        "default_model": "gpt-5.5",
     },
 }
 
 # Modes whose model is validated here. custom_llm is intentionally excluded —
 # its model is whatever the linked AI account / inline llm_config provides.
 _GUARDED_MODES = frozenset(MODEL_CATALOG.keys())
+
+# Models that classify into a guarded harness by family but cannot actually run
+# there. ``gpt-5-codex`` is an API-key-only model; our codex_cli harness always
+# authenticates via a ChatGPT/Codex account (see agent/app/codex_runner.py),
+# which rejects it at runtime ("The 'gpt-5-codex' model is not supported when
+# using Codex with a ChatGPT account"). Treating it as not-allowed makes the
+# guard reject it and coercion route it to the harness default instead.
+_UNSUPPORTED_FOR_MODE: dict[str, frozenset[str]] = {
+    "codex_cli": frozenset({"gpt-5-codex"}),
+}
 
 
 def model_family(model: str | None) -> str | None:
@@ -119,6 +128,8 @@ def is_model_allowed_for_mode(mode: str, model: str | None) -> bool:
         return True
     fam = model_family(model)
     if fam is None:
+        return False
+    if (model or "").strip().lower() in _UNSUPPORTED_FOR_MODE.get(mode, frozenset()):
         return False
     return fam == mode
 

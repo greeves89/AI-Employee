@@ -55,7 +55,6 @@ const MODEL_OPTIONS: Record<ModelProvider, { value: string; label: string; tier:
   codex: [
     { value: "gpt-5.5", label: "GPT-5.5", tier: "Codex" },
     { value: "gpt-5.4", label: "GPT-5.4", tier: "Codex" },
-    { value: "gpt-5-codex", label: "GPT-5 Codex", tier: "Codex" },
   ],
 };
 

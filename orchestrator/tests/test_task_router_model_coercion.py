@@ -40,8 +40,8 @@ class TaskModelCoercionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_compatible_model_passes_through(self):
         router = _router_with_agent(_agent(mode="codex_cli"))
-        out = await router._coerce_task_model_for_agent("a1", "gpt-5-codex")
-        self.assertEqual(out, "gpt-5-codex")
+        out = await router._coerce_task_model_for_agent("a1", "gpt-5.5")
+        self.assertEqual(out, "gpt-5.5")
 
     async def test_claude_model_to_claude_agent_passes_through(self):
         router = _router_with_agent(_agent(mode="claude_code"))
