@@ -146,6 +146,8 @@ services:
       # How many independent tasks ONE agent runs concurrently (1 = serial default).
       # Passed through to each agent container.
       MAX_PARALLEL_TASKS: ${MAX_PARALLEL_TASKS:-1}
+      # Local embedding/semantic search — set false on constrained hosts (Pi).
+      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
       # Enterprise Volume Mounts — admin-defined allowlist (host paths never exposed to UI)
       # Format (one per line): label:host_path:container_path:mode  (mode = ro or rw)
       # Example:

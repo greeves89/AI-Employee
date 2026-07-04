@@ -64,6 +64,12 @@ class EmbeddingService:
 
     async def _check_local_available(self) -> bool:
         """Health-check with TTL. Re-verifies every _AVAILABILITY_TTL seconds."""
+        # Explicitly disabled (e.g. on the Raspberry Pi where the embedding model
+        # would peg the CPU) → skip entirely: no connection attempt, no retry, no
+        # warning spam. Semantic search cleanly falls back to keyword.
+        if not settings.embedding_enabled:
+            self._local_available = False
+            return False
         now = time.time()
         if self._local_available is not None and (now - self._local_checked_at) < _AVAILABILITY_TTL:
             return self._local_available

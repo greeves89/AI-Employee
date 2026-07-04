@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # How many independent TASKS (proactive/scheduled/webhook) one agent runs at once.
     # 1 = serial (default). >1 → each task gets its own runner subprocess.
     max_parallel_tasks: int = 1
+    # Local embedding service (semantic search). Disable on constrained hosts (Pi)
+    # to skip the CPU-heavy model + avoid 30s-retry warning spam → keyword fallback.
+    embedding_enabled: bool = True
     extended_thinking: bool = False  # Thinking is model-controlled, not a CLI flag
 
     # Model Provider: "anthropic", "bedrock", "vertex", "foundry"

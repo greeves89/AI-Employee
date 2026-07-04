@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.63] — 2026-07-04
+
+### Added
+- **`EMBEDDING_ENABLED`-Flag (Semantic-Search abschaltbar).** Auf ressourcenarmen Hosts (Raspberry Pi) lastet der lokale bge-m3-Embedding-Service die CPU zu ~90% aus. Neu: `EMBEDDING_ENABLED=false` überspringt den Embedding-Dienst komplett — kein Verbindungsversuch, kein 30s-Retry, kein Warn-Spam im `platform-errors.log`. Die Semantic-Search fällt sauber auf Keyword-Suche zurück. Default `true` (bestehende Deployments unverändert). (`orchestrator/app/config.py`, `orchestrator/app/services/embedding_service.py`, `docker-compose.yml`)
+
 ## [1.99.55] — 2026-07-03
 
 ### Fixed
