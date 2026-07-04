@@ -28,7 +28,6 @@ import {
   Bell,
   Star,
   BarChart3,
-  Rocket,
   Info,
   HelpCircle,
   X,
@@ -65,7 +64,8 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
       { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
-      { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
+      // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)
+      // { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
       { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
       { href: "/analytics", label: "Analytics", icon: BarChart3, simpleVisible: true },
     ],

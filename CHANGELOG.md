@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.64] — 2026-07-04
+
+### Changed
+- **„Onboarding"-Eintrag in der Sidebar vorerst ausgeblendet.** Der Nav-Punkt (inkl. Rocket-Icon) wird nicht mehr angezeigt; die Seite bleibt unter `/onboarding` direkt erreichbar. (`frontend/src/components/layout/sidebar.tsx`)
+
 ## [1.99.63] — 2026-07-04
 
 ### Added
