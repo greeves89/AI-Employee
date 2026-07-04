@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.67] — 2026-07-04
+
+### Fixed
+- **Scroll-Bug im „Meeting-Raum erstellen"-Dialog.** Nach Aufklappen der „Erweiterten Einstellungen" wuchs der Dialog über den Bildschirm hinaus, hatte kein eigenes Scrolling → das Mausrad scrollte die Seite dahinter statt den Dialog, „Meeting starten" war nicht mehr erreichbar. Neu: Dialog auf `max-h-[90dvh]` gedeckelt, feste Kopfzeile + fixer Footer (Cancel/Create), scrollbarer Mittelteil (gleiches Muster wie die Summary-Modal). (`frontend/src/app/meeting-rooms/page.tsx`)
+
 ## [1.99.66] — 2026-07-04
 
 ### Fixed

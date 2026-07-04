@@ -281,17 +281,17 @@ export default function MeetingRoomsPage() {
 
         {/* Create Modal */}
         {showCreate && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-xl"
+              className="w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
             >
-              <h2 className="text-lg font-semibold mb-4">
+              <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-semibold">
                 Create Meeting Room
               </h2>
 
-              <div className="space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-2 space-y-4">
                 {/* Name */}
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Name</label>
@@ -547,7 +547,7 @@ export default function MeetingRoomsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex justify-end gap-3 shrink-0 px-6 py-4 border-t border-border">
                 <button
                   onClick={() => setShowCreate(false)}
                   className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
