@@ -19,11 +19,14 @@ from app.api.telegram_actions import (
 )
 
 
+_BLOCKS = [{"type": "paragraph", "text": "Body paragraph"}]
+
+
 @pytest.mark.asyncio
 async def test_rich_message_is_forwarded_as_dict_not_string():
     body = SendRichMessageRequest(
         chat_id=480455764,
-        markdown="## Title\n\nBody paragraph",
+        blocks=_BLOCKS,
         reply_markup={"inline_keyboard": [[{"text": "ok", "callback_data": "ok"}]]},
     )
 
@@ -50,17 +53,17 @@ async def test_rich_message_is_forwarded_as_dict_not_string():
     assert captured["method"] == "sendRichMessage"
     rm = captured["data"]["rich_message"]
     assert isinstance(rm, dict), f"rich_message must be a dict, got {type(rm).__name__}"
-    assert "markdown" in rm
+    assert rm["blocks"] == _BLOCKS
     rk = captured["data"]["reply_markup"]
     assert isinstance(rk, dict), f"reply_markup must be a dict, got {type(rk).__name__}"
-    assert captured["data"]["chat_id"] == str(480455764)
+    assert captured["data"]["chat_id"] == 480455764
 
 
 @pytest.mark.asyncio
 async def test_draft_endpoint_also_forwards_as_dict():
     body = SendRichMessageRequest(
         chat_id=480455764,
-        html="<b>draft chunk</b>",
+        blocks=_BLOCKS,
     )
 
     captured: dict = {}
@@ -86,4 +89,4 @@ async def test_draft_endpoint_also_forwards_as_dict():
     assert captured["method"] == "sendRichMessageDraft"
     rm = captured["data"]["rich_message"]
     assert isinstance(rm, dict), f"rich_message must be a dict, got {type(rm).__name__}"
-    assert "html" in rm
+    assert rm["blocks"] == _BLOCKS

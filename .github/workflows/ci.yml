@@ -57,7 +57,7 @@ jobs:
         working-directory: orchestrator
         run: |
           pip install --no-cache-dir -e .
-          pip install --no-cache-dir pytest pytest-asyncio
+          pip install --no-cache-dir pytest pytest-asyncio aiosqlite
       - name: Run tests
         working-directory: orchestrator
         env:
