@@ -419,7 +419,8 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     # across channels (voice/agent search). Skip machine-originated turns.
                     if source not in ("scheduler",) and session_id != "scheduler":
                         try:
-                            await _save_conversation_memory(
+                            from app.services.conversation_memory import save_conversation_memory
+                            await save_conversation_memory(
                                 db, agent_id, session_id, source,
                                 getattr(user_msg, "content", "") if user_msg else "",
                                 content,
@@ -429,47 +430,6 @@ async def _listen_chat_completions(redis: RedisService) -> None:
         except Exception as e:
             print(f"[ChatPersist] Error: {e}")
             await asyncio.sleep(1)
-
-
-async def _save_conversation_memory(db, agent_id: str, session_id: str, source: str,
-                                    user_text: str, assistant_text: str) -> None:
-    """Auto-persist a chat exchange into the agent's long-term memory, EMBEDDED — so
-    it becomes semantically searchable across channels (web/Telegram/voice). The voice
-    bot's `search_knowledge` and the agent's `memory_search` then recall past
-    conversations without the agent having to explicitly call memory_save.
-
-    Best-effort: trivial exchanges are skipped; embedding uses the shared service
-    (local bge-m3 or the OpenAI fallback), and search degrades to keyword if absent."""
-    from sqlalchemy import text as _sql_text
-    from app.models.memory import AgentMemory
-    from app.services.embedding_service import get_embedding_service
-    import uuid as _uuid
-
-    ut = (user_text or "").strip()
-    at = (assistant_text or "").strip()
-    if len(ut) < 6 and len(at) < 40:      # nothing worth remembering
-        return
-    channel = (source or "chat").split(":")[0]  # webapp / telegram / voice / ios
-    content = (f"[Gespräch · {channel}] Nutzer: {ut}\nAgent: {at}")[:4000]
-    key = f"chat:{session_id or channel}:{_uuid.uuid4().hex[:8]}"
-    try:
-        mem = AgentMemory(
-            agent_id=agent_id, category="conversation", key=key, content=content,
-            importance=2, room=f"chat:{channel}", confidence=1.0,
-        )
-        db.add(mem)
-        await db.commit()
-        await db.refresh(mem)
-        svc = get_embedding_service()
-        emb = await svc.embed(content)
-        if emb is not None:
-            await db.execute(
-                _sql_text("UPDATE agent_memories SET embedding = CAST(:emb AS vector) WHERE id = :id"),
-                {"emb": str(emb), "id": mem.id},
-            )
-            await db.commit()
-    except Exception as e:  # noqa: BLE001
-        print(f"[ConvMemory] save failed: {e}")
 
 
 def _chat_notification_body(content: str, meta: dict) -> str:

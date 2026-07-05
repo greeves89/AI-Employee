@@ -328,6 +328,8 @@ class RealtimeVoiceSession:
     # the agent's chat history and can be continued by text or re-opened by voice.
     _persist_role: str = ""
     _persist_mid: str = ""
+    _cm_user: str = ""          # last user turn text, for conversation-memory pairing
+    _cm_assistant: str = ""     # last assistant turn text
     _resume_summary: str = ""  # prior conversation context when continuing a session
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
@@ -998,6 +1000,25 @@ class RealtimeVoiceSession:
         from sqlalchemy import select
         try:
             async with async_session_factory() as db:
+                # Conversation memory: when a NEW user turn begins after an assistant
+                # reply, the previous exchange is complete → embed it so voice chats
+                # are recallable across channels (like web/Telegram).
+                if role == "user":
+                    if self._cm_assistant:
+                        try:
+                            from app.services.conversation_memory import save_conversation_memory
+                            await save_conversation_memory(
+                                db, self.agent_id, self.session_id, "voice",
+                                self._cm_user, self._cm_assistant,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        self._cm_user = ""
+                        self._cm_assistant = ""
+                    self._cm_user = t
+                elif role == "assistant":
+                    self._cm_assistant = t
+
                 titled = (await db.execute(
                     select(ChatSession).where(
                         ChatSession.agent_id == self.agent_id,
