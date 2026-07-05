@@ -545,6 +545,9 @@ ${msgHtml}
                 </motion.div>
               ))
             )}
+            {room.deliverable && (deliv?.files?.length ?? 0) > 0 && (
+              <DeliverableResult roomId={roomId} deliv={deliv} />
+            )}
             <div ref={messagesEndRef} />
 
             {room.state === "running" && (
@@ -801,6 +804,75 @@ ${msgHtml}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.DeliverableStatus | null }) {
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(false);
+  const files = deliv?.files ?? [];
+  const done = deliv?.deliverable_integrated || deliv?.integration_status === "COMPLETED";
+
+  const open = async (p: string) => {
+    setOpenPath(p); setLoading(true);
+    try { setContent((await api.getDeliverableFile(roomId, p)).content); }
+    catch { setContent("(Datei konnte nicht geladen werden)"); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Hammer className="h-4 w-4 text-primary" />
+        <span className="text-sm font-semibold text-primary">Taskforce-Ergebnis</span>
+        <span className={cn(
+          "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+          done ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+               : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+        )}>
+          {done ? "fertig" : "in Arbeit"} · {files.length} Datei{files.length === 1 ? "" : "en"}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {files.map((f) => (
+          <button
+            key={f.path}
+            onClick={() => open(f.path)}
+            className={cn(
+              "w-full flex items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-left text-xs transition-colors",
+              openPath === f.path ? "bg-primary/10" : "hover:bg-foreground/[0.04]",
+            )}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono">{f.path}</span>
+            </span>
+            <span className="shrink-0 text-muted-foreground/60">{fmtBytes(f.size)}</span>
+          </button>
+        ))}
+      </div>
+      {openPath && (
+        <div className="mt-3 rounded-lg border border-border bg-card/60 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
+            <span className="text-[11px] font-mono truncate">{openPath}</span>
+            <button onClick={() => setOpenPath(null)} className="text-muted-foreground hover:text-foreground">
+              <Square className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="max-h-80 overflow-auto p-3">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              : <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/80">{content}</pre>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
