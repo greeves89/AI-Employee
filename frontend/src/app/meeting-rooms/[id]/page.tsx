@@ -839,24 +839,28 @@ function TaskforcePhaseBar({
     <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-3 space-y-3">
       {/* Phase steps */}
       <div className="flex items-center gap-1.5">
-        {TF_PHASES.map((label, i) => (
-          <div key={label} className="flex items-center gap-1.5 flex-1 last:flex-none">
-            <div className={cn(
-              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap",
-              i < phase && "bg-emerald-500/10 text-emerald-400",
-              i === phase && "bg-primary/15 text-primary",
-              i > phase && "bg-foreground/[0.04] text-muted-foreground/60",
-            )}>
-              {i < phase ? <CheckCircle2 className="h-3.5 w-3.5" />
-                : i === phase ? <Loader2 className={cn("h-3.5 w-3.5", room.state !== "completed" || !done ? "animate-spin" : "")} />
-                : <span className="h-3.5 w-3.5 rounded-full border border-current/40" />}
-              {label}
+        {TF_PHASES.map((label, i) => {
+          const stepDone = i < phase || (i === phase && done);
+          const stepActive = i === phase && !done;
+          return (
+            <div key={label} className="flex items-center gap-1.5 flex-1 last:flex-none">
+              <div className={cn(
+                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap",
+                stepDone && "bg-emerald-500/10 text-emerald-400",
+                stepActive && "bg-primary/15 text-primary",
+                !stepDone && !stepActive && "bg-foreground/[0.04] text-muted-foreground/60",
+              )}>
+                {stepDone ? <CheckCircle2 className="h-3.5 w-3.5" />
+                  : stepActive ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <span className="h-3.5 w-3.5 rounded-full border border-current/40" />}
+                {label}
+              </div>
+              {i < TF_PHASES.length - 1 && (
+                <div className={cn("h-px flex-1 min-w-3", stepDone ? "bg-emerald-500/30" : "bg-foreground/10")} />
+              )}
             </div>
-            {i < TF_PHASES.length - 1 && (
-              <div className={cn("h-px flex-1 min-w-3", i < phase ? "bg-emerald-500/30" : "bg-foreground/10")} />
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Live build tiles — during assignment/build/integration */}
