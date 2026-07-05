@@ -82,3 +82,15 @@ def test_anthropic_tools_empty_input():
     from app.providers.anthropic_provider import _to_anthropic_tools
     assert _to_anthropic_tools([]) == []
     assert _to_anthropic_tools(None) == []
+
+
+def test_azure_v1_surface_routes_codex_to_responses():
+    """Azure's /openai/v1 surface: codex/GPT-5 reasoning models are responses-only
+    (400 on chat/completions). Must route to /responses; plain chat models to
+    /chat/completions — NOT the classic per-deployment path."""
+    from app.providers.openai_provider import OpenAIProvider
+    ep = "https://x.services.ai.azure.com/openai/v1"
+    codex = OpenAIProvider(api_endpoint=ep, api_key="K", model_name="gpt-5.3-codex", is_azure=True)
+    assert codex._resolve_url() == (f"{ep}/responses", "responses")
+    chat = OpenAIProvider(api_endpoint=ep, api_key="K", model_name="gpt-chat-latest", is_azure=True)
+    assert chat._resolve_url() == (f"{ep}/chat/completions", "chat")

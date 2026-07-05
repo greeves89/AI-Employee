@@ -142,6 +142,17 @@ class OpenAIProvider(BaseLLMProvider):
         if ep.endswith("/completions"):
             return self._with_version(ep, azure, "chat"), "legacy"
 
+        # Azure's newer OpenAI-compatible "v1" surface (…/openai/v1). Codex / GPT-5
+        # reasoning models are RESPONSES-only here and 400 ("operation is unsupported")
+        # on /chat/completions — so route responses-models to /responses, everything
+        # else to /chat/completions. Do NOT fall through to the classic per-deployment
+        # path below (which is chat/completions-only and breaks codex). No api-version
+        # is needed on the v1 surface.
+        if ep.endswith("/openai/v1"):
+            fmt = "responses" if self._is_responses_model() else "chat"
+            path = "responses" if fmt == "responses" else "chat/completions"
+            return f"{ep}/{path}", fmt
+
         if azure:
             # Classic Azure OpenAI: the deployment name lives in the path.
             # This surface serves deployments via /chat/completions — the
