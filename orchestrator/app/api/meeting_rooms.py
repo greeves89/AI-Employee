@@ -278,8 +278,40 @@ async def launch_deliverable(
 
     host_agent = room.agent_ids[0]
     project = _project_name(host_agent, f"tf-{room_id}")
-    compose_path = f"/shared/taskforce/{room_id}/{compose_name}"
     docker = DockerService()
+
+    # Rewrite the compose: strip host-port publishing (would clash with the
+    # orchestrator's own 8000 etc.) — the app is reached via the in-network proxy on
+    # the container-side port, so no host publish is needed. Also record the first
+    # container port per service for the proxy URL.
+    import yaml as _yaml
+
+    def _target_port(entry) -> str | None:
+        if isinstance(entry, dict):
+            t = entry.get("target")
+            return str(t) if t is not None else None
+        s = str(entry).split("/")[0]  # drop /tcp
+        parts = s.split(":")
+        return parts[-1] if parts and parts[-1].isdigit() else None
+
+    web_port = None
+    try:
+        with open(os.path.join(base, compose_name), "r", encoding="utf-8") as fh:
+            spec = _yaml.safe_load(fh) or {}
+        for _svc, cfg in (spec.get("services") or {}).items():
+            if isinstance(cfg, dict) and cfg.get("ports"):
+                for p in cfg["ports"]:
+                    tp = _target_port(p)
+                    if tp and web_port is None:
+                        web_port = tp
+                cfg.pop("ports", None)  # no host publish → no clash
+        launch_name = ".launch-compose.yml"
+        with open(os.path.join(base, launch_name), "w", encoding="utf-8") as fh:
+            _yaml.safe_dump(spec, fh)
+        compose_path = f"/shared/taskforce/{room_id}/{launch_name}"
+    except Exception as e:  # noqa: BLE001 — fall back to the original file
+        logger.warning("[Taskforce %s] compose rewrite failed: %s", room_id, e)
+        compose_path = f"/shared/taskforce/{room_id}/{compose_name}"
 
     def _run():
         return docker.client.containers.run(
@@ -304,15 +336,16 @@ async def launch_deliverable(
     _connect_containers_to_network(docker, project)
     containers = _get_project_containers(docker, project)
 
-    # Find a web container + its container-side port → build the proxy URL.
+    # Build the proxy URL: first container + the web port (from compose, else exposed).
     url = None
-    for c in containers:
-        cand = [str(p.get("container_port", "")).split("/")[0] for p in (c.get("ports") or [])]
-        cand += [str(p).split("/")[0] for p in (c.get("exposed_ports") or [])]
-        port = next((p for p in cand if p.isdigit()), None)
+    if containers:
+        c = containers[0]
+        port = web_port
+        if not port:
+            cand = [str(p).split("/")[0] for p in (c.get("exposed_ports") or [])]
+            port = next((p for p in cand if p.isdigit()), None)
         if port:
             url = f"/api/v1/agents/{host_agent}/apps/proxy/{c['name']}/{port}/"
-            break
 
     return {"project": project, "host_agent": host_agent, "containers": containers, "url": url}
 
