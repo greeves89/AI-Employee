@@ -2242,7 +2242,9 @@ export interface AppEntry {
   project: string;
   agent_id: string;
   agent_name: string;
-  status: string;
+  name: string;
+  path: string | null;              // set for workspace apps (start via docker-apps up)
+  status: "running" | "stopped" | "not_started" | string;
   containers: AppContainer[];
   url: string | null;
 }
@@ -2251,8 +2253,21 @@ export async function listApps(): Promise<{ apps: AppEntry[] }> {
   return fetchJSON(`${getBase()}/apps`);
 }
 
-export async function stopApp(project: string): Promise<{ project: string; removed: number }> {
+export async function stopApp(project: string): Promise<{ project: string; stopped: number }> {
   return fetchJSON(`${getBase()}/apps/stop?project=${encodeURIComponent(project)}`, { method: "POST" });
+}
+
+export async function startAppByProject(project: string): Promise<{ project: string; started: number }> {
+  return fetchJSON(`${getBase()}/apps/start?project=${encodeURIComponent(project)}`, { method: "POST" });
+}
+
+export async function removeApp(project: string): Promise<{ project: string; removed: number }> {
+  return fetchJSON(`${getBase()}/apps/remove?project=${encodeURIComponent(project)}`, { method: "POST" });
+}
+
+export interface AppLogContainer { name: string; service: string; status: string; logs: string }
+export async function getAppLogs(project: string, tail = 200): Promise<{ project: string; containers: AppLogContainer[] }> {
+  return fetchJSON(`${getBase()}/apps/logs?project=${encodeURIComponent(project)}&tail=${tail}`);
 }
 
 // --- Presence (who is online) ---
