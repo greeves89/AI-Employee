@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.70] — 2026-07-05
+
+### Fixed
+- **Taskforce-Bau produzierte keine Dateien (Permission-Bug auf `/shared`).** Das geteilte Volume `/shared` gehört `root:root` (755), die Agenten laufen aber als uid 1000 → beim Anlegen von `/shared/taskforce/{id}/` bekamen sie „Permission denied" und der ganze Bau lief lautlos ins Leere (0 Dateien). Neu: der Orchestrator (root) legt das Taskforce-Verzeichnis **world-writable an, bevor** die Bau-Tasks dispatcht werden (`_ensure_taskforce_dir`). (`orchestrator/app/api/meeting_rooms.py`)
+
 ## [1.99.69] — 2026-07-04
 
 ### Added

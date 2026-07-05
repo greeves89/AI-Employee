@@ -125,6 +125,23 @@ def _taskforce_dir(room_id: str) -> "os.PathLike | str":
     return os.path.realpath(os.path.join("/shared", "taskforce", room_id))
 
 
+def _ensure_taskforce_dir(room_id: str) -> str:
+    """Create the shared taskforce work dir world-writable BEFORE dispatching build
+    tasks. Critical: /shared is root-owned (755) but the agents run as uid 1000 — if
+    the orchestrator (root) doesn't pre-create the dir writable, the agents get
+    'Permission denied' on mkdir and the whole build silently produces nothing."""
+    import os
+    base = _taskforce_dir(room_id)
+    parent = os.path.dirname(base)
+    for d in (parent, base):
+        try:
+            os.makedirs(d, exist_ok=True)
+            os.chmod(d, 0o777)  # agents (uid 1000) must be able to write here
+        except OSError:
+            logger.warning("[Taskforce] could not prepare %s", d, exc_info=True)
+    return base
+
+
 @router.get("/{room_id}/deliverable/files")
 async def list_deliverable_files(
     room_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)
@@ -1458,6 +1475,11 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
                 target = min(agent_ids, key=lambda a: len(assignments[a]))
                 assignments[target].append(item)
 
+        # Taskforce: pre-create the shared work dir writable BEFORE the agents get
+        # their build tasks — else they hit 'Permission denied' on /shared (root-owned).
+        if room.deliverable:
+            _ensure_taskforce_dir(room.id)
+
         created_tasks = []
         for agent_id, agent_items in assignments.items():
             if not agent_items:
@@ -1630,7 +1652,7 @@ async def dispatch_integration_task(room_id: str, redis, docker=None) -> bool:
             return False
         # Coordinator: prefer the moderator, else the first participant.
         coordinator_id = room.agent_ids[0]
-        work_dir = f"/shared/taskforce/{room.id}"
+        work_dir = _ensure_taskforce_dir(room.id)
         prompt = (
             f"**Taskforce-Integration** für das Meeting **{room.name}** (Ziel: {room.topic or 'kein Ziel'}).\n\n"
             f"Im gemeinsamen Verzeichnis `{work_dir}` liegen die Teilergebnisse aller Agenten. Deine Aufgabe: "
