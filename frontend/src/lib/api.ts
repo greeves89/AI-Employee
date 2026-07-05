@@ -2230,6 +2230,12 @@ export async function getDeliverableFile(
   return fetchJSON(`${getBase()}/meeting-rooms/${roomId}/deliverable/file?path=${encodeURIComponent(path)}`);
 }
 
+export async function launchDeliverable(
+  roomId: string,
+): Promise<{ project: string; host_agent: string; containers: unknown[]; url: string | null }> {
+  return fetchJSON(`${getBase()}/meeting-rooms/${roomId}/deliverable/launch`, { method: "POST" });
+}
+
 export async function deleteMeetingRoom(id: string): Promise<void> {
   return fetchJSON(`${getBase()}/meeting-rooms/${id}`, { method: "DELETE" });
 }

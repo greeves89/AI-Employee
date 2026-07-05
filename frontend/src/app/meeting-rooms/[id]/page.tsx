@@ -18,6 +18,8 @@ import {
   Gavel,
   Hammer,
   FileCode,
+  FileText,
+  Container,
   Download,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -818,8 +820,28 @@ function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.Deliv
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const [launchUrl, setLaunchUrl] = useState<string | null>(null);
+  const [launchErr, setLaunchErr] = useState<string | null>(null);
   const files = deliv?.files ?? [];
   const done = deliv?.deliverable_integrated || deliv?.integration_status === "COMPLETED";
+
+  // Artifact-type detection → tailored view.
+  const isApp = files.some((f) => /(^|\/)(docker-compose|compose)\.ya?ml$/i.test(f.path));
+  const docs = files.filter((f) => /\.(pdf|pptx|docx|xlsx|csv)$/i.test(f.path));
+
+  const launch = async () => {
+    setLaunching(true); setLaunchErr(null);
+    try {
+      const r = await api.launchDeliverable(roomId);
+      if (r.url) setLaunchUrl(r.url);
+      else setLaunchErr("Gestartet, aber kein Web-Port gefunden.");
+    } catch (e) {
+      setLaunchErr(e instanceof Error ? e.message : "Start fehlgeschlagen.");
+    } finally {
+      setLaunching(false);
+    }
+  };
 
   const open = async (p: string) => {
     setOpenPath(p); setLoading(true);
@@ -841,6 +863,57 @@ function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.Deliv
           {done ? "fertig" : "in Arbeit"} · {files.length} Datei{files.length === 1 ? "" : "en"}
         </span>
       </div>
+
+      {/* App result → start + live link */}
+      {isApp && (
+        <div className="mb-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm">
+              <Container className="h-4 w-4 text-emerald-400" />
+              <span className="font-medium">Docker-App</span>
+              <span className="text-muted-foreground text-xs">— startbar aus dem Ergebnis</span>
+            </div>
+            {launchUrl ? (
+              <a
+                href={launchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+              >
+                <Play className="h-4 w-4" /> App öffnen
+              </a>
+            ) : (
+              <button
+                onClick={launch}
+                disabled={launching}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-50 transition-colors"
+              >
+                {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                {launching ? "startet…" : "App starten"}
+              </button>
+            )}
+          </div>
+          {launchErr && <p className="mt-2 text-xs text-red-400">{launchErr}</p>}
+        </div>
+      )}
+
+      {/* Documents → download/open */}
+      {docs.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {docs.map((f) => (
+            <a
+              key={f.path}
+              href={`/api/v1/meeting-rooms/${roomId}/deliverable/file?path=${encodeURIComponent(f.path)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg border border-blue-500/20 bg-blue-500/[0.05] px-2.5 py-1.5 text-xs text-blue-300 hover:bg-blue-500/10 transition-colors"
+            >
+              <FileText className="h-3.5 w-3.5" /> {f.path.split("/").pop()}
+            </a>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-1">
         {files.map((f) => (
           <button

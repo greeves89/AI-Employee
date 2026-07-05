@@ -245,6 +245,78 @@ async def get_deliverable_file(
     }
 
 
+@router.post("/{room_id}/deliverable/launch")
+async def launch_deliverable(
+    room_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the taskforce-produced Docker app (its docker-compose.yml) and return a
+    live proxy URL. Runs the compose against the shared volume under the meeting's
+    first agent's project prefix, so the existing per-agent app proxy can serve it."""
+    import os
+    from app.services.docker_service import DockerService
+    from app.api.docker_apps import (
+        _project_name, _get_project_containers, _connect_containers_to_network,
+        COMPOSE_RUNNER_IMAGE,
+    )
+    from docker.errors import ContainerError
+
+    room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if not room.agent_ids:
+        raise HTTPException(status_code=400, detail="Meeting hat keine Agenten")
+    base = _taskforce_dir(room_id)
+    compose_name = next(
+        (n for n in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
+         if os.path.isfile(os.path.join(base, n))),
+        None,
+    )
+    if not compose_name:
+        raise HTTPException(status_code=404, detail="Kein docker-compose im Ergebnis — das ist keine startbare App.")
+
+    host_agent = room.agent_ids[0]
+    project = _project_name(host_agent, f"tf-{room_id}")
+    compose_path = f"/shared/taskforce/{room_id}/{compose_name}"
+    docker = DockerService()
+
+    def _run():
+        return docker.client.containers.run(
+            image=COMPOSE_RUNNER_IMAGE,
+            command=["docker", "compose", "-p", project, "-f", compose_path, "up", "-d", "--build"],
+            volumes={
+                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+                "ai-employee-shared": {"bind": "/shared", "mode": "rw"},
+            },
+            network="ai-employee-network", remove=True, detach=False, stderr=True,
+        )
+
+    try:
+        await asyncio.to_thread(_run)
+    except ContainerError as e:
+        err = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, (bytes, bytearray)) else str(e)
+        logger.warning("[Taskforce %s] launch failed: %s", room_id, err[:500])
+        raise HTTPException(status_code=500, detail=f"Start fehlgeschlagen: {err[:400]}")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Start fehlgeschlagen: {e}")
+
+    _connect_containers_to_network(docker, project)
+    containers = _get_project_containers(docker, project)
+
+    # Find a web container + its container-side port → build the proxy URL.
+    url = None
+    for c in containers:
+        cand = [str(p.get("container_port", "")).split("/")[0] for p in (c.get("ports") or [])]
+        cand += [str(p).split("/")[0] for p in (c.get("exposed_ports") or [])]
+        port = next((p for p in cand if p.isdigit()), None)
+        if port:
+            url = f"/api/v1/agents/{host_agent}/apps/proxy/{c['name']}/{port}/"
+            break
+
+    return {"project": project, "host_agent": host_agent, "containers": containers, "url": url}
+
+
 @router.get("/{room_id}")
 async def get_room(room_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
