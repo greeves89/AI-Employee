@@ -380,11 +380,28 @@ async def start_app(
     project_name = _project_name(agent_id, path)
     workspace_volume = agent.volume_name or f"workspace-{agent_id}"
 
-    # Ensure .env file exists (compose fails if env_file references missing .env)
-    docker.exec_in_container(
-        agent.container_id,
-        f"touch {shlex.quote(f'/workspace/{path}/.env')}",
-    )
+    # Ensure referenced env files exist — compose hard-fails if an `env_file:` target
+    # is missing. Touch the project-root `.env` plus every `env_file` declared in the
+    # compose (also nested like `backend/.env`), creating parent dirs as needed.
+    env_targets: set[str] = {".env"}
+    try:
+        _content = docker.get_file_from_container(agent.container_id, compose_file)
+        _spec = yaml.safe_load(_content.decode("utf-8")) or {}
+        for _svc in (_spec.get("services") or {}).values():
+            if not isinstance(_svc, dict):
+                continue
+            _ef = _svc.get("env_file")
+            for _e in ([_ef] if isinstance(_ef, str) else (_ef or [])):
+                if isinstance(_e, str) and ".." not in _e and not _e.startswith("/"):
+                    env_targets.add(_e)
+    except Exception as _e:  # noqa: BLE001 — best-effort; fall back to just .env
+        logger.debug("env_file scan failed for %s: %s", path, _e)
+    for _rel in env_targets:
+        full = f"/workspace/{path}/{_rel}"
+        docker.exec_in_container(
+            agent.container_id,
+            f"mkdir -p {shlex.quote(full.rsplit('/', 1)[0])} && touch {shlex.quote(full)}",
+        )
 
     logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
 
