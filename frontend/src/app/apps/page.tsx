@@ -9,7 +9,8 @@ import * as api from "@/lib/api";
 export default function AppsPage() {
   const [apps, setApps] = useState<api.AppEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(new Set());   // per-app: multiple in parallel
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [logsFor, setLogsFor] = useState<api.AppEntry | null>(null);
 
   const load = useCallback(async () => {
@@ -29,9 +30,22 @@ export default function AppsPage() {
     return () => clearInterval(iv);
   }, [load]);
 
+  // Per-app action: each spins its OWN card until it finishes — independent of other
+  // clicks. Errors land on the card (not as uncaught console rejections).
   const act = async (key: string, fn: () => Promise<unknown>) => {
-    setBusy(key);
-    try { await fn(); await load(); } finally { setBusy(null); }
+    setBusy((s) => new Set(s).add(key));
+    setErrors((e) => { const n = { ...e }; delete n[key]; return n; });
+    try {
+      await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Fehlgeschlagen.";
+      // Strip the "API Error 500: {json}" envelope → short readable hint.
+      const short = msg.replace(/^API Error \d+:\s*/, "").slice(0, 240);
+      setErrors((e) => ({ ...e, [key]: short }));
+    } finally {
+      setBusy((s) => { const n = new Set(s); n.delete(key); return n; });
+      load();
+    }
   };
 
   const start = (app: api.AppEntry) =>
@@ -73,7 +87,8 @@ export default function AppsPage() {
             {apps.map((app) => {
               const running = app.status === "running";
               const notStarted = app.status === "not_started";
-              const isBusy = busy === app.project;
+              const isBusy = busy.has(app.project);
+              const err = errors[app.project];
               return (
                 <div key={app.project} className="rounded-xl border border-border bg-card/80 p-4 flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-2">
@@ -92,12 +107,14 @@ export default function AppsPage() {
                       </div>
                     </div>
                     <span className={cn(
-                      "text-[10px] px-2 py-0.5 rounded-full border font-medium shrink-0",
-                      running ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium shrink-0",
+                      isBusy ? "bg-primary/10 text-primary border-primary/20"
+                        : running ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         : notStarted ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
                         : "bg-amber-500/10 text-amber-400 border-amber-500/20",
                     )}>
-                      {running ? "läuft" : notStarted ? "nicht gestartet" : "gestoppt"}
+                      {isBusy && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+                      {isBusy ? "startet…" : running ? "läuft" : notStarted ? "nicht gestartet" : "gestoppt"}
                     </span>
                   </div>
 
@@ -116,8 +133,9 @@ export default function AppsPage() {
                     )}
                     {!running && (
                       <button onClick={() => start(app)} disabled={isBusy}
-                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-50 transition-colors">
-                        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Starten
+                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-60 transition-colors">
+                        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                        {isBusy ? "startet…" : "Starten"}
                       </button>
                     )}
                     {running && (
@@ -140,6 +158,11 @@ export default function AppsPage() {
                       </button>
                     )}
                   </div>
+                  {err && (
+                    <p className="text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">
+                      {err}{app.containers.length > 0 ? " — Details unter Logs." : ""}
+                    </p>
+                  )}
                 </div>
               );
             })}
