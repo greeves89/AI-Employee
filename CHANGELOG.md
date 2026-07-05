@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.72] — 2026-07-05
+
+### Added
+- **Taskforce-Transparenz: Phasen-Leiste + Live-Bau-Kacheln im Meeting-View.** Deliverable-Meetings zeigen jetzt eine Phasen-Leiste (Planung → Zuweisung → Bau → Integration → Fertig, aktuelle Phase animiert) plus pro Agent eine Live-Kachel (Spinner „baut…" / „fertig" / „Fehler") + Koordinator-Kachel + Live-Dateizähler — alle 4s aktualisiert. (`frontend/src/app/meeting-rooms/[id]/page.tsx`, `deliverable/files`-Endpoint um build_tasks/integration_status erweitert)
+
+### Fixed
+- **Taskforce-Härtung.** (1) Synthese-Fallback: produziert die Todo-Synthese eines Deliverable-Meetings keine Items (z.B. weil ein Agent nicht antwortete), werden jetzt Fallback-Bau-Aufgaben aus dem Ziel erzeugt statt lautlos NICHTS zu dispatchen. (2) Bau-/Integrations-Prompts geschärft: kein `git init`/`__pycache__`, ein einziges Projekt (keine verschachtelten Doppelordner), keine „getestet/lauffähig"-Behauptung ohne echten Lauf. (3) Ergebnis-Listing blendet `.git`/`__pycache__`/`.pyc`/venv aus. (`orchestrator/app/api/meeting_rooms.py`)
+
 ## [1.99.71] — 2026-07-05
 
 ### Security

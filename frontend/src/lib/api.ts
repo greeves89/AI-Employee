@@ -2210,10 +2210,17 @@ export async function createMeetingRoom(data: {
 }
 
 export interface DeliverableFile { path: string; size: number; }
+export interface DeliverableBuildTask { agent_id: string; status: string; }
+export interface DeliverableStatus {
+  room_id: string;
+  base: string;
+  files: DeliverableFile[];
+  deliverable_integrated: boolean;
+  build_tasks: DeliverableBuildTask[];
+  integration_status: string | null;
+}
 
-export async function listDeliverableFiles(
-  roomId: string,
-): Promise<{ room_id: string; base: string; files: DeliverableFile[]; deliverable_integrated: boolean }> {
+export async function listDeliverableFiles(roomId: string): Promise<DeliverableStatus> {
   return fetchJSON(`${getBase()}/meeting-rooms/${roomId}/deliverable/files`);
 }
 

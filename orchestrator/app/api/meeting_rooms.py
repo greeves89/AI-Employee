@@ -168,9 +168,14 @@ async def list_deliverable_files(
         raise HTTPException(status_code=404, detail="Room not found")
     base = _taskforce_dir(room_id)
     out: list[dict] = []
+    # Hide build noise so the listing shows only the actual deliverable.
+    _skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", ".pytest_cache", ".mypy_cache"}
     if os.path.isdir(base):
-        for root, _dirs, files in os.walk(base):
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in _skip_dirs]  # prune noise dirs in-place
             for fn in files:
+                if fn.endswith((".pyc", ".pyo")):
+                    continue
                 full = os.path.join(root, fn)
                 try:
                     size = os.path.getsize(full)
@@ -178,7 +183,31 @@ async def list_deliverable_files(
                     size = 0
                 out.append({"path": os.path.relpath(full, base), "size": size})
     out.sort(key=lambda f: f["path"])
-    return {"room_id": room_id, "base": base, "files": out, "deliverable_integrated": room.deliverable_integrated}
+
+    # Live build/integration status per agent → drives the phase bar + work tiles.
+    from app.models.task import Task
+    rows = (await db.execute(
+        select(Task.agent_id, Task.status, Task.metadata_).where(
+            Task.metadata_.op("->>")("room_id") == room_id
+        )
+    )).all()
+    build_tasks = [
+        {"agent_id": aid, "status": str(getattr(st, "value", st))}
+        for (aid, st, meta) in rows if (meta or {}).get("source") == "meeting"
+    ]
+    integration_status = next(
+        (str(getattr(st, "value", st)) for (aid, st, meta) in rows
+         if (meta or {}).get("source") == "meeting_integration"),
+        None,
+    )
+    return {
+        "room_id": room_id,
+        "base": base,
+        "files": out,
+        "deliverable_integrated": room.deliverable_integrated,
+        "build_tasks": build_tasks,
+        "integration_status": integration_status,
+    }
 
 
 # Only these extensions are returned inline as text (preview); others are binary.
@@ -1468,7 +1497,21 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
 
     items = _parse_action_items(todo_content)
     if not items:
-        return
+        # For a plain discussion meeting an empty todo list is fine → nothing to do.
+        # For a DELIVERABLE meeting it is NOT: it usually means the synthesis failed
+        # (e.g. an agent didn't answer) and would silently dispatch zero build tasks —
+        # the whole taskforce would produce nothing. Fall back to a generic build item
+        # per participant derived from the goal, so the build still happens.
+        if not room.deliverable:
+            return
+        logger.warning(
+            "[Meeting %s] deliverable synthesis produced no action items — using goal fallback",
+            room.id,
+        )
+        items = [
+            f"Setze das Meeting-Ziel um: {room.topic or room.name}"
+            for _ in range(max(1, len(room.agent_ids or [])))
+        ]
 
     async with async_session_factory() as db:
         # Build agent name map
@@ -1513,14 +1556,19 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
                     "(Onboarding irrelevant); brauchst du etwas außerhalb deiner Freigaben, fordere es via "
                     "request_approval an.\n\n"
                     "So gehst du vor:\n"
-                    f"1. **Anlegen:** `mkdir -p {work_dir}` und lege dort DEINE echten Dateien ab (Code, Configs, "
-                    "Assets) — keine Notizen, sondern das echte Artefakt. Nutze klare Unterordner/Dateinamen, "
-                    "damit sich die Teile der anderen Agenten nicht überschreiben.\n"
+                    f"1. **Anlegen:** Lege deine echten Dateien DIREKT unter `{work_dir}` ab (Code, Configs, "
+                    "Assets) — keine Notizen, sondern das echte Artefakt. Nutze die im Meeting vereinbarte "
+                    "Struktur (z.B. `app/`, `Dockerfile`, `docker-compose.yml`), damit sich die Teile der Kollegen "
+                    "nicht überschreiben. **Baue KEINEN eigenen, verschachtelten Projektordner** (kein "
+                    "`mein_agent_projekt/…`) — alle arbeiten in DERSELBEN Struktur.\n"
                     f"2. **Koordinieren:** Lies vorhandene Dateien in `{work_dir}` (auch von Kollegen), halte dich an "
                     f"gemeinsame Schnittstellen. Schreibe deinen Beitrag + offene Punkte kurz in `{work_dir}/PROGRESS.md` "
                     "(anhängen, nicht überschreiben).\n"
                     "3. **Lauffähig halten:** Dein Teil soll für sich funktionieren (Abhängigkeiten dokumentieren). "
                     "Erfinde nichts — wo etwas fehlt, notiere den nächsten Schritt in PROGRESS.md.\n"
+                    f"4. **Sauber halten:** KEIN `git init` in `{work_dir}` (kein `.git/`), keine `__pycache__`/`.pyc`, "
+                    "keine virtuellen Envs — nur die Quelldateien des Artefakts. Behaupte NICHT, etwas sei getestet "
+                    "oder lauffähig, wenn du es nicht wirklich ausgeführt hast — halte den ehrlichen Stand fest.\n"
                     "Ein Koordinator führt am Ende alles zu einer lauffähigen Anwendung zusammen. Du musst KEINE "
                     "Todo-Tools aufrufen — der Abschluss wird automatisch gesetzt, sobald dieser Task fertig ist."
                 )
@@ -1675,14 +1723,19 @@ async def dispatch_integration_task(room_id: str, redis, docker=None) -> bool:
             "So gehst du vor:\n"
             f"1. **Sichten:** Lies alles unter `{work_dir}` (inkl. `PROGRESS.md`). Verschaffe dir einen Überblick über "
             "die Teile.\n"
-            "2. **Zusammenführen:** Strukturiere das Projekt sauber, löse Konflikte/Duplikate, ergänze fehlende "
-            "Verdrahtung zwischen den Teilen, sodass ein zusammenhängendes, lauffähiges Ergebnis entsteht.\n"
-            "3. **Lauffähig machen:** Stelle sicher, dass es startet (Abhängigkeiten, Build). Teste im Rahmen deiner "
-            "Berechtigungen; wo du etwas nicht ausführen darfst, dokumentiere die genauen Schritte.\n"
-            f"4. **Abschluss:** Schreibe `{work_dir}/README.md` (Was ist es, wie startet man es) und "
-            f"`{work_dir}/RESULT.md` (kurzer Abschlussbericht: was gebaut wurde, Startbefehl, bekannte Lücken).\n\n"
-            "Erfinde nichts — wo Teile fehlen oder nicht laufen, benenne es konkret in RESULT.md. Ergebnis ist das "
-            "echte Artefakt im Verzeichnis, kein Fließtext."
+            "2. **Zusammenführen:** Strukturiere das Projekt sauber, löse Konflikte/Duplikate (ein einziges "
+            "Projekt, KEINE verschachtelten Doppel-Projektordner), ergänze fehlende Verdrahtung, sodass ein "
+            "zusammenhängendes, lauffähiges Ergebnis entsteht.\n"
+            f"3. **Aufräumen:** Entferne Artefakt-Rauschen aus `{work_dir}` — `.git/`, `__pycache__/`, `*.pyc`, "
+            "virtuelle Envs, doppelte Teil-Projektordner. Es soll nur das saubere Artefakt übrig bleiben.\n"
+            "4. **Lauffähig machen:** Stelle sicher, dass es startet (Abhängigkeiten, Build). Teste im Rahmen deiner "
+            "Berechtigungen.\n"
+            f"5. **Abschluss:** Schreibe `{work_dir}/README.md` (Was ist es, wie startet man es) und "
+            f"`{work_dir}/RESULT.md` (was gebaut wurde, Startbefehl, bekannte Lücken).\n\n"
+            "**EHRLICHKEIT:** Behaupte in RESULT.md NUR dann, es sei getestet/lauffähig, wenn du es WIRKLICH "
+            "ausgeführt hast. Konntest du es nicht starten (keine Ausführungsrechte/kein Docker), schreibe klar "
+            "'nicht ausgeführt — statische Prüfung' statt einer Erfolgsmeldung. Erfinde nichts — fehlende oder "
+            "ungetestete Teile konkret benennen. Ergebnis ist das echte Artefakt im Verzeichnis, kein Fließtext."
         )
         task = Task(
             id=_uuid.uuid4().hex[:12],

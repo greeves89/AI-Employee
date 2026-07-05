@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   ListTodo,
   Gavel,
+  Hammer,
+  FileCode,
   Download,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -82,6 +84,7 @@ export default function MeetingRoomDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [initialMessage, setInitialMessage] = useState("");
+  const [deliv, setDeliv] = useState<api.DeliverableStatus | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMessageCount = useRef(0);
 
@@ -101,6 +104,16 @@ export default function MeetingRoomDetailPage() {
     const interval = setInterval(fetchRoom, 3000);
     return () => clearInterval(interval);
   }, [fetchRoom]);
+
+  // Poll taskforce build/integration status (only for deliverable meetings).
+  useEffect(() => {
+    if (!room?.deliverable) return;
+    let alive = true;
+    const load = () => api.listDeliverableFiles(roomId).then((d) => { if (alive) setDeliv(d); }).catch(() => {});
+    load();
+    const iv = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [room?.deliverable, roomId]);
 
   useEffect(() => {
     const count = room?.messages?.length || 0;
@@ -380,6 +393,13 @@ ${msgHtml}
           </div>
         </div>
       </div>
+
+      {/* Taskforce phase bar + live build tiles (deliverable meetings only) */}
+      {room.deliverable && (
+        <div className="px-6 pb-2">
+          <TaskforcePhaseBar room={room} deliv={deliv} getAgentName={getAgentName} />
+        </div>
+      )}
 
       {/* Main layout: chat + sidebar */}
       <div className="flex flex-1 min-h-0 gap-0">
@@ -781,6 +801,111 @@ ${msgHtml}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const TF_PHASES = ["Planung", "Zuweisung", "Bau", "Integration", "Fertig"] as const;
+
+function TaskforcePhaseBar({
+  room,
+  deliv,
+  getAgentName,
+}: {
+  room: MeetingRoom;
+  deliv: api.DeliverableStatus | null;
+  getAgentName: (id: string) => string;
+}) {
+  const builds = deliv?.build_tasks ?? [];
+  const integ = deliv?.integration_status ?? null;
+  const files = deliv?.files ?? [];
+  const done = deliv?.deliverable_integrated || integ === "COMPLETED";
+  const anyBuildRunning = builds.some((b) => b.status === "RUNNING");
+  const anyBuilt = builds.length > 0 && builds.every((b) => b.status !== "RUNNING" && b.status !== "PENDING");
+
+  // Derive the current phase index.
+  let phase = 0; // Planung
+  if (room.state === "completed" || builds.length > 0 || files.length > 0) {
+    if (done) phase = 4;
+    else if (integ) phase = 3; // integration dispatched/running
+    else if (files.length > 0 || anyBuildRunning || anyBuilt) phase = 2; // parallel build
+    else if (builds.length > 0) phase = 1; // assigned, build starting
+    else phase = 1;
+  }
+
+  const buildActive = phase === 1 || phase === 2 || phase === 3;
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-3 space-y-3">
+      {/* Phase steps */}
+      <div className="flex items-center gap-1.5">
+        {TF_PHASES.map((label, i) => (
+          <div key={label} className="flex items-center gap-1.5 flex-1 last:flex-none">
+            <div className={cn(
+              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap",
+              i < phase && "bg-emerald-500/10 text-emerald-400",
+              i === phase && "bg-primary/15 text-primary",
+              i > phase && "bg-foreground/[0.04] text-muted-foreground/60",
+            )}>
+              {i < phase ? <CheckCircle2 className="h-3.5 w-3.5" />
+                : i === phase ? <Loader2 className={cn("h-3.5 w-3.5", room.state !== "completed" || !done ? "animate-spin" : "")} />
+                : <span className="h-3.5 w-3.5 rounded-full border border-current/40" />}
+              {label}
+            </div>
+            {i < TF_PHASES.length - 1 && (
+              <div className={cn("h-px flex-1 min-w-3", i < phase ? "bg-emerald-500/30" : "bg-foreground/10")} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Live build tiles — during assignment/build/integration */}
+      {buildActive && (
+        <div className="space-y-2 pt-1">
+          <div className="flex flex-wrap gap-2">
+            {room.agent_ids.map((aid) => {
+              const bt = builds.find((b) => b.agent_id === aid);
+              const st = bt?.status;
+              return (
+                <div key={aid} className={cn(
+                  "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
+                  st === "RUNNING" ? "border-primary/30 bg-primary/[0.06]"
+                    : st === "COMPLETED" ? "border-emerald-500/20 bg-emerald-500/[0.05]"
+                    : st === "FAILED" ? "border-red-500/20 bg-red-500/[0.05]"
+                    : "border-foreground/[0.06]",
+                )}>
+                  {st === "RUNNING" ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    : st === "COMPLETED" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                    : st === "FAILED" ? <Square className="h-3.5 w-3.5 text-red-400" />
+                    : <Hammer className="h-3.5 w-3.5 text-muted-foreground/60" />}
+                  <span className="font-medium">{getAgentName(aid)}</span>
+                  <span className="text-muted-foreground/70">
+                    {st === "RUNNING" ? "baut…" : st === "COMPLETED" ? "fertig" : st === "FAILED" ? "Fehler" : "wartet"}
+                  </span>
+                </div>
+              );
+            })}
+            {/* Integration tile */}
+            {integ && (
+              <div className={cn(
+                "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
+                integ === "COMPLETED" ? "border-emerald-500/20 bg-emerald-500/[0.05]" : "border-primary/30 bg-primary/[0.06]",
+              )}>
+                {integ === "COMPLETED" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+                <span className="font-medium">Koordinator</span>
+                <span className="text-muted-foreground/70">{integ === "COMPLETED" ? "integriert" : "führt zusammen…"}</span>
+              </div>
+            )}
+          </div>
+          {/* Files counter */}
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <FileCode className="h-3.5 w-3.5" />
+            {files.length > 0
+              ? `${files.length} Datei${files.length === 1 ? "" : "en"} im gemeinsamen Arbeitsverzeichnis`
+              : "Noch keine Dateien — die Agenten legen gleich los."}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
