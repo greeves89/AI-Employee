@@ -82,6 +82,16 @@ async def list_apps(
             compose_path = compose_path.strip()
             if not compose_path:
                 continue
+            # Skip the AI-Employee platform repo itself (agents often have it cloned in
+            # their workspace). It is NOT a user app — it's the platform that already
+            # runs — and building it inside an agent is nonsensical + huge. Detect it by
+            # its unique infra markers.
+            try:
+                _txt = docker.get_file_from_container(agent.container_id, compose_path).decode("utf-8", "replace")
+                if any(m in _txt for m in ("docker-socket-proxy", "ai-employee-orchestrator", "ai-employee-shared", "ai-employee-network")):
+                    continue
+            except Exception:  # noqa: BLE001
+                pass
             project_dir = "/".join(compose_path.split("/")[:-1])
             rel_path = project_dir.replace("/workspace/", "").replace("/workspace", "") or "."
             name = rel_path.split("/")[-1] if rel_path != "." else "root"
