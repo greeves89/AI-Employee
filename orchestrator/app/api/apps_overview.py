@@ -7,17 +7,20 @@ owns. Admins see all. This is the platform-wide counterpart to the per-agent
 ``/agents/{id}/apps`` discovery — same ownership model, one screen.
 """
 
+import json
 import logging
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_docker_service, require_auth
+from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
 from app.models.user import UserRole
 from app.services.docker_service import DockerService
+from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/apps", tags=["apps"])
@@ -234,3 +237,71 @@ async def app_logs(
             "logs": text,
         })
     return {"project": project, "containers": out}
+
+
+@router.post("/report")
+async def report_app(
+    project: str = Query(..., description="Compose project name"),
+    body: dict = Body(default={}),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Report a failed app to its owning agent — dispatches a repair task with the
+    error so the agent fixes it. Ownership-gated (the project must belong to the
+    caller's agent). ``body`` may carry ``error`` (the start error) and ``path``
+    (the workspace path of the app)."""
+    from app.models.task import Task, TaskStatus, TaskPriority
+
+    owned = await _visible_agents(user, db)
+    agent = next((a for pre, a in owned.items() if project.startswith(pre)), None)
+    if not agent:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    error = str(body.get("error") or "").strip()[:4000] or "(kein Fehlertext übergeben)"
+    path = str(body.get("path") or "").strip()
+    where = f"/workspace/{path}" if path else f"das Compose-Projekt `{project}`"
+    prompt = (
+        f"Eine deiner Apps lässt sich **nicht starten** und wurde zur Reparatur gemeldet.\n\n"
+        f"**App:** {path or project}\n"
+        f"**Speicherort:** {where}\n\n"
+        f"**Fehler beim Start (`docker compose up --build`):**\n```\n{error}\n```\n\n"
+        "So gehst du vor:\n"
+        f"1. **Analysieren:** Sieh dir in `{where}` das `Dockerfile`, die `docker-compose.yml` und referenzierte "
+        "Dateien an. Verstehe die konkrete Ursache aus dem Fehler oben (z.B. fehlendes Paket/Datei, kaputter "
+        "Build-Schritt, falscher Pfad, fehlende `.env`).\n"
+        "2. **Beheben:** Korrigiere die Ursache direkt in den Projektdateien, sodass der Build/Start durchläuft.\n"
+        "3. **Prüfen (im Rahmen deiner Rechte):** Wenn du Docker nutzen darfst, teste `docker compose build`; sonst "
+        "validiere statisch (Syntax, Pfade, Dependencies).\n"
+        "4. **Dokumentieren:** Halte kurz fest, was die Ursache war und was du geändert hast.\n"
+        "Erfinde nichts — wenn eine Info fehlt, benenne konkret, was gebraucht wird."
+    )
+    task = Task(
+        id=uuid.uuid4().hex[:12],
+        title=f"[App-Reparatur] {path or project}",
+        prompt=prompt,
+        status=TaskStatus.PENDING,
+        priority=TaskPriority.HIGH,
+        agent_id=agent.id,
+        metadata_={"source": "app_repair", "project": project, "path": path},
+    )
+    db.add(task)
+    await db.commit()
+
+    # Push to the agent's queue + best-effort wake its container so it starts working.
+    if redis.client:
+        try:
+            await redis.push_task(
+                agent.id,
+                json.dumps({"id": task.id, "prompt": prompt, "model": None, "priority": task.priority}),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Apps] report push failed: %s", e)
+    if agent.container_id:
+        try:
+            docker.start_container(agent.container_id)  # no-op if already running
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {"ok": True, "task_id": task.id, "agent_id": agent.id, "agent_name": agent.name}

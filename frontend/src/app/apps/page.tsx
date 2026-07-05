@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X } from "lucide-react";
+import { AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag, CheckCircle2 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -11,7 +11,23 @@ export default function AppsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<Set<string>>(new Set());   // per-app: multiple in parallel
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [reported, setReported] = useState<Record<string, string>>({});  // project -> agent name
+  const [reporting, setReporting] = useState<Set<string>>(new Set());
   const [logsFor, setLogsFor] = useState<api.AppEntry | null>(null);
+
+  const report = async (app: api.AppEntry) => {
+    const err = errors[app.project];
+    if (!err) return;
+    setReporting((s) => new Set(s).add(app.project));
+    try {
+      const r = await api.reportApp(app.project, err, app.path);
+      setReported((m) => ({ ...m, [app.project]: r.agent_name }));
+    } catch {
+      /* ignore */
+    } finally {
+      setReporting((s) => { const n = new Set(s); n.delete(app.project); return n; });
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -159,9 +175,26 @@ export default function AppsPage() {
                     )}
                   </div>
                   {err && (
-                    <p className="text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">
-                      {err}{app.containers.length > 0 ? " — Details unter Logs." : ""}
-                    </p>
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">
+                        {err}{app.containers.length > 0 ? " — Details unter Logs." : ""}
+                      </p>
+                      {reported[app.project] ? (
+                        <p className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          An {reported[app.project]} gemeldet — der Agent kümmert sich darum.
+                        </p>
+                      ) : (
+                        <button
+                          onClick={() => report(app)}
+                          disabled={reporting.has(app.project)}
+                          className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+                        >
+                          {reporting.has(app.project) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-3.5 w-3.5" />}
+                          An Agent melden (soll beheben)
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               );

@@ -2270,6 +2270,13 @@ export async function getAppLogs(project: string, tail = 200): Promise<{ project
   return fetchJSON(`${getBase()}/apps/logs?project=${encodeURIComponent(project)}&tail=${tail}`);
 }
 
+export async function reportApp(project: string, error: string, path: string | null): Promise<{ ok: boolean; task_id: string; agent_id: string; agent_name: string }> {
+  return fetchJSON(`${getBase()}/apps/report?project=${encodeURIComponent(project)}`, {
+    method: "POST",
+    body: JSON.stringify({ error, path }),
+  });
+}
+
 // --- Presence (who is online) ---
 export interface OnlineUser { id: string; name: string; email: string; role: string; last_seen_seconds_ago: number }
 
