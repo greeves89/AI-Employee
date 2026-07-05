@@ -402,9 +402,10 @@ async def start_app(
         # Robust: create the parent dir, remove an accidentally-created EMPTY dir at the
         # target (Docker creates missing bind/env sources as dirs → compose then fails
         # with "is a directory"), then create the file only if it doesn't exist.
+        # MUST run in a shell — exec_in_container passes argv (no shell), so wrap in sh -c.
         docker.exec_in_container(
             agent.container_id,
-            f'f={q}; mkdir -p "$(dirname "$f")"; [ -d "$f" ] && rmdir "$f" 2>/dev/null; [ -e "$f" ] || touch "$f"',
+            ["sh", "-c", f'f={q}; mkdir -p "$(dirname "$f")"; [ -d "$f" ] && rmdir "$f" 2>/dev/null; [ -e "$f" ] || touch "$f"'],
         )
 
     logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
