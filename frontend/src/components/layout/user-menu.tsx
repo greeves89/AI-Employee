@@ -43,12 +43,20 @@ export function UserMenu() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary text-xs font-bold">
-          {initials}
+        <div className="relative">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary text-xs font-bold">
+            {initials}
+          </div>
+          <span
+            title="Online"
+            className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background"
+          />
         </div>
         <div className="flex-1 min-w-0 text-left">
           <p className="text-[12px] font-medium text-foreground truncate">{user.name}</p>
-          <p className="text-[10px] text-muted-foreground/60 truncate">{user.email}</p>
+          <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60 truncate">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" /> Online
+          </p>
         </div>
         {user.role === "admin" && (
           <Shield className="h-3 w-3 text-amber-500 shrink-0" />

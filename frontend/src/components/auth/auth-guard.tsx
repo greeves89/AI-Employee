@@ -21,6 +21,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
+  // Presence heartbeat — mark this user online while the app is open.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const beat = () => { import("@/lib/api").then((a) => a.presenceHeartbeat().catch(() => {})); };
+    beat();
+    const iv = setInterval(() => { if (alive) beat(); }, 45000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [user]);
+
   const isPublicPage = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   // Kiosk: local-only fullscreen display on the Pi. No auth, no sidebar, no

@@ -19,6 +19,7 @@ import {
   MessageSquarePlus,
   ShieldCheck,
   BookOpen,
+  AppWindow,
   Sparkles,
   Zap,
   Users,
@@ -76,6 +77,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/knowledge", label: "Knowledge", icon: BookOpen, simpleVisible: true },
       { href: "/meeting-rooms", label: "Meeting Rooms", icon: Users, simpleVisible: false },
+      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: true },
     ],
   },
   {

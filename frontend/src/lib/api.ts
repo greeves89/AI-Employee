@@ -2236,6 +2236,36 @@ export async function launchDeliverable(
   return fetchJSON(`${getBase()}/meeting-rooms/${roomId}/deliverable/launch`, { method: "POST" });
 }
 
+// --- Global Apps overview (only the caller's own agents' apps; admin: all) ---
+export interface AppContainer { name: string; status: string; service: string }
+export interface AppEntry {
+  project: string;
+  agent_id: string;
+  agent_name: string;
+  status: string;
+  containers: AppContainer[];
+  url: string | null;
+}
+
+export async function listApps(): Promise<{ apps: AppEntry[] }> {
+  return fetchJSON(`${getBase()}/apps`);
+}
+
+export async function stopApp(project: string): Promise<{ project: string; removed: number }> {
+  return fetchJSON(`${getBase()}/apps/stop?project=${encodeURIComponent(project)}`, { method: "POST" });
+}
+
+// --- Presence (who is online) ---
+export interface OnlineUser { id: string; name: string; email: string; role: string; last_seen_seconds_ago: number }
+
+export async function presenceHeartbeat(invisible = false): Promise<{ ok: boolean }> {
+  return fetchJSON(`${getBase()}/presence/heartbeat?invisible=${invisible}`, { method: "POST" });
+}
+
+export async function getOnlineUsers(): Promise<{ online: OnlineUser[]; count: number }> {
+  return fetchJSON(`${getBase()}/presence/online`);
+}
+
 export async function deleteMeetingRoom(id: string): Promise<void> {
   return fetchJSON(`${getBase()}/meeting-rooms/${id}`, { method: "DELETE" });
 }

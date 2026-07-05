@@ -1374,22 +1374,39 @@ function MessageRow({ message }: { message: ChatMessage }) {
   }
 
   if (message.role === "user") {
-    return <UserMessage content={message.content} images={message.images} />;
+    return <UserMessage content={message.content} images={message.images} timestamp={message.timestamp} />;
   }
 
   // Assistant message - render as timeline of steps
   return <AssistantResponse message={message} />;
 }
 
+/** Subtle message timestamp — HH:MM, full date/time in the title tooltip. */
+function MsgTime({ ts }: { ts?: string }) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return null;
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return (
+    <time dateTime={ts} title={d.toLocaleString()} className="text-[10px] text-muted-foreground/50 tabular-nums">
+      {time}
+    </time>
+  );
+}
+
 /* ─── User Message ──────────────────────────────────────────────────── */
 
-function UserMessage({ content, images }: { content: string; images?: ChatImage[] }) {
+function UserMessage({ content, images, timestamp }: { content: string; images?: ChatImage[]; timestamp?: string }) {
   return (
     <div className="flex items-start gap-3 pl-1">
       <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 dark:bg-blue-500/20 shrink-0 mt-0.5">
         <User className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
       </div>
       <div className="text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-muted-foreground">Du</span>
+          <MsgTime ts={timestamp} />
+        </div>
         {images && images.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {images.map((img, i) => (
@@ -1419,6 +1436,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
   if (steps.length === 0 && message.content) {
     return (
       <div className="pl-1 space-y-2">
+        <MsgTime ts={message.timestamp} />
         <MarkdownContent content={message.content} />
         <PresentedImages images={message.images} />
         <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
@@ -1438,6 +1456,7 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
 
   return (
     <div className="space-y-2.5 pl-1">
+      <MsgTime ts={message.timestamp} />
       {simpleMode && hasRunningTools && noVisibleContent && (
         <div className="flex items-center gap-2 text-muted-foreground/60 text-xs py-1">
           <Loader2 className="h-3 w-3 animate-spin" />

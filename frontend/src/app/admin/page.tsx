@@ -80,6 +80,7 @@ export default function AdminPage() {
   const [mountUserId, setMountUserId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -135,6 +136,17 @@ export default function AdminPage() {
     setLoading(true);
     Promise.all([fetchUsers(), fetchAgents()]).finally(() => setLoading(false));
   }, [fetchUsers, fetchAgents]);
+
+  // Live "who is online" (admin) — poll presence.
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.getOnlineUsers()
+      .then((r) => { if (alive) setOnlineIds(new Set(r.online.map((o) => o.id))); })
+      .catch(() => {});
+    load();
+    const iv = setInterval(load, 20000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
 
   useEffect(() => {
     if (tab === "feedback") {
@@ -456,14 +468,22 @@ export default function AdminPage() {
                           : "border-red-500/20 bg-red-500/5 opacity-60"
                     )}
                   >
-                    {/* Avatar */}
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary text-sm font-bold shrink-0">
-                      {u.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .slice(0, 2)
-                        .toUpperCase()}
+                    {/* Avatar + online dot */}
+                    <div className="relative shrink-0">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary text-sm font-bold">
+                        {u.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </div>
+                      {onlineIds.has(u.id) && (
+                        <span
+                          title="Online"
+                          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-card"
+                        />
+                      )}
                     </div>
 
                     {/* Info */}
