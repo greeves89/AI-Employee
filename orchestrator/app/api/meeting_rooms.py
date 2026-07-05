@@ -125,18 +125,33 @@ def _taskforce_dir(room_id: str) -> "os.PathLike | str":
     return os.path.realpath(os.path.join("/shared", "taskforce", room_id))
 
 
+_AGENT_UID = 1000  # all agent containers run as uid/gid 1000 ("agent")
+_AGENT_GID = 1000
+
+
 def _ensure_taskforce_dir(room_id: str) -> str:
-    """Create the shared taskforce work dir world-writable BEFORE dispatching build
-    tasks. Critical: /shared is root-owned (755) but the agents run as uid 1000 — if
-    the orchestrator (root) doesn't pre-create the dir writable, the agents get
-    'Permission denied' on mkdir and the whole build silently produces nothing."""
-    import os
+    """Create the shared taskforce work dir owned by the agent uid BEFORE dispatching
+    build tasks. Critical: /shared is root-owned (755) but the agents run as uid 1000 —
+    if the orchestrator (root) doesn't pre-create the dir writable-for-the-agent, the
+    agents get 'Permission denied' on mkdir and the build silently produces nothing.
+
+    Ownership (chown 1000:1000) + mode 0o770 grants exactly the agents access — NOT
+    world-writable — so on multi-tenant boxes stray processes can't tamper with it."""
+    import os, stat
     base = _taskforce_dir(room_id)
     parent = os.path.dirname(base)
     for d in (parent, base):
         try:
             os.makedirs(d, exist_ok=True)
-            os.chmod(d, 0o777)  # agents (uid 1000) must be able to write here
+            # Refuse to touch a symlink (symlink-race hardening) — the dir must be real.
+            if stat.S_ISLNK(os.lstat(d).st_mode):
+                logger.warning("[Taskforce] refusing to chmod symlink %s", d)
+                continue
+            try:
+                os.chown(d, _AGENT_UID, _AGENT_GID)  # needs root (orchestrator is root)
+            except (PermissionError, OSError):
+                logger.warning("[Taskforce] could not chown %s to agent uid", d)
+            os.chmod(d, 0o770)  # rwx for owner (agent) + group only, no world/other
         except OSError:
             logger.warning("[Taskforce] could not prepare %s", d, exc_info=True)
     return base

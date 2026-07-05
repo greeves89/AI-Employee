@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.71] — 2026-07-05
+
+### Security
+- **Taskforce-Bauverzeichnis nicht mehr world-writable.** Der Permission-Fix aus v1.99.70 nutzte `chmod 0o777` — zu weit. Neu: `chown 1000:1000` (Agent-uid) + `chmod 0o770`, plus Symlink-Guard (kein `chmod` auf Symlinks). Agenten haben Zugriff, fremde Prozesse auf Multi-Tenant-Boxen nicht. (`orchestrator/app/api/meeting_rooms.py`)
+
 ## [1.99.70] — 2026-07-05
 
 ### Fixed
