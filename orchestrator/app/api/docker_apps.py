@@ -398,9 +398,13 @@ async def start_app(
         logger.debug("env_file scan failed for %s: %s", path, _e)
     for _rel in env_targets:
         full = f"/workspace/{path}/{_rel}"
+        q = shlex.quote(full)
+        # Robust: create the parent dir, remove an accidentally-created EMPTY dir at the
+        # target (Docker creates missing bind/env sources as dirs → compose then fails
+        # with "is a directory"), then create the file only if it doesn't exist.
         docker.exec_in_container(
             agent.container_id,
-            f"mkdir -p {shlex.quote(full.rsplit('/', 1)[0])} && touch {shlex.quote(full)}",
+            f'f={q}; mkdir -p "$(dirname "$f")"; [ -d "$f" ] && rmdir "$f" 2>/dev/null; [ -e "$f" ] || touch "$f"',
         )
 
     logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
