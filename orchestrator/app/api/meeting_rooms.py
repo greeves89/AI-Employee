@@ -265,6 +265,12 @@ async def launch_deliverable(
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    # Launching spawns real containers → restrict to an admin or the meeting's creator
+    # (not just any authenticated user). 404 (not 403) so foreign ids don't leak existence.
+    from app.models.user import UserRole
+    is_admin = getattr(user, "role", None) == UserRole.ADMIN
+    if not is_admin and (not room.created_by or str(room.created_by) != str(getattr(user, "id", ""))):
+        raise HTTPException(status_code=404, detail="Room not found")
     if not room.agent_ids:
         raise HTTPException(status_code=400, detail="Meeting hat keine Agenten")
     base = _taskforce_dir(room_id)
@@ -327,11 +333,14 @@ async def launch_deliverable(
     try:
         await asyncio.to_thread(_run)
     except ContainerError as e:
+        # Log the raw compose/docker stderr server-side ONLY — never echo it to the
+        # client (may contain paths, image/registry details, env hints).
         err = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, (bytes, bytearray)) else str(e)
-        logger.warning("[Taskforce %s] launch failed: %s", room_id, err[:500])
-        raise HTTPException(status_code=500, detail=f"Start fehlgeschlagen: {err[:400]}")
+        logger.warning("[Taskforce %s] launch failed: %s", room_id, err)
+        raise HTTPException(status_code=500, detail="Start fehlgeschlagen — Build/Start-Fehler (Details im Server-Log).")
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Start fehlgeschlagen: {e}")
+        logger.warning("[Taskforce %s] launch error: %s", room_id, e)
+        raise HTTPException(status_code=500, detail="Start fehlgeschlagen.")
 
     _connect_containers_to_network(docker, project)
     containers = _get_project_containers(docker, project)
