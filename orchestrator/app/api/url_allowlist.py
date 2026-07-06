@@ -5,7 +5,7 @@ Non-matching URLs trigger an approval request to the user.
 If an agent has NO allowlist entries, all URLs are permitted (fail-open).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
