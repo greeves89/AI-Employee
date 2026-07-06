@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.103] — 2026-07-06
+
+### Added / Changed
+- **Voice: `refine_task` braucht keine Task-ID mehr + neues `get_delegated_tasks`.** Das Modell musste sich bisher Task-IDs merken, um eine laufende Aufgabe nachzubessern — im schnellen Sprachfluss unzuverlässig, weshalb gpt-realtime bei Korrekturen oft eine NEUE Aufgabe aufmachte. Neu: `refine_task.task_id` ist optional → ohne id trifft es automatisch die zuletzt laufende Aufgabe (kein ID-Merken nötig). Zusätzlich listet `get_delegated_tasks` die in diesem Voice-Gespräch delegierten Aufgaben (id, Auftrag, läuft/fertig), damit das Modell bei mehreren Aufgaben die richtige wählen/berichten kann. Prompt entsprechend geschärft. Engine-übergreifend (Nova Sonic + Azure Realtime). (`realtime_voice_session.py`)
+
 ## [1.99.102] — 2026-07-06
 
 ### Fixed

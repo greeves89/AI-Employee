@@ -233,21 +233,38 @@ REFINE_TASK_TOOL = {
         "name": "refine_task",
         "description": (
             "Add a correction or extra instruction to a task you ALREADY delegated — instead "
-            "of opening a new one. Use this whenever the user changes their mind about, corrects "
-            "or extends a running or just-finished task ('mach's doch anders', 'nimm lieber X', "
-            "'füg noch Y hinzu'). Pass the task_id you got back when you started it (ask_agent / "
-            "delegate_tasks return it) and the new sentence. It continues the SAME task with its "
-            "full context — no duplicate task. If you are unsure which id, call get_agent_activity "
-            "first (it lists my tasks with their ids)."
+            "of opening a new one. Use this ALWAYS when the user changes their mind about, "
+            "corrects or extends a running or just-finished task ('mach's doch anders', 'nimm "
+            "lieber X', 'füg noch Y hinzu', 'nee, so nicht'). It continues the SAME task with its "
+            "full context — NO duplicate task. task_id is OPTIONAL: leave it empty and it targets "
+            "your most recent running task automatically — so you do NOT need to remember ids. "
+            "Only pass task_id when the user clearly means a specific OTHER task (use "
+            "get_delegated_tasks to see them). NEVER start a new ask_agent/delegate_tasks for a "
+            "correction."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
-                "task_id": {"type": "string", "description": "The id of the task to refine (e.g. '1')."},
                 "instruction": {"type": "string", "description": "The additional/correcting instruction, in the user's language."},
+                "task_id": {"type": "string", "description": "OPTIONAL id of a specific task; omit to refine the most recent running one."},
             },
-            "required": ["task_id", "instruction"],
+            "required": ["instruction"],
         })},
+    }
+}
+
+# Read-only: list the tasks delegated in THIS voice call so the model can pick / report them.
+GET_DELEGATED_TASKS_TOOL = {
+    "toolSpec": {
+        "name": "get_delegated_tasks",
+        "description": (
+            "List the tasks YOU delegated in THIS voice conversation, each with its short id, "
+            "instruction and status (running / done). Use it to report the current state of your "
+            "delegated tasks to the user, or to find the right id before a specific refine_task "
+            "(when several tasks run and the user means one particular one). Instant, no agent "
+            "round-trip."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
     }
 }
 
@@ -325,15 +342,16 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "nutze delegate_tasks mit der LISTE der Aufgaben (EIN Aufruf, der Server startet jede als "
         "eigene parallele Aufgabe). Fasse sie NICHT zu einer einzigen Sammel-Aufgabe zusammen und "
         "nutze dafür NICHT mehrere ask_agent-Calls.\n"
-        "AUFGABEN-IDS: Jede Aufgabe, die du per ask_agent oder delegate_tasks startest, bekommt eine "
-        "kurze id zurück (z. B. 1, 2). Merke dir diese ids im Gespräch — lies sie dem Nutzer aber NICHT "
-        "vor.\n"
-        "NACHBESSERN / FORTSETZEN (WICHTIG): Korrigiert oder ergänzt der Nutzer eine Aufgabe, die du "
+        "AUFGABEN NACHBESSERN (SEHR WICHTIG): Korrigiert oder ergänzt der Nutzer eine Aufgabe, die du "
         "GERADE angestoßen oder eben erledigt hast ('mach's doch anders', 'nimm lieber X', 'füg noch Y "
-        "hinzu'), dann nutze refine_task mit der id DIESER Aufgabe und dem neuen Satz — das trägt die "
-        "Änderung in DIESELBE Aufgabe ein (mit vollem Kontext), statt eine neue aufzumachen. Starte "
-        "dafür NIEMALS eine neue ask_agent-/delegate_tasks-Aufgabe. Weißt du die id nicht mehr, hol sie "
-        "dir mit get_agent_activity. Gib im Satz knapp den Bezug mit, worauf sich die Änderung bezieht.\n"
+        "hinzu', 'nee, so nicht'), nutze IMMER refine_task mit dem neuen Satz — das trägt die Änderung "
+        "in DIESELBE Aufgabe ein (voller Kontext), statt eine neue aufzumachen. Die task_id ist "
+        "OPTIONAL: lässt du sie WEG, trifft es automatisch deine zuletzt laufende Aufgabe — du musst dir "
+        "also KEINE ids merken. Nur wenn mehrere Aufgaben laufen und der Nutzer eine BESTIMMTE meint, "
+        "schau mit get_delegated_tasks nach und gib die passende id mit. Starte für eine Korrektur "
+        "NIEMALS eine neue ask_agent-/delegate_tasks-Aufgabe.\n"
+        "Willst du dem Nutzer den Stand deiner delegierten Aufgaben nennen ('was läuft gerade bei dir') "
+        "→ get_delegated_tasks (zeigt id, Auftrag, läuft/fertig).\n"
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
         "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
         "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
@@ -439,7 +457,7 @@ class RealtimeVoiceSession:
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
-            ASK_AGENT_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL,
+            ASK_AGENT_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
         engine = creds.get("engine") or "nova_sonic"
@@ -716,6 +734,9 @@ class RealtimeVoiceSession:
         if name == "get_agent_activity":
             await self._respond(tool_use_id, await self._fast_activity())
             return
+        if name == "get_delegated_tasks":
+            await self._respond(tool_use_id, self._delegated_tasks_summary())
+            return
         if name == "web_search":
             await self._respond(
                 tool_use_id,
@@ -766,18 +787,24 @@ class RealtimeVoiceSession:
         if name == "refine_task":
             tid = str(args.get("task_id") or "").strip()
             instruction = (args.get("instruction") or "").strip()
-            rec = next((d for d in self._delegations if d["id"] == tid), None)
             if not instruction:
                 await self._respond(tool_use_id, "Keine Instruktion erkannt.")
                 return
+            if tid:
+                rec = next((d for d in self._delegations if d["id"] == tid), None)
+            else:
+                # No id given → target the most recent still-running task, else the last
+                # one. So the model never needs to remember/look up ids for a correction.
+                running = [d for d in self._delegations if not d["done"]]
+                rec = running[-1] if running else (self._delegations[-1] if self._delegations else None)
             if rec is None:
                 await self._respond(
                     tool_use_id,
-                    f"Ich habe keine Aufgabe mit der id {tid!r}. Frag ggf. mit get_agent_activity "
-                    "meine laufenden Aufgaben ab oder starte die Arbeit mit ask_agent neu.",
+                    "Es gibt gerade keine begonnene Aufgabe zum Nachbessern — starte sie zuerst "
+                    "mit ask_agent.",
                 )
                 return
-            asyncio.create_task(self._delegate_and_report(instruction, task_id=tid, refine=True))
+            asyncio.create_task(self._delegate_and_report(instruction, task_id=rec["id"], refine=True))
             await self._respond(
                 tool_use_id,
                 f"Ich ergänze die laufende Aufgabe „{rec['instruction']}“ um: „{instruction}“ "
@@ -925,6 +952,23 @@ class RealtimeVoiceSession:
         """Short, voice-friendly handle for a delegation ("1", "2", …)."""
         self._task_seq += 1
         return str(self._task_seq)
+
+    def _delegated_tasks_summary(self) -> str:
+        """Text for the get_delegated_tasks tool: this call's delegations + status."""
+        if not self._delegations:
+            return "Ich habe in diesem Gespräch noch keine Aufgabe delegiert."
+        running = [d for d in self._delegations if not d["done"]]
+        done = len(self._delegations) - len(running)
+        lines = [f"Meine delegierten Aufgaben ({len(running)} laufen, {done} fertig):"]
+        for d in self._delegations:
+            if d["done"]:
+                extra = f" — {d['result']}" if d.get("result") else ""
+                lines.append(f"[id {d['id']}] FERTIG: {d['instruction']}{extra}")
+            else:
+                extra = f" (gerade: {d['last']})" if d.get("last") else ""
+                lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{extra}")
+        lines.append("Für eine Korrektur an einer davon: refine_task (id optional = letzte laufende).")
+        return " ".join(lines)
 
     async def _delegate_and_report(
         self,
