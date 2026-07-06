@@ -297,6 +297,27 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
     loadSessions();
   }, [agentId, sessionsLoaded, initialSessionId]);
 
+  // Re-fetch the session list on demand (e.g. after a voice conversation ends) so the
+  // freshly persisted voice session shows up as a tab WITHOUT a page reload.
+  const refreshSessions = useCallback(async () => {
+    try {
+      const { sessions: dbSessions } = await api.getChatSessions(agentId);
+      const validSessions = dbSessions.filter((s) => s.message_count > 1 || s.preview);
+      const sessionsToUse = validSessions.length > 0 ? validSessions : dbSessions;
+      setSessions(
+        sessionsToUse.map((s, i) => ({
+          id: s.id,
+          label: `Chat ${sessionsToUse.length - i}`,
+          preview: s.preview || "",
+          title: s.title ?? null,
+          pinned: !!s.pinned,
+        }))
+      );
+    } catch {
+      /* keep current tabs on failure */
+    }
+  }, [agentId]);
+
   // Load messages when active session changes
   useEffect(() => {
     if (!activeSessionId) {
@@ -1067,7 +1088,11 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
         <VoiceSessionModal
           agentId={agentId}
           agentName={agentId}
-          onClose={() => setVoiceOpen(false)}
+          onClose={() => {
+            setVoiceOpen(false);
+            // Surface the just-persisted voice conversation as a session tab without reload.
+            void refreshSessions();
+          }}
           resumeSessionId={activeSessionId ?? undefined}
         />
       )}

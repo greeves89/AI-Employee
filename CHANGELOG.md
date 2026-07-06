@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.100] — 2026-07-06
+
+### Fixed
+- **Voice-Gespräch erscheint sofort als Chat-Tab (kein Reload mehr nötig).** Die Session-Liste wurde nur beim Mount geladen; ein beendetes Voice-Gespräch (frisch persistierte ChatSession) tauchte erst nach Seiten-Refresh auf. Neu lädt das Schließen der Voice-Session die Session-Liste neu (`refreshSessions`). (`frontend/src/components/agents/chat.tsx`)
+
 ## [1.99.99] — 2026-07-06
 
 ### Fixed
