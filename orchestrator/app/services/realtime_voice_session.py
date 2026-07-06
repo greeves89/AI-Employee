@@ -425,41 +425,55 @@ class RealtimeVoiceSession:
 
         svc = SettingsService(db)
         language = (await svc.get("voice_language")) or "de"
-        voice_id = cfg.get("interaction_voice") or (await svc.get("nova_sonic_voice")) or "matthew"
 
         self._out_queue = asyncio.Queue(maxsize=512)
         self._in_queue = asyncio.Queue(maxsize=512)
-        self._nova = NovaSonicSession(
-            region=creds["region"],
-            access_key=creds["access_key"],
-            secret_key=creds["secret_key"],
-            session_token=creds.get("session_token"),
-            system_prompt=_system_prompt(agent_name, agent_role, language),
-            tools=[
-                GET_AGENT_STATUS_TOOL,
-                LIST_AGENT_TASKS_TOOL,
-                GET_AGENT_SETTINGS_TOOL,
-                GET_AGENT_ACTIVITY_TOOL,
-                WEB_SEARCH_TOOL,
-                SEARCH_KNOWLEDGE_TOOL,
-                SAVE_MEMORY_TOOL,
-                LIST_TODOS_TOOL,
-                SET_AUTONOMY_TOOL,
-                SET_MODEL_TOOL,
-                ASK_AGENT_TOOL,
-                DELEGATE_TASKS_TOOL,
-                REFINE_TASK_TOOL,
-            ],
-            voice_id=voice_id,
-            on_event=self._on_nova_event,
-            model_id=cfg.get("interaction_model_id") or creds.get("model_id") or "",
-        )
+
+        # The tool surface is engine-agnostic (Nova ``toolSpec`` format); the Azure
+        # engine converts it to OpenAI function format internally.
+        _tools = [
+            GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
+            GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
+            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
+            ASK_AGENT_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL,
+        ]
+        sys_prompt = _system_prompt(agent_name, agent_role, language)
+        engine = creds.get("engine") or "nova_sonic"
+
+        if engine == "azure_realtime":
+            # Azure OpenAI Realtime (gpt-realtime) — no AWS, uses the linked Azure account.
+            from app.services.voice_providers.realtime_azure_openai import (
+                AzureRealtimeSession, tools_novaspec_to_openai, DEFAULT_VOICE,
+            )
+            voice_id = cfg.get("interaction_voice") or DEFAULT_VOICE
+            self._nova = AzureRealtimeSession(
+                endpoint=creds["endpoint"],
+                api_key=creds["api_key"],
+                model=cfg.get("interaction_model_id") or creds.get("model") or "gpt-realtime",
+                system_prompt=sys_prompt,
+                tools=tools_novaspec_to_openai(_tools),
+                voice_id=voice_id,
+                on_event=self._on_nova_event,
+            )
+        else:
+            voice_id = cfg.get("interaction_voice") or (await svc.get("nova_sonic_voice")) or "matthew"
+            self._nova = NovaSonicSession(
+                region=creds["region"],
+                access_key=creds["access_key"],
+                secret_key=creds["secret_key"],
+                session_token=creds.get("session_token"),
+                system_prompt=sys_prompt,
+                tools=_tools,
+                voice_id=voice_id,
+                on_event=self._on_nova_event,
+                model_id=cfg.get("interaction_model_id") or creds.get("model_id") or "",
+            )
         await self._nova.open()
         self._pump_task = asyncio.create_task(self._audio_pump())
         self._keepalive_task = asyncio.create_task(self._keepalive_loop())
         logger.info(
-            "RealtimeVoiceSession init agent=%s user=%s region=%s voice=%s source=%s",
-            self.agent_id, self.user_id, creds["region"], voice_id, creds.get("source"),
+            "RealtimeVoiceSession init agent=%s user=%s engine=%s voice=%s source=%s",
+            self.agent_id, self.user_id, engine, voice_id, creds.get("source"),
         )
 
     async def _user_may_use_account(self, db: AsyncSession, account_id: int) -> bool:
