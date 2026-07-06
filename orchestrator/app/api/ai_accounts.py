@@ -163,7 +163,15 @@ async def list_realtime_models(
         prov = REALTIME_PROVIDERS.get(a.provider_type)
         if not prov:
             continue
-        for m in prov["models"]:
+        # Prefer the models the admin actually configured on THIS account (so the
+        # selector shows exactly what exists — e.g. one gpt-realtime — instead of a
+        # hardwired catalog list that would list several identical-engine options and
+        # all light up as "active" together). Fall back to the catalog if empty.
+        acct_models = [
+            {"id": m["name"], "label": m.get("label") or m["name"]}
+            for m in (a.models or []) if isinstance(m, dict) and m.get("name")
+        ]
+        for m in (acct_models or prov["models"]):
             out.append({
                 "account_id": a.id,
                 "account_name": a.name,

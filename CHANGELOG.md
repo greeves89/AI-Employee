@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.98] — 2026-07-06
+
+### Fixed
+- **Realtime-Voice-Selektor zeigt jetzt die im AI-Account hinterlegten Modelle statt einer festen Katalog-Liste.** Vorher listete `list_realtime_models` pro Provider-Typ mehrere fest verdrahtete Modelle (gpt-realtime + gpt-4o-realtime + mini) — alle mit derselben Engine+Account, sodass beim Anklicken eines Modells alle als „Aktiv" markiert wurden. Neu wird pro Account genau das/die dort konfigurierte(n) Modell(e) angezeigt (SKBS Azure realtime → nur `gpt-realtime`) → eindeutige Auswahl. (`api/ai_accounts.py::list_realtime_models`)
+
 ## [1.99.97] — 2026-07-06
 
 ### Added
