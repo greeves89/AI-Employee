@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.101] — 2026-07-06
+
+### Fixed
+- **Azure-Realtime-Voice: Delegations-Report/Antwort kam nach einer Aufgabe nicht mehr.** OpenAI Realtime erlaubt nur EINE aktive Antwort gleichzeitig; die Engine feuerte `response.create` (Report/Tool-Result), während schon eine Antwort lief → Server lehnte mit „Conversation already has an active response" ab → nichts wurde gesprochen. Neu werden Response-Anforderungen gequeued und beim nächsten `response.done` nachgefeuert; der interne „active response"-Fehler wird nicht mehr als UI-Fehler angezeigt. (`voice_providers/realtime_azure_openai.py`)
+
 ## [1.99.100] — 2026-07-06
 
 ### Fixed

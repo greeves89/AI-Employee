@@ -73,6 +73,12 @@ class AzureRealtimeSession:
         self._recv_task: asyncio.Task | None = None
         self._closed = False
         self._resample_state = None          # audioop.ratecv running state (16k→24k)
+        # OpenAI Realtime allows only ONE active response at a time. We track it and
+        # QUEUE further response.create requests (delegation reports, tool results) so
+        # they fire once the current response finishes instead of being rejected with
+        # "Conversation already has an active response".
+        self._response_active = False
+        self._pending_responses = 0
         # Accumulators for the current assistant turn's spoken transcript, so we
         # emit ONE final text per turn (like Nova) instead of per-delta spam.
         self._assistant_buf: dict[str, str] = {}
@@ -132,6 +138,15 @@ class AzureRealtimeSession:
             return
         await self._ws.send(json.dumps(event))
 
+    async def _create_response(self) -> None:
+        """Request a model response, respecting the single-active-response rule. If one
+        is already in flight, queue it (fired on the next ``response.done``)."""
+        if self._response_active:
+            self._pending_responses += 1
+            return
+        self._response_active = True
+        await self._send({"type": "response.create"})
+
     # ── inbound audio ───────────────────────────────────────────────
 
     async def send_audio(self, pcm_16k: bytes) -> None:
@@ -156,7 +171,7 @@ class AzureRealtimeSession:
             "type": "message", "role": "user",
             "content": [{"type": "input_text", "text": text}],
         }})
-        await self._send({"type": "response.create"})
+        await self._create_response()
 
     # ── tool result ─────────────────────────────────────────────────
 
@@ -169,7 +184,7 @@ class AzureRealtimeSession:
             "call_id": tool_use_id,
             "output": result,
         }})
-        await self._send({"type": "response.create"})
+        await self._create_response()
 
     # ── receive loop ────────────────────────────────────────────────
 
@@ -199,7 +214,15 @@ class AzureRealtimeSession:
         # this, ALL audio after the first user barge-in would be dropped (only the
         # greeting is heard). Mirrors Nova Sonic's ``content_start``.
         if kind == "response.created":
+            self._response_active = True
             await self._safe_emit("content_start", {"role": "ASSISTANT", "type": "AUDIO"})
+        # A response finished → free the slot and fire any queued (delegation) response.
+        elif kind in ("response.done", "response.cancelled", "response.failed", "response.incomplete"):
+            self._response_active = False
+            if self._pending_responses > 0 and not self._closed:
+                self._pending_responses -= 1
+                self._response_active = True
+                await self._send({"type": "response.create"})
         # Spoken audio out (24 kHz pcm16, base64 in "delta").
         elif kind in ("response.output_audio.delta", "response.audio.delta"):
             pcm = base64.b64decode(evt.get("delta", "") or "")
@@ -232,8 +255,13 @@ class AzureRealtimeSession:
             })
         elif kind == "error":
             err = evt.get("error", evt) or {}
-            msg = err.get("message") if isinstance(err, dict) else str(err)
+            msg = (err.get("message") if isinstance(err, dict) else str(err)) or ""
             logger.warning("AzureRealtime server error: %s", json.dumps(evt)[:400])
+            # "active response" is an internal timing race we now queue around — never a
+            # user-facing error; anything is retried via the pending queue on response.done.
+            if "active response" in msg.lower():
+                self._response_active = True  # a response IS active; keep tracking
+                return
             await self._safe_emit("error", {"message": msg or "Realtime error"})
         # response.done / session.* / *.added / *.part.* : lifecycle only.
 
