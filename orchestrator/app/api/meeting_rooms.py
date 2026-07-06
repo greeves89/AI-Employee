@@ -93,12 +93,34 @@ class StartRoom(BaseModel):
 # ─── CRUD ────────────────────────────────────────────────────────
 
 
+def _may_see_room(room, vids: set[str] | None, uid: str) -> bool:
+    """A room is visible if admin (vids is None), the caller created it, or one of the
+    caller's own/shared agents participates. Prevents cross-tenant room disclosure."""
+    if vids is None:
+        return True
+    if room.created_by in (uid, f"user:{uid}"):
+        return True
+    return any(str(a) in vids for a in (room.agent_ids or []))
+
+
+async def _authorize_room(room, user, db) -> None:
+    """Raise 404 (not 403 — don't reveal existence) if the caller may not access room."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    uid = str(getattr(user, "id", "") or "")
+    if not _may_see_room(room, vids, uid):
+        raise HTTPException(status_code=404, detail="Room not found")
+
+
 @router.get("/")
 async def list_rooms(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core.ownership import visible_agent_ids
     result = await db.execute(
         select(MeetingRoom).where(MeetingRoom.is_active == True).order_by(MeetingRoom.created_at.desc())
     )
-    rooms = result.scalars().all()
+    vids = await visible_agent_ids(user, db)
+    uid = str(getattr(user, "id", "") or "")
+    rooms = [r for r in result.scalars().all() if _may_see_room(r, vids, uid)]
     return {
         "rooms": [
             {
@@ -166,6 +188,7 @@ async def list_deliverable_files(
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
     base = _taskforce_dir(room_id)
     out: list[dict] = []
     # Hide build noise so the listing shows only the actual deliverable.
@@ -224,6 +247,7 @@ async def get_deliverable_file(
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
     base = _taskforce_dir(room_id)
     target = os.path.realpath(os.path.join(base, path))
     # Containment check — target must stay within the taskforce dir.
@@ -265,6 +289,7 @@ async def launch_deliverable(
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
     # Launching spawns real containers → restrict to an admin or the meeting's creator
     # (not just any authenticated user). 404 (not 403) so foreign ids don't leak existence.
     from app.models.user import UserRole
@@ -364,6 +389,7 @@ async def get_room(room_id: str, user=Depends(require_auth), db: AsyncSession = 
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
 
     # Resolve agent names
     agent_names = {}
@@ -409,6 +435,12 @@ async def create_room(
         agent = await db.scalar(select(Agent).where(Agent.id == aid))
         if not agent:
             raise HTTPException(status_code=400, detail=f"Agent {aid} not found")
+    # Ownership: a non-admin may only put THEIR OWN/shared agents into a room — else a
+    # user could pull a foreign tenant's agent into a room and read its output.
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and not set(map(str, body.agent_ids)).issubset(vids):
+        raise HTTPException(status_code=403, detail="Nur eigene Agenten sind für einen Raum erlaubt.")
 
     # Build stages config and derive max_rounds from it
     stages = None
@@ -469,6 +501,11 @@ async def schedule_meeting(
 
     if len(body.agent_ids) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 agents")
+    # Ownership: only the caller's own/shared agents may be scheduled into a meeting.
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and not set(map(str, body.agent_ids)).issubset(vids):
+        raise HTTPException(status_code=403, detail="Nur eigene Agenten sind für einen Raum erlaubt.")
 
     stages = [s.model_dump() for s in body.stages_config] if body.stages_config else None
     max_rounds = sum(s["rounds"] for s in stages) if stages else body.max_rounds
@@ -519,6 +556,7 @@ async def delete_room(room_id: str, user=Depends(require_auth), db: AsyncSession
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
 
     # Stop if running
     if room_id in _running_rooms:
@@ -545,6 +583,7 @@ async def start_room(
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
     if room.state == "running":
         raise HTTPException(status_code=400, detail="Room already running")
 
@@ -584,6 +623,7 @@ async def stop_room(room_id: str, request: Request, user=Depends(require_auth), 
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    await _authorize_room(room, user, db)
 
     if room_id in _running_rooms:
         _running_rooms[room_id].cancel()

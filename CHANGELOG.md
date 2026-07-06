@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.92] — 2026-07-06
+
+### Security
+- **Multi-Tenant-Isolation: Nicht-Admins sehen keine fremden Daten mehr (Default-Deny).** Mehrere Read-Endpoints lieferten tenant-übergreifend Daten aus. Behoben mit zentralem Ownership-Helper (`app/core/ownership.py`, `visible_agent_ids`) und Scoping auf die eigenen/geteilten Agenten des Nutzers (Admin sieht weiter alles):
+  - **Analytics** `/overview`, `/agents`, `/agents/{id}`, `/skills`, `/skills/{id}/trend` — Kosten/Tasks/Ratings/Zeitersparnis jetzt pro Nutzer (Dashboard „Cost Attribution / Top-Agenten" inklusive). (`analytics.py`)
+  - **Knowledge** `/tags`, `/graph`, `get_entry`-Backlinks, `create_entry`-Dublettencheck sowie der Agent-`agent_write`-Upsert scopen jetzt auf `user_id` — kein Tag-/Titel-Leak und kein tenant-übergreifendes Überschreiben mehr. (`knowledge.py`)
+  - **Meeting Rooms** — Liste + alle per-ID-Endpoints (IDOR) autorisieren jetzt (`_authorize_room`); Räume/Termine dürfen nur eigene Agenten enthalten. (`meeting_rooms.py`)
+- **Geteilte Infra ist Default-Deny + Freigabe.** AI-Accounts (Claude/Codex/AWS) und OAuth-Integrations sind für Nicht-Admins standardmäßig unsichtbar; sichtbar/nutzbar nur nach expliziter Freigabe über die Rollen-Allowlist (`ai_account_ids`). (`ai_accounts.py`, `agents.py` Create + `update_agent_ai_account`, `oauth_service.py`/`integrations.py`, `settings.py` Harness-Flags)
+
 ## [1.99.91] — 2026-07-06
 
 ### Added

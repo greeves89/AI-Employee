@@ -29,8 +29,12 @@ def _get_oauth_service(
 
 @router.get("/", response_model=IntegrationListResponse)
 async def list_integrations(user=Depends(require_auth), service: OAuthService = Depends(_get_oauth_service)):
-    """List all OAuth providers with their connection status."""
-    integrations = await service.list_integrations(user_id=user.id)
+    """List OAuth providers with connection status. Non-admins do not see shared
+    (admin-connected, global) integrations unless released — default-deny."""
+    from app.core.ownership import is_admin
+    integrations = await service.list_integrations(
+        user_id=user.id, include_shared=is_admin(user)
+    )
     return IntegrationListResponse(
         integrations=[IntegrationStatus(**i) for i in integrations]
     )

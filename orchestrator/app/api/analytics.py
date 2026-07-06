@@ -6,10 +6,11 @@ Powers the /analytics dashboard in the frontend. No Grafana required.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ownership import visible_agent_ids
 from app.db.session import get_db
 from app.dependencies import require_auth
 from app.models.agent import Agent, AgentState
@@ -36,74 +37,98 @@ async def get_overview(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Platform-wide stats for the analytics dashboard header cards."""
+    """Per-user stats for the analytics dashboard header cards.
+
+    Scoped to the caller's own agents (admins see the whole platform). A non-admin
+    must never see another tenant's tasks, cost or agents here.
+    """
     since = _days_ago(days)
+
+    # Multi-tenant scope: None = admin (all), else the caller's own/shared agents.
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and not vids:
+        # Fresh user with no agents → everything is zero (never fall through to global).
+        return {
+            "period_days": days, "total_tasks": 0, "completed_tasks": 0,
+            "success_rate_pct": 0.0, "total_cost_usd": 0.0, "total_task_cost_usd": 0.0,
+            "total_chat_cost_usd": 0.0, "avg_duration_ms": 0, "total_time_saved_seconds": 0,
+            "active_agents": 0, "avg_task_rating": None, "daily_tasks": [],
+        }
+    aids = list(vids) if vids is not None else None
+
+    def _scope_task(stmt):
+        return stmt.where(Task.agent_id.in_(aids)) if aids is not None else stmt
 
     # Task stats
     task_result = await db.execute(
-        select(
+        _scope_task(select(
             func.count(Task.id).label("total"),
             func.sum(Task.cost_usd).label("total_cost"),
             func.avg(Task.duration_ms).label("avg_duration_ms"),
-        ).where(Task.created_at >= since)
+        ).where(Task.created_at >= since))
     )
     task_row = task_result.one()
 
     # Chat cost stats — assistant chat turns are billed too
-    chat_result = await db.execute(
-        select(func.sum(ChatMessage.cost_usd)).where(
-            ChatMessage.timestamp >= since,
-            ChatMessage.role == "assistant",
-        )
+    chat_stmt = select(func.sum(ChatMessage.cost_usd)).where(
+        ChatMessage.timestamp >= since,
+        ChatMessage.role == "assistant",
     )
+    if aids is not None:
+        chat_stmt = chat_stmt.where(ChatMessage.agent_id.in_(aids))
+    chat_result = await db.execute(chat_stmt)
     chat_cost = float(chat_result.scalar() or 0)
 
     completed_result = await db.execute(
-        select(func.count(Task.id)).where(
+        _scope_task(select(func.count(Task.id)).where(
             Task.created_at >= since,
             Task.status == TaskStatus.COMPLETED,
-        )
+        ))
     )
     completed = completed_result.scalar() or 0
     total_tasks = task_row.total or 0
     success_rate = round(completed / total_tasks * 100, 1) if total_tasks else 0.0
 
     # Total time saved across all skill usages in the period
-    savings_result = await db.execute(
-        select(func.sum(SkillTaskUsage.time_saved_seconds)).where(
-            SkillTaskUsage.created_at >= since,
-            SkillTaskUsage.time_saved_seconds.isnot(None),
-        )
+    savings_stmt = select(func.sum(SkillTaskUsage.time_saved_seconds)).where(
+        SkillTaskUsage.created_at >= since,
+        SkillTaskUsage.time_saved_seconds.isnot(None),
     )
+    if aids is not None:
+        savings_stmt = savings_stmt.where(SkillTaskUsage.agent_id.in_(aids))
+    savings_result = await db.execute(savings_stmt)
     total_time_saved_seconds = int(savings_result.scalar() or 0)
 
     # Active agents
-    agents_result = await db.execute(
-        select(func.count(Agent.id)).where(
-            Agent.state.in_([AgentState.RUNNING, AgentState.IDLE])
-        )
+    agents_stmt = select(func.count(Agent.id)).where(
+        Agent.state.in_([AgentState.RUNNING, AgentState.IDLE])
     )
+    if aids is not None:
+        agents_stmt = agents_stmt.where(Agent.id.in_(aids))
+    agents_result = await db.execute(agents_stmt)
     active_agents = agents_result.scalar() or 0
 
     # Avg task rating
-    avg_rating_result = await db.execute(
-        select(func.avg(TaskRating.rating)).where(TaskRating.created_at >= since)
-    )
+    rating_stmt = select(func.avg(TaskRating.rating)).where(TaskRating.created_at >= since)
+    if aids is not None:
+        rating_stmt = rating_stmt.where(TaskRating.agent_id.in_(aids))
+    avg_rating_result = await db.execute(rating_stmt)
     avg_rating = avg_rating_result.scalar()
 
     # Daily task volume for sparkline (last `days` days)
     from sqlalchemy import text as sa_text
     daily_result = await db.execute(
-        sa_text("""
+        sa_text(f"""
             SELECT date_trunc('day', created_at) AS day,
                    COUNT(id) AS count,
                    COALESCE(SUM(cost_usd), 0) AS cost
             FROM tasks
             WHERE created_at >= :since
+                  {"AND agent_id = ANY(:aids)" if aids is not None else ""}
             GROUP BY date_trunc('day', created_at)
             ORDER BY date_trunc('day', created_at)
         """),
-        {"since": since},
+        {"since": since, **({"aids": aids} if aids is not None else {})},
     )
     daily_rows = daily_result.all()
     daily_tasks = [{"date": str(r.day)[:10], "count": r.count, "cost": float(r.cost or 0)} for r in daily_rows]
@@ -135,8 +160,14 @@ async def get_skills_analytics(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Per-skill analytics: time savings vs manual, rating trend, usage stats."""
+    """Per-skill analytics: time savings vs manual, rating trend, usage stats.
+
+    The skill CATALOG is platform-shared, but the usage aggregates (cost, time saved,
+    ratings) are scoped to the caller's own agents — admins see platform-wide."""
     since = _days_ago(days)
+
+    vids = await visible_agent_ids(user, db)
+    aids = list(vids) if vids is not None else None
 
     # All active skills — show even with 0 usage so dashboard is never empty
     skills_result = await db.execute(
@@ -146,7 +177,13 @@ async def get_skills_analytics(
 
     skill_ids = [s.id for s in skills]
 
-    # Aggregate usage data for the period
+    # Aggregate usage data for the period (scoped to the caller's agents)
+    usage_where = [
+        SkillTaskUsage.skill_id.in_(skill_ids),
+        SkillTaskUsage.created_at >= since,
+    ]
+    if aids is not None:
+        usage_where.append(SkillTaskUsage.agent_id.in_(aids))
     usage_agg = await db.execute(
         select(
             SkillTaskUsage.skill_id,
@@ -158,10 +195,7 @@ async def get_skills_analytics(
             func.avg(SkillTaskUsage.task_duration_ms).label("avg_agent_duration_ms"),
             func.sum(SkillTaskUsage.task_cost_usd).label("total_cost_usd"),
         )
-        .where(
-            SkillTaskUsage.skill_id.in_(skill_ids),
-            SkillTaskUsage.created_at >= since,
-        )
+        .where(*usage_where)
         .group_by(SkillTaskUsage.skill_id)
     )
     usage_by_skill = {row.skill_id: row for row in usage_agg.all()}
@@ -218,12 +252,22 @@ async def get_skill_trend(
     skill_result = await db.execute(select(Skill).where(Skill.id == skill_id))
     skill = skill_result.scalar_one_or_none()
     if not skill:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Skill not found")
+
+    # Usage trend scoped to the caller's own agents (admins see platform-wide).
+    vids = await visible_agent_ids(user, db)
+    aids = list(vids) if vids is not None else None
+    if aids is not None and not aids:
+        return {
+            "skill_id": skill_id,
+            "skill_name": skill.name,
+            "manual_duration_seconds": skill.manual_duration_seconds,
+            "trend": [],
+        }
 
     from sqlalchemy import text as sa_text
     weekly = await db.execute(
-        sa_text("""
+        sa_text(f"""
             SELECT date_trunc('week', created_at) AS week,
                    COUNT(id) AS uses,
                    AVG(skill_helpfulness) AS avg_helpfulness,
@@ -232,10 +276,11 @@ async def get_skill_trend(
                    SUM(time_saved_seconds) AS time_saved
             FROM skill_task_usages
             WHERE skill_id = :skill_id AND created_at >= :since
+                  {"AND agent_id = ANY(:aids)" if aids is not None else ""}
             GROUP BY date_trunc('week', created_at)
             ORDER BY date_trunc('week', created_at)
         """),
-        {"skill_id": skill_id, "since": since},
+        {"skill_id": skill_id, "since": since, **({"aids": aids} if aids is not None else {})},
     )
 
     trend = []
@@ -267,10 +312,20 @@ async def get_agents_analytics(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Per-agent performance: task volume, success rate, cost, avg rating."""
+    """Per-agent performance: task volume, success rate, cost, avg rating.
+
+    Scoped to the caller's own agents (admins see all) — this feeds the dashboard's
+    Cost-Attribution / Top-Agents card, which must not expose other tenants.
+    """
     since = _days_ago(days)
 
-    agents_result = await db.execute(select(Agent))
+    vids = await visible_agent_ids(user, db)
+    agents_stmt = select(Agent)
+    if vids is not None:
+        if not vids:
+            return {"period_days": days, "agents": []}
+        agents_stmt = agents_stmt.where(Agent.id.in_(list(vids)))
+    agents_result = await db.execute(agents_stmt)
     agents = list(agents_result.scalars().all())
 
     agent_ids = [a.id for a in agents]
@@ -336,6 +391,10 @@ async def get_agent_detail(
 
     agent = await db.get(Agent, agent_id)
     if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    # Ownership: a non-admin may only inspect their own/shared agents.
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     # Task summary

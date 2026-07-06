@@ -6,7 +6,7 @@ Permissions dict shape:
   "template_ids": list[int] | None,    # None = all
   "llm_providers": list[str] | None,   # None = all
   "mount_labels": list[str] | None,    # None = inherit user_mount_access; listed labels are GRANTED to the group (union with per-user grants)
-  "ai_account_ids": list[int] | None,  # None = all AI accounts; listed accounts are the ones this group may use
+  "ai_account_ids": list[int] | None,  # listed = the accounts this group may use. NOTE: for AI accounts the gate is DEFAULT-DENY (None = none) — see _allowed_account_ids
   "secret_ids": list[int] | None,      # None = all secrets; listed secrets are the ones this group may use
   "mcp_server_ids": list[int] | None,  # None = all MCP servers; listed servers are the ones this group's agents may use
   "url_host_patterns": list[str] | None,
@@ -118,11 +118,10 @@ def can_use_template(permissions: dict, template_id: int | None) -> bool:
     return allowed is None or template_id in allowed
 
 
-def can_use_ai_account(permissions: dict, account_id: int | None) -> bool:
-    if account_id is None:
-        return True
-    allowed = permissions.get("ai_account_ids")
-    return allowed is None or account_id in allowed
+# NOTE: AI-account authorization is DEFAULT-DENY and admin-aware — do NOT reintroduce a
+# permissions-dict-only helper here (it cannot tell admin from member and would treat the
+# default ai_account_ids=None as "all", re-opening cross-tenant access). Use
+# ``app.api.ai_accounts._allowed_account_ids(user, db)`` at every AI-account gate instead.
 
 
 def can_use_secret(permissions: dict, secret_id: int | None) -> bool:

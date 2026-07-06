@@ -107,8 +107,11 @@ async def list_ai_accounts(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List AI accounts. Admins see all; non-admins see only the accounts their
-    group/role allows (custom_role.permissions.ai_account_ids; None = all)."""
+    """List AI accounts. Admins see all; non-admins see ONLY accounts explicitly
+    released to them via their role (custom_role.permissions.ai_account_ids).
+
+    Default-deny: a user without an explicit allowlist entry sees NOTHING — shared
+    platform accounts (Claude/Codex/AWS) are not auto-visible to every tenant."""
     stmt = select(AIAccount).order_by(AIAccount.name)
     if active_only:
         stmt = stmt.where(AIAccount.is_active.is_(True))
@@ -118,21 +121,22 @@ async def list_ai_accounts(
         from app.core.permissions import get_effective_permissions
         perms = await get_effective_permissions(user, db)
         allowed = perms.get("ai_account_ids")
-        if allowed is not None:
-            allowed_set = set(allowed)
-            rows = [a for a in rows if a.id in allowed_set]
+        allowed_set = set(allowed) if allowed is not None else set()  # None = deny, not "all"
+        rows = [a for a in rows if a.id in allowed_set]
     return [_to_response(a) for a in rows]
 
 
 async def _allowed_account_ids(user, db: AsyncSession) -> set[int] | None:
-    """AI-account ids the user may use; None = unrestricted (admins). Mirrors the
-    permission model of list_ai_accounts (custom_role.ai_account_ids allowlist)."""
+    """AI-account ids the user may use; None = unrestricted (admins only). Mirrors the
+    default-deny permission model of list_ai_accounts (custom_role.ai_account_ids
+    allowlist). A non-admin without an explicit allowlist gets an EMPTY set (deny),
+    never unrestricted access to shared platform accounts."""
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
     from app.core.permissions import get_effective_permissions
     perms = await get_effective_permissions(user, db)
     allowed = perms.get("ai_account_ids")
-    return set(allowed) if allowed is not None else None
+    return set(allowed) if allowed is not None else set()
 
 
 @router.get("/realtime-models")
@@ -183,6 +187,10 @@ async def get_ai_account(
 ):
     account = await db.get(AIAccount, account_id)
     if not account:
+        raise HTTPException(status_code=404, detail="AI account not found")
+    # Default-deny: a non-admin may only read an account released to them.
+    allowed = await _allowed_account_ids(user, db)
+    if allowed is not None and account_id not in allowed:
         raise HTTPException(status_code=404, detail="AI account not found")
     return _to_response(account)
 

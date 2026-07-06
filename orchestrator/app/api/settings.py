@@ -16,6 +16,11 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 @router.get("/", response_model=SettingsResponse)
 async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core.ownership import is_admin
+    # Harness availability (platform Claude/Codex/Bedrock/…) is shared infra: only
+    # admins see it as available. Non-admins get False unless the account was released
+    # to them as an explicit AI-account (default-deny — mirrors ai_accounts/integrations).
+    admin = is_admin(user)
     has_api_key = bool(settings.anthropic_api_key)
 
     # Check DB for Anthropic OAuth integration (bot's own session)
@@ -39,10 +44,10 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
     svc = SettingsService(db)
 
     return SettingsResponse(
-        has_api_key=has_api_key,
-        has_oauth_token=has_oauth_token,
-        has_oauth_refresh_token=bool(settings.claude_code_oauth_refresh_token),
-        auth_method=auth_method,
+        has_api_key=has_api_key and admin,
+        has_oauth_token=has_oauth_token and admin,
+        has_oauth_refresh_token=bool(settings.claude_code_oauth_refresh_token) and admin,
+        auth_method=auth_method if admin else "none",
         has_telegram=bool(settings.telegram_bot_token),
         default_model=settings.default_model,
         max_turns=settings.max_turns,
@@ -53,10 +58,10 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         revoke_msgraph_on_logout=settings.revoke_msgraph_on_logout,
         # Provider info
         model_provider=settings.model_provider,
-        has_bedrock=bool(settings.aws_access_key_id and settings.aws_secret_access_key),
-        has_vertex=bool(settings.vertex_project_id and settings.vertex_credentials_json),
-        has_foundry=bool(settings.foundry_api_key and settings.foundry_resource),
-        has_codex_oauth=codex_integration is not None,
+        has_bedrock=bool(settings.aws_access_key_id and settings.aws_secret_access_key) and admin,
+        has_vertex=bool(settings.vertex_project_id and settings.vertex_credentials_json) and admin,
+        has_foundry=bool(settings.foundry_api_key and settings.foundry_resource) and admin,
+        has_codex_oauth=(codex_integration is not None) and admin,
         aws_region=settings.aws_region,
         vertex_region=settings.vertex_region,
         foundry_resource=settings.foundry_resource,

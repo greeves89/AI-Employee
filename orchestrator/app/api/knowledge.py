@@ -119,9 +119,11 @@ async def get_entry(
     entry.access_count += 1
     await db.commit()
 
-    # Find incoming backlinks (other entries that link to this one)
+    # Find incoming backlinks (other entries that link to this one) — only within the
+    # same owner's vault, so foreign entries' titles are never disclosed.
     incoming_q = select(KnowledgeEntry).where(
-        KnowledgeEntry.content.contains(f"[[{entry.title}]]")
+        KnowledgeEntry.content.contains(f"[[{entry.title}]]"),
+        KnowledgeEntry.user_id == entry.user_id,
     )
     incoming = (await db.execute(incoming_q)).scalars().all()
     incoming_titles = [e.title for e in incoming if e.id != entry.id]
@@ -138,17 +140,20 @@ async def create_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new knowledge entry."""
-    # Check for duplicate title
+    owner_id = str(user.id) if hasattr(user, "id") and str(user.id) != "__anonymous__" else None
+    # Check for duplicate title WITHIN the owner's own vault (titles are unique per
+    # user, not globally — else one tenant's titles leak via 409 / block another's).
     existing = await db.execute(
-        select(KnowledgeEntry).where(KnowledgeEntry.title == body.title)
+        select(KnowledgeEntry).where(
+            KnowledgeEntry.title == body.title,
+            KnowledgeEntry.user_id == owner_id,
+        )
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Entry '{body.title}' already exists")
 
     # Auto-extract tags from content if not provided
     all_tags = list(set(body.tags + _extract_tags(body.content)))
-
-    owner_id = str(user.id) if hasattr(user, "id") and str(user.id) != "__anonymous__" else None
     entry = KnowledgeEntry(
         title=body.title,
         content=body.content,
@@ -225,8 +230,12 @@ async def list_tags(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all unique tags with their usage count."""
-    result = await db.execute(select(KnowledgeEntry.tags))
+    """List unique tags with usage count — scoped to the caller's own entries."""
+    from app.models.user import UserRole
+    tags_q = select(KnowledgeEntry.tags)
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        tags_q = tags_q.where(KnowledgeEntry.user_id == str(user.id))
+    result = await db.execute(tags_q)
     all_tags: dict[str, int] = {}
     for (tags,) in result:
         if tags:
@@ -242,8 +251,12 @@ async def get_graph(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get graph data for visualization: nodes (entries) and edges (backlinks)."""
-    result = await db.execute(select(KnowledgeEntry))
+    """Graph data (nodes + backlink edges) — scoped to the caller's own entries."""
+    from app.models.user import UserRole
+    graph_q = select(KnowledgeEntry)
+    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
+        graph_q = graph_q.where(KnowledgeEntry.user_id == str(user.id))
+    result = await db.execute(graph_q)
     entries = result.scalars().all()
 
     # Build title -> id map
@@ -289,8 +302,13 @@ async def agent_write(
     agent_obj = await db.get(Agent, agent_id)
     owner_user_id = agent_obj.user_id if agent_obj else None
 
+    # Upsert-by-title MUST be scoped to the agent-owner's vault, otherwise a title
+    # collision silently overwrites another tenant's entry (cross-tenant write break).
     existing = await db.execute(
-        select(KnowledgeEntry).where(KnowledgeEntry.title == body.title)
+        select(KnowledgeEntry).where(
+            KnowledgeEntry.title == body.title,
+            KnowledgeEntry.user_id == owner_user_id,
+        )
     )
     entry = existing.scalar_one_or_none()
 

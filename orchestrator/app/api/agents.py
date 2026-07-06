@@ -554,7 +554,6 @@ async def create_agent(
             from app.core.permissions import (
                 get_effective_permissions,
                 can_use_llm_provider,
-                can_use_ai_account,
             )
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
@@ -571,12 +570,16 @@ async def create_agent(
                         status_code=403,
                         detail=f"Agent-Limit erreicht ({max_agents}). Bitte einen bestehenden Agent löschen.",
                     )
-            # 2) AI-Account (group/role may restrict which accounts are usable)
-            if not can_use_ai_account(perms, data.ai_account_id):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Dieser AI-Account ist für deine Gruppe nicht freigegeben.",
-                )
+            # 2) AI-Account: default-deny — a non-admin may only bind an account that
+            #    was explicitly released to them (admin-aware; mirrors GET /ai-accounts).
+            if data.ai_account_id is not None:
+                from app.api.ai_accounts import _allowed_account_ids
+                allowed_acc = await _allowed_account_ids(user, db)  # None = admin/all
+                if allowed_acc is not None and data.ai_account_id not in allowed_acc:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Dieser AI-Account ist für deine Gruppe nicht freigegeben.",
+                    )
             # 3) LLM provider whitelist — only for the manual/custom path. When a
             #    (granted) AI-Account is chosen, the account grant is the
             #    authorization; its provider string (e.g. azure-openai) must NOT be
@@ -994,6 +997,12 @@ async def update_agent_ai_account(
 
     account = await db.get(AIAccount, body.ai_account_id)
     if not account:
+        raise HTTPException(status_code=404, detail="AI account not found")
+    # Default-deny: owning the agent is not enough — the caller must also be allowed
+    # to USE this AI account (else a user could bind their agent to a foreign/shared one).
+    from app.api.ai_accounts import _allowed_account_ids
+    allowed_acc = await _allowed_account_ids(user, db)  # None = admin/all
+    if allowed_acc is not None and body.ai_account_id not in allowed_acc:
         raise HTTPException(status_code=404, detail="AI account not found")
     if not account.is_active:
         raise HTTPException(status_code=422, detail="AI account is inactive")

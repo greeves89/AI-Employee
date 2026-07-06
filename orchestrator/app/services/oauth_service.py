@@ -451,20 +451,28 @@ class OAuthService:
             await self.db.delete(integration)
             await self.db.commit()
 
-    async def list_integrations(self, user_id: str | None = None) -> list[dict]:
+    async def list_integrations(
+        self, user_id: str | None = None, include_shared: bool = True
+    ) -> list[dict]:
         """List all providers with their connection status for the given user.
 
         For per-user providers (microsoft, google), shows the user's own connection.
-        For global providers (github, anthropic), shows the global connection.
+        For global/shared providers (github, anthropic, codex), shows the global
+        connection ONLY when ``include_shared`` is True. Non-admins pass
+        ``include_shared=False`` so an admin-connected shared provider is not exposed
+        to every tenant as "connected" (default-deny — visible only if released).
         """
         if user_id:
-            result = await self.db.execute(
-                select(OAuthIntegration).where(
-                    (OAuthIntegration.user_id == user_id) | OAuthIntegration.user_id.is_(None)
-                )
-            )
-        else:
+            cond = OAuthIntegration.user_id == user_id
+            if include_shared:
+                cond = cond | OAuthIntegration.user_id.is_(None)
+            result = await self.db.execute(select(OAuthIntegration).where(cond))
+        elif include_shared:
             result = await self.db.execute(select(OAuthIntegration))
+        else:
+            result = await self.db.execute(
+                select(OAuthIntegration).where(OAuthIntegration.user_id.isnot(None))
+            )
 
         rows = result.scalars().all()
         # For per-user providers, prefer user-specific row over global
