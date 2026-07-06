@@ -100,7 +100,9 @@ unten gut zu sehen). Sie ist in **Gruppen** organisiert:
   Erneut klicken = ausklappen.
 - **Ganz unten** findest du: die **Glocke** (Benachrichtigungen, mit Zähler),
   **Light/Dark Mode** umschalten, **Star on GitHub**, **Über AI Employee** und dein
-  **Profil** (Name/Avatar).
+  **Profil** (Name/Avatar). Meldest du dich per **Microsoft-SSO** an, erscheint hier
+  automatisch dein **Profilfoto** aus dem Firmenkonto (auch neben deinen Nachrichten im
+  Chat); ohne Foto zeigen wir deine **Initialen**.
 
 ### 1.3 Abmelden
 Unten auf dein **Profil** (Name/Avatar) klicken → **Abmelden**.
