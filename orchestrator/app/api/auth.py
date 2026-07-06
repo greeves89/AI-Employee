@@ -384,6 +384,42 @@ async def get_me(request: Request, db: AsyncSession = Depends(get_db)):
     return UserResponse.model_validate(user).model_dump()
 
 
+@router.get("/me/photo")
+async def get_me_photo(request: Request, db: AsyncSession = Depends(get_db)):
+    """Profile photo of the current user, proxied from Microsoft Graph.
+
+    Uses the per-user Graph token captured during Microsoft SSO login.
+    404 when there is no photo source — the frontend falls back to initials.
+    """
+    import httpx
+
+    from app.dependencies import get_current_user
+    from app.services.oauth_service import OAuthService
+
+    user = await get_current_user(request, db)
+    if user.sso_provider != "microsoft":
+        raise HTTPException(status_code=404, detail="No photo source")
+    try:
+        token = await OAuthService(db, None).get_valid_token("microsoft", user.id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="No photo source")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://graph.microsoft.com/v1.0/me/photo/$value",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=404, detail="No photo")
+    if resp.status_code != 200 or not resp.content:
+        raise HTTPException(status_code=404, detail="No photo")
+    return Response(
+        content=resp.content,
+        media_type=resp.headers.get("Content-Type", "image/jpeg"),
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
 # --- Admin-only User Management ---
 
 

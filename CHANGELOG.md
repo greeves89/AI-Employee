@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.91] — 2026-07-06
+
+### Added
+- **User-Avatar aus Microsoft-SSO in Sidebar + Chat.** Neuer Endpoint `GET /auth/me/photo` proxied das Profilfoto via gespeichertem per-User-Graph-Token (`/me/photo/$value`, 1h-Cache, 404 wenn kein Foto/kein MS-User). Neue `UserAvatar`-Komponente zeigt das Foto unten links in der Sidebar (statt Initialen-Box) und in den User-Chat-Bubbles (statt blauem Icon); ohne Foto automatisch Initialen. Foto wird einmal pro Page-Load geladen und über alle Bubbles geteilt. (`orchestrator/app/api/auth.py`, `frontend/src/components/ui/user-avatar.tsx`, `layout/user-menu.tsx`, `agents/chat.tsx`)
+
 ## [1.99.90] — 2026-07-06
 
 ### Changed

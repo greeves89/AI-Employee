@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Shield, User } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout, useAuthStore } from "@/lib/auth";
+import { UserAvatar } from "@/components/ui/user-avatar";
 
 export function UserMenu() {
   const { user } = useAuthStore();
@@ -25,13 +26,6 @@ export function UserMenu() {
 
   if (!user) return null;
 
-  const initials = user.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
   const handleLogout = async () => {
     await logout();
     router.push("/login");
@@ -44,9 +38,7 @@ export function UserMenu() {
         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
       >
         <div className="relative">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary text-xs font-bold">
-            {initials}
-          </div>
+          <UserAvatar name={user.name} />
           <span
             title="Online"
             className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background"

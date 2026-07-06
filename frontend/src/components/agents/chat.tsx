@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import {
-  Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
+  Send, RotateCcw, Bot, AlertTriangle, WifiOff,
   Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
   Pin, Pencil, Trash2, Check, Type, LayoutGrid, FileText,
@@ -13,6 +13,7 @@ import remarkGfm from "remark-gfm";
 import { cn, formatBytes } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
@@ -1465,11 +1466,10 @@ function MsgTime({ ts }: { ts?: string }) {
 /* ─── User Message ──────────────────────────────────────────────────── */
 
 function UserMessage({ content, images, files, timestamp }: { content: string; images?: ChatImage[]; files?: ChatFile[]; timestamp?: string }) {
+  const { user } = useAuthStore();
   return (
     <div className="flex items-start gap-3 pl-1">
-      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 dark:bg-blue-500/20 shrink-0 mt-0.5">
-        <User className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
-      </div>
+      <UserAvatar name={user?.name || "Du"} className="h-6 w-6 rounded-md text-[10px] shrink-0 mt-0.5" />
       <div className="text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-muted-foreground">Du</span>
