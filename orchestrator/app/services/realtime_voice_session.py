@@ -21,6 +21,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -226,6 +227,30 @@ DELEGATE_TASKS_TOOL = {
     }
 }
 
+# Refine an already-running/finished delegation IN PLACE (same task, same lane).
+REFINE_TASK_TOOL = {
+    "toolSpec": {
+        "name": "refine_task",
+        "description": (
+            "Add a correction or extra instruction to a task you ALREADY delegated — instead "
+            "of opening a new one. Use this whenever the user changes their mind about, corrects "
+            "or extends a running or just-finished task ('mach's doch anders', 'nimm lieber X', "
+            "'füg noch Y hinzu'). Pass the task_id you got back when you started it (ask_agent / "
+            "delegate_tasks return it) and the new sentence. It continues the SAME task with its "
+            "full context — no duplicate task. If you are unsure which id, call get_agent_activity "
+            "first (it lists my tasks with their ids)."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "The id of the task to refine (e.g. '1')."},
+                "instruction": {"type": "string", "description": "The additional/correcting instruction, in the user's language."},
+            },
+            "required": ["task_id", "instruction"],
+        })},
+    }
+}
+
 # Slow tool: hand real work to the container agent.
 ASK_AGENT_TOOL = {
     "toolSpec": {
@@ -300,6 +325,15 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "nutze delegate_tasks mit der LISTE der Aufgaben (EIN Aufruf, der Server startet jede als "
         "eigene parallele Aufgabe). Fasse sie NICHT zu einer einzigen Sammel-Aufgabe zusammen und "
         "nutze dafür NICHT mehrere ask_agent-Calls.\n"
+        "AUFGABEN-IDS: Jede Aufgabe, die du per ask_agent oder delegate_tasks startest, bekommt eine "
+        "kurze id zurück (z. B. 1, 2). Merke dir diese ids im Gespräch — lies sie dem Nutzer aber NICHT "
+        "vor.\n"
+        "NACHBESSERN / FORTSETZEN (WICHTIG): Korrigiert oder ergänzt der Nutzer eine Aufgabe, die du "
+        "GERADE angestoßen oder eben erledigt hast ('mach's doch anders', 'nimm lieber X', 'füg noch Y "
+        "hinzu'), dann nutze refine_task mit der id DIESER Aufgabe und dem neuen Satz — das trägt die "
+        "Änderung in DIESELBE Aufgabe ein (mit vollem Kontext), statt eine neue aufzumachen. Starte "
+        "dafür NIEMALS eine neue ask_agent-/delegate_tasks-Aufgabe. Weißt du die id nicht mehr, hol sie "
+        "dir mit get_agent_activity. Gib im Satz knapp den Bezug mit, worauf sich die Änderung bezieht.\n"
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
         "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
         "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
@@ -318,6 +352,11 @@ class RealtimeVoiceSession:
     _out_queue: asyncio.Queue | None = None
     _in_queue: asyncio.Queue | None = None
     _pump_task: asyncio.Task | None = None
+    _keepalive_task: asyncio.Task | None = None
+    # Focus mode (mic muted client-side) stops the inbound audio → the Nova Sonic /
+    # Bedrock bidi stream would idle-timeout and drop with an error. We feed it a tiny
+    # silent frame whenever no real audio flowed for a while, keeping it warm.
+    _last_audio_sent: float = 0.0      # monotonic ts of the last frame sent to Nova
     _closed: bool = False
     _greeted: bool = False
     # Barge-in: while True, ALL outgoing audio is dropped (the whole interrupted
@@ -333,8 +372,12 @@ class RealtimeVoiceSession:
     _resume_summary: str = ""  # prior conversation context when continuing a session
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
-    # Each: {"instruction": str, "done": bool, "last": str, "result": str}
+    # Each: {"id": str, "session": str, "instruction": str, "done": bool,
+    #        "last": str, "result": str}. The ``id`` is an addressable handle the
+    # model gets back on creation and passes to refine_task to inject a follow-up
+    # sentence into THAT running task (its own ``session`` lane).
     _delegations: list = field(default_factory=list)
+    _task_seq: int = 0                 # running counter → short task ids ("1", "2", …)
     _container_id: str = ""            # agent container, for scanning produced files
     _shown_files: set = field(default_factory=set)  # paths already surfaced as cards
 
@@ -405,6 +448,7 @@ class RealtimeVoiceSession:
                 SET_MODEL_TOOL,
                 ASK_AGENT_TOOL,
                 DELEGATE_TASKS_TOOL,
+                REFINE_TASK_TOOL,
             ],
             voice_id=voice_id,
             on_event=self._on_nova_event,
@@ -412,6 +456,7 @@ class RealtimeVoiceSession:
         )
         await self._nova.open()
         self._pump_task = asyncio.create_task(self._audio_pump())
+        self._keepalive_task = asyncio.create_task(self._keepalive_loop())
         logger.info(
             "RealtimeVoiceSession init agent=%s user=%s region=%s voice=%s source=%s",
             self.agent_id, self.user_id, creds["region"], voice_id, creds.get("source"),
@@ -480,6 +525,7 @@ class RealtimeVoiceSession:
                     break
                 if self._nova:
                     await self._nova.send_audio(chunk)
+                    self._last_audio_sent = time.monotonic()
                     # Greet proactively once the first audio frame has reached Nova
                     # Sonic (it needs audio content before an injected text turn speaks).
                     if not self._greeted:
@@ -489,6 +535,37 @@ class RealtimeVoiceSession:
             raise
         except Exception:  # noqa: BLE001
             logger.warning("RealtimeVoiceSession audio pump error agent=%s", self.agent_id, exc_info=True)
+
+    # 16 kHz / 16-bit / mono → 200 ms of silence = 0.2 * 16000 * 2 bytes.
+    _SILENCE_FRAME = b"\x00" * (int(16000 * 0.2) * 2)
+    _KEEPALIVE_IDLE_S = 5.0     # send silence after this long without real audio
+    _KEEPALIVE_TICK_S = 2.0     # how often we check
+
+    async def _keepalive_loop(self) -> None:
+        """Keep the Bedrock bidi stream warm while the mic is muted (focus mode).
+
+        Nova Sonic drops the bidirectional stream with an error if no audio arrives
+        for a while. When the client stops sending (focus mode / muted mic) we feed a
+        short silent PCM frame so the stream stays open — a genuinely muted mic would
+        stream near-silence anyway, so this is behaviourally identical and does not
+        trigger a spurious turn (VAD ignores silence).
+        """
+        try:
+            while not self._closed:
+                await asyncio.sleep(self._KEEPALIVE_TICK_S)
+                if self._closed or not self._greeted or not self._nova:
+                    continue  # nothing to keep alive until real audio has started
+                if time.monotonic() - self._last_audio_sent < self._KEEPALIVE_IDLE_S:
+                    continue  # real audio is flowing, no keepalive needed
+                try:
+                    await self._nova.send_audio(self._SILENCE_FRAME)
+                    self._last_audio_sent = time.monotonic()
+                except Exception:  # noqa: BLE001
+                    logger.debug("keepalive silence failed agent=%s", self.agent_id, exc_info=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.debug("keepalive loop error agent=%s", self.agent_id, exc_info=True)
 
     async def _greet(self) -> None:
         """Speak first: greet the user actively right after the session opens."""
@@ -652,12 +729,42 @@ class RealtimeVoiceSession:
             if not tasks:
                 await self._respond(tool_use_id, "Keine Aufgaben erkannt.")
                 return
+            ids: list[str] = []
             for t in tasks:
-                asyncio.create_task(self._delegate_and_report(t))
+                tid = self._new_task_id()
+                ids.append(tid)
+                asyncio.create_task(self._delegate_and_report(t, task_id=tid))
             await self._respond(
                 tool_use_id,
-                f"Ich starte {len(tasks)} Aufgaben PARALLEL (jede als eigene Aufgabe) und melde "
-                "mich zu jeder einzeln, sobald sie fertig ist. Sag dem Nutzer das knapp in der ICH-Form.",
+                f"Ich starte {len(tasks)} Aufgaben PARALLEL (jede als eigene Aufgabe, ids: "
+                f"{', '.join(ids)}) und melde mich zu jeder einzeln, sobald sie fertig ist. "
+                "Merke dir die ids — für spätere Korrekturen an einer bestimmten Aufgabe nutze "
+                "refine_task mit der passenden id. Sag dem Nutzer das knapp in der ICH-Form "
+                "(OHNE die ids vorzulesen).",
+            )
+            return
+
+        # ── Refine an existing task in place (same lane, keeps context) ──
+        if name == "refine_task":
+            tid = str(args.get("task_id") or "").strip()
+            instruction = (args.get("instruction") or "").strip()
+            rec = next((d for d in self._delegations if d["id"] == tid), None)
+            if not instruction:
+                await self._respond(tool_use_id, "Keine Instruktion erkannt.")
+                return
+            if rec is None:
+                await self._respond(
+                    tool_use_id,
+                    f"Ich habe keine Aufgabe mit der id {tid!r}. Frag ggf. mit get_agent_activity "
+                    "meine laufenden Aufgaben ab oder starte die Arbeit mit ask_agent neu.",
+                )
+                return
+            asyncio.create_task(self._delegate_and_report(instruction, task_id=tid, refine=True))
+            await self._respond(
+                tool_use_id,
+                f"Ich ergänze die laufende Aufgabe „{rec['instruction']}“ um: „{instruction}“ "
+                "(dieselbe Aufgabe, kein Neustart). Sag dem Nutzer knapp in der ICH-Form, dass du "
+                "das direkt einarbeitest und dich mit dem Ergebnis meldest.",
             )
             return
 
@@ -671,12 +778,14 @@ class RealtimeVoiceSession:
             return
         # Acknowledge immediately so neither the model nor the user is blocked while
         # the agent works; the answer is voiced proactively when it lands.
-        asyncio.create_task(self._delegate_and_report(instruction))
+        tid = self._new_task_id()
+        asyncio.create_task(self._delegate_and_report(instruction, task_id=tid))
         await self._respond(
             tool_use_id,
-            f"Du kümmerst dich jetzt selbst um: „{instruction}“. Sag dem Nutzer knapp in der "
-            "ICH-Form, dass du direkt dran bist und dich gleich meldest — sprich NICHT von "
-            "‚dem Agenten‘ oder von ‚weitergeben‘.",
+            f"Du kümmerst dich jetzt selbst um: „{instruction}“ (Aufgaben-id {tid} — merke sie dir "
+            "für spätere Korrekturen via refine_task). Sag dem Nutzer knapp in der ICH-Form, dass "
+            "du direkt dran bist und dich gleich meldest — sprich NICHT von ‚dem Agenten‘ oder von "
+            "‚weitergeben‘ und lies die id NICHT vor.",
         )
 
     async def _emit_activity(self, kind: str, edata: dict) -> None:
@@ -781,13 +890,48 @@ class RealtimeVoiceSession:
             if len(self._shown_files) >= 24:  # hard cap per call
                 break
 
-    async def _delegate_and_report(self, instruction: str) -> None:
-        """Run the (slow) delegation in the background, then voice the result."""
-        await self._emit({"type": "delegate", "data": {"instruction": instruction}})
-        # Track THIS delegation so get_agent_activity reports my real tasks, not the
-        # agent's global lane. Live steps update rec["last"] via a per-task callback.
-        rec = {"instruction": instruction, "done": False, "last": "", "result": ""}
-        self._delegations.append(rec)
+    def _new_task_id(self) -> str:
+        """Short, voice-friendly handle for a delegation ("1", "2", …)."""
+        self._task_seq += 1
+        return str(self._task_seq)
+
+    async def _delegate_and_report(
+        self,
+        instruction: str,
+        *,
+        task_id: str | None = None,
+        refine: bool = False,
+    ) -> None:
+        """Run the (slow) delegation in the background, then voice the result.
+
+        Each task owns an addressable session lane ``vw-<call>-<id>``; the model gets
+        the ``id`` back and can steer THAT task later via ``refine_task``:
+        - fresh task (``refine=False``): new rec + new lane.
+        - ``refine=True``: reuse the existing rec's lane so the follow-up sentence is
+          folded into the SAME running turn (live steering) or resumes it with full
+          context (``--resume``) — instead of forking a new task.
+        """
+        # Find (refine) or create the rec. rec["session"] is the stable per-task lane.
+        rec = None
+        if task_id is not None:
+            rec = next((d for d in self._delegations if d["id"] == task_id), None)
+        if rec is not None:
+            rec["done"] = False          # refine: it's active again
+            rec["last"] = ""
+        else:
+            tid = task_id or self._new_task_id()
+            rec = {
+                "id": tid,
+                "session": f"vw-{self.session_id}-{tid}",
+                "instruction": instruction,
+                "done": False, "last": "", "result": "",
+            }
+            self._delegations.append(rec)
+        chat_session_id = rec["session"]
+
+        await self._emit({"type": "delegate", "data": {
+            "instruction": instruction, "task_id": rec["id"], "refine": refine,
+        }})
 
         async def _on_step(kind: str, edata: dict) -> None:
             try:
@@ -812,13 +956,10 @@ class RealtimeVoiceSession:
             "klickbar angezeigt."
         )
         try:
-            # Unique session per delegation → its own lane in the agent, so several
-            # voice-delegated tasks can run in parallel (when the agent has
-            # MAX_PARALLEL_CHATS>1) instead of queuing behind each other.
             answer = await ask_agent_via_chat(
                 self.redis, self.agent_id, augmented, source="realtime_voice", timeout=180.0,
                 on_event=_on_step,
-                chat_session_id=f"voice-{uuid.uuid4().hex[:8]}",
+                chat_session_id=chat_session_id,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("realtime delegation failed agent=%s: %s", self.agent_id, e, exc_info=True)
@@ -832,7 +973,9 @@ class RealtimeVoiceSession:
         # Distinct "this delegation finished" signal — the UI uses THIS (not the
         # generic response event, which also fires on my own speech) to know a task
         # is done. Carries the instruction so the right task can be marked complete.
-        await self._emit({"type": "delegate_done", "data": {"instruction": instruction}})
+        await self._emit({"type": "delegate_done", "data": {
+            "instruction": instruction, "task_id": rec["id"],
+        }})
         await self._emit({"type": "response", "data": {"text": answer}})
         if self._nova:
             await self._nova.inject_user_text(
@@ -884,14 +1027,14 @@ class RealtimeVoiceSession:
             running = [d for d in self._delegations if not d["done"]]
             lines = [
                 f"Ich habe {len(self._delegations)} Aufgabe(n) gestartet, "
-                f"{len(done)} fertig, {len(running)} laufen noch."
+                f"{len(done)} fertig, {len(running)} laufen noch. (id für refine_task in Klammern)"
             ]
             for d in self._delegations:
                 if d["done"]:
-                    lines.append(f"FERTIG: {d['instruction']}" + (f" — {d['result']}" if d['result'] else ""))
+                    lines.append(f"[id {d['id']}] FERTIG: {d['instruction']}" + (f" — {d['result']}" if d['result'] else ""))
                 else:
                     step = f" (gerade: {d['last']})" if d["last"] else ""
-                    lines.append(f"LÄUFT: {d['instruction']}{step}")
+                    lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{step}")
             return " ".join(lines)
 
         # 1) Live step stream + current-task label
@@ -1281,10 +1424,11 @@ class RealtimeVoiceSession:
                 pass
         if self._nova:
             await self._nova.close()
-        if self._pump_task and not self._pump_task.done():
-            self._pump_task.cancel()
-            try:
-                await self._pump_task
-            except (asyncio.CancelledError, Exception):
-                pass
+        for t in (self._pump_task, self._keepalive_task):
+            if t and not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
         await self._emit(None)

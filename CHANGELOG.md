@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.88] — 2026-07-06
+
+### Added
+- **Voice: Aufgaben gezielt nachbessern statt neue aufmachen (`refine_task`).** Jede vom Voicebot delegierte Aufgabe (`ask_agent`/`delegate_tasks`) bekommt jetzt eine kurze, adressierbare id in einer eigenen Session-Lane (`vw-<call>-<id>`). Korrigiert oder ergänzt der Nutzer mitten in der Arbeit („mach's doch anders", „nimm lieber X"), trägt das Modell den Satz per `refine_task(id, satz)` in GENAU diese Aufgabe nach — sie läuft mit vollem Kontext weiter (Live-Steering in den laufenden Turn bzw. `--resume`), statt eine zweite, kontextlose Aufgabe zu forken. `get_agent_activity` listet die Aufgaben mit ihren ids. (`orchestrator/app/services/realtime_voice_session.py`)
+
+### Fixed
+- **Voice-Fokusmodus bricht nicht mehr mit Fehler ab.** Bei stummem Mikro (Fokusmodus) floss keine Audiospur mehr → der Nova-Sonic/Bedrock-Bidi-Stream lief in den Idle-Timeout und riss mit „Fehler" ab. Neu hält ein Keepalive den Stream warm: nach ~5s ohne echtes Audio wird ein kurzer Stille-Frame gesendet (verhält sich wie ein stummgeschaltetes, aber offenes Mikro; VAD ignoriert Stille, kein Fehl-Turn). (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.72] — 2026-07-05
 
 ### Added
