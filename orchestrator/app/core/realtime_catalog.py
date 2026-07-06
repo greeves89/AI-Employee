@@ -27,8 +27,9 @@ REALTIME_PROVIDERS: dict[str, dict] = {
     },
     "azure-realtime": {
         "label": "Azure OpenAI Realtime",
-        "engine": "azure_realtime",  # engine not yet implemented — listed for config
+        "engine": "azure_realtime",  # implemented via AzureRealtimeSession
         "models": [
+            {"id": "gpt-realtime", "label": "GPT Realtime (GA)"},
             {"id": "gpt-4o-realtime-preview", "label": "GPT-4o Realtime"},
             {"id": "gpt-4o-mini-realtime-preview", "label": "GPT-4o mini Realtime"},
         ],
@@ -36,7 +37,7 @@ REALTIME_PROVIDERS: dict[str, dict] = {
 }
 
 # Engines that actually have a working session backend today.
-IMPLEMENTED_ENGINES = {"nova_sonic"}
+IMPLEMENTED_ENGINES = {"nova_sonic", "azure_realtime"}
 
 
 def is_realtime_provider(provider_type: str | None) -> bool:
@@ -83,5 +84,23 @@ def resolve_credentials(account) -> dict | None:
             "model_id": model_id or "amazon.nova-2-sonic-v1:0",
         }
 
-    # azure-realtime / brave-search: config surface exists; engine TBD.
+    if pt == "azure-realtime":
+        # Azure OpenAI Realtime (gpt-realtime): endpoint + api-key auth. Model + the
+        # /openai/v1/realtime endpoint come straight from the AIAccount row.
+        try:
+            api_key = decrypt_token(enc) if enc else ""
+        except Exception:  # noqa: BLE001
+            logger.warning("azure-realtime account %s: key decrypt failed", getattr(account, "id", "?"))
+            return None
+        endpoint = (getattr(account, "api_endpoint", None) or "").strip()
+        if not (api_key and endpoint):
+            return None
+        return {
+            "engine": "azure_realtime",
+            "endpoint": endpoint,
+            "api_key": api_key,
+            "model": model_id or "gpt-realtime",
+        }
+
+    # brave-search etc.: config surface exists; no realtime engine.
     return None

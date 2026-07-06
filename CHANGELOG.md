@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.97] — 2026-07-06
+
+### Added
+- **Azure OpenAI Realtime als zweite Voice-Engine (flüssiges Auto-Speech-to-Speech OHNE AWS).** Neben AWS Nova Sonic gibt es jetzt eine `AzureRealtimeSession`, die das OpenAI-Realtime-WS-Protokoll gegen Azures `/openai/v1/realtime` (Modell `gpt-realtime`, GA) spricht. Damit bekommen Deployments ohne AWS (z.B. SKBS) dasselbe kontinuierliche Sprach-Erlebnis wie Nova Sonic — über die vorhandene Azure-OpenAI-Ressource, ohne separaten Speech-Key, ohne externen Edge-TTS, ohne lokalen stt-service. Browser-16kHz-Audio wird auf 24kHz upgesampelt; Ausgabe läuft über den bestehenden glatten PCM-Playback-Pfad. Der `ask_agent`/`refine_task`-Delegations- und Tool-Layer wird wiederverwendet (Tool-Format automatisch Nova↔OpenAI konvertiert). Auswählbar in den Voice-Settings („GPT Realtime (GA)"); Provider `azure-realtime` im AI-Accounts-Bereich. E2E gegen echtes SKBS-Azure verifiziert. (`voice_providers/realtime_azure_openai.py`, `realtime_catalog.py`, `realtime_voice_session.py`, `api/ws.py`)
+
 ## [1.99.96] — 2026-07-06
 
 ### Fixed

@@ -869,7 +869,9 @@ async def ws_agent_voice(
     # Realtime speech-to-speech front (Nova Sonic) vs. the staged STT→LLM→TTS pipeline.
     # Both expose the same session interface (init/outbound/push_audio_chunk/commit_turn/
     # interrupt/close), so the receive loop below is identical.
-    if interaction_model == "nova_sonic":
+    if interaction_model in ("nova_sonic", "azure_realtime"):
+        # Both realtime engines share the same wrapper; it picks the concrete backend
+        # (Nova Sonic / Azure OpenAI Realtime) from the linked AI-account's provider.
         from app.services.realtime_voice_session import RealtimeVoiceSession
         _rt_kwargs = {"agent_id": agent_id, "user_id": user_id, "redis": _redis}
         if chat_session:  # continue an existing chat session by voice
@@ -924,8 +926,9 @@ async def ws_agent_voice(
             "data": {
                 "session_id": session.session_id,
                 # "nova_sonic" → client streams continuous 16 kHz PCM and plays
-                # 24 kHz PCM; "classic" → push-to-talk webm/opus + MP3 playback.
-                "mode": "nova_sonic" if interaction_model == "nova_sonic" else "classic",
+                # 24 kHz PCM (used by BOTH realtime engines, Nova Sonic + Azure
+                # Realtime); "classic" → push-to-talk webm/opus + MP3 playback.
+                "mode": "nova_sonic" if interaction_model in ("nova_sonic", "azure_realtime") else "classic",
             },
         }))
         while True:
