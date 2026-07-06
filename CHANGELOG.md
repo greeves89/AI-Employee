@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.96] — 2026-07-06
+
+### Fixed
+- **Voice/Mikrofon im Browser funktioniert wieder.** Der Caddy-`Permissions-Policy`-Header hatte `microphone=()` (für alle verboten) → der Browser blockte den Mikrofon-Zugriff der Voice-Session hart („Permissions policy violation: microphone is not allowed"), selbst bei erlaubtem Browser-Toggle. Neu: `microphone=(self)` (camera/geolocation bleiben restriktiv). (`Caddyfile`, `deploy/Caddyfile`)
+
 ## [1.99.95] — 2026-07-06
 
 ### Fixed
