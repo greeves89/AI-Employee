@@ -191,6 +191,9 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  // Counts nested dragenter/dragleave so the overlay doesn't flicker while
+  // dragging across child elements (textarea, buttons).
+  const dragDepthRef = useRef(0);
   // Font size (persisted): 0.85–1.4, applied to the whole chat via CSS var.
   const [fontScale, setFontScale] = useState(1);
   useEffect(() => {
@@ -234,6 +237,14 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow the input with its content (capped via max-h on the element);
+  // collapses back to one row when cleared (e.g. after sending).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
   const reconnectAttempts = useRef(0);
@@ -990,10 +1001,41 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
   /* ─── Render ──────────────────────────────────────────────────────── */
 
   return (
-    <div className={cn(
-      "flex flex-col h-full min-h-0 overflow-hidden",
-      !embedded && "rounded-xl border border-border bg-card/80 backdrop-blur-sm"
-    )}>
+    <div
+      className={cn(
+        "relative flex flex-col h-full min-h-0 overflow-hidden",
+        !embedded && "rounded-xl border border-border bg-card/80 backdrop-blur-sm",
+        isDragOver && "ring-2 ring-inset ring-primary/50"
+      )}
+      onDragEnter={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragDepthRef.current += 1;
+        if (!isDragOver) setIsDragOver(true);
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDragLeave={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setIsDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragDepthRef.current = 0;
+        setIsDragOver(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
+      }}
+    >
+      {isDragOver && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-primary/5 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary/50 bg-card/90 px-5 py-3 text-sm font-medium text-primary shadow-lg">
+            <Paperclip className="h-4 w-4" /> Dateien hier ablegen zum Hochladen
+          </div>
+        </div>
+      )}
       {voiceOpen && (
         <VoiceSessionModal
           agentId={agentId}
@@ -1127,30 +1169,15 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
         </div>
       )}
 
-      {/* Messages area — font size via zoom, drag&drop file upload */}
+      {/* Messages area — font size via zoom; file drag&drop is handled on the chat root */}
       <div
         ref={scrollRef}
         className={cn(
           "relative flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]",
-          viewMode === "overview" && "hidden",
-          isDragOver && "ring-2 ring-inset ring-primary/50"
+          viewMode === "overview" && "hidden"
         )}
         style={{ zoom: fontScale }}
-        onDragOver={(e) => { e.preventDefault(); if (!isDragOver) setIsDragOver(true); }}
-        onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragOver(false); }}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragOver(false);
-          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
-        }}
       >
-        {isDragOver && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5 backdrop-blur-[1px]">
-            <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary/50 bg-card/90 px-5 py-3 text-sm font-medium text-primary shadow-lg">
-              <Paperclip className="h-4 w-4" /> Dateien hier ablegen zum Hochladen
-            </div>
-          </div>
-        )}
         {messages.length === 0 && !connectionFailed && historyLoaded && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Bot className="h-8 w-8 mb-2" />
@@ -1269,7 +1296,7 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
             ))}
           </div>
         )}
-        <div className="flex gap-2.5">
+        <div className="flex items-end gap-2.5">
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={!isConnected || isUploading}
@@ -1294,7 +1321,7 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
             onPaste={handlePaste}
             placeholder={connectionFailed ? "Agent not connected" : isWaiting ? "Agent arbeitet... (du kannst trotzdem schreiben)" : "Nachricht... (Bild mit Strg+V einfügen, Enter zum Senden)"}
             disabled={!isConnected}
-            className="flex-1 resize-none rounded-xl border border-border bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-40 transition-all placeholder:text-muted-foreground/30"
+            className="flex-1 resize-none max-h-48 overflow-y-auto rounded-xl border border-border bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-40 transition-all placeholder:text-muted-foreground/30"
             rows={1}
           />
           {isWaiting ? (
@@ -1420,7 +1447,7 @@ function UserMessage({ content, images, timestamp }: { content: string; images?:
             ))}
           </div>
         )}
-        {content && <div>{content}</div>}
+        {content && <div className="whitespace-pre-wrap break-words">{content}</div>}
       </div>
     </div>
   );

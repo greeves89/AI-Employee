@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.89] — 2026-07-06
+
+### Added
+- **Chat: Eingabefeld ist jetzt Drag&Drop-Ziel für Datei-Uploads.** Die Drop-Zone deckt den gesamten Chat ab (Nachrichtenverlauf UND Eingabebereich) — Dateien können direkt aufs Textfeld gezogen werden, Upload nach `/workspace` + Agent-Benachrichtigung wie gehabt. Drag-Overlay flackert dank Enter/Leave-Zähler nicht mehr beim Ziehen über Kind-Elemente; reine Text-Drags lösen kein Overlay aus. (`frontend/src/components/agents/chat.tsx`)
+
+### Fixed
+- **Chat-Eingabefeld wächst bei mehrzeiligem Text mit.** Die Textarea passt ihre Höhe automatisch dem Inhalt an (bis ca. 8 Zeilen, danach interner Scroll) und springt nach dem Senden auf eine Zeile zurück. Buttons (Anhang/Mic/Senden) bleiben unten ausgerichtet. (`frontend/src/components/agents/chat.tsx`)
+- **Zeilenumbrüche bleiben in der Chat-Bubble erhalten.** Mehrzeilige Nachrichten (Shift+Enter) wurden in der User-Bubble zu einer Zeile zusammengezogen — jetzt `whitespace-pre-wrap`. (`frontend/src/components/agents/chat.tsx`)
+
 ## [1.99.88] — 2026-07-06
 
 ### Added

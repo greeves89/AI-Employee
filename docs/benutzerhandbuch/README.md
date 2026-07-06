@@ -278,6 +278,13 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 ### 5.1 Chat — mit dem Agenten sprechen
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
 - **Eingabefeld unten** — Nachricht/Anweisung tippen, **Enter** oder **Senden** (Pfeil).
+  Mit **Shift+Enter** fügst du einen Zeilenumbruch ein — das Feld wächst automatisch mit
+  (bis ca. 8 Zeilen, danach scrollt es), und die Umbrüche bleiben in der gesendeten
+  Nachricht erhalten.
+- **Datei per Drag & Drop** — zieh eine oder mehrere Dateien einfach **irgendwo in den
+  Chat** (auch direkt aufs Eingabefeld). Es erscheint ein Overlay „Dateien hier ablegen
+  zum Hochladen"; beim Loslassen landen die Dateien im Workspace des Agenten
+  (`/workspace`) und er wird automatisch darüber informiert.
 - **Büroklammer** — Datei anhängen (z. B. ein Dokument, das er auswerten soll). Tipp:
   Bilder kannst du mit Strg/Cmd+V einfügen.
 - **Mikrofon** — Anweisung diktieren statt tippen.
