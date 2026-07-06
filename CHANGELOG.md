@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.95] — 2026-07-06
+
+### Fixed
+- **Frontend-Build repariert: Dependabot-#249 zurückgerollt.** Der auto-gemergte Bump hob Next.js 14→16 und Tailwind 3→4 (jeweils Major, Breaking) an, ohne die Config zu migrieren → `npm run build` brach (Turbopack-vs-webpack + `@tailwindcss/postcss`). Revert stellt Next 14 + Tailwind 3 wieder her; der Upgrade wird separat und getestet nachgeholt. (`frontend/package.json`, `package-lock.json`)
+- **url_allowlist Startup-Crash behoben** (aus v1.99.94): fehlender `Request`-Import führte zu `NameError` beim Orchestrator-Start.
+
 ## [1.99.93] — 2026-07-06
 
 ### Security
