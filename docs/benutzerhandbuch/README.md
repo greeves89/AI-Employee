@@ -281,12 +281,15 @@ Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
   Mit **Shift+Enter** fügst du einen Zeilenumbruch ein — das Feld wächst automatisch mit
   (bis ca. 8 Zeilen, danach scrollt es), und die Umbrüche bleiben in der gesendeten
   Nachricht erhalten.
-- **Datei per Drag & Drop** — zieh eine oder mehrere Dateien einfach **irgendwo in den
-  Chat** (auch direkt aufs Eingabefeld). Es erscheint ein Overlay „Dateien hier ablegen
-  zum Hochladen"; beim Loslassen landen die Dateien im Workspace des Agenten
-  (`/workspace`) und er wird automatisch darüber informiert.
-- **Büroklammer** — Datei anhängen (z. B. ein Dokument, das er auswerten soll). Tipp:
-  Bilder kannst du mit Strg/Cmd+V einfügen.
+- **Datei per Drag & Drop anhängen** — zieh eine oder mehrere Dateien einfach
+  **irgendwo in den Chat** (auch direkt aufs Eingabefeld). Es erscheint ein Overlay
+  „Dateien hier ablegen zum Anhängen"; beim Loslassen werden die Dateien **unten am
+  Eingabefeld angehängt** (Bilder als Vorschau, andere Dateien als Chip mit Name und
+  Entfernen-Knopf) — genau wie ein per Strg/Cmd+V eingefügtes Bild. Du kannst noch
+  Text dazu schreiben; **erst beim Senden** werden die Dateien in den Workspace des
+  Agenten (`/workspace`) hochgeladen und gehen zusammen mit deiner Nachricht raus.
+- **Büroklammer** — Datei anhängen (gleicher Weg wie Drag & Drop, nur per
+  Dateiauswahl). Tipp: Bilder kannst du mit Strg/Cmd+V einfügen.
 - **Mikrofon** — Anweisung diktieren statt tippen.
 - **Token-Zähler** unten (z. B. *0 / 200k tokens*) — wie viel Kontext gerade belegt ist.
 - Während der Agent arbeitet, erscheinen **Tool-Bubbles** (kleine Symbole für seine

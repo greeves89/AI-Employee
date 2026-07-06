@@ -5,12 +5,12 @@ import {
   Send, RotateCcw, Bot, User, AlertTriangle, WifiOff,
   Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
-  Pin, Pencil, Trash2, Check, Type, LayoutGrid,
+  Pin, Pencil, Trash2, Check, Type, LayoutGrid, FileText,
 } from "lucide-react";
 import { ChatOverview } from "./chat-overview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -210,6 +210,8 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
+  // Files attached via drag&drop or paperclip — uploaded on send, like pasted images.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
@@ -749,10 +751,31 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
     }
   }, [messages]);
 
-  const sendMessage = useCallback(() => {
+  const sendMessage = useCallback(async () => {
     const text = input.trim();
     const imgs = pendingImages;
-    if ((!text && imgs.length === 0) || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const files = pendingFiles;
+    if ((!text && imgs.length === 0 && files.length === 0) || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Upload attached files to the agent's workspace first — the message only
+    // goes out if the upload succeeds (pending chips stay on failure).
+    let agentText = text;
+    if (files.length > 0) {
+      setIsUploading(true);
+      try {
+        await api.uploadFiles(agentId, "/workspace", files);
+      } catch (e) {
+        setMessages((prev) => [
+          ...prev,
+          { id: `upload-error-${Date.now()}`, role: "error", content: `Upload fehlgeschlagen: ${e instanceof Error ? e.message : "Unbekannter Fehler"}`, timestamp: new Date().toISOString() },
+        ]);
+        setIsUploading(false);
+        return;
+      }
+      setIsUploading(false);
+      const fileNames = files.map((f) => f.name).join(", ");
+      agentText = `${text ? `${text}\n\n` : ""}[Angehängte Dateien, bereits in /workspace hochgeladen: ${fileNames}]`;
+    }
 
     const msgId = `user-${Date.now()}`;
     setMessages((prev) => [
@@ -763,18 +786,22 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
         content: text,
         timestamp: new Date().toISOString(),
         images: imgs.length > 0 ? imgs : undefined,
+        files: files.length > 0
+          ? files.map((f) => ({ path: `/workspace/${f.name}`, filename: f.name, media_type: f.type || undefined, size: f.size }))
+          : undefined,
       },
     ]);
     setMessageCount((c) => c + 1);
 
     wsRef.current.send(JSON.stringify({
-      text,
+      text: agentText,
       images: imgs,
       session_id: activeSessionId || currentWsSessionId.current,
       source: "webapp",
     }));
     setInput("");
     setPendingImages([]);
+    setPendingFiles([]);
     pendingCountRef.current += 1;
     setIsWaiting(true);
     inputRef.current?.focus();
@@ -782,11 +809,11 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
     setSessions((prev) =>
       prev.map((s) =>
         s.id === (activeSessionId || currentWsSessionId.current)
-          ? { ...s, preview: (text || "Bild").slice(0, 80) }
+          ? { ...s, preview: (text || files[0]?.name || "Bild").slice(0, 80) }
           : s
       )
     );
-  }, [input, pendingImages, activeSessionId]);
+  }, [input, pendingImages, pendingFiles, activeSessionId, agentId]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -920,40 +947,36 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
     }
   }, [agentId]);
 
-  const handleFileUpload = useCallback(async (files: FileList | null) => {
+  // Attach files without sending: images become pending images (like Ctrl+V paste),
+  // everything else becomes a pending file chip. Upload happens in sendMessage.
+  const addPendingFiles = useCallback((files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
-    setIsUploading(true);
-    try {
-      const result = await api.uploadFiles(agentId, "/workspace", files);
-      const fileNames = Array.from(files).map((f) => f.name).join(", ");
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `upload-${Date.now()}`,
-          role: "system",
-          content: `Uploaded ${result.uploaded} file(s): ${fileNames}`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        const mention = `I just uploaded these files to /workspace: ${fileNames}. Please acknowledge them.`;
-        wsRef.current.send(JSON.stringify({ text: mention, source: "webapp" }));
-        setMessages((prev) => [
-          ...prev,
-          { id: `user-upload-${Date.now()}`, role: "user", content: mention, timestamp: new Date().toISOString() },
-        ]);
-        setIsWaiting(true);
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith("image/")) {
+        if (file.size > 5 * 1024 * 1024) {
+          setMessages((prev) => [
+            ...prev,
+            { id: `img-err-${Date.now()}`, role: "error", content: `Bild zu groß (max. 5 MB): ${file.name}`, timestamp: new Date().toISOString() },
+          ]);
+          continue;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = String(reader.result || "").split(",")[1];
+          if (base64) {
+            setPendingImages((prev) => [...prev, { media_type: file.type, data: base64 }].slice(0, 4));
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setPendingFiles((prev) =>
+          prev.some((f) => f.name === file.name && f.size === file.size) ? prev : [...prev, file]
+        );
       }
-    } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { id: `upload-error-${Date.now()}`, role: "error", content: `Upload failed: ${e instanceof Error ? e.message : "Unknown error"}`, timestamp: new Date().toISOString() },
-      ]);
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [agentId]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    inputRef.current?.focus();
+  }, []);
 
   // Thinking timer - counts up while waiting for first response
   useEffect(() => {
@@ -1026,13 +1049,13 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
         e.preventDefault();
         dragDepthRef.current = 0;
         setIsDragOver(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) addPendingFiles(e.dataTransfer.files);
       }}
     >
       {isDragOver && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-primary/5 backdrop-blur-[1px]">
           <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary/50 bg-card/90 px-5 py-3 text-sm font-medium text-primary shadow-lg">
-            <Paperclip className="h-4 w-4" /> Dateien hier ablegen zum Hochladen
+            <Paperclip className="h-4 w-4" /> Dateien hier ablegen zum Anhängen
           </div>
         </div>
       )}
@@ -1274,7 +1297,25 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
 
       {/* Input area */}
       <div className={cn("border-t border-border p-4", viewMode === "overview" && "hidden")}>
-        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handleFileUpload(e.target.files)} />
+        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => addPendingFiles(e.target.files)} />
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2.5">
+            {pendingFiles.map((file, i) => (
+              <div key={`${file.name}-${i}`} className="group inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/80 px-2.5 py-1.5 text-xs">
+                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="max-w-[180px] truncate">{file.name}</span>
+                <span className="text-[10px] text-muted-foreground/60 tabular-nums">{formatBytes(file.size)}</span>
+                <button
+                  onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                  className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-foreground/10"
+                  title="Datei entfernen"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {pendingImages.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2.5">
             {pendingImages.map((img, i) => (
@@ -1335,10 +1376,10 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
           ) : (
             <button
               onClick={sendMessage}
-              disabled={!isConnected || (!input.trim() && pendingImages.length === 0)}
+              disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
             >
-              <Send className="h-4 w-4" />
+              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           )}
         </div>
@@ -1401,7 +1442,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
   }
 
   if (message.role === "user") {
-    return <UserMessage content={message.content} images={message.images} timestamp={message.timestamp} />;
+    return <UserMessage content={message.content} images={message.images} files={message.files} timestamp={message.timestamp} />;
   }
 
   // Assistant message - render as timeline of steps
@@ -1423,7 +1464,7 @@ function MsgTime({ ts }: { ts?: string }) {
 
 /* ─── User Message ──────────────────────────────────────────────────── */
 
-function UserMessage({ content, images, timestamp }: { content: string; images?: ChatImage[]; timestamp?: string }) {
+function UserMessage({ content, images, files, timestamp }: { content: string; images?: ChatImage[]; files?: ChatFile[]; timestamp?: string }) {
   return (
     <div className="flex items-start gap-3 pl-1">
       <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 dark:bg-blue-500/20 shrink-0 mt-0.5">
@@ -1444,6 +1485,19 @@ function UserMessage({ content, images, timestamp }: { content: string; images?:
                 alt={`Bild ${i + 1}`}
                 className="max-h-48 rounded-lg border border-border object-contain"
               />
+            ))}
+          </div>
+        )}
+        {files && files.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {files.map((file, i) => (
+              <span key={`${file.filename}-${i}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs" title={file.path}>
+                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="max-w-[200px] truncate">{file.filename}</span>
+                {typeof file.size === "number" && (
+                  <span className="text-[10px] text-muted-foreground/60 tabular-nums">{formatBytes(file.size)}</span>
+                )}
+              </span>
             ))}
           </div>
         )}

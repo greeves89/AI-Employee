@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.90] — 2026-07-06
+
+### Changed
+- **Chat: Dateien werden angehängt statt sofort gesendet (wie Bild-Paste).** Drag & Drop und Büroklammer lösen keinen Sofort-Upload mit Auto-Nachricht mehr aus: Bilddateien landen als Thumbnail, alle anderen Dateien als Chips (Name + Größe + Entfernen-Button) am Eingabefeld — genau wie per Strg+V eingefügte Bilder. Man kann Text dazu schreiben; erst beim Senden werden die Dateien nach `/workspace` hochgeladen und gehen als EINE Nachricht mit Datei-Chips in der Bubble raus (der Agent bekommt den Text plus Datei-Hinweis). Schlägt der Upload fehl, bleiben Text und Anhänge erhalten. (`frontend/src/components/agents/chat.tsx`)
+
 ## [1.99.89] — 2026-07-06
 
 ### Added
