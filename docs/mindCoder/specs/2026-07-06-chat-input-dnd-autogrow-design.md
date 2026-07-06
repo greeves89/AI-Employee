@@ -29,15 +29,31 @@ User-Nachrichten kollabieren in der Chat-Bubble, weil der Content ohne
 Die Drag-Handler (`onDragOver`/`onDragLeave`/`onDrop`) wandern vom
 Nachrichten-Scrollbereich auf den äußeren Chat-Container, der auch die
 Input-Area umfasst. Das bestehende Overlay („Dateien hier ablegen zum
-Hochladen") legt sich damit über den ganzen Chat inklusive Eingabefeld.
+Anhängen") legt sich damit über den ganzen Chat inklusive Eingabefeld.
 
 `onDragLeave` nutzt einen Drag-Depth-Zähler (enter/leave-Zählung) statt des
 bisherigen `currentTarget === target`-Vergleichs, damit das Overlay beim
 Ziehen über Kind-Elemente (Textarea, Buttons) nicht flackert.
 
-Das Drop-Verhalten bleibt unverändert: sofortiger Upload nach `/workspace`
-über den bestehenden `handleFileUpload` + automatische Chat-Nachricht an den
-Agenten. Kein Pending-Attachment-Modell (bewusste User-Entscheidung).
+**Pending-Attachment-Modell (Nachschärfung durch User nach erster
+Iteration, v1.99.90):** Ein Drop löst KEINEN sofortigen Upload und keine
+automatische Chat-Nachricht mehr aus. Gedroppte Dateien verhalten sich wie
+per Strg+V eingefügte Bilder:
+
+- Bilddateien (`image/*`, max. 5 MB) landen als Thumbnail in
+  `pendingImages` — identisch zum Paste-Pfad.
+- Alle anderen Dateien landen als Chips (Icon + Name + Größe +
+  Entfernen-Button) in `pendingFiles` über dem Eingabefeld; Duplikate
+  (gleicher Name + Größe) werden ignoriert.
+- Der Büroklammer-Button füttert denselben Pfad (ein konsistentes
+  Verhalten statt zwei verschiedener).
+- Erst beim Senden werden die `pendingFiles` nach `/workspace` hochgeladen;
+  schlägt der Upload fehl, bleiben Text und Chips erhalten (Error-Zeile im
+  Chat, kein Teilversand). Die WS-Nachricht an den Agenten erhält den
+  User-Text plus Hinweis
+  `[Angehängte Dateien, bereits in /workspace hochgeladen: …]`; die
+  User-Bubble zeigt den reinen Text plus Datei-Chips (`files` auf
+  `ChatMessage`).
 
 ### 2. Textarea Auto-Grow
 
@@ -56,18 +72,20 @@ erscheinen.
 ## Nicht im Scope
 
 - Kein Backend-Change (Upload-Endpoint, WS-Protokoll unverändert).
-- Kein Pending-Attachment-Modell (Chips vor dem Senden).
-- Keine Änderung der automatischen Upload-Nachricht an den Agenten.
+- Keine Persistenz der Datei-Chips über einen Reload hinaus (nach Reload
+  zeigt die Historie den an den Agenten gesendeten Text inkl.
+  Datei-Hinweis).
 
 ## Fehlerbehandlung
 
-Unverändert: Upload-Fehler erscheinen wie bisher als Error-Message im Chat
-(`handleFileUpload` catch-Zweig).
+Upload-Fehler beim Senden erscheinen als Error-Message im Chat; Text und
+angehängte Dateien bleiben im Eingabebereich erhalten (kein Teilversand).
 
 ## Testen
 
-- Manuell: Datei über Eingabefeld droppen → Overlay erscheint, Upload läuft,
-  Agent-Nachricht kommt.
+- Manuell: Datei über Eingabefeld droppen → Overlay erscheint, Datei-Chip
+  am Eingabefeld; Text dazu tippen, Senden → Upload + EINE Nachricht mit
+  Chips in der Bubble.
 - Manuell: Mehrzeilige Eingabe via Shift+Enter → Textarea wächst bis 8
   Zeilen, danach interner Scroll; nach Senden zurück auf eine Zeile.
 - Manuell: Gesendete mehrzeilige Nachricht zeigt Umbrüche in der Bubble.
