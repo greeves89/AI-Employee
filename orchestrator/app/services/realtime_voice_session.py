@@ -390,6 +390,10 @@ class RealtimeVoiceSession:
         cfg = (agent.config if agent else {}) or {}
         agent_role = cfg.get("role") or ""  # role lives in config, not on the ORM row
         self._container_id = (agent.container_id if agent else "") or ""  # for workspace file scan
+        # Baseline the transfer dir so files from PREVIOUS tasks aren't dumped as this
+        # session's deliverables — only files produced DURING this call surface later.
+        if self._container_id:
+            await self._baseline_transfer_files()
 
         # Resuming an existing chat session by voice: load the recent turns so the
         # greeting can pick up where the conversation left off (text OR voice).
@@ -843,6 +847,41 @@ class RealtimeVoiceSession:
                 "path": str(edata.get("path") or ""),  # for the download link
             }})
 
+    def _collect_transfer_files(self) -> list[dict]:
+        """List files currently in /workspace/transfer (top + one subdir level)."""
+        from app.core.file_manager import FileManager
+        from app.services.docker_service import DockerService
+        fm = FileManager(DockerService())
+        found: list[dict] = []
+        try:
+            top = fm.list_directory(self._container_id, "/workspace/transfer")
+        except Exception:  # noqa: BLE001 — dir may not exist yet
+            return found
+        for e in top:
+            if e.get("type") == "file" and e.get("size", 0) > 0:
+                found.append(e)
+            elif e.get("type") == "directory":
+                try:
+                    for sub in fm.list_directory(self._container_id, e["path"]):
+                        if sub.get("type") == "file" and sub.get("size", 0) > 0:
+                            found.append(sub)
+                except Exception:  # noqa: BLE001
+                    continue
+        return found
+
+    async def _baseline_transfer_files(self) -> None:
+        """Record the transfer dir's PRE-EXISTING files so they are never surfaced as
+        this voice call's output (fixes: old deliverables from earlier tasks flooding
+        the UI). Best-effort — a failure just means nothing is baselined."""
+        try:
+            entries = await asyncio.to_thread(self._collect_transfer_files)
+            for e in entries:
+                p = e.get("path")
+                if p:
+                    self._shown_files.add(p)
+        except Exception:  # noqa: BLE001
+            logger.debug("transfer baseline failed agent=%s", self.agent_id, exc_info=True)
+
     async def _surface_new_files(self) -> None:
         """Auto-show files the agent produced in /workspace/transfer as clickable cards.
 
@@ -855,29 +894,7 @@ class RealtimeVoiceSession:
         if self._closed or not self._container_id:
             return
         try:
-            from app.core.file_manager import FileManager
-            from app.services.docker_service import DockerService
-            fm = FileManager(DockerService())
-
-            def _collect() -> list[dict]:
-                found: list[dict] = []
-                try:
-                    top = fm.list_directory(self._container_id, "/workspace/transfer")
-                except Exception:  # noqa: BLE001 — dir may not exist yet
-                    return found
-                for e in top:
-                    if e.get("type") == "file" and e.get("size", 0) > 0:
-                        found.append(e)
-                    elif e.get("type") == "directory":
-                        try:
-                            for sub in fm.list_directory(self._container_id, e["path"]):
-                                if sub.get("type") == "file" and sub.get("size", 0) > 0:
-                                    found.append(sub)
-                        except Exception:  # noqa: BLE001
-                            continue
-                return found
-
-            entries = await asyncio.to_thread(_collect)
+            entries = await asyncio.to_thread(self._collect_transfer_files)
         except Exception:  # noqa: BLE001
             return
         # Newest first, only files we have not shown yet, capped to avoid flooding.

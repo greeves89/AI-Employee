@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.99] — 2026-07-06
+
+### Fixed
+- **Azure-Realtime-Voice: Ton kam nach der Begrüßung nicht mehr.** Der Wrapper verwirft bei Barge-in (`interrupted`) allen Ton bis zum nächsten `content_start` — den sendet Nova Sonic, die Azure-Engine bisher nicht. Nach dem ersten Reinsprechen blieb `_drop_audio` dauerhaft an → nur die Begrüßung war hörbar. Neu sendet `AzureRealtimeSession` bei jedem `response.created` ein `content_start`. (`voice_providers/realtime_azure_openai.py`)
+- **Voice-Delegation zeigte fremde Dateien / das echte Deliverable fehlte.** `_surface_new_files` dumpte beim ersten Task ALLE angesammelten Dateien aus `/workspace/transfer` (aus früheren Tasks). Neu wird der Transfer-Ordner beim Session-Start als Baseline gemerkt → nur während der Session neu erzeugte Dateien (z.B. das erzeugte PDF) werden angezeigt. (`realtime_voice_session.py`)
+
 ## [1.99.98] — 2026-07-06
 
 ### Fixed

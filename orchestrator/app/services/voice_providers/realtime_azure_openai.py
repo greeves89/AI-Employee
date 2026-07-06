@@ -194,8 +194,14 @@ class AzureRealtimeSession:
             await self._safe_emit("done", {})
 
     async def _dispatch(self, kind: str, evt: dict) -> None:
+        # A new assistant response begins → signal a fresh turn so the wrapper clears
+        # its barge-in ``_drop_audio`` flag (set on the previous ``interrupted``). Without
+        # this, ALL audio after the first user barge-in would be dropped (only the
+        # greeting is heard). Mirrors Nova Sonic's ``content_start``.
+        if kind == "response.created":
+            await self._safe_emit("content_start", {"role": "ASSISTANT", "type": "AUDIO"})
         # Spoken audio out (24 kHz pcm16, base64 in "delta").
-        if kind in ("response.output_audio.delta", "response.audio.delta"):
+        elif kind in ("response.output_audio.delta", "response.audio.delta"):
             pcm = base64.b64decode(evt.get("delta", "") or "")
             if pcm:
                 await self._safe_emit("audio", {"pcm": pcm})
