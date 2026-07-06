@@ -138,6 +138,10 @@ async def update_policy(
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
 
+    # Must be allowed to manage the EXISTING policy (else a user could re-target a
+    # foreign/global policy to their own agent and pass only the post-update check).
+    await _assert_manage_access(user, db, policy.agent_id if policy.scope == "agent" else None)
+
     changes = body.model_dump(exclude_unset=True)
     next_scope = changes.get("scope", policy.scope)
     next_agent_id = changes.get("agent_id", policy.agent_id)

@@ -252,9 +252,23 @@ async def get_cost_attribution(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Top N agents by total cost with token breakdowns."""
+    """Top N agents by total cost with token breakdowns — scoped to the caller's own
+    agents (admins see the whole platform). Non-admins must not see other tenants' cost."""
     from app.models.agent import Agent
+    from app.core.ownership import visible_agent_ids
 
+    vids = await visible_agent_ids(user, db)
+    aids = list(vids) if vids is not None else None
+    if aids is not None and not aids:
+        # Fresh user with no agents → nothing to attribute.
+        return CostAttributionResponse(
+            top_agents=[], platform_total_usd=0.0,
+            platform_total_input_tokens=0, platform_total_output_tokens=0,
+        )
+
+    top_where = [Task.agent_id.isnot(None), Task.cost_usd.isnot(None)]
+    if aids is not None:
+        top_where.append(Task.agent_id.in_(aids))
     result = await db.execute(
         select(
             Task.agent_id,
@@ -263,7 +277,7 @@ async def get_cost_attribution(
             func.sum(Task.output_tokens).label("total_output"),
             func.count(Task.id).label("task_count"),
         )
-        .where(Task.agent_id.isnot(None), Task.cost_usd.isnot(None))
+        .where(*top_where)
         .group_by(Task.agent_id)
         .order_by(func.sum(Task.cost_usd).desc())
         .limit(limit)
@@ -286,12 +300,15 @@ async def get_cost_attribution(
         for r in rows
     ]
 
+    totals_where = [Task.cost_usd.isnot(None)]
+    if aids is not None:
+        totals_where.append(Task.agent_id.in_(aids))
     totals = await db.execute(
         select(
             func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
             func.coalesce(func.sum(Task.input_tokens), 0).label("total_input"),
             func.coalesce(func.sum(Task.output_tokens), 0).label("total_output"),
-        ).where(Task.cost_usd.isnot(None))
+        ).where(*totals_where)
     )
     t = totals.one()
 

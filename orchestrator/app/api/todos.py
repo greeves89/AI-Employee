@@ -50,6 +50,20 @@ def _count_by_status(todos: list[AgentTodo]) -> dict:
 # --- UI-facing endpoints (require user auth) ---
 
 
+async def _assert_agent_visible(agent_id: str, user, db) -> None:
+    """404 unless the caller owns/shares the agent (agent principal → only itself,
+    admin → any). TODOs can be fed back into agent context, so foreign read+write denied."""
+    from app.dependencies import is_agent_principal
+    from app.core.ownership import visible_agent_ids
+    if is_agent_principal(user):
+        if user.id != agent_id:
+            raise HTTPException(status_code=404, detail="Todo not found")
+        return
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+
 @router.get("/agents/{agent_id}", response_model=TodoListResponse)
 async def list_todos_ui(
     agent_id: str,
@@ -60,6 +74,7 @@ async def list_todos_ui(
     db: AsyncSession = Depends(get_db),
 ):
     """List TODOs for an agent (frontend Todo tab)."""
+    await _assert_agent_visible(agent_id, user, db)
     query = select(AgentTodo).where(AgentTodo.agent_id == agent_id)
     if status:
         query = query.where(AgentTodo.status == TodoStatus(status))
@@ -89,6 +104,7 @@ async def create_todo_ui(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a TODO from the UI."""
+    await _assert_agent_visible(agent_id, user, db)
     todo = AgentTodo(
         agent_id=agent_id,
         task_id=body.task_id,
@@ -117,6 +133,7 @@ async def update_todo(
     todo = result.scalar_one_or_none()
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
+    await _assert_agent_visible(todo.agent_id, user, db)
 
     if body.title is not None:
         todo.title = body.title
@@ -153,6 +170,7 @@ async def delete_todo(
     todo = result.scalar_one_or_none()
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
+    await _assert_agent_visible(todo.agent_id, user, db)
     await db.delete(todo)
     await db.commit()
     return {"deleted": todo_id}

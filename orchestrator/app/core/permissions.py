@@ -7,7 +7,7 @@ Permissions dict shape:
   "llm_providers": list[str] | None,   # None = all
   "mount_labels": list[str] | None,    # None = inherit user_mount_access; listed labels are GRANTED to the group (union with per-user grants)
   "ai_account_ids": list[int] | None,  # listed = the accounts this group may use. NOTE: for AI accounts the gate is DEFAULT-DENY (None = none) — see _allowed_account_ids
-  "secret_ids": list[int] | None,      # None = all secrets; listed secrets are the ones this group may use
+  "secret_ids": list[int] | None,      # listed = the secrets this group may use. NOTE: DEFAULT-DENY (None = none) — see secrets.py::_assert_secret_allowed
   "mcp_server_ids": list[int] | None,  # None = all MCP servers; listed servers are the ones this group's agents may use
   "url_host_patterns": list[str] | None,
   "menu_paths": list[str] | None       # None = all
@@ -124,11 +124,10 @@ def can_use_template(permissions: dict, template_id: int | None) -> bool:
 # ``app.api.ai_accounts._allowed_account_ids(user, db)`` at every AI-account gate instead.
 
 
-def can_use_secret(permissions: dict, secret_id: int | None) -> bool:
-    if secret_id is None:
-        return True
-    allowed = permissions.get("secret_ids")
-    return allowed is None or secret_id in allowed
+# NOTE: Secret authorization is DEFAULT-DENY and admin-aware — do NOT reintroduce a
+# permissions-dict-only helper (it can't tell admin from member and would treat the
+# default secret_ids=None as "all", re-opening credential access). Gate via
+# secrets.py::_assert_secret_allowed / list_secrets (admin bypass, None = none) instead.
 
 
 def can_use_llm_provider(permissions: dict, provider_type: str | None) -> bool:

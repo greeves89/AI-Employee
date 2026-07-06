@@ -152,21 +152,26 @@ async def task_self_rate(
 async def rate_task(
     task_id: str,
     body: TaskRatingCreate,
-    request: Request,
+    user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit a rating for a completed task. Accepts auth cookie or X-Internal header."""
-    # Support internal calls from Telegram bot (no cookie)
-    is_internal = request.headers.get("X-Internal") == "telegram-bot"
-    if is_internal:
-        user_id = "telegram"
-    else:
-        user = await require_auth(request, db)
-        user_id = user.id
+    """Submit a rating for a completed task (own agent only; admins any).
+
+    The Telegram bridge calls this with a real admin Bearer JWT (see _bridge_auth),
+    so it resolves to an admin here and bypasses the ownership check naturally — no
+    spoofable X-Internal header path anymore.
+    """
+    user_id = user.id
 
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Ownership: only a task of the caller's own agent (admin bypasses) — otherwise the
+    # comment-driven follow-up below would inject an attacker task onto a foreign agent.
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and task.agent_id not in vids:
         raise HTTPException(status_code=404, detail="Task not found")
 
     if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
@@ -366,6 +371,21 @@ async def record_skill_usage(
     }
 
 
+async def _assert_agent_visible(agent_id: str, user, db) -> None:
+    """404 unless the caller owns/shares the agent (agent principal → only itself,
+    admin → any). Ratings + improvement reports contain free-text comments and cost
+    trends, so a foreign agent's report must not be readable."""
+    from app.dependencies import is_agent_principal
+    from app.core.ownership import visible_agent_ids
+    if is_agent_principal(user):
+        if user.id != agent_id:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.get("/agents/{agent_id}/ratings", response_model=AgentRatingsResponse)
 async def get_agent_ratings(
     agent_id: str,
@@ -379,6 +399,7 @@ async def get_agent_ratings(
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     if not agent_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Agent not found")
+    await _assert_agent_visible(agent_id, user, db)
 
     # Total count
     count_result = await db.execute(
@@ -418,6 +439,7 @@ async def get_improvement_report(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate an improvement report for an agent based on ratings and task history."""
+    await _assert_agent_visible(agent_id, user, db)
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = agent_result.scalar_one_or_none()
     if not agent:

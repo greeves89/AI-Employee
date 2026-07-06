@@ -663,6 +663,25 @@ async def list_agent_memories(
     }
 
 
+async def _assert_agent_access(agent_id: str, user, db) -> None:
+    """Ownership guard mirroring list_agent_memories: an agent principal may only touch
+    its own agent_id; a user must own the agent (admin bypasses). Memories can hold
+    sensitive learnings/credentials, so read+write of a foreign agent's memory is denied."""
+    if not hasattr(user, "role"):
+        return
+    from app.models.user import UserRole
+    from app.models.agent import Agent
+    if is_agent_principal(user):
+        if user.id != agent_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        return
+    if user.role == UserRole.ADMIN:
+        return
+    agent_obj = await db.get(Agent, agent_id)
+    if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 @router.put("/{memory_id}")
 async def update_memory(
     memory_id: int,
@@ -675,6 +694,7 @@ async def update_memory(
     memory = result.scalar_one_or_none()
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+    await _assert_agent_access(memory.agent_id, user, db)
 
     if body.content is not None:
         memory.content = body.content
@@ -695,6 +715,7 @@ async def delete_memory(memory_id: int, user=Depends(require_auth), db: AsyncSes
     memory = result.scalar_one_or_none()
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+    await _assert_agent_access(memory.agent_id, user, db)
     await db.delete(memory)
     await db.commit()
     return {"deleted": memory_id}
@@ -714,6 +735,7 @@ async def get_room_summary(
     Cached in Redis for 1 hour. Falls back to a deterministic summary
     if no Anthropic API key is configured. (Issue #24 Should-Have)
     """
+    await _assert_agent_access(agent_id, user, db)
     from app.services.memory_compressor import MemoryCompressor
     compressor = MemoryCompressor(db, redis)
     return await compressor.get_or_build(agent_id, room, force=force)

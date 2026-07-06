@@ -222,6 +222,15 @@ async def create_rule(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.audit_log import AuditLog, AuditEventType
+    # Ownership: an agent-scoped rule requires owning that agent; a GLOBAL rule
+    # (agent_id=None, affects every agent) is admin-only.
+    from app.core.ownership import visible_agent_ids, is_admin
+    if body.agent_id:
+        vids = await visible_agent_ids(user, db)
+        if vids is not None and body.agent_id not in vids:
+            raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
+    elif not is_admin(user):
+        raise HTTPException(status_code=403, detail="Nur Admins können globale Regeln anlegen.")
     rule = ApprovalRule(
         name=body.name,
         description=body.description,
@@ -258,7 +267,9 @@ async def update_rule(
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        if rule.created_by and rule.created_by != str(user.id):
+        # Non-admins may only touch rules they created; system/global rules
+        # (created_by is None) are admin-only.
+        if rule.created_by != str(user.id):
             raise HTTPException(status_code=403, detail="Access denied")
     changes = body.model_dump(exclude_unset=True)
     for field, value in changes.items():
@@ -289,7 +300,9 @@ async def delete_rule(
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        if rule.created_by and rule.created_by != str(user.id):
+        # Non-admins may only touch rules they created; system/global rules
+        # (created_by is None) are admin-only.
+        if rule.created_by != str(user.id):
             raise HTTPException(status_code=403, detail="Access denied")
     rule_name = rule.name
     rule_agent = rule.agent_id or "global"
@@ -441,8 +454,11 @@ async def add_preset_rule(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a rule to a level preset."""
+    """Add a rule to a level preset (admin-only — presets are global)."""
     from app.models.audit_log import AuditLog, AuditEventType
+    from app.core.ownership import is_admin
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Nur Admins können globale Autonomie-Presets ändern.")
     if level not in LEVEL_META:
         raise HTTPException(status_code=400, detail=f"Invalid level: {level}. Must be l1-l4.")
     rule = AutonomyPresetRule(
@@ -475,6 +491,9 @@ async def update_preset_rule(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.ownership import is_admin
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Nur Admins können globale Autonomie-Presets ändern.")
     rule = await db.scalar(
         select(AutonomyPresetRule).where(
             AutonomyPresetRule.id == rule_id, AutonomyPresetRule.level == level
@@ -497,6 +516,9 @@ async def delete_preset_rule(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.audit_log import AuditLog, AuditEventType
+    from app.core.ownership import is_admin
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Nur Admins können globale Autonomie-Presets ändern.")
     rule = await db.scalar(
         select(AutonomyPresetRule).where(
             AutonomyPresetRule.id == rule_id, AutonomyPresetRule.level == level

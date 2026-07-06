@@ -230,12 +230,12 @@ async def _handle_rating_callback(query, data: str) -> None:
             await query.edit_message_text("❌ Rating muss zwischen 1-5 sein.")
             return
 
-        # Save rating via internal API
+        # Save rating via internal API (authed_client attaches the admin Bearer JWT;
+        # no spoofable X-Internal header needed — the endpoint authenticates the JWT).
         async with await authed_client() as client:
             resp = await client.post(
                 f"{API_BASE}/ratings/tasks/{task_id}/rate",
                 json={"rating": rating},
-                headers={"X-Internal": "telegram-bot"},
                 timeout=10.0,
             )
 

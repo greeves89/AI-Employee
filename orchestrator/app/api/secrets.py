@@ -115,16 +115,16 @@ async def list_secrets(
     result = await db.execute(select(AgentSecret).order_by(AgentSecret.name))
     secrets = result.scalars().all()
 
-    # Non-admins only see the secrets their group/role allows
-    # (custom_role.permissions.secret_ids; None = all).
+    # Default-deny: a non-admin sees ONLY secrets explicitly released to them via role
+    # (custom_role.permissions.secret_ids). None = none (not "all") — secrets are
+    # credential-class, mirrors the AI-account default-deny.
     from app.models.user import UserRole
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         from app.core.permissions import get_effective_permissions
         perms = await get_effective_permissions(user, db)
         allowed = perms.get("secret_ids")
-        if allowed is not None:
-            allowed_set = set(allowed)
-            secrets = [s for s in secrets if s.id in allowed_set]
+        allowed_set = set(allowed) if allowed is not None else set()
+        secrets = [s for s in secrets if s.id in allowed_set]
     return {"secrets": [_serialize(s) for s in secrets]}
 
 
@@ -148,6 +148,32 @@ async def create_secret(
     return _serialize(secret)
 
 
+async def _assert_agent_owned(agent_id: str, user, db) -> None:
+    """404 unless the caller owns/shares the agent (admin bypass). Prevents attaching/
+    reading/stripping secrets on a foreign tenant's agent."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+async def _assert_secret_allowed(secret_id: int, user, db) -> None:
+    """403 unless the caller may use this secret. Default-deny: a non-admin needs an
+    explicit role allowlist (secret_ids); None = none. Admin bypasses."""
+    from app.models.user import UserRole
+    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+        return
+    from app.core.permissions import get_effective_permissions
+    perms = await get_effective_permissions(user, db)
+    allowed = perms.get("secret_ids")
+    allowed_set = set(allowed) if allowed is not None else set()
+    if secret_id not in allowed_set:
+        raise HTTPException(
+            status_code=403,
+            detail="Dieser Key/Secret ist für deine Gruppe nicht freigegeben.",
+        )
+
+
 @router.patch("/{secret_id}")
 async def update_secret(
     secret_id: int,
@@ -159,6 +185,7 @@ async def update_secret(
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
+    await _assert_secret_allowed(secret_id, user, db)
 
     should_refresh = body.value is not None or body.is_active is not None
     if body.name is not None:
@@ -188,6 +215,7 @@ async def delete_secret(
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
+    await _assert_secret_allowed(secret_id, user, db)
     result = await db.execute(
         select(AgentSecretAssignment.agent_id).where(
             AgentSecretAssignment.secret_id == secret_id
@@ -210,6 +238,7 @@ async def get_agent_secrets(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    await _assert_agent_owned(agent_id, user, db)
     result = await db.execute(
         select(AgentSecretAssignment).where(AgentSecretAssignment.agent_id == agent_id)
     )
@@ -236,16 +265,9 @@ async def assign_secret(
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
 
-    # Non-admins may only assign secrets their group/role allows.
-    from app.models.user import UserRole
-    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        from app.core.permissions import get_effective_permissions, can_use_secret
-        perms = await get_effective_permissions(user, db)
-        if not can_use_secret(perms, secret_id):
-            raise HTTPException(
-                status_code=403,
-                detail="Dieser Key/Secret ist für deine Gruppe nicht freigegeben.",
-            )
+    # The caller must own the target agent AND be allowed to use the secret (admin bypasses both).
+    await _assert_agent_owned(agent_id, user, db)
+    await _assert_secret_allowed(secret_id, user, db)
 
     existing = await db.execute(
         select(AgentSecretAssignment).where(
@@ -271,6 +293,8 @@ async def unassign_secret(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
+    await _assert_agent_owned(agent_id, user, db)
+    await _assert_secret_allowed(secret_id, user, db)
     await db.execute(
         delete(AgentSecretAssignment).where(
             AgentSecretAssignment.agent_id == agent_id,

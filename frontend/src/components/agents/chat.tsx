@@ -774,8 +774,11 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
         return;
       }
       setIsUploading(false);
-      const fileNames = files.map((f) => f.name).join(", ");
-      agentText = `${text ? `${text}\n\n` : ""}[Angehängte Dateien, bereits in /workspace hochgeladen: ${fileNames}]`;
+      const filePaths = files.map((f) => `/workspace/${f.name}`).join(", ");
+      // Explicit read-instruction (not a passive note) — otherwise the agent treats the
+      // filename as mere context and answers without opening the file (the reported bug:
+      // "PDF im Chat nicht sichtbar"). Full paths + a clear order to read first.
+      agentText = `${text ? `${text}\n\n` : ""}[Angehängte Datei(en) im Workspace: ${filePaths}. WICHTIG: Öffne und lies die Datei(en) ZUERST selbst mit deinem Read-Tool (PDFs und Bilder werden unterstützt; große Textdateien ggf. mit bash/grep) und antworte dann auf Basis des TATSÄCHLICHEN Inhalts — rate NICHT aus dem Dateinamen.]`;
     }
 
     const msgId = `user-${Date.now()}`;

@@ -530,6 +530,15 @@ async def rollback_skill(
 
 # --- Assignment ---
 
+async def _assert_agent_owned(agent_id: str, user, db) -> None:
+    """404 unless the caller owns/shares the agent (admin bypass). Skill assignment
+    pushes files into the agent's container, so it must be tenant-scoped."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.post("/marketplace/{skill_id}/assign")
 async def assign_skill(
     skill_id: int,
@@ -542,6 +551,7 @@ async def assign_skill(
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
+    await _assert_agent_owned(body.agent_id, user, db)
 
     existing = (await db.execute(
         select(AgentSkillAssignment)
@@ -596,6 +606,7 @@ async def unassign_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Unassign a skill from an agent."""
+    await _assert_agent_owned(agent_id, user, db)
     await db.execute(
         delete(AgentSkillAssignment)
         .where(AgentSkillAssignment.agent_id == agent_id)
@@ -989,6 +1000,7 @@ async def get_agent_skills(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all skills assigned to a specific agent."""
+    await _assert_agent_owned(agent_id, user, db)
     result = await db.execute(
         select(Skill)
         .join(AgentSkillAssignment, AgentSkillAssignment.skill_id == Skill.id)

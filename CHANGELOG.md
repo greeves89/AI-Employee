@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.93] — 2026-07-06
+
+### Security
+- **Multi-Tenant-Isolation Teil 2 — komplette Router-Sweep (3 Audit-Runden + Verifikation).** Nach v1.99.92 wurden ALLE ~40 Router geprüft; die restlichen tenant-übergreifenden Lecks/IDORs geschlossen. Admin behält überall vollen Zugriff (`visible_agent_ids`):
+  - **tasks.py** `/cost-attribution` (Dashboard „Cost Attribution / Platform Total"), **event_triggers.py** (list/get/create/update/delete/toggle/test — es konnten auto-feuernde Prompts auf fremde Agenten gepflanzt werden), **memory.py** (update/delete/room-summary), **ratings.py** (`rate_task` Cross-Tenant-Task-Injection, agent-ratings, improvement-report), **todos.py** (list/create/update/delete).
+  - **secrets.py** (update/delete/get/assign/unassign + **Secrets jetzt Default-Deny** analog AI-Accounts), **skill_marketplace.py** (assign/unassign/get_agent_skills).
+  - **agents.py** team/messages+delegations+conversation, **url_allowlist.py** (8 Stellen inkl. eines vorher **authlosen** Endpoints + fail-open-Wipe), **command_policies.py** (update-Hijack), **approval_rules.py** (create/update/delete + globale Autonomie-Presets nun admin-only), **approvals.py** (cancel), **webhooks.py** (settings/token/events — gaben `webhook_token` preis).
+  - Verifikations-Scan behob 2 Blocker: spoofbarer `X-Internal`-Header in `rate_task` entfernt (Telegram nutzt echten Admin-JWT); `get_agent_allowlist` Dual-Auth (Agent-HMAC vs. User-Session) statt fail-open. `can_use_ai_account`/`can_use_secret` als Landminen entfernt.
+
+### Fixed
+- **Datei-Anhänge im Chat werden jetzt tatsächlich gelesen (PDF u.a.).** Der Agent bekam beim Anhängen nur eine passive Notiz („Datei in /workspace") und riet aus dem Dateinamen. Neu: explizite Anweisung mit vollem Pfad, die Datei ZUERST mit dem Read-Tool zu öffnen (PDFs/Bilder unterstützt). (`frontend/src/components/agents/chat.tsx`)
+- **Alembic-Branch bereinigt.** `#300` (gpt-5.5-Backfill, `515d03f814a0`) war vom falschen Parent abgezweigt → zwei Heads, `alembic upgrade head` mehrdeutig. Merge-Migration `0ea61527a17e` vereint sie wieder zu einem Single-Head (Pi + SKBS).
+
 ## [1.99.92] — 2026-07-06
 
 ### Security

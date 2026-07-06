@@ -36,6 +36,15 @@ class WebhookTrigger(BaseModel):
 
 # --- Per-agent webhook settings ---
 
+async def _assert_agent_owned(agent_id: str, user, db) -> None:
+    """404 unless the caller owns/shares the agent (admin bypass). Defense-in-depth
+    beyond RLS — these endpoints disclose/rotate the secret webhook_token."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.get("/agents/{agent_id}/settings")
 async def get_webhook_settings(
     agent_id: str,
@@ -43,6 +52,7 @@ async def get_webhook_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """Get webhook settings for an agent."""
+    await _assert_agent_owned(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -60,6 +70,7 @@ async def update_webhook_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """Enable or disable webhook access for an agent. Generates a token on first enable."""
+    await _assert_agent_owned(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -84,6 +95,7 @@ async def regenerate_webhook_token(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a new webhook token for an agent."""
+    await _assert_agent_owned(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -427,6 +439,7 @@ async def list_webhook_events(
     db: AsyncSession = Depends(get_db),
 ):
     """List webhook events for an agent."""
+    await _assert_agent_owned(agent_id, user, db)
     query = (
         select(WebhookEvent)
         .where(WebhookEvent.agent_id == agent_id)

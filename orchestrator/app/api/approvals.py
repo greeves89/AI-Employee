@@ -442,6 +442,9 @@ async def cancel_approval_request(
 
     if not approval:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    # Ownership: only the agent's owner/admin may cancel its pending approval
+    # (mirrors approve_request/deny_request).
+    await require_agent_access(approval.agent_id, user, db)
 
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)

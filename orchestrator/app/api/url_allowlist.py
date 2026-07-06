@@ -11,7 +11,30 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, require_auth_or_agent
+
+
+async def _assert_agent_owned(agent_id: str, user, db) -> None:
+    """404 unless caller owns/shares the agent (agent principal → itself, admin → any).
+    The allowlist is fail-open when empty, so unauthorized clear/add/read must be blocked."""
+    from app.core.ownership import visible_agent_ids
+    from app.dependencies import is_agent_principal
+    if is_agent_principal(user):
+        if user.id != agent_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        return
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+async def _assert_template_owned(template, user, db) -> None:
+    """404 unless caller created the custom template (admin bypass)."""
+    from app.core.ownership import is_admin
+    if is_admin(user):
+        return
+    if template.created_by and template.created_by != str(getattr(user, "id", "")):
+        raise HTTPException(status_code=404, detail="Template not found")
 from app.models.url_allowlist import (
     AgentUrlAllowlist,
     UrlAllowlistTemplate,
@@ -260,6 +283,7 @@ async def delete_template(
         raise HTTPException(status_code=404, detail="Template not found")
     if template.is_builtin:
         raise HTTPException(status_code=403, detail="Builtin templates cannot be deleted")
+    await _assert_template_owned(template, user, db)
     await db.delete(template)
     await db.commit()
     return {"status": "deleted"}
@@ -280,6 +304,7 @@ async def add_template_entry(
     )
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    await _assert_template_owned(template, user, db)
     entry = UrlAllowlistTemplateEntry(
         template_id=template_id,
         url_pattern=body.url_pattern,
@@ -305,6 +330,12 @@ async def delete_template_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a URL pattern from a template."""
+    template = await db.scalar(
+        select(UrlAllowlistTemplate).where(UrlAllowlistTemplate.id == template_id)
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await _assert_template_owned(template, user, db)
     entry = await db.scalar(
         select(UrlAllowlistTemplateEntry).where(
             UrlAllowlistTemplateEntry.id == entry_id,
@@ -323,9 +354,24 @@ async def delete_template_entry(
 @router.get("/agent/{agent_id}")
 async def get_agent_allowlist(
     agent_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all URL allowlist entries for an agent. No auth required (agents call this)."""
+    """Get all URL allowlist entries for an agent.
+
+    Auth: the agent runtime itself via its HMAC ``X-Agent-Token`` (it polls this to
+    enforce its own allowlist — must keep working, else the allowlist fails open), OR a
+    user session that owns the agent (admin bypass). No longer anonymous.
+    """
+    import hmac
+    from app.dependencies import make_agent_token, require_auth
+    agent_token = request.headers.get("X-Agent-Token", "")
+    if agent_token:
+        if not hmac.compare_digest(agent_token, make_agent_token(agent_id)):
+            raise HTTPException(status_code=403, detail="Invalid agent token")
+    else:
+        user = await require_auth(request, db)
+        await _assert_agent_owned(agent_id, user, db)
     result = await db.execute(
         select(AgentUrlAllowlist)
         .where(AgentUrlAllowlist.agent_id == agent_id)
@@ -353,6 +399,7 @@ async def apply_template_to_agent(
     """
     from app.models.audit_log import AuditLog, AuditEventType
 
+    await _assert_agent_owned(agent_id, user, db)
     template = await db.scalar(
         select(UrlAllowlistTemplate).where(UrlAllowlistTemplate.id == body.template_id)
     )
@@ -405,6 +452,7 @@ async def add_agent_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Manually add a URL pattern to an agent's allowlist."""
+    await _assert_agent_owned(agent_id, user, db)
     entry = AgentUrlAllowlist(
         agent_id=agent_id,
         url_pattern=body.url_pattern,
@@ -426,6 +474,7 @@ async def delete_agent_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a URL pattern from an agent's allowlist."""
+    await _assert_agent_owned(agent_id, user, db)
     entry = await db.scalar(
         select(AgentUrlAllowlist).where(
             AgentUrlAllowlist.id == entry_id,
@@ -446,6 +495,7 @@ async def clear_agent_allowlist(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove all URL allowlist entries for an agent (unrestrict)."""
+    await _assert_agent_owned(agent_id, user, db)
     await db.execute(
         delete(AgentUrlAllowlist).where(AgentUrlAllowlist.agent_id == agent_id)
     )

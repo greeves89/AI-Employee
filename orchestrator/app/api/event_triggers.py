@@ -12,6 +12,16 @@ from app.models.event_trigger import EventTrigger
 router = APIRouter(prefix="/event-triggers", tags=["event-triggers"])
 
 
+async def _guard_trigger(trigger, user, db) -> None:
+    """404 unless the caller owns the trigger's agent (admin bypasses). Triggers carry
+    an attacker-controllable prompt_template that auto-fires on the target agent, so
+    read AND write must be tenant-scoped."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and trigger.agent_id not in vids:
+        raise HTTPException(status_code=404, detail="Event trigger not found")
+
+
 # --- Pydantic schemas ---
 
 class EventTriggerCreate(BaseModel):
@@ -67,10 +77,18 @@ async def list_triggers(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List event triggers with optional filtering."""
+    """List event triggers with optional filtering — scoped to the caller's agents."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
     query = select(EventTrigger)
     if agent_id:
+        if vids is not None and agent_id not in vids:
+            raise HTTPException(status_code=404, detail="Event trigger not found")
         query = query.where(EventTrigger.agent_id == agent_id)
+    elif vids is not None:
+        if not vids:
+            return {"triggers": [], "total": 0}
+        query = query.where(EventTrigger.agent_id.in_(list(vids)))
     if enabled is not None:
         query = query.where(EventTrigger.enabled == enabled)
 
@@ -96,6 +114,7 @@ async def get_trigger(
     trigger = result.scalar_one_or_none()
     if not trigger:
         raise HTTPException(status_code=404, detail="Event trigger not found")
+    await _guard_trigger(trigger, user, db)
     return _to_response(trigger)
 
 
@@ -105,7 +124,11 @@ async def create_trigger(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new event trigger."""
+    """Create a new event trigger (only on an agent the caller owns)."""
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if vids is not None and body.agent_id not in vids:
+        raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
     trigger = EventTrigger(
         name=body.name,
         agent_id=body.agent_id,
@@ -135,6 +158,7 @@ async def update_trigger(
     trigger = result.scalar_one_or_none()
     if not trigger:
         raise HTTPException(status_code=404, detail="Event trigger not found")
+    await _guard_trigger(trigger, user, db)
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(trigger, field, value)
@@ -155,6 +179,7 @@ async def delete_trigger(
     trigger = result.scalar_one_or_none()
     if not trigger:
         raise HTTPException(status_code=404, detail="Event trigger not found")
+    await _guard_trigger(trigger, user, db)
     await db.delete(trigger)
     await db.commit()
     return {"deleted": trigger_id}
@@ -171,6 +196,7 @@ async def toggle_trigger(
     trigger = result.scalar_one_or_none()
     if not trigger:
         raise HTTPException(status_code=404, detail="Event trigger not found")
+    await _guard_trigger(trigger, user, db)
     trigger.enabled = not trigger.enabled
     await db.commit()
     await db.refresh(trigger)
@@ -278,6 +304,7 @@ async def test_trigger(
     trigger = result.scalar_one_or_none()
     if not trigger:
         raise HTTPException(status_code=404, detail="Event trigger not found")
+    await _guard_trigger(trigger, user, db)
 
     conditions_match = True
     if trigger.payload_conditions:

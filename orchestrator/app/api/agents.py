@@ -239,6 +239,19 @@ async def get_agent_messages(
                 AgentMessageModel.to_agent_id == user.id,
             )
         )
+    else:
+        # User principal: only messages involving the caller's own agents (admin = all).
+        from app.core.ownership import visible_agent_ids
+        vids = await visible_agent_ids(user, db)
+        if vids is not None:
+            if not vids:
+                return {"connections": [], "messages": [], "total": 0}
+            query = query.where(
+                or_(
+                    AgentMessageModel.from_agent_id.in_(list(vids)),
+                    AgentMessageModel.to_agent_id.in_(list(vids)),
+                )
+            )
     query = query.order_by(AgentMessageModel.timestamp.desc()).limit(fetch_limit)
     result = await db.execute(query)
     messages = result.scalars().all()
@@ -290,21 +303,33 @@ async def get_agent_delegations(
     for the agent-network graph.
     """
     from datetime import datetime, timezone, timedelta
-    from sqlalchemy import select
+    from sqlalchemy import select, or_
     from sqlalchemy.orm import aliased
     from app.models.task import Task
 
     since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
     Parent = aliased(Task)
+    deleg_where = [
+        Task.created_at >= since,
+        Task.agent_id.is_not(None),
+        Parent.agent_id.is_not(None),
+        Task.agent_id != Parent.agent_id,
+    ]
+    # Scope to the caller's own agents on either side of the edge (admin = all).
+    if is_agent_principal(user):
+        deleg_where.append(or_(Task.agent_id == user.id, Parent.agent_id == user.id))
+    else:
+        from app.core.ownership import visible_agent_ids
+        vids = await visible_agent_ids(user, db)
+        if vids is not None:
+            if not vids:
+                return {"edges": [], "total": 0}
+            _v = list(vids)
+            deleg_where.append(or_(Task.agent_id.in_(_v), Parent.agent_id.in_(_v)))
     rows = (await db.execute(
         select(Parent.agent_id, Task.agent_id, Task.title, Task.created_at)
         .join(Parent, Task.parent_task_id == Parent.id)
-        .where(
-            Task.created_at >= since,
-            Task.agent_id.is_not(None),
-            Parent.agent_id.is_not(None),
-            Task.agent_id != Parent.agent_id,
-        )
+        .where(*deleg_where)
         .order_by(Task.created_at.desc())
         .limit(1000)
     )).all()
@@ -336,8 +361,15 @@ async def get_agent_conversation(
 
     from app.models.agent_message import AgentMessage as AgentMessageModel
 
-    if is_agent_principal(user) and user.id not in {agent_a, agent_b}:
-        raise HTTPException(status_code=403, detail="Agents may only read their own conversations")
+    if is_agent_principal(user):
+        if user.id not in {agent_a, agent_b}:
+            raise HTTPException(status_code=403, detail="Agents may only read their own conversations")
+    else:
+        # User principal: both agents must be the caller's own (admin = all).
+        from app.core.ownership import visible_agent_ids
+        vids = await visible_agent_ids(user, db)
+        if vids is not None and not {agent_a, agent_b}.issubset(vids):
+            raise HTTPException(status_code=404, detail="Not found")
 
     result = await db.execute(
         select(AgentMessageModel)
