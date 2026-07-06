@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.102] — 2026-07-06
+
+### Fixed
+- **Voice-Aufgabenkarten: Nachbesserung (refine_task) wird als DIESELBE Aufgabe angezeigt, nicht als neue Karte.** Das Frontend hängte pro `delegate`-Event stumpf eine neue Karte an und ignorierte die mitgesendete `task_id`/`refine` — dadurch erschien eine per `refine_task` fortgesetzte Aufgabe als mehrere Karten („Bot meldet eine Aufgabe, UI zeigt einzelne"). Neu werden Karten nach `task_id` dedupliziert: eine Nachbesserung aktualisiert die bestehende Karte, nur echte neue Aufgaben bekommen eine eigene. (`frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.101] — 2026-07-06
 
 ### Fixed

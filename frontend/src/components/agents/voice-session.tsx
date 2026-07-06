@@ -76,7 +76,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const [activity, setActivity] = useState<{ kind: string; label: string; detail: string }[]>([]);
   // Each delegated task is its own card with its own status — several run in parallel,
   // so we track them individually instead of one shared "delegating" flag.
-  const [tasks, setTasks] = useState<{ instruction: string; done: boolean }[]>([]);
+  const [tasks, setTasks] = useState<{ id: string; instruction: string; done: boolean }[]>([]);
   const delegating = tasks.some((t) => !t.done); // any task still running
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -271,18 +271,31 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         break;
       case "delegate": {
         const instruction = String(data.instruction || "");
+        const taskId = String(data.task_id || "");
         setStatusMsg(`Ich kümmere mich um: ${instruction}`);
-        // One card per delegation → several PARALLEL tasks each with their own status.
-        setTasks((prev) => [...prev, { instruction, done: false }]);
+        // Dedupe by task_id: a refine_task (correction to the SAME task) updates the
+        // existing card instead of adding a new one — otherwise "one task" would show
+        // as several cards. Genuinely new tasks get a fresh card.
+        setTasks((prev) => {
+          const idx = taskId ? prev.findIndex((t) => t.id === taskId) : -1;
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], instruction, done: false };
+            return copy;
+          }
+          return [...prev, { id: taskId, instruction, done: false }];
+        });
         break;
       }
       case "delegate_done": {
-        // Mark the first still-running task with this instruction as done (checkmark).
+        const taskId = String(data.task_id || "");
         const instruction = String(data.instruction || "");
         setTasks((prev) => {
           let flipped = false;
           return prev.map((t) => {
-            if (!flipped && !t.done && t.instruction === instruction) {
+            if (flipped || t.done) return t;
+            const match = taskId ? t.id === taskId : t.instruction === instruction;
+            if (match) {
               flipped = true;
               return { ...t, done: true };
             }
