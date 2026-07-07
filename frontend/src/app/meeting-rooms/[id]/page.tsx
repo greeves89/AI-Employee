@@ -125,6 +125,7 @@ export default function MeetingRoomDetailPage() {
   const [participantsOpen, setParticipantsOpen] = useState(false); // mobile: collapsed by default
   const [chatOpen, setChatOpen] = useState(false);                 // mobile: collapsed by default
   const [summaryOpen, setSummaryOpen] = useState(false);           // mobile: collapsed by default
+  const [descOpen, setDescOpen] = useState(false);                 // mobile: collapsed by default
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [initialMessage, setInitialMessage] = useState("");
@@ -391,7 +392,21 @@ ${msgHtml}
 
   return (
     <div className="flex flex-col h-[calc(100vh-2rem)]">
-      <Header title={room.name} subtitle={room.topic || undefined} />
+      <Header title={room.name} subtitle={room.topic || undefined} subtitleClassName="hidden lg:block" />
+
+      {/* Mobile: collapsible description (desktop shows it as the header subtitle) */}
+      {room.topic && (
+        <div className="lg:hidden px-4 pt-2">
+          <button
+            onClick={() => setDescOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-2 py-1 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider"
+          >
+            <span>Beschreibung</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", descOpen && "rotate-180")} />
+          </button>
+          {descOpen && <p className="pb-1 text-sm text-muted-foreground">{room.topic}</p>}
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="px-6 pb-2">

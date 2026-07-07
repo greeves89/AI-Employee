@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.113] — 2026-07-07
+
+### Fixed
+- **Meeting-Raum: Beschreibung mobil einklappbar (Desktop unverändert).** Der Raum-Untertitel (`room.topic`) ist auf Mobile jetzt ein eigener einklappbarer „Beschreibung“-Block (initial zu); auf Desktop bleibt er wie bisher im Header-Untertitel. Damit sind auf Mobile alle vier Bereiche — Beschreibung, Teilnehmer, Chat, Zusammenfassung — einklappbar (initial zu). (`frontend/src/app/meeting-rooms/[id]/page.tsx`, `frontend/src/components/layout/header.tsx`)
+
 ## [1.99.112] — 2026-07-07
 
 ### Fixed
