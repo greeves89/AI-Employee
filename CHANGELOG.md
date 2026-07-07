@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.126] — 2026-07-07
+
+### Changed
+- **Meeting-Agent legt Action-Items optional als MS-Planner-Aufgaben an.** Der Meeting-Agent-Prompt instruiert jetzt: falls Microsoft-/Graph-Tools vorhanden sind (`ms_create_planner_task`), die Action-Items auf Wunsch als Planner-Aufgaben anlegen (Titel + Fälligkeit) — sonst überspringen. Damit ist der Löwenrudel-Bogen „Meeting → Transkript → Protokoll → Aufgaben (MS-Planner)" geschlossen (nutzt den vorhandenen Graph-Connector). (`orchestrator/app/core/agent_templates.py`)
+
 ## [1.99.125] — 2026-07-07
 
 ### Changed
