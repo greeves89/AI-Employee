@@ -315,6 +315,17 @@ MSGRAPH_TOOLS = [
         },
     },
     {
+        "name": "ms_insights",
+        "description": "Microsoft Graph Insights: documents that are trending around you (kind='trending'), that you recently used (kind='used'), or that were shared with you (kind='shared'). Great for 'what did I work on / what's relevant to me' without a search query.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "description": "trending | used | shared. Default: used (recently used documents)."},
+                "limit": {"type": "number", "description": "Max items. Default: 15, max 25."},
+            },
+        },
+    },
+    {
         "name": "ms_graph_get",
         "description": "Advanced/fallback: read-only GET on ANY Microsoft Graph v1.0 endpoint (relative path like /me/messages). Bounded by your delegated permissions. Use only when no specific tool fits.",
         "inputSchema": {
@@ -1113,6 +1124,28 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             email = emails[0].get("address", "") if emails else ""
             title = p.get("jobTitle", "") or ""
             lines.append(f"• {p.get('displayName', '')} <{email}>{(' — ' + title) if title else ''}")
+        return "\n".join(lines)
+
+    elif name == "ms_insights":
+        kind = str(args.get("kind") or "used").lower()
+        if kind not in ("trending", "used", "shared"):
+            kind = "used"
+        limit = min(int(args.get("limit", 15)), 25)
+        data = await _graph("GET", f"/me/insights/{kind}", token, params={"$top": limit})
+        items = data.get("value", [])
+        if not items:
+            return f"Keine '{kind}'-Insights gefunden."
+        lines = []
+        for it in items:
+            res = it.get("resourceReference", {}) or {}
+            vis = it.get("resourceVisualization", {}) or {}
+            title = vis.get("title") or res.get("id") or "(ohne Titel)"
+            typ = vis.get("type") or ""
+            url = res.get("webUrl", "")
+            line = f"• {title}" + (f" [{typ}]" if typ else "")
+            if url:
+                line += f"\n  {url}"
+            lines.append(line)
         return "\n".join(lines)
 
     elif name == "ms_search":

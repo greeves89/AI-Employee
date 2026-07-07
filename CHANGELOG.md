@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.128] — 2026-07-07
+
+### Added
+- **MS-Graph-MCP: neues `ms_insights`-Tool** (`/me/insights`) — Dokumente, die um dich herum trenden (`trending`), die du zuletzt genutzt hast (`used`) oder die mit dir geteilt wurden (`shared`). Ideal für „woran habe ich gearbeitet / was ist für mich relevant" ohne Suchbegriff. Hinweis: `/me/people` (`ms_search_people`) und `/search` (`ms_search`) waren bereits eingebettet. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.127] — 2026-07-07
 
 ### Added
