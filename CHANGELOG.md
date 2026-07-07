@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.121] — 2026-07-07
+
+### Fixed
+- **Voice-Lautstärke auf Mobile/iPhone einstellbar.** Die Realtime-Wiedergabe ging direkt an den Audio-Ausgang; iOS Safari ignoriert `audio.volume`, daher war die Lautstärke im Browser nicht regelbar. Neu läuft die Wiedergabe über einen Web-Audio-GainNode (den iOS respektiert) mit einem Lautstärke-Regler im Voice-UI. (`frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.120] — 2026-07-07
 
 ### Added

@@ -85,6 +85,13 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);       // focus mode: mic muted, agent still reports
   const [activityOpen, setActivityOpen] = useState(true);
+  const [volume, setVolume] = useState(1);           // playback volume (works on iOS via GainNode)
+
+  const changeVolume = useCallback((v: number) => {
+    setVolume(v);
+    volumeRef.current = v;
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+  }, []);
 
   // Focus mode: mute/unmute the mic track. Keeps the session alive (silence is
   // still streamed) so the agent can proactively speak when a task finishes.
@@ -132,6 +139,8 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const procRef = useRef<ScriptProcessorNode | null>(null);
   const srcNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const outCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const volumeRef = useRef(1);
   const nextPlayRef = useRef(0);
   const liveSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const suppressAudioRef = useRef(false);
@@ -383,7 +392,14 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   // ── Realtime PCM playback (24 kHz, gapless scheduled) ────────
   const ensureOutCtx = useCallback((): AudioContext => {
     if (!outCtxRef.current || outCtxRef.current.state === "closed") {
-      outCtxRef.current = new AudioContext();
+      const ctx = new AudioContext();
+      // Route playback through a GainNode so volume is adjustable — crucially this
+      // works on iOS Safari, which ignores HTMLMediaElement.volume.
+      const gain = ctx.createGain();
+      gain.gain.value = volumeRef.current;
+      gain.connect(ctx.destination);
+      gainNodeRef.current = gain;
+      outCtxRef.current = ctx;
       nextPlayRef.current = 0;
     }
     return outCtxRef.current;
@@ -401,7 +417,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 0x8000;
       const node = ctx.createBufferSource();
       node.buffer = buf;
-      node.connect(ctx.destination);
+      node.connect(gainNodeRef.current ?? ctx.destination);
       const t = Math.max(ctx.currentTime + 0.02, nextPlayRef.current);
       node.start(t);
       nextPlayRef.current = t + buf.duration;
@@ -684,6 +700,20 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     Fokus-Modus: Mikro aus — ich arbeite weiter und melde mich, wenn etwas fertig ist.
                   </p>
                 )}
+                {/* Playback volume — GainNode-based so it also works on iOS Safari */}
+                <div className="flex w-full max-w-[240px] items-center gap-2">
+                  <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={volume}
+                    onChange={(e) => changeVolume(Number(e.target.value))}
+                    aria-label="Lautstärke"
+                    className="h-1 flex-1 cursor-pointer accent-emerald-500"
+                  />
+                </div>
                 <div className="flex flex-wrap justify-center gap-2">
                   {state === "speaking" && (
                     <button
