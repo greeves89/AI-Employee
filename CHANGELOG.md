@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.114] — 2026-07-07
+
+### Fixed
+- **`device_tokens`-Tabelle fehlte auf manchen Deployments → 500er bei Push-Notifications behoben.** Die DB war „stamped ahead" (Branch/Merge-Verhaeddelung bzw. manuelles `alembic stamp`), sodass `relation "device_tokens" does not exist` geworfen wurde. Neue idempotente Migration legt die Tabelle beim naechsten `alembic upgrade head` an, falls sie fehlt (no-op, wenn vorhanden). (`orchestrator/alembic/versions/d1e2v3t4o5k6_ensure_device_tokens.py`)
+
 ## [1.99.113] — 2026-07-07
 
 ### Fixed
