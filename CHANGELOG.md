@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.134] — 2026-07-07
+
+### Fixed
+- **Realtime-Voice: `refine_task` verlor den ursprünglichen Auftrag.** Korrigierte der Nutzer per Sprache ein Detail einer laufenden Aufgabe (z. B. „nicht Daniel Hadolf, sondern Daniel Alisch"), bekam der Agent nur den Korrektursatz — er hat dann nur die Korrektur ausgeführt (Namen gemerkt) und den eigentlichen Auftrag („die Mails zusammenfassen") fallengelassen. Beim Refine werden jetzt **ursprünglicher Auftrag + Korrektur zusammengeführt** und das echte Ergebnis explizit eingefordert, statt nur die Korrektur zu bestätigen. (`orchestrator/app/services/realtime_voice_session.py`)
+
 ## [1.99.133] — 2026-07-07
 
 ### Changed

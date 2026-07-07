@@ -1020,11 +1020,28 @@ class RealtimeVoiceSession:
                 pass
             await self._emit_activity(kind, edata)
 
+        # On a refine, the incoming `instruction` is ONLY the correction sentence
+        # (e.g. "correct the name: not Hadolf but Alisch"). Sent raw, the agent treats
+        # it standalone and just applies the correction (e.g. memory_save) — losing the
+        # ORIGINAL goal ("summarize the mails"). So merge the original goal + correction
+        # and explicitly demand the real deliverable, not a mere acknowledgement.
+        if refine:
+            work_instruction = (
+                "Du arbeitest an dieser bereits begonnenen Aufgabe WEITER:\n"
+                f"URSPRÜNGLICHER AUFTRAG: {rec['instruction']}\n"
+                f"KORREKTUR/ERGÄNZUNG DES NUTZERS: {instruction}\n\n"
+                "Führe den URSPRÜNGLICHEN Auftrag mit dieser Korrektur VOLLSTÄNDIG aus und liefere "
+                "das eigentliche Ergebnis (z. B. die angeforderte Zusammenfassung, Liste oder Datei) "
+                "— NICHT nur die Korrektur bestätigen oder dir bloß etwas merken."
+            )
+        else:
+            work_instruction = instruction
+
         # Always ask the agent to surface any produced file via present_file, so it
         # shows up as a clickable card in the voice UI — the agent otherwise often
         # just writes to /workspace/... via bash/python and the user never sees it.
         augmented = (
-            f"{instruction}\n\n"
+            f"{work_instruction}\n\n"
             "WICHTIG: Falls bei dieser Aufgabe Dateien entstehen oder du dem Nutzer eine "
             "Datei/ein Ergebnis zeigen sollst, präsentiere JEDE erzeugte Datei am Ende mit "
             "dem present_file-Tool (nicht nur den Pfad nennen) — nur so wird sie im UI "
