@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.120] — 2026-07-07
+
+### Added
+- **Neues Agent-Template „Meeting Agent" (Protokollant).** Vorgefertigter Agent, der aus einem Meeting-Transkript oder Notizen ein strukturiertes Protokoll erzeugt (Zusammenfassung, Entscheidungen, Action-Items mit Verantwortlichen + Fristen, offene Punkte, Rohtranskript) und es persistent ablegt: als Markdown unter `/workspace/meetings/` und — falls ein Knowledge-/Vault-Schreibtool vorhanden ist — als durchsuchbaren Knowledge-Eintrag (erscheint im Wissens-Graphen). Erster Baustein des Meeting-Agent-Vorhabens; die Audio-Aufnahme/Diarization baut später darauf auf. (`orchestrator/app/core/agent_templates.py`)
+
 ## [1.99.119] — 2026-07-07
 
 ### Fixed
