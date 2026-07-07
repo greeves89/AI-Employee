@@ -44,7 +44,27 @@ export default function AgentsPage() {
   const [stoppingAll, setStoppingAll] = useState(false);
   const [startingAll, setStartingAll] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
-  const [updatingAgent, setUpdatingAgent] = useState<string | null>(null);
+  // Agents currently being updated — a Set so "Update All" can spin every card
+  // independently (each clears the moment its own update finishes).
+  const [updatingAgents, setUpdatingAgents] = useState<Set<string>>(new Set());
+
+  const markUpdating = (id: string, on: boolean) =>
+    setUpdatingAgents((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+
+  // Update one agent: spin its card, then refresh so its "Update" badge clears.
+  const updateOne = async (id: string) => {
+    markUpdating(id, true);
+    try {
+      await api.updateAgent(id);
+      await refresh();
+    } finally {
+      markUpdating(id, false);
+    }
+  };
 
   const agentsNeedingUpdate = agents.filter((a) => a.update_available);
 
@@ -80,21 +100,15 @@ export default function AgentsPage() {
     if (!ok) return;
     setUpdatingAll(true);
     try {
-      await Promise.all(agentsNeedingUpdate.map((a) => api.updateAgent(a.id)));
-      await refresh();
+      // Each card spins on its own and clears as soon as ITS update completes.
+      await Promise.all(agentsNeedingUpdate.map((a) => updateOne(a.id)));
     } finally {
       setUpdatingAll(false);
     }
   };
 
   const handleUpdateAgent = async (id: string) => {
-    setUpdatingAgent(id);
-    try {
-      await api.updateAgent(id);
-      await refresh();
-    } finally {
-      setUpdatingAgent(null);
-    }
+    await updateOne(id);
   };
 
   const handleStopAll = async () => {
@@ -324,11 +338,11 @@ export default function AgentsPage() {
                 transition={{ delay: i * 0.06, duration: 0.25 }}
                 className="relative group h-full"
               >
-                <AgentCard agent={agent} />
+                <AgentCard agent={agent} updating={updatingAgents.has(agent.id)} />
 
                 {/* Floating action buttons */}
                 <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-                  {actionLoading === agent.id || updatingAgent === agent.id ? (
+                  {actionLoading === agent.id || updatingAgents.has(agent.id) ? (
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                     </div>

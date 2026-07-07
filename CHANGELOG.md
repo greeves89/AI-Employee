@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.106] — 2026-07-07
+
+### Fixed
+- **„Update All" lässt jetzt jede Agent-Karte einzeln mitdrehen.** Bisher zeigte nur der globale „Update All"-Button einen Spinner; die „Update"-Badge auf den einzelnen Karten blieb statisch und verschwand erst am Ende alle gleichzeitig. Neu: beim Klick auf „Update All" (oder den Einzel-Update) wird pro Agent-Karte die Badge zum Spinner „Aktualisiere…", und sie verschwindet genau dann, wenn DIESER Agent fertig aktualisiert ist. Umgesetzt über einen Set-basierten Update-Status (mehrere Agenten gleichzeitig) statt eines Einzel-Flags. (`frontend/src/app/agents/page.tsx`, `frontend/src/components/dashboard/agent-card.tsx`)
+
 ## [1.99.105] — 2026-07-07
 
 ### Fixed
