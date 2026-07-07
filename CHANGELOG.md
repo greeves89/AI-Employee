@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.117] — 2026-07-07
+
+### Changed
+- **Graph-Verbesserungen (Knowledge + Second Brain).** (1) Die Ordner-Legende sitzt jetzt als **einklappbarer Streifen UNTER** dem Graphen (Graph nutzt ~85% der Höhe) statt als Overlay. (2) Klick auf einen Knoten zoomt heran und **kreist danach langsam** um ihn (Orbit). (3) Klick auf einen Link/eine verlinkte Notiz im rechten Panel **fliegt die Kamera zur neuen Node** (vorher bewegte sie sich nicht, weil der Knoten aus dem Detail-Panel keine Positionsdaten hatte). (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+
 ## [1.99.116] — 2026-07-07
 
 ### Fixed

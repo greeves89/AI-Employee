@@ -6,6 +6,7 @@ import ForceGraph3D from "react-force-graph-3d";
 import SpriteText from "three-spritetext";
 import {
   ArrowLeftRight,
+  ChevronDown,
   ExternalLink,
   Hash,
   Loader2,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { cn } from "@/lib/utils";
 import { getVaultGraph, getBrainFile } from "@/lib/api";
 import type { VaultGraph, VaultGraphNode } from "@/lib/api";
 
@@ -75,6 +77,7 @@ export default function VaultGraph3D({
   const use3D = webgl && !ctxLost;
 
   const [selected, setSelected] = useState<VaultGraphNode | null>(null);
+  const [legendOpen, setLegendOpen] = useState(true);
   const [detail, setDetail] = useState<{ content: string; loading: boolean }>({
     content: "",
     loading: false,
@@ -250,18 +253,35 @@ export default function VaultGraph3D({
   }, [loading, graph]);
 
   const focusNode = useCallback((node: any) => {
+    // Detail-panel neighbours come from nodeById (no x/y/z); use the live,
+    // force-positioned node so the camera actually flies to the clicked link.
+    const live = (data.nodes as any[]).find((n) => n.id === node.id) ?? node;
     const dist = 120;
-    const hyp = Math.hypot(node.x || 1, node.y || 1, node.z || 1) || 1;
+    const hyp = Math.hypot(live.x || 1, live.y || 1, live.z || 1) || 1;
     const r = 1 + dist / hyp;
     try {
       fgRef.current?.cameraPosition(
-        { x: (node.x || 0) * r, y: (node.y || 0) * r, z: (node.z || 0) * r },
-        node,
+        { x: (live.x || 0) * r, y: (live.y || 0) * r, z: (live.z || 0) * r },
+        live,
         1200,
       );
+      // Slowly orbit around the focused node once the fly-in settles.
+      window.setTimeout(() => {
+        try {
+          const c = fgRef.current?.controls?.();
+          if (c) { c.autoRotate = true; c.autoRotateSpeed = 0.5; }
+        } catch { /* noop */ }
+      }, 1250);
     } catch {
       /* noop */
     }
+  }, [data]);
+
+  const stopOrbit = useCallback(() => {
+    try {
+      const c = fgRef.current?.controls?.();
+      if (c) c.autoRotate = false;
+    } catch { /* noop */ }
   }, []);
 
   const handleNodeClick = useCallback(
@@ -301,7 +321,7 @@ export default function VaultGraph3D({
   const selectedNeighbors = selected ? Array.from(neighbors.get(selected.id) ?? []) : [];
 
   return (
-    <div ref={wrapRef} className="relative h-full w-full overflow-hidden bg-[#06060c]">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-[#06060c]">
       {loading ? (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Graph wird geladen…
@@ -315,6 +335,7 @@ export default function VaultGraph3D({
         </div>
       ) : (
         <>
+          <div ref={wrapRef} className="relative flex-1 overflow-hidden">
           {use3D ? (
             <FG
               ref={fgRef}
@@ -339,8 +360,9 @@ export default function VaultGraph3D({
               linkDirectionalParticles={1}
               linkDirectionalParticleWidth={1.4}
               linkDirectionalParticleSpeed={0.006}
+              controlType="orbit"
               onNodeClick={handleNodeClick}
-              onBackgroundClick={() => setSelected(null)}
+              onBackgroundClick={() => { stopOrbit(); setSelected(null); }}
             />
           ) : (
             <VaultGraph2D
@@ -362,21 +384,6 @@ export default function VaultGraph3D({
             {graph.truncated && " · (gekürzt)"}
             {!use3D && " · 2D-Ansicht"}
           </div>
-
-          {/* Folder legend */}
-          {folderColor.size > 1 && (
-            <div className="pointer-events-none absolute bottom-3 left-3 max-w-[45%] rounded-lg border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-sm">
-              <div className="mb-1 text-[10px] uppercase tracking-wide text-white/40">Ordner</div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {Array.from(folderColor.entries()).map(([f, c]) => (
-                  <span key={f} className="flex items-center gap-1 text-[10px] text-white/70">
-                    <span className="h-2 w-2 rounded-full" style={{ background: c }} />
-                    {f || "(Wurzel)"}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Detail panel */}
           {selected && !onNodeSelect && (
@@ -463,6 +470,30 @@ export default function VaultGraph3D({
                   <ExternalLink className="h-3.5 w-3.5" /> Im Editor öffnen
                 </button>
               </div>
+            </div>
+          )}
+          </div>
+
+          {/* Folder legend — under the graph (graph ~85%), collapsible */}
+          {folderColor.size > 1 && (
+            <div className="shrink-0 border-t border-white/10 bg-black/40 px-3 py-2">
+              <button
+                onClick={() => setLegendOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-white/40 hover:text-white/60"
+              >
+                <ChevronDown className={cn("h-3 w-3 transition-transform", !legendOpen && "-rotate-90")} />
+                Ordner ({folderColor.size})
+              </button>
+              {legendOpen && (
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                  {Array.from(folderColor.entries()).map(([f, c]) => (
+                    <span key={f} className="flex items-center gap-1 text-[10px] text-white/70">
+                      <span className="h-2 w-2 rounded-full" style={{ background: c }} />
+                      {f || "(Wurzel)"}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>
