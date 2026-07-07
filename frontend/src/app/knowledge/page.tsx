@@ -163,19 +163,24 @@ export default function KnowledgePage() {
   // 3D renderer can display it: colour by primary tag, size by node.size.
   const vaultGraph: VaultGraph | undefined = useMemo(() => {
     if (!graphData) return undefined;
-    return {
-      nodes: graphData.nodes.map((n) => ({
-        id: String(n.id),
-        name: n.title,
-        path: "",
-        folder: n.tags?.[0] ?? "",   // drives node colour (grouped by primary tag)
-        tags: n.tags ?? [],
-        in: 0,
-        out: 0,
-        degree: Math.max(1, n.size ?? 1),
-      })),
-      edges: graphData.edges.map((e) => ({ source: String(e.source), target: String(e.target) })),
-    };
+    const nodes = graphData.nodes.map((n) => ({
+      id: String(n.id),
+      name: n.title,
+      path: "",
+      folder: n.tags?.[0] ?? "",   // drives node colour (grouped by primary tag)
+      tags: n.tags ?? [],
+      in: 0,
+      out: 0,
+      degree: Math.max(1, n.size ?? 1),
+    }));
+    // Drop dangling edges (source/target not in the node set) — react-force-graph
+    // crashes in its tick loop ("Cannot read properties of undefined (reading 'tick')")
+    // when a link references a node that doesn't exist.
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges = graphData.edges
+      .map((e) => ({ source: String(e.source), target: String(e.target) }))
+      .filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
+    return { nodes, edges };
   }, [graphData]);
 
   return (

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.116] — 2026-07-07
+
+### Fixed
+- **Knowledge-/Second-Brain-3D-Graph crasht nicht mehr auf WebGL-gesperrten Rechnern (z. B. Klinik-Windows/Edge).** Auf gesperrten Firmen-/Klinik-Windows ist die GPU-Beschleunigung/WebGL oft per Richtlinie deaktiviert oder der Treiber blockgelistet — dann warf der 3D-Renderer im Animations-Loop „Cannot read properties of undefined (reading 'tick')" (Mac/Safari mit funktionierendem WebGL war nicht betroffen). Zwei Fixe: (1) im Animations-Loop crashende Fehler werden global abgefangen und schalten **live auf den 2D-Renderer** um; (2) beim Knowledge-Graph werden „dangling edges" (Kanten auf nicht vorhandene Knoten) herausgefiltert, die die Force-Simulation zum Absturz brachten. (`frontend/src/app/second-brains/vault-graph-3d.tsx`, `frontend/src/app/knowledge/page.tsx`)
+
 ## [1.99.115] — 2026-07-07
 
 ### Added

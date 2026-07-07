@@ -136,6 +136,16 @@ export default function VaultGraph3D({
       e.preventDefault();
       setCtxLost(true);
     };
+    // react-force-graph's render loop throws in requestAnimationFrame when WebGL
+    // is blocked/blocklisted (common on locked-down corporate/hospital Windows +
+    // Edge, where GPU accel is disabled by policy) — "Cannot read properties of
+    // undefined (reading 'tick')". That's outside React's error boundary, so catch
+    // it globally and fall back to the 2D renderer live.
+    const onWinError = (ev: ErrorEvent) => {
+      const msg = ev.message || String(ev.error?.message || "");
+      if (msg.includes("tick")) setCtxLost(true);
+    };
+    window.addEventListener("error", onWinError);
     // The canvas is created by react-force-graph after mount — grab it next tick.
     const t = setTimeout(() => {
       canvas = wrap.querySelector("canvas");
@@ -143,6 +153,7 @@ export default function VaultGraph3D({
     }, 0);
     return () => {
       clearTimeout(t);
+      window.removeEventListener("error", onWinError);
       canvas?.removeEventListener("webglcontextlost", onLost, false);
       try {
         fgRef.current?.pauseAnimation?.();
