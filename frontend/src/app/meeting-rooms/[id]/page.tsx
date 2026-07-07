@@ -33,6 +33,42 @@ import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { MeetingRoom, MeetingMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+/** Non-Claude engines (Codex/custom-LLM) sometimes emit their raw stream-json event
+ *  log ({"type":"item.started",...}) as the message body instead of clean text.
+ *  Extract the readable assistant text (agent_message / final command output) and
+ *  drop the machinery. Normal (non-JSON) content passes through unchanged. */
+function cleanMeetingContent(raw: string): string {
+  if (!raw) return raw;
+  const start = raw.trimStart();
+  if (!start.startsWith("{") || !/"type"\s*:/.test(start)) return raw; // not an event log
+  const out: string[] = [];
+  let lastOutput = "";
+  let sawEvent = false;
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    if (!t.startsWith("{")) { out.push(t); continue; }
+    let ev: { type?: string; text?: string; item?: Record<string, unknown> };
+    try { ev = JSON.parse(t); } catch { continue; }
+    sawEvent = true;
+    const item = (ev.item ?? ev) as Record<string, unknown>;
+    const itype = item?.type as string | undefined;
+    const text = (item?.text ?? item?.content ?? item?.message) as unknown;
+    if ((itype === "agent_message" || itype === "assistant_message" || itype === "message")
+        && typeof text === "string" && text.trim()) {
+      out.push(text.trim());
+    } else if (itype === "command_execution" && typeof item?.aggregated_output === "string"
+        && (item.aggregated_output as string).trim()) {
+      lastOutput = (item.aggregated_output as string).trim();
+    } else if ((ev.type === "assistant" || ev.type === "message") && typeof ev.text === "string" && ev.text.trim()) {
+      out.push(ev.text.trim());
+    }
+  }
+  if (!sawEvent) return raw;
+  const joined = out.join("\n\n").trim() || lastOutput;
+  return joined || "_(Agent lieferte in diesem Zug keine lesbare Textausgabe.)_";
+}
+
 const AGENT_COLORS = [
   "text-blue-400",
   "text-emerald-400",
@@ -88,6 +124,7 @@ export default function MeetingRoomDetailPage() {
   const [room, setRoom] = useState<MeetingRoom | null>(null);
   const [participantsOpen, setParticipantsOpen] = useState(false); // mobile: collapsed by default
   const [chatOpen, setChatOpen] = useState(false);                 // mobile: collapsed by default
+  const [summaryOpen, setSummaryOpen] = useState(false);           // mobile: collapsed by default
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [initialMessage, setInitialMessage] = useState("");
@@ -208,35 +245,48 @@ export default function MeetingRoomDetailPage() {
     const getName = (id: string | null) => id ? (agentNames[id] || id) : "System";
     const date = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" });
 
-    const roleLabel: Record<string, string> = {
-      agent: "", system: "System", moderator: "Moderator", summary: "Action Items", reaction: "Reaktion",
+    // HTML-escape user content before injecting into the print document (XSS-safe),
+    // then render a small, safe Markdown subset (headings / bold / italic / code /
+    // lists / rules) so the PDF looks like the chat instead of a <br> soup.
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inline = (s: string) => s
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+    const mdToHtml = (rawContent: string) => {
+      const text = cleanMeetingContent(rawContent);
+      let html = ""; let inList = false;
+      const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+      for (const line of esc(text).split("\n")) {
+        const t = line.trim();
+        if (!t) { closeList(); continue; }
+        if (/^---+$/.test(t)) { closeList(); html += "<hr>"; continue; }
+        if (t.startsWith("### ")) { closeList(); html += `<h4>${inline(t.slice(4))}</h4>`; continue; }
+        if (t.startsWith("## ")) { closeList(); html += `<h3>${inline(t.slice(3))}</h3>`; continue; }
+        if (t.startsWith("# ")) { closeList(); html += `<h3>${inline(t.slice(2))}</h3>`; continue; }
+        const li = t.match(/^[-*] (?:\[[ xX]\] )?(.*)/);
+        if (li) { if (!inList) { html += "<ul>"; inList = true; } const box = /^[-*] \[[ xX]\]/.test(t) ? "☐ " : ""; html += `<li>${box}${inline(li[1])}</li>`; continue; }
+        closeList(); html += `<p>${inline(t)}</p>`;
+      }
+      closeList();
+      return html;
     };
 
     const msgHtml = messages.map(m => {
       if (m.role === "system" && m.content.startsWith("---")) {
-        return `<div class="phase-break">${m.content.replace(/\*\*/g, "")}</div>`;
+        return `<div class="phase-break">${esc(m.content.replace(/\*\*/g, ""))}</div>`;
       }
       if (m.role === "summary") {
-        const md = m.content
-          .replace(/## (.*)/g, "<h3>$1</h3>")
-          .replace(/- \[ \] (.*)/g, "<li>☐ $1</li>")
-          .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-          .replace(/\n/g, "<br>");
-        return `<div class="msg summary"><div class="msg-header summary-header">📋 Meeting-Ergebnis: Action Items</div><div class="msg-body">${md}</div></div>`;
+        return `<div class="msg summary"><div class="msg-header summary-header">📋 Meeting-Ergebnis: Action Items</div><div class="msg-body">${mdToHtml(m.content)}</div></div>`;
       }
       if (m.role === "moderator") {
-        return `<div class="msg moderator"><div class="msg-header">🎤 Moderator</div><div class="msg-body italic">${m.content}</div></div>`;
+        return `<div class="msg moderator"><div class="msg-header">🎤 Moderator</div><div class="msg-body italic">${esc(m.content)}</div></div>`;
       }
       if (m.role === "reaction") {
-        return `<div class="msg reaction"><div class="msg-header">${getName(m.agent_id)} <span class="label">reagiert</span></div><div class="msg-body italic">${m.content}</div></div>`;
+        return `<div class="msg reaction"><div class="msg-header">${esc(getName(m.agent_id))} <span class="label">reagiert</span></div><div class="msg-body italic">${esc(m.content)}</div></div>`;
       }
-      const md = m.content
-        .replace(/## (.*)/g, "<h3>$1</h3>")
-        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-        .replace(/`([^`]+)`/g, "<code>$1</code>")
-        .replace(/\n/g, "<br>");
       const time = new Date(m.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-      return `<div class="msg agent"><div class="msg-header">${getName(m.agent_id)} <span class="label">${time}</span></div><div class="msg-body">${md}</div></div>`;
+      return `<div class="msg agent"><div class="msg-header">${esc(getName(m.agent_id))} <span class="label">${time}</span></div><div class="msg-body">${mdToHtml(m.content)}</div></div>`;
     }).join("");
 
     const participants = room.agent_ids.map(id => getName(id)).join(", ");
@@ -256,8 +306,14 @@ export default function MeetingRoomDetailPage() {
   .msg-header .label { font-weight: 400; color: #aaa; margin-left: 6px; }
   .msg-body { line-height: 1.6; }
   .msg-body h3 { font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
+  .msg-body h4 { font-size: 12px; font-weight: 600; margin: 6px 0 3px; color: #444; }
+  .msg-body p { margin-bottom: 6px; }
+  .msg-body p:last-child { margin-bottom: 0; }
+  .msg-body em { color: #555; font-style: italic; }
+  .msg-body ul { margin: 4px 0 8px; padding-left: 20px; }
+  .msg-body hr { border: none; border-top: 1px solid #eee; margin: 8px 0; }
   .msg-body code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 11px; font-family: monospace; }
-  .msg-body li { margin-left: 16px; margin-bottom: 3px; }
+  .msg-body li { margin-bottom: 3px; }
   .msg.agent { background: #fafafa; }
   .msg.moderator { background: #faf0ff; border-color: #e9d5ff; }
   .msg.moderator .msg-header { color: #7c3aed; }
@@ -490,11 +546,15 @@ ${msgHtml}
                     </div>
                   ) : msg.role === "summary" ? (
                     <div className="w-full rounded-xl border border-primary/20 bg-primary/5 px-5 py-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <ListTodo className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-semibold text-primary">Meeting-Ergebnis: Action Items</span>
-                      </div>
-                      <div className="text-sm text-foreground/90 leading-relaxed">
+                      <button
+                        onClick={() => setSummaryOpen((o) => !o)}
+                        className="flex w-full items-center gap-2 mb-3 lg:cursor-default"
+                      >
+                        <ListTodo className="h-4 w-4 text-primary shrink-0" />
+                        <span className="text-sm font-semibold text-primary flex-1 text-left">Meeting-Ergebnis: Action Items</span>
+                        <ChevronDown className={cn("h-4 w-4 text-primary lg:hidden transition-transform", summaryOpen && "rotate-180")} />
+                      </button>
+                      <div className={cn("text-sm text-foreground/90 leading-relaxed", !summaryOpen && "hidden lg:block")}>
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
@@ -505,7 +565,7 @@ ${msgHtml}
                             li: ({ children }) => <li className="flex items-start gap-2 text-sm"><span className="mt-0.5 shrink-0">☐</span><span>{children}</span></li>,
                           }}
                         >
-                          {msg.content}
+                          {cleanMeetingContent(msg.content)}
                         </ReactMarkdown>
                       </div>
                     </div>
@@ -564,7 +624,7 @@ ${msgHtml}
                               code: ({ children }) => <code className="rounded bg-foreground/[0.06] px-1 py-0.5 font-mono text-[11px]">{children}</code>,
                             }}
                           >
-                            {msg.content}
+                            {cleanMeetingContent(msg.content)}
                           </ReactMarkdown>
                         </div>
                       </div>

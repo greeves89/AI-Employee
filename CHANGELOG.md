@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.112] — 2026-07-07
+
+### Fixed
+- **Meeting-Raum: Non-Claude/Codex-Rohausgabe gesäubert + PDF neu gerendert + Zusammenfassung einklappbar.** (1) Nicht-Claude-Engines (Codex/Custom-LLM) gaben teils ihren rohen Stream-JSON-Log (`{"type":"item.started",...}`) als Nachrichtentext aus. Ein gemeinsamer Cleaner extrahiert jetzt den lesbaren Assistant-Text (agent_message bzw. finale Ausgabe) und verwirft die Maschinerie — wirkt in UI **und** PDF. (2) Das PDF rendert Nachrichten jetzt als echtes Markdown (Überschriften/Listen/Kursiv/Code/Trennlinien) statt `<br>`-Suppe und escapet Inhalt HTML-sicher. (3) Der Ergebnis-/Zusammenfassungs-Block ist auf Mobile einklappbar (initial zu); Desktop unverändert. (`frontend/src/app/meeting-rooms/[id]/page.tsx`)
+
 ## [1.99.111] — 2026-07-07
 
 ### Fixed
