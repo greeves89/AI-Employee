@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.110] — 2026-07-07
+
+### Fixed
+- **Taskforce-Phasen-Stepper auf dem iPhone lesbar.** Die Phasen-Leiste (Planung → … → Fertig) war auf Phones zu gequetscht. Neu: unter `sm` (Phones) nur die Lucide-Icons (Häkchen/Spinner), Text-Labels erst ab Tablet/Desktop. (`frontend/src/app/meeting-rooms/[id]/page.tsx`)
+
 ## [1.99.109] — 2026-07-07
 
 ### Fixed

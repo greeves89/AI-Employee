@@ -1011,7 +1011,8 @@ function TaskforcePhaseBar({
                 {stepDone ? <CheckCircle2 className="h-3.5 w-3.5" />
                   : stepActive ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   : <span className="h-3.5 w-3.5 rounded-full border border-current/40" />}
-                {label}
+                {/* Phones: icon only (label too cramped); tablet/desktop keep the text */}
+                <span className="hidden sm:inline">{label}</span>
               </div>
               {i < TF_PHASES.length - 1 && (
                 <div className={cn("h-px flex-1 min-w-3", stepDone ? "bg-emerald-500/30" : "bg-foreground/10")} />
