@@ -40,7 +40,10 @@ async def _get_access_token(agent_id: str, db: AsyncSession) -> str | None:
     try:
         # OAuthService needs (db, redis); get_valid_token doesn't use redis → None ok.
         return await OAuthService(db, None).get_valid_token("microsoft", agent.user_id)
-    except ValueError:
+    except Exception as e:
+        # Not connected / no refresh token (ValueError) OR a transient Microsoft
+        # outage during refresh — both surface to the model as "not connected".
+        logger.warning("MS Graph token unavailable for agent %s: %s", agent_id, e)
         return None
 
 
@@ -64,13 +67,11 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
             return await _get_access_token(agent_id, db)
 
     # Determine the agent's Microsoft access mode (read-only by default).
-    # Write mode unlocks the send/create tools and routes outbound mail to drafts.
+    # Write mode unlocks the send/create tools; outbound mail is sent for real.
     async with async_session_factory() as db:
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     access = (agent.config or {}).get("msgraph_access", "read") if agent else "read"
     write_enabled = access in ("write", "read_write", "rw")
 
-    resp, status = await handle_mcp_request(
-        body, resolve_token, write_enabled=write_enabled, draft_mail=write_enabled
-    )
+    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=write_enabled)
     return JSONResponse(resp, status_code=status)

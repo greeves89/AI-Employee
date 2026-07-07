@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.104] — 2026-07-07
+
+### Added
+- **Graph-Mail: Senden ODER Entwurf — pro Aufruf vom User entscheidbar.** Die Sende-Tools (`ms_send_email`/`ms_reply_email`/`ms_forward_email`) haben einen neuen optionalen `draft`-Parameter: Standard sendet real, mit `draft=true` legt der Agent stattdessen einen Outlook-Entwurf an, den der User selbst prüft und verschickt. Das Modell setzt das aus der jeweiligen Ansage („sende…" vs. „erstelle einen Entwurf…"), sodass der User individuell pro Mail entscheidet.
+
+### Fixed
+- **M365/Graph-Connector bereinigt — Agenten versenden Mail jetzt wirklich + 8 Bugfixes.** Bislang wurde ausgehende Mail im Write-Modus **immer** nur als Entwurf angelegt (fest verdrahtetes `draft_mail`) — es gab keinen Modus, in dem ein Graph-Agent tatsächlich sendet (Widerspruch zur Anforderung „Versenden", inkonsistent zum On-Prem-Connector). Ersetzt durch die per-Aufruf-Wahl oben; dabei wurden die Entwurfs-Pfade gefixt: der Reply-Entwurf verwarf zuvor den Antworttext (jetzt via `createReply`/`createReplyAll` mit Text), und Forward umging die Draft-Wahl komplett (jetzt `createForward`). Weitere Härtungen: `_graph` crasht nicht mehr bei nicht-JSON-Fehlerantworten (429/5xx) und liefert über `GraphError` den Statuscode; `ms_cancel_event` löscht nur noch bei „nicht Organisator" (400/403) aus dem eigenen Kalender statt bei jedem transienten Fehler; `ms_search_people` sanitisiert die KQL-Query (Injection); `ms_update_task` lehnt ungültige Status-Werte ab statt still auf „notStarted" zurückzusetzen (öffnete erledigte Tasks); To-Do/Planner-Listen schneiden nicht mehr still ab (`$top` bzw. Rest-Hinweis); Token-Resolver fangen alle Fehler (nicht nur `ValueError`) → saubere „nicht verbunden"-Meldung statt 500; zentrale Pflichtfeld-Validierung im Dispatch. Rein backend-/orchestratorseitig, keine Agent-Image-Änderung. (`orchestrator/app/core/msgraph_mcp.py`, `mcp_msgraph.py`, `mcp_msgraph_external.py`, +11 Tests gesamt)
+
 ## [1.99.103] — 2026-07-06
 
 ### Added / Changed

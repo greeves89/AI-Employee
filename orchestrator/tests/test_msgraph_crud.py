@@ -12,6 +12,7 @@ import unittest
 
 from app.core import msgraph_mcp
 from app.core.msgraph_mcp import (
+    GraphError,
     MSGRAPH_TOOLS,
     WRITE_TOOLS,
     handle_mcp_request,
@@ -193,6 +194,136 @@ class NewHandlerShapeTests(unittest.TestCase):
         out = _run(handle_tool("ms_update_task", {"list_id": "L", "task_id": "T"}, "tok"))
         self.assertIn("Error", out)
         self.assertEqual(self.rec.calls, [])  # no Graph call when nothing to update
+
+
+class MailSendSemanticsTests(unittest.TestCase):
+    """In write mode outbound mail is sent for REAL (no draft detour)."""
+
+    def setUp(self):
+        self.rec = _GraphRecorder()
+        self._orig = msgraph_mcp._graph
+        msgraph_mcp._graph = self.rec
+
+    def tearDown(self):
+        msgraph_mcp._graph = self._orig
+
+    def test_send_email_really_sends(self):
+        out = _run(handle_tool("ms_send_email",
+                               {"to": "a@b.de", "subject": "S", "body": "B"}, "tok"))
+        call = self.rec.calls[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertEqual(call["path"], "/me/sendMail")  # NOT /me/messages (draft)
+        self.assertIn("sent", out.lower())
+
+    def test_reply_email_really_sends_with_body(self):
+        out = _run(handle_tool("ms_reply_email",
+                               {"email_id": "M1", "body": "Danke!"}, "tok"))
+        call = self.rec.calls[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertIn("/me/messages/M1/reply", call["path"])
+        self.assertIn("Danke!", call["kwargs"]["content"])  # body must survive
+        self.assertIn("sent", out.lower())
+
+    def test_reply_all_hits_replyAll(self):
+        _run(handle_tool("ms_reply_email",
+                         {"email_id": "M1", "body": "x", "reply_all": True}, "tok"))
+        self.assertIn("/me/messages/M1/replyAll", self.rec.calls[0]["path"])
+
+    # --- per-call draft option (the USER decides send-vs-draft individually) ---
+    def test_send_draft_creates_draft_not_sent(self):
+        out = _run(handle_tool("ms_send_email",
+                               {"to": "a@b.de", "subject": "S", "body": "B", "draft": True}, "tok"))
+        call = self.rec.calls[0]
+        self.assertEqual(call["path"], "/me/messages")  # draft, NOT /me/sendMail
+        self.assertIn("NICHT gesendet", out)
+
+    def test_reply_draft_keeps_body(self):
+        _run(handle_tool("ms_reply_email",
+                         {"email_id": "M1", "body": "Danke!", "draft": True}, "tok"))
+        call = self.rec.calls[0]
+        self.assertIn("/me/messages/M1/createReply", call["path"])
+        self.assertIn("Danke!", call["kwargs"]["content"])  # body must survive into the draft
+
+    def test_reply_all_draft_uses_createReplyAll(self):
+        _run(handle_tool("ms_reply_email",
+                         {"email_id": "M1", "body": "x", "reply_all": True, "draft": True}, "tok"))
+        self.assertIn("/me/messages/M1/createReplyAll", self.rec.calls[0]["path"])
+
+    def test_forward_draft_uses_createForward(self):
+        out = _run(handle_tool("ms_forward_email",
+                               {"email_id": "M1", "to": "c@d.de", "draft": True}, "tok"))
+        self.assertIn("/me/messages/M1/createForward", self.rec.calls[0]["path"])
+        self.assertIn("NICHT gesendet", out)
+
+
+class RobustnessTests(unittest.TestCase):
+    """Central arg validation + status/error handling fixes."""
+
+    def setUp(self):
+        self.rec = _GraphRecorder()
+        self._orig = msgraph_mcp._graph
+        msgraph_mcp._graph = self.rec
+
+    def tearDown(self):
+        msgraph_mcp._graph = self._orig
+
+    def test_missing_required_arg_short_circuits_before_token(self):
+        resolved = {"n": 0}
+
+        async def resolver():
+            resolved["n"] += 1
+            return "tok"
+
+        body = {
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "ms_send_email", "arguments": {"subject": "S", "body": "B"}},
+        }  # 'to' missing
+        res, status = _run(handle_mcp_request(body, resolver, write_enabled=True))
+        self.assertEqual(status, 200)
+        self.assertTrue(res["result"]["isError"])
+        self.assertIn("missing required", res["result"]["content"][0]["text"].lower())
+        self.assertEqual(resolved["n"], 0, "token resolved despite missing arg")
+        self.assertEqual(self.rec.calls, [])
+
+    def test_update_task_invalid_status_rejected(self):
+        out = _run(handle_tool("ms_update_task",
+                               {"list_id": "L", "task_id": "T", "status": "Completed"}, "tok"))
+        self.assertIn("Error", out)
+        self.assertEqual(self.rec.calls, [])  # no PATCH with a bogus status
+
+
+class CancelEventFallbackTests(unittest.TestCase):
+    """Organizer-only /cancel: fall back to DELETE ONLY on 400/403, never on
+    transient (429/5xx) errors — those must surface."""
+
+    def _install(self, fail_status):
+        calls = []
+
+        async def fake(method, path, token, **kwargs):
+            calls.append((method, path))
+            if path.endswith("/cancel"):
+                raise GraphError(fail_status, "boom")
+            return {}
+
+        self._orig = msgraph_mcp._graph
+        msgraph_mcp._graph = fake
+        return calls
+
+    def tearDown(self):
+        if hasattr(self, "_orig"):
+            msgraph_mcp._graph = self._orig
+
+    def test_not_organizer_403_falls_back_to_delete(self):
+        calls = self._install(403)
+        out = _run(handle_tool("ms_cancel_event", {"event_id": "E1"}, "tok"))
+        self.assertIn("entfernt", out)
+        self.assertTrue(any(m == "DELETE" for m, _ in calls))
+
+    def test_transient_5xx_is_not_silently_deleted(self):
+        calls = self._install(503)
+        with self.assertRaises(GraphError):
+            _run(handle_tool("ms_cancel_event", {"event_id": "E1"}, "tok"))
+        self.assertFalse(any(m == "DELETE" for m, _ in calls), "deleted on a transient error")
 
 
 if __name__ == "__main__":
