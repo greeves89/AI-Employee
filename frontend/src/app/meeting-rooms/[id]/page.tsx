@@ -22,6 +22,8 @@ import {
   Container,
   Download,
   ChevronDown,
+  ClipboardList,
+  GitMerge,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -85,6 +87,7 @@ export default function MeetingRoomDetailPage() {
 
   const [room, setRoom] = useState<MeetingRoom | null>(null);
   const [participantsOpen, setParticipantsOpen] = useState(false); // mobile: collapsed by default
+  const [chatOpen, setChatOpen] = useState(false);                 // mobile: collapsed by default
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [initialMessage, setInitialMessage] = useState("");
@@ -277,10 +280,23 @@ ${msgHtml}
 </body></html>`;
 
     const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.onload = () => { win.print(); };
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.onload = () => { win.print(); };
+      return;
+    }
+    // Popup blocked (common on mobile) → download a print-ready HTML file instead
+    // (open it, then Cmd/Ctrl+P → "Als PDF sichern"). Guaranteed download everywhere.
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(room.name || "meeting").replace(/[^\w\-]+/g, "_")}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   if (loading) {
@@ -409,8 +425,16 @@ ${msgHtml}
       <div className="flex flex-col lg:flex-row flex-1 min-h-0 gap-0">
 
         {/* Chat Messages */}
-        <div className="flex flex-col flex-1 min-w-0">
-          <div className="flex-1 overflow-y-auto px-3 lg:px-6 py-4 space-y-4">
+        <div className={cn("flex flex-col min-w-0", chatOpen ? "flex-1" : "flex-none lg:flex-1")}>
+          {/* Mobile: collapsible chat (desktop: always open) */}
+          <button
+            onClick={() => setChatOpen((o) => !o)}
+            className="lg:hidden flex items-center justify-between border-b border-border px-4 py-2.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider"
+          >
+            <span>Chat ({messages.filter((m) => m.role === "agent").length} Beiträge)</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", chatOpen && "rotate-180")} />
+          </button>
+          <div className={cn("flex-1 overflow-y-auto px-3 lg:px-6 py-4 space-y-4", !chatOpen && "hidden lg:block")}>
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Bot className="h-12 w-12 text-muted-foreground/20 mb-4" />
@@ -964,6 +988,8 @@ function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.Deliv
 }
 
 const TF_PHASES = ["Planung", "Zuweisung", "Bau", "Integration", "Fertig"] as const;
+// One distinct icon per phase (instead of five identical checkmarks).
+const TF_ICONS = [ClipboardList, Users, Hammer, GitMerge, CheckCircle2] as const;
 
 function TaskforcePhaseBar({
   room,
@@ -1008,9 +1034,9 @@ function TaskforcePhaseBar({
                 stepActive && "bg-primary/15 text-primary",
                 !stepDone && !stepActive && "bg-foreground/[0.04] text-muted-foreground/60",
               )}>
-                {stepDone ? <CheckCircle2 className="h-3.5 w-3.5" />
-                  : stepActive ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <span className="h-3.5 w-3.5 rounded-full border border-current/40" />}
+                {stepActive
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : (() => { const PhaseIcon = TF_ICONS[i]; return <PhaseIcon className="h-3.5 w-3.5" />; })()}
                 {/* Phones: icon only (label too cramped); tablet/desktop keep the text */}
                 <span className="hidden sm:inline">{label}</span>
               </div>

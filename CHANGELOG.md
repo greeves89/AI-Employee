@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.111] — 2026-07-07
+
+### Fixed
+- **Meeting-Raum: Chat mobil einklappbar, Stepper mit Phasen-Icons, PDF wirklich downloadbar.** (1) Der Chat ist auf Mobile jetzt einklappbar (initial zu) — Toggle-Header „Chat (N Beiträge)“; Desktop unverändert. (2) Der Taskforce-Phasen-Stepper zeigt statt fünf identischer Häkchen je Phase ein passendes Lucide-Icon (Planung/Zuweisung/Bau/Integration/Fertig), aktive Phase mit Spinner; Farbe zeigt den Status. (3) Der PDF-Export lädt jetzt zuverlässig herunter: statt eines Popups (das mobil geblockt wird → „nicht downloadbar“) wird bei blockiertem Popup eine druckfertige Datei heruntergeladen. (`frontend/src/app/meeting-rooms/[id]/page.tsx`)
+
 ## [1.99.110] — 2026-07-07
 
 ### Fixed
