@@ -321,8 +321,8 @@ ${msgHtml}
 
       {/* Toolbar */}
       <div className="px-6 pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
             <button
               onClick={() => router.push("/meeting-rooms")}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
@@ -403,8 +403,8 @@ ${msgHtml}
         </div>
       )}
 
-      {/* Main layout: chat + sidebar */}
-      <div className="flex flex-1 min-h-0 gap-0">
+      {/* Main layout: chat + sidebar — side-by-side on desktop, stacked on mobile */}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0 gap-0">
 
         {/* Chat Messages */}
         <div className="flex flex-col flex-1 min-w-0">
@@ -594,8 +594,8 @@ ${msgHtml}
           )}
         </div>
 
-        {/* Right Sidebar */}
-        <div className="w-72 shrink-0 border-l border-border flex flex-col overflow-hidden">
+        {/* Right Sidebar — full-width summary on top on mobile, fixed side panel on desktop */}
+        <div className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-l border-border flex flex-col overflow-hidden max-h-[32vh] lg:max-h-none order-first lg:order-none">
           {/* Agent Status */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
