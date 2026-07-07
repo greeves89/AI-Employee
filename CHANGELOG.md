@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.108] — 2026-07-07
+
+### Fixed
+- **Meeting-Raum-Detailansicht auf Mobile lesbar (Desktop unverändert).** Im schmalen Viewport wurden die zwei Spalten (Chat + Teilnehmer-Panel mit fester 288px-Breite) nebeneinander gequetscht und die Toolbar brach hässlich um. Neu: ab `lg` (Desktop) exakt das bisherige, saubere Zwei-Spalten-Layout; darunter stapelt es — Teilnehmer-Panel als kompakte Zusammenfassung oben (max. 32vh), Chat + Eingabe darunter — und die Toolbar bricht sauber um. Reine Responsive-Klassen, keine Änderung am Desktop-Design. (`frontend/src/app/meeting-rooms/[id]/page.tsx`)
+
 ## [1.99.107] — 2026-07-07
 
 ### Changed
