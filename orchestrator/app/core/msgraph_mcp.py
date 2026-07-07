@@ -292,7 +292,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_search_people",
-        "description": "Find people relevant to the user (colleagues, frequent contacts) by name or keyword — use this to resolve a person's name to an email address.",
+        "description": "Find people (colleagues, contacts) by name or keyword — use this to resolve a person's name to an email address. Tries the user's relevant people first and automatically falls back to the Entra directory when the mailbox-based People API is unavailable (e.g. on-prem mailbox).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -303,7 +303,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_search",
-        "description": "Universal Microsoft Search across the user's content (emails, calendar events, files, Teams chat messages). Use this for broad 'find anything about X' queries.",
+        "description": "Universal Microsoft Search across the user's content (emails, calendar events, files, Teams chat messages). Use this for broad 'find anything about X' queries. THIS is the correct way to search email — pass types=['message'] to search mail. The tool auto-splits incompatible entity types into separate Graph requests, so mixing mail + files + Teams in one call works too.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -323,6 +323,14 @@ MSGRAPH_TOOLS = [
                 "kind": {"type": "string", "description": "trending | used | shared. Default: used (recently used documents)."},
                 "limit": {"type": "number", "description": "Max items. Default: 15, max 25."},
             },
+        },
+    },
+    {
+        "name": "ms_recent_files",
+        "description": "List the files the user recently used or edited across OneDrive and SharePoint (Microsoft 'recent'). This is the direct answer to 'which files did I recently edit / work on'.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "number", "description": "Max files. Default: 15, max 30."}},
         },
     },
     {
@@ -1247,20 +1255,61 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         return f"Planner task created: '{args['title']}' (ID: {data.get('id')})"
 
     elif name == "ms_search_people":
-        data = await _graph("GET", "/me/people", token, params={
-            "$search": '"' + _kql(args["query"]) + '"',
-            "$top": 10,
-            "$select": "displayName,scoredEmailAddresses,jobTitle",
-        })
-        people = data.get("value", [])
+        q = _kql(args["query"])
+        people = []
+        used_directory = False
+        # 1) /me/people = relevanz-gerankte Personen aus dem Postfach des Nutzers.
+        #    Braucht ein Exchange-ONLINE-Postfach — bei On-Prem-Postfach -> HTTP 404.
+        try:
+            data = await _graph("GET", "/me/people", token, params={
+                "$search": '"' + q + '"',
+                "$top": 10,
+                "$select": "displayName,scoredEmailAddresses,jobTitle",
+            })
+            for p in data.get("value", []) or []:
+                emails = p.get("scoredEmailAddresses", []) or []
+                people.append({
+                    "name": p.get("displayName", ""),
+                    "email": emails[0].get("address", "") if emails else "",
+                    "title": p.get("jobTitle", "") or "",
+                })
+        except GraphError as ge:
+            if ge.status_code not in (403, 404):
+                raise  # echte Fehler (429/5xx) nicht verschlucken
+        # 2) Fallback aufs Entra-Verzeichnis (/users) — funktioniert ohne Cloud-Postfach,
+        #    solange der Tenant-Verzeichnisdienst in der Cloud liegt (SSO/Entra). $search
+        #    braucht den Header ConsistencyLevel: eventual.
+        if not people:
+            try:
+                data = await _graph("GET", "/users", token,
+                    headers={"ConsistencyLevel": "eventual"},
+                    params={
+                        "$search": f'"displayName:{q}" OR "mail:{q}"',
+                        "$top": 10,
+                        "$select": "displayName,mail,userPrincipalName,jobTitle",
+                        "$count": "true",
+                    })
+                used_directory = True
+                for u in data.get("value", []) or []:
+                    people.append({
+                        "name": u.get("displayName", ""),
+                        "email": u.get("mail") or u.get("userPrincipalName", ""),
+                        "title": u.get("jobTitle", "") or "",
+                    })
+            except GraphError as ge:
+                return (
+                    f"Personensuche nicht moeglich: /me/people ist hier nicht verfuegbar "
+                    f"(On-Prem-Postfach) und die Verzeichnissuche scheiterte (HTTP {ge.status_code} — "
+                    "evtl. fehlt die Berechtigung User.Read.All/Directory.Read.All im Tenant)."
+                )
         if not people:
             return f"No people found for '{args['query']}'."
         lines = []
         for p in people:
-            emails = p.get("scoredEmailAddresses", [])
-            email = emails[0].get("address", "") if emails else ""
-            title = p.get("jobTitle", "") or ""
-            lines.append(f"• {p.get('displayName', '')} <{email}>{(' — ' + title) if title else ''}")
+            title = p.get("title", "")
+            lines.append(f"• {p.get('name', '')} <{p.get('email', '')}>{(' — ' + title) if title else ''}")
+        if used_directory:
+            lines.append("(Quelle: Entra-Verzeichnis — /me/people war nicht verfuegbar)")
         return "\n".join(lines)
 
     elif name == "ms_insights":
@@ -1280,6 +1329,25 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             typ = vis.get("type") or ""
             url = res.get("webUrl", "")
             line = f"• {title}" + (f" [{typ}]" if typ else "")
+            if url:
+                line += f"\n  {url}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    elif name == "ms_recent_files":
+        limit = min(int(args.get("limit", 15)), 30)
+        data = await _graph("GET", "/me/drive/recent", token, params={"$top": limit})
+        items = data.get("value", [])
+        if not items:
+            return "Keine kürzlich verwendeten Dateien gefunden."
+        lines = []
+        for it in items:
+            fname = it.get("name", "")
+            mod = (it.get("lastModifiedDateTime") or "")[:16]
+            url = it.get("webUrl", "")
+            who = (((it.get("lastModifiedBy") or {}).get("user") or {}).get("displayName", "")) or ""
+            meta = f" (geändert {mod}{(' von ' + who) if who else ''})" if mod else ""
+            line = f"• {fname}{meta}"
             if url:
                 line += f"\n  {url}"
             lines.append(line)
@@ -1416,28 +1484,56 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
     elif name == "ms_search":
         types = args.get("types") or ["message", "event", "driveItem", "chatMessage"]
         limit = min(int(args.get("limit", 15)), 25)
-        body = {"requests": [{
-            "entityTypes": types,
-            "query": {"queryString": str(args["query"])},
-            "size": limit,
-        }]}
-        data = await _graph("POST", "/search/query", token, content=json.dumps(body))
+        # Microsoft Graph /search/query verbietet das Mischen inkompatibler entityTypes in
+        # EINEM Request: chatMessage darf mit nichts kombiniert werden, und Postfach-Typen
+        # (message/event) nicht mit SharePoint/OneDrive-Typen (driveItem/listItem/site).
+        # Ein gemischter Default -> HTTP 400. Deshalb pro kompatibler Gruppe einzeln suchen.
+        _GROUPS = [
+            ["message", "event"],                        # Postfach (Mail/Kalender)
+            ["driveItem", "listItem", "drive", "list", "site"],  # OneDrive/SharePoint
+            ["chatMessage"],                             # Teams (muss allein stehen)
+        ]
+        requested = [t for t in types if isinstance(t, str)]
+        groups = [g2 for g2 in ([t for t in g if t in requested] for g in _GROUPS) if g2]
+        if not groups:  # unbekannte Typen -> auf Mail zurückfallen
+            groups = [["message"]]
         hits = []
-        for container in (data.get("value") or [{}])[0].get("hitsContainers", []) or []:
-            hits.extend(container.get("hits", []) or [])
+        errors = []
+        for group in groups:
+            body = {"requests": [{
+                "entityTypes": group,
+                "query": {"queryString": str(args["query"])},
+                "size": limit,
+            }]}
+            try:
+                data = await _graph("POST", "/search/query", token, content=json.dumps(body))
+            except GraphError as ge:  # eine Gruppe darf scheitern, ohne die anderen zu killen
+                errors.append(f"{'/'.join(group)}: HTTP {ge.status_code}")
+                continue
+            for container in (data.get("value") or [{}])[0].get("hitsContainers", []) or []:
+                hits.extend(container.get("hits", []) or [])
         if not hits:
+            if errors:
+                return "No results. (Teil-Fehler: " + "; ".join(errors) + ")"
             return "No results."
         lines = []
+        seen = set()
         for h in hits:
             res = h.get("resource", {}) or {}
             title = res.get("name") or res.get("subject") or res.get("displayName") or ""
-            summary = _strip_html(h.get("summary", ""))[:300]
             url = res.get("webUrl", "")
+            key = url or (title + _strip_html(h.get("summary", ""))[:40])
+            if key in seen:
+                continue
+            seen.add(key)
+            summary = _strip_html(h.get("summary", ""))[:300]
             parts = [p for p in [title, summary] if p]
             line = "• " + " — ".join(parts) if parts else "• (no title)"
             if url:
                 line += f"\n  URL: {url}"
             lines.append(line)
+            if len(lines) >= limit:
+                break
         return "\n".join(lines)
 
     elif name == "ms_graph_get":
@@ -1809,6 +1905,24 @@ async def handle_mcp_request(
         try:
             result_text = await handle_tool(tool_name, args, token)
             return mcp_result(id_, tool_result(result_text)), 200
+        except GraphError as e:
+            msg = str(e)
+            if e.status_code == 404:
+                # 404 heisst hier: der angefragte Graph-Endpunkt ist in diesem Tenant nicht
+                # verfuegbar. Zwei typische Ursachen, ohne eine davon vorschnell zu behaupten:
+                # (1) der Endpunkt/Dienst ist im Tenant nicht bereitgestellt (z.B. die People-API
+                #     unter /me/people), oder (2) das Postfach/OneDrive des Nutzers liegt On-Prem.
+                # Statt eines nackten "HTTP 404" eine erklaerende, umsetzbare Meldung geben.
+                msg = (
+                    f"Microsoft Graph meldet HTTP 404 fuer '{tool_name}' — dieser Endpunkt ist im "
+                    "Tenant nicht verfuegbar. Moegliche Ursachen: der Dienst ist nicht bereitgestellt "
+                    "(z.B. die People-/Insights-API) ODER Postfach/OneDrive des Nutzers liegt On-Prem "
+                    "statt in der M365-Cloud. Tipp: Fuer 'zuletzt bearbeitete Dateien' das Tool "
+                    "'ms_recent_files' nutzen (OneDrive/SharePoint), fuer Kontakte 'ms_search_people' "
+                    "mit Suchbegriff. Wenn auch die funktionieren, war nur dieser eine Endpunkt nicht "
+                    "vorhanden."
+                )
+            return mcp_result(id_, tool_result(msg, is_error=True)), 200
         except RuntimeError as e:
             return mcp_result(id_, tool_result(str(e), is_error=True)), 200
         except Exception as e:

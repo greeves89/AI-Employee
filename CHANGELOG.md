@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.131] — 2026-07-07
+
+### Added
+- **MS-Graph-MCP: `ms_recent_files`.** Direkte Antwort auf „welche Dateien habe ich zuletzt bearbeitet" — listet die kürzlich verwendeten/bearbeiteten Dateien aus OneDrive + SharePoint (`GET /me/drive/recent`) mit Name, Änderungsdatum, Bearbeiter und Link. Vorher musste der Agent über `ms_insights`/`ms_graph_get` improvisieren und zögerte deshalb; jetzt gibt es ein eindeutig benanntes Tool. (`orchestrator/app/core/msgraph_mcp.py`)
+
+### Fixed
+- **MS-Graph-MCP: `ms_search_people` mit Verzeichnis-Fallback.** `/me/people` leitet seine Relevanz aus dem Cloud-Postfach ab und liefert bei On-Prem-Postfächern HTTP 404 — die Personensuche schlug damit fehl, obwohl der Entra-Verzeichnisdienst in der Cloud liegt. Das Tool versucht jetzt zuerst `/me/people` und fällt bei 404/403 automatisch auf die Verzeichnissuche (`/users` mit `ConsistencyLevel: eventual`) zurück, sodass Name→E-Mail auch ohne Cloud-Postfach funktioniert. (`orchestrator/app/core/msgraph_mcp.py`)
+- **MS-Graph-MCP: `ms_search` HTTP 400 bei gemischten Typen behoben.** Microsoft Graph `/search/query` verbietet das Kombinieren inkompatibler `entityTypes` in einem Request (`chatMessage` muss allein stehen; Postfach-Typen `message`/`event` nicht mit SharePoint/OneDrive-Typen `driveItem`/`listItem`/`site`). Der bisherige gemischte Default führte zu HTTP 400 — u.a. bei der Mail-Suche. `ms_search` splittet die angefragten Typen jetzt automatisch in kompatible Gruppen, sucht pro Gruppe getrennt, führt die Treffer zusammen (dedupliziert) und übersteht Teil-Fehler einzelner Gruppen. Damit funktioniert die Mail-Suche zuverlässig (auch beim Default). (`orchestrator/app/core/msgraph_mcp.py`)
+
+### Changed
+- **MS-Graph-MCP: klare 404-Meldung statt „HTTP 404".** Persönliche Graph-Endpunkte (`/me/people`, `/me/insights`, `/me/drive/recent`, `/me/messages` …) liefern in On-Prem-Umgebungen 404, weil Postfach/OneDrive nicht in der M365-Cloud liegen. Der Connector fängt das jetzt zentral ab und erklärt die Ursache (On-Prem/keine Cloud-Lizenz) samt Handlungshinweis, statt den Agenten mit einem nackten 404 ratlos zu lassen. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.130] — 2026-07-07
 
 ### Added
