@@ -64,7 +64,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_list_emails",
-        "description": "List or SEARCH emails from the user's mailbox. Filter by free text (subject+body), by sender, and/or by subject. Defaults to inbox, newest first.",
+        "description": "List emails from a mailbox FOLDER (inbox/sent/drafts), newest first, optionally filtered by sender/subject/free-text. Reads /me/messages directly, so it needs a cloud mailbox — on on-prem/hybrid mailboxes this can return 404. To FIND/SEARCH mail robustly (works via the search index even when folder access 404s), prefer ms_search with types=['message'].",
         "inputSchema": {
             "type": "object",
             "properties": {

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.132] — 2026-07-07
+
+### Changed
+- **MS-Graph-MCP: Mail-Suche eindeutig verdrahtet.** `ms_search` weist jetzt explizit aus, dass es der korrekte Weg für die E-Mail-Suche ist (`types=['message']`). `ms_list_emails` stellt klar, dass es Postfach-Ordner direkt liest (`/me/messages`, braucht Cloud-Postfach → bei On-Prem/Hybrid ggf. 404) und verweist zum robusten Finden/Suchen von Mail auf `ms_search`. Damit wählt der Agent bei „Mails suchen" den funktionierenden Suchindex-Weg statt des Postfach-Ordner-Zugriffs. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.131] — 2026-07-07
 
 ### Added
