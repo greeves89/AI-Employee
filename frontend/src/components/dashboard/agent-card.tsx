@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug, Wallet, Zap } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -56,9 +56,12 @@ const statusConfig: Record<string, {
 
 interface AgentCardProps {
   agent: Agent;
+  /** True while this agent is being updated (e.g. during "Update All") → the
+   *  Update badge spins instead of being a static hint, and clears when done. */
+  updating?: boolean;
 }
 
-export function AgentCard({ agent }: AgentCardProps) {
+export function AgentCard({ agent, updating = false }: AgentCardProps) {
   const cpuPercent = agent.cpu_percent ?? 0;
   const memMb = agent.memory_usage_mb ?? 0;
   const config = statusConfig[agent.state] ?? statusConfig.stopped;
@@ -134,10 +137,10 @@ export function AgentCard({ agent }: AgentCardProps) {
                  agent.llm_config.provider_type}
               </div>
             ) : null}
-            {agent.update_available && (
+            {(updating || agent.update_available) && (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border-amber-500/20">
-                <ArrowUpCircle className="h-3 w-3" />
-                Update
+                {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
+                {updating ? "Aktualisiere…" : "Update"}
               </div>
             )}
             {agent.budget_usd != null && agent.budget_usd > 0 && agent.monthly_cost_usd >= agent.budget_usd && (
