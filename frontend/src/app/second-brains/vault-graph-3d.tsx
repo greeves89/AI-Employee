@@ -116,7 +116,9 @@ export default function VaultGraph3D({
     };
   }, [brainId, externalGraph]);
 
-  // Keep the canvas sized to its container.
+  // Keep the canvas sized to its container. NOTE: wrapRef sits on the graph area,
+  // which only mounts AFTER loading finishes — so re-run once the graph appears,
+  // otherwise the size stays at its initial guess and the canvas doesn't fill.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -125,7 +127,7 @@ export default function VaultGraph3D({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [loading, err, graph]);
 
   // Detect a lost/failed WebGL context on the three.js canvas and fall back to
   // 2D live. Also pause the render loop on unmount to release the context sooner
@@ -335,7 +337,7 @@ export default function VaultGraph3D({
         </div>
       ) : (
         <>
-          <div ref={wrapRef} className="relative flex-1 overflow-hidden">
+          <div ref={wrapRef} className="relative min-h-0 flex-1 overflow-hidden">
           {use3D ? (
             <FG
               ref={fgRef}

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.123] — 2026-07-07
+
+### Fixed
+- **3D-Graph füllt seinen Container jetzt sauber aus (Knowledge + Second Brain).** Regression aus dem Legenden-Umbau (v1.99.117): der Sizing-`ref` sitzt seit dem auf der Graph-Fläche, die erst NACH dem Laden gerendert wird — der Größen-Effekt lief aber nur beim Mount (da war der ref noch leer) und maß nie neu, sodass der Canvas auf seiner Anfangsgröße (800×600) hängen blieb und die dunkle Fläche nicht ausfüllte. Der Effekt misst jetzt neu, sobald der Graph erscheint (+ `min-h-0` am Flex-Container). (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+
 ## [1.99.122] — 2026-07-07
 
 ### Added
