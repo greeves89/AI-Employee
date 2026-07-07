@@ -326,6 +326,40 @@ MSGRAPH_TOOLS = [
         },
     },
     {
+        "name": "ms_create_online_meeting",
+        "description": "Create a Microsoft Teams online meeting and return the join link. Use when the user wants a Teams meeting/call link.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "Meeting subject."},
+                "start": {"type": "string", "description": "Start, ISO 8601 (e.g. 2026-07-08T14:00:00Z)."},
+                "end": {"type": "string", "description": "End, ISO 8601."},
+            },
+            "required": ["subject", "start", "end"],
+        },
+    },
+    {
+        "name": "ms_find_meeting_times",
+        "description": "Suggest meeting times when the given attendees are free (Microsoft findMeetingTimes). Returns candidate slots with a confidence score.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attendees": {"type": "string", "description": "Attendee email addresses, comma-separated."},
+                "duration_minutes": {"type": "number", "description": "Meeting duration in minutes. Default: 30."},
+            },
+            "required": ["attendees"],
+        },
+    },
+    {
+        "name": "ms_list_attachments",
+        "description": "List the attachments of an email (name, size, type). Use the email ID from ms_list_emails.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."}},
+            "required": ["email_id"],
+        },
+    },
+    {
         "name": "ms_graph_get",
         "description": "Advanced/fallback: read-only GET on ANY Microsoft Graph v1.0 endpoint (relative path like /me/messages). Bounded by your delegated permissions. Use only when no specific tool fits.",
         "inputSchema": {
@@ -662,6 +696,7 @@ WRITE_TOOLS = {
     "ms_update_calendar_event",
     "ms_respond_event",
     "ms_cancel_event",
+    "ms_create_online_meeting",
     "ms_send_teams_message",
     "ms_send_chat_message",
     "ms_create_task",
@@ -1147,6 +1182,47 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
                 line += f"\n  {url}"
             lines.append(line)
         return "\n".join(lines)
+
+    elif name == "ms_create_online_meeting":
+        payload = {
+            "subject": str(args["subject"]),
+            "startDateTime": str(args["start"]),
+            "endDateTime": str(args["end"]),
+        }
+        data = await _graph("POST", "/me/onlineMeetings", token, content=json.dumps(payload))
+        join = data.get("joinWebUrl") or data.get("joinUrl") or ""
+        return f"Teams-Meeting '{args['subject']}' erstellt.\nJoin-Link: {join}"
+
+    elif name == "ms_find_meeting_times":
+        dur = int(args.get("duration_minutes", 30))
+        attendees = [
+            {"emailAddress": {"address": a.strip()}, "type": "required"}
+            for a in str(args["attendees"]).split(",") if a.strip()
+        ]
+        body = {"attendees": attendees, "meetingDuration": f"PT{dur}M", "maxCandidates": 5}
+        data = await _graph("POST", "/me/findMeetingTimes", token, content=json.dumps(body))
+        slots = data.get("meetingTimeSuggestions", [])
+        if not slots:
+            return "Keine gemeinsamen freien Zeiten gefunden."
+        lines = []
+        for s in slots[:5]:
+            mt = s.get("meetingTimeSlot", {}) or {}
+            start = (mt.get("start", {}) or {}).get("dateTime", "")[:16]
+            end = (mt.get("end", {}) or {}).get("dateTime", "")[:16]
+            conf = s.get("confidence", "")
+            lines.append(f"• {start} → {end}" + (f" (Konfidenz {conf}%)" if conf != "" else ""))
+        return "\n".join(lines)
+
+    elif name == "ms_list_attachments":
+        data = await _graph("GET", f"/me/messages/{_gid(args['email_id'])}/attachments", token,
+                            params={"$select": "id,name,size,contentType"})
+        atts = data.get("value", [])
+        if not atts:
+            return "Keine Anhänge."
+        return "\n".join(
+            f"• {a.get('name')} ({_fmt_size(a.get('size', 0))}, {a.get('contentType', '')}) ID: {a.get('id')}"
+            for a in atts
+        )
 
     elif name == "ms_search":
         types = args.get("types") or ["message", "event", "driveItem", "chatMessage"]

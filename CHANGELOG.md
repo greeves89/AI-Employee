@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.129] — 2026-07-07
+
+### Added
+- **MS-Graph-MCP: drei neue Tools.** `ms_create_online_meeting` (Teams-Meeting anlegen + Join-Link zurück), `ms_find_meeting_times` (Terminvorschläge, wann Teilnehmer frei sind — Microsoft findMeetingTimes), `ms_list_attachments` (Anhänge einer E-Mail auflisten). Zusammen mit `ms_insights` (v1.99.128) deckt der Connector jetzt auch Meeting-Koordination + Anhänge ab. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.128] — 2026-07-07
 
 ### Added
