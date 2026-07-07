@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.124] — 2026-07-07
+
+### Added
+- **Agenten können in die Knowledge-Base schreiben (`write_knowledge`-Tool) → ermöglicht Wiki-Import per Agent.** Der agentseitige Endpoint zum Schreiben von Knowledge-Einträgen existierte, war aber nicht als MCP-Tool verdrahtet — Agenten konnten also lesen (u. a. das IT-Wiki via MediaWiki-MCP), aber nicht in die Knowledge-Base schreiben. Neu: `write_knowledge` (Upsert per Titel, Tags, erscheint im Knowledge-Graphen). Damit ist der **IT-Wiki-Import ein reiner Agenten-Auftrag** (Zahnrad statt Insellösung): der Agent liest die Seiten über den vorhandenen MediaWiki-MCP und legt sie via `write_knowledge` als Knowledge-Einträge an. (`orchestrator/app/api/mcp_agent.py`)
+
 ## [1.99.123] — 2026-07-07
 
 ### Fixed

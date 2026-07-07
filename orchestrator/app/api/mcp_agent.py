@@ -101,6 +101,24 @@ AGENT_TOOLS = [
         },
     },
     {
+        "name": "write_knowledge",
+        "description": (
+            "Save or update an entry in the shared Knowledge Base (upsert by title). "
+            "Use for durable, searchable knowledge — e.g. importing a wiki page (read "
+            "via the MediaWiki MCP) or storing a meeting protocol. Entries appear in "
+            "the Knowledge graph."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Entry title. Unique key — the same title updates the existing entry."},
+                "content": {"type": "string", "description": "Markdown content."},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags, e.g. ['wiki', 'it-ops']."},
+            },
+            "required": ["title", "content"],
+        },
+    },
+    {
         "name": "computer_use",
         "description": (
             "Control the user's desktop via the AI-Employee Bridge app. "
@@ -305,6 +323,34 @@ async def _list_my_team(agent: Agent, db: AsyncSession) -> list[dict]:
 
 async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redis: RedisService) -> dict:
     """Execute an agent tool and return an MCP tool result."""
+
+    if name == "write_knowledge":
+        from app.models.knowledge import KnowledgeEntry
+        from app.api.knowledge import _extract_tags
+        title = str(args.get("title") or "").strip()
+        content = str(args.get("content") or "")
+        if not title:
+            return _tool_result("Error: 'title' ist erforderlich.", is_error=True)
+        owner_id = agent.user_id
+        existing = (await db.execute(
+            select(KnowledgeEntry).where(
+                KnowledgeEntry.title == title,
+                KnowledgeEntry.user_id == owner_id,
+            )
+        )).scalar_one_or_none()
+        tags = sorted(set((args.get("tags") or []) + _extract_tags(content)))
+        if existing:
+            existing.content = content
+            existing.tags = tags
+            existing.updated_by = agent.id
+            await db.commit()
+            return _tool_result(f"Knowledge-Eintrag '{title}' aktualisiert.")
+        db.add(KnowledgeEntry(
+            title=title, content=content, tags=tags,
+            created_by=agent.id, updated_by=agent.id, user_id=owner_id,
+        ))
+        await db.commit()
+        return _tool_result(f"Knowledge-Eintrag '{title}' angelegt.")
 
     if name == "list_my_team":
         teams = await _list_my_team(agent, db)
