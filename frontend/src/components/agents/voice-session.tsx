@@ -5,7 +5,7 @@ import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, Ch
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
-import { createTask } from "@/lib/api";
+import { sendMeetingTranscriptToChat } from "@/lib/api";
 
 type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
@@ -120,27 +120,21 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
     setMeetingOpen(true);
   }, []);
 
-  // Hand the finished transcript to THIS agent as a background protocol task.
-  // Explicit user action (button after recording stops) — not during recording.
+  // Hand the finished transcript to THIS agent as a visible CHAT thread (not a
+  // headless task): the transcript + the agent's protocol reply appear in the
+  // agent's Chat tab. Explicit user action (button after recording stops).
   const handleMeetingTranscript = useCallback(async (text: string) => {
     const t = text.trim();
     if (!t) return;
-    try {
-      await createTask({
-        title: "Meeting-Protokoll",
-        prompt:
-          "Erstelle aus dem folgenden Meeting-Transkript ein strukturiertes Protokoll " +
-          "(Teilnehmer, Zusammenfassung, Entscheidungen, Action-Items mit Verantwortlichen). " +
-          "Speichere es als Knowledge-Eintrag und präsentiere die Datei am Ende mit present_file.\n\n" +
-          "TRANSKRIPT:\n" + t,
-        agent_id: agentId,
-      });
-      setMeetingMsg("Transkript gesendet — ich erstelle das Protokoll im Hintergrund (erscheint im Chat/Wissen).");
-    } catch {
-      setMeetingMsg("Konnte das Transkript nicht an den Agenten senden.");
-    }
     setMeetingOpen(false);
-    window.setTimeout(() => setMeetingMsg(null), 8000);
+    setMeetingMsg("Transkript an den Chat gesendet — der Agent schreibt das Protokoll dort (im Chat-Tab sichtbar).");
+    try {
+      await sendMeetingTranscriptToChat(agentId, t);
+      setMeetingMsg("Protokoll im Chat erstellt — öffne den Chat-Tab dieses Agenten, um es zu sehen.");
+    } catch {
+      setMeetingMsg("Konnte das Transkript nicht an den Chat senden.");
+    }
+    window.setTimeout(() => setMeetingMsg(null), 12000);
   }, [agentId]);
 
   // Append a conversation turn, coalescing consecutive same-role events into ONE
@@ -960,7 +954,8 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                 </div>
                 <p className="mb-2 text-[11px] text-muted-foreground/70">
                   Reine Aufnahme — {agentName} hört dabei nicht zu und spricht nicht. Am Ende kannst du das
-                  Transkript optional an {agentName} senden, der daraus im Hintergrund ein Protokoll erstellt.
+                  Transkript an {agentName} senden; Transkript und Protokoll erscheinen dann als Chat-Verlauf
+                  im Chat-Tab dieses Agenten.
                 </p>
                 <MeetingRecorder onTranscript={handleMeetingTranscript} />
               </div>

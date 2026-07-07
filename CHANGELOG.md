@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.137] — 2026-07-07
+
+### Changed
+- **Meeting-Transkript geht jetzt sichtbar in den Chat statt in einen Hintergrund-Task.** Bisher wurde das Transkript per `createTask` an den Agenten übergeben — der Task lief headless durch (Protokoll landete nur im Wissen), man sah nichts im Chat. Jetzt wird das Transkript über einen einmaligen Chat-WebSocket als normale Nachricht in eine Chat-Session geschrieben: Transkript **und** das Protokoll des Agenten erscheinen als sichtbarer **Chat-Verlauf im Chat-Tab** des Agenten. (`frontend/src/lib/api.ts` `sendMeetingTranscriptToChat`, `frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.136] — 2026-07-07
 
 ### Changed

@@ -1,5 +1,5 @@
 import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
-import { getApiUrl, getBase } from "./config";
+import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
 
@@ -652,6 +652,54 @@ export async function updateChatSession(
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+// Send a meeting transcript into the agent's chat as a normal message, so the
+// transcript + the agent's protocol reply show up as a visible chat thread (in the
+// agent's Chat tab) — not a headless background task. Opens a one-shot chat
+// WebSocket, sends the message, waits for the agent to finish (so the reply is
+// persisted), then closes. Returns the session id it wrote to.
+export async function sendMeetingTranscriptToChat(
+  agentId: string,
+  transcript: string,
+): Promise<string> {
+  const token = localStorage.getItem("token");
+  const tr = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!tr.ok) throw new Error("ticket failed");
+  const { ticket } = await tr.json();
+  const sessionId = `meeting-${Date.now().toString(36)}`;
+  const prompt =
+    "Aus dem folgenden Meeting-Transkript ein strukturiertes Protokoll erstellen " +
+    "(Teilnehmer, Zusammenfassung, Entscheidungen, Action-Items mit Verantwortlichen). " +
+    "Speichere es zusätzlich als Knowledge-Eintrag.\n\nTRANSKRIPT:\n" +
+    transcript;
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat?ticket=${ticket}`);
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try { ws.close(); } catch { /* already closed */ }
+      resolve();
+    };
+    ws.onopen = () =>
+      ws.send(JSON.stringify({ text: prompt, session_id: sessionId, source: "webapp" }));
+    ws.onmessage = (e) => {
+      try {
+        const evt = JSON.parse(e.data);
+        if (evt.type === "done" || evt.type === "error") finish();
+      } catch { /* ignore non-JSON frames */ }
+    };
+    ws.onerror = () => { if (!settled) { settled = true; reject(new Error("chat ws error")); } };
+    // Safety: the agent turn (protocol generation) can take a while; close after a
+    // generous cap even if no explicit done event arrives. The message is already
+    // persisted server-side on receipt, so the thread exists regardless.
+    setTimeout(finish, 180_000);
+  });
+  return sessionId;
 }
 
 export async function deleteAllChatSessions(
