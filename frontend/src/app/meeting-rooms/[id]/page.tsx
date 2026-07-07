@@ -21,6 +21,7 @@ import {
   FileText,
   Container,
   Download,
+  ChevronDown,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -83,6 +84,7 @@ export default function MeetingRoomDetailPage() {
   const roomId = params.id as string;
 
   const [room, setRoom] = useState<MeetingRoom | null>(null);
+  const [participantsOpen, setParticipantsOpen] = useState(false); // mobile: collapsed by default
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [initialMessage, setInitialMessage] = useState("");
@@ -408,7 +410,7 @@ ${msgHtml}
 
         {/* Chat Messages */}
         <div className="flex flex-col flex-1 min-w-0">
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div className="flex-1 overflow-y-auto px-3 lg:px-6 py-4 space-y-4">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Bot className="h-12 w-12 text-muted-foreground/20 mb-4" />
@@ -428,7 +430,7 @@ ${msgHtml}
                   className={cn(
                     "flex gap-3 max-w-3xl",
                     (msg.role === "system" || msg.role === "moderator") && "mx-auto max-w-2xl w-full",
-                    msg.role === "reaction" && "max-w-xl ml-11 opacity-80",
+                    msg.role === "reaction" && "max-w-xl ml-4 lg:ml-11 opacity-80",
                   )}
                 >
                   {msg.role === "reaction" ? (
@@ -595,10 +597,21 @@ ${msgHtml}
         </div>
 
         {/* Right Sidebar — full-width summary on top on mobile, fixed side panel on desktop */}
-        <div className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-l border-border flex flex-col overflow-hidden max-h-[32vh] lg:max-h-none order-first lg:order-none">
-          {/* Agent Status */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
+        <div className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-l border-border flex flex-col overflow-hidden lg:max-h-none order-first lg:order-none">
+          {/* Mobile: collapsible header (desktop: panel is always open, no toggle) */}
+          <button
+            onClick={() => setParticipantsOpen((o) => !o)}
+            className="lg:hidden flex items-center justify-between px-4 py-2.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider"
+          >
+            <span>Teilnehmer ({room.agent_ids.length}{room.use_moderator ? " + Moderator" : ""})</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", participantsOpen && "rotate-180")} />
+          </button>
+          {/* Agent Status — 2-col tiles on mobile, single-column list on desktop */}
+          <div className={cn(
+            "flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2 content-start max-h-[42vh] lg:block lg:space-y-2 lg:max-h-none",
+            !participantsOpen && "hidden lg:block",
+          )}>
+            <p className="col-span-2 hidden lg:block text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
               Teilnehmer
             </p>
 
@@ -607,7 +620,7 @@ ${msgHtml}
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 mb-1"
+                className="col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 mb-1"
               >
                 <div className="flex items-center gap-2.5 mb-2">
                   <div className="relative shrink-0">

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.109] — 2026-07-07
+
+### Fixed
+- **Meeting-Raum Mobile-Feinschliff (Desktop unverändert).** Teilnehmer-Panel ist auf Mobile jetzt **einklappbar** (initial eingeklappt) und zeigt beim Ausklappen **kompakte 2-Spalten-Kacheln** statt einer langen Liste (Moderator volle Breite). Chat-Beiträge nutzen auf Mobile mehr Breite (weniger Seiten-Padding + kleinerer Reaktions-Einzug). Alles per `lg:`-Breakpoint — ab Desktop exakt wie zuvor. (`frontend/src/app/meeting-rooms/[id]/page.tsx`)
+
 ## [1.99.108] — 2026-07-07
 
 ### Fixed
