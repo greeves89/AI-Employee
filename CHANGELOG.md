@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.138] — 2026-07-07
+
+### Added
+- **In-App-Architektur- & Schnittstellen-Referenz unter Hilfe.** Neue Seite `/help/architecture` (verlinkt aus dem Hilfe-Schnellzugriff) mit Mermaid-Diagrammen (Komponenten, Chat-Flow, Tool-Freigabe, Agent-Spawn, Deployment-Topologie) und einer vollständigen, aus dem Code inventarisierten Referenz: ~330 HTTP-Endpunkte (mit Auth-Kennzeichnung), 61 MS-Graph-Tools (Lesen/Schreiben), alle MCP-Server (Orchestrator/Second-Brain/On-Prem-Exchange/Built-in-Container), Voice-Tools + WebSocket-Events, ~50 Datenmodelle und die Frontend-Routen. Neue Dependency `mermaid` (client-seitig, lazy geladen). (`frontend/src/app/help/architecture/*`, `frontend/src/components/help/mermaid.tsx`, `frontend/src/app/help/page.tsx`)
+
 ## [1.99.137] — 2026-07-07
 
 ### Changed

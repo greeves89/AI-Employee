@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ExternalLink,
   Download,
+  Network,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -257,7 +258,7 @@ export default function HelpPage() {
       </div>
 
       {/* Schnellzugriff */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <a
           href="/benutzerhandbuch.pdf"
           target="_blank"
@@ -294,6 +295,16 @@ export default function HelpPage() {
             <div className="text-xs text-muted-foreground truncate">Changelog ansehen</div>
           </div>
         </a>
+        <Link
+          href="/help/architecture"
+          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
+        >
+          <Network className="h-5 w-5 text-primary shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Architektur &amp; Schnittstellen</div>
+            <div className="text-xs text-muted-foreground truncate">Diagramme, API, Tools, Modelle</div>
+          </div>
+        </Link>
       </div>
 
       {/* Suche */}
