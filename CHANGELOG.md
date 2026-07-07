@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.122] — 2026-07-07
+
+### Added
+- **Meeting-Aufnahme + Transkription (v1) — der Audio-Teil des Meeting-Agents.** Neuer additiver Aufnahme-Modus (rührt die Realtime-Voice nicht an): unter „Meeting Rooms" gibt es „Live-Meeting aufnehmen & transkribieren". Der Browser nimmt das Meeting auf, schickt die Aufnahme an einen neuen authentifizierten Endpoint `POST /meetings/transcribe`, der über den bestehenden `stt-service` (faster-whisper) transkribiert — reine Transkription, keine Sprachausgabe. Das Transkript kann kopiert / an einen **Meeting-Agent** (Template aus v1.99.120) gegeben werden, der daraus Protokoll + Action-Items erzeugt und in Workspace/Knowledge speichert. Nächste Ausbaustufen: Live-Chunk-Transkription + Sprecher-Diarization (FluidAudio on-device für iOS). (`orchestrator/app/api/meetings.py`, `frontend/src/components/meetings/meeting-recorder.tsx`, `frontend/src/app/meeting-rooms/page.tsx`)
+
 ## [1.99.121] — 2026-07-07
 
 ### Fixed

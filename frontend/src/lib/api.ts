@@ -587,6 +587,19 @@ export async function deleteFile(agentId: string, path: string): Promise<void> {
   }
 }
 
+// Meeting recording: transcribe one recorded audio chunk via the STT service.
+export async function transcribeMeetingChunk(blob: Blob): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", blob, "chunk.webm");
+  const res = await fetch(`${getBase()}/meetings/transcribe`, {
+    method: "POST",
+    body: fd,
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Transkription fehlgeschlagen");
+  return ((await res.json()).text as string) || "";
+}
+
 // Chat History & Sessions
 export interface ChatHistoryMessage {
   id: string;
