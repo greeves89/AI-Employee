@@ -89,7 +89,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_send_email",
-        "description": "Send an email from the user's Microsoft mailbox.",
+        "description": "Send an email from the user's Microsoft mailbox — or, with draft=true, create a draft for the user to review and send themselves.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -98,19 +98,21 @@ MSGRAPH_TOOLS = [
                 "body": {"type": "string", "description": "Email body (plain text or HTML)."},
                 "body_type": {"type": "string", "description": "Content type: 'Text' or 'HTML'. Default: Text."},
                 "cc": {"type": "string", "description": "Optional CC recipients (comma-separated)."},
+                "draft": {"type": "boolean", "description": "If true, create an Outlook DRAFT (not sent) so the user can review and send it manually. Set this when the user asks for a draft or to review before sending. Default: false (sends immediately)."},
             },
             "required": ["to", "subject", "body"],
         },
     },
     {
         "name": "ms_reply_email",
-        "description": "Reply to an existing email.",
+        "description": "Reply to an existing email — or, with draft=true, create a reply draft for the user to review and send themselves.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "email_id": {"type": "string", "description": "The email ID to reply to."},
                 "body": {"type": "string", "description": "Reply body text."},
                 "reply_all": {"type": "boolean", "description": "Reply to all recipients. Default: false."},
+                "draft": {"type": "boolean", "description": "If true, create a reply DRAFT (not sent) for the user to review and send manually. Set this when the user asks for a draft. Default: false (sends immediately)."},
             },
             "required": ["email_id", "body"],
         },
@@ -396,13 +398,14 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_forward_email",
-        "description": "Forward an email to one or more recipients.",
+        "description": "Forward an email to one or more recipients — or, with draft=true, create a forward draft for the user to review and send themselves.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
                 "to": {"type": "string", "description": "Recipient email address(es), comma-separated."},
                 "comment": {"type": "string", "description": "Optional comment added above the forwarded message."},
+                "draft": {"type": "boolean", "description": "If true, create a forward DRAFT (not sent) for the user to review and send manually. Set this when the user asks for a draft. Default: false (sends immediately)."},
             },
             "required": ["email_id", "to"],
         },
@@ -670,6 +673,12 @@ WRITE_TOOLS = {
     "ms_delete_contact",
 }
 
+# Required args per tool (from each tool's inputSchema) — checked centrally in the
+# dispatch so a missing field yields a clear message instead of a raw KeyError.
+_REQUIRED_ARGS = {
+    t["name"]: t.get("inputSchema", {}).get("required", []) for t in MSGRAPH_TOOLS
+}
+
 
 # ---------------------------------------------------------------------------
 # JSON-RPC helpers
@@ -691,12 +700,23 @@ def tool_result(content: str, is_error: bool = False) -> dict:
 # Graph API
 # ---------------------------------------------------------------------------
 
+class GraphError(RuntimeError):
+    """A Graph call returned an HTTP error. Carries the status code so callers can
+    branch on it (e.g. 403 = not the meeting organizer) while the message stays
+    generic — no tenant domain / UPN / object-id leak to the model."""
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 async def _graph(method: str, path: str, token: str, **kwargs) -> dict:
     """Make an MS Graph API call and return parsed JSON.
 
     Extra request headers (e.g. ``If-Match`` for Planner PATCH/DELETE, which Graph
     rejects without the task's ETag) can be passed via ``headers=`` — they are
-    merged onto the auth/content-type defaults."""
+    merged onto the auth/content-type defaults. HTTP errors raise ``GraphError``
+    (a ``RuntimeError`` subclass carrying ``.status_code``)."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     headers.update(kwargs.pop("headers", None) or {})
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -708,14 +728,25 @@ async def _graph(method: str, path: str, token: str, **kwargs) -> dict:
         )
         if resp.status_code == 204:
             return {}
-        data = resp.json()
         if resp.status_code >= 400:
-            err = data.get("error", {}) if isinstance(data, dict) else {}
-            # Log full detail server-side; return only a generic status to the client
-            # (Graph messages can leak tenant domains, UPNs, object IDs).
-            logger.warning("Graph API %s on %s: %s", resp.status_code, path, str(err.get("message", ""))[:300])
-            raise RuntimeError(f"Microsoft Graph request failed (HTTP {resp.status_code}).")
-        return data
+            # Error bodies are usually JSON, but 429 rate-limits / 5xx gateway
+            # errors can be text/plain or empty — never let parsing crash the
+            # clean error path. Full detail is logged; the client gets only a
+            # generic status (Graph messages can leak tenant domains, UPNs, IDs).
+            detail = ""
+            try:
+                body = resp.json()
+                if isinstance(body, dict):
+                    detail = str((body.get("error", {}) or {}).get("message", ""))[:300]
+            except Exception:
+                detail = resp.text[:300]
+            logger.warning("Graph API %s on %s: %s", resp.status_code, path, detail)
+            raise GraphError(resp.status_code, f"Microsoft Graph request failed (HTTP {resp.status_code}).")
+        try:
+            return resp.json()
+        except Exception:
+            # 2xx with an empty/non-JSON body (some POST actions) — nothing to parse.
+            return {}
 
 
 async def _planner_etag(task_id, token: str) -> str:
@@ -770,7 +801,7 @@ async def _graph_bytes(method: str, path: str, token: str, content: bytes | None
 # Tool handlers
 # ---------------------------------------------------------------------------
 
-async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = False) -> str:
+async def handle_tool(name: str, args: dict, token: str) -> str:
 
     if name == "ms_get_user_info":
         data = await _graph("GET", "/me", token)
@@ -825,19 +856,21 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
         }
         if args.get("cc"):
             message["ccRecipients"] = [{"emailAddress": {"address": a.strip()}} for a in args["cc"].split(",")]
-        if draft_mail:
-            # Create an Outlook draft instead of sending — leaves the final send
-            # to the human.
+        if args.get("draft"):
+            # Create an Outlook draft — the user reviews and sends it manually.
             await _graph("POST", "/me/messages", token, content=json.dumps(message))
-            return f"Email-Entwurf in Outlook erstellt (NICHT gesendet): '{args['subject']}'."
+            return f"Email-Entwurf erstellt (NICHT gesendet): '{args['subject']}'."
         payload: dict = {"message": message, "saveToSentItems": True}
         await _graph("POST", "/me/sendMail", token, content=json.dumps(payload))
         return f"Email sent to {args['to']}."
 
     elif name == "ms_reply_email":
-        if draft_mail:
-            # createReply produces a reply draft in the mailbox — not sent.
-            await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/createReply", token)
+        if args.get("draft"):
+            # createReply / createReplyAll produces a reply draft WITH the body
+            # prefilled (comment) — not sent; the user sends it manually.
+            action = "createReplyAll" if args.get("reply_all") else "createReply"
+            await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/{action}", token,
+                        content=json.dumps({"comment": args["body"]}))
             return "Antwort-Entwurf erstellt (NICHT gesendet)."
         endpoint = "/me/messages/{}/replyAll" if args.get("reply_all") else "/me/messages/{}/reply"
         payload = {"comment": args["body"]}
@@ -962,7 +995,7 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
         result_lines = []
         include_completed = args.get("include_completed", False)
         for tl in task_lists[:5]:
-            params: dict = {"$select": "id,title,status,importance,dueDateTime,body"}
+            params: dict = {"$select": "id,title,status,importance,dueDateTime,body", "$top": 20}
             if not include_completed:
                 params["$filter"] = "status ne 'completed'"
             tasks_data = await _graph("GET", f"/me/todo/lists/{tl['id']}/tasks", token, params=params)
@@ -1050,6 +1083,10 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
             state = "done" if pct == 100 else ("open" if pct == 0 else "in progress")
             due = (t.get("dueDateTime") or "")[:10]
             lines.append(f"• [{state}] {t.get('title')} {('due: ' + due) if due else ''} (ID: {t['id']})")
+        if len(tasks) > limit:
+            # Never silently drop tasks — the Planner API returns all at once and we
+            # cap client-side, so tell the model what was left out.
+            lines.append(f"… und {len(tasks) - limit} weitere (Anzeige-Limit {limit}) — mit höherem 'limit' erneut abrufen.")
         return "\n".join(lines)
 
     elif name == "ms_create_planner_task":
@@ -1063,7 +1100,7 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
 
     elif name == "ms_search_people":
         data = await _graph("GET", "/me/people", token, params={
-            "$search": '"' + str(args["query"]) + '"',
+            "$search": '"' + _kql(args["query"]) + '"',
             "$top": 10,
             "$select": "displayName,scoredEmailAddresses,jobTitle",
         })
@@ -1172,6 +1209,10 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
     elif name == "ms_forward_email":
         recipients = [{"emailAddress": {"address": a.strip()}} for a in str(args["to"]).split(",") if a.strip()]
         body = {"comment": args.get("comment", ""), "toRecipients": recipients}
+        if args.get("draft"):
+            # createForward → draft (comment + recipients prefilled), not sent.
+            await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/createForward", token, content=json.dumps(body))
+            return f"Weiterleitungs-Entwurf an {args['to']} erstellt (NICHT gesendet)."
         await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/forward", token, content=json.dumps(body))
         return f"E-Mail weitergeleitet an {args['to']}."
 
@@ -1204,8 +1245,12 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
             body = {"comment": args["comment"]} if args.get("comment") else {}
             await _graph("POST", f"/me/events/{_gid(args['event_id'])}/cancel", token, content=json.dumps(body))
             return "Termin abgesagt (Teilnehmer benachrichtigt)."
-        except RuntimeError:
-            # Not the organizer → just remove it from the user's own calendar.
+        except GraphError as e:
+            # Only the organizer may /cancel (Graph → 400/403). An attendee instead
+            # removes the event from their own calendar. Transient failures
+            # (404/429/5xx) must NOT silently delete — re-raise the real error.
+            if e.status_code not in (400, 403):
+                raise
             await _graph("DELETE", f"/me/events/{_gid(args['event_id'])}", token)
             return "Termin aus dem Kalender entfernt."
 
@@ -1242,7 +1287,11 @@ async def handle_tool(name: str, args: dict, token: str, *, draft_mail: bool = F
             payload["title"] = str(args["title"])
         if args.get("status"):
             st = str(args["status"])
-            payload["status"] = st if st in ("notStarted", "inProgress", "completed") else "notStarted"
+            if st not in ("notStarted", "inProgress", "completed"):
+                # Never silently coerce to notStarted — that can REOPEN a running/done
+                # task, the opposite of the intent. Reject instead.
+                return "Error: status must be one of notStarted, inProgress, completed."
+            payload["status"] = st
         if args.get("due_date"):
             payload["dueDateTime"] = {"dateTime": f"{args['due_date']}T00:00:00", "timeZone": "UTC"}
         if not payload:
@@ -1400,14 +1449,13 @@ async def handle_mcp_request(
     resolve_token: Callable[[], Awaitable[str | None]],
     *,
     write_enabled: bool = False,
-    draft_mail: bool = False,
 ) -> tuple[dict, int]:
     """Handle one MCP JSON-RPC message; ``resolve_token`` yields the caller's
     Microsoft access token (or None if not connected). Returns ``(json, status)``.
 
     ``write_enabled`` gates the write/send tools (``WRITE_TOOLS``): when False they
-    are hidden from tools/list and refused in tools/call. ``draft_mail`` routes
-    outbound mail to drafts instead of sending."""
+    are hidden from tools/list and refused in tools/call. In write mode outbound
+    mail is sent for real (send/reply/forward)."""
     method = body.get("method", "")
     id_ = body.get("id")
 
@@ -1439,7 +1487,21 @@ async def handle_mcp_request(
                 "agent's Integrations settings to use write tools.",
                 is_error=True,
             )), 200
-        token = await resolve_token()
+        # Validate required args centrally (clear message instead of a raw KeyError).
+        missing = [
+            f for f in _REQUIRED_ARGS.get(tool_name, [])
+            if f not in args or args.get(f) in (None, "")
+        ]
+        if missing:
+            return mcp_result(id_, tool_result(
+                f"Error: missing required argument(s): {', '.join(missing)}.",
+                is_error=True,
+            )), 200
+        try:
+            token = await resolve_token()
+        except Exception as e:  # token refresh can fail on a Microsoft/network outage
+            logger.warning("MS Graph token resolution failed for [%s]: %s", tool_name, e)
+            token = None
         if not token:
             return mcp_result(id_, tool_result(
                 "Microsoft account not connected. Connect your Microsoft 365 account first, "
@@ -1447,7 +1509,7 @@ async def handle_mcp_request(
                 is_error=True,
             )), 200
         try:
-            result_text = await handle_tool(tool_name, args, token, draft_mail=draft_mail)
+            result_text = await handle_tool(tool_name, args, token)
             return mcp_result(id_, tool_result(result_text)), 200
         except RuntimeError as e:
             return mcp_result(id_, tool_result(str(e), is_error=True)), 200

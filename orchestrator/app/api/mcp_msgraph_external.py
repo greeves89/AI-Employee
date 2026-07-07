@@ -72,9 +72,12 @@ async def mcp_msgraph_external(
     async def resolve_token() -> str | None:
         try:
             return await OAuthService(db, redis).get_valid_token("microsoft", user_id)
-        except ValueError:
+        except Exception as e:
+            # Not connected / no refresh token OR a transient Microsoft outage —
+            # both surface to the client as "not connected".
+            logger.warning("MS Graph token unavailable for user %s: %s", user_id, e)
             return None
 
     # External (OpenWebUI) access is ALWAYS read-only — no write/send tools.
-    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=False, draft_mail=False)
+    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=False)
     return JSONResponse(resp, status_code=status)
