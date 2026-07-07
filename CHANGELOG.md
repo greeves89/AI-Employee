@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.135] — 2026-07-07
+
+### Added
+- **Meeting-Transkription: OpenAI-Whisper-Fallback + Live-Segment-Transkript.** `/meetings/transcribe` versucht zuerst den lokalen faster-whisper-STT-Service und fällt, wenn der nicht erreichbar/konfiguriert ist (z. B. auf dem Pi, wo kein STT-Service läuft), automatisch auf **OpenAI Whisper** zurück (Key aus Platform-Setting `voice_openai_api_key` oder `OPENAI_API_KEY`). Der Recorder nimmt jetzt in **~20s-Segmenten** auf (statt einem großen Blob am Ende): jedes Segment ist ein vollständig dekodierbares webm-File, wird einzeln transkribiert und **live** ins Transkript geschrieben. Damit funktionieren beliebig lange Meetings zuverlässig — kein STT-Timeout auf langem Audio, jedes Segment bleibt unter dem OpenAI-25-MB-Limit, und eine unterbrochene/abgestürzte Aufnahme verliert den bereits transkribierten Teil nicht mehr. (`orchestrator/app/api/meetings.py`, `frontend/src/components/meetings/meeting-recorder.tsx`)
+
 ## [1.99.134] — 2026-07-07
 
 ### Fixed
