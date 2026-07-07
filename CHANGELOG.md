@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.125] — 2026-07-07
+
+### Changed
+- **Meeting-Agent + Wiki-Import: `write_knowledge` explizit verdrahtet.** Der Meeting-Agent-Prompt nennt jetzt konkret das `write_knowledge`-Tool zum Speichern des Protokolls, und die allgemeine Agent-CLAUDE.md dokumentiert `write_knowledge` (inkl. Hinweis: Wiki-Seiten via MediaWiki-MCP lesen und hier ablegen). Damit greifen die in v1.99.120/122/124 gebauten Loops (Meeting-Protokoll speichern, IT-Wiki-Import) ohne Rätselraten. Greift, sobald Agenten aktualisiert/neu erstellt werden. (`orchestrator/app/core/agent_templates.py`, `orchestrator/app/core/agent_manager.py`)
+
 ## [1.99.124] — 2026-07-07
 
 ### Added

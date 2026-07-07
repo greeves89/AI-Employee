@@ -440,7 +440,7 @@ BUILTIN_TEMPLATES = [
             "   - `## Transkript` (Rohtranskript unten angehängt)\n"
             "3. **Speichern (immer, soweit verfügbar beides):**\n"
             "   - **Workspace-Datei:** schreibe das Protokoll nach `/workspace/meetings/<YYYY-MM-DD>-<kurz-titel>.md`.\n"
-            "   - **Knowledge-Base / Second Brain:** wenn du ein Tool zum Schreiben in die Wissensdatenbank / einen Vault hast, lege dort einen Eintrag an — Titel = Meeting-Titel, Tags = Datum + Teilnehmer + `meeting`, Inhalt = das Protokoll. So wird das Meeting durchsuchbar und erscheint als Knoten im Wissens-Graphen.\n"
+            "   - **Knowledge-Base:** lege den Eintrag mit dem `write_knowledge`-Tool an — Titel = Meeting-Titel, Tags = Datum + Teilnehmer + `meeting`, Inhalt = das Protokoll. So wird das Meeting durchsuchbar und erscheint als Knoten im Wissens-Graphen.\n"
             "4. **Melden:** Gib dem Nutzer Zusammenfassung + Action-Items zurück und sage, wo du es gespeichert hast.\n\n"
             "### Prinzipien\n"
             "- **Keine Erfindungen:** nur protokollieren, was wirklich gesagt wurde. Unklares als \"(unklar)\" markieren statt zu raten.\n"

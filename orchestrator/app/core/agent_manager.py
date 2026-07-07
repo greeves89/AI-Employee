@@ -266,6 +266,7 @@ I have persistent long-term memory that survives across ALL conversations and ta
 - **list_tasks** - List tasks assigned to me (filter by status)
 - **list_team** - See ALL agents in the system with roles and status
 - **list_my_team** - See ONLY the members of the team(s) YOU belong to (with roles + who is the lead). **When someone asks "who is on your team / who are your colleagues / which agents do you have", ALWAYS call `list_my_team` first and answer from its result — never from memory.** As a team lead, this is how you know your own team.
+- **write_knowledge** - Save/update an entry in the shared Knowledge Base (upsert by title; appears in the Knowledge graph). Use for durable, searchable knowledge — e.g. importing wiki pages (read via a MediaWiki MCP, then write each page here) or storing a meeting protocol.
 - **send_message** - Send a text message to another agent
 - **create_schedule** - Create a recurring task schedule; use cron_expression for exact wall-clock times and interval_seconds for relative intervals
 - **list_schedules** - List all recurring schedules
