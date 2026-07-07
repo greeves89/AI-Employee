@@ -586,6 +586,7 @@ async def create_agent(
             from app.core.permissions import (
                 get_effective_permissions,
                 can_use_llm_provider,
+                can_use_model,
             )
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
@@ -623,6 +624,14 @@ async def create_agent(
                         status_code=403,
                         detail=f"LLM-Provider '{llm_type}' ist für deine Rolle nicht erlaubt.",
                     )
+            # 4) Model allowlist — a group may be limited to specific models
+            #    (admin-safe: admins resolve to models=None → unrestricted). Applies
+            #    to both the account and the manual path (it gates the model NAME).
+            if data.model and not can_use_model(perms, data.model):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Modell '{data.model}' ist für deine Gruppe nicht freigegeben.",
+                )
 
         # Guard: the model must belong to the harness that will run it. A
         # claude_code agent may only use Claude models, a codex_cli agent only

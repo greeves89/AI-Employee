@@ -5,6 +5,7 @@ Permissions dict shape:
   "max_agents": int | None,            # None = unlimited
   "template_ids": list[int] | None,    # None = all
   "llm_providers": list[str] | None,   # None = all
+  "models": list[str] | None,          # None = all; listed = only these model names may be picked for an agent (opt-in restriction per group)
   "mount_labels": list[str] | None,    # None = inherit user_mount_access; listed labels are GRANTED to the group (union with per-user grants)
   "ai_account_ids": list[int] | None,  # listed = the accounts this group may use. NOTE: for AI accounts the gate is DEFAULT-DENY (None = none) — see _allowed_account_ids
   "secret_ids": list[int] | None,      # listed = the secrets this group may use. NOTE: DEFAULT-DENY (None = none) — see secrets.py::_assert_secret_allowed
@@ -26,6 +27,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "max_agents": None,
         "template_ids": None,
         "llm_providers": None,
+        "models": None,
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
@@ -37,6 +39,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "max_agents": 20,
         "template_ids": None,
         "llm_providers": None,
+        "models": None,
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
@@ -48,6 +51,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "max_agents": 5,
         "template_ids": None,
         "llm_providers": None,
+        "models": None,
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
@@ -59,6 +63,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "max_agents": 0,
         "template_ids": [],
         "llm_providers": [],
+        "models": [],
         "mount_labels": [],
         "ai_account_ids": [],
         "secret_ids": [],
@@ -100,6 +105,7 @@ def _merge_defaults(p: dict[str, Any]) -> dict[str, Any]:
         "max_agents": None,
         "template_ids": None,
         "llm_providers": None,
+        "models": None,
         "mount_labels": None,
         "ai_account_ids": None,
         "secret_ids": None,
@@ -135,6 +141,16 @@ def can_use_llm_provider(permissions: dict, provider_type: str | None) -> bool:
         return True
     allowed = permissions.get("llm_providers")
     return allowed is None or provider_type in allowed
+
+
+def can_use_model(permissions: dict, model: str | None) -> bool:
+    """Whether the group may pick this model for an agent. None = all allowed
+    (opt-in restriction). Admin-safe: admins resolve to models=None via
+    get_effective_permissions, so they are never restricted."""
+    if not model:
+        return True
+    allowed = permissions.get("models")
+    return allowed is None or model in allowed
 
 
 def can_access_menu(permissions: dict, path: str) -> bool:

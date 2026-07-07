@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.115] — 2026-07-07
+
+### Added
+- **Admin kann erlaubte Modelle pro Gruppe zuweisen.** Custom-Roles haben jetzt eine `models`-Allowlist (None = alle, wie `llm_providers`). Im Admin-Rollen-Panel wählt man unter „Modelle" die freigegebenen Modelle (aus den AI-Accounts). Bei der Agent-Erstellung wird das serverseitig **hart erzwungen** (`can_use_model`, 403 bei nicht freigegebenem Modell) — admin-safe (Admins bleiben unbeschränkt). Damit kann sich ein Gruppen-Mitglied nicht mehr selbst Opus/GPT-5 o.ä. geben. (`orchestrator/app/core/permissions.py`, `orchestrator/app/api/agents.py`, `frontend/src/components/admin/roles-panel.tsx`, `frontend/src/lib/api.ts`)
+
 ## [1.99.114] — 2026-07-07
 
 ### Fixed

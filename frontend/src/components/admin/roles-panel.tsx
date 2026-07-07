@@ -63,6 +63,7 @@ interface RoleDraft {
   max_agents: string;
   template_ids: string;
   llm_providers: string[] | null;
+  models: string[] | null;
   mount_labels: string[] | null;
   ai_account_ids: number[] | null;
   secret_ids: number[] | null;
@@ -80,6 +81,7 @@ function draftFromRole(role?: CustomRole): RoleDraft {
     max_agents: p.max_agents == null ? "" : String(p.max_agents),
     template_ids: listToText(p.template_ids),
     llm_providers: p.llm_providers ?? null,
+    models: p.models ?? null,
     mount_labels: p.mount_labels ?? null,
     ai_account_ids: p.ai_account_ids ?? null,
     secret_ids: p.secret_ids ?? null,
@@ -95,6 +97,7 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
     max_agents: max === "" ? null : Math.max(0, Number(max) || 0),
     template_ids: parseNumberList(draft.template_ids),
     llm_providers: draft.llm_providers,
+    models: draft.models,
     mount_labels: draft.mount_labels,
     ai_account_ids: draft.ai_account_ids,
     secret_ids: draft.secret_ids,
@@ -121,6 +124,18 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Model names offered for the per-group allowlist — gathered from the configured AI accounts.
+  const modelOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const acc of aiAccounts) {
+      for (const m of (acc.models ?? [])) {
+        const name = typeof m === "string" ? m : (m as { name?: string }).name;
+        if (name) names.add(name);
+      }
+    }
+    return Array.from(names).sort();
+  }, [aiAccounts]);
 
   const selectedRole = useMemo(
     () => roles.find((r) => r.id === selectedId),
@@ -323,6 +338,26 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
                 ))}
               </div>
               <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, llm_providers: null }))} />
+            </PermissionBlock>
+
+            <PermissionBlock title="Modelle">
+              <div className="flex flex-wrap gap-2">
+                {modelOptions.length === 0 ? (
+                  <span className="text-[11px] text-muted-foreground/50">Keine Modelle aus AI-Accounts</span>
+                ) : modelOptions.map((model) => (
+                  <ToggleChip
+                    key={model}
+                    active={draft.models == null || draft.models.includes(model)}
+                    muted={draft.models == null}
+                    label={model}
+                    onClick={() => setDraft((d) => ({
+                      ...d,
+                      models: toggleListValue(d.models, model),
+                    }))}
+                  />
+                ))}
+              </div>
+              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, models: null }))} />
             </PermissionBlock>
 
             <PermissionBlock title="Mountshares">

@@ -332,6 +332,7 @@ export interface RolePermissions {
   max_agents?: number | null;
   template_ids?: number[] | null;
   llm_providers?: string[] | null;
+  models?: string[] | null;
   mount_labels?: string[] | null;
   ai_account_ids?: number[] | null;
   secret_ids?: number[] | null;
