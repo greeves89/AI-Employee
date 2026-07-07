@@ -629,7 +629,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
             </div>
             {isRealtime && (
               <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2 py-1 text-[10px] font-medium text-fuchsia-400">
-                <Radio className="h-3 w-3" /> Nova Sonic
+                <Radio className="h-3 w-3" /> Realtime
               </span>
             )}
           </div>
@@ -675,7 +675,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
               {/* CENTER — animated presence + controls */}
               <div className="order-1 flex min-w-0 flex-col items-center justify-center gap-5 py-2 lg:order-2">
                 <JarvisCore state={state} />
-                <StatusPill state={state} realtime />
+                <StatusPill state={state} realtime focus={paused} working={delegating} />
                 {statusMsg && state !== "error" && (
                   <p className="max-w-[240px] text-center text-xs text-muted-foreground/70">{statusMsg}</p>
                 )}
@@ -991,16 +991,22 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   );
 }
 
-function StatusPill({ state, realtime }: { state: VoiceState; realtime: boolean }) {
+function StatusPill({ state, realtime, focus = false, working = false }: { state: VoiceState; realtime: boolean; focus?: boolean; working?: boolean }) {
   const map: Record<VoiceState, { label: string; cls: string }> = {
     connecting: { label: "Verbinde…", cls: "bg-zinc-500/10 text-zinc-400" },
     ready: { label: realtime ? "Verbunden" : "Bereit", cls: "bg-emerald-500/10 text-emerald-400" },
     listening: { label: realtime ? "Hört zu…" : "Höre zu…", cls: "bg-fuchsia-500/10 text-fuchsia-400" },
-    processing: { label: "Agent arbeitet…", cls: "bg-amber-500/10 text-amber-400" },
+    processing: { label: "Agent arbeitet…", cls: "bg-orange-500/10 text-orange-400" },
     speaking: { label: "Spricht…", cls: "bg-emerald-500/10 text-emerald-400" },
     error: { label: "Fehler", cls: "bg-red-500/10 text-red-400" },
   };
-  const m = map[state];
+  // Focus mode (mic muted): the agent isn't listening. While it still works on a
+  // task → orange "Fokus-Modus aktiv"; once idle → green "bereit". Not "Hört zu…".
+  const m = focus
+    ? working
+      ? { label: "Fokus-Modus aktiv", cls: "bg-orange-500/10 text-orange-400" }
+      : { label: "Fokus-Modus – bereit", cls: "bg-emerald-500/10 text-emerald-400" }
+    : map[state];
   return (
     <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium ${m.cls}`}>
       <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
