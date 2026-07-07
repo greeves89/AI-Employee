@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.107] — 2026-07-07
+
+### Changed
+- **Knowledge-Graph nutzt jetzt denselben 3D-Graph wie das Second Brain.** Die Wissensdatenbank rendert ihren Graphen bislang als eigene 2D-SVG-Ansicht; das Second Brain hatte eine deutlich ansprechendere WebGL-3D-Darstellung (mit automatischem 2D-Fallback bei WebGL-Context-Loss). Statt zwei parallele Graph-Implementierungen zu pflegen, wurde die Second-Brain-Komponente (`vault-graph-3d.tsx`) additiv verallgemeinert (optionale `externalGraph`- und `onNodeSelect`-Props) und wird nun von BEIDEN Seiten genutzt — der Knowledge-Graph füttert sie mit seinen Einträgen (Farbe nach primärem Tag, Größe nach Knotengrad, Klick öffnet den Eintrag). Der alte 2D-Graph-Code der Knowledge-Seite (~550 Zeilen) wurde entfernt. (`frontend/src/app/knowledge/page.tsx`, `frontend/src/app/second-brains/vault-graph-3d.tsx`)
+
 ## [1.99.106] — 2026-07-07
 
 ### Fixed

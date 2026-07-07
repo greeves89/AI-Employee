@@ -50,9 +50,15 @@ function webglSupported(): boolean {
 export default function VaultGraph3D({
   brainId,
   onOpenFile,
+  externalGraph,
+  onNodeSelect,
 }: {
-  brainId: number;
-  onOpenFile: (path: string) => void;
+  brainId?: number;
+  onOpenFile?: (path: string) => void;
+  // Reuse this renderer for a non-vault graph (e.g. the Knowledge base): pass the
+  // graph directly instead of fetching a vault, and handle node clicks yourself.
+  externalGraph?: VaultGraph;
+  onNodeSelect?: (node: VaultGraphNode) => void;
 }) {
   const fgRef = useRef<any>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -77,6 +83,17 @@ export default function VaultGraph3D({
   // Load the graph for this vault.
   useEffect(() => {
     let alive = true;
+    // Caller supplied the graph directly (Knowledge base) → don't fetch a vault.
+    if (externalGraph) {
+      setGraph(externalGraph);
+      setErr(null);
+      setLoading(false);
+      return () => { alive = false; };
+    }
+    if (brainId == null) {
+      setLoading(false);
+      return () => { alive = false; };
+    }
     setLoading(true);
     getVaultGraph(brainId)
       .then((g) => {
@@ -94,7 +111,7 @@ export default function VaultGraph3D({
     return () => {
       alive = false;
     };
-  }, [brainId]);
+  }, [brainId, externalGraph]);
 
   // Keep the canvas sized to its container.
   useEffect(() => {
@@ -240,12 +257,18 @@ export default function VaultGraph3D({
     (node: any) => {
       setSelected(node as VaultGraphNode);
       focusNode(node);
+      // Non-vault caller (Knowledge base) handles the click itself (opens the entry).
+      if (onNodeSelect) {
+        onNodeSelect(node as VaultGraphNode);
+        return;
+      }
+      if (brainId == null) return;
       setDetail({ content: "", loading: true });
       getBrainFile(brainId, node.path)
         .then((r) => setDetail({ content: r.content, loading: false }))
         .catch(() => setDetail({ content: "_Inhalt konnte nicht geladen werden._", loading: false }));
     },
-    [brainId, focusNode],
+    [brainId, focusNode, onNodeSelect],
   );
 
   const nodeThreeObject = useCallback((node: any) => {
@@ -345,7 +368,7 @@ export default function VaultGraph3D({
           )}
 
           {/* Detail panel */}
-          {selected && (
+          {selected && !onNodeSelect && (
             <div className="absolute right-0 top-0 flex h-full w-80 flex-col border-l border-white/10 bg-[#0b0b14]/95 backdrop-blur-md">
               <div className="flex items-start justify-between gap-2 border-b border-white/10 px-4 py-3">
                 <div className="min-w-0">
@@ -423,7 +446,7 @@ export default function VaultGraph3D({
 
               <div className="border-t border-white/10 p-3">
                 <button
-                  onClick={() => onOpenFile(selected.path)}
+                  onClick={() => onOpenFile?.(selected.path)}
                   className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Im Editor öffnen
