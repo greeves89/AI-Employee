@@ -106,6 +106,16 @@ export default function MeetingRoomsPage() {
     return () => clearInterval(interval);
   }, [fetchRooms]);
 
+  // Lock the page scroll while a modal is open — otherwise touch/trackpad
+  // scrolling (esp. with "Erweiterte Einstellungen" expanded) moves the
+  // background instead of the modal body ("Fenster lässt sich nicht bewegen").
+  useEffect(() => {
+    if (!showCreate && !summaryRoom) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [showCreate, summaryRoom]);
+
   const runningAgents = agents.filter((a) =>
     ["running", "idle", "working"].includes(a.state),
   );

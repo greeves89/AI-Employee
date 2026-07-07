@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.118] — 2026-07-07
+
+### Fixed
+- **Meeting-Raum-Erstellung: „Erweiterte Einstellungen" scrollte den Hintergrund statt des Modals.** Bei offenem Create-/Summary-Modal war der Seiten-Scroll nicht gesperrt — auf Touch/Trackpad bewegte sich der Hintergrund statt des Modal-Inhalts, sodass man den Start-Button schwer erreichte. Jetzt wird der Body-Scroll gesperrt, solange ein Modal offen ist. (`frontend/src/app/meeting-rooms/page.tsx`)
+
 ## [1.99.117] — 2026-07-07
 
 ### Changed
