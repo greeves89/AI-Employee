@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.130] — 2026-07-07
+
+### Added
+- **MS-Graph-MCP: Backlog abgearbeitet (9 neue Tools).** **Excel-Workbook:** `ms_excel_read` / `ms_excel_write` (Zellbereiche in OneDrive-Excel lesen/schreiben; Worksheet-Name + Range werden sanitisiert). **Mail-Anhänge:** `ms_read_attachment` (Text-Anhänge als Text, binäre mit Typ/Größe). **Präsenz:** `ms_presence` (eigene oder fremde Teams-Verfügbarkeit). **SharePoint:** `ms_list_sites`, `ms_list_site_lists`, `ms_list_list_items`. **OneNote:** `ms_list_notebooks`, `ms_read_note_page`. Der Graph-Connector hat damit ~60 Tools. (Change-Notifications/Webhooks bewusst ausgelassen — brauchen einen öffentlichen Webhook-Receiver = Infra, kein Tool.) (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.129] — 2026-07-07
 
 ### Added

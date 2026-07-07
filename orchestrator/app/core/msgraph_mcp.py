@@ -360,6 +360,97 @@ MSGRAPH_TOOLS = [
         },
     },
     {
+        "name": "ms_read_attachment",
+        "description": "Read one attachment of an email. Text-based attachments are returned as text; binary ones return type/size + a note. Use ms_list_attachments first for the IDs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email_id": {"type": "string", "description": "The message ID."},
+                "attachment_id": {"type": "string", "description": "The attachment ID (from ms_list_attachments)."},
+            },
+            "required": ["email_id", "attachment_id"],
+        },
+    },
+    {
+        "name": "ms_excel_read",
+        "description": "Read a cell range from an Excel workbook on OneDrive. Returns the values row by row.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the .xlsx in OneDrive, e.g. 'Berichte/umsatz.xlsx'."},
+                "worksheet": {"type": "string", "description": "Worksheet name, e.g. 'Tabelle1'."},
+                "range": {"type": "string", "description": "Range address, e.g. 'A1:D20'."},
+            },
+            "required": ["path", "worksheet", "range"],
+        },
+    },
+    {
+        "name": "ms_excel_write",
+        "description": "Write values into a cell range of an Excel workbook on OneDrive. 'values' is a 2D array (rows of cells) matching the range size.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the .xlsx in OneDrive."},
+                "worksheet": {"type": "string", "description": "Worksheet name."},
+                "range": {"type": "string", "description": "Range address, e.g. 'A1:C3'."},
+                "values": {"type": "array", "description": "2D array of values (rows); dimensions must match the range.", "items": {"type": "array", "items": {}}},
+            },
+            "required": ["path", "worksheet", "range", "values"],
+        },
+    },
+    {
+        "name": "ms_presence",
+        "description": "Get the Teams presence (availability, e.g. Available/Busy/Away) of yourself or another user by email.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"email": {"type": "string", "description": "Optional user email. Omit for your own presence."}},
+        },
+    },
+    {
+        "name": "ms_list_sites",
+        "description": "Search/list SharePoint sites (name + id + url). Use the id with ms_list_site_lists.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Optional search text; omit to list followed sites."}},
+        },
+    },
+    {
+        "name": "ms_list_site_lists",
+        "description": "List the lists/document libraries of a SharePoint site (from ms_list_sites).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"site_id": {"type": "string", "description": "Site ID (from ms_list_sites)."}},
+            "required": ["site_id"],
+        },
+    },
+    {
+        "name": "ms_list_list_items",
+        "description": "List items (with their fields) of a SharePoint list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "site_id": {"type": "string", "description": "Site ID."},
+                "list_id": {"type": "string", "description": "List ID (from ms_list_site_lists)."},
+                "limit": {"type": "number", "description": "Max items. Default 20, max 50."},
+            },
+            "required": ["site_id", "list_id"],
+        },
+    },
+    {
+        "name": "ms_list_notebooks",
+        "description": "List your OneNote notebooks (name + id).",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ms_read_note_page",
+        "description": "Read the text content of a OneNote page by id (searchable via ms_search with types=['listItem'] or ms_graph_get on /me/onenote/pages).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "string", "description": "OneNote page ID."}},
+            "required": ["page_id"],
+        },
+    },
+    {
         "name": "ms_graph_get",
         "description": "Advanced/fallback: read-only GET on ANY Microsoft Graph v1.0 endpoint (relative path like /me/messages). Bounded by your delegated permissions. Use only when no specific tool fits.",
         "inputSchema": {
@@ -710,6 +801,7 @@ WRITE_TOOLS = {
     "ms_create_folder",
     "ms_upload_text_file",
     "ms_share_file",
+    "ms_excel_write",
     "ms_delete_item",
     "ms_move_item",
     "ms_copy_item",
@@ -824,6 +916,16 @@ def _drive_path(path) -> str:
     # Drop "." / ".." segments — otherwise URL normalisation of the
     # /root:/{path}: address could traverse out of the drive.
     return "/".join(quote(seg, safe="") for seg in p.split("/") if seg and seg not in (".", ".."))
+
+
+def _sheet(v) -> str:
+    """Sanitize an Excel worksheet name for the OData ('...') literal (no injection)."""
+    return str(v or "").replace("'", "").replace("\\", "").strip()[:64]
+
+
+def _addr(v) -> str:
+    """Sanitize an Excel range address like A1:D20 (cell-range chars only)."""
+    return re.sub(r"[^A-Za-z0-9:$]", "", str(v or ""))[:32]
 
 
 async def _graph_bytes(method: str, path: str, token: str, content: bytes | None = None,
@@ -1223,6 +1325,93 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             f"• {a.get('name')} ({_fmt_size(a.get('size', 0))}, {a.get('contentType', '')}) ID: {a.get('id')}"
             for a in atts
         )
+
+    elif name == "ms_read_attachment":
+        data = await _graph("GET", f"/me/messages/{_gid(args['email_id'])}/attachments/{_gid(args['attachment_id'])}", token)
+        name_ = data.get("name", "")
+        ctype = (data.get("contentType") or "")
+        b64 = data.get("contentBytes")
+        if not b64:
+            return f"Anhang '{name_}' ({ctype}) — kein direkter Inhalt (evtl. Item-/Reference-Attachment)."
+        import base64 as _b64
+        try:
+            raw = _b64.b64decode(b64)
+        except Exception:
+            return f"Anhang '{name_}' konnte nicht dekodiert werden."
+        if ctype.startswith("text/") or name_.lower().endswith((".txt", ".csv", ".md", ".json", ".xml", ".html")):
+            return f"{name_}:\n" + raw.decode("utf-8", errors="replace")[:8000]
+        return f"Anhang '{name_}' ({ctype}, {_fmt_size(len(raw))}) — binär. Zum Weiterverarbeiten herunterladen/teilen."
+
+    elif name == "ms_excel_read":
+        rel = _drive_path(args["path"]); ws = _sheet(args["worksheet"]); addr = _addr(args["range"])
+        endpoint = f"/me/drive/root:/{rel}:/workbook/worksheets('{ws}')/range(address='{addr}')"
+        data = await _graph("GET", endpoint, token, params={"$select": "values,address"})
+        values = data.get("values", [])
+        if not values:
+            return f"Bereich {addr} ist leer."
+        return f"{data.get('address', addr)}:\n" + "\n".join(
+            " | ".join("" if c is None else str(c) for c in row) for row in values
+        )
+
+    elif name == "ms_excel_write":
+        vals = args.get("values")
+        if not isinstance(vals, list) or not all(isinstance(r, list) for r in vals):
+            return "Error: 'values' muss ein 2D-Array (Liste von Zeilen) sein."
+        rel = _drive_path(args["path"]); ws = _sheet(args["worksheet"]); addr = _addr(args["range"])
+        endpoint = f"/me/drive/root:/{rel}:/workbook/worksheets('{ws}')/range(address='{addr}')"
+        await _graph("PATCH", endpoint, token, content=json.dumps({"values": vals}))
+        return f"Excel-Bereich {addr} in '{args['path']}' aktualisiert."
+
+    elif name == "ms_presence":
+        email = str(args.get("email") or "").strip()
+        endpoint = f"/users/{_gid(email)}/presence" if email else "/me/presence"
+        data = await _graph("GET", endpoint, token)
+        return f"{email or 'Du'}: {data.get('availability', '?')} / {data.get('activity', '?')}"
+
+    elif name == "ms_list_sites":
+        q = str(args.get("query") or "").strip()
+        endpoint = ("/sites?search=" + quote(q)) if q else "/me/followedSites"
+        data = await _graph("GET", endpoint, token)
+        sites = data.get("value", [])
+        if not sites:
+            return "Keine Sites gefunden."
+        return "\n".join(
+            f"• {s.get('displayName') or s.get('name')} — {s.get('webUrl','')}\n  ID: {s.get('id')}"
+            for s in sites[:20]
+        )
+
+    elif name == "ms_list_site_lists":
+        data = await _graph("GET", f"/sites/{_gid(args['site_id'])}/lists", token,
+                            params={"$select": "id,name,displayName,webUrl"})
+        lists = data.get("value", [])
+        if not lists:
+            return "Keine Listen/Bibliotheken."
+        return "\n".join(f"• {l.get('displayName') or l.get('name')} (ID: {l.get('id')})" for l in lists)
+
+    elif name == "ms_list_list_items":
+        limit = min(int(args.get("limit", 20)), 50)
+        data = await _graph("GET", f"/sites/{_gid(args['site_id'])}/lists/{_gid(args['list_id'])}/items", token,
+                            params={"$expand": "fields", "$top": limit})
+        items = data.get("value", [])
+        if not items:
+            return "Keine Einträge."
+        lines = []
+        for it in items:
+            fields = it.get("fields", {}) or {}
+            title = fields.get("Title") or fields.get("FileLeafRef") or it.get("id")
+            lines.append(f"• {title} (ID: {it.get('id')})")
+        return "\n".join(lines)
+
+    elif name == "ms_list_notebooks":
+        data = await _graph("GET", "/me/onenote/notebooks", token, params={"$select": "id,displayName"})
+        nbs = data.get("value", [])
+        if not nbs:
+            return "Keine Notizbücher."
+        return "\n".join(f"• {n.get('displayName')} (ID: {n.get('id')})" for n in nbs)
+
+    elif name == "ms_read_note_page":
+        resp = await _graph_bytes("GET", f"/me/onenote/pages/{_gid(args['page_id'])}/content", token)
+        return _strip_html(resp.text)[:8000] or "(leere Seite)"
 
     elif name == "ms_search":
         types = args.get("types") or ["message", "event", "driveItem", "chatMessage"]
