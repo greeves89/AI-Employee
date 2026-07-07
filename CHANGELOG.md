@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.133] — 2026-07-07
+
+### Changed
+- **MS-Graph-MCP: `ms_search`-Treffer mit Absender + Datum, neueste zuerst.** Die Mail-Suche fand zwar Treffer, gab sie aber nur als Betreff+Snippet ohne Absender/Datum aus — dadurch konnte der Agent „die letzten Mails an X" nicht sortieren/bestätigen und wich trotz gefundener Treffer aus. `ms_search` extrahiert jetzt Absender (`from`), Datum (`receivedDateTime`/`sentDateTime`, für Termine `start`, für Dateien `lastModifiedDateTime`), sortiert absteigend (neueste zuerst) und rendert `[Datum] Absender: Betreff`. Damit sind „letzte Mails"-Anfragen direkt beantwortbar. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.132] — 2026-07-07
 
 ### Changed

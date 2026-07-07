@@ -1516,24 +1516,45 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             if errors:
                 return "No results. (Teil-Fehler: " + "; ".join(errors) + ")"
             return "No results."
-        lines = []
+        enriched = []
         seen = set()
         for h in hits:
             res = h.get("resource", {}) or {}
             title = res.get("name") or res.get("subject") or res.get("displayName") or ""
-            url = res.get("webUrl", "")
+            url = res.get("webUrl") or res.get("webLink") or ""
             key = url or (title + _strip_html(h.get("summary", ""))[:40])
             if key in seen:
                 continue
             seen.add(key)
-            summary = _strip_html(h.get("summary", ""))[:300]
-            parts = [p for p in [title, summary] if p]
-            line = "• " + " — ".join(parts) if parts else "• (no title)"
-            if url:
-                line += f"\n  URL: {url}"
+            # Absender + Datum extrahieren, damit die Treffer eine echte, sortierbare
+            # Liste ergeben — sonst kann der Agent "letzte Mails" nicht beantworten und
+            # weicht trotz Treffern aus. Deckt Mail (from/receivedDateTime), Kalender
+            # (start.dateTime) und Dateien (lastModifiedDateTime) ab.
+            frm = (res.get("from") or {}).get("emailAddress") or {}
+            sender = frm.get("name") or frm.get("address") or ""
+            when = (res.get("receivedDateTime") or res.get("sentDateTime")
+                    or (res.get("start") or {}).get("dateTime")
+                    or res.get("lastModifiedDateTime") or "")
+            enriched.append({
+                "title": title, "url": url, "sender": sender, "when": when,
+                "summary": _strip_html(h.get("summary", ""))[:240],
+            })
+        # Neueste zuerst — macht "die letzten Mails an X" direkt beantwortbar.
+        enriched.sort(key=lambda e: e["when"] or "", reverse=True)
+        lines = []
+        for e in enriched[:limit]:
+            head = "• "
+            if e["when"]:
+                head += f"[{e['when'][:16].replace('T', ' ')}] "
+            if e["sender"]:
+                head += f"{e['sender']}: "
+            head += e["title"] or "(ohne Titel)"
+            line = head
+            if e["summary"]:
+                line += f"\n  {e['summary']}"
+            if e["url"]:
+                line += f"\n  URL: {e['url']}"
             lines.append(line)
-            if len(lines) >= limit:
-                break
         return "\n".join(lines)
 
     elif name == "ms_graph_get":
