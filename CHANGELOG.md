@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.119] — 2026-07-07
+
+### Fixed
+- **Teamlead-Agenten kennen jetzt ihr Team.** Das `list_my_team`-Tool (nur die Mitglieder des eigenen Teams inkl. Lead) existierte, war in der Agent-CLAUDE.md aber nicht dokumentiert — nur `list_team` (ALLE Agenten). Ergebnis: fragte man einen (Teamlead-)Agenten „wer ist in deinem Team", antwortete er aus dem Gedächtnis statt zu prüfen. Neu: `list_my_team` ist dokumentiert mit klarer Anweisung, bei Team-/Kollegen-Fragen IMMER zuerst `list_my_team` aufzurufen. (`orchestrator/app/core/agent_manager.py`) — greift, sobald die Agenten aktualisiert/neu erstellt werden (neue CLAUDE.md).
+
 ## [1.99.118] — 2026-07-07
 
 ### Fixed
