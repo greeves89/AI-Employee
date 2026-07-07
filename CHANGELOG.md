@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.105] — 2026-07-07
+
+### Fixed
+- **Voice Fokus-Modus zeigt jetzt korrekt „Fokus-Modus aktiv" (orange) statt „Hört zu…".** Bei aktivem Fokus (Mikro aus) blieb die Status-Pille auf lila „Hört zu…", obwohl der Agent gar nicht zuhört, sondern im Hintergrund arbeitet. Neu: solange eine Aufgabe läuft → orange „Fokus-Modus aktiv", danach grün „Fokus-Modus – bereit"; ohne Fokus wie gehabt (zuhören lila, bereit grün). (`frontend/src/components/agents/voice-session.tsx`)
+- **Explorer: Löschen-Button für Dateien und Ordner.** Das Backend-Delete (`DELETE /agents/{id}/files`, ownership- und `/workspace/`-gesichert) und die API-Funktion existierten bereits, nur der UI-Button fehlte. Jetzt pro Eintrag ein Papierkorb-Button (auf Hover) mit Bestätigungsdialog. (`frontend/src/app/files/page.tsx`)
+- **Realtime-Badge „Nova Sonic" → „Realtime".** Der Badge im Voice-Modal zeigte immer „Nova Sonic", auch wenn die Session über Azure-Realtime lief (SKBS) — irreführend. Jetzt engine-neutral „Realtime". (`frontend/src/components/agents/voice-session.tsx`)
+
 ## [1.99.104] — 2026-07-07
 
 ### Added

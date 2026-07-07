@@ -4,14 +4,14 @@ import { useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   FolderOpen, File, Folder, ChevronRight, Upload,
-  Loader2, Bot, Download, RefreshCw,
+  Loader2, Bot, Download, RefreshCw, Trash2,
   Search, ArrowUpDown, Clock, Hash, X,
 } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import { useToast } from "@/components/ui/dialog-provider";
+import { useToast, useConfirm } from "@/components/ui/dialog-provider";
 import type { FileEntry } from "@/lib/types";
 import {
   FilePreview, FilePreviewEmpty,
@@ -31,6 +31,7 @@ type SortMode = "name" | "date" | "size";
 
 export default function FilesPage() {
   const toast = useToast();
+  const confirm = useConfirm();
   const { agents } = useAgents();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
@@ -125,6 +126,27 @@ export default function FilesPage() {
     }));
   };
 
+  const handleDelete = async (agentId: string, entry: FileEntry) => {
+    const isDir = entry.type === "directory";
+    const ok = await confirm({
+      title: `${isDir ? "Ordner" : "Datei"} löschen?`,
+      message: `"${entry.name}" wird unwiderruflich aus dem Workspace gelöscht.`,
+      variant: "destructive",
+      confirmLabel: "Löschen",
+    });
+    if (!ok) return;
+    try {
+      await api.deleteFile(agentId, entry.path);
+      if (selectedFile?.agentId === agentId && selectedFile?.path === entry.path) {
+        setSelectedFile(null);
+      }
+      await refreshAgent(agentId);
+      toast.success("Gelöscht", entry.name);
+    } catch (e) {
+      toast.error("Löschen fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    }
+  };
+
   const sortEntries = (entries: FileEntry[]) =>
     [...entries].sort((a, b) => {
       if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
@@ -211,6 +233,13 @@ export default function FilesPage() {
                 <Download className="h-2.5 w-2.5" />
               </button>
             )}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(agentId, entry); }}
+              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+              title="Löschen"
+            >
+              <Trash2 className="h-2.5 w-2.5" />
+            </button>
           </div>
           {isDir && isExpanded && treeData[dirKey] && renderTree(agentId, entry.path, depth + 1)}
         </div>
