@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.136] — 2026-07-07
+
+### Changed
+- **Meeting-Recorder in die Live-Voice-UI verschoben (eigener Button).** Der Recorder saß auf der Meeting-Rooms-Übersicht und wirkte dort fehl am Platz. Er ist jetzt als eigener Button „Meeting aufnehmen" im Realtime-Voice-Cockpit — und rein passiv: beim Öffnen wird das Live-Mikro gemutet, der Agent hört NICHT zu und spricht NICHT, es wird nur Audio aufgenommen und (segmentweise, live) transkribiert. Erst nach dem Stopp kann das Transkript optional an denselben Agenten gesendet werden, der daraus im Hintergrund (als Task, kein Live-Gespräch) ein Protokoll erstellt. Von der Meeting-Rooms-Seite entfernt. (`frontend/src/components/agents/voice-session.tsx`, `frontend/src/app/meeting-rooms/page.tsx`)
+
 ## [1.99.135] — 2026-07-07
 
 ### Added

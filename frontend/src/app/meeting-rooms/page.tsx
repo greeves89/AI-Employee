@@ -24,7 +24,6 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Header } from "@/components/layout/header";
-import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { MeetingRoom, Agent, AIAccount } from "@/lib/types";
@@ -275,17 +274,6 @@ export default function MeetingRoomsPage() {
       />
 
       <div className="p-6">
-        {/* Live meeting recording → transcript (hand it to a Meeting agent for a protocol) */}
-        <details className="mb-6 rounded-xl border border-border bg-card/40 p-4">
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
-            Live-Meeting aufnehmen &amp; transkribieren
-            <span className="ml-auto text-[11px] text-muted-foreground/50">Transkript → an einen Meeting-Agent geben</span>
-          </summary>
-          <div className="mt-3">
-            <MeetingRecorder />
-          </div>
-        </details>
-
         {/* Actions */}
         <div className="flex items-center justify-between mb-6">
           <div className="text-sm text-muted-foreground">

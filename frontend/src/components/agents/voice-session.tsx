@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
+import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
+import { createTask } from "@/lib/api";
 
 type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
@@ -86,6 +88,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const [paused, setPaused] = useState(false);       // focus mode: mic muted, agent still reports
   const [activityOpen, setActivityOpen] = useState(true);
   const [volume, setVolume] = useState(1);           // playback volume (works on iOS via GainNode)
+  // Meeting recorder: PURE audio capture → transcript. No live agent interaction
+  // while recording (the live mic is muted so the agent neither listens nor speaks).
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [meetingMsg, setMeetingMsg] = useState<string | null>(null);
 
   const changeVolume = useCallback((v: number) => {
     setVolume(v);
@@ -102,6 +108,40 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       return next;
     });
   }, []);
+
+  // Open the meeting recorder. This is PURE recording — mute the live mic so the
+  // agent neither hears the meeting nor talks back; only audio is captured and
+  // transcribed. The transcript can later be sent to the agent as a BACKGROUND
+  // task (a protocol job), never as a live conversation.
+  const openMeeting = useCallback(() => {
+    streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = false; });
+    setPaused(true);
+    setMeetingMsg(null);
+    setMeetingOpen(true);
+  }, []);
+
+  // Hand the finished transcript to THIS agent as a background protocol task.
+  // Explicit user action (button after recording stops) — not during recording.
+  const handleMeetingTranscript = useCallback(async (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    try {
+      await createTask({
+        title: "Meeting-Protokoll",
+        prompt:
+          "Erstelle aus dem folgenden Meeting-Transkript ein strukturiertes Protokoll " +
+          "(Teilnehmer, Zusammenfassung, Entscheidungen, Action-Items mit Verantwortlichen). " +
+          "Speichere es als Knowledge-Eintrag und präsentiere die Datei am Ende mit present_file.\n\n" +
+          "TRANSKRIPT:\n" + t,
+        agent_id: agentId,
+      });
+      setMeetingMsg("Transkript gesendet — ich erstelle das Protokoll im Hintergrund (erscheint im Chat/Wissen).");
+    } catch {
+      setMeetingMsg("Konnte das Transkript nicht an den Agenten senden.");
+    }
+    setMeetingOpen(false);
+    window.setTimeout(() => setMeetingMsg(null), 8000);
+  }, [agentId]);
 
   // Append a conversation turn, coalescing consecutive same-role events into ONE
   // bubble. Nova Sonic emits each sentence as a separate event; naive replace would
@@ -654,6 +694,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
 
           {isRealtime ? (
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
+            <>
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch">
               {/* LEFT — conversation transcript */}
               <div className="order-2 flex max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1">
@@ -732,6 +773,13 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     }`}
                   >
                     {paused ? <><Play className="h-3.5 w-3.5" /> Fortsetzen</> : <><Pause className="h-3.5 w-3.5" /> Fokus</>}
+                  </button>
+                  <button
+                    onClick={openMeeting}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
+                    title="Nur Audio aufnehmen & transkribieren — der Agent hört dabei nicht zu und spricht nicht"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5" /> Meeting aufnehmen
                   </button>
                   <button
                     onClick={endLive}
@@ -897,6 +945,28 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                 </div>
               </div>
             </div>
+            {meetingOpen && (
+              <div className="mt-4 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-sky-300/80">
+                    Meeting aufnehmen &amp; transkribieren
+                  </span>
+                  <button
+                    onClick={() => setMeetingOpen(false)}
+                    className="text-xs text-muted-foreground/60 hover:text-foreground"
+                  >
+                    Schließen
+                  </button>
+                </div>
+                <p className="mb-2 text-[11px] text-muted-foreground/70">
+                  Reine Aufnahme — {agentName} hört dabei nicht zu und spricht nicht. Am Ende kannst du das
+                  Transkript optional an {agentName} senden, der daraus im Hintergrund ein Protokoll erstellt.
+                </p>
+                <MeetingRecorder onTranscript={handleMeetingTranscript} />
+              </div>
+            )}
+            {meetingMsg && <p className="mt-3 text-center text-xs text-sky-300">{meetingMsg}</p>}
+            </>
           ) : (
             /* ── Classic push-to-talk UI ── */
             <>
