@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.127] — 2026-07-07
+
+### Added
+- **Office-Dateien: PowerPoint-Erzeugung im Agent-Image ergänzt (`python-pptx`).** Word (`python-docx`), Excel (`openpyxl`) und PDF (`pymupdf`) waren bereits im Agent-Image — Agenten können diese Formate also längst erstellen/bearbeiten. Es fehlte nur PowerPoint; mit `python-pptx` ist der Office-Satz (Word/Excel/PowerPoint/PDF/HTML) jetzt vollständig. Greift nach **Agent-Image-Rebuild + Agenten-Recreate** (`docker build -t ai-employee-agent:latest ./agent`, dann Agenten neu erstellen). Dockerfile-LABEL auf aktuelle Version gezogen. (`agent/pyproject.toml`, `agent/Dockerfile`)
+
 ## [1.99.126] — 2026-07-07
 
 ### Changed

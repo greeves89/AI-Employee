@@ -13,6 +13,7 @@ dependencies = [
     "openpyxl>=3.1",
     "pymupdf>=1.23",
     "python-docx>=1.0",
+    "python-pptx>=0.6",
     "odfpy>=1.4",
     # Visual generation (present_image tool: charts, plots, image processing)
     "matplotlib>=3.8",
