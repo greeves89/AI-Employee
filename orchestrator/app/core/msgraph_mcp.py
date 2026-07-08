@@ -59,7 +59,7 @@ def _kql(value) -> str:
 MSGRAPH_TOOLS = [
     {
         "name": "ms_get_user_info",
-        "description": "Get the Microsoft account profile of the connected user (name, email, job title).",
+        "description": "Get the connected user's Microsoft/M365 profile — name, email, job title, department AND their manager/boss. Use this to answer 'who is my manager / wer ist mein Vorgesetzter/Chef', 'what is my department', 'who am I in M365'.",
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
@@ -294,7 +294,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_search_people",
-        "description": "Find people (colleagues, contacts) by name or keyword — use this to resolve a person's name to an email address. Tries the user's relevant people first and automatically falls back to the Entra directory when the mailbox-based People API is unavailable (e.g. on-prem mailbox).",
+        "description": "Look up a PERSON in the organization/directory by name or keyword — colleagues, coworkers, contacts. Use this whenever the user asks 'who is <name>', 'wer ist <Name>', 'find <person>', 'E-Mail von <Person>', or needs someone's email/role. Searches relevant people, the Entra directory (org-wide) and personal contacts. This IS the people/directory search tool.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1006,7 +1006,22 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 
     if name == "ms_get_user_info":
         data = await _graph("GET", "/me", token)
-        return f"Name: {data.get('displayName')}\nEmail: {data.get('mail') or data.get('userPrincipalName')}\nTitle: {data.get('jobTitle', '—')}\nDepartment: {data.get('department', '—')}"
+        info = (f"Name: {data.get('displayName')}\n"
+                f"Email: {data.get('mail') or data.get('userPrincipalName')}\n"
+                f"Title: {data.get('jobTitle', '—')}\n"
+                f"Department: {data.get('department', '—')}")
+        # Manager / Vorgesetzter — /me/manager works with the basic User.Read scope,
+        # so "wer ist mein Vorgesetzter/Chef" is answerable without extra consent.
+        try:
+            mgr = await _graph("GET", "/me/manager", token,
+                               params={"$select": "displayName,mail,userPrincipalName,jobTitle"})
+            mname = mgr.get("displayName")
+            if mname:
+                mmail = mgr.get("mail") or mgr.get("userPrincipalName", "")
+                info += f"\nVorgesetzter (Manager): {mname} <{mmail}>"
+        except GraphError:
+            pass  # kein Manager gepflegt oder nicht erlaubt — dann einfach weglassen
+        return info
 
     elif name == "ms_list_emails":
         folder = _folder(args.get("folder", "inbox"))

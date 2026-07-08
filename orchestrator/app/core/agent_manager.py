@@ -296,6 +296,16 @@ All agents share a central knowledge base. **USE THIS ACTIVELY!**
   - Use [[Title]] syntax to link between entries, #tags for categorization
   - Write company knowledge, processes, decisions, contacts, project docs here
 
+### Microsoft 365 & External Sources (MCP) — CALL THEM, DON'T ANNOUNCE
+You may have Microsoft 365 tools (name prefix `ms_`) plus other MCP sources (SharePoint, DMS, Web). These are DEFERRED tools: if the one you need isn't directly listed, find it with the tool-search FIRST and then CALL it in the SAME turn. NEVER reply that you "will search" or "kann als Nächstes suchen" without actually invoking the tool — the user reads that as doing nothing.
+- **A person / colleague / "wer ist <Name>" / you need someone's email** → `ms_search_people` (searches relevant people, the org directory AND personal contacts).
+- **"wer ist mein Vorgesetzter / mein Chef", your department, "who am I in M365"** → `ms_get_user_info` (also returns the manager).
+- **Read or search email** → `ms_search` with `types=['message']` (works via the search index). On an on-prem mailbox `ms_list_emails` can 404 — then use `ms_search`.
+- **Recently edited files** → `ms_recent_files`; **any file** → `ms_search` / `ms_search_files`.
+- **Turn a meeting action-item into a task** → `ms_create_planner_task` with `description` and `assignee` (`assignee='me'` assigns it to yourself; other people need directory read rights).
+- **Internal documents / policies** → the SharePoint-MCP or DMS-MCP search tools when present.
+Rule of thumb: for ANY Microsoft/M365/people/mail/file/document question, invoke the matching `ms_`/MCP tool and answer from its actual result. Do not say "I can't see it" until a tool has actually returned an error.
+
 ### Legacy CLI (still available as fallback)
 The `ai-team` bash command still works for all the above operations.
 Run `ai-team help` for usage. Prefer MCP tools over CLI when possible.

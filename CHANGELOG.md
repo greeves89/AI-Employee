@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.142] — 2026-07-08
+
+### Fixed / Changed
+- **Agent nutzt die M365-Tools jetzt wirklich (statt nur anzukündigen).** Log-Analyse (SKBS) zeigte: die msgraph-Tools liefern serverseitig sauber 200 (keine Graph-API-Fehler) — der Agent rief sie nur nicht auf, weil die Agent-Anweisung (`CLAUDE.md`) die M365-Tools mit keinem Wort erwähnte und sie so nur mühsam per Tool-Suche entdeckt wurden. Neu: klare **Microsoft-365-Sektion** in der Agent-CLAUDE.md („Person/Kollege/Vorgesetzter → `ms_search_people`/`ms_get_user_info`, Mail → `ms_search` types=message, Dateien → `ms_recent_files`, Planner-Zuweisung → `ms_create_planner_task`") samt harter Regel: **Tool aufrufen, nicht ankündigen** — greift nach Agent-Update. (`orchestrator/app/core/agent_manager.py`)
+- **„Wer ist mein Vorgesetzter?" ist beantwortbar.** `ms_get_user_info` liefert jetzt zusätzlich den **Manager** (`/me/manager`, funktioniert mit Basis-Scope `User.Read`). Beschreibung erweitert um „wer ist mein Vorgesetzter/Chef, Abteilung, who am I". (`orchestrator/app/core/msgraph_mcp.py`)
+- **Personensuche besser auffindbar.** `ms_search_people`-Beschreibung mit klaren Triggern („who is / wer ist / find person / E-Mail von …") — damit die Tool-Suche des Agenten sie zuverlässig als Personen-/Verzeichnissuche erkennt. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.141] — 2026-07-08
 
 ### Fixed
