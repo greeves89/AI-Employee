@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.148] — 2026-07-08
+
+### Fixed
+- Wissensgraph: erkennt blockierte/Software-GPU (z. B. gesperrte Klinik-Rechner) jetzt vorab und zeigt direkt die stabile 2D-Ansicht — ohne Absturzversuch und Konsolenfehler.
+
 ## [1.99.147] — 2026-07-08
 
 ### Fixed

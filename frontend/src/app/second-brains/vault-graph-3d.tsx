@@ -38,11 +38,30 @@ function webglSupported(): boolean {
   if (typeof document === "undefined") return true; // SSR: decided again on client
   try {
     const c = document.createElement("canvas");
-    const gl =
-      c.getContext("webgl2") ||
+    const gl = (c.getContext("webgl2") ||
       c.getContext("webgl") ||
-      c.getContext("experimental-webgl");
-    _webglSupported = !!gl;
+      c.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    if (!gl || gl.isContextLost?.()) {
+      _webglSupported = false;
+      return false;
+    }
+    // Locked-down clinic/VDI machines often disable GPU acceleration by policy.
+    // The browser then hands back a SOFTWARE WebGL context (SwiftShader / Microsoft
+    // Basic Render / llvmpipe) that both performs terribly AND crashes three.js
+    // mid-frame ("reading 'tick'"). Detect that up front and go straight to the
+    // stable 2D view instead of attempting 3D and throwing a wall of console errors.
+    let renderer = "";
+    try {
+      const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+      if (dbg) renderer = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "");
+    } catch {
+      /* renderer probe not available — fall through */
+    }
+    if (/swiftshader|software|llvmpipe|basic render|microsoft basic/i.test(renderer)) {
+      _webglSupported = false;
+      return false;
+    }
+    _webglSupported = true;
   } catch {
     _webglSupported = false;
   }
