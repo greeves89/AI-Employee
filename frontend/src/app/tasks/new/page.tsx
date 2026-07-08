@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Send, ArrowLeft, Sparkles, Cpu, Gauge, Loader2, DollarSign } from "lucide-react";
+import { Send, ArrowLeft, Sparkles, Cpu, Gauge, Loader2, DollarSign, Paperclip, FileText, X } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ export default function NewTaskPage() {
   const [prompt, setPrompt] = useState("");
   const [priority, setPriority] = useState(1);
   const [agentId, setAgentId] = useState<string>("");
+  const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [costEstimate, setCostEstimate] = useState<{
     min_usd: number;
@@ -58,11 +59,27 @@ export default function NewTaskPage() {
     e.preventDefault();
     if (!title.trim() || !prompt.trim()) return;
 
+    // File attachments need a concrete target workspace, so a specific agent must be
+    // chosen (Auto-assign picks the agent server-side only after creation).
+    if (files.length > 0 && !agentId) {
+      toast.error("Für Datei-Anhänge bitte oben einen konkreten Agenten auswählen (nicht Auto-assign).");
+      return;
+    }
+
     setSubmitting(true);
     try {
+      let finalPrompt = prompt.trim();
+      if (files.length > 0 && agentId) {
+        await api.uploadFiles(agentId, "/workspace", files);
+        const paths = files.map((f) => `/workspace/${f.name}`).join(", ");
+        finalPrompt +=
+          `\n\n[Angehängte Datei(en) im Workspace: ${paths}. WICHTIG: Öffne und lies ` +
+          `die Datei(en) ZUERST selbst mit deinem Read-Tool (PDFs/Bilder werden unterstützt; ` +
+          `große Textdateien ggf. mit bash/grep) und arbeite dann mit dem TATSÄCHLICHEN Inhalt.]`;
+      }
       await api.createTask({
         title: title.trim(),
-        prompt: prompt.trim(),
+        prompt: finalPrompt,
         priority,
         agent_id: agentId || undefined,
       });
@@ -177,6 +194,53 @@ export default function NewTaskPage() {
                   ))}
               </select>
             </div>
+          </div>
+
+          {/* Attachments */}
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Paperclip className="h-3 w-3" />
+              Dateien <span className="text-muted-foreground/40">(optional — Kontext/Artefakte für den Agenten)</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-foreground/[0.12] bg-card/60 px-4 py-3 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
+              <Paperclip className="h-4 w-4" />
+              Dateien anhängen
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {files.length > 0 && (
+              <>
+                <ul className="space-y-1">
+                  {files.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md bg-foreground/[0.04] px-3 py-1.5 text-xs">
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                      <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                      <span className="text-muted-foreground/50">{(f.size / 1024).toFixed(0)} KB</span>
+                      <button
+                        type="button"
+                        onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                        className="text-muted-foreground/60 hover:text-red-400"
+                        aria-label="Entfernen"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {!agentId && (
+                  <p className="text-[11px] text-amber-400/90">
+                    Für Datei-Anhänge oben einen konkreten Agenten wählen (nicht Auto-assign).
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           {/* Cost Estimate */}

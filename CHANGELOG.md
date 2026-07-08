@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.153] — 2026-07-08
+
+### Added
+- Auch beim einzelnen "New Task" koennen jetzt Dateien angehaengt werden (Kontext/Artefakte fuer den Agenten) — sofern ein konkreter Agent gewaehlt ist.
+
 ## [1.99.152] — 2026-07-08
 
 ### Fixed
