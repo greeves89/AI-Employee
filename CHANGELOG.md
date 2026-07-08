@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.155] — 2026-07-08
+
+### Added
+- Meeting-Raeume: Admins koennen Agenten fuer einen gemeinsamen Pool freigeben. Freigegebene Agenten erscheinen im Agenten-Picker JEDES Users, sodass niemand mehr eigene Agenten bereitstellen muss, um sie einem Raum hinzuzufuegen (Toggle in den Agenten-Einstellungen, Admin-only).
+
 ## [1.99.154] — 2026-07-08
 
 ### Changed

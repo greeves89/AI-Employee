@@ -99,7 +99,9 @@ export default function MeetingRoomsPage() {
 
   useEffect(() => {
     fetchRooms();
-    api.getAgents().then((d) => setAgents(d.agents)).catch(() => {});
+    // room_pool=true → include the admin-curated shared agent pool, so every user
+    // can add those agents to a room without provisioning their own.
+    api.getAgents("own", true).then((d) => setAgents(d.agents)).catch(() => {});
     api.listTeams().then((d) => setTeams(d.teams)).catch(() => {});
     api.listAIAccounts(true).then(setAiAccounts).catch(() => {});
     const interval = setInterval(fetchRooms, 5000);

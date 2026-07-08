@@ -96,6 +96,7 @@ class AgentResponse(BaseModel):
     interaction_model_id: str | None = None    # concrete provider model id
     webhook_enabled: bool = False
     webhook_token: str | None = None
+    shared_for_rooms: bool = False  # admin-curated: offered in every user's Meeting-Room picker
     total_cost_usd: float = 0.0
     user_id: str | None = None
     created_at: datetime

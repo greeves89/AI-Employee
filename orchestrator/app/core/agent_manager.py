@@ -1640,6 +1640,7 @@ class AgentManager:
             "parallel_sessions": int(config.get("parallel_sessions") or settings.max_parallel_tasks),
             "webhook_enabled": agent.webhook_enabled,
             "webhook_token": agent.webhook_token,
+            "shared_for_rooms": getattr(agent, "shared_for_rooms", False),
             "total_cost_usd": config.get("total_cost_usd", 0.0),
             "user_id": agent.user_id,
             "created_at": agent.created_at,

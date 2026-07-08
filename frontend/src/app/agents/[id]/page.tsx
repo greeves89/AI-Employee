@@ -1382,6 +1382,24 @@ function AgentSettings({
   const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
   const [mcpUrlCopied, setMcpUrlCopied] = useState(false);
 
+  // Meeting-Room shared pool (admin only): pooled agents show up in every user's
+  // room agent picker, so an admin can pre-provision agents for everyone.
+  const isRoomAdmin = useAuthStore((s) => s.user?.role) === "admin";
+  const [roomShared, setRoomShared] = useState(agent.shared_for_rooms ?? false);
+  const [roomSharedLoading, setRoomSharedLoading] = useState(false);
+  const handleRoomSharingToggle = async (v: boolean) => {
+    setRoomSharedLoading(true);
+    try {
+      const r = await api.setRoomSharing(agentId, v);
+      setRoomShared(r.shared_for_rooms);
+      setMessage({ type: "success", text: v ? "Agent für Meeting-Räume freigegeben" : "Freigabe entfernt" });
+    } catch {
+      setMessage({ type: "error", text: "Fehler beim Ändern der Meeting-Room-Freigabe" });
+    } finally {
+      setRoomSharedLoading(false);
+    }
+  };
+
   const apiBase = typeof window !== "undefined"
     ? window.location.origin.replace(":3000", ":8000")
     : "";
@@ -1873,6 +1891,35 @@ function AgentSettings({
 
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
+
+      {/* Meeting-Room shared pool (admin only) */}
+      {isRoomAdmin && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-emerald-400" />
+              <span className="text-sm font-medium">Für Meeting-Räume freigeben</span>
+            </div>
+            <button
+              onClick={() => handleRoomSharingToggle(!roomShared)}
+              disabled={roomSharedLoading}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-40",
+                roomShared ? "bg-emerald-500" : "bg-foreground/10"
+              )}
+            >
+              <span className={cn(
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transition-transform",
+                roomShared ? "translate-x-4" : "translate-x-0"
+              )} />
+            </button>
+          </div>
+          <div className="p-5 text-xs text-muted-foreground">
+            Ist der Agent freigegeben, erscheint er im Meeting-Raum-Agenten-Picker <b>jedes</b> Users —
+            so kann jeder ihn zu Räumen hinzufügen, ohne selbst Agenten bereitstellen zu müssen.
+          </div>
+        </div>
+      )}
 
       {/* External Webhook Access */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">

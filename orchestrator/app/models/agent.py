@@ -59,6 +59,10 @@ class Agent(Base, TimestampMixin):
     )
     browser_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     autonomy_level: Mapped[str] = mapped_column(String, default="l3", server_default="l3")
+    # Admin-curated pool: when true, this agent is offered in the Meeting-Room agent
+    # picker to EVERY user (regardless of ownership), so admins can pre-provision a
+    # ready-to-use set of agents for rooms instead of each user bringing their own.
+    shared_for_rooms: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # SHA-256 hex of the plaintext webhook token. Set by
     # /agents/{id}/webhook/rotate; plaintext is shown once and never stored.
     webhook_token_hash: Mapped[str | None] = mapped_column(

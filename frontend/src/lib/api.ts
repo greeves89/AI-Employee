@@ -41,8 +41,22 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
 }
 
 // Agents
-export async function getAgents(scope: "own" | "all" = "own"): Promise<{ agents: Agent[]; total: number }> {
-  return fetchJSON(`${getBase()}/agents/?scope=${scope}`);
+export async function getAgents(
+  scope: "own" | "all" = "own",
+  roomPool = false,
+): Promise<{ agents: Agent[]; total: number }> {
+  return fetchJSON(`${getBase()}/agents/?scope=${scope}${roomPool ? "&room_pool=true" : ""}`);
+}
+
+// Admin-only: add/remove an agent from the Meeting-Room shared pool.
+export async function setRoomSharing(
+  agentId: string,
+  shared: boolean,
+): Promise<{ id: string; shared_for_rooms: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/room-sharing`, {
+    method: "PATCH",
+    body: JSON.stringify({ shared_for_rooms: shared }),
+  });
 }
 
 export async function getAgent(id: string): Promise<Agent> {

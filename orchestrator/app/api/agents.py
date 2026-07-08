@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -472,6 +472,7 @@ async def poll_reply(
 async def list_agents(
     lite: bool = False,
     scope: str = "own",
+    room_pool: bool = False,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
@@ -481,7 +482,9 @@ async def list_agents(
     agents = await manager.list_agents()
     # Personal view (default): everyone — INCLUDING admins — sees only their own
     # agents (+ unowned + shared). The global "all agents" view is the Admin-Konsole,
-    # which passes scope=all (admins only).
+    # which passes scope=all (admins only). room_pool=true additionally surfaces the
+    # admin-curated agents (shared_for_rooms) to EVERY user — used by the Meeting-Room
+    # agent picker so users don't each need to provision their own agents.
     is_admin = getattr(user, "role", None) == UserRole.ADMIN
     if not (is_admin and scope == "all"):
         from app.models.agent_access import AgentAccess
@@ -492,6 +495,7 @@ async def list_agents(
         agents = [
             a for a in agents
             if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+            or (room_pool and getattr(a, "shared_for_rooms", False))
         ]
 
     if lite:
@@ -843,6 +847,27 @@ async def update_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{agent_id}/room-sharing")
+async def set_room_sharing(
+    agent_id: str,
+    shared_for_rooms: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only: add/remove an agent from the Meeting-Room shared pool. Pooled
+    agents appear in EVERY user's room agent picker, so an admin can pre-provision a
+    ready-to-use set of agents instead of each user bringing their own."""
+    from app.models.user import UserRole
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="admin only")
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent.shared_for_rooms = bool(shared_for_rooms)
+    await db.commit()
+    return {"id": agent.id, "shared_for_rooms": agent.shared_for_rooms}
 
 
 @router.patch("/{agent_id}/llm-config")

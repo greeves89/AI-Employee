@@ -105,6 +105,7 @@ export interface Agent {
   interaction_model_id?: string | null;
   webhook_enabled?: boolean;
   webhook_token?: string | null;
+  shared_for_rooms?: boolean;
   total_cost_usd: number;
   user_id: string | null;
   created_at: string;
