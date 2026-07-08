@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.154] — 2026-07-08
+
+### Changed
+- Nach dem Erstellen eines Tasks landet man jetzt direkt auf dessen Live-Ansicht (Fortschritt + was der Agent tut) statt in der Task-Liste.
+
 ## [1.99.153] — 2026-07-08
 
 ### Added

@@ -77,13 +77,15 @@ export default function NewTaskPage() {
           `die Datei(en) ZUERST selbst mit deinem Read-Tool (PDFs/Bilder werden unterstützt; ` +
           `große Textdateien ggf. mit bash/grep) und arbeite dann mit dem TATSÄCHLICHEN Inhalt.]`;
       }
-      await api.createTask({
+      const task = await api.createTask({
         title: title.trim(),
         prompt: finalPrompt,
         priority,
         agent_id: agentId || undefined,
       });
-      router.push("/tasks");
+      // Land directly on the new task's live view (progress + what the agent does)
+      // instead of the task list — no more hunting for the task you just created.
+      router.push(`/tasks/${task.id}`);
     } catch (err) {
       toast.error("Failed to create task", err instanceof Error ? err.message : undefined);
     } finally {
