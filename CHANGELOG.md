@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.145] — 2026-07-08
+
+### Changed
+- **`User.ReadBasic.All` wieder entfernt (Kundenentscheidung).** Für die org-weite Personensuche / Vorgesetzter-Anzeige wäre ein Admin-Consent nötig; das ist als nice-to-have eingestuft und lohnt den Consent-Prozess aktuell nicht. Es bleibt beim minimalen `User.Read`. Personensuche funktioniert weiterhin teilweise über den Suchindex (`ms_search`), Planner-Selbstzuweisung ohne Verzeichnisrechte. (`orchestrator/app/core/oauth_providers.py`)
+
 ## [1.99.144] — 2026-07-08
 
 ### Changed

@@ -65,11 +65,12 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
             "profile",
             "offline_access",
             "User.Read",
-            # Org-wide people lookup (name -> email) + resolving a user id for Planner
-            # task assignment. Least-privilege: BASIC fields only (name/mail/title/dept),
-            # NOT full profiles or the manager chain (that would need User.Read.All).
-            # Requires admin consent.
-            "User.ReadBasic.All",
+            # NOTE: org-wide people lookup + Planner-assign-to-others would need a
+            # ".All" directory scope (User.ReadBasic.All / User.Read.All) — deliberately
+            # NOT requested to avoid an admin-consent process (customer decision, the
+            # manager/people-directory feature is nice-to-have). People search still
+            # works partially via the search index (ms_search), self-assignment works
+            # without directory rights. Add User.ReadBasic.All here if that changes.
             "Mail.ReadWrite",
             "Mail.Send",
             "Calendars.ReadWrite",
