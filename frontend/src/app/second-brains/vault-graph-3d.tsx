@@ -248,6 +248,20 @@ export default function VaultGraph3D({
     [graph],
   );
 
+  // Feed react-force-graph EMPTY data on mount, then the real data one frame later.
+  // This forces the library to initialize its force-layout on the empty graph BEFORE
+  // its render loop first ticks. Otherwise, on some machines/browsers (seen on the
+  // customer's Edge — WebGL fine, GPU fine), the animation loop ticks before the
+  // initial data digest and crashes with "state.layout undefined", dropping to 2D.
+  // Initializing empty-first makes state.layout always defined → no race, any machine.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [fgData, setFgData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
+  useEffect(() => {
+    if (!use3D) return;
+    const id = requestAnimationFrame(() => setFgData(data));
+    return () => cancelAnimationFrame(id);
+  }, [data, use3D]);
+
   // Add a bloom glow and fit the view once the graph is mounted.
   useEffect(() => {
     if (!fgRef.current || loading || !graph || graph.nodes.length === 0) return;
@@ -381,7 +395,7 @@ export default function VaultGraph3D({
               ref={fgRef}
               width={size.w}
               height={size.h}
-              graphData={data}
+              graphData={fgData}
               backgroundColor="#06060c"
               showNavInfo={false}
               nodeLabel={(n: any) =>

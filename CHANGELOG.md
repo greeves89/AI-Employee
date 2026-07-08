@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.149] — 2026-07-08
+
+### Fixed
+- Wissensgraph: 3D-Absturz auf manchen Rechnern/Browsern strukturell behoben (Graph initialisiert jetzt leer und bekommt die Daten danach) — 3D laeuft jetzt auch dort zuverlaessig, wo WebGL zwar aktiv ist, das Timing aber vorher zum Absturz fuehrte.
+
 ## [1.99.148] — 2026-07-08
 
 ### Fixed
