@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.144] — 2026-07-08
+
+### Changed
+- **M365-SSO-Scope: `User.ReadBasic.All` ergänzt (least-privilege).** Für org-weite Personensuche (Name→E-Mail) und das Auflösen der Entra-User-ID bei Planner-Zuweisung. Bewusst NUR die Basis-Variante (Name/E-Mail/UPN) statt `User.Read.All` (volle Profile + Org-Hierarchie) — datenschutzfreundlicher, deckt den Meeting→MA-Workflow. Verzeichnis-Abfrage lädt entsprechend keine `jobTitle` mehr (nicht von ReadBasic abgedeckt). `Presence.Read` bewusst NICHT aufgenommen. **Braucht Admin-Consent + Account-Neuverbindung.** (`orchestrator/app/core/oauth_providers.py`, `msgraph_mcp.py`)
+
 ## [1.99.143] — 2026-07-08
 
 ### Fixed

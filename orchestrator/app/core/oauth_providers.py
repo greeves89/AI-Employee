@@ -65,6 +65,11 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
             "profile",
             "offline_access",
             "User.Read",
+            # Org-wide people lookup (name -> email) + resolving a user id for Planner
+            # task assignment. Least-privilege: BASIC fields only (name/mail/title/dept),
+            # NOT full profiles or the manager chain (that would need User.Read.All).
+            # Requires admin consent.
+            "User.ReadBasic.All",
             "Mail.ReadWrite",
             "Mail.Send",
             "Calendars.ReadWrite",

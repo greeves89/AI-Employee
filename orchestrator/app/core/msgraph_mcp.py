@@ -1365,7 +1365,9 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
                     params={
                         "$search": f'"displayName:{q}" OR "mail:{q}"',
                         "$top": 10,
-                        "$select": "displayName,mail,userPrincipalName,jobTitle",
+                        # BASIC fields only — jobTitle is NOT covered by User.ReadBasic.All,
+                        # requesting it would 403 the whole call under the least-privilege scope.
+                        "$select": "displayName,mail,userPrincipalName",
                         "$count": "true",
                     })
                 used_directory = True
@@ -1373,7 +1375,7 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
                     people.append({
                         "name": u.get("displayName", ""),
                         "email": u.get("mail") or u.get("userPrincipalName", ""),
-                        "title": u.get("jobTitle", "") or "",
+                        "title": "",
                     })
             except GraphError as ge:
                 dir_status = ge.status_code  # weiter zu Stufe 3, nicht sofort abbrechen
