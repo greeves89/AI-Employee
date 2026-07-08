@@ -163,23 +163,33 @@ export default function KnowledgePage() {
   // 3D renderer can display it: colour by primary tag, size by node.size.
   const vaultGraph: VaultGraph | undefined = useMemo(() => {
     if (!graphData) return undefined;
-    const nodes = graphData.nodes.map((n) => ({
-      id: String(n.id),
-      name: n.title,
-      path: "",
-      folder: n.tags?.[0] ?? "",   // drives node colour (grouped by primary tag)
-      tags: n.tags ?? [],
-      in: 0,
-      out: 0,
-      degree: Math.max(1, n.size ?? 1),
-    }));
+    // Dedupe by id — a duplicate node id makes react-force-graph's force layout
+    // crash in its tick loop (blank graph). Keep the first occurrence.
+    const seen = new Set<string>();
+    const nodes = graphData.nodes
+      .map((n) => ({
+        id: String(n.id),
+        name: String(n.title ?? n.id),   // never undefined (SpriteText needs a string)
+        path: "",
+        folder: n.tags?.[0] ?? "",       // drives node colour (grouped by primary tag)
+        tags: n.tags ?? [],
+        in: 0,
+        out: 0,
+        degree: Math.max(1, Number(n.size) || 1),
+      }))
+      .filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
     // Drop dangling edges (source/target not in the node set) — react-force-graph
     // crashes in its tick loop ("Cannot read properties of undefined (reading 'tick')")
     // when a link references a node that doesn't exist.
     const ids = new Set(nodes.map((n) => n.id));
+    const seenEdge = new Set<string>();
     const edges = graphData.edges
       .map((e) => ({ source: String(e.source), target: String(e.target) }))
-      .filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
+      .filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target)
+      .filter((e) => {
+        const k = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
+        return seenEdge.has(k) ? false : (seenEdge.add(k), true);
+      });
     return { nodes, edges };
   }, [graphData]);
 

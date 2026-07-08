@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.146] — 2026-07-08
+
+### Fixed
+- Wissensgraph: robuster gegen Render-Fehler; die 2D-Ansicht greift jetzt auch in Safari, statt leer zu bleiben.
+
 ## [1.99.145] — 2026-07-08
 
 ### Changed

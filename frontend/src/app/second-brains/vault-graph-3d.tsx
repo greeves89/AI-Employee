@@ -147,13 +147,15 @@ export default function VaultGraph3D({
     // undefined (reading 'tick')". That's outside React's error boundary, so catch
     // it globally and fall back to the 2D renderer live.
     const onWinError = (ev: ErrorEvent) => {
-      const msg = ev.message || String(ev.error?.message || "");
-      // Match ONLY the specific react-force-graph crash ("Cannot read properties of
-      // undefined (reading 'tick')"). A bare "tick" substring is far too broad —
-      // many libraries emit "tick"/"ticker" errors that have nothing to do with a
-      // lost WebGL context, and matching those wrongly forces the 2D fallback on
-      // machines where 3D works perfectly.
-      if (/reading ['"]tick['"]/.test(msg)) setCtxLost(true);
+      const hay = [ev.message, ev.error?.message, ev.error?.stack].filter(Boolean).join(" ");
+      // Match the react-force-graph render-loop crash across BROWSERS without being
+      // so broad that unrelated "tick"/"ticker" errors force the 2D fallback:
+      //   Chrome/Edge: "Cannot read properties of undefined (reading 'tick')"
+      //   Safari:      "undefined is not an object (evaluating 't.layout[c?"tick":"step"]')"
+      //   both:        stack frames tickFrame / _animationCycle (rfg-specific)
+      if (/reading ['"]tick['"]|layout\[[^\]]*tick|tickFrame|_animationCycle/.test(hay)) {
+        setCtxLost(true);
+      }
     };
     window.addEventListener("error", onWinError);
     // The canvas is created by react-force-graph after mount — grab it next tick.
