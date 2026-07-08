@@ -241,6 +241,7 @@ class LLMRunner:
         accumulated_tool_calls: list[dict] = []
         tools_called: set[str] = set()      # every tool name used this task
         compliance_nudges = 0               # bounded: nudge missing closing steps once
+        empty_turns = 0                     # bounded: retry empty LLM responses, then fail visibly
         loop_detector = LoopDetector()
 
         # Cap turns at settings.max_turns, but enforce hard ceiling
@@ -324,6 +325,30 @@ class LLMRunner:
                     ))
 
                 tools_called.update(tc["name"] for tc in turn_tool_calls)
+
+                # Empty-response guard: some providers (seen on Azure's Anthropic
+                # surface under load) occasionally return a 200 with an empty stream —
+                # no text, no tool calls, 0 tokens. Silently "completing" then yields a
+                # task that LOOKS done but did nothing (the reported team-task bug).
+                # Retry the turn a couple of times; if it stays empty, fail VISIBLY so
+                # the task doesn't masquerade as successful.
+                if not turn_text and not turn_tool_calls:
+                    empty_turns += 1
+                    if empty_turns <= 2:
+                        num_turns -= 1  # a dud turn shouldn't burn the turn budget
+                        await self.log_publisher.publish(
+                            task_id, "system",
+                            {"message": f"Leere LLM-Antwort — erneuter Versuch ({empty_turns}/2)…"},
+                        )
+                        await asyncio.sleep(1.5)
+                        continue
+                    err = (
+                        "Der LLM-Provider lieferte wiederholt eine leere Antwort (0 Tokens). "
+                        "Task konnte nicht ausgeführt werden — bitte Provider/Endpoint/Rate-Limits prüfen."
+                    )
+                    await self.log_publisher.publish(task_id, "error", {"message": err})
+                    self.is_running = False
+                    return {"status": "error", "error": err, "num_turns": num_turns}
 
                 if not has_tool_calls:
                     # Compliance gate: weak models tend to skip the mandatory

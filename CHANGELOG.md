@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.152] — 2026-07-08
+
+### Fixed
+- Team-Tasks: Eine leere LLM-Antwort (0 Tokens, z. B. transienter Provider-Aussetzer) wird jetzt erkannt, kurz wiederholt und andernfalls als sichtbarer Fehler gemeldet — statt den Task still als "erledigt" ohne Ergebnis zu markieren.
+
 ## [1.99.151] — 2026-07-08
 
 ### Added
