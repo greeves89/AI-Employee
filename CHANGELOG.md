@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.151] — 2026-07-08
+
+### Added
+- Team-Delegation: Dateien anhaengen, um dem Team Kontext/Artefakte mitzugeben — die Dateien landen im Workspace und der Agent liest sie zuerst.
+
+### Changed
+- Wissensgraph: die ausgewaehlte Bubble wird jetzt farblich hervorgehoben.
+
 ## [1.99.150] — 2026-07-08
 
 ### Fixed

@@ -27,6 +27,7 @@ const PALETTE = [
   "#fb7185", "#4ade80", "#facc15", "#c084fc", "#38bdf8", "#f59e0b",
 ];
 const ROOT_COLOR = "#94a3b8";
+const SELECTED_COLOR = "#f59e0b"; // amber — the currently selected node pops out
 
 // WebGL probe. react-force-graph-3d renders via three.js/WebGL; in locked-down
 // environments (clinic VDI, GPU-blacklisted or policy-disabled browsers) context
@@ -274,6 +275,13 @@ export default function VaultGraph3D({
     return () => cancelAnimationFrame(id);
   }, [data, use3D, retryKey]);
 
+  // Re-apply node colours when the selection changes so the selected node lights up
+  // in its highlight colour. refresh() redraws without restarting the simulation, so
+  // nodes don't jump around.
+  useEffect(() => {
+    try { fgRef.current?.refresh?.(); } catch { /* best-effort */ }
+  }, [selected]);
+
   // Add a bloom glow and fit the view once the graph is mounted.
   useEffect(() => {
     if (!fgRef.current || loading || !graph || graph.nodes.length === 0) return;
@@ -414,7 +422,11 @@ export default function VaultGraph3D({
               nodeLabel={(n: any) =>
                 `${n.name}${n.folder ? ` · ${n.folder}` : ""} · ${n.degree} ↔`
               }
-              nodeColor={(n: any) => folderColor.get(n.folder || "") || ROOT_COLOR}
+              nodeColor={(n: any) =>
+                selected && n.id === selected.id
+                  ? SELECTED_COLOR
+                  : folderColor.get(n.folder || "") || ROOT_COLOR
+              }
               nodeVal={(n: any) => 1 + n.degree * 1.4}
               nodeRelSize={4}
               nodeOpacity={0.92}

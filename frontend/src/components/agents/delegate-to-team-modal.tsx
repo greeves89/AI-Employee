@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send, Loader2 } from "lucide-react";
+import { X, Send, Loader2, Paperclip, FileText } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Team } from "@/lib/api";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -26,6 +26,7 @@ export function DelegateToTeamModal({
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [priority, setPriority] = useState("5");
+  const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +35,7 @@ export function DelegateToTeamModal({
       setTitle("");
       setPrompt("");
       setPriority("5");
+      setFiles([]);
       setError(null);
     }
   }, [open]);
@@ -47,9 +49,22 @@ export function DelegateToTeamModal({
     setSending(true);
     setError(null);
     try {
+      let finalPrompt = prompt.trim();
+      // Give the team context files: upload them into the lead agent's workspace
+      // (that's who the task lands on) and point the prompt at them with an explicit
+      // read-instruction — same pattern as the chat attachment flow.
+      const targetAgent = team.lead_agent_id || team.member_agent_ids?.[0];
+      if (files.length > 0 && targetAgent) {
+        await api.uploadFiles(targetAgent, "/workspace", files);
+        const paths = files.map((f) => `/workspace/${f.name}`).join(", ");
+        finalPrompt +=
+          `\n\n[Angehängte Datei(en) im Workspace: ${paths}. WICHTIG: Öffne und lies ` +
+          `die Datei(en) ZUERST selbst mit deinem Read-Tool (PDFs/Bilder werden unterstützt; ` +
+          `große Textdateien ggf. mit bash/grep) und arbeite dann mit dem TATSÄCHLICHEN Inhalt.]`;
+      }
       const res = await api.delegateToTeam(team.id, {
         title: title.trim(),
-        prompt: prompt.trim(),
+        prompt: finalPrompt,
         priority: parseInt(priority) || undefined,
       });
       toast.success("Task delegiert", `Task ${res.task_id}`);
@@ -153,6 +168,45 @@ export function DelegateToTeamModal({
                         <option value="5">5 — Normal</option>
                         <option value="10">10 — Hoch</option>
                       </select>
+                    </div>
+
+                    {/* Attachments */}
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                        Dateien <span className="text-muted-foreground/40">(optional — Kontext/Artefakte für den Agenten)</span>
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-foreground/[0.15] bg-background/50 px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
+                        <Paperclip className="h-4 w-4" />
+                        Dateien anhängen
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                      {files.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {files.map((f, i) => (
+                            <li key={i} className="flex items-center gap-2 rounded-md bg-foreground/[0.04] px-3 py-1.5 text-xs">
+                              <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                              <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                              <span className="text-muted-foreground/50">{(f.size / 1024).toFixed(0)} KB</span>
+                              <button
+                                type="button"
+                                onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                                className="text-muted-foreground/60 hover:text-red-400"
+                                aria-label="Entfernen"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
 
                     {/* Error */}
