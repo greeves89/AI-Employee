@@ -148,7 +148,12 @@ export default function VaultGraph3D({
     // it globally and fall back to the 2D renderer live.
     const onWinError = (ev: ErrorEvent) => {
       const msg = ev.message || String(ev.error?.message || "");
-      if (msg.includes("tick")) setCtxLost(true);
+      // Match ONLY the specific react-force-graph crash ("Cannot read properties of
+      // undefined (reading 'tick')"). A bare "tick" substring is far too broad —
+      // many libraries emit "tick"/"ticker" errors that have nothing to do with a
+      // lost WebGL context, and matching those wrongly forces the 2D fallback on
+      // machines where 3D works perfectly.
+      if (/reading ['"]tick['"]/.test(msg)) setCtxLost(true);
     };
     window.addEventListener("error", onWinError);
     // The canvas is created by react-force-graph after mount — grab it next tick.
@@ -520,6 +525,7 @@ interface Sim2DNode {
   y: number;
   vx: number;
   vy: number;
+  r: number;
 }
 
 function VaultGraph2D({
@@ -574,6 +580,7 @@ function VaultGraph2D({
       y: cy + spread * Math.sin(i * angle) + (Math.random() - 0.5) * 40,
       vx: 0,
       vy: 0,
+      r: 4 + n.degree * 1.4, // must match the node radius used when rendering
     }));
     simRef.current = sn;
 
@@ -583,10 +590,11 @@ function VaultGraph2D({
 
     let iter = 0;
     const MAX_ITER = 400;
-    const REPULSION = 2200;
-    const LINK_DIST = 62;
+    const REPULSION = 3200;   // more breathing room between nodes
+    const LINK_DIST = 95;     // longer edges so neighbours aren't cramped
     const DAMPING = 0.5;
     const GRAVITY = 0.02;
+    const COLLIDE_PAD = 10;   // min gap on top of the two node radii
 
     function tick() {
       const s = simRef.current;
@@ -635,6 +643,24 @@ function VaultGraph2D({
         n.vy *= DAMPING;
         n.x += n.vx;
         n.y += n.vy;
+      }
+      // Radius-aware collision: big hub nodes must not overlap (the reported
+      // "Abstand ist kacke"). Resolve by pushing overlapping pairs apart by half
+      // the penetration each — a direct position correction, more stable than
+      // adding yet more repulsion velocity.
+      for (let i = 0; i < s.length; i++) {
+        for (let j = i + 1; j < s.length; j++) {
+          const dx = s[j].x - s[i].x || 0.01;
+          const dy = s[j].y - s[i].y || 0.01;
+          const d = Math.hypot(dx, dy) || 0.01;
+          const minDist = s[i].r + s[j].r + COLLIDE_PAD;
+          if (d < minDist) {
+            const push = (minDist - d) / 2;
+            const ux = dx / d, uy = dy / d;
+            s[i].x -= ux * push; s[i].y -= uy * push;
+            s[j].x += ux * push; s[j].y += uy * push;
+          }
+        }
       }
       iter++;
       if (iter % 3 === 0) setSim([...s]);

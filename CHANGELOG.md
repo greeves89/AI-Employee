@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.141] — 2026-07-08
+
+### Fixed
+- **Graph: 2D-Fallback wurde fälschlich erzwungen, obwohl 3D funktioniert.** Der globale Fehler-Listener kippte bei JEDEM Fenster-Fehler, dessen Text „tick" enthielt, dauerhaft auf 2D — viele Libraries werfen „tick"/„ticker"-Fehler ohne WebGL-Bezug. Jetzt matcht er nur noch exakt die react-force-graph-Meldung `reading 'tick'`, sodass 3D auf Geräten mit funktionierendem WebGL erhalten bleibt. (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+- **Graph 2D: bessere Abstände.** Größere Hub-Knoten überlappten, weil die Abstoßung sie als Punkte behandelte. Neu: radius-bewusste Kollisionsauflösung + mehr Abstoßung/längere Kanten — Knoten überlappen nicht mehr. (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+
 ## [1.99.140] — 2026-07-08
 
 ### Fixed / Changed
