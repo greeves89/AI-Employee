@@ -278,7 +278,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_create_planner_task",
-        "description": "Create a task in a Microsoft Planner plan.",
+        "description": "Create a task in a Microsoft Planner plan — optionally with a description and assigned to a person (great for turning meeting action-items into assigned tasks).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -286,6 +286,8 @@ MSGRAPH_TOOLS = [
                 "title": {"type": "string", "description": "Task title."},
                 "bucket_id": {"type": "string", "description": "Optional: bucket ID to place the task in."},
                 "due_date": {"type": "string", "description": "Optional due date in YYYY-MM-DD format."},
+                "description": {"type": "string", "description": "Optional task description/notes."},
+                "assignee": {"type": "string", "description": "Optional: assign the task to a person — 'me' for yourself, or an email address / display name (name lookup needs directory read permission)."},
             },
             "required": ["plan_id", "title"],
         },
@@ -664,7 +666,7 @@ MSGRAPH_TOOLS = [
     # --- Planner: update + delete (full CRUD) ----------------------------------
     {
         "name": "ms_update_planner_task",
-        "description": "Update a Microsoft Planner task — title, due date, completion (percent_complete 0/50/100) or bucket. Use percent_complete=100 to mark it done.",
+        "description": "Update a Microsoft Planner task — title, due date, completion (percent_complete 0/50/100), bucket, DESCRIPTION or ASSIGNEE. Use percent_complete=100 to mark it done; assignee='me' to assign it to yourself.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -673,6 +675,8 @@ MSGRAPH_TOOLS = [
                 "due_date": {"type": "string", "description": "Optional due date in YYYY-MM-DD."},
                 "percent_complete": {"type": "number", "description": "Optional completion: 0 (open), 50 (in progress) or 100 (done)."},
                 "bucket_id": {"type": "string", "description": "Optional: move the task to this bucket."},
+                "description": {"type": "string", "description": "Optional: set the task description/notes (stored on the task's details)."},
+                "assignee": {"type": "string", "description": "Optional: assign the task — 'me' for yourself, or an email address / display name (name lookup needs directory read permission)."},
             },
             "required": ["task_id"],
         },
@@ -900,6 +904,47 @@ async def _planner_etag(task_id, token: str) -> str:
     ``If-Match`` header for any Planner PATCH/DELETE, otherwise it 412s."""
     data = await _graph("GET", f"/planner/tasks/{_gid(task_id)}", token)
     return data.get("@odata.etag", "")
+
+
+async def _planner_details_etag(task_id, token: str) -> str:
+    """Fetch the ETag of a Planner task's DETAILS sub-resource. The task
+    description lives on ``/planner/tasks/{id}/details`` (separate object, its own
+    etag) — patching ``description`` on the task itself does nothing."""
+    data = await _graph("GET", f"/planner/tasks/{_gid(task_id)}/details", token)
+    return data.get("@odata.etag", "")
+
+
+async def _resolve_user_id(who: str, token: str) -> str | None:
+    """Resolve 'me'/self, an email address or a display name to an Entra user id
+    (needed to assign a Planner task). Self-assignment works with any token; email
+    and name lookups need directory read permission (User.Read.All) and otherwise
+    return None so the caller can give a clear hint."""
+    w = (who or "").strip()
+    if not w:
+        return None
+    if w.lower() in ("me", "mir", "mich", "self", "ich", "myself"):
+        data = await _graph("GET", "/me", token, params={"$select": "id"})
+        return data.get("id")
+    if "@" in w:
+        try:
+            data = await _graph("GET", f"/users/{_gid(w)}", token, params={"$select": "id"})
+            return data.get("id")
+        except GraphError:
+            pass
+    try:
+        data = await _graph("GET", "/users", token,
+                            headers={"ConsistencyLevel": "eventual"},
+                            params={"$search": f'"displayName:{_kql(w)}"', "$top": 1,
+                                    "$select": "id", "$count": "true"})
+        vals = data.get("value", []) or []
+        return vals[0].get("id") if vals else None
+    except GraphError:
+        return None
+
+
+def _planner_assignment(uid: str) -> dict:
+    """Build the Planner ``assignments`` payload that assigns a task to a user id."""
+    return {uid: {"@odata.type": "#microsoft.graph.plannerAssignment", "orderHint": " !"}}
 
 
 def _fmt_size(b: int) -> str:
@@ -1251,8 +1296,26 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             payload["bucketId"] = args["bucket_id"]
         if args.get("due_date"):
             payload["dueDateTime"] = f"{args['due_date']}T00:00:00Z"
+        assign_note = ""
+        if args.get("assignee"):
+            uid = await _resolve_user_id(str(args["assignee"]), token)
+            if uid:
+                payload["assignments"] = _planner_assignment(uid)
+            else:
+                assign_note = f" (Zuweisung an '{args['assignee']}' nicht moeglich - Verzeichnis-Leserechte fehlen)"
         data = await _graph("POST", "/planner/tasks", token, content=json.dumps(payload))
-        return f"Planner task created: '{args['title']}' (ID: {data.get('id')})"
+        tid = data.get("id")
+        # Description must be set on the /details sub-resource AFTER creation.
+        if args.get("description") and tid:
+            try:
+                detag = await _planner_details_etag(tid, token)
+                if detag:
+                    await _graph("PATCH", f"/planner/tasks/{_gid(tid)}/details", token,
+                                headers={"If-Match": detag},
+                                content=json.dumps({"description": str(args["description"])}))
+            except GraphError:
+                assign_note += " (Beschreibung konnte nicht gesetzt werden)"
+        return f"Planner task created: '{args['title']}' (ID: {tid}){assign_note}"
 
     elif name == "ms_search_people":
         q = _kql(args["query"])
@@ -1723,7 +1786,8 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         etag = await _planner_etag(args["task_id"], token)
         if not etag:
             return "Error: Planner task not found."
-        payload = {}
+        # Task-level fields (title/bucket/due/percent/assignments).
+        payload: dict = {}
         if args.get("title"):
             payload["title"] = str(args["title"])
         if args.get("bucket_id"):
@@ -1736,11 +1800,30 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             except (TypeError, ValueError):
                 pct = 0
             payload["percentComplete"] = max(0, min(100, pct))
-        if not payload:
-            return "Error: nothing to update — provide title, due_date, percent_complete or bucket_id."
-        await _graph("PATCH", f"/planner/tasks/{_gid(args['task_id'])}", token,
-                    headers={"If-Match": etag}, content=json.dumps(payload))
-        return "Planner-Aufgabe aktualisiert."
+        if args.get("assignee"):
+            uid = await _resolve_user_id(str(args["assignee"]), token)
+            if not uid:
+                return (f"Konnte die Person '{args['assignee']}' nicht aufloesen. "
+                        "Fuer 'mir/mich' klappt es immer; fuer andere Personen braucht der "
+                        "Tenant Verzeichnis-Leserechte (User.Read.All) - sonst per E-Mail-Adresse versuchen.")
+            payload["assignments"] = _planner_assignment(uid)
+        done = []
+        if payload:
+            await _graph("PATCH", f"/planner/tasks/{_gid(args['task_id'])}", token,
+                        headers={"If-Match": etag}, content=json.dumps(payload))
+            done.append("Felder/Zuweisung")
+        # Description lives on the /details sub-resource (own etag).
+        if args.get("description") is not None:
+            detag = await _planner_details_etag(args["task_id"], token)
+            if detag:
+                await _graph("PATCH", f"/planner/tasks/{_gid(args['task_id'])}/details", token,
+                            headers={"If-Match": detag},
+                            content=json.dumps({"description": str(args["description"])}))
+                done.append("Beschreibung")
+        if not done:
+            return ("Error: nichts zu aktualisieren — gib title, due_date, percent_complete, "
+                    "bucket_id, description oder assignee an.")
+        return "Planner-Aufgabe aktualisiert (" + ", ".join(done) + ")."
 
     elif name == "ms_delete_planner_task":
         etag = await _planner_etag(args["task_id"], token)

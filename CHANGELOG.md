@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.139] — 2026-07-08
+
+### Fixed
+- **MS-Graph-MCP: Planner-Aufgaben können jetzt Beschreibung bekommen und zugewiesen werden.** `ms_update_planner_task` und `ms_create_planner_task` unterstützten bisher nur Titel/Fälligkeit/Fortschritt/Bucket — Beschreibung und Zuweisung schlugen fehl (genau der Meeting→MA-Workflow). Neu: **`description`** wird auf der separaten `/planner/tasks/{id}/details`-Ressource (eigener ETag) gesetzt; **`assignee`** weist die Aufgabe zu (`assignments` mit aufgelöster Entra-User-ID). Selbstzuweisung (`assignee='me'/'mir'`) funktioniert mit jedem Token; E-Mail/Name brauchen Verzeichnis-Leserechte (User.Read.All) und geben sonst einen klaren Hinweis. (`orchestrator/app/core/msgraph_mcp.py`)
+
 ## [1.99.138] — 2026-07-07
 
 ### Added
