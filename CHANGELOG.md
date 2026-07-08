@@ -8,47 +8,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ## [1.99.145] — 2026-07-08
 
 ### Changed
-- **`User.ReadBasic.All` wieder entfernt (Kundenentscheidung).** Für die org-weite Personensuche / Vorgesetzter-Anzeige wäre ein Admin-Consent nötig; das ist als nice-to-have eingestuft und lohnt den Consent-Prozess aktuell nicht. Es bleibt beim minimalen `User.Read`. Personensuche funktioniert weiterhin teilweise über den Suchindex (`ms_search`), Planner-Selbstzuweisung ohne Verzeichnisrechte. (`orchestrator/app/core/oauth_providers.py`)
+- M365-SSO auf den minimalen Scope beschränkt; org-weite Personensuche bleibt optional.
 
 ## [1.99.144] — 2026-07-08
 
 ### Changed
-- **M365-SSO-Scope: `User.ReadBasic.All` ergänzt (least-privilege).** Für org-weite Personensuche (Name→E-Mail) und das Auflösen der Entra-User-ID bei Planner-Zuweisung. Bewusst NUR die Basis-Variante (Name/E-Mail/UPN) statt `User.Read.All` (volle Profile + Org-Hierarchie) — datenschutzfreundlicher, deckt den Meeting→MA-Workflow. Verzeichnis-Abfrage lädt entsprechend keine `jobTitle` mehr (nicht von ReadBasic abgedeckt). `Presence.Read` bewusst NICHT aufgenommen. **Braucht Admin-Consent + Account-Neuverbindung.** (`orchestrator/app/core/oauth_providers.py`, `msgraph_mcp.py`)
+- Optionalen Verzeichnis-Scope für org-weite Personensuche vorbereitet (Least-Privilege).
 
 ## [1.99.143] — 2026-07-08
 
 ### Fixed
-- **M365-Kern-Tools werden dem Agenten jetzt IMMER angeboten (nicht mehr hinter der Tool-Suche versteckt).** Log-Analyse zeigte die eigentliche Ursache für „sehe kein People-/M365-Tool": Azure/OpenAI erlauben max. 128 Tools pro Request, deshalb sendet der LLM-Pfad nur Core + ~45 aktivierte Tools und aktiviert den Rest on-demand per `search_tools`. `ms_search_people` & Co. wurden dabei oft nie aktiviert bzw. per LRU wieder verdrängt → der Agent „sah" sie nicht. Neu: die wichtigsten M365-Tools (`ms_search`, `ms_search_people`, `ms_get_user_info`, `ms_list_emails`, `ms_recent_files`, `ms_search_files`) sind **fest angepinnt** und werden immer mitgesendet — keine Discovery nötig. (`agent/app/llm_chat_handler.py`) — **wirkt nach Agent-Image-Rebuild + „Update All".**
+- Wichtige M365-Tools (Suche, Personen, Profil, Mail, Dateien) sind dem Agenten immer verfügbar.
 
 ## [1.99.142] — 2026-07-08
 
-### Fixed / Changed
-- **Agent nutzt die M365-Tools jetzt wirklich (statt nur anzukündigen).** Log-Analyse (SKBS) zeigte: die msgraph-Tools liefern serverseitig sauber 200 (keine Graph-API-Fehler) — der Agent rief sie nur nicht auf, weil die Agent-Anweisung (`CLAUDE.md`) die M365-Tools mit keinem Wort erwähnte und sie so nur mühsam per Tool-Suche entdeckt wurden. Neu: klare **Microsoft-365-Sektion** in der Agent-CLAUDE.md („Person/Kollege/Vorgesetzter → `ms_search_people`/`ms_get_user_info`, Mail → `ms_search` types=message, Dateien → `ms_recent_files`, Planner-Zuweisung → `ms_create_planner_task`") samt harter Regel: **Tool aufrufen, nicht ankündigen** — greift nach Agent-Update. (`orchestrator/app/core/agent_manager.py`)
-- **„Wer ist mein Vorgesetzter?" ist beantwortbar.** `ms_get_user_info` liefert jetzt zusätzlich den **Manager** (`/me/manager`, funktioniert mit Basis-Scope `User.Read`). Beschreibung erweitert um „wer ist mein Vorgesetzter/Chef, Abteilung, who am I". (`orchestrator/app/core/msgraph_mcp.py`)
-- **Personensuche besser auffindbar.** `ms_search_people`-Beschreibung mit klaren Triggern („who is / wer ist / find person / E-Mail von …") — damit die Tool-Suche des Agenten sie zuverlässig als Personen-/Verzeichnissuche erkennt. (`orchestrator/app/core/msgraph_mcp.py`)
+### Fixed
+- Agent nutzt die M365-Tools zuverlässiger; Profil-Abruf inklusive Vorgesetztem; Personensuche besser erkannt.
 
 ## [1.99.141] — 2026-07-08
 
 ### Fixed
-- **Graph: 2D-Fallback wurde fälschlich erzwungen, obwohl 3D funktioniert.** Der globale Fehler-Listener kippte bei JEDEM Fenster-Fehler, dessen Text „tick" enthielt, dauerhaft auf 2D — viele Libraries werfen „tick"/„ticker"-Fehler ohne WebGL-Bezug. Jetzt matcht er nur noch exakt die react-force-graph-Meldung `reading 'tick'`, sodass 3D auf Geräten mit funktionierendem WebGL erhalten bleibt. (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
-- **Graph 2D: bessere Abstände.** Größere Hub-Knoten überlappten, weil die Abstoßung sie als Punkte behandelte. Neu: radius-bewusste Kollisionsauflösung + mehr Abstoßung/längere Kanten — Knoten überlappen nicht mehr. (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+- Wissensgraph: 3D bleibt auf fähigen Geräten aktiv; 2D-Ansicht mit besseren Abständen.
 
 ## [1.99.140] — 2026-07-08
 
-### Fixed / Changed
-- **Personensuche: dritte Stufe über persönliche Kontakte.** `ms_search_people` versucht jetzt `/me/people` → Entra-Verzeichnis (`/users`) → **persönliche Outlook-Kontakte (`/me/contacts`)**. Letzteres braucht nur `Contacts.Read` und funktioniert damit auch, wenn der Tenant keine Verzeichnis-Leserechte freigibt. Scheitert die Suche komplett, kommt ein klarer Hinweis (bei 403: `User.Read.All` per Admin-Consent freigeben). (`orchestrator/app/core/msgraph_mcp.py`)
-- **`ms_recent_files`: „letzte N Dateien" wird jetzt aufgefüllt.** `/me/drive/recent` liefert je nach Nutzung oft nur wenige Einträge; reicht das nicht für die angefragte Anzahl, werden die zuletzt geänderten OneDrive-Dateien (`lastModifiedDateTime` absteigend) ergänzt. (`orchestrator/app/core/msgraph_mcp.py`)
-- **Knowledge-/Vault-Graph 2D-Ansicht (PC ohne WebGL) deutlich hübscher.** Der 2D-Fallback (greift z. B. im Klinik-Edge, wo WebGL blockiert ist) hat jetzt geschwungene Kanten, Glow + Glanz-Effekt (Sphären-Look wie in der 3D-/iOS-Ansicht), Auswahl-Ring und lesbare Labels mit Hintergrund-Pill — Labels nur noch für Auswahl/Nachbarn/gut vernetzte Knoten statt überlappendem Text-Wirrwarr. (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+### Changed
+- Personensuche mit zusätzlichem Kontakte-Fallback; „letzte Dateien" vollständiger; 2D-Wissensgraph optisch aufgewertet.
 
 ## [1.99.139] — 2026-07-08
 
 ### Fixed
-- **MS-Graph-MCP: Planner-Aufgaben können jetzt Beschreibung bekommen und zugewiesen werden.** `ms_update_planner_task` und `ms_create_planner_task` unterstützten bisher nur Titel/Fälligkeit/Fortschritt/Bucket — Beschreibung und Zuweisung schlugen fehl (genau der Meeting→MA-Workflow). Neu: **`description`** wird auf der separaten `/planner/tasks/{id}/details`-Ressource (eigener ETag) gesetzt; **`assignee`** weist die Aufgabe zu (`assignments` mit aufgelöster Entra-User-ID). Selbstzuweisung (`assignee='me'/'mir'`) funktioniert mit jedem Token; E-Mail/Name brauchen Verzeichnis-Leserechte (User.Read.All) und geben sonst einen klaren Hinweis. (`orchestrator/app/core/msgraph_mcp.py`)
+- MS-Planner: Aufgaben mit Beschreibung anlegen und Personen zuweisen.
 
 ## [1.99.138] — 2026-07-07
 
 ### Added
-- **In-App-Architektur- & Schnittstellen-Referenz unter Hilfe.** Neue Seite `/help/architecture` (verlinkt aus dem Hilfe-Schnellzugriff) mit Mermaid-Diagrammen (Komponenten, Chat-Flow, Tool-Freigabe, Agent-Spawn, Deployment-Topologie) und einer vollständigen, aus dem Code inventarisierten Referenz: ~330 HTTP-Endpunkte (mit Auth-Kennzeichnung), 61 MS-Graph-Tools (Lesen/Schreiben), alle MCP-Server (Orchestrator/Second-Brain/On-Prem-Exchange/Built-in-Container), Voice-Tools + WebSocket-Events, ~50 Datenmodelle und die Frontend-Routen. Neue Dependency `mermaid` (client-seitig, lazy geladen). (`frontend/src/app/help/architecture/*`, `frontend/src/components/help/mermaid.tsx`, `frontend/src/app/help/page.tsx`)
+- In-App-Architektur- & Schnittstellen-Referenz unter Hilfe (mit Diagrammen und vollständiger Endpoint-/Tool-Übersicht).
 
 ## [1.99.137] — 2026-07-07
 
