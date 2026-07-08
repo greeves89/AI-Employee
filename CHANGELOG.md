@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.143] — 2026-07-08
+
+### Fixed
+- **M365-Kern-Tools werden dem Agenten jetzt IMMER angeboten (nicht mehr hinter der Tool-Suche versteckt).** Log-Analyse zeigte die eigentliche Ursache für „sehe kein People-/M365-Tool": Azure/OpenAI erlauben max. 128 Tools pro Request, deshalb sendet der LLM-Pfad nur Core + ~45 aktivierte Tools und aktiviert den Rest on-demand per `search_tools`. `ms_search_people` & Co. wurden dabei oft nie aktiviert bzw. per LRU wieder verdrängt → der Agent „sah" sie nicht. Neu: die wichtigsten M365-Tools (`ms_search`, `ms_search_people`, `ms_get_user_info`, `ms_list_emails`, `ms_recent_files`, `ms_search_files`) sind **fest angepinnt** und werden immer mitgesendet — keine Discovery nötig. (`agent/app/llm_chat_handler.py`) — **wirkt nach Agent-Image-Rebuild + „Update All".**
+
 ## [1.99.142] — 2026-07-08
 
 ### Fixed / Changed

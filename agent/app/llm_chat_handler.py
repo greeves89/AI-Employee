@@ -48,6 +48,22 @@ CORE_TOOL_NAMES = {
 }
 MAX_ACTIVATED_TOOLS = 60  # core (~27) + search_tools + activated stays well under 128
 
+# Integration tools that must ALWAYS be sent to the LLM — never hidden behind
+# search_tools and never evicted by the LRU. These are the most common M365 asks
+# (person/directory lookup, own profile + manager, mail search, recent files); when
+# they were only reachable via discovery the model flakily claimed "there is no
+# people/M365 tool" instead of calling them. Matched by name SUFFIX so the
+# mcp_<server>_ prefix is irrelevant. CORE(~27)+search_tools+pinned(~6)+activated(≤60)
+# stays comfortably under the 128 cap.
+PINNED_TOOL_SUFFIXES = (
+    "ms_search", "ms_search_people", "ms_get_user_info",
+    "ms_list_emails", "ms_recent_files", "ms_search_files",
+)
+
+
+def _is_pinned(name: str) -> bool:
+    return any(name.endswith(sfx) for sfx in PINNED_TOOL_SUFFIXES)
+
 SEARCH_TOOLS_DEF = {
     "type": "function",
     "function": {
@@ -267,8 +283,16 @@ class LLMChatHandler:
         active = set(self._activated)
         sent = [t for t in catalog if t["function"]["name"] in CORE_TOOL_NAMES]
         sent.append(SEARCH_TOOLS_DEF)
+        sent_names = {t["function"]["name"] for t in sent}
+        # Always-pinned integration tools (people/mail/search) — no discovery needed.
+        for t in catalog:
+            n = t["function"]["name"]
+            if n not in sent_names and n not in CORE_TOOL_NAMES and _is_pinned(n):
+                sent.append(t)
+                sent_names.add(n)
+        # Everything the model activated via search_tools (minus what's already sent).
         sent += [t for t in catalog
-                 if t["function"]["name"] in active and t["function"]["name"] not in CORE_TOOL_NAMES]
+                 if t["function"]["name"] in active and t["function"]["name"] not in sent_names]
         return sent
 
     def _handle_search_tools(self, query: str) -> str:
