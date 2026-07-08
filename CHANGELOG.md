@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.140] — 2026-07-08
+
+### Fixed / Changed
+- **Personensuche: dritte Stufe über persönliche Kontakte.** `ms_search_people` versucht jetzt `/me/people` → Entra-Verzeichnis (`/users`) → **persönliche Outlook-Kontakte (`/me/contacts`)**. Letzteres braucht nur `Contacts.Read` und funktioniert damit auch, wenn der Tenant keine Verzeichnis-Leserechte freigibt. Scheitert die Suche komplett, kommt ein klarer Hinweis (bei 403: `User.Read.All` per Admin-Consent freigeben). (`orchestrator/app/core/msgraph_mcp.py`)
+- **`ms_recent_files`: „letzte N Dateien" wird jetzt aufgefüllt.** `/me/drive/recent` liefert je nach Nutzung oft nur wenige Einträge; reicht das nicht für die angefragte Anzahl, werden die zuletzt geänderten OneDrive-Dateien (`lastModifiedDateTime` absteigend) ergänzt. (`orchestrator/app/core/msgraph_mcp.py`)
+- **Knowledge-/Vault-Graph 2D-Ansicht (PC ohne WebGL) deutlich hübscher.** Der 2D-Fallback (greift z. B. im Klinik-Edge, wo WebGL blockiert ist) hat jetzt geschwungene Kanten, Glow + Glanz-Effekt (Sphären-Look wie in der 3D-/iOS-Ansicht), Auswahl-Ring und lesbare Labels mit Hintergrund-Pill — Labels nur noch für Auswahl/Nachbarn/gut vernetzte Knoten statt überlappendem Text-Wirrwarr. (`frontend/src/app/second-brains/vault-graph-3d.tsx`)
+
 ## [1.99.139] — 2026-07-08
 
 ### Fixed

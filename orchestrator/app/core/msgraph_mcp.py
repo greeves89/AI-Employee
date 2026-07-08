@@ -1342,6 +1342,7 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         # 2) Fallback aufs Entra-Verzeichnis (/users) — funktioniert ohne Cloud-Postfach,
         #    solange der Tenant-Verzeichnisdienst in der Cloud liegt (SSO/Entra). $search
         #    braucht den Header ConsistencyLevel: eventual.
+        dir_status = None
         if not people:
             try:
                 data = await _graph("GET", "/users", token,
@@ -1360,19 +1361,40 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
                         "title": u.get("jobTitle", "") or "",
                     })
             except GraphError as ge:
-                return (
-                    f"Personensuche nicht moeglich: /me/people ist hier nicht verfuegbar "
-                    f"(On-Prem-Postfach) und die Verzeichnissuche scheiterte (HTTP {ge.status_code} — "
-                    "evtl. fehlt die Berechtigung User.Read.All/Directory.Read.All im Tenant)."
-                )
+                dir_status = ge.status_code  # weiter zu Stufe 3, nicht sofort abbrechen
+        # 3) Persoenliche Outlook-Kontakte (/me/contacts) — braucht nur Contacts.Read,
+        #    funktioniert also auch ohne Verzeichnis-Leserechte im Tenant.
+        used_contacts = False
         if not people:
-            return f"No people found for '{args['query']}'."
+            try:
+                data = await _graph("GET", "/me/contacts", token,
+                    headers={"ConsistencyLevel": "eventual"},
+                    params={"$search": f'"{q}"', "$top": 10,
+                            "$select": "displayName,emailAddresses,jobTitle"})
+                for c in data.get("value", []) or []:
+                    ea = c.get("emailAddresses", []) or []
+                    people.append({
+                        "name": c.get("displayName", ""),
+                        "email": ea[0].get("address", "") if ea else "",
+                        "title": c.get("jobTitle", "") or "",
+                    })
+                used_contacts = bool(people)
+            except GraphError:
+                pass
+        if not people:
+            hint = ""
+            if dir_status == 403:
+                hint = (" Für die organisationsweite Personensuche im Tenant die Berechtigung "
+                        "User.Read.All freigeben (Admin-Consent).")
+            return f"Keine Person zu '{args['query']}' gefunden." + hint
         lines = []
         for p in people:
             title = p.get("title", "")
             lines.append(f"• {p.get('name', '')} <{p.get('email', '')}>{(' — ' + title) if title else ''}")
         if used_directory:
-            lines.append("(Quelle: Entra-Verzeichnis — /me/people war nicht verfuegbar)")
+            lines.append("(Quelle: Entra-Verzeichnis)")
+        elif used_contacts:
+            lines.append("(Quelle: persönliche Kontakte)")
         return "\n".join(lines)
 
     elif name == "ms_insights":
@@ -1400,11 +1422,31 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
     elif name == "ms_recent_files":
         limit = min(int(args.get("limit", 15)), 30)
         data = await _graph("GET", "/me/drive/recent", token, params={"$top": limit})
-        items = data.get("value", [])
+        items = list(data.get("value", []) or [])
+        seen_ids = {it.get("id") for it in items if it.get("id")}
+        # /me/drive/recent liefert je nach Nutzung oft nur wenige Einträge. Für "die
+        # letzten N Dateien" die zuletzt GEÄNDERTEN OneDrive-Dateien nachladen, bis der
+        # Wunsch erreicht ist (nach lastModifiedDateTime absteigend).
+        if len(items) < limit:
+            try:
+                more = await _graph("GET", "/me/drive/root/children", token, params={
+                    "$orderby": "lastModifiedDateTime desc",
+                    "$top": limit,
+                    "$select": "id,name,lastModifiedDateTime,webUrl,lastModifiedBy,file",
+                })
+                for it in more.get("value", []) or []:
+                    if it.get("id") in seen_ids or "file" not in it:
+                        continue  # nur Dateien, keine Ordner/Dubletten
+                    items.append(it)
+                    seen_ids.add(it.get("id"))
+                    if len(items) >= limit:
+                        break
+            except GraphError:
+                pass
         if not items:
-            return "Keine kürzlich verwendeten Dateien gefunden."
+            return "Keine kürzlich verwendeten/bearbeiteten Dateien gefunden."
         lines = []
-        for it in items:
+        for it in items[:limit]:
             fname = it.get("name", "")
             mod = (it.get("lastModifiedDateTime") or "")[:16]
             url = it.get("webUrl", "")

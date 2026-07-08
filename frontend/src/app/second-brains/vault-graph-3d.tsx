@@ -717,54 +717,87 @@ function VaultGraph2D({
       onMouseLeave={() => (panning.current = false)}
       onClick={onBackgroundClick}
     >
+      <defs>
+        {/* Soft glow so nodes read like glowing spheres (as in the 3D/iOS view). */}
+        <filter id="vg-glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="2.4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
       <g transform={`translate(${tf.x},${tf.y}) scale(${tf.scale})`}>
         {links.map((l, i) => {
           const a = posById.get(l.source);
           const b = posById.get(l.target);
           if (!a || !b) return null;
           const active = highlight ? highlight.has(l.source) && highlight.has(l.target) : false;
+          const dim = highlight && !active;
+          // Gentle curve (perpendicular offset at the midpoint) instead of a hard line.
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const cx = (a.x + b.x) / 2 - dy * 0.12;
+          const cy = (a.y + b.y) / 2 + dx * 0.12;
           return (
-            <line
+            <path
               key={i}
-              x1={a.x}
-              y1={a.y}
-              x2={b.x}
-              y2={b.y}
-              stroke={active ? "rgba(96,165,250,0.7)" : "rgba(140,160,220,0.22)"}
-              strokeWidth={active ? 1.4 : 0.6}
+              d={`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`}
+              fill="none"
+              stroke={active ? "rgba(96,165,250,0.75)" : "rgba(140,160,220,0.20)"}
+              strokeWidth={active ? 1.6 : 0.7}
+              strokeLinecap="round"
+              opacity={dim ? 0.35 : 1}
             />
           );
         })}
         {sim.map((n) => {
           const r = 4 + n.degree * 1.4;
           const dimmed = highlight ? !highlight.has(n.id) : false;
+          const selected = n.id === selectedId;
+          const color = colorOf(n.folder);
+          // Keep labels legible: show them only for the selected node, its
+          // neighbours, or well-connected hubs — otherwise the view is a mess of
+          // overlapping text (exactly the reported problem).
+          const showLabel = selected || (highlight ? highlight.has(n.id) : n.degree >= 2);
+          const label = n.name.length > 24 ? n.name.slice(0, 23) + "…" : n.name;
+          const fs = Math.min(9.5, 5.5 + n.degree * 0.45);
+          const pillW = label.length * fs * 0.56 + 8;
           return (
             <g
               key={n.id}
               transform={`translate(${n.x},${n.y})`}
               className="cursor-pointer"
-              opacity={dimmed ? 0.25 : 1}
+              opacity={dimmed ? 0.22 : 1}
               onClick={(e) => {
                 e.stopPropagation();
                 onNodeClick(n as unknown as VaultGraphNode);
               }}
             >
+              {selected && <circle r={r + 4} fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth={1.4} />}
               <circle
                 r={r}
-                fill={colorOf(n.folder)}
-                stroke={n.id === selectedId ? "#fff" : "rgba(6,6,14,0.6)"}
-                strokeWidth={n.id === selectedId ? 1.6 : 0.8}
+                fill={color}
+                filter={r > 6 || selected ? "url(#vg-glow)" : undefined}
+                stroke="rgba(6,6,14,0.55)"
+                strokeWidth={0.8}
               />
-              <text
-                x={0}
-                y={r + 8}
-                textAnchor="middle"
-                fontSize={Math.min(9, 5 + n.degree * 0.5)}
-                fill="rgba(226,232,240,0.9)"
-                style={{ pointerEvents: "none", userSelect: "none" }}
-              >
-                {n.name.length > 22 ? n.name.slice(0, 21) + "…" : n.name}
-              </text>
+              {/* Glossy highlight → 3D sphere feel. */}
+              <circle r={r * 0.55} cx={-r * 0.28} cy={-r * 0.28} fill="rgba(255,255,255,0.28)" style={{ pointerEvents: "none" }} />
+              {showLabel && (
+                <g style={{ pointerEvents: "none" }}>
+                  <rect x={-pillW / 2} y={r + 3} width={pillW} height={fs + 5} rx={(fs + 5) / 2} fill="rgba(8,10,20,0.72)" />
+                  <text
+                    x={0}
+                    y={r + 3 + fs}
+                    textAnchor="middle"
+                    fontSize={fs}
+                    fill="rgba(233,238,248,0.95)"
+                    style={{ userSelect: "none" }}
+                  >
+                    {label}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })}
