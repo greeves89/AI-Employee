@@ -88,10 +88,22 @@ export default function VaultGraph3D({
     let alive = true;
     // Caller supplied the graph directly (Knowledge base) → don't fetch a vault.
     if (externalGraph) {
-      setGraph(externalGraph);
-      setErr(null);
-      setLoading(false);
-      return () => { alive = false; };
+      // Mount react-force-graph on a SEPARATE, settled frame instead of during this
+      // (often cold, just-code-split) render. Otherwise its animation loop can tick
+      // before its internal d3 layout is initialized and crash ("t.layout undefined"),
+      // dropping the first cold visit to 2D. The async brainId path below gets this
+      // delay for free (network fetch), which is why it never flickered. Two rAFs =
+      // one to let this render paint, one to ensure a warm frame.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          if (!alive) return;
+          setGraph(externalGraph);
+          setErr(null);
+          setLoading(false);
+        });
+      });
+      return () => { alive = false; cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
     }
     if (brainId == null) {
       setLoading(false);

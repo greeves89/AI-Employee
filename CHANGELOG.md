@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.147] — 2026-07-08
+
+### Fixed
+- Wissensgraph: rendert beim ersten Aufruf zuverlässig in 3D (kein 2D-Flackern beim Kaltstart mehr).
+
 ## [1.99.146] — 2026-07-08
 
 ### Fixed
