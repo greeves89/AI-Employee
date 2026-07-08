@@ -93,6 +93,12 @@ export default function VaultGraph3D({
   // at runtime (GPU reset, tab backgrounded). When that happens we switch to the
   // 2D renderer live instead of leaving a black, crashing canvas.
   const [ctxLost, setCtxLost] = useState(false);
+  // Self-healing: if react-force-graph crashes on init (the "state.layout undefined"
+  // race that hits some machines intermittently), remount it fresh a few times before
+  // giving up to 2D. A warm remount almost always succeeds — same reason a manual
+  // reload fixes it — so the user just gets 3D without doing anything.
+  const [retryKey, setRetryKey] = useState(0);
+  const retriesRef = useRef(0);
   const use3D = webgl && !ctxLost;
 
   const [selected, setSelected] = useState<VaultGraphNode | null>(null);
@@ -185,7 +191,13 @@ export default function VaultGraph3D({
       //   Safari:      "undefined is not an object (evaluating 't.layout[c?"tick":"step"]')"
       //   both:        stack frames tickFrame / _animationCycle (rfg-specific)
       if (/reading ['"]tick['"]|layout\[[^\]]*tick|tickFrame|_animationCycle/.test(hay)) {
-        setCtxLost(true);
+        if (retriesRef.current < 3) {
+          retriesRef.current += 1;
+          setFgData({ nodes: [], links: [] }); // empty-first again on the retry
+          setRetryKey((k) => k + 1);           // remount the graph fresh → new attempt
+        } else {
+          setCtxLost(true);                    // 3 tries failed → settle on stable 2D
+        }
       }
     };
     window.addEventListener("error", onWinError);
@@ -260,7 +272,7 @@ export default function VaultGraph3D({
     if (!use3D) return;
     const id = requestAnimationFrame(() => setFgData(data));
     return () => cancelAnimationFrame(id);
-  }, [data, use3D]);
+  }, [data, use3D, retryKey]);
 
   // Add a bloom glow and fit the view once the graph is mounted.
   useEffect(() => {
@@ -392,6 +404,7 @@ export default function VaultGraph3D({
           <div ref={wrapRef} className="relative min-h-0 flex-1 overflow-hidden">
           {use3D ? (
             <FG
+              key={retryKey}
               ref={fgRef}
               width={size.w}
               height={size.h}

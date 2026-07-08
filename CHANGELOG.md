@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.150] — 2026-07-08
+
+### Fixed
+- Wissensgraph: heilt sich selbst — falls die 3D-Ansicht beim Start abstuerzt, laedt sie sich automatisch neu (bis zu 3x), statt auf 2D zu fallen. Damit landet man zuverlaessig in 3D, wo die Hardware es hergibt.
+
 ## [1.99.149] — 2026-07-08
 
 ### Fixed
