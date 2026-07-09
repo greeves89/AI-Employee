@@ -857,7 +857,7 @@ async def lifespan(app: FastAPI):
                 "finished_at timestamptz, "
                 "status varchar(30) NOT NULL DEFAULT 'running', "
                 "mode varchar(20) NOT NULL DEFAULT 'hybrid', "
-                "trigger varchar(20) NOT NULL DEFAULT 'scheduled', "
+                "\"trigger\" varchar(20) NOT NULL DEFAULT 'scheduled', "
                 "stats json NOT NULL DEFAULT '{}'::json, "
                 "tokens_used integer NOT NULL DEFAULT 0, "
                 "cost_usd double precision, "

@@ -62,6 +62,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 21. [Benachrichtigungen](#21-benachrichtigungen)
 22. [Admin-Konsole](#22-admin-konsole)
 23. [Computer-Use Bridge (Desktop steuern)](#23-computer-use-bridge-desktop-steuern)
+31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -1175,6 +1176,65 @@ Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Au
 **Meeting → Planner:** unter Automatisierung die **Planner-Plan-ID** hinterlegen (Abschnitt 27).
 
 > _[Screenshot folgt: Admin-Integrationen mit Exchange-Karte]_
+
+---
+
+## 31. Nachtschicht (Reflection) — Agenten lernen über Nacht
+
+Die **Nachtschicht** ist der nächtliche Reflexions-Lauf der Plattform: Sie liest die
+Gespräche, Aufgaben und Meetings des Tages, destilliert daraus **dauerhaftes Wissen**
+(Fakten, Learnings, Team-Erkenntnisse, Skill-Entwürfe) und schreibt es in das Gedächtnis
+der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
+
+### 31.1 Aktivieren (Admin)
+
+1. Seitenleiste → **Einstellungen** → Karte **„Nachtschicht (Reflection)"**.
+2. **Aktiviert** einschalten.
+3. **Uhrzeit** wählen (Standard: **3 Uhr nachts**).
+4. **Modus** wählen:
+   - **Automatisch** — alles wird direkt übernommen.
+   - **Ausgewogen (empfohlen)** — Neues wird direkt übernommen; alles, was **bestehendes
+     Wissen verändert**, wartet auf deine Freigabe.
+   - **Alles freigeben** — keine Änderung ohne deine Freigabe (maximale Kontrolle).
+5. Optional das **Token-Budget** pro Lauf anpassen (Kostendeckel, Standard 200000).
+
+> _[Screenshot folgt: Einstellungen — Karte Nachtschicht mit rotem Kreis auf dem Toggle]_
+
+### 31.2 Das Ergebnis am Morgen ansehen
+
+1. **Dashboard** öffnen → Karte **„Nachtschicht"**: eine Zeile fasst zusammen, was
+   nachts passiert ist („X Notizen neu · Y aktualisiert · Z Freigaben offen").
+2. Bei offenen Freigaben: **„Freigaben ansehen"** klicken → du landest auf **Approvals**.
+
+> _[Screenshot folgt: Dashboard — Nachtschicht-Karte]_
+
+### 31.3 Änderungen freigeben oder verwerfen
+
+1. Seitenleiste → **Approvals** → Einträge mit dem Badge **„Nachtschicht"** (Mond-Symbol).
+2. Jeder Eintrag zeigt **Vorher/Nachher** nebeneinander: links das bestehende Wissen,
+   rechts der Vorschlag der Nachtschicht.
+3. **Übernehmen** klicken → die Änderung wird sofort ins Gedächtnis geschrieben.
+   **Verwerfen** → nichts passiert, der Vorschlag wird verworfen.
+
+> _[Screenshot folgt: Approvals — Nachtschicht-Eintrag mit Vorher/Nachher]_
+
+### 31.4 Nachvollziehen, was die Nachtschicht geändert hat
+
+1. **Agent-Detailseite → Reiter „Wissen/Memory"**: Jede Notiz trägt jetzt ein
+   **Herkunfts-Badge** (Agent / Gespräch / **Nachtschicht** / Du). Mit dem Filter
+   **„Nur Nachtschicht"** siehst du ausschließlich nächtliche Änderungen.
+2. **„Verlauf"** an einer Notiz aufklappen → Zeitleiste aller früheren Versionen
+   (nichts geht verloren — alte Stände bleiben als Historie erhalten).
+3. **Audit-Log** (Kap. 18): jeder Lauf und jede Einzeländerung als Prüf-Eintrag.
+4. **Skill-Entwürfe** der Nachtschicht erscheinen im **Skill Marketplace** als
+   **Entwurf** und werden erst nach deiner Freigabe aktiv (Kap. 10).
+
+**Manuell anstoßen (Admin):** Dashboard → Nachtschicht-Karte → **„Jetzt laufen lassen"** —
+praktisch zum Ausprobieren, ohne bis 3 Uhr zu warten.
+
+> Die Nachtschicht ist standardmäßig **aus** und muss pro Installation bewusst
+> eingeschaltet werden. Ohne Anthropic-API-Key läuft sie nicht (sie nutzt ein
+> kleines, günstiges Modell für die Extraktion).
 
 ---
 
