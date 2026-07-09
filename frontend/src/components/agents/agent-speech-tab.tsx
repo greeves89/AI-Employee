@@ -81,16 +81,18 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
       )}
 
       {/* Right — live voice view (remounts per selected session) */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <button
-          onClick={() => setRailOpen((o) => !o)}
-          className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground transition-colors"
-          title={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
-        >
-          {railOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
-          {railOpen ? "Gespräche ausblenden" : "Gespräche"}
-        </button>
-        <div className="min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Toolbar — mirrors the chat's collapse control (icon-only). */}
+        <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0">
+          <button
+            onClick={() => setRailOpen((o) => !o)}
+            className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-all shrink-0"
+            title={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
+          >
+            {railOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 pt-3">
           <VoiceSessionModal
             key={`voice-${agentId}-${selected ?? "new"}`}
             agentId={agentId}

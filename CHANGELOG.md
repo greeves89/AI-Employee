@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.9] — 2026-07-09
+
+### Changed
+- Speech-Reiter: Ein-/Ausklapp-Button der Gespraechsliste jetzt optisch identisch zum Chat (Icon-Button in der Toolbar).
+
 ## [1.100.8] — 2026-07-09
 
 ### Changed
