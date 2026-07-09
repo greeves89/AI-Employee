@@ -379,6 +379,10 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setFoundryResource(s.foundry_resource || "");
       setPlannerPlanId(s.meeting_planner_plan_id || "");
       setModeratorAccountId(s.meeting_moderator_ai_account_id || "");
+      setExchangeServerUrl(s.exchange_server_url || "");
+      if (s.exchange_auth_mode) setExchangeAuthMode(s.exchange_auth_mode);
+      setExchangeSvcUser(s.exchange_service_account_user || "");
+      setExchangeTenantId(s.exchange_tenant_id || "");
       setSmtpHost(s.smtp_relay_host || "");
       setSmtpPort(s.smtp_relay_port || "25");
       setSmtpStartTls(s.smtp_relay_starttls !== false);

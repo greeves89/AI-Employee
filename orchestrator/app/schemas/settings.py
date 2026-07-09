@@ -149,3 +149,15 @@ class SettingsResponse(BaseModel):
     meeting_planner_plan_id: str = ""
     meeting_moderator_ai_account_id: str = ""
     dreaming_enabled: bool = False
+    # On-prem Exchange + SMTP relay (non-secret config, so the admin UI can show it on
+    # reload). Passwords are SECRET_KEYS and deliberately never returned here.
+    exchange_server_url: str = ""
+    exchange_auth_mode: str = ""
+    exchange_service_account_user: str = ""
+    exchange_tenant_id: str = ""
+    smtp_relay_host: str = ""
+    smtp_relay_port: str = ""
+    smtp_relay_starttls: bool = True
+    smtp_relay_verify_tls: bool = True
+    smtp_relay_user: str = ""
+    smtp_allowed_recipient_domains: str = ""

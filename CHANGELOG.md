@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.101.3] — 2026-07-09
+
+### Fixed
+- Einstellungen: Exchange/SMTP-Konfiguration (Server, Auth-Modus, Relay-Host/Port, erlaubte Domains) wird nach dem Speichern wieder angezeigt — vorher blieben die Felder beim Neuladen leer (GET-Response lieferte sie nicht).
+
 ## [1.101.2] — 2026-07-09
 
 ### Changed
