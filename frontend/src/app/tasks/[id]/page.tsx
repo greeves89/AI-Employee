@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
   Timer, Hash, Cpu, DollarSign, Wrench, Bot,
-  AlertTriangle, Terminal, FileText, RotateCcw,
+  AlertTriangle, Terminal, FileText, RotateCcw, Send, MessageSquare,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -28,9 +28,30 @@ const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; b
   cancelled: { icon: XCircle,      color: "text-zinc-400",    badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",          label: "Cancelled" },
 };
 
+// Merge consecutive streamed text events into one flowing block. The backend emits
+// the answer as many small chunks; rendering each as its own line broke words
+// mid-stream ("abgehackt"). Used for BOTH the live output and the step replay.
+function mergeTextEvents(events: LogEvent[]): LogEvent[] {
+  const out: LogEvent[] = [];
+  for (const ev of events) {
+    const last = out[out.length - 1];
+    if (ev.type === "text" && last?.type === "text") {
+      const prev = String((last.data as Record<string, unknown>)?.text || "");
+      const add = String((ev.data as Record<string, unknown>)?.text || "");
+      last.data = { ...(last.data as object), text: prev + add };
+    } else {
+      out.push({ ...ev, data: { ...(ev.data as object) } });
+    }
+  }
+  return out;
+}
+
 export default function TaskDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const taskId = params.id as string;
+  const [followUp, setFollowUp] = useState("");
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
   const { simpleMode } = useSimpleMode();
   const [task, setTask] = useState<Task | null>(null);
   const [logs, setLogs] = useState<LogEvent[]>([]);
@@ -60,20 +81,39 @@ export default function TaskDetailPage() {
   // Merge consecutive streamed text deltas into one flowing block. The backend emits
   // the assistant's answer as many small chunks; rendering each as its own timestamped
   // line broke words mid-stream ("abgehackt"). Coalescing restores readable paragraphs.
-  const mergedLogs = useMemo(() => {
-    const out: LogEvent[] = [];
-    for (const log of logs) {
-      const last = out[out.length - 1];
-      if (log.type === "text" && last?.type === "text") {
-        const prev = String((last.data as Record<string, unknown>)?.text || "");
-        const add = String((log.data as Record<string, unknown>)?.text || "");
-        last.data = { ...(last.data as object), text: prev + add };
-      } else {
-        out.push({ ...log, data: { ...(log.data as object) } });
-      }
+  const mergedLogs = useMemo(() => mergeTextEvents(logs), [logs]);
+  // Same coalescing for the step replay so it doesn't break words either.
+  const mergedReplay = useMemo(
+    () => mergeTextEvents(
+      replaySteps.slice(0, replayIndex).map((s) => ({
+        agent_id: "", task_id: taskId,
+        type: s.type as LogEvent["type"], data: s.data, timestamp: s.timestamp || "",
+      })),
+    ),
+    [replaySteps, replayIndex, taskId],
+  );
+
+  // Continue the session: send a follow-up instruction to the SAME agent as a new
+  // task. The agent's workspace (with the produced files) persists, so it builds on
+  // the previous result. Jump straight to the new task's live view.
+  const sendFollowUp = useCallback(async () => {
+    const text = followUp.trim();
+    if (!text || !task) return;
+    setSendingFollowUp(true);
+    try {
+      const t = await api.createTask({
+        title: `Folge: ${task.title}`.slice(0, 120),
+        prompt:
+          `Folge-Anweisung zur vorherigen Aufgabe „${task.title}". Dein bisheriges Ergebnis und ` +
+          `die dabei erzeugten Dateien liegen weiterhin in deinem Workspace (/workspace) — baue ` +
+          `darauf auf, statt neu anzufangen:\n\n${text}`,
+        agent_id: task.agent_id || undefined,
+      });
+      router.push(`/tasks/${t.id}`);
+    } catch {
+      setSendingFollowUp(false);
     }
-    return out;
-  }, [logs]);
+  }, [followUp, task, router]);
 
   // Load the persisted step history for time-travel replay
   const loadReplay = useCallback(async () => {
@@ -273,6 +313,37 @@ export default function TaskDetailPage() {
           </div>
         )}
 
+        {/* Follow-up: react to the result and steer the agent further */}
+        {!isActive && task.agent_id && (
+          <div className="mb-4 rounded-xl border border-primary/20 bg-card/80 backdrop-blur-sm overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
+              <MessageSquare className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs font-medium text-muted-foreground">Weitere Anweisung geben</span>
+            </div>
+            <div className="p-4 space-y-2.5">
+              <textarea
+                value={followUp}
+                onChange={(e) => setFollowUp(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendFollowUp(); }}
+                placeholder="Auf dem Ergebnis aufbauen … z. B. „mach eine interaktive Version mit Charts und Dark Mode"
+                rows={3}
+                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground/40"
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-muted-foreground/50">Der Agent arbeitet mit seinem bisherigen Ergebnis weiter (⌘/Strg+Enter)</span>
+                <button
+                  onClick={sendFollowUp}
+                  disabled={sendingFollowUp || !followUp.trim()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 disabled:shadow-none transition-all"
+                >
+                  {sendingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Anweisung senden
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Live Output (hidden in simple mode) */}
         {!simpleMode && <div className="rounded-xl border border-foreground/[0.06] bg-black overflow-hidden">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
@@ -369,17 +440,8 @@ export default function TaskDetailPage() {
                       </span>
                     </div>
                     <div className="h-[400px] overflow-y-auto rounded-lg bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
-                      {replaySteps.slice(0, replayIndex).map((s) => (
-                        <TaskLogLine
-                          key={s.sequence}
-                          event={{
-                            agent_id: "",
-                            task_id: taskId,
-                            type: s.type as LogEvent["type"],
-                            data: s.data,
-                            timestamp: s.timestamp || "",
-                          }}
-                        />
+                      {mergedReplay.map((ev, i) => (
+                        <TaskLogLine key={i} event={ev} agentNames={agentNames} />
                       ))}
                       {replayIndex === 0 && (
                         <p className="text-muted-foreground/40">Schieberegler bewegen, um die Ausführung Schritt für Schritt abzuspielen.</p>

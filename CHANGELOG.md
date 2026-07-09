@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.159] — 2026-07-09
+
+### Added
+- Tasks: Nach Abschluss kann man dem Agenten direkt in der Aufgabe eine Folge-Anweisung geben ("Weitere Anweisung geben") — er arbeitet mit seinem bisherigen Ergebnis/Workspace weiter, die neue Live-Ansicht oeffnet sich direkt.
+
+### Fixed
+- Schritt-Replay: gestreamte Texte werden jetzt (wie im Live-Output) fluessig zusammengefuehrt statt Wort fuer Wort gebrochen.
+
 ## [1.99.158] — 2026-07-09
 
 ### Changed
