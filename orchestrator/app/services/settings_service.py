@@ -97,6 +97,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "smtp_relay_host",
     "smtp_relay_port",
     "smtp_relay_starttls",
+    "smtp_relay_verify_tls",
     "smtp_relay_user",
     "smtp_allowed_recipient_domains",
     # Meeting → MS Planner: target plan for mirrored action items (empty = off)

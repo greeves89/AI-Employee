@@ -58,6 +58,7 @@ async def _resolve_context(agent_id: str, db: AsyncSession) -> dict | None:
             "host": smtp_host,
             "port": int((await svc.get("smtp_relay_port")) or 25),
             "starttls": (await svc.get("smtp_relay_starttls")) != "false",
+            "verify_tls": (await svc.get("smtp_relay_verify_tls")) != "false",
             "user": (await svc.get("smtp_relay_user")) or None,
             "password": (await svc.get("smtp_relay_password")) or None,
             # empty list → sender's own domain only; ["*"] → any domain

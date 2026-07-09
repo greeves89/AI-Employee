@@ -388,17 +388,26 @@ def _smtp_send(ctx: dict, args: dict) -> str:
 
     host = smtp.get("host"); port = int(smtp.get("port") or 25)
     try:
+        has_auth = bool(smtp.get("user") and smtp.get("password"))
         with smtplib.SMTP(host, port, timeout=15) as s:
             s.ehlo()
             tls_active = False
             if smtp.get("starttls") and s.has_extn("starttls"):
-                s.starttls(context=ssl.create_default_context())
+                tls_ctx = ssl.create_default_context()
+                # Verification defaults ON. An admin may explicitly disable it
+                # (smtp_relay_verify_tls=false) for a trusted-network internal relay
+                # whose cert doesn't match its IP — a conscious, documented choice.
+                # With auth we ALWAYS verify (a password must never cross an
+                # unauthenticated TLS link), regardless of the setting.
+                if smtp.get("verify_tls", True) is False and not has_auth:
+                    tls_ctx.check_hostname = False
+                    tls_ctx.verify_mode = ssl.CERT_NONE
+                s.starttls(context=tls_ctx)
                 s.ehlo()
                 tls_active = True
-            if smtp.get("user") and smtp.get("password"):
-                # Never send credentials over a cleartext link.
-                if not tls_active:
-                    return "SMTP-Auth ohne TLS abgelehnt — STARTTLS aktivieren oder Auth entfernen."
+            if has_auth and not tls_active:
+                return "SMTP-Auth ohne TLS abgelehnt — STARTTLS aktivieren oder Auth entfernen."
+            if has_auth:
                 s.login(smtp["user"], smtp["password"])
             s.send_message(msg, from_addr=from_email, to_addrs=all_rcpt)
     except Exception as e:  # noqa: BLE001 — surface a short reason, no internals

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.101.1] — 2026-07-09
+
+### Added
+- SMTP-Relay: Option "Zertifikat pruefen" (Default an). Fuer interne Relays mit selbstsigniertem/IP-Cert deaktivierbar — bei Relay-Auth wird IMMER verifiziert (Passwortschutz).
+
 ## [1.101.0] — 2026-07-09
 
 ### Added

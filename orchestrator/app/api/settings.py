@@ -91,6 +91,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         smtp_relay_host=await svc.get("smtp_relay_host") or "",
         smtp_relay_port=await svc.get("smtp_relay_port") or "",
         smtp_relay_starttls=(await svc.get("smtp_relay_starttls") or "true").lower() in ("true", "1", "yes"),
+        smtp_relay_verify_tls=(await svc.get("smtp_relay_verify_tls") or "true").lower() in ("true", "1", "yes"),
         smtp_relay_user=await svc.get("smtp_relay_user") or "",
         smtp_allowed_recipient_domains=await svc.get("smtp_allowed_recipient_domains") or "",
     )
@@ -219,6 +220,9 @@ async def update_settings(
     if data.smtp_relay_starttls is not None:
         await svc.set("smtp_relay_starttls",
                       "true" if data.smtp_relay_starttls else "false")
+    if data.smtp_relay_verify_tls is not None:
+        await svc.set("smtp_relay_verify_tls",
+                      "true" if data.smtp_relay_verify_tls else "false")
     if data.dreaming_enabled is not None:
         await svc.set("dreaming_enabled", "true" if data.dreaming_enabled else "false")
 

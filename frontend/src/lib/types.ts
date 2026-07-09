@@ -264,6 +264,7 @@ export interface Settings {
   smtp_relay_host?: string;
   smtp_relay_port?: string;
   smtp_relay_starttls?: boolean;
+  smtp_relay_verify_tls?: boolean;
   smtp_relay_user?: string;
   smtp_allowed_recipient_domains?: string;
 }

@@ -73,6 +73,7 @@ class SettingsUpdate(BaseModel):
     smtp_relay_host: str | None = None                    # relay host/IP, e.g. "192.168.20.213"
     smtp_relay_port: str | None = None                    # default 25
     smtp_relay_starttls: bool | None = None               # use STARTTLS if offered (default true)
+    smtp_relay_verify_tls: bool | None = None             # verify relay cert (default true); disable only for a trusted internal relay
     smtp_relay_user: str | None = None                    # optional; empty = anonymous relay
     smtp_relay_password: str | None = None                # optional secret
     smtp_allowed_recipient_domains: str | None = None     # CSV; empty = sender's own domain only; "*" = any

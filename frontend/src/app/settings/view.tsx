@@ -168,6 +168,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("25");
   const [smtpStartTls, setSmtpStartTls] = useState(true);
+  const [smtpVerifyTls, setSmtpVerifyTls] = useState(true);
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpAllowedDomains, setSmtpAllowedDomains] = useState("");
@@ -381,6 +382,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setSmtpHost(s.smtp_relay_host || "");
       setSmtpPort(s.smtp_relay_port || "25");
       setSmtpStartTls(s.smtp_relay_starttls !== false);
+      setSmtpVerifyTls(s.smtp_relay_verify_tls !== false);
       setSmtpUser(s.smtp_relay_user || "");
       setSmtpAllowedDomains(s.smtp_allowed_recipient_domains || "");
       if (s.auth_method === "oauth_token") {
@@ -485,6 +487,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         data.smtp_relay_host = smtpHost;
         data.smtp_relay_port = smtpPort || "25";
         data.smtp_relay_starttls = smtpStartTls;
+        data.smtp_relay_verify_tls = smtpVerifyTls;
         data.smtp_relay_user = smtpUser;
         if (smtpPass) data.smtp_relay_password = smtpPass;
         data.smtp_allowed_recipient_domains = smtpAllowedDomains;
@@ -1752,6 +1755,17 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     />
                     STARTTLS nutzen (wenn das Relay es anbietet)
                   </label>
+                  {smtpStartTls && (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground/80 pl-5">
+                      <input
+                        type="checkbox"
+                        checked={smtpVerifyTls}
+                        onChange={(e) => setSmtpVerifyTls(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-emerald-500"
+                      />
+                      Zertifikat prüfen (bei internem Relay mit selbstsigniertem/IP-Cert ggf. deaktivieren)
+                    </label>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <CredentialField
                       label="Relay-User (optional)"
