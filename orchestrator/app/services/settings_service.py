@@ -35,6 +35,8 @@ SECRET_KEYS = {
     "apns_auth_key",
     # On-prem Exchange: service-account password (basic/NTLM) — secret
     "exchange_service_account_password",
+    # SMTP relay auth password (optional) — secret
+    "smtp_relay_password",
 }
 
 # All settings keys that can be persisted
@@ -91,6 +93,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "exchange_service_account_user",  # service-account UPN (service_account mode)
     "exchange_tenant_id",             # Entra tenant (modern_auth mode)
     "exchange_mcp_external_enabled",  # expose Exchange MCP to external LLM clients
+    # SMTP relay — universal SEND transport (works where EWS is blocked)
+    "smtp_relay_host",
+    "smtp_relay_port",
+    "smtp_relay_starttls",
+    "smtp_relay_user",
+    "smtp_allowed_recipient_domains",
     # Meeting → MS Planner: target plan for mirrored action items (empty = off)
     "meeting_planner_plan_id",
     # Meeting moderator: AI-Account the moderator agent uses (empty = first available)

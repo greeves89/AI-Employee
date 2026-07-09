@@ -164,6 +164,13 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [exchangeSvcUser, setExchangeSvcUser] = useState("");
   const [exchangeSvcPass, setExchangeSvcPass] = useState("");
   const [exchangeTenantId, setExchangeTenantId] = useState("");
+  // SMTP relay (universal send transport)
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("25");
+  const [smtpStartTls, setSmtpStartTls] = useState(true);
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpAllowedDomains, setSmtpAllowedDomains] = useState("");
   const [msGuideExpanded, setMsGuideExpanded] = useState(false);
   const [msgraphExtSaving, setMsgraphExtSaving] = useState(false);
   const [appleClientId, setAppleClientId] = useState("");
@@ -371,6 +378,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setFoundryResource(s.foundry_resource || "");
       setPlannerPlanId(s.meeting_planner_plan_id || "");
       setModeratorAccountId(s.meeting_moderator_ai_account_id || "");
+      setSmtpHost(s.smtp_relay_host || "");
+      setSmtpPort(s.smtp_relay_port || "25");
+      setSmtpStartTls(s.smtp_relay_starttls !== false);
+      setSmtpUser(s.smtp_relay_user || "");
+      setSmtpAllowedDomains(s.smtp_allowed_recipient_domains || "");
       if (s.auth_method === "oauth_token") {
         setAuthMethod("oauth_token");
       } else {
@@ -468,6 +480,15 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         if (exchangeSvcPass) data.exchange_service_account_password = exchangeSvcPass;
         if (exchangeTenantId) data.exchange_tenant_id = exchangeTenantId;
       }
+      // SMTP relay (send transport) — independent of EWS; written when a host is set.
+      if (smtpHost) {
+        data.smtp_relay_host = smtpHost;
+        data.smtp_relay_port = smtpPort || "25";
+        data.smtp_relay_starttls = smtpStartTls;
+        data.smtp_relay_user = smtpUser;
+        if (smtpPass) data.smtp_relay_password = smtpPass;
+        data.smtp_allowed_recipient_domains = smtpAllowedDomains;
+      }
       await api.updateSettings(data);
       setMessage("Settings saved!");
       // Clear secret fields
@@ -476,6 +497,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setAwsAccessKey("");
       setAwsSecretKey("");
       setVertexCredentials("");
+      setSmtpPass("");
       setFoundryApiKey("");
       setGoogleClientId("");
       setGoogleClientSecret("");
@@ -1693,6 +1715,68 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   muss der User nichts hinterlegen. Voraussetzung am Server: ApplicationImpersonation-Rolle
                   (service_account) bzw. EWS-App-Berechtigung (modern_auth).
                 </p>
+
+                {/* SMTP relay — the universal SEND path (works where EWS is blocked) */}
+                <div className="pt-3 mt-2 border-t border-foreground/[0.06] space-y-3">
+                  <div>
+                    <p className="text-xs font-medium">E-Mail-Versand über SMTP-Relay</p>
+                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                      Universeller Sendeweg — funktioniert auch, wenn EWS/443 zum Mailserver gesperrt ist.
+                      Der Agent sendet als sein Besitzer; Relay-Adresse legt nur der Admin fest.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <CredentialField
+                        label="Relay-Host"
+                        value={smtpHost}
+                        onChange={setSmtpHost}
+                        placeholder="192.168.20.213 / mail.klinikum-bs.de"
+                        mono
+                      />
+                    </div>
+                    <CredentialField
+                      label="Port"
+                      value={smtpPort}
+                      onChange={setSmtpPort}
+                      placeholder="25"
+                      mono
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground/80">
+                    <input
+                      type="checkbox"
+                      checked={smtpStartTls}
+                      onChange={(e) => setSmtpStartTls(e.target.checked)}
+                      className="h-3.5 w-3.5 accent-emerald-500"
+                    />
+                    STARTTLS nutzen (wenn das Relay es anbietet)
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <CredentialField
+                      label="Relay-User (optional)"
+                      value={smtpUser}
+                      onChange={setSmtpUser}
+                      placeholder="leer = anonymes Relay"
+                      mono
+                    />
+                    <CredentialField
+                      label="Relay-Passwort (optional)"
+                      type="password"
+                      value={smtpPass}
+                      onChange={setSmtpPass}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <CredentialField
+                    label="Erlaubte Empfänger-Domains"
+                    value={smtpAllowedDomains}
+                    onChange={setSmtpAllowedDomains}
+                    placeholder="leer = nur eigene Domain · z.B. skbs.de, partner.de · * = alle"
+                    hint="Schutz gegen Massenversand: standardmäßig darf der Agent nur an die eigene Domain senden."
+                    mono
+                  />
+                </div>
               </div>
             </div>
           </section>

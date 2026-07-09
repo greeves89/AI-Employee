@@ -256,6 +256,16 @@ export interface Settings {
   meeting_planner_plan_id?: string;
   meeting_moderator_ai_account_id?: string;
   dreaming_enabled?: boolean;
+  // On-prem Exchange + SMTP relay (send transport)
+  exchange_server_url?: string;
+  exchange_auth_mode?: string;
+  exchange_service_account_user?: string;
+  exchange_tenant_id?: string;
+  smtp_relay_host?: string;
+  smtp_relay_port?: string;
+  smtp_relay_starttls?: boolean;
+  smtp_relay_user?: string;
+  smtp_allowed_recipient_domains?: string;
 }
 
 // Provenance of a memory entry (who/what wrote it).

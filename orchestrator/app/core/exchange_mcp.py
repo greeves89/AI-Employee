@@ -307,7 +307,118 @@ def _to_ews(account, value: str):
 # Tool execution (SYNC — run via asyncio.to_thread; the test seam)
 # ---------------------------------------------------------------------------
 
+# --- SMTP relay send (generic transport; used where EWS is blocked/absent) --------
+import re as _re  # noqa: E402
+import time as _time  # noqa: E402
+
+_EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_SEND_LOG: dict[str, list[float]] = {}  # agent_id -> monotonic send timestamps
+_RATE_WINDOW = 3600.0
+_RATE_MAX = 20
+_MAX_RECIPIENTS = 10
+
+
+def _parse_recipients(raw: str) -> list[str]:
+    return [a.strip() for a in str(raw or "").replace(";", ",").split(",") if a.strip()]
+
+
+def _smtp_send(ctx: dict, args: dict) -> str:
+    """Send a mail via the configured SMTP relay.
+
+    Hardened because the arguments come from an LLM (prompt-injection surface):
+    the relay host is admin-config only (never from the agent), the From is FORCED
+    to the agent owner (no spoofing), recipients are validated + domain-allowlisted +
+    count-capped, header injection (CR/LF) is rejected, and sends are rate-limited
+    per agent. Every send is logged for audit.
+    """
+    import smtplib  # noqa: PLC0415
+    import ssl  # noqa: PLC0415
+    from email.message import EmailMessage  # noqa: PLC0415
+    from email.utils import formatdate, make_msgid  # noqa: PLC0415
+
+    smtp = ctx.get("smtp") or {}
+    from_email = str(ctx.get("user_email") or "").strip()
+    if not from_email or not _EMAIL_RE.match(from_email):
+        return "Kein gültiger Absender (Agenten-Besitzer)."
+    agent_id = str(ctx.get("agent_id") or "")
+
+    # Rate limit per agent (sliding window).
+    now = _time.monotonic()
+    hits = [t for t in _SEND_LOG.get(agent_id, []) if now - t < _RATE_WINDOW]
+    if len(hits) >= _RATE_MAX:
+        return f"Sende-Limit erreicht ({_RATE_MAX} Mails/Stunde). Bitte später erneut."
+
+    subject = str(args.get("subject") or "")
+    body = str(args.get("body") or "")
+    if "\r" in subject or "\n" in subject:
+        return "Betreff darf keine Zeilenumbrüche enthalten."
+
+    to = _parse_recipients(args.get("to"))
+    cc = _parse_recipients(args.get("cc"))
+    if not to:
+        return "Kein Empfänger angegeben."
+    all_rcpt = to + cc
+    if len(all_rcpt) > _MAX_RECIPIENTS:
+        return f"Zu viele Empfänger (max {_MAX_RECIPIENTS})."
+    for a in all_rcpt:
+        if not _EMAIL_RE.match(a) or "\r" in a or "\n" in a:
+            return f"Ungültige Empfänger-Adresse: {a}"
+
+    # Recipient domain allowlist. Empty → sender's own domain only; ["*"] → any.
+    allowed = smtp.get("allowed_domains") or []
+    if "*" not in allowed:
+        own = from_email.split("@", 1)[-1].lower()
+        allow_set = set(allowed) | {own}
+        for a in all_rcpt:
+            dom = a.split("@", 1)[-1].lower()
+            if dom not in allow_set:
+                return (f"Empfänger-Domain '{dom}' ist nicht freigegeben. Erlaubt: "
+                        f"{', '.join(sorted(allow_set))} (Admin kann weitere freigeben).")
+
+    msg = EmailMessage()
+    msg["From"] = from_email
+    msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
+    msg["Subject"] = subject
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid()
+    msg["X-Sent-By"] = "AI-Employee-Agent"  # transparency / auditability
+    msg.set_content(body)
+
+    host = smtp.get("host"); port = int(smtp.get("port") or 25)
+    try:
+        with smtplib.SMTP(host, port, timeout=15) as s:
+            s.ehlo()
+            tls_active = False
+            if smtp.get("starttls") and s.has_extn("starttls"):
+                s.starttls(context=ssl.create_default_context())
+                s.ehlo()
+                tls_active = True
+            if smtp.get("user") and smtp.get("password"):
+                # Never send credentials over a cleartext link.
+                if not tls_active:
+                    return "SMTP-Auth ohne TLS abgelehnt — STARTTLS aktivieren oder Auth entfernen."
+                s.login(smtp["user"], smtp["password"])
+            s.send_message(msg, from_addr=from_email, to_addrs=all_rcpt)
+    except Exception as e:  # noqa: BLE001 — surface a short reason, no internals
+        logger.warning("SMTP send failed agent=%s host=%s: %s", agent_id, host, type(e).__name__)
+        return f"E-Mail konnte nicht gesendet werden ({type(e).__name__})."
+
+    _SEND_LOG[agent_id] = hits + [now]
+    logger.info("SMTP send agent=%s from=%s to=%s subject=%r", agent_id, from_email, all_rcpt, subject[:80])
+    return f"E-Mail an {', '.join(to)} gesendet."
+
+
 def _run_tool(name: str, args: dict, ctx: dict, write_enabled: bool) -> str:
+    # SMTP send bypasses EWS entirely — it works where EWS is unreachable (blocked
+    # firewall) or not configured at all. Must run BEFORE _build_account (which needs
+    # EWS ctx and would otherwise time out against the mailbox server).
+    if name == "ex_send_email" and ctx.get("smtp"):
+        if not write_enabled:
+            return "This agent has read-only Exchange access."
+        return _smtp_send(ctx, args)
+
     from exchangelib import Message, Mailbox, CalendarItem, Attendee  # noqa: PLC0415
 
     account = _build_account(ctx)

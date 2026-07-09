@@ -69,6 +69,13 @@ class SettingsUpdate(BaseModel):
     exchange_service_account_password: str | None = None # secret
     exchange_tenant_id: str | None = None                # Entra tenant (modern_auth)
     exchange_mcp_external_enabled: bool | None = None
+    # SMTP relay for SENDING mail — the universal send path (works where EWS is blocked).
+    smtp_relay_host: str | None = None                    # relay host/IP, e.g. "192.168.20.213"
+    smtp_relay_port: str | None = None                    # default 25
+    smtp_relay_starttls: bool | None = None               # use STARTTLS if offered (default true)
+    smtp_relay_user: str | None = None                    # optional; empty = anonymous relay
+    smtp_relay_password: str | None = None                # optional secret
+    smtp_allowed_recipient_domains: str | None = None     # CSV; empty = sender's own domain only; "*" = any
     # Meeting → MS Planner: target plan ID for mirrored action items (empty = off)
     meeting_planner_plan_id: str | None = None
     # Meeting moderator: which AI-Account the moderator agent uses (empty = first available)

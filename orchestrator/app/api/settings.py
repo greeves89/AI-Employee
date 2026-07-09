@@ -82,6 +82,17 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         meeting_planner_plan_id=await svc.get("meeting_planner_plan_id") or "",
         meeting_moderator_ai_account_id=await svc.get("meeting_moderator_ai_account_id") or "",
         dreaming_enabled=(await svc.get("dreaming_enabled") or "false").lower() in ("true", "1", "yes"),
+        # Non-secret Exchange/SMTP config so the admin UI shows the effective policy on
+        # reload (the password is a SECRET_KEY and deliberately never returned).
+        exchange_server_url=await svc.get("exchange_server_url") or "",
+        exchange_auth_mode=await svc.get("exchange_auth_mode") or "",
+        exchange_service_account_user=await svc.get("exchange_service_account_user") or "",
+        exchange_tenant_id=await svc.get("exchange_tenant_id") or "",
+        smtp_relay_host=await svc.get("smtp_relay_host") or "",
+        smtp_relay_port=await svc.get("smtp_relay_port") or "",
+        smtp_relay_starttls=(await svc.get("smtp_relay_starttls") or "true").lower() in ("true", "1", "yes"),
+        smtp_relay_user=await svc.get("smtp_relay_user") or "",
+        smtp_allowed_recipient_domains=await svc.get("smtp_allowed_recipient_domains") or "",
     )
 
 
@@ -192,6 +203,9 @@ async def update_settings(
         "exchange_server_url", "exchange_auth_mode",
         "exchange_service_account_user", "exchange_service_account_password",
         "exchange_tenant_id",
+        "smtp_relay_host", "smtp_relay_port",
+        "smtp_relay_user", "smtp_relay_password",
+        "smtp_allowed_recipient_domains",
         "meeting_planner_plan_id",
         "meeting_moderator_ai_account_id",
     ]
@@ -202,6 +216,9 @@ async def update_settings(
     if data.exchange_mcp_external_enabled is not None:
         await svc.set("exchange_mcp_external_enabled",
                       "true" if data.exchange_mcp_external_enabled else "false")
+    if data.smtp_relay_starttls is not None:
+        await svc.set("smtp_relay_starttls",
+                      "true" if data.smtp_relay_starttls else "false")
     if data.dreaming_enabled is not None:
         await svc.set("dreaming_enabled", "true" if data.dreaming_enabled else "false")
 

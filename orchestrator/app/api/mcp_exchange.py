@@ -36,7 +36,11 @@ async def _resolve_context(agent_id: str, db: AsyncSession) -> dict | None:
     prerequisites are missing."""
     svc = SettingsService(db)
     server = await svc.get("exchange_server_url")
-    if not server:
+    smtp_host = await svc.get("smtp_relay_host")
+    # Two independent transports: EWS (read/calendar) and an SMTP relay (send).
+    # Enterprise networks often block EWS to the mailbox server but permit SMTP to a
+    # relay — so we accept either, and send goes via SMTP whenever a relay is set.
+    if not server and not smtp_host:
         return None
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
@@ -46,15 +50,37 @@ async def _resolve_context(agent_id: str, db: AsyncSession) -> dict | None:
     if not user or not user.email:
         return None
 
+    async def _smtp_cfg() -> dict | None:
+        if not smtp_host:
+            return None
+        raw_domains = (await svc.get("smtp_allowed_recipient_domains")) or ""
+        return {
+            "host": smtp_host,
+            "port": int((await svc.get("smtp_relay_port")) or 25),
+            "starttls": (await svc.get("smtp_relay_starttls")) != "false",
+            "user": (await svc.get("smtp_relay_user")) or None,
+            "password": (await svc.get("smtp_relay_password")) or None,
+            # empty list → sender's own domain only; ["*"] → any domain
+            "allowed_domains": [d.strip().lower() for d in raw_domains.split(",") if d.strip()],
+        }
+
+    ctx: dict = {"user_email": user.email, "agent_id": agent_id}
+    smtp = await _smtp_cfg()
+    if smtp:
+        ctx["smtp"] = smtp
+
+    if not server:
+        return ctx  # SMTP-only deployment (send works, EWS read tools absent)
+
     mode = (await svc.get("exchange_auth_mode")) or "service_account"
-    ctx: dict = {"mode": mode, "server": server, "user_email": user.email}
+    ctx.update(mode=mode, server=server)
 
     if mode == "modern_auth":
         client_id = await svc.get("oauth_microsoft_client_id")
         client_secret = await svc.get("oauth_microsoft_client_secret")
         tenant_id = (await svc.get("exchange_tenant_id")) or (await svc.get("oauth_microsoft_tenant_id"))
         if not (client_id and client_secret and tenant_id):
-            return None
+            return ctx if smtp else None  # EWS creds missing → SMTP-only if available
         ctx.update(client_id=client_id, client_secret=client_secret, tenant_id=tenant_id)
     elif mode == "basic":
         row = (await db.execute(
@@ -64,17 +90,17 @@ async def _resolve_context(agent_id: str, db: AsyncSession) -> dict | None:
             )
         )).scalar_one_or_none()
         if not row:
-            return None
+            return ctx if smtp else None
         try:
             password = decrypt_token(row.access_token_encrypted)
         except Exception:
-            return None
+            return ctx if smtp else None
         ctx.update(basic_user=row.account_label or user.email, basic_password=password)
     else:  # service_account (default)
         sa_user = await svc.get("exchange_service_account_user")
         sa_password = await svc.get("exchange_service_account_password")
         if not sa_user or not sa_password:
-            return None
+            return ctx if smtp else None
         ctx.update(sa_user=sa_user, sa_password=sa_password)
 
     return ctx

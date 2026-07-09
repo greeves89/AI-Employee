@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.101.0] — 2026-07-09
+
+### Added
+- E-Mail-Versand ueber SMTP-Relay: universeller Sendeweg fuer on-prem/Hybrid-Exchange, funktioniert auch wenn EWS/443 zum Mailserver gesperrt ist. Admin konfiguriert Relay-Host/Port (+ optional Auth) in den Einstellungen. Der Agent sendet als sein Besitzer; Schutz: erzwungener Absender, Empfaenger-Domain-Allowlist (Default eigene Domain), Empfaenger-Limit, Rate-Limit, Header-Injection-Schutz, Audit-Log, kein Auth ueber Klartext.
+
 ## [1.100.10] — 2026-07-09
 
 ### Fixed
