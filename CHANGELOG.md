@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.4] — 2026-07-09
+
+### Security
+- Speech-Reiter: Agent-gelieferte URLs (Medien + Web-Ergebnisse) werden jetzt auf http(s) validiert, bevor sie als Link, iframe oder window.open verwendet werden — javascript:/data:/blob:/file:-Schemata werden verworfen (XSS-Haertung, Fund des automatischen Security-Reviews).
+
 ## [1.100.3] — 2026-07-09
 
 ### Fixed

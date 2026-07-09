@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
@@ -10,6 +10,19 @@ import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/
 type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
 type WebResultSet = { query: string; results: WebResult[] };
+
+// Agent-supplied URLs are untrusted (LLM output): only http(s) may reach
+// href / iframe src / window.open — javascript:, data:, blob:, file: are dropped.
+function safeHttpUrl(raw: unknown): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(String(raw));
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.toString();
+  } catch {
+    // not a parsable absolute URL
+  }
+  return undefined;
+}
 
 type VoiceState = "connecting" | "ready" | "listening" | "processing" | "speaking" | "error";
 type Mode = "classic" | "nova_sonic";
@@ -86,7 +99,12 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
-  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string }[]>([]);
+  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string; url?: string; embeddable?: boolean; auto_open?: boolean }[]>([]);
+  // Page the agent asked to show inside the app (iframe modal).
+  const [webModal, setWebModal] = useState<{ url: string; caption?: string } | null>(null);
+  // URLs whose auto-open we already attempted, and those the popup blocker swallowed.
+  const autoOpenedRef = useRef<Set<string>>(new Set());
+  const [blockedUrls, setBlockedUrls] = useState<Set<string>>(new Set());
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);       // focus mode: mic muted, agent still reports
   const [activityOpen, setActivityOpen] = useState(true);
@@ -186,10 +204,24 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
     return () => { cancelled = true; };
   }, [agentId, resumeSessionId]);
 
+  // The agent asked to open a page in a new tab. Browsers block window.open() outside a
+  // user gesture, so we try once and — if swallowed — surface a click-to-open card
+  // (that click IS a gesture and always works).
+  useEffect(() => {
+    for (const m of media) {
+      if (m.kind !== "web" || !m.auto_open || !m.url) continue;
+      if (autoOpenedRef.current.has(m.url)) continue;
+      autoOpenedRef.current.add(m.url);
+      const win = window.open(m.url, "_blank", "noopener,noreferrer");
+      if (!win) setBlockedUrls((prev) => new Set(prev).add(m.url!));
+    }
+  }, [media]);
+
   const wsRef = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   // Drop file(s) into the agent's workspace, then tell the live session so the agent
   // picks it up by voice ("Datei X unter /workspace/X hochgeladen") and asks what to do.
@@ -346,6 +378,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
               filename: String(data.filename || ""),
               caption: String(data.caption || ""),
               path: data.path ? String(data.path) : undefined,
+              url: safeHttpUrl(data.url),
+              embeddable: Boolean(data.embeddable),
+              auto_open: Boolean(data.auto_open),
             },
             ...prev,
           ].slice(0, 8)
@@ -356,7 +391,12 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
           [
             {
               query: String(data.query || ""),
-              results: Array.isArray(data.results) ? (data.results as WebResult[]) : [],
+              results: Array.isArray(data.results)
+                ? (data.results as WebResult[]).map((r) => ({
+                    ...r,
+                    url: safeHttpUrl(r.url) ?? "",
+                  }))
+                : [],
             },
             ...prev,
           ].slice(0, 5)
@@ -701,6 +741,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const isRealtime = mode === "nova_sonic";
   // Embedded in the Speech tab we get a full-height area, so let the panes grow tall
   // and fill it; as a modal we keep the compact viewport-fraction heights.
+  // The newest visual the agent pushed — it gets the big stage under the orb.
+  // Files stay in the right-hand activity pane (they're downloads, not visuals).
+  const stageItem = media.find((m) => m.kind === "image" || m.kind === "web");
+  const paneMedia = media.filter((m) => m.kind !== "image" && m.kind !== "web");
   const paneHeight = embedded
     ? "min-h-[50vh] lg:min-h-[68vh] lg:max-h-[74vh]"
     : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
@@ -754,10 +798,44 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
             <>
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch">
-              {/* LEFT — conversation transcript */}
-              <div className={`order-2 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1`}>
-                <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                  Gespräch
+              {/* LEFT — conversation transcript, doubles as the file drop zone */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  handleUpload(e.dataTransfer.files);
+                }}
+                className={`relative order-2 flex ${paneHeight} min-w-0 flex-col rounded-xl border bg-foreground/[0.02] lg:order-1 transition-colors ${
+                  dragOver ? "border-primary/60 bg-primary/[0.04]" : "border-border"
+                }`}
+              >
+                {dragOver && (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-background/70 backdrop-blur-[1px]">
+                    <Paperclip className="h-6 w-6 text-primary" />
+                    <p className="text-xs font-medium text-primary">Datei hier ablegen</p>
+                    <p className="text-[11px] text-muted-foreground/60">Ich frage dann, was ich damit tun soll</p>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Gespräch</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleUpload(e.target.files)}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50"
+                    title="Datei in den Workspace laden (oder einfach hierher ziehen)"
+                  >
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                    Datei
+                  </button>
                 </div>
                 <div ref={transcriptRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                   {turns.length === 0 ? (
@@ -787,9 +865,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                 </div>
               </div>
 
-              {/* CENTER — animated presence + controls */}
-              <div className="order-1 flex min-w-0 flex-col items-center justify-center gap-5 py-2 lg:order-2">
-                <JarvisCore state={state} />
+              {/* CENTER — presence, quiet call controls, and the stage below */}
+              <div className="order-1 flex min-w-0 flex-col items-center gap-3.5 py-2 lg:order-2">
+                <JarvisCore state={state} compact />
                 <StatusPill state={state} realtime focus={paused} working={delegating} />
                 {statusMsg && state !== "error" && (
                   <p className="max-w-[240px] text-center text-xs text-muted-foreground/70">{statusMsg}</p>
@@ -799,9 +877,32 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     Fokus-Modus: Mikro aus — ich arbeite weiter und melde mich, wenn etwas fertig ist.
                   </p>
                 )}
+
+                {/* Call controls — round, icon-only; they recede until you look for them */}
+                <div className="flex items-center gap-2">
+                  {state === "speaking" && (
+                    <CtrlButton onClick={bargeIn} title="Unterbrechen">
+                      <Hand className="h-4 w-4" />
+                    </CtrlButton>
+                  )}
+                  <CtrlButton
+                    onClick={togglePause}
+                    title={paused ? "Fortsetzen" : "Fokus-Modus (Mikro aus)"}
+                    tone={paused ? "amber" : "neutral"}
+                  >
+                    {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                  </CtrlButton>
+                  <CtrlButton onClick={openMeeting} title="Meeting aufnehmen (Agent hört nicht mit)">
+                    <ClipboardList className="h-4 w-4" />
+                  </CtrlButton>
+                  <CtrlButton onClick={endLive} title="Gespräch beenden" tone="red">
+                    <PhoneOff className="h-4 w-4" />
+                  </CtrlButton>
+                </div>
+
                 {/* Playback volume — GainNode-based so it also works on iOS Safari */}
-                <div className="flex w-full max-w-[240px] items-center gap-2">
-                  <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+                <div className="flex w-36 items-center gap-2 opacity-60 transition-opacity hover:opacity-100">
+                  <Volume2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
                   <input
                     type="range"
                     min={0}
@@ -810,58 +911,62 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     value={volume}
                     onChange={(e) => changeVolume(Number(e.target.value))}
                     aria-label="Lautstärke"
-                    className="h-1 flex-1 cursor-pointer accent-emerald-500"
+                    className="h-0.5 flex-1 cursor-pointer accent-emerald-500"
                   />
                 </div>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {state === "speaking" && (
-                    <button
-                      onClick={bargeIn}
-                      className="rounded-md bg-foreground/[0.06] px-3 py-1.5 text-xs hover:bg-foreground/[0.10]"
-                    >
-                      Unterbrechen
-                    </button>
-                  )}
-                  <button
-                    onClick={togglePause}
-                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
-                      paused
-                        ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
-                        : "bg-foreground/[0.06] hover:bg-foreground/[0.10]"
-                    }`}
-                  >
-                    {paused ? <><Play className="h-3.5 w-3.5" /> Fortsetzen</> : <><Pause className="h-3.5 w-3.5" /> Fokus</>}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleUpload(e.target.files)}
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.06] px-3 py-1.5 text-xs font-medium hover:bg-foreground/[0.10] disabled:opacity-50"
-                    title="Datei in den Workspace des Agenten laden — er fragt dann, was er damit tun soll"
-                  >
-                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
-                    Datei hochladen
-                  </button>
-                  <button
-                    onClick={openMeeting}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
-                    title="Nur Audio aufnehmen & transkribieren — der Agent hört dabei nicht zu und spricht nicht"
-                  >
-                    <ClipboardList className="h-3.5 w-3.5" /> Meeting aufnehmen
-                  </button>
-                  <button
-                    onClick={endLive}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20"
-                  >
-                    <PhoneOff className="h-3.5 w-3.5" /> Gespräch beenden
-                  </button>
-                </div>
+
+                {/* THE STAGE — whatever the agent is showing right now, big */}
+                {stageItem && (
+                  <div className="w-full max-w-md rounded-xl border border-border bg-foreground/[0.02] p-3">
+                    {stageItem.kind === "image" && stageItem.b64 ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`data:${stageItem.media_type || "image/png"};base64,${stageItem.b64}`}
+                          alt={stageItem.caption || "Anzeige"}
+                          className="max-h-72 w-full rounded-lg bg-white/5 object-contain"
+                        />
+                        {stageItem.caption && (
+                          <p className="mt-2 text-center text-xs text-muted-foreground/70">{stageItem.caption}</p>
+                        )}
+                      </>
+                    ) : stageItem.url ? (
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+                          <div className="min-w-0">
+                            {stageItem.caption && <p className="text-sm text-foreground/90">{stageItem.caption}</p>}
+                            <p className="truncate text-[11px] text-muted-foreground/60">{stageItem.url}</p>
+                          </div>
+                        </div>
+                        {blockedUrls.has(stageItem.url) && (
+                          <p className="text-[11px] text-amber-400/90">
+                            Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {stageItem.embeddable && (
+                            <button
+                              onClick={() => setWebModal({ url: stageItem.url!, caption: stageItem.caption })}
+                              className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
+                            >
+                              Im Fenster öffnen
+                            </button>
+                          )}
+                          <a
+                            href={stageItem.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
+                          >
+                            <ExternalLink className="h-3 w-3" /> Neuer Tab
+                          </a>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 {uploadMsg && (
                   <div className="text-center text-xs text-emerald-400/90">{uploadMsg}</div>
                 )}
@@ -874,16 +979,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                   Aufgaben &amp; Aktivität
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-                  {media.map((m, mi) => (
+                  {paneMedia.map((m, mi) => (
                     <div key={mi} className="rounded-lg border border-border bg-foreground/[0.03] p-2">
-                      {m.kind === "image" && m.b64 ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`data:${m.media_type || "image/png"};base64,${m.b64}`}
-                          alt={m.caption || "Bild"}
-                          className="max-h-64 w-full rounded object-contain"
-                        />
-                      ) : m.path ? (
+                      {m.path ? (
                         <button
                           onClick={async () => {
                             try {
@@ -1164,6 +1262,77 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
 
           {!isRealtime && error && <div className="mt-3 text-sm text-red-400">{error}</div>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Round, icon-only call control. Quiet by default so the orb + stage carry the view. */
+function CtrlButton({
+  onClick, title, tone = "neutral", children,
+}: {
+  onClick: () => void; title: string; tone?: "neutral" | "amber" | "red"; children: React.ReactNode;
+}) {
+  const tones = {
+    neutral: "bg-foreground/[0.05] text-muted-foreground hover:bg-foreground/[0.10] hover:text-foreground",
+    amber: "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25",
+    red: "bg-red-500/10 text-red-400 hover:bg-red-500/20",
+  } as const;
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${tones[tone]}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** In-app window for pages that allow embedding (our own HTML reports always do).
+ *  Sandboxed: the framed page may run scripts, but gets no same-origin access to us. */
+function WebModal({ url, caption, onClose }: { url: string; caption?: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+          <Globe className="h-4 w-4 shrink-0 text-sky-400" />
+          <div className="min-w-0 flex-1">
+            {caption && <p className="truncate text-sm font-medium">{caption}</p>}
+            <p className="truncate text-[11px] text-muted-foreground/60">{url}</p>
+          </div>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] hover:bg-foreground/[0.10]"
+          >
+            <ExternalLink className="h-3 w-3" /> Neuer Tab
+          </a>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
+            aria-label="Schließen"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <iframe
+          src={url}
+          title={caption || url}
+          className="min-h-0 flex-1 bg-white"
+          // No allow-same-origin: combined with allow-scripts it would let the framed
+          // page escape the sandbox and read our cookies/localStorage. Opaque origin.
+          sandbox="allow-scripts allow-forms allow-popups"
+          referrerPolicy="no-referrer"
+        />
       </div>
     </div>
   );
