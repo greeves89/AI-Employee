@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.101.2] — 2026-07-09
+
+### Changed
+- Agenten (GPT/Custom-Harness): parallele Tool-Aufrufe sind jetzt immer aktiv — das Modell darf unabhaengige Lese-Tools in einem Zug anfordern, der Executor fuehrt sie gleichzeitig aus (spart Zeit).
+
 ## [1.101.1] — 2026-07-09
 
 ### Added

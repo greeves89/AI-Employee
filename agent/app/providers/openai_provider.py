@@ -632,6 +632,10 @@ class OpenAIProvider(BaseLLMProvider):
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
+            # ALWAYS allow the model to batch independent tool calls into ONE turn
+            # (e.g. several read_file / *_search at once) — the executor runs read-only
+            # tools concurrently, so this cuts latency noticeably.
+            body["parallel_tool_calls"] = True
 
         # Thinking/reasoning mode (Qwen 3.5, DeepSeek R1, etc.)
         # Modes: "off" = never think, "auto" = model decides, "on" = always think
