@@ -82,18 +82,20 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         meeting_planner_plan_id=await svc.get("meeting_planner_plan_id") or "",
         meeting_moderator_ai_account_id=await svc.get("meeting_moderator_ai_account_id") or "",
         dreaming_enabled=(await svc.get("dreaming_enabled") or "false").lower() in ("true", "1", "yes"),
-        # Non-secret Exchange/SMTP config so the admin UI shows the effective policy on
-        # reload (the password is a SECRET_KEY and deliberately never returned).
-        exchange_server_url=await svc.get("exchange_server_url") or "",
-        exchange_auth_mode=await svc.get("exchange_auth_mode") or "",
-        exchange_service_account_user=await svc.get("exchange_service_account_user") or "",
-        exchange_tenant_id=await svc.get("exchange_tenant_id") or "",
-        smtp_relay_host=await svc.get("smtp_relay_host") or "",
-        smtp_relay_port=await svc.get("smtp_relay_port") or "",
+        # Exchange/SMTP config = internal infrastructure (EWS host, relay IP, service
+        # account UPN, allowed domains). ADMIN-ONLY: non-admins get empty strings so
+        # they can't map internal mail infrastructure. Passwords are SECRET_KEYS and
+        # never returned regardless.
+        exchange_server_url=(await svc.get("exchange_server_url") or "") if admin else "",
+        exchange_auth_mode=(await svc.get("exchange_auth_mode") or "") if admin else "",
+        exchange_service_account_user=(await svc.get("exchange_service_account_user") or "") if admin else "",
+        exchange_tenant_id=(await svc.get("exchange_tenant_id") or "") if admin else "",
+        smtp_relay_host=(await svc.get("smtp_relay_host") or "") if admin else "",
+        smtp_relay_port=(await svc.get("smtp_relay_port") or "") if admin else "",
         smtp_relay_starttls=(await svc.get("smtp_relay_starttls") or "true").lower() in ("true", "1", "yes"),
         smtp_relay_verify_tls=(await svc.get("smtp_relay_verify_tls") or "true").lower() in ("true", "1", "yes"),
-        smtp_relay_user=await svc.get("smtp_relay_user") or "",
-        smtp_allowed_recipient_domains=await svc.get("smtp_allowed_recipient_domains") or "",
+        smtp_relay_user=(await svc.get("smtp_relay_user") or "") if admin else "",
+        smtp_allowed_recipient_domains=(await svc.get("smtp_allowed_recipient_domains") or "") if admin else "",
     )
 
 

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.101.4] — 2026-07-09
+
+### Security
+- Einstellungen: Exchange/SMTP-Infrastruktur-Konfiguration (Server, Relay, Service-Account, erlaubte Domains) wird im GET nur noch an Admins ausgeliefert.
+
 ## [1.101.3] — 2026-07-09
 
 ### Fixed
