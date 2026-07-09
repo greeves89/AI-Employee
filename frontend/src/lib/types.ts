@@ -258,6 +258,15 @@ export interface Settings {
   dreaming_enabled?: boolean;
 }
 
+// Provenance of a memory entry (who/what wrote it).
+export type MemorySource =
+  | "agent"
+  | "user"
+  | "conversation"
+  | "reflection"
+  | "improvement"
+  | "compaction";
+
 export interface AgentMemory {
   id: number;
   agent_id: string;
@@ -266,8 +275,68 @@ export interface AgentMemory {
   content: string;
   importance: number;
   access_count: number;
+  source?: MemorySource | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Reflection ("Nachtschicht") ──────────────────────────────
+
+export interface ReflectionRunStats {
+  transcripts_read?: number;
+  facts_new?: number;
+  facts_superseded?: number;
+  pending_approvals?: number;
+  kb_entries?: number;
+  skills_drafted?: number;
+  skipped?: number;
+  errors?: string[];
+}
+
+export type ReflectionMode = "auto" | "hybrid" | "strict";
+
+export interface ReflectionRun {
+  id: number;
+  started_at: string | null;
+  finished_at: string | null;
+  status: "running" | "completed" | "budget_exceeded" | "failed";
+  mode: ReflectionMode;
+  trigger: string;
+  stats: ReflectionRunStats;
+  tokens_used: number;
+  cost_usd: number;
+  error?: string | null;
+}
+
+export interface ReflectionStatus {
+  enabled: boolean;
+  mode: ReflectionMode;
+  hour: number;
+  token_budget: number;
+  pending_approvals: number;
+  last_run: ReflectionRun | null;
+}
+
+// Meta payload of approvals with command === "reflection_change".
+export interface ReflectionChangeMeta {
+  kind: "reflection";
+  change_type: "memory" | "knowledge";
+  proposal: {
+    key?: string;
+    title?: string;
+    content?: string;
+    category?: string;
+    importance?: number;
+    agent_id?: string;
+  } & Record<string, unknown>;
+  before: {
+    id: number;
+    content: string;
+    key?: string;
+    title?: string;
+    similarity?: number;
+  } | null;
+  run_id: number;
 }
 
 export interface Notification {
@@ -407,6 +476,8 @@ export interface ApprovalRequest {
   question?: string | null;
   options?: string[] | null;
   context?: string | null;
+  // Full meta payload (reflection entries carry kind/change_type/proposal/before)
+  meta?: Record<string, unknown> | null;
   // Status
   status: "pending" | "approved" | "denied";
   created_at: string;

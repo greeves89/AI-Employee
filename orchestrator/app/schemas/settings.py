@@ -75,6 +75,11 @@ class SettingsUpdate(BaseModel):
     meeting_moderator_ai_account_id: str | None = None
     # "Dreaming": periodic adaptive user-profile refresh from memories
     dreaming_enabled: bool | None = None
+    # Reflection ("Nachtschicht"): nightly out-of-band transcript reflection
+    reflection_enabled: str | None = None       # "true" | "false"
+    reflection_hour: int | str | None = None    # local hour 0-23
+    reflection_mode: str | None = None          # auto | hybrid | strict
+    reflection_token_budget: int | str | None = None
 
 
 class VoiceSettings(BaseModel):

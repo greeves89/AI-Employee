@@ -9,13 +9,15 @@ import {
   getApprovalRules, createApprovalRule, updateApprovalRule, deleteApprovalRule,
   getLevelPresets, addPresetRule, deletePresetRule,
 } from "@/lib/api";
-import type { ApprovalRequest } from "@/lib/types";
+import type { ApprovalRequest, ReflectionChangeMeta } from "@/lib/types";
 import type { ApprovalRule, LevelPreset, PresetRule } from "@/lib/api";
 import {
   AlertCircle,
   ShieldAlert,
   AlertTriangle,
+  Check,
   Info,
+  Moon,
   RefreshCw,
   ShieldCheck,
   Loader2,
@@ -99,8 +101,18 @@ const riskConfig = {
   },
 };
 
+// Approvals created by the nightly reflection run ("Nachtschicht").
+function isReflectionApproval(a: ApprovalRequest): boolean {
+  return a.tool === "reflection_change";
+}
+
+function reflectionMeta(a: ApprovalRequest): ReflectionChangeMeta | null {
+  const meta = a.meta as ReflectionChangeMeta | null | undefined;
+  return meta && meta.kind === "reflection" ? meta : null;
+}
+
 export default function ApprovalsPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "rules" | "command-policies" | "presets">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "reflection" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<ApprovalRequest | null>(null);
@@ -242,6 +254,24 @@ export default function ApprovalsPage() {
     await loadApprovals();
   };
 
+  // Reflection entries are resolved inline (Übernehmen/Verwerfen), no modal.
+  const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
+  const handleReflectionDecision = async (approvalId: string, decision: "approve" | "deny") => {
+    setBusyApprovalId(approvalId);
+    try {
+      if (decision === "approve") {
+        await approveCommand(approvalId);
+      } else {
+        await denyCommand(approvalId);
+      }
+      await loadApprovals();
+    } catch (error) {
+      console.error("Failed to resolve reflection approval:", error);
+    } finally {
+      setBusyApprovalId(null);
+    }
+  };
+
   const handleDeny = async (approvalId: string, reason?: string) => {
     await denyCommand(approvalId, reason);
     await loadApprovals();
@@ -253,10 +283,13 @@ export default function ApprovalsPage() {
   };
 
   const refreshCurrentTab = () => {
-    if (activeTab === "pending") loadApprovals();
+    if (activeTab === "pending" || activeTab === "reflection") loadApprovals();
     if (activeTab === "rules") loadRules();
     if (activeTab === "presets") loadPresets();
   };
+
+  const reflectionApprovals = approvals.filter(isReflectionApproval);
+  const shownApprovals = activeTab === "reflection" ? reflectionApprovals : approvals;
 
   return (
     <div className="px-8 py-8 max-w-6xl mx-auto">
@@ -298,6 +331,18 @@ export default function ApprovalsPage() {
           )}
         >
           Ausstehend ({approvals.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("reflection")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-all inline-flex items-center gap-1.5",
+            activeTab === "reflection"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Moon className="h-3.5 w-3.5" />
+          Nachtschicht ({reflectionApprovals.length})
         </button>
         <button
           onClick={() => setActiveTab("rules")}
@@ -522,23 +567,37 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {/* Pending Approvals Tab */}
-      {activeTab === "pending" && (
+      {/* Pending Approvals Tab (+ Nachtschicht filter tab) */}
+      {(activeTab === "pending" || activeTab === "reflection") && (
       <>
       {isLoading && approvals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
           <Loader2 className="h-6 w-6 animate-spin mb-3" />
           <span className="text-sm">Loading approvals...</span>
         </div>
-      ) : approvals.length === 0 ? (
+      ) : shownApprovals.length === 0 ? (
         <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
-          <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground/50">
-            No pending approval requests
-          </p>
-          <p className="text-[11px] text-muted-foreground/30 mt-1">
-            Approval requests from agents will appear here
-          </p>
+          {activeTab === "reflection" ? (
+            <>
+              <Moon className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground/50">
+                Keine offenen Nachtschicht-Freigaben
+              </p>
+              <p className="text-[11px] text-muted-foreground/30 mt-1">
+                Vorschläge aus dem nächtlichen Reflexions-Lauf erscheinen hier
+              </p>
+            </>
+          ) : (
+            <>
+              <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground/50">
+                No pending approval requests
+              </p>
+              <p className="text-[11px] text-muted-foreground/30 mt-1">
+                Approval requests from agents will appear here
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <motion.div
@@ -548,10 +607,13 @@ export default function ApprovalsPage() {
           animate="visible"
         >
           <AnimatePresence>
-            {approvals.map((approval) => {
+            {shownApprovals.map((approval) => {
               const config = riskConfig[approval.risk_level] ?? riskConfig.medium;
               const Icon = config.icon;
               const isQuestion = Boolean(approval.question);
+              const isReflection = isReflectionApproval(approval);
+              const rMeta = isReflection ? reflectionMeta(approval) : null;
+              const isBusy = busyApprovalId === approval.approval_id;
 
               return (
                 <motion.div
@@ -566,29 +628,86 @@ export default function ApprovalsPage() {
                       <div
                         className={cn(
                           "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                          config.bg
+                          isReflection ? "bg-violet-500/10" : config.bg
                         )}
                       >
-                        <Icon className={cn("h-4 w-4", config.color)} />
+                        {isReflection ? (
+                          <Moon className="h-4 w-4 text-violet-400" />
+                        ) : (
+                          <Icon className={cn("h-4 w-4", config.color)} />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium truncate">
-                            {isQuestion ? "Agent Question" : approval.tool}
+                            {isReflection
+                              ? rMeta?.change_type === "knowledge"
+                                ? "Wissenseintrag"
+                                : "Notiz"
+                              : isQuestion
+                              ? "Agent Question"
+                              : approval.tool}
                           </span>
-                          <span
-                            className={cn(
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                              config.bg,
-                              config.color,
-                              config.border
-                            )}
-                          >
-                            {isQuestion ? "APPROVAL" : config.label}
-                          </span>
+                          {isReflection ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">
+                              <Moon className="h-2.5 w-2.5" />
+                              Nachtschicht
+                            </span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                                config.bg,
+                                config.color,
+                                config.border
+                              )}
+                            >
+                              {isQuestion ? "APPROVAL" : config.label}
+                            </span>
+                          )}
                         </div>
 
-                        {isQuestion ? (
+                        {isReflection ? (
+                          <>
+                            {/* What the run wants to change */}
+                            <p className="text-sm mb-2">{approval.reasoning}</p>
+                            {/* Before/after side by side */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                              <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-1">
+                                  Vorher
+                                </p>
+                                {rMeta?.before ? (
+                                  <>
+                                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                                      {rMeta.before.content}
+                                    </p>
+                                    {typeof rMeta.before.similarity === "number" && (
+                                      <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+                                        Ähnlichkeit: {Math.round(rMeta.before.similarity * 100)}%
+                                      </p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground/40 italic">
+                                    Neuer Eintrag — kein vorheriger Stand
+                                  </p>
+                                )}
+                              </div>
+                              <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.04] px-3 py-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-400/70 mb-1">
+                                  Nachher
+                                </p>
+                                {rMeta?.change_type === "knowledge" && rMeta?.proposal?.title && (
+                                  <p className="text-xs font-medium mb-0.5">{rMeta.proposal.title}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                                  {rMeta?.proposal?.content || "—"}
+                                </p>
+                              </div>
+                            </div>
+                          </>
+                        ) : isQuestion ? (
                           <>
                             {/* Question */}
                             <p className="text-sm mb-2">{approval.question}</p>
@@ -636,13 +755,38 @@ export default function ApprovalsPage() {
                       </div>
                     </div>
 
-                    {/* Right: action button */}
-                    <button
-                      onClick={() => openModal(approval)}
-                      className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-                    >
-                      Review
-                    </button>
+                    {/* Right: action buttons */}
+                    {isReflection ? (
+                      <div className="shrink-0 flex flex-col gap-2">
+                        <button
+                          onClick={() => handleReflectionDecision(approval.approval_id, "approve")}
+                          disabled={isBusy}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          {isBusy ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          Übernehmen
+                        </button>
+                        <button
+                          onClick={() => handleReflectionDecision(approval.approval_id, "deny")}
+                          disabled={isBusy}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Verwerfen
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => openModal(approval)}
+                        className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                      >
+                        Review
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               );

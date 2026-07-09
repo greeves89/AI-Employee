@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -901,6 +901,27 @@ export async function updateMemory(
 
 export async function deleteMemory(memoryId: number): Promise<void> {
   await fetchJSON(`${getBase()}/memory/${memoryId}`, { method: "DELETE" });
+}
+
+export async function getMemoryHistory(
+  memoryId: number,
+): Promise<{ history: AgentMemory[] }> {
+  return fetchJSON(`${getBase()}/memory/${memoryId}/history`);
+}
+
+// Reflection ("Nachtschicht")
+export async function getReflectionStatus(): Promise<ReflectionStatus> {
+  return fetchJSON(`${getBase()}/reflection/status`);
+}
+
+export async function getReflectionRuns(
+  limit = 20,
+): Promise<{ runs: ReflectionRun[] }> {
+  return fetchJSON(`${getBase()}/reflection/runs?limit=${limit}`);
+}
+
+export async function runReflectionNow(): Promise<{ started: boolean; at?: string }> {
+  return fetchJSON(`${getBase()}/reflection/run-now`, { method: "POST" });
 }
 
 // Notifications

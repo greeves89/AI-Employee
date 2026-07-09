@@ -60,6 +60,7 @@ async def reflection_status(user=Depends(require_auth), db: AsyncSession = Depen
         "enabled": cfg["enabled"],
         "mode": cfg["mode"],
         "hour": cfg["hour"],
+        "token_budget": cfg["token_budget"],
         "pending_approvals": int(pending),
         "last_run": _run_to_dict(last) if last else None,
     }

@@ -10,6 +10,7 @@ import { AgentCard } from "@/components/dashboard/agent-card";
 import { StatsOverview } from "@/components/dashboard/stats-overview";
 import { RecentTasks } from "@/components/dashboard/recent-tasks";
 import { CostAttribution } from "@/components/dashboard/cost-attribution";
+import { ReflectionCard } from "@/components/dashboard/reflection-card";
 import { SystemStatusBar } from "@/components/dashboard/system-status-bar";
 
 const containerVariants = {
@@ -116,8 +117,9 @@ export default function DashboardPage() {
           <div className="lg:col-span-2">
             <RecentTasks tasks={tasks} />
           </div>
-          <div>
+          <div className="space-y-6">
             <CostAttribution />
+            <ReflectionCard />
           </div>
         </div>
       </motion.div>
