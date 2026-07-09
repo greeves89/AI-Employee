@@ -26,7 +26,7 @@ import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
 import { InteractionModelCard } from "@/components/agents/interaction-model-card";
-import { VoiceSessionModal } from "@/components/agents/voice-session";
+import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
@@ -83,10 +83,8 @@ const tabGroups: TabGroup[] = [
   { key: "speech", label: "Speech", icon: AudioLines, subs: [
     { key: "speech", label: "Speech", icon: AudioLines, simpleVisible: true },
   ] },
-  { key: "todos", label: "Todos", icon: ListTodo, subs: [
-    { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
-  ] },
   { key: "activity", label: "Activity", icon: Activity, subs: [
+    { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
     { key: "terminal", label: "Live", icon: Activity, simpleVisible: false },
     { key: "history", label: "Verlauf", icon: History, simpleVisible: true },
   ] },
@@ -416,13 +414,7 @@ export default function AgentDetailPage() {
         <div className="flex-1 min-h-0 h-full">
           {activeSub === "chat" && <AgentChat agentId={agentId} />}
           {activeSub === "speech" && (
-            <VoiceSessionModal
-              key={`voice-${agent.id}`}
-              agentId={agent.id}
-              agentName={agent.name}
-              onClose={() => setActiveSub("chat")}
-              embedded
-            />
+            <AgentSpeechTab agentId={agent.id} agentName={agent.name} />
           )}
           {activeSub === "terminal" && <LiveTerminal agentId={agentId} />}
           {activeSub === "todos" && <TodoTab agentId={agentId} />}

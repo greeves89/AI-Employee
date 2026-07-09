@@ -967,6 +967,14 @@ async def ws_agent_voice(
                 task.add_done_callback(_log_voice_turn_done)
             elif mtype == "interrupt":
                 await session.interrupt()
+            elif mtype == "files_uploaded":
+                # User dropped file(s) into the agent's workspace from the Speech tab.
+                # Server-side the upload already happened (authenticated /files/upload);
+                # this only tells the live session so the agent can ask what to do.
+                files = mdata.get("files") or []
+                notify = getattr(session, "notify_files_uploaded", None)
+                if isinstance(files, list) and notify:  # realtime engines only
+                    await notify([str(f) for f in files[:10]])
             elif mtype == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
             # unknown types: ignore

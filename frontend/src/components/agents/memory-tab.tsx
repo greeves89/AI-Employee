@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Brain,
   ChevronDown,
+  ChevronRight,
+  History,
+  Loader2,
+  Moon,
   Pencil,
   RefreshCw,
   Save,
@@ -12,8 +16,18 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deleteMemory, getAgentMemories, updateMemory } from "@/lib/api";
+import { deleteMemory, getAgentMemories, getMemoryHistory, updateMemory } from "@/lib/api";
 import type { AgentMemory } from "@/lib/types";
+
+// Provenance badge per memory source (null → no badge).
+const SOURCE_CONFIG: Record<string, { label: string; className: string; icon?: typeof Moon }> = {
+  agent: { label: "Agent", className: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
+  conversation: { label: "Gespräch", className: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  reflection: { label: "Nachtschicht", className: "bg-violet-500/10 text-violet-400 border-violet-500/20", icon: Moon },
+  user: { label: "Du", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  improvement: { label: "Verbesserung", className: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  compaction: { label: "Kompaktierung", className: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
+};
 
 const CATEGORIES = [
   { key: "all", label: "All", color: "bg-gray-400" },
@@ -38,6 +52,10 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editImportance, setEditImportance] = useState(3);
+  const [reflectionOnly, setReflectionOnly] = useState(false);
+  const [openHistoryId, setOpenHistoryId] = useState<number | null>(null);
+  const [histories, setHistories] = useState<Record<number, AgentMemory[]>>({});
+  const [historyLoadingId, setHistoryLoadingId] = useState<number | null>(null);
 
   const fetchMemories = useCallback(async () => {
     setLoading(true);
@@ -81,7 +99,29 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
     }
   };
 
+  // Load the supersede chain on-demand when the "Verlauf" expander opens.
+  const toggleHistory = async (memId: number) => {
+    if (openHistoryId === memId) {
+      setOpenHistoryId(null);
+      return;
+    }
+    setOpenHistoryId(memId);
+    if (!histories[memId]) {
+      setHistoryLoadingId(memId);
+      try {
+        const data = await getMemoryHistory(memId);
+        setHistories((prev) => ({ ...prev, [memId]: data.history }));
+      } catch {
+        // ignore
+      }
+      setHistoryLoadingId(null);
+    }
+  };
+
   const totalMemories = Object.values(categories).reduce((a, b) => a + b, 0);
+  const visibleMemories = reflectionOnly
+    ? memories.filter((m) => m.source === "reflection")
+    : memories;
 
   return (
     <div className="space-y-4">
@@ -126,6 +166,18 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
             </button>
           );
         })}
+        <button
+          onClick={() => setReflectionOnly((v) => !v)}
+          className={cn(
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
+            reflectionOnly
+              ? "bg-violet-500/10 text-violet-400 shadow-sm"
+              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+          )}
+        >
+          <Moon className="h-3 w-3" />
+          Nur Nachtschicht
+        </button>
       </div>
 
       {/* Memory list */}
@@ -133,19 +185,27 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : memories.length === 0 ? (
+      ) : visibleMemories.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <Brain className="h-10 w-10 mb-3 opacity-20" />
-          <p className="text-sm font-medium">No memories yet</p>
+          <p className="text-sm font-medium">
+            {reflectionOnly ? "Keine Nachtschicht-Einträge" : "No memories yet"}
+          </p>
           <p className="text-xs mt-1">
-            This agent will automatically save important information here as it works.
+            {reflectionOnly
+              ? "Der nächtliche Reflexions-Lauf hat hier noch nichts abgelegt."
+              : "This agent will automatically save important information here as it works."}
           </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {memories.map((mem) => {
+          {visibleMemories.map((mem) => {
             const cat = CATEGORIES.find((c) => c.key === mem.category);
             const isEditing = editingId === mem.id;
+            const source = mem.source ? SOURCE_CONFIG[mem.source] : undefined;
+            const SourceIcon = source?.icon;
+            const isHistoryOpen = openHistoryId === mem.id;
+            const history = histories[mem.id];
 
             return (
               <div
@@ -168,6 +228,17 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
                         {mem.category}
                       </span>
+                      {source && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border",
+                            source.className
+                          )}
+                        >
+                          {SourceIcon && <SourceIcon className="h-2.5 w-2.5" />}
+                          {source.label}
+                        </span>
+                      )}
                       {/* Importance stars */}
                       <div className="flex gap-0.5 ml-auto">
                         {[1, 2, 3, 4, 5].map((i) => (
@@ -207,7 +278,74 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                           accessed {mem.access_count}x
                         </span>
                       )}
+                      <button
+                        onClick={() => toggleHistory(mem.id)}
+                        className={cn(
+                          "flex items-center gap-1 text-[10px] transition-colors",
+                          isHistoryOpen
+                            ? "text-foreground"
+                            : "text-muted-foreground/50 hover:text-foreground"
+                        )}
+                      >
+                        <History className="h-2.5 w-2.5" />
+                        Verlauf
+                        {isHistoryOpen ? (
+                          <ChevronDown className="h-2.5 w-2.5" />
+                        ) : (
+                          <ChevronRight className="h-2.5 w-2.5" />
+                        )}
+                      </button>
                     </div>
+
+                    {/* History: supersede chain, newest first */}
+                    {isHistoryOpen && (
+                      <div className="mt-2 border-t border-border/50 pt-2">
+                        {historyLoadingId === mem.id ? (
+                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground/50">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Lade Verlauf...
+                          </div>
+                        ) : !history || history.length <= 1 ? (
+                          <p className="py-1 text-[11px] text-muted-foreground/50">
+                            Kein früherer Stand — dieser Eintrag wurde noch nie überschrieben.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {history.map((entry, i) => (
+                              <div
+                                key={entry.id}
+                                className={cn(
+                                  "border-l-2 pl-2.5",
+                                  i === 0 ? "border-violet-400" : "border-border/60"
+                                )}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-muted-foreground/60">
+                                    {new Date(entry.updated_at).toLocaleString("de-DE", {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                    })}
+                                  </span>
+                                  {i === 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                      Aktuell
+                                    </span>
+                                  )}
+                                </div>
+                                <p
+                                  className={cn(
+                                    "text-[11px] whitespace-pre-wrap mt-0.5",
+                                    i === 0 ? "text-foreground/90" : "text-muted-foreground/70"
+                                  )}
+                                >
+                                  {entry.content}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}

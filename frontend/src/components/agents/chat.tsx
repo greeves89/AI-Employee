@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Send, RotateCcw, Bot, AlertTriangle, WifiOff,
-  Paperclip, Loader2, Plus, MessageSquare, Gauge, Square, Mic,
+  Paperclip, Loader2, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
-  Pin, Pencil, Trash2, Check, Type, LayoutGrid, FileText,
+  Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose,
 } from "lucide-react";
 import { ChatOverview } from "./chat-overview";
+import { SessionRail } from "./session-rail";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { cn, formatBytes } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -77,6 +78,8 @@ interface SessionTab {
   title?: string | null;   // custom rename; falls back to preview
   pinned?: boolean;
   isNew?: boolean;
+  last_message_at?: string | null;
+  message_count?: number;
 }
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
@@ -188,8 +191,13 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // Chat management UX
   const [viewMode, setViewMode] = useState<"chat" | "overview">("chat");
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
+  // Conversation rail (left) — starts open on desktop, collapsed on small screens.
+  const [railOpen, setRailOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) {
+      setRailOpen(true);
+    }
+  }, []);
   const [isDragOver, setIsDragOver] = useState(false);
   // Counts nested dragenter/dragleave so the overlay doesn't flicker while
   // dragging across child elements (textarea, buttons).
@@ -277,6 +285,8 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
             preview: s.preview || "",
             title: s.title ?? null,
             pinned: !!s.pinned,
+            last_message_at: s.last_message_at,
+            message_count: s.message_count,
           }));
           setSessions(tabs);
           // Only auto-select a session if explicitly requested (e.g. from conversation list)
@@ -310,6 +320,8 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
           preview: s.preview || "",
           title: s.title ?? null,
           pinned: !!s.pinned,
+          last_message_at: s.last_message_at,
+          message_count: s.message_count,
         }))
       );
     } catch {
@@ -928,23 +940,16 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
     }
   }, [agentId, activeSessionId, sessions]);
 
-  const startRename = (session: SessionTab) => {
-    setEditingSessionId(session.id);
-    setEditValue(session.title || session.preview || session.label);
-  };
-
-  const saveRename = useCallback(async (sessionId: string) => {
-    const title = editValue.trim();
-    setEditingSessionId(null);
+  const renameSession = useCallback(async (sessionId: string, title: string) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: title || null } : s)));
     try {
       await api.updateChatSession(agentId, sessionId, { title });
     } catch {
       // keep optimistic value; a failed rename just isn't persisted
     }
-  }, [agentId, editValue]);
+  }, [agentId]);
 
-  const togglePin = useCallback(async (session: SessionTab) => {
+  const togglePin = useCallback(async (session: { id: string; pinned?: boolean }) => {
     const pinned = !session.pinned;
     setSessions((prev) => {
       const next = prev.map((s) => (s.id === session.id ? { ...s, pinned } : s));
@@ -1050,7 +1055,7 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
   return (
     <div
       className={cn(
-        "relative flex flex-col h-full min-h-0 overflow-hidden",
+        "relative flex h-full min-h-0 overflow-hidden",
         !embedded && "rounded-xl border border-border bg-card/80 backdrop-blur-sm",
         isDragOver && "ring-2 ring-inset ring-primary/50"
       )}
@@ -1095,73 +1100,34 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
           resumeSessionId={activeSessionId ?? undefined}
         />
       )}
-      {/* Session tabs — hidden in embedded (modal) mode */}
+      {/* Conversation rail (shared with the Speech tab) — hidden in embedded (modal) mode */}
+      {!embedded && railOpen && (
+        <SessionRail
+          className="border-r border-border bg-card/40"
+          sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
+          selectedId={activeSessionId}
+          onSelect={switchSession}
+          onNew={createNewSession}
+          newDisabled={!isConnected}
+          onPin={togglePin}
+          onRename={renameSession}
+          onDelete={deleteSession}
+        />
+      )}
+
+      {/* Right column: toolbar + messages + input */}
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+      {/* Toolbar — hidden in embedded (modal) mode */}
       {!embedded && (
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
-        {/* New chat — left, high contrast, icon only */}
         <button
-          onClick={createNewSession}
-          disabled={!isConnected}
-          className="inline-flex items-center justify-center rounded-lg bg-primary p-1.5 text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 transition-all shrink-0"
-          title="Neuer Chat"
+          onClick={() => setRailOpen((o) => !o)}
+          className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-all shrink-0"
+          title={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
         >
-          <Plus className="h-4 w-4" />
+          {railOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
         </button>
-
-        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
-          {sessions.map((session) => {
-            const shown = session.title || session.preview;
-            return (
-            <div
-              key={session.id}
-              className={cn(
-                "group/tab inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all whitespace-nowrap shrink-0",
-                activeSessionId === session.id
-                  ? "bg-foreground/[0.08] text-foreground"
-                  : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-foreground/[0.04]"
-              )}
-            >
-              {session.pinned && <Pin className="h-2.5 w-2.5 text-amber-400 shrink-0 fill-amber-400/30" />}
-              {editingSessionId === session.id ? (
-                <input
-                  autoFocus
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={() => saveRename(session.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveRename(session.id);
-                    if (e.key === "Escape") setEditingSessionId(null);
-                  }}
-                  className="w-28 bg-transparent border-b border-primary/60 outline-none text-[11px]"
-                />
-              ) : (
-                <button
-                  onClick={() => switchSession(session.id)}
-                  onDoubleClick={() => startRename(session)}
-                  className="inline-flex items-center gap-1.5"
-                  title="Doppelklick zum Umbenennen"
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  {shown ? shown.slice(0, 22) + (shown.length > 22 ? "…" : "") : session.label}
-                </button>
-              )}
-              {editingSessionId !== session.id && (
-                <span className="inline-flex items-center opacity-0 group-hover/tab:opacity-100 transition-all">
-                  <button onClick={(e) => { e.stopPropagation(); togglePin(session); }} className="ml-0.5 rounded p-0.5 hover:bg-foreground/[0.1]" title={session.pinned ? "Loslösen" : "Anpinnen"}>
-                    <Pin className={cn("h-2.5 w-2.5", session.pinned && "text-amber-400")} />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); startRename(session); }} className="rounded p-0.5 hover:bg-foreground/[0.1]" title="Umbenennen">
-                    <Pencil className="h-2.5 w-2.5" />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }} className="rounded p-0.5 hover:bg-foreground/[0.1]" title="Löschen">
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              )}
-            </div>
-            );
-          })}
-        </div>
+        <div className="flex-1 min-w-0" />
 
         {/* Right controls: overview toggle · font size · delete all · connection */}
         <div className="flex items-center gap-0.5 shrink-0 border-l border-border pl-2 ml-1">
@@ -1433,6 +1399,8 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
         {totalTurns > 0 && <span>{totalTurns} turns</span>}
         {totalCost > 0 && <span>${totalCost.toFixed(4)}</span>}
       </div>}
+      {/* end right column */}
+      </div>
     </div>
   );
 }

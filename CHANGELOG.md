@@ -5,6 +5,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.0] — 2026-07-09
+
+### Added
+- **Nachtschicht (Reflection/Dreaming):** Naechtlicher Out-of-band-Reflexions-Lauf — liest die Gespraeche, Aufgaben und Meetings des Tages, destilliert daraus dauerhaftes Wissen und schreibt es ueber die bestehenden Pfade zurueck (Agent-Memory mit Dedup/Widerspruchserkennung, Knowledge Base mit Auto-Verlinkung, Skill-Marketplace als Entwurf). Standardmaessig AUS (Opt-in pro Installation).
+  - Drei Review-Modi: Automatisch / Ausgewogen (Neues direkt, Eingriffe in Bestehendes via Freigabe) / Alles freigeben.
+  - Dashboard-Karte "Nachtschicht" (Ergebnis + "Jetzt laufen lassen"), Approvals-Tab mit Vorher/Nachher, Einstellungs-Karte (Uhrzeit, Modus, Token-Budget).
+  - Memory-Tab: Herkunfts-Badges (Agent/Gespraech/Nachtschicht/Du/Verbesserung/Kompaktierung), Filter "Nur Nachtschicht", "Verlauf"-Zeitleiste der Supersede-Kette (neuer Endpoint `GET /memory/{id}/history`).
+  - Audit-Log-Events pro Lauf und pro Einzelaenderung, Telegram-Digest, Kosten-/Token-Tracking pro Lauf (`reflection_runs`).
+  - Kompaktierungs-Rettung: Beim Rolling-Summary-Kompaktieren wird der weggefaltete Kontext als Langzeit-Memory gesichert (source=compaction) statt verloren zu gehen.
+  - Provenance-Feld `source` auf allen Memories (agent | user | conversation | reflection | improvement | compaction).
+  - API: `GET /reflection/status`, `GET /reflection/runs`, `POST /reflection/run-now` (Admin).
+  - 17 neue MCDC-Tests fuer die Konflikt-/Review-Modus-Verzweigung.
+
+## [1.99.167] — 2026-07-09
+
+### Fixed
+- M365/OneDrive: Der Agent kann jetzt den Inhalt von PDF-, Word- und Excel-Dateien wirklich auslesen und zusammenfassen (vorher nur reine Textdateien).
+
+## [1.99.166] — 2026-07-09
+
+### Added
+- Speech-Reiter: Datei-Upload in den Workspace — der Agent meldet sich per Sprache und fragt, was er damit tun soll (falls noch keine Anweisung vorliegt).
+
+## [1.99.165] — 2026-07-09
+
+### Changed
+- Chat-Reiter: Gesprächsliste links (wie im Speech-Reiter) statt horizontaler Session-Tabs — gemeinsame `SessionRail`-Komponente, per Toolbar-Button ein-/ausklappbar (auf Mobile standardmäßig zu).
+
+### Added
+- Gespräche anpinnen, umbenennen (Doppelklick oder Stift-Symbol) und löschen direkt in der Gesprächsliste — im Chat- UND Speech-Reiter (vorher nur in den Chat-Tabs möglich).
+
+## [1.99.164] — 2026-07-09
+
+### Changed
+- Agent-Detail: Reiter "Todos" und "Activity" zusammengeführt — ein "Activity"-Reiter mit Sub-Reitern Todos, Live und Verlauf (Klick auf den Reiter öffnet direkt Todos).
+
+## [1.99.163] — 2026-07-09
+
+### Added
+- Speech-Reiter: Liste "Letzte Gespräche" — frühere Unterhaltungen auswählen, Verlauf sehen und per Sprache fortsetzen (gemeinsame Sessions mit dem Chat).
+
 ## [1.99.162] — 2026-07-09
 
 ### Changed

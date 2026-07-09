@@ -47,6 +47,8 @@ class SchedulerService:
         self._idle_stop_counter = 0
         self._failure_watchdog_last_run: datetime | None = None
         self._dreaming_counter = 0
+        self._reflection_counter = 0
+        self._reflection_service = None
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
@@ -143,6 +145,20 @@ class SchedulerService:
                             logger.info("[Scheduler] Dreaming: refreshed %s user profile(s)", n)
                     except Exception as e:
                         logger.warning("[Scheduler] Dreaming error: %s", e)
+                # Reflection ("Nachtschicht"): nightly transcript reflection (gated,
+                # runs once per day at the configured local hour). Checked every 5 min.
+                self._reflection_counter += 30
+                if self._reflection_counter >= 300:
+                    self._reflection_counter = 0
+                    try:
+                        if self._reflection_service is None:
+                            from app.services.reflection_service import ReflectionService
+                            self._reflection_service = ReflectionService(self.redis)
+                        result = await self._reflection_service.tick()
+                        if result:
+                            logger.info("[Scheduler] Reflection: %s", result)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Reflection error: %s", e)
             except Exception as e:
                 logger.error("[Scheduler] ERROR: %s", e, exc_info=True)
             await asyncio.sleep(30)

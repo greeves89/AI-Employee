@@ -70,6 +70,10 @@ class AgentMemory(Base):
     # "transient" (exponential decay) vs "permanent" (logarithmic decay).
     tag_type: Mapped[str] = mapped_column(String(20), nullable=False, default="permanent")
 
+    # Provenance: who/what wrote this memory. NULL = written before the field
+    # existed. Values: agent | user | conversation | reflection | improvement | compaction.
+    source: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+
     # NOTE: `value_hash` is a GENERATED STORED column in Postgres
     # (md5(coalesce(content, ''))). It's used by the UNIQUE index but
     # intentionally NOT mapped to the ORM — SQLAlchemy would otherwise

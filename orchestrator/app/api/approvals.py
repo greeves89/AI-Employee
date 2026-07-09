@@ -358,6 +358,18 @@ async def approve_request(
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
 
+    # Reflection proposals: applying the change IS the approval effect (no agent
+    # container is waiting on Redis). Apply FIRST — if it fails, the approval
+    # stays pending so the admin can retry.
+    applied = None
+    if (approval.meta or {}).get("kind") == "reflection":
+        from app.services.reflection_service import apply_reflection_approval
+        try:
+            applied = await apply_reflection_approval(db, approval)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Reflection approval %s apply failed", approval.id)
+            raise HTTPException(status_code=500, detail=f"Anwendung fehlgeschlagen: {e}")
+
     approval.status = ApprovalStatus.APPROVED
     approval.resolved_at = datetime.now(timezone.utc)
     approval.user_response = f"Approved by {user.email}"
@@ -369,7 +381,8 @@ async def approve_request(
         command=f"{approval.command} {(approval.meta or {}).get('input', {})}",
         outcome="success",
         user_id=str(user.id),
-        meta={"risk_level": approval.risk_level, "reasoning": approval.description},
+        meta={"risk_level": approval.risk_level, "reasoning": approval.description,
+              **({"applied": applied} if applied else {})},
     )
     db.add(audit_entry)
     await db.commit()
@@ -383,7 +396,12 @@ async def approve_request(
         )
 
     logger.info(f"Approval {approval.id} approved by user {user.id}")
-    return {"approval_id": approval_id, "status": "approved", "message": "Command approved. Agent will proceed."}
+    return {
+        "approval_id": approval_id,
+        "status": "approved",
+        "applied": applied,
+        "message": "Übernommen." if applied else "Command approved. Agent will proceed.",
+    }
 
 
 @router.post("/{approval_id}/deny")

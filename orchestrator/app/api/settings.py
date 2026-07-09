@@ -205,6 +205,16 @@ async def update_settings(
     if data.dreaming_enabled is not None:
         await svc.set("dreaming_enabled", "true" if data.dreaming_enabled else "false")
 
+    # Reflection ("Nachtschicht") — stored DB-only, read by ReflectionService
+    _REFLECTION_FIELDS = [
+        "reflection_enabled", "reflection_hour",
+        "reflection_mode", "reflection_token_budget",
+    ]
+    for field_name in _REFLECTION_FIELDS:
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
+
     await db.commit()
     return {"status": "updated"}
 

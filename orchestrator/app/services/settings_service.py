@@ -99,6 +99,14 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "meeting_artifact_enabled",
     # "Dreaming": periodic adaptive user-profile refresh (default off)
     "dreaming_enabled",
+    # Reflection ("Nachtschicht"): nightly out-of-band transcript reflection
+    "reflection_enabled",          # "true" | "false" (default off)
+    "reflection_hour",             # local hour 0-23 (default 3)
+    "reflection_mode",             # auto | hybrid | strict (default hybrid)
+    "reflection_model",            # LLM for extraction (default claude-haiku)
+    "reflection_token_budget",     # hard output-token cap per run (default 200000)
+    "reflection_max_transcripts",  # max bundles per run (default 30)
+    "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
 }
 
 

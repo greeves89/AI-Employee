@@ -198,6 +198,7 @@ async def summarize_messages(
     messages: list["ChatMessage"],
     provider: "BaseLLMProvider",
     keep_recent: int = RECENT_WINDOW_MESSAGES,
+    rescue_key: str | None = None,
 ) -> list["ChatMessage"] | None:
     """Layer 4 — Sliding-window + incremental rolling summary.
 
@@ -288,6 +289,29 @@ async def summarize_messages(
         f"(summarized {len(to_summarize)}, kept {len(recent)} verbatim, "
         f"{len(summary)} chars summary)"
     )
+
+    # Compaction rescue: the folded-away context would otherwise be lost forever.
+    # Persist the rolling summary to long-term memory (source=compaction) —
+    # fire-and-forget, override=True so each extension supersedes the previous
+    # snapshot in the same bucket (the supersede chain keeps the history).
+    try:
+        import asyncio
+        from app.tools.api_client import OrchestratorAPIClient
+        _client = OrchestratorAPIClient()
+        _payload = {
+            "category": "task_context",
+            "key": f"compaction:{rescue_key or 'rolling'}",
+            "content": f"[Kompaktierter Kontext] {summary.strip()[:3500]}",
+            "importance": 2,
+            "room": "compaction",
+            "tag_type": "transient",
+            "source": "compaction",
+            "override": True,
+        }
+        asyncio.get_running_loop().create_task(_client.memory_save(_payload))
+    except Exception as exc:  # noqa: BLE001 — rescue must never break compaction
+        logger.debug(f"[Summarize] compaction rescue skipped: {exc}")
+
     return new_msgs
 
 

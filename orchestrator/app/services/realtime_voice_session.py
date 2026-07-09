@@ -625,6 +625,26 @@ class RealtimeVoiceSession:
         except Exception:  # noqa: BLE001
             logger.debug("greeting injection failed agent=%s", self.agent_id, exc_info=True)
 
+    async def notify_files_uploaded(self, files: list[str]) -> None:
+        """Tell the agent that the user just dropped file(s) into its workspace.
+
+        Injected as a user turn so the agent reacts by voice: if no instruction was
+        given yet it asks what to do with the file; if the user already said what they
+        want, it just proceeds. Same channel as the greeting (works on both engines).
+        """
+        paths = [str(f).strip() for f in (files or []) if str(f).strip()]
+        if not paths or self._closed or not self._nova:
+            return
+        listing = ", ".join(paths[:10])
+        try:
+            await self._nova.inject_user_text(
+                f"Datei {listing} hochgeladen. "
+                "Falls dazu noch keine Anweisung vorliegt, frag JETZT kurz nach, was du "
+                "damit machen sollst. Liegt bereits eine Anweisung vor, führe sie aus."
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("file-upload notice failed agent=%s", self.agent_id, exc_info=True)
+
     async def commit_turn(self, language: str | None = None) -> None:
         """No-op: Nova Sonic detects end-of-turn itself (VAD). Kept for interface parity."""
         return

@@ -7,7 +7,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  Plug, Mic, AlertTriangle,
+  Plug, Mic, AlertTriangle, Moon,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
@@ -224,6 +224,23 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setDreamingSaving(false);
     }
   };
+  // Nachtschicht (Reflection) — nightly transcript reflection run
+  const [reflEnabled, setReflEnabled] = useState(false);
+  const [reflHour, setReflHour] = useState(3);
+  const [reflMode, setReflMode] = useState<"auto" | "hybrid" | "strict">("hybrid");
+  const [reflBudget, setReflBudget] = useState(200000);
+  const [reflSaving, setReflSaving] = useState(false);
+  const saveReflection = async (patch: Record<string, unknown>) => {
+    setReflSaving(true);
+    try {
+      await api.updateSettings(patch);
+      setMessage("Nachtschicht-Einstellungen gespeichert");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Nachtschicht-Einstellungen nicht speichern");
+    } finally {
+      setReflSaving(false);
+    }
+  };
   const [plannerPlanId, setPlannerPlanId] = useState("");
   const [plannerSaving, setPlannerSaving] = useState(false);
   const savePlannerPlan = async () => {
@@ -335,6 +352,13 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => {
     api.listAIAccounts(true).then(setModeratorAccounts).catch(() => {});
+    // Current reflection config (enabled/mode/hour) comes from the status endpoint.
+    api.getReflectionStatus().then((r) => {
+      setReflEnabled(r.enabled);
+      setReflHour(r.hour);
+      setReflMode(r.mode);
+      if (r.token_budget) setReflBudget(r.token_budget);
+    }).catch(() => {});
     api.getSettings().then((s) => {
       setSettings(s);
       setProvider(s.model_provider || "anthropic");
@@ -1111,6 +1135,113 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     <option key={a.id} value={String(a.id)}>{a.name}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+          </section>
+        )}
+        {/* ─── Nachtschicht (Reflection) ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Moon className="h-4 w-4 text-muted-foreground/60" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                Nachtschicht (Reflection)
+              </h2>
+            </div>
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm divide-y divide-foreground/[0.04]">
+              <div className="flex items-center justify-between gap-3 px-5 py-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">Aktiviert</div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                    Der nächtliche Reflexions-Lauf liest die Gespräche und Aufgaben des Tages und
+                    destilliert daraus dauerhaftes Wissen.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = !reflEnabled;
+                    setReflEnabled(next);
+                    saveReflection({ reflection_enabled: next ? "true" : "false" });
+                  }}
+                  disabled={reflSaving}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                    reflEnabled ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                    reflSaving && "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                    reflEnabled ? "translate-x-6" : "translate-x-1",
+                  )} />
+                </button>
+              </div>
+              <div className="px-5 py-4 grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-sm font-medium">Uhrzeit</div>
+                  <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                    Wann der Lauf startet (lokale Stunde).
+                  </p>
+                  <select
+                    value={reflHour}
+                    onChange={(e) => {
+                      const h = parseInt(e.target.value, 10);
+                      setReflHour(h);
+                      saveReflection({ reflection_hour: h });
+                    }}
+                    disabled={reflSaving}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 disabled:opacity-40"
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>
+                        {String(h).padStart(2, "0")}:00 Uhr
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div className="text-sm font-medium">Modus</div>
+                  <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                    Wie viel ohne Freigabe übernommen wird.
+                  </p>
+                  <select
+                    value={reflMode}
+                    onChange={(e) => {
+                      const m = e.target.value as "auto" | "hybrid" | "strict";
+                      setReflMode(m);
+                      saveReflection({ reflection_mode: m });
+                    }}
+                    disabled={reflSaving}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 disabled:opacity-40"
+                  >
+                    <option value="auto">Automatisch</option>
+                    <option value="hybrid">Ausgewogen — Empfohlen</option>
+                    <option value="strict">Alles freigeben</option>
+                  </select>
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <div className="text-sm font-medium">Token-Budget</div>
+                <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                  Hartes Limit pro Lauf — schützt vor unerwarteten Kosten.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={1000}
+                    step={1000}
+                    value={reflBudget}
+                    onChange={(e) => setReflBudget(parseInt(e.target.value, 10) || 0)}
+                    className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50"
+                  />
+                  <button
+                    onClick={() => saveReflection({ reflection_token_budget: reflBudget })}
+                    disabled={reflSaving || reflBudget < 1000}
+                    className="rounded-lg bg-foreground/[0.06] hover:bg-foreground/[0.10] px-3 text-xs disabled:opacity-40"
+                  >
+                    Speichern
+                  </button>
+                </div>
               </div>
             </div>
           </section>
