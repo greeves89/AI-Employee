@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.160] — 2026-07-09
+
+### Changed
+- Schritt-Replay: der Log scrollt jetzt automatisch mit, waehrend man den Schieberegler bewegt.
+
 ## [1.99.159] — 2026-07-09
 
 ### Added

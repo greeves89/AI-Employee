@@ -65,7 +65,14 @@ export default function TaskDetailPage() {
   const [replayLoading, setReplayLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const replayContainerRef = useRef<HTMLDivElement>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  // Auto-scroll the replay log to the newest revealed step while dragging the slider.
+  useEffect(() => {
+    const el = replayContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [replayIndex]);
 
   // Resolve agent id → name once, for readable "delegated to X" lines.
   useEffect(() => {
@@ -439,7 +446,7 @@ export default function TaskDetailPage() {
                         Schritt {replayIndex}/{replaySteps.length}
                       </span>
                     </div>
-                    <div className="h-[400px] overflow-y-auto rounded-lg bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
+                    <div ref={replayContainerRef} className="h-[400px] overflow-y-auto rounded-lg bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
                       {mergedReplay.map((ev, i) => (
                         <TaskLogLine key={i} event={ev} agentNames={agentNames} />
                       ))}
