@@ -5,7 +5,7 @@ import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, Ch
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
-import { sendMeetingTranscriptToChat } from "@/lib/api";
+import { sendMeetingTranscriptToChat, getChatHistory } from "@/lib/api";
 
 type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
@@ -163,6 +163,28 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       return [...prev, { role, text: t }];
     });
   }, []);
+
+  // When resuming a past conversation (from the Speech tab's "Letzte Gespräche"
+  // list), seed the transcript with its history so the user sees the earlier turns
+  // and speaks straight into the same session — same shared session as the text chat.
+  useEffect(() => {
+    if (!resumeSessionId) return;
+    let cancelled = false;
+    getChatHistory(agentId, 200, resumeSessionId)
+      .then((res) => {
+        if (cancelled) return;
+        const seeded: Turn[] = [];
+        for (const m of res.messages || []) {
+          if (m.role !== "user" && m.role !== "assistant") continue;
+          const text = String(m.content || "").trim();
+          if (!text) continue;
+          seeded.push({ role: m.role, text });
+        }
+        if (seeded.length) setTurns(seeded);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [agentId, resumeSessionId]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const modeRef = useRef<Mode>("classic");

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.163] — 2026-07-09
+
+### Added
+- Speech-Reiter: Liste "Letzte Gespräche" — frühere Unterhaltungen auswählen, Verlauf sehen und per Sprache fortsetzen (gemeinsame Sessions mit dem Chat).
+
 ## [1.99.162] — 2026-07-09
 
 ### Changed
