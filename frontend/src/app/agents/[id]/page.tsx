@@ -83,10 +83,8 @@ const tabGroups: TabGroup[] = [
   { key: "speech", label: "Speech", icon: AudioLines, subs: [
     { key: "speech", label: "Speech", icon: AudioLines, simpleVisible: true },
   ] },
-  { key: "todos", label: "Todos", icon: ListTodo, subs: [
-    { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
-  ] },
   { key: "activity", label: "Activity", icon: Activity, subs: [
+    { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
     { key: "terminal", label: "Live", icon: Activity, simpleVisible: false },
     { key: "history", label: "Verlauf", icon: History, simpleVisible: true },
   ] },

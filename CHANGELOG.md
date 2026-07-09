@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.164] — 2026-07-09
+
+### Changed
+- Agent-Detail: Reiter "Todos" und "Activity" zusammengeführt — ein "Activity"-Reiter mit Sub-Reitern Todos, Live und Verlauf (Klick auf den Reiter öffnet direkt Todos).
+
 ## [1.99.163] — 2026-07-09
 
 ### Added
