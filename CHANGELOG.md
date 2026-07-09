@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.166] — 2026-07-09
+
+### Added
+- Speech-Reiter: Datei-Upload in den Workspace — der Agent meldet sich per Sprache und fragt, was er damit tun soll (falls noch keine Anweisung vorliegt).
+
 ## [1.99.165] — 2026-07-09
 
 ### Changed

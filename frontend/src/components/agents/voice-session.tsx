@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
-import { sendMeetingTranscriptToChat, getChatHistory } from "@/lib/api";
+import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/api";
 
 type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
@@ -187,6 +187,34 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   }, [agentId, resumeSessionId]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+
+  // Drop file(s) into the agent's workspace, then tell the live session so the agent
+  // picks it up by voice ("Datei X unter /workspace/X hochgeladen") and asks what to do.
+  const handleUpload = useCallback(async (picked: FileList | null) => {
+    if (!picked || picked.length === 0) return;
+    setUploading(true);
+    setUploadMsg(null);
+    try {
+      await uploadFiles(agentId, "/workspace", picked);
+      const names = Array.from(picked).map((f) => `${f.name} unter /workspace/${f.name}`);
+      wsRef.current?.send(JSON.stringify({ type: "files_uploaded", data: { files: names } }));
+      setUploadMsg(
+        picked.length === 1
+          ? `${picked[0].name} hochgeladen`
+          : `${picked.length} Dateien hochgeladen`,
+      );
+      window.setTimeout(() => setUploadMsg(null), 8000);
+    } catch (e) {
+      setUploadMsg(`Upload fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [agentId]);
+
   const modeRef = useRef<Mode>("classic");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -804,6 +832,22 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                   >
                     {paused ? <><Play className="h-3.5 w-3.5" /> Fortsetzen</> : <><Pause className="h-3.5 w-3.5" /> Fokus</>}
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleUpload(e.target.files)}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.06] px-3 py-1.5 text-xs font-medium hover:bg-foreground/[0.10] disabled:opacity-50"
+                    title="Datei in den Workspace des Agenten laden — er fragt dann, was er damit tun soll"
+                  >
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                    Datei hochladen
+                  </button>
                   <button
                     onClick={openMeeting}
                     className="inline-flex items-center gap-1.5 rounded-md bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
@@ -818,6 +862,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     <PhoneOff className="h-3.5 w-3.5" /> Gespräch beenden
                   </button>
                 </div>
+                {uploadMsg && (
+                  <div className="text-center text-xs text-emerald-400/90">{uploadMsg}</div>
+                )}
                 {error && <div className="text-center text-xs text-red-400">{error}</div>}
               </div>
 
