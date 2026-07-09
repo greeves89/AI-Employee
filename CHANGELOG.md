@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.6] — 2026-07-09
+
+### Added
+- Sprache: Der Agent kann jetzt Dinge visuell zeigen — Bilder, QR-Codes (Link aufs Handy), Webseiten im eingebetteten Fenster oder in einem neuen Tab.
+- Sprache: Der Agent benennt das Gespraech nach dem ersten Austausch automatisch thematisch.
+- Sprache: Datei-Upload per Drag-and-Drop auf die Gespraechsspalte.
+
+### Changed
+- Sprach-Cockpit neu gestaltet: dezenterer Orb, schlanke runde Bedienelemente, grosse Anzeigeflaeche unter dem Orb.
+
 ## [1.100.5] — 2026-07-09
 
 ### Fixed

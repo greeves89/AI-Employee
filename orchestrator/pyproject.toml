@@ -36,6 +36,9 @@ dependencies = [
     "pypdf>=5.1",
     "python-docx>=1.1",
     "openpyxl>=3.1",
+    # QR codes for the voice cockpit (show_on_screen kind='qr'). Pure Python — we use
+    # the bit matrix and build the SVG ourselves, so no Pillow / image stack needed.
+    "qrcode>=8.0",
 ]
 
 [build-system]

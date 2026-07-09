@@ -1120,6 +1120,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                 </div>
               </div>
             </div>
+            {webModal && (
+              <WebModal url={webModal.url} caption={webModal.caption} onClose={() => setWebModal(null)} />
+            )}
             {meetingOpen && (
               <div className="mt-4 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-3">
                 <div className="mb-2 flex items-center justify-between">

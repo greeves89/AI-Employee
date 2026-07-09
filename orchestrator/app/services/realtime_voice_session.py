@@ -168,6 +168,52 @@ LIST_TODOS_TOOL = {
     }
 }
 
+SHOW_ON_SCREEN_TOOL = {
+    "toolSpec": {
+        "name": "show_on_screen",
+        "description": (
+            "Show something VISUALLY to the user on their screen, right next to this "
+            "conversation. Use it whenever seeing beats hearing: a picture, a chart, a "
+            "document the agent produced, a web page, or a link the user should take to "
+            "their phone. kind='image' shows a picture (source = a file path in my "
+            "workspace, e.g. /workspace/transfer/chart.png, or a public image URL). "
+            "kind='qr' shows a QR code for a link so the user can open it on their phone. "
+            "kind='web' opens the page in a window inside the app (works for pages that "
+            "allow embedding — my own HTML reports always do). kind='tab' opens the page "
+            "in a NEW BROWSER TAB — use this for normal websites the user should interact "
+            "with. Say briefly what you are showing."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "description": "image | qr | web | tab"},
+                "source": {"type": "string", "description": "Workspace file path or http(s) URL."},
+                "caption": {"type": "string", "description": "Short caption shown with it."},
+            },
+            "required": ["kind", "source"],
+        })},
+    }
+}
+
+RENAME_CONVERSATION_TOOL = {
+    "toolSpec": {
+        "name": "rename_conversation",
+        "description": (
+            "Give THIS conversation a short thematic title (3–5 words, the user's "
+            "language), so they can find it again in their conversation list. Call this "
+            "ONCE, right after the first real exchange, as soon as you know what the "
+            "conversation is about. Do not announce it — just do it silently."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Short thematic title, e.g. 'PDF-Zusammenfassung Nutzungsrichtlinie'."},
+            },
+            "required": ["title"],
+        })},
+    }
+}
+
 SET_AUTONOMY_TOOL = {
     "toolSpec": {
         "name": "set_autonomy",
@@ -297,6 +343,134 @@ ASK_AGENT_TOOL = {
 }
 
 
+_MAX_FETCH_BYTES = 8_000_000
+_MAX_REDIRECTS = 3
+
+
+async def _assert_public_url(url: str) -> str:
+    """Validate an agent-supplied URL before the ORCHESTRATOR fetches it (SSRF guard).
+
+    The model picks these URLs, so a prompt-injected page could point us at internal
+    services (``http://localhost:8000``, the DB, ``169.254.169.254`` cloud metadata).
+    We allow only http(s) and only hosts that resolve exclusively to public addresses.
+    Returns the URL on success, raises ValueError otherwise.
+
+    NOTE: validating the URL is not enough on its own — the host could re-resolve to an
+    internal IP at connect time (DNS rebinding), and a redirect could point inside.
+    Use :func:`_safe_get` for anything that actually issues a request; it pins the IP
+    this function resolved and re-validates every redirect hop.
+    """
+    await _resolve_public(url)
+    return (url or "").strip()
+
+
+async def _resolve_public(url: str) -> tuple[str, int, str]:
+    """Resolve `url`'s host and assert EVERY address is public. → (ip, port, hostname)."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("Nur http(s)-Adressen sind erlaubt.")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(parsed.hostname, port)
+    except socket.gaierror as e:
+        raise ValueError("Adresse nicht auflösbar.") from e
+    if not infos:
+        raise ValueError("Adresse nicht auflösbar.")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
+                or ip.is_reserved or ip.is_unspecified):
+            raise ValueError("Interne Adressen sind nicht erlaubt.")
+    # Pin the FIRST validated address — the caller connects to exactly this one, so a
+    # second (rebinding) DNS answer can never be used.
+    return ipaddress.ip_address(infos[0][4][0]).compressed, port, parsed.hostname
+
+
+async def _safe_get(url: str, *, timeout: float, max_bytes: int = _MAX_FETCH_BYTES):
+    """SSRF-safe GET: validates + IP-pins every hop, follows redirects manually,
+    and streams with a hard byte cap. Returns (final_url, headers, body_bytes)."""
+    import httpx
+    from urllib.parse import urlparse, urlunparse, urljoin
+
+    current = (url or "").strip()
+    for _ in range(_MAX_REDIRECTS + 1):
+        ip, port, host = await _resolve_public(current)
+        p = urlparse(current)
+        # Connect to the validated IP literal; keep the real Host (+ TLS SNI) so
+        # vhosts and certificate verification still work.
+        netloc = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
+        pinned = urlunparse((p.scheme, netloc, p.path or "/", p.params, p.query, ""))
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            req = client.build_request(
+                "GET", pinned, headers={"Host": host},
+                extensions={"sni_hostname": host},
+            )
+            resp = await client.send(req, stream=True)
+            try:
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    loc = resp.headers.get("location")
+                    if not loc:
+                        raise ValueError("Weiterleitung ohne Ziel.")
+                    await resp.aclose()
+                    current = urljoin(current, loc)  # validated at the top of the next hop
+                    continue
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > max_bytes:
+                        raise ValueError("Inhalt ist zu groß.")
+                return current, resp.headers, bytes(body)
+            finally:
+                await resp.aclose()
+    raise ValueError("Zu viele Weiterleitungen.")
+
+
+def _qr_svg(data: str) -> str:
+    """Render `data` as a QR code SVG (no image deps — we build the SVG from the matrix)."""
+    import qrcode
+
+    qr = qrcode.QRCode(border=2, box_size=1)
+    qr.add_data(data)
+    qr.make(fit=True)
+    matrix = qr.get_matrix()
+    n = len(matrix)
+    rects = [
+        f'<rect x="{x}" y="{y}" width="1" height="1"/>'
+        for y, row in enumerate(matrix) for x, cell in enumerate(row) if cell
+    ]
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" '
+        f'shape-rendering="crispEdges" width="320" height="320">'
+        f'<rect width="{n}" height="{n}" fill="#fff"/>'
+        f'<g fill="#000">{"".join(rects)}</g></svg>'
+    )
+
+
+async def _probe_embeddable(url: str) -> bool:
+    """Can this page be shown in an iframe? Most sites forbid it (X-Frame-Options /
+    CSP frame-ancestors) — checking up front lets the UI offer a QR code instead of
+    rendering a blank frame. Uses the SSRF-safe fetcher (validates every hop)."""
+    try:
+        _final, headers, _body = await _safe_get(url, timeout=6.0, max_bytes=64_000)
+    except Exception:  # noqa: BLE001 — unreachable/blocked → assume not embeddable
+        return False
+    xfo = (headers.get("x-frame-options") or "").lower()
+    if "deny" in xfo or "sameorigin" in xfo:
+        return False
+    csp = (headers.get("content-security-policy") or "").lower()
+    if "frame-ancestors" in csp:
+        # Only 'frame-ancestors *' (or a wildcard http scheme) would allow us.
+        section = csp.split("frame-ancestors", 1)[1].split(";", 1)[0]
+        if "*" not in section:
+            return False
+    return True
+
+
 def _now_context() -> str:
     """Current date/time so the model never has to look up the clock.
 
@@ -383,6 +557,16 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "NIEMALS eine neue ask_agent-/delegate_tasks-Aufgabe.\n"
         "Willst du dem Nutzer den Stand deiner delegierten Aufgaben nennen ('was läuft gerade bei dir') "
         "→ get_delegated_tasks (zeigt id, Auftrag, läuft/fertig).\n"
+        "ZEIGEN STATT VORLESEN (wichtig fürs Gefühl): Ist etwas visuell besser, wirf es dem Nutzer "
+        "mit show_on_screen auf den Schirm, statt es vorzulesen. Bild/Diagramm/Screenshot aus meinem "
+        "Workspace oder aus dem Netz → kind='image'. Eine normale Webseite, mit der er interagieren "
+        "soll → kind='tab' (öffnet einen neuen Browser-Tab). Eine Seite, die er nur ansehen soll, "
+        "oder ein HTML-Report, den ich selbst gebaut habe → kind='web' (Fenster in der App). Einen "
+        "Link, den er aufs Handy nehmen soll → kind='qr'. Sag dabei kurz, was du zeigst. Baue ich "
+        "auf Wunsch eine Auswertung, ist ein Chart als Bild oder ein HTML-Report fast immer besser "
+        "als eine lange gesprochene Aufzählung.\n"
+        "GESPRÄCHSTITEL: Sobald nach dem ersten echten Austausch klar ist, worum es geht, rufe "
+        "EINMAL rename_conversation mit einem kurzen thematischen Titel auf. Kommentiere das nicht.\n"
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
         "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
         "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
@@ -489,6 +673,7 @@ class RealtimeVoiceSession:
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
             ASK_AGENT_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
+            SHOW_ON_SCREEN_TOOL, RENAME_CONVERSATION_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
         engine = creds.get("engine") or "nova_sonic"
@@ -793,6 +978,15 @@ class RealtimeVoiceSession:
                 tool_use_id,
                 await self._web_search(args.get("query") or "", int(args.get("max_results") or 5)),
             )
+            return
+        if name == "show_on_screen":
+            await self._respond(tool_use_id, await self._show_on_screen(
+                str(args.get("kind") or ""), str(args.get("source") or ""),
+                str(args.get("caption") or ""),
+            ))
+            return
+        if name == "rename_conversation":
+            await self._respond(tool_use_id, await self._rename_conversation(str(args.get("title") or "")))
             return
         if name == "search_knowledge":
             await self._respond(tool_use_id, await self._search_knowledge(str(args.get("query") or "")))
@@ -1271,6 +1465,123 @@ class RealtimeVoiceSession:
             for i, r in enumerate(results, 1)
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
+
+    async def _rename_conversation(self, title: str) -> str:
+        """Set this call's thematic title — the SAME ChatSession.title the conversation
+        list (Speech + Chat rail) shows and the rename-by-doubleclick writes."""
+        t = " ".join((title or "").split())[:80]
+        if not t:
+            return "Kein Titel angegeben."
+        from app.db.session import async_session_factory
+        from app.models.chat_session import ChatSession
+        from sqlalchemy import select
+        try:
+            async with async_session_factory() as db:
+                row = (await db.execute(
+                    select(ChatSession).where(
+                        ChatSession.agent_id == self.agent_id,
+                        ChatSession.session_id == self.session_id,
+                    )
+                )).scalar_one_or_none()
+                if row:
+                    row.title = t
+                else:
+                    db.add(ChatSession(agent_id=self.agent_id, session_id=self.session_id, title=t))
+                await db.commit()
+        except Exception as e:  # noqa: BLE001 — a title is cosmetic, never break the call
+            logger.warning("rename_conversation failed agent=%s: %s", self.agent_id, e)
+            return "Titel konnte nicht gesetzt werden."
+        return f"Gespräch heißt jetzt „{t}“."
+
+    async def _show_on_screen(self, kind: str, source: str, caption: str) -> str:
+        """Push a visual (image / QR / embedded page / new tab) to the user's screen.
+
+        Everything rides the existing ``media`` event the cockpit already renders, so
+        there is one display pipeline, not two.
+        """
+        kind = (kind or "").strip().lower()
+        source = (source or "").strip()
+        caption = (caption or "").strip()
+        if not source:
+            return "Keine Quelle angegeben."
+
+        if kind == "qr":
+            try:
+                url = await _assert_public_url(source) if source.startswith("http") else source
+                svg = _qr_svg(url)
+            except ValueError as e:
+                return str(e)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("qr generation failed: %s", e)
+                return "QR-Code konnte nicht erzeugt werden."
+            await self._emit({"type": "media", "data": {
+                "kind": "image", "media_type": "image/svg+xml",
+                "b64": base64.b64encode(svg.encode("utf-8")).decode("ascii"),
+                "caption": caption or "QR-Code",
+            }})
+            return "QR-Code wird angezeigt."
+
+        _IMG_EXT = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+        if kind == "image":
+            if source.startswith("http"):
+                try:
+                    _final, headers, content = await _safe_get(source, timeout=10.0)
+                except ValueError as e:
+                    return str(e)
+                except Exception:  # noqa: BLE001
+                    return "Bild konnte nicht geladen werden."
+                ctype = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
+                if not ctype.startswith("image/"):
+                    return "Das ist kein (anzeigbares) Bild."
+                b64 = base64.b64encode(content).decode("ascii")
+            else:
+                # Workspace file → read it out of the agent's container. FileManager
+                # validates the path and refuses symlinks (same gate as the file browser).
+                # Only image extensions — never turn "show a picture" into arbitrary
+                # file exfiltration (e.g. /workspace/.env).
+                low = source.lower()
+                if not low.endswith(_IMG_EXT):
+                    return "Ich kann hier nur Bilddateien anzeigen (png, jpg, svg, gif, webp)."
+                if not self._container_id:
+                    return "Ich habe gerade keinen laufenden Workspace."
+                from app.core.file_manager import FileManager
+                from app.services.docker_service import DockerService
+                try:
+                    data = await asyncio.to_thread(
+                        FileManager(DockerService()).read_file, self._container_id, source
+                    )
+                    if not data or len(data) > _MAX_FETCH_BYTES:
+                        return "Bild nicht gefunden oder zu groß."
+                    b64 = base64.b64encode(data).decode("ascii")
+                    ctype = ("image/svg+xml" if low.endswith(".svg")
+                             else "image/jpeg" if low.endswith((".jpg", ".jpeg"))
+                             else "image/gif" if low.endswith(".gif")
+                             else "image/webp" if low.endswith(".webp")
+                             else "image/png")
+                except Exception:  # noqa: BLE001
+                    return f"Die Datei {source} konnte ich nicht lesen."
+            await self._emit({"type": "media", "data": {
+                "kind": "image", "media_type": ctype, "b64": b64, "caption": caption,
+            }})
+            return "Bild wird angezeigt."
+
+        if kind in ("web", "tab"):
+            try:
+                url = await _assert_public_url(source)
+            except ValueError as e:
+                return str(e)
+            embeddable = await _probe_embeddable(url) if kind == "web" else False
+            await self._emit({"type": "media", "data": {
+                "kind": "web", "url": url, "caption": caption,
+                "embeddable": embeddable, "auto_open": kind == "tab",
+            }})
+            if kind == "tab":
+                return "Ich öffne die Seite in einem neuen Tab."
+            return ("Die Seite wird im Fenster angezeigt." if embeddable else
+                    "Die Seite erlaubt kein Einbetten — ich zeige sie zum Öffnen und als QR-Code an.")
+
+        return "Unbekannte Anzeigeart. Nutze image, qr, web oder tab."
 
     async def _persist_turn(self, role: str, text: str) -> None:
         """Save the voice conversation as a chat session (session_id = this call) so

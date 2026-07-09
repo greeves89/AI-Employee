@@ -50,22 +50,29 @@ const THEMES: Record<string, Theme> = {
   },
 };
 
-export function JarvisCore({ state }: { state: string }) {
+/** `compact`: a calmer, smaller presence — the orb should breathe in the corner of
+ *  your eye, not dominate the cockpit. Used by the full-height Speech tab. */
+export function JarvisCore({ state, compact = false }: { state: string; compact?: boolean }) {
   const t = THEMES[state] ?? THEMES.ready;
   const rippling = state === "listening" || state === "speaking";
   const spinning = state === "processing" || state === "connecting";
   const breathing = !rippling && !spinning && state !== "error";
+  const s = compact
+    ? { box: "h-32 w-32", r1: "h-20 w-20", r2: "h-28 w-28", arc: "h-24 w-24", halo: "h-24 w-24", core: "h-16 w-16" }
+    : { box: "h-52 w-52", r1: "h-36 w-36", r2: "h-48 w-48", arc: "h-44 w-44", halo: "h-40 w-40", core: "h-28 w-28" };
+  // Soften the bloom in compact mode — same hue, far less shout.
+  const glow = compact ? `${t.glow} opacity-90 saturate-[0.85]` : t.glow;
 
   return (
-    <div className="relative flex h-52 w-52 items-center justify-center select-none">
+    <div className={`relative flex ${s.box} items-center justify-center select-none`}>
       {/* Expanding ripples while listening/speaking */}
       {rippling && (
         <>
           <span
-            className={`absolute h-36 w-36 rounded-full ${t.ring} opacity-25 animate-ping [animation-duration:1800ms]`}
+            className={`absolute ${s.r1} rounded-full ${t.ring} ${compact ? "opacity-15" : "opacity-25"} animate-ping [animation-duration:1800ms]`}
           />
           <span
-            className={`absolute h-48 w-48 rounded-full ${t.ring} opacity-10 animate-ping [animation-duration:2600ms] [animation-delay:400ms]`}
+            className={`absolute ${s.r2} rounded-full ${t.ring} ${compact ? "opacity-[0.07]" : "opacity-10"} animate-ping [animation-duration:2600ms] [animation-delay:400ms]`}
           />
         </>
       )}
@@ -73,18 +80,18 @@ export function JarvisCore({ state }: { state: string }) {
       {/* Rotating arc while thinking / connecting */}
       {spinning && (
         <span
-          className={`absolute h-44 w-44 rounded-full border-2 border-transparent border-t-current animate-spin ${
+          className={`absolute ${s.arc} rounded-full border-2 border-transparent border-t-current animate-spin ${
             state === "processing" ? "text-amber-400" : "text-zinc-400"
           } [animation-duration:1400ms]`}
         />
       )}
 
       {/* Steady halo ring */}
-      <span className={`absolute h-40 w-40 rounded-full border ${t.ring} border-opacity-20`} />
+      <span className={`absolute ${s.halo} rounded-full border ${t.ring} border-opacity-20`} />
 
       {/* The core orb */}
       <div
-        className={`relative flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br ${t.core} ${t.glow} transition-all duration-500 ${
+        className={`relative flex ${s.core} items-center justify-center rounded-full bg-gradient-to-br ${t.core} ${glow} transition-all duration-500 ${
           state === "speaking"
             ? "scale-110 animate-pulse [animation-duration:700ms]"
             : breathing
