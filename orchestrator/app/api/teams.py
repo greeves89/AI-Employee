@@ -139,11 +139,15 @@ async def set_lead(team_id: str, body: SetLead, user=Depends(require_auth), db: 
 async def _role_summary(agent: Agent, request: Request) -> str:
     """Best-effort first heading of the member's knowledge.md.
 
-    Mirrors agents.py: reads /workspace/knowledge.md via a container exec.
-    Returns the first non-empty line (leading '#' / 'Rolle:' stripped) or ""
-    on ANY failure (no docker, stopped container, exec error). A missing role
-    must never block delegation — keep this standalone + patchable in tests.
+    Prefer the agent's CONFIGURED role/specialty (accurate + instant); only fall
+    back to the knowledge.md heading if no role is set. Previously this always read
+    knowledge.md, which for most agents is just the generic "Agent Knowledge Base"
+    template header — so every roster entry looked identical.
+    A missing role must never block delegation — keep this standalone + patchable.
     """
+    role = (getattr(agent, "config", None) or {}).get("role")
+    if role and str(role).strip():
+        return str(role).strip()
     try:
         docker = getattr(request.app.state, "docker", None)
         if not docker or not getattr(agent, "container_id", None):

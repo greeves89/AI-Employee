@@ -865,6 +865,17 @@ async def set_room_sharing(
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    # DATA-LEAK GUARD: only "standard" agents may enter the shared pool — i.e. agents
+    # with no personal owner, or owned by the acting admin. A regular user's personal
+    # agent carries that user's accumulated knowledge/memory; exposing it to everyone
+    # via the room pool would leak their data. Such agents cannot be pooled.
+    if shared_for_rooms and agent.user_id and str(agent.user_id) != str(user.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Nur Standard-Agenten (ohne persönlichen Besitzer) können freigegeben "
+                   "werden. Ein persönlich erstellter Agent trägt das Wissen seines Erstellers "
+                   "und darf nicht für alle freigegeben werden.",
+        )
     agent.shared_for_rooms = bool(shared_for_rooms)
     await db.commit()
     return {"id": agent.id, "shared_for_rooms": agent.shared_for_rooms}

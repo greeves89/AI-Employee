@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, CheckCircle2, XCircle, Clock, Loader2,
+  ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
   Timer, Hash, Cpu, DollarSign, Wrench, Bot,
   AlertTriangle, Terminal, FileText, RotateCcw,
 } from "lucide-react";
@@ -34,6 +34,8 @@ export default function TaskDetailPage() {
   const { simpleMode } = useSimpleMode();
   const [task, setTask] = useState<Task | null>(null);
   const [logs, setLogs] = useState<LogEvent[]>([]);
+  // agent id → name, so delegated sub-tasks show WHO they went to (traceability).
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [replaySteps, setReplaySteps] = useState<api.TaskStep[]>([]);
@@ -43,6 +45,35 @@ export default function TaskDetailPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  // Resolve agent id → name once, for readable "delegated to X" lines.
+  useEffect(() => {
+    api.getAgents("all").then((d) => {
+      setAgentNames(Object.fromEntries(d.agents.map((a) => [a.id, a.name])));
+    }).catch(() => {
+      api.getAgents("own").then((d) =>
+        setAgentNames(Object.fromEntries(d.agents.map((a) => [a.id, a.name])))
+      ).catch(() => {});
+    });
+  }, []);
+
+  // Merge consecutive streamed text deltas into one flowing block. The backend emits
+  // the assistant's answer as many small chunks; rendering each as its own timestamped
+  // line broke words mid-stream ("abgehackt"). Coalescing restores readable paragraphs.
+  const mergedLogs = useMemo(() => {
+    const out: LogEvent[] = [];
+    for (const log of logs) {
+      const last = out[out.length - 1];
+      if (log.type === "text" && last?.type === "text") {
+        const prev = String((last.data as Record<string, unknown>)?.text || "");
+        const add = String((log.data as Record<string, unknown>)?.text || "");
+        last.data = { ...(last.data as object), text: prev + add };
+      } else {
+        out.push({ ...log, data: { ...(log.data as object) } });
+      }
+    }
+    return out;
+  }, [logs]);
 
   // Load the persisted step history for time-travel replay
   const loadReplay = useCallback(async () => {
@@ -292,7 +323,7 @@ export default function TaskDetailPage() {
                 <span>Waiting for output...</span>
               </div>
             ) : (
-              logs.map((log, i) => <TaskLogLine key={i} event={log} />)
+              mergedLogs.map((log, i) => <TaskLogLine key={i} event={log} agentNames={agentNames} />)
             )}
           </div>
         </div>}
@@ -397,7 +428,7 @@ function MiniCard({
   );
 }
 
-function TaskLogLine({ event }: { event: LogEvent }) {
+function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?: Record<string, string> }) {
   const time = new Date(event.timestamp).toLocaleTimeString();
   const data = event.data as Record<string, unknown>;
 
@@ -409,19 +440,39 @@ function TaskLogLine({ event }: { event: LogEvent }) {
           {String(data.text || "")}
         </div>
       );
-    case "tool_call":
+    case "tool_call": {
+      const tool = String(data.tool || "");
+      const input = (data.input || {}) as Record<string, unknown>;
+      // Delegation: the lead spinning up a sub-task for a teammate — show WHO + WHAT
+      // so the team split is traceable, not just a raw create_task blob.
+      if (tool === "create_task") {
+        const target = String(input.agent_id || "");
+        const who = agentNames[target] || (target ? target.slice(0, 8) : "Auto-Zuweisung");
+        const what = String(input.title || input.prompt || "");
+        return (
+          <div className="text-amber-300 flex items-start gap-1.5">
+            <span className="text-muted-foreground/40 mr-0.5 select-none">{time}</span>
+            <ArrowRight className="h-3 w-3 mt-0.5 shrink-0 text-amber-400" />
+            <span>
+              <span className="font-medium">Delegiert an {who}</span>
+              {what ? `: ${what.slice(0, 140)}` : ""}
+            </span>
+          </div>
+        );
+      }
       return (
         <div className="text-blue-400">
           <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
           <span className="inline-flex items-center gap-1">
             <Wrench className="h-3 w-3 text-yellow-400 inline" />
-            <span className="text-yellow-400 font-medium">{String(data.tool || "")}</span>
+            <span className="text-yellow-400 font-medium">{tool}</span>
           </span>
           <span className="text-muted-foreground/50 ml-2">
-            {JSON.stringify(data.input || {}).slice(0, 300)}
+            {JSON.stringify(input).slice(0, 300)}
           </span>
         </div>
       );
+    }
     case "tool_result":
       return (
         <div className="text-muted-foreground/60 ml-6 border-l border-foreground/[0.06] pl-3 max-h-32 overflow-hidden">

@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.157] — 2026-07-09
+
+### Changed
+- Team-Roster & Live-Output: Der Roster zeigt jetzt die echte Rolle/Spezialgebiet jedes Agenten (statt des generischen Wissens-Headers). Im Live-Output werden gestreamte Texte fluessig zusammengefuehrt (keine Wort-Brueche mehr) und delegierte Teilaufgaben klar als "Delegiert an <Agent>" angezeigt.
+- Meeting-Raum-Pool: Nur Standard-Agenten (ohne persoenlichen Besitzer) koennen freigegeben werden — persoenliche Agenten mit Nutzerwissen bleiben ausgeschlossen (Data-Leak-Schutz).
+
 ## [1.99.156] — 2026-07-09
 
 ### Added
