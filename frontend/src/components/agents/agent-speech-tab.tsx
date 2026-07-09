@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PanelLeft, PanelLeftClose } from "lucide-react";
 import * as api from "@/lib/api";
 import type { ChatSession } from "@/lib/api";
 import { SessionRail } from "./session-rail";
@@ -15,6 +16,7 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [railOpen, setRailOpen] = useState(true);  // collapsible like the chat rail
 
   const loadSessions = useCallback(async () => {
     try {
@@ -64,28 +66,40 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
 
   return (
     <div className="flex h-full min-h-0 gap-3">
-      <SessionRail
-        className="rounded-2xl border border-border bg-card/60"
-        sessions={sessions}
-        selectedId={selected}
-        loading={loading}
-        onSelect={setSelected}
-        onNew={() => setSelected(null)}
-        onPin={togglePin}
-        onRename={renameSession}
-        onDelete={deleteSession}
-      />
+      {railOpen && (
+        <SessionRail
+          className="rounded-2xl border border-border bg-card/60"
+          sessions={sessions}
+          selectedId={selected}
+          loading={loading}
+          onSelect={setSelected}
+          onNew={() => setSelected(null)}
+          onPin={togglePin}
+          onRename={renameSession}
+          onDelete={deleteSession}
+        />
+      )}
 
       {/* Right — live voice view (remounts per selected session) */}
-      <div className="min-w-0 flex-1">
-        <VoiceSessionModal
-          key={`voice-${agentId}-${selected ?? "new"}`}
-          agentId={agentId}
-          agentName={agentName}
-          resumeSessionId={selected ?? undefined}
-          onClose={() => setSelected(null)}
-          embedded
-        />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <button
+          onClick={() => setRailOpen((o) => !o)}
+          className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground transition-colors"
+          title={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
+        >
+          {railOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
+          {railOpen ? "Gespräche ausblenden" : "Gespräche"}
+        </button>
+        <div className="min-h-0 flex-1">
+          <VoiceSessionModal
+            key={`voice-${agentId}-${selected ?? "new"}`}
+            agentId={agentId}
+            agentName={agentName}
+            resumeSessionId={selected ?? undefined}
+            onClose={() => setSelected(null)}
+            embedded
+          />
+        </div>
       </div>
     </div>
   );
