@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.165] — 2026-07-09
+
+### Changed
+- Chat-Reiter: Gesprächsliste links (wie im Speech-Reiter) statt horizontaler Session-Tabs — gemeinsame `SessionRail`-Komponente, per Toolbar-Button ein-/ausklappbar (auf Mobile standardmäßig zu).
+
+### Added
+- Gespräche anpinnen, umbenennen (Doppelklick oder Stift-Symbol) und löschen direkt in der Gesprächsliste — im Chat- UND Speech-Reiter (vorher nur in den Chat-Tabs möglich).
+
 ## [1.99.164] — 2026-07-09
 
 ### Changed
