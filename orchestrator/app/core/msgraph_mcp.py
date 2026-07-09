@@ -484,7 +484,7 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_read_file_content",
-        "description": "Read the text content of a OneDrive file (best for .txt/.md/.csv/.json). Returns up to ~12k chars.",
+        "description": "Read the text content of a OneDrive file. Extracts readable text from PDF, Word (.docx) and Excel (.xlsx) as well as plain text (.txt/.md/.csv/.json). Use this to actually READ a document's content (e.g. to summarize it) after finding it via ms_search_files. Returns up to ~12k chars.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -996,6 +996,69 @@ async def _graph_bytes(method: str, path: str, token: str, content: bytes | None
             logger.warning("Graph API %s on %s: %s", resp.status_code, path, resp.text[:200])
             raise RuntimeError(f"Microsoft Graph request failed (HTTP {resp.status_code}).")
         return resp
+
+
+def _extract_document_text(raw: bytes, filename: str, content_type: str, max_chars: int = 12000) -> str | None:
+    """Extract readable text from a downloaded document (PDF/Word/Excel).
+
+    Returns the text, or None if the format isn't a supported document (caller then
+    falls back to plain-text decoding). Kept dependency-light and fully defensive —
+    a broken/encrypted file must degrade to a clear message, never crash the tool.
+    """
+    name = (filename or "").lower()
+    ct = (content_type or "").lower()
+    import io
+
+    def _clip(t: str) -> str:
+        t = (t or "").strip()
+        return t[:max_chars] if t else ""
+
+    try:
+        if name.endswith(".pdf") or "application/pdf" in ct:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw))
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")
+                except Exception:  # noqa: BLE001
+                    return "Das PDF ist passwortgeschützt — Inhalt nicht lesbar."
+            parts = []
+            for page in reader.pages:
+                parts.append(page.extract_text() or "")
+                if sum(len(p) for p in parts) > max_chars:
+                    break
+            text = _clip("\n".join(parts))
+            return text or ("Das PDF enthält keinen extrahierbaren Text (evtl. ein "
+                            "gescanntes Bild ohne OCR).")
+
+        if name.endswith(".docx") or "wordprocessingml" in ct:
+            from docx import Document
+            doc = Document(io.BytesIO(raw))
+            parts = [p.text for p in doc.paragraphs if p.text]
+            for table in doc.tables:
+                for row in table.rows:
+                    parts.append("\t".join(c.text for c in row.cells))
+            return _clip("\n".join(parts)) or "Das Word-Dokument enthält keinen Text."
+
+        if name.endswith(".xlsx") or "spreadsheetml" in ct:
+            from openpyxl import load_workbook
+            wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+            parts = []
+            for ws in wb.worksheets:
+                parts.append(f"# {ws.title}")
+                for row in ws.iter_rows(values_only=True):
+                    cells = [str(c) for c in row if c is not None]
+                    if cells:
+                        parts.append("\t".join(cells))
+                    if sum(len(p) for p in parts) > max_chars:
+                        break
+                if sum(len(p) for p in parts) > max_chars:
+                    break
+            return _clip("\n".join(parts)) or "Die Excel-Datei enthält keine Daten."
+    except Exception as e:  # noqa: BLE001
+        logger.warning("document extraction failed for %s: %s", filename, e)
+        return f"Inhalt konnte nicht extrahiert werden ({type(e).__name__})."
+    return None  # not a recognized document format → caller tries plain text
 
 
 # ---------------------------------------------------------------------------
@@ -1711,12 +1774,19 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             return "Error: path required."
         resp = await _graph_bytes("GET", f"/me/drive/root:/{rel}:/content", token)
         raw = resp.content
-        if len(raw) > 2_000_000:
-            return "Datei zu groß zum Lesen (>2MB)."
+        if len(raw) > 25_000_000:
+            return "Datei zu groß zum Lesen (>25MB)."
+        ct = resp.headers.get("content-type", "")
+        # PDF / Word / Excel → extract readable text (agent can then summarize).
+        extracted = _extract_document_text(raw, rel, ct)
+        if extracted is not None:
+            return extracted
+        # Otherwise treat as plain text.
         try:
             return raw.decode("utf-8")[:12000]
         except UnicodeDecodeError:
-            return f"Datei ist kein reiner Text ({resp.headers.get('content-type', 'binär')}) — Inhalt hier nicht extrahierbar."
+            return (f"Datei ist kein reiner Text und kein unterstütztes Dokument "
+                    f"({ct or 'binär'}) — Inhalt hier nicht extrahierbar.")
 
     elif name == "ms_create_folder":
         parent = _drive_path(args.get("parent_path", ""))

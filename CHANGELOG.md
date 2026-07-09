@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.167] — 2026-07-09
+
+### Fixed
+- M365/OneDrive: Der Agent kann jetzt den Inhalt von PDF-, Word- und Excel-Dateien wirklich auslesen und zusammenfassen (vorher nur reine Textdateien).
+
 ## [1.99.166] — 2026-07-09
 
 ### Added
