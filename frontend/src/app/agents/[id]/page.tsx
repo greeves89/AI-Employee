@@ -181,7 +181,7 @@ export default function AgentDetailPage() {
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <Header
         title={agent.name}
-        subtitle={`Agent ${agent.id.slice(0, 8)}`}
+        subtitle={agent.role?.trim() ? agent.role : `Agent ${agent.id.slice(0, 8)}`}
         actions={
           <div className="flex items-center gap-3">
             {/* Inline status metrics */}

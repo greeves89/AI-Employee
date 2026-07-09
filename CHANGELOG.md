@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.158] — 2026-07-09
+
+### Changed
+- Agenten-Detailseite zeigt jetzt die Rolle/Spezialgebiet als Untertitel (die Uebersichts-Karten zeigen sie bereits).
+
 ## [1.99.157] — 2026-07-09
 
 ### Changed
