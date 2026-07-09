@@ -25,6 +25,8 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -295,10 +297,39 @@ ASK_AGENT_TOOL = {
 }
 
 
+def _now_context() -> str:
+    """Current date/time so the model never has to look up the clock.
+
+    Without this the model web-searches for "wie spät ist es" (and narrates the whole
+    deliberation). Berlin local time + the UTC offset also answers conversions like
+    "11 Uhr UTC — wie spät ist das bei uns?" directly, including DST.
+    """
+    days = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    try:
+        now = datetime.now(ZoneInfo("Europe/Berlin"))
+        offset_h = int((now.utcoffset() or timezone.utc.utcoffset(now)).total_seconds() // 3600)
+        dst = "Sommerzeit/MESZ" if offset_h == 2 else "Winterzeit/MEZ" if offset_h == 1 else ""
+        where = f"in Deutschland (UTC+{offset_h}{', ' + dst if dst else ''})"
+    except Exception:  # noqa: BLE001 — no tzdata: state UTC honestly, never fake local time
+        now = datetime.now(timezone.utc)
+        where = "in UTC (lokale Zeitzone nicht verfügbar)"
+    return (
+        f"AKTUELLE ZEIT: Es ist {days[now.weekday()]}, {now.strftime('%d.%m.%Y')}, "
+        f"{now.strftime('%H:%M')} Uhr {where}. "
+        "Beantworte Fragen nach Uhrzeit, Datum, Wochentag oder Zeitzonen-Umrechnungen IMMER "
+        "direkt daraus — nutze dafür NIEMALS web_search.\n"
+    )
+
+
 def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     lang = "Deutsch" if (language or "de").startswith("de") else language
     role = f" Deine Rolle: {agent_role}." if agent_role else ""
     return (
+        _now_context() +
+        "NICHT LAUT DENKEN: Sprich NIEMALS deinen Denkprozess aus. Kein „Okay, der Nutzer "
+        "fragt…“, kein „Ich muss prüfen…“, kein „Lass mich…“, kein Beschreiben, welches Tool "
+        "du gleich nutzt oder warum. Der Nutzer hört NUR die fertige, kurze Antwort. Denke "
+        "still, antworte direkt. Fragt er nach der Uhrzeit, sag die Uhrzeit — sonst nichts.\n"
         f"Du bist „{agent_name}“ selbst — der KI-Agent, mit dem der Nutzer spricht.{role} "
         f"Du sprichst {lang}, natürlich und knapp, wie am Telefon. Sprich AUSSCHLIESSLICH in "
         "der ICH-Form und sei einfach DER Bot. Erwähne NIEMALS, dass du etwas ‚an den Agenten "

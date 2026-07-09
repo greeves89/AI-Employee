@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.1] — 2026-07-09
+
+### Fixed
+- Sprache: Der Agent spricht seinen Denkprozess nicht mehr laut aus — nur noch die fertige Antwort.
+- Sprache: Uhrzeit, Datum und Zeitzonen-Umrechnungen beantwortet er direkt, statt dafür im Web zu suchen.
+
 ## [1.100.0] — 2026-07-09
 
 ### Added

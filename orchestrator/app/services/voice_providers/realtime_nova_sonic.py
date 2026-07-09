@@ -295,6 +295,14 @@ class NovaSonicSession:
         elif kind == "contentStart":
             # Start of a new content block = a new turn segment. The session uses
             # this as the authoritative "the interrupted audio is over now" signal.
+            # Nova 2 marks text blocks with a generationStage (SPECULATIVE/FINAL) in
+            # additionalModelFields (a JSON *string*). Log it so we can tell the model's
+            # thinking blocks apart from the spoken answer — see the reasoning-leak issue.
+            if payload.get("type") == "TEXT":
+                amf = payload.get("additionalModelFields")
+                if amf:
+                    logger.info("NovaSonic contentStart TEXT role=%s additionalModelFields=%s",
+                                payload.get("role", ""), amf)
             await self._safe_emit("content_start", {
                 "role": payload.get("role", ""),
                 "type": payload.get("type", ""),
