@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.161] — 2026-07-09
+
+### Added
+- Task-Ansicht: erzeugte Dateien/Artefakte erscheinen jetzt direkt im Task und lassen sich per Klick oeffnen.
+- Agenten: neuer Reiter "Speech" mit eingebetteter Live-Sprachansicht.
+- Rollen-Verwaltung: Integrationen (M365/Exchange) lassen sich pro Rolle freigeben oder einschraenken.
+
+### Fixed
+- Sprach-Interaktion liess sich nicht auf Realtime-Modelle umstellen (422) — Auswahl funktioniert jetzt.
+- Task-Ausgabe (Live & Replay) wird als formatierter Text statt roher Zeichenkette dargestellt.
+
 ## [1.99.160] — 2026-07-09
 
 ### Changed

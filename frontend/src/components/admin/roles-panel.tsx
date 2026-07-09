@@ -5,7 +5,7 @@ import type React from "react";
 import { Loader2, Plus, Save, Shield, Trash2, Users } from "lucide-react";
 import * as api from "@/lib/api";
 import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo } from "@/lib/api";
-import type { AdminUser, AgentTemplate, AIAccount } from "@/lib/types";
+import type { AdminUser, AgentTemplate, AIAccount, Integration } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
 
@@ -68,6 +68,7 @@ interface RoleDraft {
   ai_account_ids: number[] | null;
   secret_ids: number[] | null;
   mcp_server_ids: number[] | null;
+  integration_providers: string[] | null;
   url_host_patterns: string;
   menu_paths: string[] | null;
 }
@@ -86,6 +87,7 @@ function draftFromRole(role?: CustomRole): RoleDraft {
     ai_account_ids: p.ai_account_ids ?? null,
     secret_ids: p.secret_ids ?? null,
     mcp_server_ids: p.mcp_server_ids ?? null,
+    integration_providers: p.integration_providers ?? null,
     url_host_patterns: listToText(p.url_host_patterns),
     menu_paths: p.menu_paths ?? null,
   };
@@ -102,6 +104,7 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
     ai_account_ids: draft.ai_account_ids,
     secret_ids: draft.secret_ids,
     mcp_server_ids: draft.mcp_server_ids,
+    integration_providers: draft.integration_providers,
     url_host_patterns: parseStringList(draft.url_host_patterns),
     menu_paths: draft.menu_paths,
   };
@@ -122,6 +125,7 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const [aiAccounts, setAiAccounts] = useState<AIAccount[]>([]);
   const [secrets, setSecrets] = useState<AgentSecretEntry[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -145,13 +149,14 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const reload = async () => {
     setLoading(true);
     try {
-      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData] = await Promise.all([
+      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData, integrationData] = await Promise.all([
         api.listRoles(),
         api.getTemplates(),
         api.getAgentMountCatalog(),
         api.listAIAccounts().catch(() => [] as AIAccount[]),
         api.listSecrets().catch(() => [] as AgentSecretEntry[]),
         api.getMcpServers().then((r) => r.servers).catch(() => [] as McpServerInfo[]),
+        api.getIntegrations().then((r) => r.integrations).catch(() => [] as Integration[]),
       ]);
       setRoles(roleData.roles);
       setTemplates(templateData.templates);
@@ -159,6 +164,7 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
       setAiAccounts(aiAccountData);
       setSecrets(secretData);
       setMcpServers(mcpData);
+      setIntegrations(integrationData);
       if (selectedId !== "new") {
         const role = roleData.roles.find((r) => r.id === selectedId);
         setDraft(draftFromRole(role));
@@ -439,6 +445,27 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
                 ))}
               </div>
               <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mcp_server_ids: null }))} />
+            </PermissionBlock>
+
+            <PermissionBlock title="Integrationen (M365 / Exchange)">
+              <div className="flex flex-wrap gap-2">
+                {integrations.length === 0 && (
+                  <span className="text-[11px] text-muted-foreground/50">Keine Integrationen verfügbar</span>
+                )}
+                {integrations.map((it) => (
+                  <ToggleChip
+                    key={it.provider}
+                    active={draft.integration_providers == null || draft.integration_providers.includes(it.provider)}
+                    muted={draft.integration_providers == null}
+                    label={it.display_name || it.provider}
+                    onClick={() => setDraft((d) => ({
+                      ...d,
+                      integration_providers: toggleListValue(d.integration_providers, it.provider),
+                    }))}
+                  />
+                ))}
+              </div>
+              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, integration_providers: null }))} />
             </PermissionBlock>
 
             <PermissionBlock title="Menüpfade">

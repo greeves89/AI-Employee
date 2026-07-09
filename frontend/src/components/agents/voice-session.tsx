@@ -65,9 +65,12 @@ interface Props {
   /** Continue an existing chat session by voice (shared session with the text chat;
    *  the agent picks up the prior context). */
   resumeSessionId?: string;
+  /** Render inline inside a page/tab instead of as a fixed modal overlay:
+   *  no dark backdrop, no close button, fills its container (used by the Speech tab). */
+  embedded?: boolean;
 }
 
-export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resumeSessionId }: Props) {
+export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resumeSessionId, embedded = false }: Props) {
   const [state, setState] = useState<VoiceState>("connecting");
   const [mode, setMode] = useState<Mode>("classic");
   const [transcript, setTranscript] = useState("");
@@ -648,24 +651,30 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const isRealtime = mode === "nova_sonic";
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
-      onClick={onClose}
+      className={embedded
+        ? "w-full"
+        : "fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"}
+      onClick={embedded ? undefined : onClose}
     >
       <div
-        className={`relative flex w-full flex-col overflow-y-auto border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
-          isRealtime ? "max-w-6xl" : "max-w-lg"
-        }`}
-        onClick={(e) => e.stopPropagation()}
+        className={embedded
+          ? "relative flex w-full flex-col rounded-2xl border border-border bg-card"
+          : `relative flex w-full flex-col overflow-y-auto border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
+              isRealtime ? "max-w-6xl" : "max-w-lg"
+            }`}
+        onClick={embedded ? undefined : (e) => e.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
-          aria-label="Schließen"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        {!embedded && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
+            aria-label="Schließen"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
 
-        <div className="p-4 sm:p-6">
+        <div className={embedded ? "p-4 sm:p-6 lg:p-8" : "p-4 sm:p-6"}>
           <div className="mb-4 flex items-center gap-2 pr-8">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold truncate">

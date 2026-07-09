@@ -351,6 +351,7 @@ export interface RolePermissions {
   ai_account_ids?: number[] | null;
   secret_ids?: number[] | null;
   mcp_server_ids?: number[] | null;
+  integration_providers?: string[] | null;
   url_host_patterns?: string[] | null;
   menu_paths?: string[] | null;
 }
@@ -448,10 +449,23 @@ export interface TaskStep {
   timestamp: string | null;
 }
 
+export interface TaskArtifact {
+  name: string;
+  path: string;
+  size: number;
+  modified: number;
+}
+
 export async function getTaskSteps(
   id: string,
 ): Promise<{ task_id: string; total_steps: number; steps: TaskStep[] }> {
   return fetchJSON(`${getBase()}/tasks/${id}/steps`);
+}
+
+export async function getTaskArtifacts(
+  id: string,
+): Promise<{ task_id: string; agent_id: string | null; artifacts: TaskArtifact[] }> {
+  return fetchJSON(`${getBase()}/tasks/${id}/artifacts`);
 }
 
 export async function createTask(data: {

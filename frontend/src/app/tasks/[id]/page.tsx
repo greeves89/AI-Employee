@@ -8,14 +8,16 @@ import {
   ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
   Timer, Hash, Cpu, DollarSign, Wrench, Bot,
   AlertTriangle, Terminal, FileText, RotateCcw, Send, MessageSquare,
+  Download, Paperclip,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
-import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
+import { formatDuration, formatCost, timeAgo, formatBytes } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import type { Task, LogEvent } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
 
@@ -60,6 +62,7 @@ export default function TaskDetailPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [replaySteps, setReplaySteps] = useState<api.TaskStep[]>([]);
+  const [artifacts, setArtifacts] = useState<api.TaskArtifact[]>([]);
   const [replayIndex, setReplayIndex] = useState(0);
   const [replayLoaded, setReplayLoaded] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
@@ -221,6 +224,19 @@ export default function TaskDetailPage() {
     }
   }, [logs]);
 
+  // Load the deliverables the agent produced for this task (files in its
+  // /workspace/transfer within the task's run window) once it is no longer active,
+  // so the user can open them right here instead of digging through the explorer.
+  const taskDone = task && task.status !== "running" && task.status !== "queued";
+  useEffect(() => {
+    if (!taskDone) return;
+    let cancelled = false;
+    api.getTaskArtifacts(taskId)
+      .then((r) => { if (!cancelled) setArtifacts(r.artifacts || []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [taskDone, taskId]);
+
   if (loading || !task) {
     return (
       <div className="px-8 py-8 space-y-4">
@@ -316,6 +332,35 @@ export default function TaskDetailPage() {
             <div className="min-w-0">
               <p className="text-xs font-medium text-emerald-400/70 mb-1">Result</p>
               <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{task.result}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Deliverables the agent produced for this task — clickable, no explorer digging */}
+        {taskDone && task.agent_id && artifacts.length > 0 && (
+          <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
+              <Paperclip className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs font-medium text-muted-foreground">
+                Ergebnisse ({artifacts.length})
+              </span>
+            </div>
+            <div className="p-2">
+              {artifacts.map((a) => (
+                <button
+                  key={a.path}
+                  onClick={() => window.open(api.getFileDownloadUrl(task.agent_id!, a.path), "_blank")}
+                  className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-foreground/[0.04] transition-colors"
+                  title={a.path}
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground/90">{a.name}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums">
+                    {formatBytes(a.size)}
+                  </span>
+                  <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -503,10 +548,13 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
 
   switch (event.type) {
     case "text":
+      // Render the (merged) assistant text as Markdown so lists, code and headings
+      // read as clean prose instead of raw tokens — the terminal look was what made
+      // the replay feel "gebrochen". Timestamp stays as a subtle inline prefix.
       return (
-        <div className="text-green-400 whitespace-pre-wrap break-words">
-          <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
-          {String(data.text || "")}
+        <div className="flex gap-2">
+          <span className="text-muted-foreground/40 select-none shrink-0 leading-relaxed">{time}</span>
+          <MarkdownContent content={String(data.text || "")} className="flex-1 !text-foreground/90" />
         </div>
       );
     case "tool_call": {

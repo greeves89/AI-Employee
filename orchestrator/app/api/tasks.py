@@ -372,6 +372,79 @@ async def get_task_steps(
     }
 
 
+@router.get("/{task_id}/artifacts")
+async def get_task_artifacts(
+    task_id: str,
+    request: Request,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """List deliverables the agent produced for this task.
+
+    Agents drop finished output into `/workspace/transfer/`. We list that dir on the
+    task's agent and keep files whose mtime falls inside the task's run window
+    (started_at .. completed_at + grace), so the user sees exactly what this task
+    created — clickable, without digging through the file explorer. Download reuses
+    the existing `/agents/{id}/files/download` endpoint (same AuthZ)."""
+    from app.models.agent import Agent
+
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    allowed = await _get_user_agent_ids(user, db)
+    if allowed is not None and task.agent_id not in allowed:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not task.agent_id:
+        return {"task_id": task_id, "agent_id": None, "artifacts": []}
+
+    agent = (await db.execute(select(Agent).where(Agent.id == task.agent_id))).scalar_one_or_none()
+    if not agent or not getattr(agent, "container_id", None):
+        return {"task_id": task_id, "agent_id": task.agent_id, "artifacts": []}
+
+    docker = getattr(request.app.state, "docker", None)
+    if not docker:
+        return {"task_id": task_id, "agent_id": task.agent_id, "artifacts": []}
+
+    # Time window: files touched from just before the task started until a grace
+    # period after completion (agents sometimes flush files right after finishing).
+    start_ts = task.started_at.timestamp() - 30 if task.started_at else 0
+    end_ts = (task.completed_at.timestamp() + 300) if task.completed_at else None
+
+    artifacts: list[dict] = []
+    try:
+        exit_code, output = docker.exec_in_container(
+            agent.container_id,
+            ["find", "/workspace/transfer", "-type", "f",
+             "-not", "-type", "l", "-printf", "%s|%T@|%p\n"],
+        )
+        for line in (output or "").strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split("|", 2)
+            if len(parts) != 3:
+                continue
+            size_s, mtime_s, path = parts
+            try:
+                mtime = float(mtime_s)
+            except ValueError:
+                continue
+            if mtime < start_ts:
+                continue
+            if end_ts is not None and mtime > end_ts:
+                continue
+            artifacts.append({
+                "name": path.rsplit("/", 1)[-1],
+                "path": path,
+                "size": int(size_s) if size_s.isdigit() else 0,
+                "modified": mtime,
+            })
+    except Exception:  # noqa: BLE001 — best-effort; empty list is a fine fallback
+        return {"task_id": task_id, "agent_id": task.agent_id, "artifacts": []}
+
+    artifacts.sort(key=lambda a: a["modified"], reverse=True)
+    return {"task_id": task_id, "agent_id": task.agent_id, "artifacts": artifacts}
+
+
 @router.delete("/{task_id}")
 async def delete_task(
     task_id: str,

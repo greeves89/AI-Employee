@@ -13,7 +13,7 @@ import {
   Settings, Package, ShieldOff, ShieldAlert, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
-  Layers,
+  Layers, AudioLines,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
@@ -26,6 +26,7 @@ import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
 import { InteractionModelCard } from "@/components/agents/interaction-model-card";
+import { VoiceSessionModal } from "@/components/agents/voice-session";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
@@ -67,7 +68,7 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
 // Sub-tabs are grouped under 6 top-level groups. Each group renders a
 // secondary "sub-reiter" bar when it has more than one entry.
 type SubKey =
-  | "chat" | "todos" | "terminal" | "history"
+  | "chat" | "speech" | "todos" | "terminal" | "history"
   | "files" | "apps" | "computer-use"
   | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
@@ -78,6 +79,9 @@ type TabGroup = { key: string; label: string; icon: typeof CheckCircle2; subs: S
 const tabGroups: TabGroup[] = [
   { key: "chat", label: "Chat", icon: MessageSquare, subs: [
     { key: "chat", label: "Chat", icon: MessageSquare, simpleVisible: true },
+  ] },
+  { key: "speech", label: "Speech", icon: AudioLines, subs: [
+    { key: "speech", label: "Speech", icon: AudioLines, simpleVisible: true },
   ] },
   { key: "todos", label: "Todos", icon: ListTodo, subs: [
     { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
@@ -411,6 +415,15 @@ export default function AgentDetailPage() {
         {/* Tab content */}
         <div className="flex-1 min-h-0 h-full">
           {activeSub === "chat" && <AgentChat agentId={agentId} />}
+          {activeSub === "speech" && (
+            <VoiceSessionModal
+              key={`voice-${agent.id}`}
+              agentId={agent.id}
+              agentName={agent.name}
+              onClose={() => setActiveSub("chat")}
+              embedded
+            />
+          )}
           {activeSub === "terminal" && <LiveTerminal agentId={agentId} />}
           {activeSub === "todos" && <TodoTab agentId={agentId} />}
           {activeSub === "files" && <FileBrowser agentId={agentId} diskUsageMb={diskUsageMb} diskLimitMb={diskLimitMb} diskPercent={diskPercent} />}

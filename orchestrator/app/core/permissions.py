@@ -32,6 +32,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "ai_account_ids": None,
         "secret_ids": None,
         "mcp_server_ids": None,
+        "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -44,6 +45,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "ai_account_ids": None,
         "secret_ids": None,
         "mcp_server_ids": None,
+        "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -56,6 +58,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "ai_account_ids": None,
         "secret_ids": None,
         "mcp_server_ids": None,
+        "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
     },
@@ -68,6 +71,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "ai_account_ids": [],
         "secret_ids": [],
         "mcp_server_ids": [],
+        "integration_providers": [],
         "url_host_patterns": [],
         "menu_paths": ["/dashboard", "/agents", "/tasks"],  # read-only views
     },
@@ -110,11 +114,23 @@ def _merge_defaults(p: dict[str, Any]) -> dict[str, Any]:
         "ai_account_ids": None,
         "secret_ids": None,
         "mcp_server_ids": None,
+        "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
     }
     out.update(p or {})
     return out
+
+
+def can_use_integration(permissions: dict, provider: str | None) -> bool:
+    """Whether the group may enable this integration provider (e.g. "microsoft",
+    "exchange_onprem") on an agent. None = all allowed (opt-in restriction).
+    Admin-safe: admins resolve to integration_providers=None via
+    get_effective_permissions, so they are never restricted."""
+    if not provider:
+        return True
+    allowed = permissions.get("integration_providers")
+    return allowed is None or provider in allowed
 
 
 def can_use_template(permissions: dict, template_id: int | None) -> bool:

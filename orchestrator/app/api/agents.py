@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import AGENT_VERSION, settings
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
+from app.core.realtime_catalog import IMPLEMENTED_ENGINES
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, is_agent_principal, require_auth, require_auth_or_agent, require_manager, verify_agent_token
 from app.models.agent import Agent, AgentState
@@ -1169,9 +1170,11 @@ async def update_agent_idle_stop(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
-# Realtime voice interaction models the agent can front with (besides the classic
-# staged STT→LLM→TTS pipeline). Keep in sync with the frontend selector.
-INTERACTION_MODELS = {"nova_sonic"}
+# Realtime voice interaction engines the agent can front with (besides the classic
+# staged STT→LLM→TTS pipeline). Single source of truth is the realtime catalog, so
+# the selector, session backends and this allowlist never drift apart — previously
+# this was hardcoded to {"nova_sonic"}, which 422'd every Azure gpt-realtime pick.
+INTERACTION_MODELS = IMPLEMENTED_ENGINES
 
 
 @router.put("/{agent_id}/interaction-model")
@@ -1974,6 +1977,17 @@ async def update_agent_integrations(
         config = agent.config or {}
         old_integrations = set(config.get("integrations", []))
         new_integrations = body.get("integrations", [])
+        # AuthZ: the user's role may restrict which integration providers (M365,
+        # Exchange, …) its agents can enable. Only enforce on newly-added providers
+        # so an admin-preconfigured integration isn't wiped by a later save.
+        from app.core.permissions import get_effective_permissions, can_use_integration
+        perms = await get_effective_permissions(user, db)
+        for prov in set(new_integrations) - old_integrations:
+            if not can_use_integration(perms, prov):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Integration '{prov}' ist für deine Rolle nicht freigegeben",
+                )
         config["integrations"] = new_integrations
 
         # Optional: Microsoft Graph read/write mode for this agent.
