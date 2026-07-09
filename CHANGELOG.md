@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.7] — 2026-07-09
+
+### Fixed
+- E-Mail-Versand-Tools (M365 und on-prem Exchange) sind jetzt fest verfuegbar, sobald ein Agent Schreibrechte hat — vorher hat der Agent sie manchmal uebersehen und faelschlich gemeldet, es gebe kein Sende-Tool.
+
 ## [1.100.6] — 2026-07-09
 
 ### Added

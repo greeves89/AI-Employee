@@ -58,6 +58,11 @@ MAX_ACTIVATED_TOOLS = 60  # core (~27) + search_tools + activated stays well und
 PINNED_TOOL_SUFFIXES = (
     "ms_search", "ms_search_people", "ms_get_user_info",
     "ms_list_emails", "ms_recent_files", "ms_search_files",
+    # Sending mail must be discoverable WITHOUT search_tools — the model otherwise
+    # sees only the pinned read tools and wrongly concludes "there is no send tool".
+    # Suffix-matched against the agent's OWN catalog, so these only surface when the
+    # M365 / on-prem-Exchange integration (write) is actually enabled for the agent.
+    "ms_send_email", "ex_send_email",
 )
 
 
