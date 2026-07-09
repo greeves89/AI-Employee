@@ -48,6 +48,8 @@ class MemorySave(BaseModel):
     tags: list[str] = []
     override: bool = False  # confirm supersede on contradiction
     links: list[dict] = []  # [{"target_id": int, "relation": "uses"}]
+    # Provenance: agent | user | conversation | reflection | improvement | compaction
+    source: str | None = None
 
 
 class MemoryUpdate(BaseModel):
@@ -70,6 +72,23 @@ class MemoryResponse(BaseModel):
     confidence: float = 1.0
     tag_type: str = "permanent"
     superseded_by: int | None = None
+    source: str | None = None
+
+
+class MemoryConflict(Exception):
+    """Raised by save_memory_core when a write would touch an existing memory
+    and the caller asked to be told instead of superseding (allow_supersede=False),
+    or when the two-tier cosine check detects a soft contradiction without override.
+
+    kind: "contradiction" (0.88..0.92, needs override) |
+          "supersede"     (single-key replace or >=0.92 dedup, blocked by allow_supersede=False)
+    """
+
+    def __init__(self, kind: str, existing: AgentMemory, similarity: float = 1.0):
+        self.kind = kind
+        self.existing = existing
+        self.similarity = similarity
+        super().__init__(f"memory conflict ({kind}) with #{existing.id}")
 
 
 # --- Agent-facing endpoints (called from inside containers) ---
@@ -166,13 +185,14 @@ async def _apply_tags_and_links(
             )
 
 
-@router.post("/save", response_model=MemoryResponse, responses={409: {"model": ContradictionWarning}})
-async def save_memory(
+async def save_memory_core(
+    db: AsyncSession,
     body: MemorySave,
-    db: AsyncSession = Depends(get_db),
-    auth: dict = Depends(verify_agent_token),
-):
-    """Save a memory entry.
+    *,
+    allow_supersede: bool = True,
+) -> tuple[AgentMemory, int | None]:
+    """Core save logic shared by the /memory/save endpoint and internal writers
+    (reflection service, conversation hook). Returns (memory, superseded_id).
 
     Behavior (issue #24):
       - If `key` is classified as "single" in KEY_SCHEMA: any existing
@@ -182,14 +202,15 @@ async def save_memory(
         non-superseded memories in the same (agent_id, room, key)
         bucket:
           - similarity >= 0.92: auto-supersede (same fact, reworded)
-          - similarity >= 0.88 and override=False: return 409 with a
-            ContradictionWarning. The caller can retry with override=True.
+          - similarity >= 0.88 and override=False: raise
+            MemoryConflict("contradiction"). Retry with override=True.
           - similarity < 0.88: insert as a new independent memory.
-    """
-    # Enforce agent can only write to its own memories
-    if body.agent_id != auth["agent_id"]:
-        raise HTTPException(status_code=403, detail="Cannot write to another agent's memory")
 
+    allow_supersede=False turns EVERY write that would replace an existing
+    memory into MemoryConflict("supersede") instead — used by the reflection
+    job in hybrid review mode, where touching existing knowledge needs an
+    admin approval first.
+    """
     kind = classify_key(body.key)
     now = datetime.now(timezone.utc)
 
@@ -212,24 +233,24 @@ async def save_memory(
             .limit(1)
         )
         to_supersede = result.scalar_one_or_none()
+        if to_supersede and to_supersede.content == body.content:
+            # Identical single-key content: no-op, keep the existing row.
+            return to_supersede, None
+        if to_supersede and not allow_supersede:
+            raise MemoryConflict("supersede", to_supersede)
     else:
         # Multi: use semantic similarity against the same (agent, room, key).
         similar, sim = await _find_similar_memory(db, body.agent_id, body.room, body.key, body.content)
         if similar:
             if sim >= COSINE_HARD_DEDUP:
+                if not allow_supersede and similar.content != body.content:
+                    raise MemoryConflict("supersede", similar, sim)
                 to_supersede = similar
             elif sim >= COSINE_SOFT_WARN and not body.override:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "warning": "contradiction_detected",
-                        "similar_memory_id": similar.id,
-                        "similar_content": similar.content[:400],
-                        "similarity": round(sim, 4),
-                        "hint": "Re-call with override=True to supersede the existing memory.",
-                    },
-                )
+                raise MemoryConflict("contradiction", similar, sim)
             elif sim >= COSINE_SOFT_WARN and body.override:
+                if not allow_supersede:
+                    raise MemoryConflict("supersede", similar, sim)
                 to_supersede = similar
 
     # --- Step 2: insert the new memory ----------------------------------------
@@ -247,6 +268,7 @@ async def save_memory(
         room=body.room,
         confidence=body.confidence,
         tag_type=body.tag_type if body.tag_type in ("transient", "permanent") else TAG_TYPE_PERMANENT,
+        source=body.source,
     )
     db.add(new_mem)
     try:
@@ -273,7 +295,7 @@ async def save_memory(
             existing.last_appeared_at = now
             await db.commit()
             await db.refresh(existing)
-            return _to_response(existing)
+            return existing, None
         # No existing row found (weird edge case) — re-raise
         raise HTTPException(status_code=409, detail="memory already exists but could not be retrieved")
 
@@ -303,7 +325,7 @@ async def save_memory(
             .limit(1)
         )
         if winner:
-            return _to_response(winner)
+            return winner, None
         raise HTTPException(status_code=409, detail="concurrent write conflict")
 
     # --- Step 4: tags + links (best-effort, don't fail on duplicates) --------
@@ -340,7 +362,64 @@ async def save_memory(
         except Exception:
             pass
 
-    return _to_response(new_mem)
+    return new_mem, (to_supersede.id if to_supersede else None)
+
+
+@router.post("/save", response_model=MemoryResponse, responses={409: {"model": ContradictionWarning}})
+async def save_memory(
+    body: MemorySave,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Save a memory entry (agent-facing endpoint; see save_memory_core)."""
+    # Enforce agent can only write to its own memories
+    if body.agent_id != auth["agent_id"]:
+        raise HTTPException(status_code=403, detail="Cannot write to another agent's memory")
+    if not body.source:
+        body.source = "agent"
+    try:
+        mem, _ = await save_memory_core(db, body, allow_supersede=True)
+    except MemoryConflict as c:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "warning": "contradiction_detected",
+                "similar_memory_id": c.existing.id,
+                "similar_content": c.existing.content[:400],
+                "similarity": round(c.similarity, 4),
+                "hint": "Re-call with override=True to supersede the existing memory.",
+            },
+        )
+    return _to_response(mem)
+
+
+@router.get("/{memory_id:int}/history")
+async def get_memory_history(
+    memory_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Supersede chain for a memory, newest first — powers the "Verlauf" view.
+
+    Walks backwards: the given memory, then every entry it (transitively)
+    superseded. Capped at 20 hops to bound pathological chains.
+    """
+    memory = await db.get(AgentMemory, memory_id)
+    if not memory:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    await _assert_agent_access(memory.agent_id, user, db)
+
+    chain = [memory]
+    current = memory
+    for _ in range(20):
+        prev = await db.scalar(
+            select(AgentMemory).where(AgentMemory.superseded_by == current.id).limit(1)
+        )
+        if not prev:
+            break
+        chain.append(prev)
+        current = prev
+    return {"history": [_to_response(m) for m in chain]}
 
 
 @router.get("/semantic-search")
@@ -756,4 +835,5 @@ def _to_response(m: AgentMemory) -> dict:
         "confidence": float(m.confidence) if m.confidence is not None else 1.0,
         "tag_type": m.tag_type or "permanent",
         "superseded_by": m.superseded_by,
+        "source": m.source,
     }

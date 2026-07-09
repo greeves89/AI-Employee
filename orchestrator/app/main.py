@@ -838,6 +838,38 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure job_state table: {e}")
 
+    # Reflection/"Dreaming": provenance column + run-log table. Ensured on every
+    # startup, independent of Alembic (multi-head chain → no new migrations).
+    try:
+        from app.db.session import engine as _eng_rf
+        from sqlalchemy import text as _txt_rf
+        async with _eng_rf.begin() as conn:
+            await conn.execute(_txt_rf(
+                "ALTER TABLE agent_memories ADD COLUMN IF NOT EXISTS source varchar(30)"
+            ))
+            await conn.execute(_txt_rf(
+                "CREATE INDEX IF NOT EXISTS ix_agent_memories_source ON agent_memories (source)"
+            ))
+            await conn.execute(_txt_rf(
+                "CREATE TABLE IF NOT EXISTS reflection_runs ("
+                "id serial PRIMARY KEY, "
+                "started_at timestamptz NOT NULL DEFAULT now(), "
+                "finished_at timestamptz, "
+                "status varchar(30) NOT NULL DEFAULT 'running', "
+                "mode varchar(20) NOT NULL DEFAULT 'hybrid', "
+                "trigger varchar(20) NOT NULL DEFAULT 'scheduled', "
+                "stats json NOT NULL DEFAULT '{}'::json, "
+                "tokens_used integer NOT NULL DEFAULT 0, "
+                "cost_usd double precision, "
+                "error text)"
+            ))
+            await conn.execute(_txt_rf(
+                "CREATE INDEX IF NOT EXISTS ix_reflection_runs_started_at ON reflection_runs (started_at)"
+            ))
+        logger.info("reflection: agent_memories.source + reflection_runs ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure reflection tables: {e}")
+
     # Ensure users.approved (admin-approval gate). Default true so existing users stay
     # usable; new self-registered users get false when require_user_approval is on.
     try:

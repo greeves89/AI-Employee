@@ -45,6 +45,9 @@ class AuditEventType(str, Enum):
     BRAIN_DELETED = "brain_deleted"
     # Self-improvement
     LOGS_READ = "logs_read"                       # agent read container logs (own/team)
+    # Reflection ("Nachtschicht") — nightly out-of-band transcript reflection
+    REFLECTION_RUN = "reflection_run"             # one nightly run finished
+    REFLECTION_CHANGE = "reflection_change"       # one applied memory/knowledge/skill change
 
 
 class AuditLog(Base):

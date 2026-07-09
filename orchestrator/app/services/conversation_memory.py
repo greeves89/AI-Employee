@@ -41,7 +41,7 @@ async def save_conversation_memory(
     try:
         mem = AgentMemory(
             agent_id=agent_id, category="conversation", key=key, content=content,
-            importance=2, room=f"chat:{ch}", confidence=1.0,
+            importance=2, room=f"chat:{ch}", confidence=1.0, source="conversation",
         )
         db.add(mem)
         await db.commit()

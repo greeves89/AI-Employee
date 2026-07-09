@@ -302,6 +302,8 @@ class OrchestratorAPIClient:
             body["override"] = True
         if "confidence" in params:
             body["confidence"] = params["confidence"]
+        if params.get("source"):
+            body["source"] = params["source"]
 
         result = await self._request("POST", "/memory/save", json=body)
         if isinstance(result, str):

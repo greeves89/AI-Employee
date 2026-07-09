@@ -456,7 +456,7 @@ class LLMRunner:
                     estimated = context_compressor.estimate_tokens(messages)
                     if estimated > threshold:
                         new_msgs = await context_compressor.summarize_messages(
-                            messages, provider
+                            messages, provider, rescue_key=f"task:{task_id}"
                         )
                         if new_msgs:
                             logger.info(
