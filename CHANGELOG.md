@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.156] — 2026-07-09
+
+### Added
+- Wissensgraph (3D): dreht sich beim Aufruf von selbst ganz sanft ums Zentrum, solange man nur zuschaut. Klick auf einen Knoten -> Kamera fliegt hin und kreist um ihn; Klick ins Leere -> zurueck zum ruhigen Zentrums-Kreisen.
+
 ## [1.99.155] — 2026-07-08
 
 ### Added

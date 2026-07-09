@@ -320,9 +320,19 @@ export default function VaultGraph3D({
         /* noop */
       }
     }, 600);
+    // Once the fit settles, start a very gentle idle rotation around the CENTER so the
+    // graph slowly turns on its own while you just look at it. Orbit target defaults
+    // to the graph centre after zoomToFit; a slow speed keeps it calm, not dizzying.
+    const spin = setTimeout(() => {
+      try {
+        const c = fgRef.current?.controls?.();
+        if (c) { c.autoRotate = true; c.autoRotateSpeed = 0.35; }
+      } catch { /* noop */ }
+    }, 1600);
     return () => {
       cancelled = true;
       clearTimeout(t);
+      clearTimeout(spin);
     };
   }, [loading, graph]);
 
@@ -351,10 +361,16 @@ export default function VaultGraph3D({
     }
   }, [data]);
 
-  const stopOrbit = useCallback(() => {
+  // Clicking empty space deselects and eases back to the calm CENTER spin (instead
+  // of stopping) — so the graph keeps gently turning whenever you're just looking.
+  const resumeCenterOrbit = useCallback(() => {
     try {
       const c = fgRef.current?.controls?.();
-      if (c) c.autoRotate = false;
+      if (c) {
+        if (c.target?.set) c.target.set(0, 0, 0); // pivot back to the graph centre
+        c.autoRotate = true;
+        c.autoRotateSpeed = 0.35;
+      }
     } catch { /* noop */ }
   }, []);
 
@@ -441,7 +457,7 @@ export default function VaultGraph3D({
               linkDirectionalParticleSpeed={0.006}
               controlType="orbit"
               onNodeClick={handleNodeClick}
-              onBackgroundClick={() => { stopOrbit(); setSelected(null); }}
+              onBackgroundClick={() => { resumeCenterOrbit(); setSelected(null); }}
             />
           ) : (
             <VaultGraph2D
