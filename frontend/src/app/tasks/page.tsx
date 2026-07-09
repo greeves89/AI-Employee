@@ -151,7 +151,7 @@ export default function TasksPage() {
 /* ─── Single Tasks View ────────────────────────────────────────────── */
 
 function SingleTasksView() {
-  const { tasks, loading, refresh } = useTasks();
+  const { tasks, loading, refresh, total } = useTasks();
   const [filter, setFilter] = useState<string>("active");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
 
@@ -218,7 +218,7 @@ function SingleTasksView() {
           const count = tab.key === "active"
             ? activeCount
             : tab.key === "all"
-            ? tasks.length
+            ? total || tasks.length
             : tasks.filter((t) => t.status === tab.key).length;
           return (
             <button

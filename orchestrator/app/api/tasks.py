@@ -71,7 +71,17 @@ async def list_tasks(
             task.prompt = task.prompt[:240]
             task.result = None
             task.error = None
-    return TaskListResponse(tasks=responses, total=len(responses))
+    # Real total (not page size) — mirrors TaskRouter.list_tasks filter semantics,
+    # otherwise the UI counter sticks at the page limit (e.g. "All 100").
+    count_q = select(func.count(Task.id))
+    if status:
+        count_q = count_q.where(Task.status == status)
+    if agent_id:
+        count_q = count_q.where(Task.agent_id == agent_id)
+    elif agent_ids is not None:
+        count_q = count_q.where(Task.agent_id.in_(agent_ids))
+    total = (await db.execute(count_q)).scalar() or 0
+    return TaskListResponse(tasks=responses, total=int(total))
 
 
 @router.post("/", response_model=TaskResponse, status_code=201)

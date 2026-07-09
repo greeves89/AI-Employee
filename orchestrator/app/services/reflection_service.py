@@ -425,52 +425,60 @@ class ReflectionService:
         return resp.json()
 
     async def _call_bedrock(self, cfg: dict, prompt: str) -> dict | None:
-        """Claude via Bedrock invoke_model — same smithy client wiring as Nova Sonic."""
-        try:
-            from aws_sdk_bedrock_runtime.auth import HTTPAuthSchemeResolver
-            from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient
-            from aws_sdk_bedrock_runtime.config import Config
-            from aws_sdk_bedrock_runtime.models import InvokeModelInput
-            from smithy_aws_core.auth.sigv4 import SigV4AuthScheme
-            from smithy_aws_core.identity import AWSCredentialsIdentity
-            from smithy_core.aio.interfaces.identity import IdentityResolver
-        except ImportError as e:
-            logger.warning("[Reflection] Bedrock SDK nicht verfuegbar: %s", e)
-            return None
+        """Claude via Bedrock invoke_model — manual SigV4 over httpx.
+
+        The smithy SDK signs the model-id path single-encoded while AWS
+        canonicalizes it double-encoded (':' -> %3A -> %253A) which yields
+        InvalidSignatureException on this REST op — so we sign by hand:
+        wire path single-encoded, canonical path double-encoded.
+        """
+        import hashlib
+        import hmac
+        import urllib.parse
+        from datetime import datetime as _dt, timezone as _tz
 
         creds = cfg["bedrock"]
-        access, secret, token = creds["access_key"], creds["secret_key"], creds.get("session_token")
+        access, secret = creds["access_key"], creds["secret_key"]
+        token = creds.get("session_token")
         region = creds.get("region", "us-east-1")
+        host = f"bedrock-runtime.{region}.amazonaws.com"
+        path_wire = "/model/" + urllib.parse.quote(cfg["model"], safe="") + "/invoke"
+        path_canon = urllib.parse.quote(path_wire, safe="/")
 
-        class _StaticCreds(IdentityResolver):
-            async def get_identity(self, *, properties=None):
-                return AWSCredentialsIdentity(
-                    access_key_id=access,
-                    secret_access_key=secret,
-                    session_token=token,
-                )
-
-        client = BedrockRuntimeClient(config=Config(
-            endpoint_uri=f"https://bedrock-runtime.{region}.amazonaws.com",
-            region=region,
-            aws_credentials_identity_resolver=_StaticCreds(),
-            auth_scheme_resolver=HTTPAuthSchemeResolver(),
-            auth_schemes={"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
-        ))
         body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 2048,
             "messages": [{"role": "user", "content": prompt}],
         }).encode("utf-8")
+
+        now = _dt.now(_tz.utc)
+        amzdate = now.strftime("%Y%m%dT%H%M%SZ")
+        datestamp = now.strftime("%Y%m%d")
+        headers = {"content-type": "application/json", "host": host, "x-amz-date": amzdate}
+        if token:
+            headers["x-amz-security-token"] = token
+        signed = ";".join(sorted(headers))
+        canon_headers = "".join(f"{k}:{headers[k].strip()}\n" for k in sorted(headers))
+        payload_hash = hashlib.sha256(body).hexdigest()
+        canon = "\n".join(["POST", path_canon, "", canon_headers, signed, payload_hash])
+        scope = f"{datestamp}/{region}/bedrock/aws4_request"
+        sts = "\n".join(["AWS4-HMAC-SHA256", amzdate, scope,
+                         hashlib.sha256(canon.encode()).hexdigest()])
+
+        def _hm(key: bytes, msg: str) -> bytes:
+            return hmac.new(key, msg.encode(), hashlib.sha256).digest()
+
+        sig_key = _hm(_hm(_hm(_hm(("AWS4" + secret).encode(), datestamp), region), "bedrock"), "aws4_request")
+        sig = hmac.new(sig_key, sts.encode(), hashlib.sha256).hexdigest()
+        headers["authorization"] = (
+            f"AWS4-HMAC-SHA256 Credential={access}/{scope}, SignedHeaders={signed}, Signature={sig}"
+        )
         try:
-            out = await client.invoke_model(InvokeModelInput(
-                model_id=cfg["model"], body=body, content_type="application/json",
-            ))
-            raw = out.body
-            if hasattr(raw, "read"):
-                raw = await raw.read()
-            return json.loads(raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw)
-        except Exception as e:  # noqa: BLE001
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                resp = await client.post(f"https://{host}{path_wire}", content=body, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as e:
             logger.warning("[Reflection] Bedrock invoke_model failed: %s", e)
             return None
 

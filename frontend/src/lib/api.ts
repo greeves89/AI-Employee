@@ -433,6 +433,7 @@ export async function getTasks(
   agentId?: string
 ): Promise<{ tasks: Task[]; total: number }> {
   const params = new URLSearchParams();
+  params.set("limit", "500");
   if (status) params.set("status", status);
   if (agentId) params.set("agent_id", agentId);
   return fetchJSON(`${getBase()}/tasks/?${params}`);

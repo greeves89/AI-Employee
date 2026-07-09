@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.3] — 2026-07-09
+
+### Fixed
+- Nachtschicht: Bedrock-Extraktion funktioniert jetzt wirklich — manuelle SigV4-Signierung via httpx statt smithy-SDK (das signiert den Model-Pfad einfach-encodiert, AWS kanonisiert doppelt-encodiert -> InvalidSignatureException). Auf dem Pi E2E gegen echtes Bedrock verifiziert (Claude Haiku antwortet).
+- Tasks-Seite: "All"-Zaehler klebte bei 100 fest — Backend liefert jetzt die echte Gesamtzahl (COUNT statt Seitengroesse), Frontend laedt bis 500 und zeigt das Server-Total.
+- Sidebar: doppelter Online-Indikator entfernt — nur noch die "Online"-Zeile unter dem Namen, kein zweiter gruener Punkt am Avatar.
+
 ## [1.100.2] — 2026-07-09
 
 ### Fixed

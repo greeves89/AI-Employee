@@ -37,13 +37,7 @@ export function UserMenu() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
       >
-        <div className="relative">
-          <UserAvatar name={user.name} />
-          <span
-            title="Online"
-            className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-background"
-          />
-        </div>
+        <UserAvatar name={user.name} />
         <div className="flex-1 min-w-0 text-left">
           <p className="text-[12px] font-medium text-foreground truncate">{user.name}</p>
           <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60 truncate">
