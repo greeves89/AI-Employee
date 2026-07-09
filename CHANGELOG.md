@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.5] — 2026-07-09
+
+### Fixed
+- Nachtschicht: Bedrock-Default-Modell ist jetzt Amazon Nova Lite — verfuegbar auf jedem Account, der Nova Sonic (Voice) nutzt. Anthropic-Modelle auf Bedrock erfordern das AWS-Use-Case-Formular (Fehler 404 "use case details"); wer es ausgefuellt hat, kann via Setting reflection_model eine anthropic-Bedrock-ID setzen. Nova-Antworten werden intern aufs Anthropic-Format normalisiert, Fehler-Bodies werden geloggt.
+
 ## [1.100.4] — 2026-07-09
 
 ### Security

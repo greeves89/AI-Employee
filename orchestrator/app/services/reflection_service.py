@@ -270,10 +270,13 @@ class ReflectionService:
                 logger.debug("[Reflection] bedrock account resolution failed: %s", e)
 
         model = (await svc.get("reflection_model")) or _DEFAULTS["model"]
-        if backend == "bedrock" and "anthropic." not in model:
+        if backend == "bedrock" and "anthropic." not in model and "amazon." not in model:
+            # Default on Bedrock: Nova Lite — available on any account that runs
+            # Nova Sonic (voice), while Anthropic models need the use-case form.
+            # Set reflection_model to a full Bedrock id (e.g. us.anthropic....) to override.
             region = (bedrock or {}).get("region", "us-east-1")
             prefix = "eu" if region.startswith("eu") else "us"
-            model = f"{prefix}.anthropic.{_DEFAULTS['model']}-v1:0"
+            model = f"{prefix}.amazon.nova-lite-v1:0"
 
         return {
             "enabled": enabled,
@@ -445,11 +448,22 @@ class ReflectionService:
         path_wire = "/model/" + urllib.parse.quote(cfg["model"], safe="") + "/invoke"
         path_canon = urllib.parse.quote(path_wire, safe="/")
 
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 2048,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode("utf-8")
+        # Request body per model family; the response is normalized back to the
+        # Anthropic shape below so _extract stays format-agnostic.
+        is_nova = ".amazon.nova" in f".{cfg['model']}"
+        if is_nova:
+            payload = {
+                "schemaVersion": "messages-v1",
+                "messages": [{"role": "user", "content": [{"text": prompt}]}],
+                "inferenceConfig": {"maxTokens": 2048},
+            }
+        else:
+            payload = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 2048,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+        body = json.dumps(payload).encode("utf-8")
 
         now = _dt.now(_tz.utc)
         amzdate = now.strftime("%Y%m%dT%H%M%SZ")
@@ -476,8 +490,24 @@ class ReflectionService:
         try:
             async with httpx.AsyncClient(timeout=90.0) as client:
                 resp = await client.post(f"https://{host}{path_wire}", content=body, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
+            if resp.status_code >= 400:
+                logger.warning(
+                    "[Reflection] Bedrock invoke_model %s: %s", resp.status_code, resp.text[:300]
+                )
+                return None
+            data = resp.json()
+            if is_nova:
+                # Normalize Nova messages-v1 -> Anthropic shape for _extract.
+                msg = ((data.get("output") or {}).get("message") or {})
+                usage = data.get("usage") or {}
+                return {
+                    "content": msg.get("content") or [{}],
+                    "usage": {
+                        "input_tokens": usage.get("inputTokens") or 0,
+                        "output_tokens": usage.get("outputTokens") or 0,
+                    },
+                }
+            return data
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("[Reflection] Bedrock invoke_model failed: %s", e)
             return None
