@@ -649,16 +649,21 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
 
   // ── UI ────────────────────────────────────────────────────
   const isRealtime = mode === "nova_sonic";
+  // Embedded in the Speech tab we get a full-height area, so let the panes grow tall
+  // and fill it; as a modal we keep the compact viewport-fraction heights.
+  const paneHeight = embedded
+    ? "min-h-[50vh] lg:min-h-[68vh] lg:max-h-[74vh]"
+    : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
   return (
     <div
       className={embedded
-        ? "w-full"
+        ? "w-full h-full"
         : "fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"}
       onClick={embedded ? undefined : onClose}
     >
       <div
         className={embedded
-          ? "relative flex w-full flex-col rounded-2xl border border-border bg-card"
+          ? "relative flex h-full w-full flex-col rounded-2xl border border-border bg-card"
           : `relative flex w-full flex-col overflow-y-auto border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
               isRealtime ? "max-w-6xl" : "max-w-lg"
             }`}
@@ -674,7 +679,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
           </button>
         )}
 
-        <div className={embedded ? "p-4 sm:p-6 lg:p-8" : "p-4 sm:p-6"}>
+        <div className={embedded ? "flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 lg:p-8" : "p-4 sm:p-6"}>
           <div className="mb-4 flex items-center gap-2 pr-8">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold truncate">
@@ -700,7 +705,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
             <>
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch">
               {/* LEFT — conversation transcript */}
-              <div className="order-2 flex max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1">
+              <div className={`order-2 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02] lg:order-1`}>
                 <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                   Gespräch
                 </div>
@@ -795,7 +800,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}
-              <div className="order-3 flex max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh] min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]">
+              <div className={`order-3 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]`}>
                 <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                   Aufgaben &amp; Aktivität
                 </div>

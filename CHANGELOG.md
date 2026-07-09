@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.99.162] — 2026-07-09
+
+### Changed
+- Speech-Reiter nutzt jetzt die volle Hoehe des Bereichs.
+
 ## [1.99.161] — 2026-07-09
 
 ### Added
