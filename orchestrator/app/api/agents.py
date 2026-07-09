@@ -1957,6 +1957,9 @@ async def get_agent_integrations(
             "agent_id": agent_id,
             "integrations": config.get("integrations", []),
             "msgraph_access": (config or {}).get("msgraph_access", "read"),
+            # Was missing → the UI never saw the saved value and always fell back to
+            # "read", so Exchange Read+Write looked like it reset itself after refresh.
+            "exchange_access": (config or {}).get("exchange_access", "read"),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")

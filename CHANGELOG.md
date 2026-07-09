@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.10] — 2026-07-09
+
+### Fixed
+- Integrationen: Exchange (on-prem) Read+Write wird nach dem Speichern korrekt angezeigt und faellt nicht mehr faelschlich auf Read zurueck (Anzeige-Bug; der Wert war bereits gespeichert).
+
 ## [1.100.9] — 2026-07-09
 
 ### Changed
