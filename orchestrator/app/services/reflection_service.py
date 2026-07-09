@@ -242,15 +242,50 @@ class ReflectionService:
         mode = (await svc.get("reflection_mode")) or _DEFAULTS["mode"]
         if mode not in ("auto", "hybrid", "strict"):
             mode = _DEFAULTS["mode"]
+
+        # LLM backend resolution (three tiers):
+        #   1. Anthropic key from env config
+        #   2. Anthropic key from the encrypted DB settings (Settings -> Modelle)
+        #   3. An active Bedrock AI-Account (e.g. the Pi) -> invoke_model fallback
+        api_key = settings.anthropic_api_key or (await svc.get("anthropic_api_key")) or None
+        backend = "anthropic" if api_key else None
+        bedrock = None
+        if not backend:
+            try:
+                from app.core.realtime_catalog import resolve_credentials
+                from app.models.ai_account import AIAccount
+                accounts = (await db.execute(
+                    select(AIAccount).where(
+                        AIAccount.is_active == True,  # noqa: E712
+                        AIAccount.provider_type == "bedrock",
+                    )
+                )).scalars().all()
+                for acc in accounts:
+                    creds = resolve_credentials(acc)
+                    if creds and creds.get("access_key"):
+                        bedrock = creds
+                        backend = "bedrock"
+                        break
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[Reflection] bedrock account resolution failed: %s", e)
+
+        model = (await svc.get("reflection_model")) or _DEFAULTS["model"]
+        if backend == "bedrock" and "anthropic." not in model:
+            region = (bedrock or {}).get("region", "us-east-1")
+            prefix = "eu" if region.startswith("eu") else "us"
+            model = f"{prefix}.anthropic.{_DEFAULTS['model']}-v1:0"
+
         return {
             "enabled": enabled,
             "hour": min(23, max(0, _int(await svc.get("reflection_hour"), _DEFAULTS["hour"]))),
             "mode": mode,
-            "model": (await svc.get("reflection_model")) or _DEFAULTS["model"],
+            "model": model,
             "token_budget": _int(await svc.get("reflection_token_budget"), _DEFAULTS["token_budget"]),
             "max_transcripts": _int(await svc.get("reflection_max_transcripts"), _DEFAULTS["max_transcripts"]),
             "tz": getattr(settings, "timezone", None) or "Europe/Berlin",
-            "api_key": settings.anthropic_api_key,
+            "api_key": api_key,
+            "backend": backend,
+            "bedrock": bedrock,
         }
 
     async def _load_watermarks(self, db: AsyncSession) -> dict:
@@ -345,27 +380,19 @@ class ReflectionService:
         """One LLM call -> parsed JSON dict, or None on failure. Raises BudgetExceeded."""
         if tokens["in"] + tokens["out"] >= cfg["token_budget"]:
             raise BudgetExceeded()
-        if not cfg["api_key"]:
-            logger.info("[Reflection] no anthropic_api_key configured — skipping extraction")
+        if not cfg.get("backend"):
+            logger.info(
+                "[Reflection] kein LLM-Zugang (weder Anthropic-Key noch Bedrock-Account) — Extraktion uebersprungen"
+            )
             return None
         prompt = _EXTRACT_PROMPT.format(agent_name=agent_name, transcript=transcript)
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": cfg["api_key"],
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": cfg["model"],
-                        "max_tokens": 2048,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-            resp.raise_for_status()
-            data = resp.json()
+            if cfg["backend"] == "bedrock":
+                data = await self._call_bedrock(cfg, prompt)
+            else:
+                data = await self._call_anthropic(cfg, prompt)
+            if data is None:
+                return None
             usage = data.get("usage") or {}
             tokens["in"] += int(usage.get("input_tokens") or 0)
             tokens["out"] += int(usage.get("output_tokens") or 0)
@@ -377,6 +404,74 @@ class ReflectionService:
             return parsed if isinstance(parsed, dict) else None
         except (httpx.HTTPError, ValueError, KeyError) as e:
             logger.warning("[Reflection] LLM extraction failed: %s", e)
+            return None
+
+    async def _call_anthropic(self, cfg: dict, prompt: str) -> dict | None:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": cfg["api_key"],
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": cfg["model"],
+                    "max_tokens": 2048,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def _call_bedrock(self, cfg: dict, prompt: str) -> dict | None:
+        """Claude via Bedrock invoke_model — same smithy client wiring as Nova Sonic."""
+        try:
+            from aws_sdk_bedrock_runtime.auth import HTTPAuthSchemeResolver
+            from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient
+            from aws_sdk_bedrock_runtime.config import Config
+            from aws_sdk_bedrock_runtime.models import InvokeModelInput
+            from smithy_aws_core.auth.sigv4 import SigV4AuthScheme
+            from smithy_aws_core.identity import AWSCredentialsIdentity
+            from smithy_core.aio.interfaces.identity import IdentityResolver
+        except ImportError as e:
+            logger.warning("[Reflection] Bedrock SDK nicht verfuegbar: %s", e)
+            return None
+
+        creds = cfg["bedrock"]
+        access, secret, token = creds["access_key"], creds["secret_key"], creds.get("session_token")
+        region = creds.get("region", "us-east-1")
+
+        class _StaticCreds(IdentityResolver):
+            async def get_identity(self, *, properties=None):
+                return AWSCredentialsIdentity(
+                    access_key_id=access,
+                    secret_access_key=secret,
+                    session_token=token,
+                )
+
+        client = BedrockRuntimeClient(config=Config(
+            endpoint_uri=f"https://bedrock-runtime.{region}.amazonaws.com",
+            region=region,
+            aws_credentials_identity_resolver=_StaticCreds(),
+            auth_scheme_resolver=HTTPAuthSchemeResolver(),
+            auth_schemes={"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
+        ))
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2048,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode("utf-8")
+        try:
+            out = await client.invoke_model(InvokeModelInput(
+                model_id=cfg["model"], body=body, content_type="application/json",
+            ))
+            raw = out.body
+            if hasattr(raw, "read"):
+                raw = await raw.read()
+            return json.loads(raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Reflection] Bedrock invoke_model failed: %s", e)
             return None
 
     # ------------------------------------------------------------------ apply

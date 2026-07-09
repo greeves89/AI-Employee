@@ -126,6 +126,15 @@ export function ReflectionCard() {
                 {stats.facts_new ?? 0} Notizen neu · {stats.facts_superseded ?? 0} aktualisiert ·{" "}
                 {pending} Freigaben offen · {stats.skills_drafted ?? 0} Skill-Entwürfe
               </p>
+              {(stats.errors?.length ?? 0) > 0 && (
+                <p className="text-xs text-amber-500/90 mt-1.5">
+                  {stats.errors!.length} von {stats.transcripts_read ?? 0} Auswertungen fehlgeschlagen
+                  {" — "}
+                  {stats.errors!.some((e) => e.includes("extraction failed"))
+                    ? "kein LLM-Zugang? Anthropic-Key oder Bedrock-Account pruefen."
+                    : "Details im Audit-Log."}
+                </p>
+              )}
             </>
           ) : (
             <p className="text-xs text-muted-foreground/60">

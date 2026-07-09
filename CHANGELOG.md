@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.100.2] — 2026-07-09
+
+### Fixed
+- Nachtschicht: LLM-Zugang jetzt dreistufig — Anthropic-Key aus Env, aus den (verschluesselten) DB-Settings, oder Fallback auf einen aktiven Bedrock-AI-Account (invoke_model, gleiche Client-Verdrahtung wie Nova Sonic). Vorher scheiterte die Extraktion still, wenn nur ein Bedrock-Account existierte (z.B. Pi).
+- Nachtschicht-Dashboard-Karte zeigt fehlgeschlagene Auswertungen jetzt ehrlich an (Anzahl + Hinweis), statt "Erfolgreich - 0 - 0 - 0".
+
 ## [1.100.1] — 2026-07-09
 
 ### Fixed
