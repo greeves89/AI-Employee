@@ -278,8 +278,11 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       setGraphOverlay({ brainId });
       return;
     }
-    // Navigate to an app page.
-    const path = t.startsWith("/") ? t : NAV_ROUTES[t];
+    // Navigate to an app page. `target` is LLM output (untrusted) → only allow a known
+    // route, or a strictly-internal path: single leading slash + alnum first char, no
+    // "//host" (open redirect), no backslash/colon/dots.
+    const isSafeInternal = /^\/[a-zA-Z0-9][a-zA-Z0-9/_-]*$/.test(t);
+    const path = NAV_ROUTES[t] || (isSafeInternal ? t : null);
     if (path) router.push(path);
   }, [agentId, router]);
 

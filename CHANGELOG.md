@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.1] — 2026-07-10
+
+### Security
+- Voice-UI-Navigation: nur bekannte Routen bzw. streng interne Pfade erlaubt (verhindert Open-Redirect ueber protokoll-relative Ziele aus Modell-Output).
+
 ## [1.102.0] — 2026-07-10
 
 ### Added
