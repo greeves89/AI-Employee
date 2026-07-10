@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.0] — 2026-07-10
+
+### Added
+- Sprache steuert die Oberflaeche: der Agent kann per Voice Ansichten oeffnen/schliessen (z. B. den Knowledge Graph als Overlay) oder zu App-Seiten navigieren (control_ui) — baut auf dem bestehenden Speech-Browser-Kanal auf.
+
 ## [1.101.4] — 2026-07-09
 
 ### Security

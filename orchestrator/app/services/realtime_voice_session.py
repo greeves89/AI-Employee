@@ -195,6 +195,32 @@ SHOW_ON_SCREEN_TOOL = {
     }
 }
 
+CONTROL_UI_TOOL = {
+    "toolSpec": {
+        "name": "control_ui",
+        "description": (
+            "Control the app's user interface by voice — the user can drive the screen "
+            "hands-free. Use it whenever the user wants to SEE, HIDE or GO somewhere in "
+            "the app itself (not a file or web page).\n"
+            "action='open'/'close' opens or closes a view as an OVERLAY on top of the "
+            "conversation (I keep listening). action='navigate' switches the whole page.\n"
+            "target (open/close overlays): 'knowledge_graph' (my Second-Brain graph).\n"
+            "target (navigate to a page): 'dashboard', 'tasks', 'agents', 'meeting_rooms', "
+            "'knowledge', 'skills', 'triggers', 'approvals', 'integrations', 'settings', "
+            "'analytics'. You may also pass a concrete app path like '/tasks'.\n"
+            "Say briefly what you are doing (e.g. 'ich zeige dir den Graphen')."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "open | close | navigate"},
+                "target": {"type": "string", "description": "View to open/close, or page to navigate to."},
+            },
+            "required": ["action", "target"],
+        })},
+    }
+}
+
 RENAME_CONVERSATION_TOOL = {
     "toolSpec": {
         "name": "rename_conversation",
@@ -565,6 +591,11 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "Link, den er aufs Handy nehmen soll → kind='qr'. Sag dabei kurz, was du zeigst. Baue ich "
         "auf Wunsch eine Auswertung, ist ein Chart als Bild oder ein HTML-Report fast immer besser "
         "als eine lange gesprochene Aufzählung.\n"
+        "OBERFLÄCHE STEUERN: Will der Nutzer etwas in der App SEHEN, VERBERGEN oder irgendwohin "
+        "WECHSELN ('zeig mir den Knowledge Graph', 'mach den Graphen wieder zu', 'geh auf meine "
+        "Aufgaben'), nutze control_ui (open/close als Overlay, navigate für Seiten). Das ist die "
+        "App-Oberfläche — für echte Klicks im Betriebssystem/Browser des Nutzers delegiere per "
+        "ask_agent an den Agenten (Computer-Use).\n"
         "GESPRÄCHSTITEL: Sobald nach dem ersten echten Austausch klar ist, worum es geht, rufe "
         "EINMAL rename_conversation mit einem kurzen thematischen Titel auf. Kommentiere das nicht.\n"
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
@@ -673,7 +704,7 @@ class RealtimeVoiceSession:
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
             ASK_AGENT_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
-            SHOW_ON_SCREEN_TOOL, RENAME_CONVERSATION_TOOL,
+            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
         engine = creds.get("engine") or "nova_sonic"
@@ -983,6 +1014,11 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._show_on_screen(
                 str(args.get("kind") or ""), str(args.get("source") or ""),
                 str(args.get("caption") or ""),
+            ))
+            return
+        if name == "control_ui":
+            await self._respond(tool_use_id, await self._control_ui(
+                str(args.get("action") or ""), str(args.get("target") or ""),
             ))
             return
         if name == "rename_conversation":
@@ -1465,6 +1501,22 @@ class RealtimeVoiceSession:
             for i, r in enumerate(results, 1)
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
+
+    async def _control_ui(self, action: str, target: str) -> str:
+        """Emit a UI command the Speech front-end acts on (open/close overlay or navigate).
+
+        The backend just forwards intent — the browser owns what each target renders,
+        so this stays one thin channel (like show_on_screen) instead of a second system.
+        """
+        action = (action or "").strip().lower()
+        target = (target or "").strip().lower()
+        if action not in ("open", "close", "navigate"):
+            return "Unbekannte Aktion. Nutze open, close oder navigate."
+        if not target:
+            return "Kein Ziel angegeben."
+        await self._emit({"type": "ui_command", "data": {"action": action, "target": target}})
+        verb = {"open": "öffne", "close": "schließe", "navigate": "wechsle zu"}[action]
+        return f"Ich {verb} {target} auf dem Bildschirm."
 
     async def _rename_conversation(self, title: str) -> str:
         """Set this call's thematic title — the SAME ChatSession.title the conversation

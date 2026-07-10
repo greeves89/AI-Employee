@@ -1,11 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
+import * as api from "@/lib/api";
 import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/api";
+
+// The knowledge-graph overlay (WebGL) is client-only and heavy → load on demand.
+const VaultGraph3D = dynamic(() => import("@/app/second-brains/vault-graph-3d"), { ssr: false });
+
+// Voice UI targets that navigate to an app page (action="navigate").
+const NAV_ROUTES: Record<string, string> = {
+  dashboard: "/", tasks: "/tasks", agents: "/agents", meeting_rooms: "/meeting-rooms",
+  knowledge: "/knowledge", skills: "/skills", triggers: "/triggers", approvals: "/approvals",
+  integrations: "/integrations", settings: "/settings", analytics: "/analytics",
+};
 
 type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
@@ -102,6 +115,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string; url?: string; embeddable?: boolean; auto_open?: boolean }[]>([]);
   // Page the agent asked to show inside the app (iframe modal).
   const [webModal, setWebModal] = useState<{ url: string; caption?: string } | null>(null);
+  // Voice-driven UI overlay (e.g. the knowledge graph) shown on top of the cockpit.
+  const [graphOverlay, setGraphOverlay] = useState<{ brainId: number | null } | null>(null);
+  const router = useRouter();
   // URLs whose auto-open we already attempted, and those the popup blocker swallowed.
   const autoOpenedRef = useRef<Set<string>>(new Set());
   const [blockedUrls, setBlockedUrls] = useState<Set<string>>(new Set());
@@ -247,6 +263,26 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
     }
   }, [agentId]);
 
+  // Interpret a voice UI command: open/close an in-app overlay, or navigate a page.
+  const handleUiCommand = useCallback(async (action: string, target: string) => {
+    const a = (action || "").toLowerCase().trim();
+    const t = (target || "").toLowerCase().trim();
+    if (a === "close") { setGraphOverlay(null); return; }
+    if (t === "knowledge_graph" || t === "graph" || t === "wissensgraph" || t === "knowledgegraph") {
+      let brainId: number | null = null;
+      try {
+        const [mountsResp, all] = await Promise.all([api.getAgentMounts(agentId), api.listSecondBrains()]);
+        const labels = (mountsResp.mounts || []).filter((l) => l.startsWith("brain-"));
+        brainId = all.find((b) => labels.includes(b.label))?.id ?? all[0]?.id ?? null;
+      } catch { /* fall back to an empty graph */ }
+      setGraphOverlay({ brainId });
+      return;
+    }
+    // Navigate to an app page.
+    const path = t.startsWith("/") ? t : NAV_ROUTES[t];
+    if (path) router.push(path);
+  }, [agentId, router]);
+
   const modeRef = useRef<Mode>("classic");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -351,6 +387,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         if (m === "nova_sonic") startLive();
         break;
       }
+      case "ui_command":
+        // Agent drives the app UI by voice: open/close an overlay, or navigate.
+        handleUiCommand(String(data.action || ""), String(data.target || ""));
+        break;
       case "transcript":
         setTranscript(String(data.text || ""));
         if (modeRef.current === "classic") {
@@ -1122,6 +1162,31 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
             </div>
             {webModal && (
               <WebModal url={webModal.url} caption={webModal.caption} onClose={() => setWebModal(null)} />
+            )}
+            {graphOverlay && (
+              <div className="fixed inset-0 z-[60] flex flex-col bg-background/95 backdrop-blur-sm">
+                <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+                  <Network className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">Knowledge Graph</span>
+                  <span className="text-[11px] text-muted-foreground/50">— per Sprache steuerbar („mach den Graphen wieder zu")</span>
+                  <button
+                    onClick={() => setGraphOverlay(null)}
+                    className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
+                    aria-label="Schließen"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1">
+                  {graphOverlay.brainId != null ? (
+                    <VaultGraph3D brainId={graphOverlay.brainId} />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground/60">
+                      Kein Second Brain für diesen Agenten gefunden.
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
             {meetingOpen && (
               <div className="mt-4 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-3">
