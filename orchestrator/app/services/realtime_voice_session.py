@@ -947,9 +947,11 @@ class RealtimeVoiceSession:
                 "b64": b64, "mime": "audio/pcm", "rate": 24000, "tag": "main",
             }})
         elif kind == "content_start":
-            # A new content block started → the interrupted turn is over; let the
-            # next turn's audio through again.
-            self._drop_audio = False
+            # ONLY a new USER turn ends the drop. An interrupted assistant turn keeps
+            # emitting further content blocks; clearing on those (the old bug) let its
+            # tail resume speaking after a barge-in. Assistant blocks stay dropped.
+            if (data.get("role") or "").upper() == "USER":
+                self._drop_audio = False
         elif kind == "interrupted":
             # Nova Sonic detected a barge-in itself → skip the rest of this turn.
             self._drop_audio = True
@@ -959,6 +961,8 @@ class RealtimeVoiceSession:
             if not text:
                 return
             if role == "USER":
+                # A real new user turn → the upcoming response may be heard again.
+                self._drop_audio = False
                 await self._emit({"type": "transcript", "data": {"text": text}})
                 await self._persist_turn("user", text)
             else:  # ASSISTANT / other

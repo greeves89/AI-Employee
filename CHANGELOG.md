@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.2] — 2026-07-10
+
+### Fixed
+- Sprache (Nova Sonic): Unterbrechen verwirft jetzt wirklich die GESAMTE laufende Antwort. Bisher hob der naechste Content-Block des Modells das Verwerfen sofort wieder auf, sodass der Agent weitersprach — jetzt bleibt alles verworfen bis zu einem echten neuen Nutzer-Turn.
+
 ## [1.102.1] — 2026-07-10
 
 ### Security

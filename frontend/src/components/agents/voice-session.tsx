@@ -621,15 +621,18 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const beginBargeIn = useCallback(() => {
     flushPlayback();
     suppressAudioRef.current = true;
-    // Tell the server to SKIP the rest of the interrupted turn (drops all further
-    // audio server-side until the next turn), so nothing resumes after the timer.
+    // Tell the server to SKIP the rest of the interrupted turn — server-side it now
+    // drops ALL audio until a genuinely new USER turn, so nothing resumes speaking.
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "interrupt" }));
     }
+    // The real lift is the next USER transcript (a new turn). This timer is only a
+    // stuck-state fallback — long enough that Nova's 1–2 s look-ahead buffer is fully
+    // discarded before we'd ever accept audio again.
     if (suppressTimerRef.current) window.clearTimeout(suppressTimerRef.current);
     suppressTimerRef.current = window.setTimeout(() => {
       suppressAudioRef.current = false;
-    }, 1500);
+    }, 6000);
   }, [flushPlayback]);
 
   // ── Realtime capture (continuous 16 kHz PCM) ─────────────────
