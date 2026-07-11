@@ -45,12 +45,16 @@ class LogPublisher:
         if event_type == "done":
             await self.redis.publish("chat:completions", message)
 
-    async def publish_status(self, state: str, current_task: str = "") -> None:
+    async def publish_status(self, state: str, current_task: str = "", active_sessions: list[str] | None = None) -> None:
+        # active_sessions: ALL source keys currently processing (e.g. ["chat:abc", "chat:def"])
+        # so the UI can mark every busy conversation, not just one. JSON-encoded for the hash.
+        import json as _json
         await self.redis.hset(
             f"agent:{self.agent_id}:status",
             mapping={
                 "state": state,
                 "current_task": current_task,
+                "active_sessions": _json.dumps(active_sessions or ([current_task] if current_task else [])),
                 "last_heartbeat": datetime.now(timezone.utc).isoformat(),
             },
         )

@@ -322,6 +322,17 @@ class ChatConsumer:
     # Source-key routing                                                   #
     # ------------------------------------------------------------------ #
 
+    def _busy_chat_sessions(self) -> list[str]:
+        """The currently-processing chat sessions as "chat:<session_id>" — one per
+        parallel webapp/voice channel, so the UI marks every busy conversation."""
+        out: list[str] = []
+        for k in self._active_source_keys:
+            if k.startswith("webapp:") or k.startswith("voice:"):
+                sid = k.split(":", 1)[1]
+                if sid and sid != "default":
+                    out.append(f"chat:{sid}")
+        return out
+
     def _source_key(self, source: str, chat_session_id: str | None, telegram_ctx: dict | None) -> str:
         """Derive a stable per-channel routing key."""
         if telegram_ctx:
@@ -638,9 +649,16 @@ class ChatConsumer:
                         + "\n".join(saved)
                     )
 
-        # Mark as working while processing chat
+        # Mark as working while processing chat. Report the SESSION id (not the
+        # per-message id) so the UI can link the busy pill/rail to the actual
+        # conversation, and the FULL set of parallel sessions so every busy chat
+        # lights up — not just one.
         self._active_source_keys.add(source_key)
-        await log_publisher.publish_status("working", f"chat:{message_id}")
+        await log_publisher.publish_status(
+            "working",
+            f"chat:{chat_session_id}" if chat_session_id else f"chat:{message_id}",
+            active_sessions=self._busy_chat_sessions(),
+        )
 
         # Live steering: fold newly-arrived messages from the same channel
         if hasattr(handler, "pending_drain"):
@@ -676,6 +694,12 @@ class ChatConsumer:
             self._active_source_keys.discard(source_key)
             if not self._active_source_keys:
                 await log_publisher.publish_status("idle")
+            else:
+                # Other sessions still running → keep the busy set accurate.
+                busy = self._busy_chat_sessions()
+                await log_publisher.publish_status(
+                    "working", busy[0] if busy else "", active_sessions=busy,
+                )
 
     async def stop(self) -> None:
         self.running = False

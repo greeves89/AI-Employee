@@ -1655,6 +1655,13 @@ class AgentManager:
         # Add live metrics from Redis
         status = await self.redis.get_agent_status(agent_id)
         result["current_task"] = status.get("current_task", "")
+        # All chat sessions the agent is processing right now (parallel-safe). Stored
+        # JSON-encoded by the agent; tolerate the old format (field absent).
+        try:
+            _as = status.get("active_sessions")
+            result["active_sessions"] = json.loads(_as) if _as else []
+        except (ValueError, TypeError):
+            result["active_sessions"] = []
         result["queue_depth"] = await self.redis.get_queue_depth(agent_id)
 
         # Sync live state from Redis (agent reports idle/working in real-time)

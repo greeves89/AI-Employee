@@ -185,7 +185,7 @@ function extractResultContent(content: unknown): string {
 
 /* ─── Main Component ────────────────────────────────────────────────── */
 
-export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: string; initialSessionId?: string | null; embedded?: boolean }) {
+export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[] }) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -1106,6 +1106,7 @@ export function AgentChat({ agentId, initialSessionId, embedded }: { agentId: st
           className="border-r border-border bg-card/40"
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
+          busyIds={busySessionIds}
           onSelect={switchSession}
           onNew={createNewSession}
           newDisabled={!isConnected}

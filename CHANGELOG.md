@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.4] — 2026-07-11
+
+### Added
+- Agenten: aktiv bearbeitete Chats werden in der Gespraechsliste orange markiert (Spinner). Der Agent meldet jetzt ALLE parallel laufenden Sessions (nicht nur eine), und die "arbeitet gerade"-Pille verlinkt korrekt in die jeweilige Unterhaltung (Session-ID statt Nachrichten-ID).
+
 ## [1.102.3] — 2026-07-11
 
 ### Added

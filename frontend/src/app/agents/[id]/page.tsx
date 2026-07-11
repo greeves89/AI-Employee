@@ -181,6 +181,19 @@ export default function AgentDetailPage() {
   const diskUsageMb = agent.disk_usage_mb ?? 0;
   const diskLimitMb = agent.disk_limit_mb ?? 0;
 
+  // Chat sessions the agent is processing right now (marked orange in the rail).
+  // Prefers the full parallel set (active_sessions) once the agent reports it;
+  // falls back to the single current_task while that's not yet available.
+  const busyChatSessions = (() => {
+    const list = (agent as unknown as { active_sessions?: string[] }).active_sessions;
+    const raw = Array.isArray(list) && list.length
+      ? list
+      : (agent.current_task ? [agent.current_task] : []);
+    return raw
+      .map((v) => (typeof v === "string" && v.startsWith("chat:") ? v.slice(5) : null))
+      .filter((v): v is string => !!v);
+  })();
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <Header
@@ -435,6 +448,7 @@ export default function AgentDetailPage() {
               key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
               agentId={agentId}
               initialSessionId={chatFocusSession}
+              busySessionIds={busyChatSessions}
             />
           )}
           {activeSub === "speech" && (

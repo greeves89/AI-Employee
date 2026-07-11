@@ -29,6 +29,7 @@ export function SessionRail({
   onDelete,
   loading = false,
   newDisabled = false,
+  busyIds,
   className,
 }: {
   sessions: RailSession[];
@@ -40,8 +41,11 @@ export function SessionRail({
   onDelete: (id: string) => void;
   loading?: boolean;
   newDisabled?: boolean;
+  /** Session ids the agent is actively processing right now → marked orange. */
+  busyIds?: string[];
   className?: string;
 }) {
+  const busy = new Set(busyIds || []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
@@ -93,19 +97,23 @@ export function SessionRail({
             {sessions.map((s) => {
               const shown = s.title || s.preview || s.fallbackLabel || "Gespräch";
               const editing = editingId === s.id;
+              const isBusy = busy.has(s.id);
               return (
                 <div
                   key={s.id}
                   onClick={() => { if (!editing) onSelect(s.id); }}
                   className={cn(
                     "group/sess relative flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                    isBusy && "ring-1 ring-inset ring-amber-500/40 bg-amber-500/[0.06]",
                     selectedId === s.id
                       ? "bg-primary/10 text-foreground"
                       : "text-muted-foreground/70 hover:bg-foreground/[0.04]",
                   )}
                 >
                   <span className="flex items-center gap-1.5 text-xs">
-                    {s.pinned ? (
+                    {isBusy ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-400" />
+                    ) : s.pinned ? (
                       <Pin className="h-3 w-3 shrink-0 fill-amber-400/30 text-amber-400" />
                     ) : (
                       <MessageSquare className="h-3 w-3 shrink-0 text-muted-foreground/50" />

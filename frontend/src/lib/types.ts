@@ -111,6 +111,7 @@ export interface Agent {
   created_at: string;
   updated_at: string;
   current_task: string | null;
+  active_sessions?: string[];  // all "chat:<session>" the agent is processing now
   cpu_percent: number | null;
   memory_usage_mb: number | null;
   disk_usage_mb: number | null;
