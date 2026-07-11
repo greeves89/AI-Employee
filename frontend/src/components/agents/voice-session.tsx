@@ -234,6 +234,14 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   }, [media]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  // Auto-reconnect: the AWS Nova Sonic bidi stream can drop mid-conversation (a known
+  // AWS-CRT race → the server emits "done"). We keep a stable chat_session id and
+  // silently reconnect, resuming the conversation, instead of dead-ending.
+  const reconnectsRef = useRef(0);
+  const closingRef = useRef(false);
+  const wsReconnectTimer = useRef<number | undefined>(undefined);
+  const voiceSessionRef = useRef<string>("");
+  const MAX_VOICE_RECONNECTS = 8;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
@@ -304,14 +312,34 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const suppressAudioRef = useRef(false);
   const suppressTimerRef = useRef<number | undefined>(undefined);
 
-  // ── WebSocket connect ──────────────────────────────────────
+  // ── WebSocket connect (with auto-reconnect) ─────────────────
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    closingRef.current = false;
+    // Stable session id so a reconnect resumes the SAME conversation. Reuse the caller's
+    // resume id, or mint one for this call.
+    if (!voiceSessionRef.current) {
+      const rnd = (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.() || Math.random().toString(36).slice(2);
+      voiceSessionRef.current = resumeSessionId || `voice-${rnd}`;
+    }
+
+    const scheduleReconnect = () => {
+      if (cancelled || closingRef.current) return;
+      if (reconnectsRef.current >= MAX_VOICE_RECONNECTS) {
+        setState("error");
+        setError("Sprachverbindung verloren. Bitte neu starten.");
+        return;
+      }
+      reconnectsRef.current += 1;
+      setState("connecting");
+      wsReconnectTimer.current = window.setTimeout(() => { void connectWs(); }, 600);
+    };
+
+    const connectWs = async () => {
+      if (cancelled || closingRef.current) return;
       try {
         let ticket: string;
         if (getTicket) {
-          // Kiosk / custom flow: caller supplies the ticket (no JWT available).
           ticket = await getTicket();
           voiceLanguageRef.current = "de";
         } else {
@@ -334,28 +362,26 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
             voiceLanguageRef.current = "de";
           }
         }
-        if (cancelled) return;
-        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}${
-          resumeSessionId ? `&chat_session=${encodeURIComponent(resumeSessionId)}` : ""
-        }`;
+        if (cancelled || closingRef.current) return;
+        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}&chat_session=${encodeURIComponent(voiceSessionRef.current)}`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
+        ws.onopen = () => setError(null);
         ws.onmessage = (e) => handleServerEvent(e.data);
-        ws.onerror = () => {
-          setError("Verbindung fehlgeschlagen");
-          setState("error");
-        };
-        ws.onclose = () => {
-          if (!cancelled) setState((s) => (s === "error" ? s : "error"));
-        };
-      } catch (e) {
-        setError(String(e));
-        setState("error");
+        ws.onerror = () => { /* onclose drives the reconnect */ };
+        ws.onclose = () => { scheduleReconnect(); };
+      } catch {
+        scheduleReconnect();
       }
-    })();
+    };
+
+    void connectWs();
     return () => {
       cancelled = true;
-      wsRef.current?.close();
+      closingRef.current = true;
+      if (wsReconnectTimer.current) window.clearTimeout(wsReconnectTimer.current);
+      const ws = wsRef.current;
+      if (ws) { ws.onclose = null; ws.close(); }
       stopRecording();
       teardownRealtime();
     };
@@ -395,6 +421,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         handleUiCommand(String(data.action || ""), String(data.target || ""));
         break;
       case "transcript":
+        reconnectsRef.current = 0; // real conversation data → healthy session
         setTranscript(String(data.text || ""));
         if (modeRef.current === "classic") {
           setState("processing");
@@ -506,6 +533,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         flushPlayback();
         break;
       case "audio_chunk": {
+        reconnectsRef.current = 0; // agent speaking → healthy session
         const b64 = String(data.b64 || "");
         if (!b64) break;
         if (modeRef.current === "nova_sonic" || data.mime === "audio/pcm") {
@@ -524,8 +552,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         if (modeRef.current === "classic") {
           playQueueRef.current.then(() => setState("ready"));
         } else {
-          setState("error");
-          setError("Realtime-Session beendet.");
+          // Realtime stream ended (usually the AWS-CRT drop). The socket closes right
+          // after → the connect effect reconnects and resumes the same chat_session.
+          // Show "reconnecting" instead of dead-ending.
+          setState("connecting");
         }
         break;
       case "error":

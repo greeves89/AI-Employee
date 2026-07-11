@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.6] — 2026-07-11
+
+### Fixed
+- Sprach-Session (Realtime/Nova Sonic): Bricht der AWS-Bedrock-Bidi-Stream mitten im Gespraech ab (bekannter AWS-CRT-Race, der serverseitig als `done` ankommt), verbindet das Voice-Frontend jetzt **automatisch neu** und setzt ueber eine stabile `chat_session` dasselbe Gespraech fort — statt mit "Realtime-Session beendet." in eine Sackgasse zu laufen. Reconnect ist gedeckelt und setzt sich bei echtem Gespraechsdaten-Fluss zurueck (gesunde lange Gespraeche verbinden beliebig oft weiter).
+
+---
+
 ## [1.102.5] — 2026-07-11
 
 ### Fixed
