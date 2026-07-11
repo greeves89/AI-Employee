@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.3] — 2026-07-11
+
+### Added
+- Agenten-Detail: die "arbeitet gerade"-Pille zeigt bei laufendem Chat jetzt "Aktiver Chat" und ist klickbar — ein Klick springt in genau diese Unterhaltung.
+
 ## [1.102.2] — 2026-07-10
 
 ### Fixed

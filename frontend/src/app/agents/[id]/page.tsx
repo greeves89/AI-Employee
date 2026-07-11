@@ -13,7 +13,7 @@ import {
   Settings, Package, ShieldOff, ShieldAlert, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
-  Layers, AudioLines,
+  Layers, AudioLines, ArrowUpRight,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
@@ -114,6 +114,8 @@ export default function AgentDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const { tasks } = useTasks(agentId);
   const [activeSub, setActiveSub] = useState<SubKey>("chat");
+  // When the busy pill (current_task = "chat:<id>") is clicked, jump to that chat.
+  const [chatFocusSession, setChatFocusSession] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
@@ -372,17 +374,33 @@ export default function AgentDetailPage() {
               })}
             </div>
 
-            {/* Current task indicator (inline) */}
-            {agent.current_task && (
-              <motion.div
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-2 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-1.5 max-w-xs"
-              >
-                <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
-                <p className="text-[11px] font-medium text-blue-400 truncate">{agent.current_task}</p>
-              </motion.div>
-            )}
+            {/* Current-activity indicator. When the agent is working a chat session
+                (current_task = "chat:<id>") the pill becomes a shortcut into that
+                conversation, so you can see WHICH chat is live and jump to it. */}
+            {agent.current_task && (() => {
+              const ct = agent.current_task;
+              const chatSession = ct.startsWith("chat:") ? ct.slice(5) : null;
+              const pill = "flex items-center gap-2 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-1.5 max-w-xs";
+              if (chatSession) {
+                return (
+                  <button
+                    onClick={() => { setChatFocusSession(chatSession); setActiveSub("chat"); }}
+                    title={`Zum laufenden Chat springen (${chatSession.slice(0, 8)}…)`}
+                    className={cn(pill, "hover:bg-blue-500/10 transition-colors cursor-pointer")}
+                  >
+                    <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
+                    <p className="text-[11px] font-medium text-blue-400 truncate">Aktiver Chat</p>
+                    <ArrowUpRight className="h-3 w-3 text-blue-400/70 shrink-0" />
+                  </button>
+                );
+              }
+              return (
+                <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className={pill}>
+                  <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
+                  <p className="text-[11px] font-medium text-blue-400 truncate">{ct}</p>
+                </motion.div>
+              );
+            })()}
           </div>
 
           {/* Sub-reiter — only when the active group has more than one entry */}
@@ -412,7 +430,13 @@ export default function AgentDetailPage() {
 
         {/* Tab content */}
         <div className="flex-1 min-h-0 h-full">
-          {activeSub === "chat" && <AgentChat agentId={agentId} />}
+          {activeSub === "chat" && (
+            <AgentChat
+              key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
+              agentId={agentId}
+              initialSessionId={chatFocusSession}
+            />
+          )}
           {activeSub === "speech" && (
             <AgentSpeechTab agentId={agent.id} agentName={agent.name} />
           )}
