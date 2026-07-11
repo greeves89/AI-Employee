@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.5] — 2026-07-11
+
+### Fixed
+- Chat-WebSocket: Mehrere Clients desselben Nutzers (Desktop-App, Web-Tab, weiteres Geraet) verdraengen sich nicht mehr gegenseitig. Jede Client-Instanz kann eine optionale `client_id` mitgeben und bekommt damit ihre eigene Verbindung; nur ein Reconnect derselben Instanz ersetzt weiterhin ihren eigenen alten Socket. Behebt den Reconnect-"Krieg" (Endlos `code 4000`), bei dem Nachrichten nie verarbeitet wurden.
+
+---
+
 ## [1.102.4] — 2026-07-11
 
 ### Added

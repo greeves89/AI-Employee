@@ -111,7 +111,7 @@ async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None =
 
 
 @router.websocket("/agents/{agent_id}/chat")
-async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None)):
+async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None), client_id: str | None = Query(None)):
     """Bidirectional WebSocket for chatting with an agent.
 
     Client sends: {"text": "Hello"} or {"text": "/reset"}
@@ -174,7 +174,13 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             pass  # Allow connection attempt if check fails
 
     await websocket.accept()
-    connection_key = f"{getattr(websocket.state, 'user_id', 'anonymous')}:{agent_id}:chat"
+    # One active socket PER CLIENT INSTANCE (not just per user+agent): distinct
+    # clients — a browser tab, the desktop app, another device — each carry their
+    # own client_id and therefore coexist. Only a reconnect of the SAME instance
+    # (same client_id) replaces its own stale socket, preventing leaks. Clients
+    # without a client_id share the legacy "default" slot (old behaviour).
+    _client = (client_id or "default").strip()[:64] or "default"
+    connection_key = f"{getattr(websocket.state, 'user_id', 'anonymous')}:{agent_id}:chat:{_client}"
     previous = _active_chat_websockets.get(connection_key)
     if previous and previous is not websocket:
         try:
