@@ -6,18 +6,16 @@ services:
       POSTGRES_DB: ai_employee
       POSTGRES_USER: ai_employee
       POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
-    # No host port binding - only accessible via internal network
-    # Raise max_connections for 100 concurrent users (default 100 is too low)
-    command: >
-      postgres
-      -c max_connections=250
-      -c shared_buffers=256MB
-      -c work_mem=8MB
+    command: 'postgres -c max_connections=250 -c shared_buffers=256MB -c work_mem=8MB
       -c effective_cache_size=512MB
+
+      '
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+    - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ai_employee"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U ai_employee
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,17 +25,19 @@ services:
         limits:
           memory: 1G
     networks:
-      - internal
-
+    - internal
   redis:
     image: redis:7-alpine
     container_name: ai-employee-redis
-    # No host port binding - only accessible via internal network
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy volatile-lru --requirepass ${REDIS_PASSWORD:-changeme-redis-password}
+    - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy volatile-lru
+      --requirepass ${REDIS_PASSWORD:-changeme-redis-password}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+      - CMD
+      - redis-cli
+      - ping
       interval: 5s
       timeout: 5s
       retries: 5
@@ -47,23 +47,18 @@ services:
         limits:
           memory: 512M
     networks:
-      - internal
-      - agent-network
-
-  # Docker Socket Proxy — restricts Docker API surface for orchestrator.
-  # Only allows container management operations; blocks privileged escalation.
+    - internal
+    - agent-network
   docker-socket-proxy:
     image: tecnativa/docker-socket-proxy:latest
     container_name: ai-employee-docker-proxy
     environment:
-      # Allow container management (required for agent lifecycle)
       CONTAINERS: 1
       IMAGES: 1
       VOLUMES: 1
       NETWORKS: 1
       EXEC: 1
-      # Block dangerous operations
-      POST: 1          # Allow container create/start/stop
+      POST: 1
       AUTH: 0
       SECRETS: 0
       SWARM: 0
@@ -78,15 +73,14 @@ services:
       SESSION: 0
       SYSTEM: 0
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 64M
     networks:
-      - internal
-
+    - internal
   orchestrator:
     build:
       context: ./orchestrator
@@ -94,15 +88,10 @@ services:
       target: base
     container_name: ai-employee-orchestrator
     ports:
-      # Bind to loopback only — external access goes via reverse proxy.
-      # Prevents the orchestrator API being directly reachable on the public IP.
-      - "127.0.0.1:${ORCHESTRATOR_PORT:-8000}:8000"
+    - '8000'
     environment:
       DATABASE_URL: postgresql+asyncpg://ai_employee:${DB_PASSWORD:-devpassword}@postgres:5432/ai_employee
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@redis:6379
-      # INTERNAL uses the container_name (ai-employee-redis) so agent containers
-      # on the agent-network can resolve it. The compose service name "redis"
-      # only works on the internal network.
       REDIS_URL_INTERNAL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@ai-employee-redis:6379
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -131,39 +120,18 @@ services:
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
       AGENT_IMAGE: ai-employee-agent:latest
-      # Kiosk voice: enables POST /kiosk/ws-ticket (mints a WS ticket for the local
-      # kiosk). Empty by default → endpoint 404s. Set to "true" ONLY on the single-
-      # user Pi kiosk, NEVER on multi-tenant boxes.
       KIOSK_VOICE_ENABLED: ${KIOSK_VOICE_ENABLED:-}
-      # Kiosk router: mounts the UNAUTHENTICATED /api/v1/kiosk/* endpoints (local Pi
-      # browser). Empty/false by default → router not mounted, endpoints 404. Set to
-      # "true" ONLY on the single-user Pi kiosk, NEVER on multi-tenant/VPS boxes.
       KIOSK_ENABLED: ${KIOSK_ENABLED:-false}
-      # How many different chat sessions ONE agent processes concurrently (1 =
-      # serial default). >1 → independent sessions/tasks run in parallel in one
-      # container. Passed through to each agent container.
       MAX_PARALLEL_CHATS: ${MAX_PARALLEL_CHATS:-1}
-      # How many independent tasks ONE agent runs concurrently (1 = serial default).
-      # Passed through to each agent container.
       MAX_PARALLEL_TASKS: ${MAX_PARALLEL_TASKS:-1}
-      # Local embedding/semantic search — set false on constrained hosts (Pi).
-      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
-      # Enterprise Volume Mounts — admin-defined allowlist (host paths never exposed to UI)
-      # Format (one per line): label:host_path:container_path:mode  (mode = ro or rw)
-      # Example:
-      #   AGENT_MOUNT_CATALOG: |
-      #     nas-documents:/mnt/nas/documents:/mnt/documents:ro
-      #     project-repo:/srv/repos/myproject:/workspace/repo:rw
-      #     shared-output:/data/agent-output:/output:rw
       AGENT_MOUNT_CATALOG: ${AGENT_MOUNT_CATALOG:-}
     volumes:
-      - ./orchestrator:/app
-      - ./VERSION:/VERSION:ro
-      - ./CHANGELOG.md:/CHANGELOG.md:ro
-      - ai-employee-shared:/shared
-      - ${HOME}/.ai-employee:/host-auth:ro
-      # Second Brains base — orchestrator provisions per-department vault folders here
-      - ${SECONDBRAIN_BASE:-/srv/secondbrain}:/srv/secondbrain
+    - ./orchestrator:/app
+    - ./VERSION:/VERSION:ro
+    - ./CHANGELOG.md:/CHANGELOG.md:ro
+    - ai-employee-shared:/shared
+    - ${HOME}/.ai-employee:/host-auth:ro
+    - ${SECONDBRAIN_BASE:-/srv/secondbrain}:/srv/secondbrain
     deploy:
       resources:
         limits:
@@ -177,54 +145,56 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - internal
-      - agent-network
-
+    - internal
+    - agent-network
   embedding-service:
     build:
       context: ./embedding-service
       dockerfile: Dockerfile
     container_name: ai-employee-embedding
-    # No port binding - only accessible via internal network
     volumes:
-      - embedding_models:/models
+    - embedding_models:/models
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 3G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8001/healthz
       interval: 30s
       timeout: 10s
       retries: 3
-      # first-run bge-m3 download (~2.3 GB) takes 2-5 min; see issue #287
       start_period: 300s
     networks:
-      - internal
-
+    - internal
   stt-service:
     build:
       context: ./stt-service
       dockerfile: Dockerfile
     container_name: ai-employee-stt
-    # No port binding - only accessible via internal network
     volumes:
-      - stt_models:/models
+    - stt_models:/models
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 2G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/healthz"]
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8003/healthz
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
     networks:
-      - internal
-
+    - internal
   frontend:
     build:
       context: ./frontend
@@ -235,70 +205,67 @@ services:
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
     container_name: ai-employee-frontend
     ports:
-      # Bind to loopback only — external access goes via reverse proxy.
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    - '3000'
     depends_on:
-      - orchestrator
+    - orchestrator
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 512M
     networks:
-      - internal
-      - agent-network
-
-  # Reverse proxy - routes /api and /ws to orchestrator, everything else to frontend
+    - internal
+    - agent-network
   caddy:
     image: caddy:2-alpine
     container_name: ai-employee-caddy
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    - ./Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
-      - orchestrator
-      - frontend
+    - orchestrator
+    - frontend
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 128M
     networks:
-      - internal
-
-  # Cloudflare Tunnel - exposes the app via HTTPS without opening ports
-  # Set CLOUDFLARE_TUNNEL_TOKEN in .env to enable
+    - internal
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: ai-employee-cloudflared
-    command: tunnel --protocol http2 --edge-ip-version auto --retries 10 --grace-period 60s run
+    command: tunnel --protocol http2 --edge-ip-version auto --retries 10 --grace-period
+      60s run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-      TUNNEL_METRICS: "0.0.0.0:20241"
-      NO_AUTOUPDATE: "true"
+      TUNNEL_METRICS: 0.0.0.0:20241
+      NO_AUTOUPDATE: 'true'
     depends_on:
-      - caddy
+    - caddy
     restart: unless-stopped
     stop_grace_period: 10s
-    # Probes the local /ready endpoint — exits 0 only when at least one edge
-    # connection is active. Catches the flap-loop that `tunnel info` misses.
     healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
+      test:
+      - CMD
+      - cloudflared
+      - tunnel
+      - --metrics
+      - 127.0.0.1:20241
+      - ready
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
     labels:
-      - "autoheal=true"
+    - autoheal=true
     profiles:
-      - tunnel
+    - tunnel
     deploy:
       resources:
         limits:
           memory: 128M
     networks:
-      - internal
-
-  # Auto-restart unhealthy containers (only those with autoheal label)
+    - internal
   autoheal:
     image: willfarrell/autoheal:latest
     container_name: ai-employee-autoheal
@@ -306,23 +273,21 @@ services:
       AUTOHEAL_CONTAINER_LABEL: autoheal
       AUTOHEAL_INTERVAL: 60
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+    - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     profiles:
-      - tunnel
+    - tunnel
     deploy:
       resources:
         limits:
           memory: 32M
-
 volumes:
-  postgres_data:
-  redis_data:
-  embedding_models:
-  stt_models:
+  postgres_data: null
+  redis_data: null
+  embedding_models: null
+  stt_models: null
   ai-employee-shared:
     external: true
-
 networks:
   internal:
     driver: bridge
