@@ -134,7 +134,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      # first-run bge-m3 download (~2.3 GB) takes 2-5 min; see issue #287
+      start_period: 300s
     networks:
       - internal
 

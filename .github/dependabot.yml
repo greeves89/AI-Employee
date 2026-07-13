@@ -62,8 +62,13 @@ updates:
     open-pull-requests-limit: 10
     labels: ["dependencies", "javascript"]
     groups:
-      all-npm:
+      # Minor + patch updates are grouped → single PR, safe to review & merge
+      # Major version bumps are intentionally excluded so they get individual PRs
+      # requiring a manual migration decision (Next, React, Tailwind, TS majors
+      # are coordinated framework upgrades — not rubber-stampable via group PR).
+      all-npm-minor:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

@@ -30,7 +30,10 @@ COPY app /app/app
 
 EXPOSE 8001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+# start-period covers the first-run model download (bge-m3 ~2.3 GB, 2-5 min);
+# a shorter window marks the container unhealthy mid-download and restart-loops it
+# before the download can finish (issue #287).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8001/healthz || exit 1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
