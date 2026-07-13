@@ -135,7 +135,7 @@ jobs:
           cp -f "${{ steps.bridge_version.outputs.dmg_name }}" AI-Employee-Bridge.dmg
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI-Employee-Bridge-macOS
           path: |
@@ -203,7 +203,7 @@ jobs:
         shell: pwsh
 
       - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AI-Employee-Bridge-Windows
           path: AI-Employee-Bridge-Windows.zip
