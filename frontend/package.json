@@ -33,7 +33,7 @@
     "react-pdf": "^10.4.1",
     "recharts": "^3.9.2",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^2.6.0",
+    "tailwind-merge": "^3.6.0",
     "three": "^0.185.1",
     "three-spritetext": "^1.10.0",
     "zustand": "^5.0.14"
