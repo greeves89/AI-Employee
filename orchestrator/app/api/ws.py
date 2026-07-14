@@ -4,6 +4,7 @@ import logging
 import mimetypes
 import os
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -33,6 +34,10 @@ _CHAT_ATTACHMENT_EXTENSIONS = {
     ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".flac",
 }
 _active_chat_websockets: dict[str, WebSocket] = {}
+
+# Rate-limit the legacy token= warning: at most once per token prefix per 600s
+_legacy_token_warned: dict[str, float] = {}
+_LEGACY_WARN_COOLDOWN = 600
 
 
 def init_stream_manager(redis: RedisService, docker: DockerService | None = None) -> StreamManager:
@@ -79,7 +84,11 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticke
 
     # Legacy: JWT token in URL (deprecated)
     if token:
-        logger.warning("WebSocket using legacy token= param — migrate to ticket-based auth")
+        key = token[:16]
+        now = time.monotonic()
+        if now - _legacy_token_warned.get(key, 0) >= _LEGACY_WARN_COOLDOWN:
+            _legacy_token_warned[key] = now
+            logger.warning("WebSocket using legacy token= param — migrate to ticket-based auth")
 
     try:
         async with async_session_factory() as db:
