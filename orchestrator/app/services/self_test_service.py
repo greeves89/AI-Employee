@@ -7,6 +7,7 @@ creates GitHub issues for failures, and sends a Telegram digest.
 import asyncio
 import json
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -574,11 +575,18 @@ class SelfTestService:
             )
             oauth = result.scalar_one_or_none()
             if not oauth or not oauth.access_token:
-                logger.warning("[SelfTest] No GitHub OAuth token — skipping issue creation")
-                return 0
-
-            from app.security.encryption import decrypt_value
-            token = decrypt_value(oauth.access_token)
+                # Fallback for agent-only environments without a user OAuth
+                # connection: the orchestrator may carry a GITHUB_PAT env var.
+                env_token = os.environ.get("GITHUB_PAT")
+                if not env_token:
+                    logger.warning(
+                        "[SelfTest] No GitHub OAuth token or GITHUB_PAT — skipping issue creation"
+                    )
+                    return 0
+                token = env_token
+            else:
+                from app.security.encryption import decrypt_value
+                token = decrypt_value(oauth.access_token)
         except Exception as e:
             logger.warning(f"[SelfTest] Could not get GitHub token: {e}")
             return 0
