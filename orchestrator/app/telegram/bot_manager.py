@@ -2,6 +2,16 @@
 
 Starts/stops individual bot instances when agents configure their Telegram token.
 Loads all configured bots on startup.
+
+SINGLE-PROCESS ASSUMPTION (issue #319): the token dedup here (``claimed_tokens``
+and the ``start_bot`` guards) only deduplicates pollers *within one process*. A
+Telegram token may be polled by exactly one ``getUpdates`` loop cluster-wide, so
+the orchestrator must run as a single uvicorn worker / single replica (enforced
+by ``--workers 1`` in the Dockerfile ``production`` stage). Before scaling to
+multiple workers or replicas, add a distributed lock per token (e.g. a Redis
+lease or ``SELECT ... FOR UPDATE SKIP LOCKED``) so only one instance polls each
+token; otherwise Telegram raises "terminated by other getUpdates request" and
+every message is delivered twice.
 """
 
 import uuid
