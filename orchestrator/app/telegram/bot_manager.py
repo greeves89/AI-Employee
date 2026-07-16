@@ -10,6 +10,7 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.agent import Agent
 from app.telegram.agent_bot import TelegramAgentBot
 
@@ -23,6 +24,25 @@ class TelegramBotManager:
 
     async def start_bot(self, agent_id: str, agent_name: str, bot_token: str, auth_key: str) -> None:
         """Start a Telegram bot for an agent."""
+        # The global notification bot already polls this token — starting a
+        # second poller for it would trigger Telegram's getUpdates conflict and
+        # deliver every message twice.
+        if bot_token and bot_token == settings.telegram_bot_token:
+            print(
+                f"[Telegram] Not starting agent bot for {agent_name}: token is the "
+                f"global bot token (already polled — would cause duplicate messages)."
+            )
+            return
+
+        # Refuse a token that another agent's bot is already polling.
+        for other_id, other_bot in self._bots.items():
+            if other_id != agent_id and getattr(other_bot, "bot_token", None) == bot_token:
+                print(
+                    f"[Telegram] Not starting agent bot for {agent_name}: token already "
+                    f"polled by another agent (would cause duplicate messages)."
+                )
+                return
+
         # Stop existing bot for this agent if any
         await self.stop_bot(agent_id)
 
@@ -60,11 +80,28 @@ class TelegramBotManager:
         result = await db.execute(select(Agent))
         agents = result.scalars().all()
 
+        # A Telegram bot token may only be polled by a single getUpdates loop.
+        # The global notification bot already polls settings.telegram_bot_token,
+        # so any agent reusing that token (or a token another agent already
+        # claimed) must be skipped — otherwise both instances poll in parallel,
+        # Telegram raises "terminated by other getUpdates request", and every
+        # reply is delivered twice.
+        claimed_tokens: set[str] = set()
+        if settings.telegram_bot_token:
+            claimed_tokens.add(settings.telegram_bot_token)
+
         for agent in agents:
             config = agent.config or {}
             bot_token = config.get("telegram_bot_token")
             auth_key = config.get("telegram_auth_key")
             if bot_token and auth_key:
+                if bot_token in claimed_tokens:
+                    print(
+                        f"[Telegram] Skipping bot for {agent.name}: token already "
+                        f"polled by another bot instance (would cause duplicate messages)."
+                    )
+                    continue
+                claimed_tokens.add(bot_token)
                 try:
                     await self.start_bot(agent.id, agent.name, bot_token, auth_key)
                 except Exception as e:
