@@ -1421,16 +1421,9 @@ clean Markdown; you don't need to commit.
 
     embedding_backfill_task = asyncio.create_task(run_backfill_loop(_sf_emb))
 
-    # Start global Telegram bot if configured (for notifications)
-    telegram_task = None
-    if settings.telegram_bot_token:
-        from app.telegram.bot import TelegramBot
-
-        bot = TelegramBot()
-        telegram_task = asyncio.create_task(bot.start())
-        app.state.telegram_bot = bot
-
-    # Start per-agent Telegram bots
+    # Start per-agent Telegram bots first — a per-agent bot routes messages
+    # directly to its agent, so it takes priority over the global controller
+    # bot when they would otherwise share a token.
     from app.telegram.bot_manager import TelegramBotManager
     from app.db.session import async_session_factory
 
@@ -1438,6 +1431,25 @@ clean Markdown; you don't need to commit.
     app.state.telegram_bot_manager = tg_manager
     async with async_session_factory() as db:
         await tg_manager.load_all_from_db(db)
+
+    # Start the global Telegram bot (commands + notifications) only if its token
+    # is not already polled by a per-agent bot. Two getUpdates loops on the same
+    # token make Telegram raise "terminated by other getUpdates request" and
+    # deliver every message twice.
+    telegram_task = None
+    if settings.telegram_bot_token:
+        if tg_manager.is_token_claimed(settings.telegram_bot_token):
+            logger.warning(
+                "Global Telegram bot not started: its token is already polled by a "
+                "per-agent bot. Use a separate BotFather token for the global bot to "
+                "enable it alongside the agent bot."
+            )
+        else:
+            from app.telegram.bot import TelegramBot
+
+            bot = TelegramBot()
+            telegram_task = asyncio.create_task(bot.start())
+            app.state.telegram_bot = bot
 
     yield
 
