@@ -27,4 +27,12 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 # Production target
 FROM base AS production
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# IMPORTANT: exactly ONE worker. The app lifespan (app/main.py) starts many
+# process-wide singletons — the global Telegram getUpdates poller, the schedule
+# runner, the daily self-test, the skill crawler, OAuth/token refreshers, the
+# disk monitor. Running >1 uvicorn worker (or >1 replica) duplicates all of
+# them: schedules fire twice and Telegram raises "terminated by other
+# getUpdates request" with every message delivered twice (issue #319).
+# Scaling horizontally requires a cluster-wide lock per singleton first
+# (see app/telegram/bot_manager.py).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
