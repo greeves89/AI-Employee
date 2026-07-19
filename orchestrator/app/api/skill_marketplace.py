@@ -16,10 +16,50 @@ from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssign
 from app.models.task import Task
 from app.models.audit_log import AuditLog, AuditEventType
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
+from app.core.skill_security import (
+    SkillSecurityError,
+    check_skill_content,
+    check_skill_file,
+    is_allowlisted,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/skills", tags=["skills-marketplace"])
+
+
+async def _gate_skill_or_reject(
+    db: AsyncSession,
+    *,
+    skill_name: str,
+    agent_id: str,
+    user_id: str | None,
+    content: str | None = None,
+    filename: str | None = None,
+    data: bytes | None = None,
+) -> None:
+    """Run the static install-time security gate (#192). On rejection, write an
+    audit log entry and raise HTTP 400. Admin-allow-listed skill names bypass it."""
+    if is_allowlisted(skill_name):
+        return
+    try:
+        if content is not None:
+            check_skill_content(content)
+        if filename is not None:
+            check_skill_file(filename, data or b"")
+    except SkillSecurityError as e:
+        audit = AuditLog(
+            agent_id=agent_id,
+            event_type=AuditEventType.SKILL_INSTALL_BLOCKED.value,
+            command=filename or skill_name,
+            outcome="blocked",
+            user_id=user_id,
+            meta={"skill_name": skill_name, "reason": e.reason},
+        )
+        db.add(audit)
+        await db.commit()
+        logger.warning("Skill '%s' blocked by security gate: %s", skill_name, e.reason)
+        raise HTTPException(status_code=400, detail=e.reason)
 
 
 def _normalize_category(raw: str) -> SkillCategory:
@@ -258,6 +298,10 @@ async def create_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new skill (user-created, immediately active)."""
+    await _gate_skill_or_reject(
+        db, skill_name=body.name, agent_id="user",
+        user_id=str(getattr(user, "id", "unknown")), content=body.content,
+    )
     # Exact match
     existing = (await db.execute(select(Skill).where(Skill.name == body.name))).scalar_one_or_none()
     if existing:
@@ -1137,6 +1181,11 @@ async def upload_skill_file(
         raise HTTPException(status_code=409, detail=f"File '{safe_name}' already exists for this skill. Delete it first.")
 
     data = await file.read()
+    await _gate_skill_or_reject(
+        db, skill_name=skill.name, agent_id="user",
+        user_id=str(getattr(user, "id", "unknown")),
+        filename=file.filename or safe_name, data=data,
+    )
     try:
         path = save_file(skill_id, safe_name, data)
     except ValueError as e:
@@ -1270,6 +1319,10 @@ async def import_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Import a skill from an external source."""
+    await _gate_skill_or_reject(
+        db, skill_name=body.name, agent_id=f"import:{body.source_repo or 'manual'}",
+        user_id=str(getattr(user, "id", "unknown")), content=body.content,
+    )
     existing = (await db.execute(select(Skill).where(Skill.name == body.name))).scalar_one_or_none()
     if existing:
         return _to_response(existing)  # Idempotent
@@ -1303,6 +1356,10 @@ async def agent_propose_skill(
 ):
     """Agent proposes a new skill (created as draft, needs user review)."""
     agent_id = auth["agent_id"]
+
+    await _gate_skill_or_reject(
+        db, skill_name=body.name, agent_id=agent_id, user_id=None, content=body.content,
+    )
 
     existing = (await db.execute(select(Skill).where(Skill.name == body.name))).scalar_one_or_none()
     if existing:
