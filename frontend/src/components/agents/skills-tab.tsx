@@ -13,13 +13,13 @@ import {
   Save,
   X,
   Download,
-  Github,
   Loader2,
   ExternalLink,
   Search,
   Store,
   Check,
 } from "lucide-react";
+import { Github } from "@/components/icons/github";
 import { cn } from "@/lib/utils";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
