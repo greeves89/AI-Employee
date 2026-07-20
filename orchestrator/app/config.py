@@ -109,8 +109,10 @@ class Settings(BaseSettings):
     # OpenAI (for Whisper voice transcription)
     openai_api_key: str = ""
 
-    # Local TTS service (VibeVoice, runs natively on Mac host with Metal GPU)
-    # Docker containers reach Mac host via host.docker.internal
+    # Local TTS service (VibeVoice, runs natively on the host with GPU access).
+    # Containers reach the host via host.docker.internal. On Linux this hostname
+    # only resolves because the orchestrator service maps it to host-gateway in
+    # docker-compose (extra_hosts); on Docker Desktop it is provided automatically.
     tts_service_url: str = "http://host.docker.internal:8002"
 
     # Local STT service (faster-whisper) — transcribes Telegram voice messages.

@@ -176,6 +176,11 @@ services:
       docker-socket-proxy:
         condition: service_started
     restart: unless-stopped
+    # Cross-platform host access: Docker Desktop (Mac/Windows) provides
+    # host.docker.internal automatically, but on Linux hosts it does not resolve.
+    # host-gateway makes the orchestrator reach host services (e.g. TTS on :8002).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - internal
       - agent-network
