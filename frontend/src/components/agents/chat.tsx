@@ -437,24 +437,55 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       return;
     }
 
-    // Fetch one-time ticket for WebSocket auth
-    let authParam = "";
+    // Fetch one-time ticket for WebSocket auth (short-lived, single-use).
+    // SECURITY (#337): never fall back to a long-lived JWT in the URL — that
+    // leaks the token into proxy/access logs, browser history and Referer
+    // headers. If no ticket can be obtained, treat it as a temporary connection
+    // failure and retry with backoff instead of degrading auth.
+    let ticket: string | null = null;
     try {
       const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
         method: "POST",
         credentials: "include",
       });
       if (resp.ok) {
-        const { ticket } = await resp.json();
-        authParam = `?ticket=${ticket}`;
+        ticket = (await resp.json())?.ticket ?? null;
       }
     } catch {
-      // Fallback to legacy token auth
-      const token = useAuthStore.getState().wsToken;
-      authParam = token ? `?token=${token}` : "";
+      ticket = null;
     }
 
-    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat${authParam}`);
+    if (!ticket) {
+      setIsConnected(false);
+      reconnectAttempts.current++;
+      if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current - 1), 10000);
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== "reconnecting"),
+          {
+            id: "reconnecting",
+            role: "system",
+            content: `Reconnecting... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        reconnectTimeout.current = setTimeout(connect, delay);
+      } else {
+        setConnectionFailed(true);
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== "reconnecting"),
+          {
+            id: "connection-failed",
+            role: "error",
+            content: "Could not authenticate the connection. Please refresh the page and sign in again.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+      return;
+    }
+
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat?ticket=${ticket}`);
     wsRef.current = ws;
 
     ws.onopen = () => {

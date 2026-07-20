@@ -13,6 +13,8 @@ export function useWebSocket(path: string) {
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(false);
   const failCountRef = useRef(0);
+  // Subscribed only as an auth-change signal to rebuild the socket on
+  // login/logout. Deliberately NOT placed in the WebSocket URL (see #337).
   const wsToken = useAuthStore((s) => s.wsToken);
 
   const connect = useCallback(async () => {
@@ -28,25 +30,37 @@ export function useWebSocket(path: string) {
       wsRef.current.close();
     }
 
-    // Fetch one-time ticket for WebSocket auth
-    let authParam = "";
+    // Fetch one-time ticket for WebSocket auth (short-lived, single-use).
+    // SECURITY (#337): never fall back to a long-lived JWT in the URL — that
+    // leaks the token into proxy/access logs, browser history and Referer
+    // headers. If no ticket can be obtained (network error or non-OK response),
+    // treat it as a connection failure and retry with backoff.
+    let ticket: string | null = null;
     try {
       const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
         method: "POST",
         credentials: "include",
       });
       if (resp.ok) {
-        const { ticket } = await resp.json();
-        authParam = `${path.includes("?") ? "&" : "?"}ticket=${ticket}`;
+        ticket = (await resp.json())?.ticket ?? null;
       }
     } catch {
-      // Fallback to legacy token auth
-      authParam = wsToken ? `${path.includes("?") ? "&" : "?"}token=${wsToken}` : "";
+      ticket = null;
     }
 
     // Bail out if unmounted while awaiting ticket
     if (!mountedRef.current) return;
 
+    if (!ticket) {
+      setIsConnected(false);
+      failCountRef.current++;
+      if (failCountRef.current >= 5) return;
+      const delay = 3000 * Math.pow(2, Math.min(failCountRef.current, 3));
+      reconnectTimeout.current = setTimeout(connect, delay);
+      return;
+    }
+
+    const authParam = `${path.includes("?") ? "&" : "?"}ticket=${ticket}`;
     const ws = new WebSocket(`${getWsUrl()}/api/v1${path}${authParam}`);
     wsRef.current = ws;
     let wasOpen = false;

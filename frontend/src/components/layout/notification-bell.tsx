@@ -74,6 +74,8 @@ export function NotificationBell({
     }
   }, []);
 
+  // Subscribed only as an auth-change signal to rebuild the socket on
+  // login/logout. Deliberately NOT placed in the WebSocket URL (see #337).
   const wsToken = useAuthStore((s) => s.wsToken);
 
   // WebSocket for live notifications
@@ -84,25 +86,34 @@ export function NotificationBell({
     const connect = async () => {
       if (failCount >= 5) return; // Stop retrying after repeated auth failures
 
-      // Fetch one-time ticket for WebSocket auth
-      let authParam = "";
+      // Fetch one-time ticket for WebSocket auth (short-lived, single-use).
+      // SECURITY (#337): never fall back to a long-lived JWT in the URL — that
+      // leaks the token into proxy/access logs, browser history and Referer
+      // headers. If no ticket can be obtained, retry with backoff instead.
+      let ticket: string | null = null;
       try {
         const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
           method: "POST",
           credentials: "include",
         });
         if (resp.ok) {
-          const { ticket } = await resp.json();
-          authParam = `?ticket=${ticket}`;
+          ticket = (await resp.json())?.ticket ?? null;
         }
       } catch {
-        // Fallback to legacy token auth
-        authParam = wsToken ? `?token=${wsToken}` : "";
+        ticket = null;
       }
 
       if (intentionalClose.current) return; // Bail if unmounted while awaiting ticket
 
-      const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/notifications${authParam}`);
+      if (!ticket) {
+        failCount++;
+        if (failCount >= 5) return;
+        const delay = 5000 * Math.pow(2, Math.min(failCount, 3));
+        reconnectTimeout.current = setTimeout(connect, delay);
+        return;
+      }
+
+      const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/notifications?ticket=${ticket}`);
       wsRef.current = ws;
       let wasOpen = false;
 
