@@ -60,7 +60,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState(3);
   const [newProject, setNewProject] = useState("");
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const fetchTodos = useCallback(async () => {
     try {

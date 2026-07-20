@@ -69,7 +69,7 @@ export default function TaskDetailPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const replayContainerRef = useRef<HTMLDivElement>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Auto-scroll the replay log to the newest revealed step while dragging the slider.
   useEffect(() => {

@@ -256,7 +256,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reconnectAttempts = useRef(0);
   const intentionalClose = useRef(false);
   const currentWsSessionId = useRef<string | null>(null);
