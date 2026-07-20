@@ -248,6 +248,7 @@ class DockerService:
                 "disk_usage_mb": round(used_mb, 2),
                 "disk_limit_mb": round(limit_mb, 2),
                 "disk_percent": disk_percent,
+                "disk_available_mb": round(max(limit_mb - used_mb, 0), 2),
             }
         except Exception:
             return None
