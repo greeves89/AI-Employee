@@ -14,7 +14,6 @@ import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo, formatBytes } from "@/lib/utils";
 import * as api from "@/lib/api";
-import { useAuthStore } from "@/lib/auth";
 import type { Task, LogEvent } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { MarkdownContent } from "@/components/ui/markdown-content";
@@ -156,24 +155,30 @@ export default function TaskDetailPage() {
 
   // Connect WebSocket for live logs
   const connectWs = useCallback(async (agentId: string) => {
-    // Fetch one-time ticket for WebSocket auth
-    let authParam = "";
+    // Fetch one-time ticket for WebSocket auth (short-lived, single-use).
+    // SECURITY (#337): never fall back to a long-lived JWT in the URL — that
+    // leaks the token into proxy/access logs, browser history and Referer
+    // headers. If no ticket can be obtained, retry with backoff instead.
+    let ticket: string | null = null;
     try {
       const resp = await fetch(`${getApiUrl()}/api/v1/ws/ticket`, {
         method: "POST",
         credentials: "include",
       });
       if (resp.ok) {
-        const { ticket } = await resp.json();
-        authParam = `?ticket=${ticket}`;
+        ticket = (await resp.json())?.ticket ?? null;
       }
     } catch {
-      // Fallback to legacy token auth
-      const token = useAuthStore.getState().wsToken;
-      authParam = token ? `?token=${token}` : "";
+      ticket = null;
     }
 
-    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/logs${authParam}`);
+    if (!ticket) {
+      setIsConnected(false);
+      reconnectTimeout.current = setTimeout(() => connectWs(agentId), 3000);
+      return;
+    }
+
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/logs?ticket=${ticket}`);
     wsRef.current = ws;
 
     ws.onopen = () => setIsConnected(true);
