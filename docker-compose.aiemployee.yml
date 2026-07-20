@@ -144,6 +144,11 @@ services:
       docker-socket-proxy:
         condition: service_started
     restart: unless-stopped
+    # Cross-platform host access: on Linux host.docker.internal is not resolvable
+    # by default; host-gateway adds the /etc/hosts entry so the orchestrator can
+    # reach host services (e.g. TTS on :8002). No-op on Docker Desktop.
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
     networks:
     - internal
     - agent-network

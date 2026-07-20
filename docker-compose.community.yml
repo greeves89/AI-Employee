@@ -108,6 +108,11 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # Cross-platform host access: on Linux host.docker.internal does not resolve
+    # by default; host-gateway adds the /etc/hosts entry so the orchestrator can
+    # reach host services (e.g. TTS on :8002). No-op on Docker Desktop.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
       interval: 30s
