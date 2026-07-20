@@ -10,7 +10,7 @@ export function useWebSocket(path: string) {
   const [messages, setMessages] = useState<LogEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(false);
   const failCountRef = useRef(0);
   const wsToken = useAuthStore((s) => s.wsToken);

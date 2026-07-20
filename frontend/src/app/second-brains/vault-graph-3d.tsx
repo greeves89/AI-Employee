@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WheelEvent as ReactWheelEvent } from "react";
+import type { ReactElement, WheelEvent as ReactWheelEvent } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import SpriteText from "three-spritetext";
 import {
@@ -20,7 +20,7 @@ import type { VaultGraph, VaultGraphNode } from "@/lib/api";
 
 // react-force-graph's prop surface is broad and loosely typed — cast once so the
 // JSX below stays readable instead of fighting generics.
-const FG = ForceGraph3D as unknown as (props: Record<string, unknown>) => JSX.Element;
+const FG = ForceGraph3D as unknown as (props: Record<string, unknown>) => ReactElement;
 
 const PALETTE = [
   "#60a5fa", "#34d399", "#f472b6", "#fbbf24", "#a78bfa", "#22d3ee",
