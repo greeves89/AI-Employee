@@ -5,8 +5,9 @@ import {
   Plug, Mail, Cloud, Smartphone, CheckCircle2,
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
-  Github, Eye, EyeOff, Save, Users, Copy, Info,
+  Eye, EyeOff, Save, Users, Copy, Info,
 } from "lucide-react";
+import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";

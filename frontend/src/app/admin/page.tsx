@@ -21,7 +21,6 @@ import {
   EyeOff,
   MessageSquare,
   ExternalLink,
-  Github,
   Bug,
   Lightbulb,
   TrendingUp,
@@ -37,6 +36,7 @@ import {
   ScrollText,
   Brain,
 } from "lucide-react";
+import { Github } from "@/components/icons/github";
 
 import { SettingsView } from "@/app/settings/view";
 import { AIAccountsView } from "@/app/ai-accounts/view";
