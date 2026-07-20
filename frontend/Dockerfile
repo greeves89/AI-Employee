@@ -11,7 +11,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 EXPOSE 3000
 ENV NEXT_TELEMETRY_DISABLED=1
-CMD ["npx", "next", "dev", "--turbo"]
+CMD ["npx", "next", "dev", "--webpack"]
 
 # ---- Build ----
 FROM node:22-alpine AS builder
