@@ -117,25 +117,35 @@ class APIRateLimitMiddleware:
         redis_client = getattr(redis_svc, "client", None) if redis_svc else None
 
         if redis_client:
+            # Only Redis I/O is guarded here. The downstream app call and the 429
+            # response are issued *outside* the try so a downstream 500 propagates
+            # instead of being swallowed and re-dispatched (double app-call).
+            redis_ok = False
+            retry_after: int | None = None  # None => allowed, int => blocked
             try:
                 current = await redis_client.incr(redis_key)
                 if current == 1:
                     await redis_client.expire(redis_key, self.window)
                 if current > self.max_requests:
                     ttl = await redis_client.ttl(redis_key)
+                    retry_after = max(ttl, 1)
                     logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
+                redis_ok = True
+            except Exception:
+                pass  # Redis unavailable — fall through to in-memory
+
+            if redis_ok:
+                if retry_after is not None:
                     response = Response(
                         content='{"detail":"Rate limit exceeded. Try again later."}',
                         status_code=429,
                         media_type="application/json",
-                        headers={"Retry-After": str(max(ttl, 1))},
+                        headers={"Retry-After": str(retry_after)},
                     )
                     await response(scope, receive, send)
-                    return
-                await self.app(scope, receive, send)
+                else:
+                    await self.app(scope, receive, send)
                 return
-            except Exception:
-                pass  # Redis unavailable — fall through to in-memory
 
         # In-memory fallback
         now = time.time()
