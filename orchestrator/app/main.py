@@ -132,10 +132,14 @@ class APIRateLimitMiddleware:
                     )
                     await response(scope, receive, send)
                     return
-                await self.app(scope, receive, send)
-                return
             except Exception:
                 pass  # Redis unavailable — fall through to in-memory
+            else:
+                # Under limit and Redis healthy — call downstream OUTSIDE the try
+                # so a 500 from the app isn't swallowed and the request re-run,
+                # double-checking out a DB connection (issue #346).
+                await self.app(scope, receive, send)
+                return
 
         # In-memory fallback
         now = time.time()
