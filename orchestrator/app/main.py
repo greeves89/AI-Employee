@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import MutableHeaders
 
 from app.api.router import api_router
 from app.api.ws import init_stream_manager
@@ -21,51 +21,83 @@ logger = logging.getLogger(__name__)
 # --- Security Headers Middleware ---
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        # CSP - allow self + inline styles (Tailwind) + wss for websockets
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: blob:; "
-            "connect-src 'self' ws: wss:; "
-            "font-src 'self' data:; "
-            "frame-ancestors 'none'"
-        )
-        return response
+class SecurityHeadersMiddleware:
+    """Pure-ASGI middleware that stamps security headers on every response.
+
+    Implemented as pure ASGI (not BaseHTTPMiddleware) on purpose: BaseHTTPMiddleware
+    runs the downstream app inside its own anyio task/cancel-scope. When a client
+    disconnects mid-request, that inner task is cancelled while an endpoint still
+    holds a checked-out SQLAlchemy connection, orphaning it (the pool then logs
+    "non-checked-in connection ... will be terminated"). Pure ASGI keeps the request
+    on the original task, so cancellation unwinds the session cleanly.
+    """
+
+    _CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self' ws: wss:; "
+        "font-src 'self' data:; "
+        "frame-ancestors 'none'"
+    )
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["X-Frame-Options"] = "DENY"
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                headers["X-XSS-Protection"] = "1; mode=block"
+                headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+                headers["Content-Security-Policy"] = self._CSP
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 # --- API Rate Limiting Middleware ---
 
 
-class APIRateLimitMiddleware(BaseHTTPMiddleware):
+class APIRateLimitMiddleware:
     """Per-user / per-IP rate limiting backed by Redis.
 
     Uses Redis INCR + EXPIRE for distributed, restart-safe counters.
     Falls back to in-memory tracking if Redis is unavailable.
+
+    Implemented as pure ASGI (not BaseHTTPMiddleware) so client disconnects don't
+    orphan checked-out DB connections — see SecurityHeadersMiddleware for the why.
     """
 
     def __init__(self, app, max_requests: int = 120, window_seconds: int = 60):
-        super().__init__(app)
+        self.app = app
         self.max_requests = max_requests
         self.window = window_seconds
         # In-memory fallback (only used if Redis is unreachable)
         self._fallback: dict[str, list[float]] = {}
 
-    async def dispatch(self, request: Request, call_next):
+    async def __call__(self, scope, receive, send):
         import time
+
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
 
         # Skip rate limiting for health checks and WebSocket upgrades
         path = request.url.path
         if path in ("/health", "/healthz") or request.headers.get("upgrade", "").lower() == "websocket":
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         # Identify caller: user_id from JWT cookie, fallback to IP
         key = request.client.host if request.client else "unknown"
@@ -92,13 +124,16 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
                 if current > self.max_requests:
                     ttl = await redis_client.ttl(redis_key)
                     logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
-                    return Response(
+                    response = Response(
                         content='{"detail":"Rate limit exceeded. Try again later."}',
                         status_code=429,
                         media_type="application/json",
                         headers={"Retry-After": str(max(ttl, 1))},
                     )
-                return await call_next(request)
+                    await response(scope, receive, send)
+                    return
+                await self.app(scope, receive, send)
+                return
             except Exception:
                 pass  # Redis unavailable — fall through to in-memory
 
@@ -110,15 +145,17 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
 
         if len(self._fallback[key]) >= self.max_requests:
             logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
-            return Response(
+            response = Response(
                 content='{"detail":"Rate limit exceeded. Try again later."}',
                 status_code=429,
                 media_type="application/json",
                 headers={"Retry-After": str(self.window)},
             )
+            await response(scope, receive, send)
+            return
 
         self._fallback[key].append(now)
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 
 # --- Config Validation ---
