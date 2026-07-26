@@ -30,6 +30,7 @@ from app.dependencies import require_auth
 from app.models.audit_log import AuditEventType, AuditLog
 from app.models.second_brain import SecondBrain
 from app.models.user import UserRole
+from app.services import vault_indexer
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/brains", tags=["brains"])
@@ -428,6 +429,10 @@ async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(req
         os.chmod(target, 0o666)
     except OSError:
         pass
+    try:
+        await vault_indexer.index_file(db, brain.label, brain.host_path, body.path)
+    except Exception as e:
+        log.warning("reindex after write failed brain=%s path=%s: %s", brain.slug, vault.safe_log(body.path), e)
     return {"ok": True, "path": body.path}
 
 
@@ -446,4 +451,24 @@ async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth)
         os.rmdir(target)
     else:
         raise HTTPException(status_code=404, detail="File not found")
+    try:
+        await vault_indexer.remove_file(db, brain.label, path)
+    except Exception as e:
+        log.warning("deindex after delete failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
     return {"ok": True, "path": path}
+
+
+@router.post("/{brain_id}/reindex")
+async def brain_reindex(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Re-chunk + re-embed a whole vault into ``vault_chunks`` for hybrid search.
+
+    Idempotent and incremental: unchanged files are skipped (file-hash check),
+    files that vanished are pruned. Run after bulk-editing the vault on disk or
+    to backfill an existing vault the first time.
+    """
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+    stats = await vault_indexer.reindex_vault(db, brain.label, brain.host_path)
+    return {"ok": True, "brain": brain.slug, **stats}

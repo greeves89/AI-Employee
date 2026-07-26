@@ -38,6 +38,7 @@ from app.models.user_mount_access import UserMountAccess
 from app.models.custom_role import CustomRole
 from app.models.ai_account import AIAccount
 from app.models.second_brain import SecondBrain
+from app.models.vault_chunk import VaultChunk
 from app.models.job_state import JobState
 from app.models.reflection_run import ReflectionRun
 
@@ -65,6 +66,7 @@ __all__ = [
     "UserProfile", "UserProfileEvent",
     "AgentSecret", "AgentSecretAssignment", "SecretType",
     "UserMountAccess", "CustomRole", "AIAccount", "SecondBrain",
+    "VaultChunk",
     "JobState",
     "ReflectionRun",
 ]

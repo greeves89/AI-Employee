@@ -34,6 +34,7 @@ from app.core import vault
 from app.core.encryption import decrypt_token
 from app.db.session import get_db
 from app.models.second_brain import SecondBrain
+from app.services import vault_indexer, vault_search
 
 router = APIRouter(prefix="/mcp", tags=["mcp-brain"])
 logger = logging.getLogger(__name__)
@@ -167,18 +168,18 @@ async def mcp_brain_endpoint(
     if isinstance(body, list):
         responses = []
         for req in body:
-            resp = _handle_rpc(req, brain)
+            resp = await _handle_rpc(req, brain, db)
             if resp is not None:
                 responses.append(resp)
         return JSONResponse(responses)
 
-    resp = _handle_rpc(body, brain)
+    resp = await _handle_rpc(body, brain, db)
     if resp is None:
         return JSONResponse(None, status_code=202)  # notification — no body
     return JSONResponse(resp)
 
 
-def _handle_rpc(req: dict, brain: SecondBrain):
+async def _handle_rpc(req: dict, brain: SecondBrain, db: AsyncSession):
     """Dispatch a single JSON-RPC request (or None for notifications)."""
     rpc_id = req.get("id")
     method = req.get("method", "")
@@ -201,12 +202,13 @@ def _handle_rpc(req: dict, brain: SecondBrain):
         return _mcp_result(rpc_id, {"tools": BRAIN_TOOLS})
 
     if method == "tools/call":
-        return _mcp_result(rpc_id, _call_tool(params.get("name", ""), params.get("arguments", {}), brain))
+        result = await _call_tool(params.get("name", ""), params.get("arguments", {}), brain, db)
+        return _mcp_result(rpc_id, result)
 
     return _mcp_error(rpc_id, -32601, f"Method not found: {method}")
 
 
-def _call_tool(name: str, args: dict, brain: SecondBrain) -> dict:
+async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession) -> dict:
     """Execute a vault tool and return an MCP tool result."""
     if name == "brain_search":
         query = (args.get("query") or "").strip()
@@ -216,7 +218,7 @@ def _call_tool(name: str, args: dict, brain: SecondBrain) -> dict:
             limit = min(int(float(str(args.get("limit", 10)))), 50)
         except (ValueError, TypeError):
             limit = 10
-        hits = vault.search(brain.host_path, query, limit)
+        hits = await vault_search.hybrid_search(db, brain.label, brain.host_path, query, limit)
         if not hits:
             return _tool_result(f"No matches for '{query}' in {brain.name}.")
         lines = [f"{len(hits)} match(es) in {brain.name}:"]
@@ -264,7 +266,11 @@ def _call_tool(name: str, args: dict, brain: SecondBrain) -> dict:
             return _tool_result(f"File already exists: {path} (set overwrite=true to replace).", is_error=True)
         except ValueError as e:
             return _tool_result(f"Error: {e}", is_error=True)
-        logger.info("brain_write brain=%s path=%s created=%s bytes=%s", brain.slug, path, res["created"], res["bytes"])
+        logger.info("brain_write brain=%s path=%s created=%s bytes=%s", brain.slug, vault.safe_log(path), res["created"], res["bytes"])
+        try:
+            await vault_indexer.index_file(db, brain.label, brain.host_path, path)
+        except Exception as e:  # indexing must not fail the write
+            logger.warning("brain_write reindex failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
         verb = "Created" if res["created"] else "Updated"
         return _tool_result(f"{verb} {path} in {brain.name} ({res['bytes']} bytes).")
 
@@ -280,7 +286,11 @@ def _call_tool(name: str, args: dict, brain: SecondBrain) -> dict:
             return _tool_result(f"File not found: {path}", is_error=True)
         except ValueError as e:
             return _tool_result(f"Error: {e}", is_error=True)
-        logger.info("brain_delete brain=%s path=%s", brain.slug, path)
+        logger.info("brain_delete brain=%s path=%s", brain.slug, vault.safe_log(path))
+        try:
+            await vault_indexer.remove_file(db, brain.label, path)
+        except Exception as e:
+            logger.warning("brain_delete deindex failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
         return _tool_result(f"Deleted {path} from {brain.name}.")
 
     return _tool_result(f"Unknown tool: {name}", is_error=True)

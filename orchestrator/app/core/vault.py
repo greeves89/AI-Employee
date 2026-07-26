@@ -33,6 +33,12 @@ _HEADING_RE = re.compile(r"^\s{0,3}#\s+(.+?)\s*$", re.MULTILINE)
 MAX_GRAPH_NODES = 2000
 
 
+def safe_log(value: object) -> str:
+    """Strip CR/LF (and other control chars) from a user-controlled value before
+    it is written to a log line, preventing log-forging / log-injection."""
+    return re.sub(r"[\x00-\x1f\x7f]", " ", str(value))
+
+
 def resolve_path(host_path: str, rel_path: str) -> str:
     """Resolve a vault-relative path to an absolute host path, jailed to the
     vault root and never touching ``.git``. Raises ``ValueError`` on escape."""
