@@ -76,7 +76,20 @@ async def index_file(
         )
     ).first()
     if existing and existing[0] == fhash:
-        return 0  # unchanged
+        # File unchanged; but back-fill embeddings that were skipped when the
+        # embedding service was unavailable during a prior index run.
+        has_null = (
+            await db.execute(
+                sa_text(
+                    "SELECT 1 FROM vault_chunks "
+                    "WHERE brain_label = :b AND path = :p AND embedding IS NULL LIMIT 1"
+                ),
+                {"b": brain_label, "p": rel_path},
+            )
+        ).first()
+        if not has_null:
+            return 0  # unchanged and fully embedded
+        # Fall through: re-index to fill missing embeddings.
 
     chunks = chunk_markdown(content)
     # Replace all chunks of this file atomically.
@@ -155,14 +168,18 @@ async def reindex_vault(
         await remove_file(db, brain_label, stale)
         pruned += 1
 
-    files = chunks = 0
+    files = chunks = errors = 0
     for rel in present:
-        n = await index_file(db, brain_label, host_path, rel)
-        if n:
-            files += 1
-            chunks += n
+        try:
+            n = await index_file(db, brain_label, host_path, rel)
+            if n:
+                files += 1
+                chunks += n
+        except Exception:
+            logger.warning("[VaultIndexer] skipping %s due to error", rel, exc_info=True)
+            errors += 1
     logger.info(
-        "[VaultIndexer] reindexed brain=%s files=%s chunks=%s pruned=%s",
-        brain_label, files, chunks, pruned,
+        "[VaultIndexer] reindexed brain=%s files=%s chunks=%s pruned=%s errors=%s",
+        brain_label, files, chunks, pruned, errors,
     )
-    return {"files": files, "chunks": chunks, "pruned": pruned}
+    return {"files": files, "chunks": chunks, "pruned": pruned, "errors": errors}

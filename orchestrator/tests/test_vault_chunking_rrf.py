@@ -37,9 +37,20 @@ class TestChunkMarkdown:
         chunks = chunk_markdown(md)
         joined = "\n".join(c.content for c in chunks)
         assert "```python" in joined
-        # the fence must stay attached to its opening in one chunk
+        # every chunk must have balanced fence markers
         for c in chunks:
-            assert c.content.count("```") % 2 == 0 or "```" not in c.content or True
+            assert c.content.count("```") % 2 == 0 or "```" not in c.content
+
+    def test_large_code_fence_not_split(self):
+        # A code fence longer than MAX_CHARS must be emitted as one chunk — never hard-split.
+        long_code = "```python\n" + "\n".join(f"result_{i} = i * {i}" for i in range(120)) + "\n```"
+        assert len(long_code) > MAX_CHARS
+        md = f"# Big Fence\n\n{long_code}"
+        chunks = chunk_markdown(md)
+        fence_chunks = [c for c in chunks if "```" in c.content]
+        # The entire fence must appear in exactly one chunk with balanced markers.
+        assert len(fence_chunks) == 1
+        assert fence_chunks[0].content.count("```") % 2 == 0
 
     def test_large_document_splits(self):
         md = "# Big\n\n" + ("Ein Absatz mit Text. " * 20 + "\n\n") * 20

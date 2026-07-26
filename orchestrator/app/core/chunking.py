@@ -154,8 +154,15 @@ def chunk_markdown(text: str) -> list[Chunk]:
             cur_heading = _heading_path(heading_stack)
             continue
 
-        # code or para
         blen = len(btext)
+        # Oversized code blocks must never be hard-split (would produce unbalanced fences).
+        if kind == "code" and blen > MAX_CHARS:
+            emit()
+            if any(ch.isalnum() for ch in btext):
+                chunks.append(Chunk(index=len(chunks), heading=cur_heading, content=btext))
+            continue
+
+        # code (small) or para
         if cur_len and cur_len + blen > TARGET_CHARS:
             emit()
         cur_parts.append(btext)
