@@ -432,7 +432,7 @@ async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(req
     try:
         await vault_indexer.index_file(db, brain.label, brain.host_path, body.path)
     except Exception as e:
-        log.warning("reindex after write failed brain=%s path=%s: %s", brain.slug, body.path, e)
+        log.warning("reindex after write failed brain=%s path=%s: %s", brain.slug, vault.safe_log(body.path), e)
     return {"ok": True, "path": body.path}
 
 
@@ -454,7 +454,7 @@ async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth)
     try:
         await vault_indexer.remove_file(db, brain.label, path)
     except Exception as e:
-        log.warning("deindex after delete failed brain=%s path=%s: %s", brain.slug, path, e)
+        log.warning("deindex after delete failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
     return {"ok": True, "path": path}
 
 
