@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -85,8 +86,6 @@ class APIRateLimitMiddleware:
         self._fallback: dict[str, list[float]] = {}
 
     async def __call__(self, scope, receive, send):
-        import time
-
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
