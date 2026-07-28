@@ -41,7 +41,8 @@ class DiskMonitorService:
 
     # ------------------------------------------------------------------
     async def _check_all_agents(self) -> None:
-        async with self._sf() as db:
+        from app.db.session import resilient_session
+        async with resilient_session(session_factory=self._sf) as db:
             result = await db.execute(
                 select(Agent).where(
                     Agent.state.in_([AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING])

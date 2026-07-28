@@ -1,9 +1,20 @@
-from collections.abc import AsyncGenerator
+import asyncio
+import logging
+import random
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
 
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Explicit connect-level timeout (seconds) for asyncpg's establishment of a NEW
+# TCP/auth connection. This is deliberately tunable instead of relying on the
+# asyncpg default, and is distinct from pool_timeout (checkout wait). See #356.
+_CONNECT_TIMEOUT = 10
 
 engine = create_async_engine(
     settings.database_url,
@@ -16,8 +27,59 @@ engine = create_async_engine(
     pool_recycle=300,   # Recycle connections every 5 min (prevents stale)
     pool_pre_ping=True, # Verify connection is alive before using
     pool_timeout=10,    # Fail fast if PG itself is overloaded (seconds)
+    connect_args={"timeout": _CONNECT_TIMEOUT},  # bound the NEW-connection handshake (#356)
 )
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@asynccontextmanager
+async def resilient_session(
+    retries: int = 3,
+    base_delay: float = 0.5,
+    session_factory: Callable[[], AsyncSession] | None = None,
+) -> AsyncGenerator[AsyncSession, None]:
+    """Yield an AsyncSession whose *connection establishment* is retried with
+    exponential backoff + jitter, so a brief DB blip (connect timeout / refused)
+    doesn't kill an entire background sweep tick (see #356).
+
+    A true drop-in for ``async with factory() as db``: it uses the session's
+    async-context protocol, so ``session_factory`` is the usual
+    ``async_session_factory`` (or any callable returning an async-context session).
+
+    Only the connect/checkout is retried: the session is forced live up-front via
+    a ``SELECT 1`` pre-ping, so a connect-level ``TimeoutError`` surfaces before
+    the ``yield`` — where it can be retried — instead of deep inside the sweep
+    body. Once the connection is live it is handed to the caller unchanged;
+    exceptions raised *inside* the ``async with resilient_session()`` body are
+    NOT retried and propagate normally.
+    """
+    factory = session_factory or async_session_factory
+    attempt = 0
+    while True:
+        cm = factory()
+        session = await cm.__aenter__()
+        try:
+            await session.execute(sa_text("SELECT 1"))
+        except Exception as e:
+            await cm.__aexit__(type(e), e, e.__traceback__)
+            attempt += 1
+            if attempt > retries:
+                raise
+            delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, base_delay)
+            logger.warning(
+                "[resilient_session] connect attempt %s/%s failed (%s: %s); retrying in %.2fs",
+                attempt, retries, type(e).__name__, e, delay,
+            )
+            await asyncio.sleep(delay)
+            continue
+        try:
+            yield session
+        except BaseException as e:
+            await cm.__aexit__(type(e), e, e.__traceback__)
+            raise
+        else:
+            await cm.__aexit__(None, None, None)
+        return
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

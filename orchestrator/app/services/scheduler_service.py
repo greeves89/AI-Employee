@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agent_manager import PROACTIVE_PROMPT
 from app.core.load_balancer import LoadBalancer
 from app.core.task_router import TaskRouter
-from app.db.session import async_session_factory
+from app.db.session import resilient_session
 from app.models.schedule import Schedule
 from app.models.task import Task
 from app.services.redis_service import RedisService
@@ -170,14 +170,14 @@ class SchedulerService:
         or, as a safety net, once scheduled_for (the cap) is reached."""
         from datetime import datetime, timezone
         from sqlalchemy import select, and_, or_
-        from app.db.session import async_session_factory
+        from app.db.session import resilient_session
         from app.models.meeting_room import MeetingRoom
         from app.models.task import Task, TaskStatus
         from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
 
         now = datetime.now(timezone.utc)
         started = 0
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             rows = (await db.execute(
                 select(MeetingRoom).where(and_(
                     MeetingRoom.state == "idle",
@@ -221,13 +221,13 @@ class SchedulerService:
         dispatch the coordinator's integration task (assemble the shared work dir into
         one runnable deliverable). Fires once per meeting (deliverable_integrated guard)."""
         from sqlalchemy import select, and_
-        from app.db.session import async_session_factory
+        from app.db.session import resilient_session
         from app.models.meeting_room import MeetingRoom
         from app.models.task import Task, TaskStatus
         from app.api.meeting_rooms import dispatch_integration_task
 
         dispatched = 0
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             rooms = (await db.execute(
                 select(MeetingRoom).where(and_(
                     MeetingRoom.deliverable == True,
@@ -263,7 +263,7 @@ class SchedulerService:
         from app.services.settings_service import SettingsService
         from app.services.profile_extractor import extract_profile
         from app.models.agent import Agent
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             enabled = (await SettingsService(db).get("dreaming_enabled")) or ""
             if enabled.lower() not in ("true", "1", "yes"):
                 return 0
@@ -291,7 +291,7 @@ class SchedulerService:
         are eligible for deletion.
         """
         now = datetime.now(timezone.utc)
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             try:
                 result = await db.execute(
                     select(Task).where(
@@ -318,7 +318,7 @@ class SchedulerService:
     async def _check_due_schedules(self) -> None:
         now = datetime.now(timezone.utc)
 
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             result = await db.execute(
                 select(Schedule).where(
                     Schedule.enabled == True,  # noqa: E712
@@ -463,7 +463,7 @@ class SchedulerService:
             return
         self._failure_watchdog_last_run = now
 
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             schedules = (
                 await db.execute(select(Schedule).where(Schedule.enabled == True))  # noqa: E712
             ).scalars().all()
@@ -518,7 +518,7 @@ class SchedulerService:
         import json as _json
 
         now = datetime.now(timezone.utc)
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             stale = await find_stale_tasks(db, now)
             if not stale:
                 return
@@ -568,7 +568,7 @@ class SchedulerService:
         import json as _json
 
         now = datetime.now(timezone.utc)
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             missed = await find_missed_schedules(db, now)
             for s in missed:
                 slot_key = as_utc(s.next_run_at).isoformat()
@@ -605,13 +605,13 @@ class SchedulerService:
         """
         from datetime import datetime, timezone, timedelta
         from sqlalchemy import select
-        from app.db.session import async_session_factory
+        from app.db.session import resilient_session
         from app.models.agent import Agent, AgentState
         from app.models.platform_settings import PlatformSettings
         from app.models.task import Task, TaskStatus
 
         stopped = 0
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             ps = await db.get(PlatformSettings, "max_idle_minutes")
             try:
                 global_max = int(ps.value) if ps and ps.value else None

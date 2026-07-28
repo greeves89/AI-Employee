@@ -211,7 +211,7 @@ async def test_watchdog_fires_on_stale_drift():
     svc = _make_watchdog_service(redis)
     schedule = _stale_schedule(total=10, ok=7, fail=1)  # drift=2
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         await svc._tick_failure_watchdog()
 
     redis.client.publish.assert_awaited_once()
@@ -235,7 +235,7 @@ async def test_watchdog_no_re_alert_on_same_drift():
     svc._watchdog_alerted = {"sched-1": 2}  # already alerted at drift=2
     schedule = _stale_schedule(total=10, ok=7, fail=1)  # drift still 2
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         await svc._tick_failure_watchdog()
 
     redis.client.publish.assert_not_awaited()
@@ -255,7 +255,7 @@ async def test_watchdog_re_alerts_when_drift_increases():
     svc._watchdog_alerted = {"sched-1": 2}  # previously alerted at drift=2
     schedule = _stale_schedule(total=11, ok=7, fail=1)  # drift now=3
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         await svc._tick_failure_watchdog()
 
     redis.client.publish.assert_awaited_once()
@@ -274,7 +274,7 @@ async def test_watchdog_skips_small_drift():
     svc = _make_watchdog_service(redis)
     schedule = _stale_schedule(total=10, ok=9, fail=0)  # drift=1
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         await svc._tick_failure_watchdog()
 
     redis.client.publish.assert_not_awaited()
@@ -305,7 +305,7 @@ async def test_watchdog_skips_recent_last_run():
         fail_count=1,  # drift=2 but not stale enough
     )
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         await svc._tick_failure_watchdog()
 
     redis.client.publish.assert_not_awaited()
@@ -326,7 +326,7 @@ async def test_watchdog_1h_global_throttle():
     svc._failure_watchdog_last_run = datetime.now(timezone.utc) - timedelta(minutes=30)
     schedule = _stale_schedule(total=10, ok=7, fail=1)  # would normally alert
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         await svc._tick_failure_watchdog()
 
     # DB should never even be queried; no publish
@@ -342,6 +342,6 @@ async def test_watchdog_no_redis_no_crash():
     svc.redis = None
     schedule = _stale_schedule(total=10, ok=7, fail=1)
 
-    with patch("app.services.scheduler_service.async_session_factory", return_value=_mock_db_ctx([schedule])):
+    with patch("app.db.session.async_session_factory", return_value=_mock_db_ctx([schedule])):
         # Must not raise
         await svc._tick_failure_watchdog()

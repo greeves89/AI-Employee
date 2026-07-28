@@ -68,7 +68,8 @@ class UserLifecycleService:
 
     async def _sweep(self) -> None:
         """One sweep: find inactive users and stop their idle agents."""
-        async with self.db_factory() as db:
+        from app.db.session import resilient_session
+        async with resilient_session(session_factory=self.db_factory) as db:
             global_timeout = await _get_timeout_minutes(db)
             now = datetime.now(timezone.utc)
 
