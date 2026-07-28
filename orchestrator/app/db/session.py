@@ -42,21 +42,26 @@ async def resilient_session(
     exponential backoff + jitter, so a brief DB blip (connect timeout / refused)
     doesn't kill an entire background sweep tick (see #356).
 
+    A true drop-in for ``async with factory() as db``: it uses the session's
+    async-context protocol, so ``session_factory`` is the usual
+    ``async_session_factory`` (or any callable returning an async-context session).
+
     Only the connect/checkout is retried: the session is forced live up-front via
-    a ``SELECT 1`` pre-ping, so a connect-level ``TimeoutError`` surfaces here —
-    where it can be retried — instead of deep inside the sweep body. Once the
-    connection is live it is handed to the caller unchanged; exceptions raised
-    *inside* the ``async with resilient_session()`` body are NOT retried and
-    propagate normally.
+    a ``SELECT 1`` pre-ping, so a connect-level ``TimeoutError`` surfaces before
+    the ``yield`` — where it can be retried — instead of deep inside the sweep
+    body. Once the connection is live it is handed to the caller unchanged;
+    exceptions raised *inside* the ``async with resilient_session()`` body are
+    NOT retried and propagate normally.
     """
     factory = session_factory or async_session_factory
     attempt = 0
     while True:
-        session = factory()
+        cm = factory()
+        session = await cm.__aenter__()
         try:
             await session.execute(sa_text("SELECT 1"))
         except Exception as e:
-            await session.close()
+            await cm.__aexit__(type(e), e, e.__traceback__)
             attempt += 1
             if attempt > retries:
                 raise
@@ -69,8 +74,11 @@ async def resilient_session(
             continue
         try:
             yield session
-        finally:
-            await session.close()
+        except BaseException as e:
+            await cm.__aexit__(type(e), e, e.__traceback__)
+            raise
+        else:
+            await cm.__aexit__(None, None, None)
         return
 
 

@@ -16,11 +16,22 @@ from app.db.session import resilient_session
 
 
 class _FakeSession:
+    """Doubles as the async-context "connection" and the session it yields —
+    mirrors how a real AsyncSession returned by ``async_session_factory()`` both
+    enters a context and executes queries."""
+
     def __init__(self, fail_ping: bool) -> None:
         self._fail_ping = fail_ping
         self._pinged = False
         self.closed = False
         self.body_calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        self.closed = True
+        return False
 
     async def execute(self, _stmt):
         if not self._pinged:
@@ -30,9 +41,6 @@ class _FakeSession:
             return "ping-ok"
         self.body_calls += 1
         return "body-ok"
-
-    async def close(self):
-        self.closed = True
 
 
 def _factory(fail_first_n: int):
