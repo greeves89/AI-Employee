@@ -168,6 +168,98 @@ LIST_TODOS_TOOL = {
     }
 }
 
+SEARCH_BRAIN_TOOL = {
+    "toolSpec": {
+        "name": "search_brain",
+        "description": (
+            "Search my SECOND BRAIN / knowledge vaults — the shared department knowledge "
+            "(wikis, documents, procedures, notes) mounted to me. Use for 'steht was im Wiki/"
+            "Vault zu…', 'schau ins zweite Gehirn', 'gibt es Doku zu…', or company/department "
+            "knowledge questions. Fast — hybrid vector+keyword search over the vault index "
+            "directly, no agent round-trip. Report what is found with its source; if nothing "
+            "matches, say so — do NOT invent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "What to look up in the knowledge vaults."}},
+            "required": ["query"],
+        })},
+    }
+}
+
+SKILL_SEARCH_TOOL = {
+    "toolSpec": {
+        "name": "skill_search",
+        "description": (
+            "Search the SKILL catalog for capabilities matching a topic ('welche Skills gibt es "
+            "für…', 'gibt es einen Skill für Rechnungen/Präsentationen/…'). Fast, direct search. "
+            "List the matching skill names + what they do. Actually installing/using a skill is "
+            "real work → ask_agent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "The capability/topic to find skills for."}},
+            "required": ["query"],
+        })},
+    }
+}
+
+M365_CALENDAR_TODAY_TOOL = {
+    "toolSpec": {
+        "name": "m365_calendar_today",
+        "description": (
+            "Read the user's Microsoft 365 calendar directly ('hab ich heute Termine', 'was "
+            "steht im Kalender', 'wann ist mein nächstes Meeting'). Fast, direct Graph read. "
+            "Summarize the events spoken (time + title). Needs the user's M365 connection; if "
+            "not connected, say so."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"days_ahead": {"type": "integer", "description": "Days from now to include (default 1 = today)."}},
+        })},
+    }
+}
+
+M365_MAIL_RECENT_TOOL = {
+    "toolSpec": {
+        "name": "m365_mail_recent",
+        "description": (
+            "Read the user's most recent Microsoft 365 / Outlook inbox emails directly ('was ist "
+            "neu im Postfach', 'letzte Mails', 'hab ich Mail von X'). Fast, direct Graph read "
+            "(subject + sender + received). Summarize spoken. Needs the user's M365 connection; "
+            "if not connected, say so. Reading only — sending/replying is real work → ask_agent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "description": "How many recent emails (default 8, max 20)."}},
+        })},
+    }
+}
+
+PLAN_TASK_TOOL = {
+    "toolSpec": {
+        "name": "plan_task",
+        "description": (
+            "Schedule a concrete piece of WORK as a real, persistent task on my board — for "
+            "anything that PRODUCES or CHANGES something (write/edit a document, send an email, "
+            "run code, build a report/presentation, research-and-write, longer multi-step jobs). "
+            "Unlike a quick question, this creates a task I work off on my own — it KEEPS RUNNING "
+            "after the call ends and does NOT have to finish while we talk. Use it for 'erstell/"
+            "schreib/schick/mach mir…', 'kümmere dich um…', 'bau…', 'plan … ein'. Give a clear "
+            "title + the full instruction. For a short answer you can voice right away instead, "
+            "use ask_agent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "instruction": {"type": "string", "description": "The full task instruction / what to produce."},
+                "title": {"type": "string", "description": "Short title for the task (a few words)."},
+            },
+            "required": ["instruction"],
+        })},
+    }
+}
+
 SHOW_ON_SCREEN_TOOL = {
     "toolSpec": {
         "name": "show_on_screen",
@@ -545,6 +637,16 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "des Agenten aus dem Live-Feed).\n"
         "• Fragen nach MEINEM Wissen ('was weißt du über…', 'hast du dir … gemerkt', zu Kunde/"
         "Projekt/Kontakt/Verfahren) → search_knowledge (sofort, durchsucht mein Gedächtnis).\n"
+        "• Fragen nach dem zweiten Gehirn / Vault / Wiki / Firmen- oder Abteilungswissen ('steht "
+        "was im Wiki zu…', 'schau ins zweite Gehirn', 'gibt es Doku/eine Anleitung zu…') → "
+        "search_brain (sofort, durchsucht meine Vaults).\n"
+        "• Fragen nach verfügbaren Skills ('welche Skills gibt es für…', 'gibt es einen Skill "
+        "für…') → skill_search (sofort).\n"
+        "• Fragen nach Terminen/Kalender ('hab ich heute Termine', 'nächstes Meeting', 'was steht "
+        "im Kalender') → m365_calendar_today (sofort, liest M365 direkt).\n"
+        "• Fragen nach neuen Mails ('was ist neu im Postfach', 'letzte Mails', 'Mail von X') → "
+        "m365_mail_recent (sofort, liest M365 direkt). NUR Lesen — Senden/Antworten ist echte "
+        "Arbeit → ask_agent.\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -556,14 +658,20 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "den Einstellungen.\n"
         "Diese Tools antworten in Millisekunden — nutze sie IMMER für Daten-/Status-/Wissensfragen, "
         "statt den Agenten zu fragen.\n"
-        "• Nur für echte ARBEIT → ask_agent. Darüber kann ich ALLES, was ich als Agent kann: "
-        "Dateien lesen/schreiben, Code & Terminal (bash), E-Mail/Kalender/Kontakte über M365 & "
-        "Outlook/Exchange, mein zweites Gehirn (Brain/Vault), und ich kann mit meinen Kollegen-"
-        "Agenten sprechen oder ihnen Aufgaben geben (Team). Wenn der Nutzer so etwas will, sage "
-        "NIE 'das kann ich nicht' — ich delegiere es per ask_agent und melde das Ergebnis. "
-        "Du bekommst SOFORT eine kurze Quittung zum Aussprechen (z. B. 'ich habe nachgefragt, "
-        "ich melde mich'); die eigentliche Antwort des Agenten kommt Sekunden später von "
-        "selbst und du sprichst sie dann aus — der Nutzer kann derweil weiterreden.\n"
+        "• Echte ARBEIT (etwas ERZEUGEN/ÄNDERN: Dateien schreiben/bearbeiten, Code & Terminal "
+        "(bash), E-Mail SENDEN, in M365/Exchange schreiben, Präsentation/Report bauen, ins zweite "
+        "Gehirn schreiben, mit Kollegen-Agenten zusammenarbeiten) kann ich ALLES, was ich als Agent "
+        "kann — sage NIE 'das kann ich nicht'. Dafür habe ich ZWEI Wege:\n"
+        "   – ask_agent: für eine ZÜGIGE Aufgabe, deren Ergebnis ich dir noch im Gespräch vorlesen "
+        "kann. Du bekommst SOFORT eine kurze Quittung ('ich bin dran, ich melde mich'); die Antwort "
+        "kommt Sekunden später von selbst und du sprichst sie dann aus — der Nutzer redet derweil weiter.\n"
+        "   – plan_task: für GRÖSSERE/LÄNGERE Arbeit oder wenn der Nutzer sagt 'plan das ein', "
+        "'kümmer dich drum', 'mach mir bis morgen…'. Das legt einen ECHTEN Task an, den ich "
+        "eigenständig abarbeite — er LÄUFT WEITER, auch wenn wir auflegen. Bestätige knapp, dass "
+        "du es eingeplant hast und dich meldest, wenn es fertig ist.\n"
+        "   Faustregel: kurze Auskunft/kleiner Handgriff → ask_agent; etwas das dauert oder "
+        "später fertig sein soll → plan_task. Lesen (Wissen/Brain/Kalender/Mail) läuft NICHT "
+        "hierüber, das mache ich direkt mit den Lese-Tools oben.\n"
         "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool.\n"
         "NIEMALS RATEN / KEINE ERFUNDENEN FAKTEN: Erfinde NIE Zahlen, Aufgaben, Task-Nummern, "
         "Dateinamen oder Details. Nenne nur, was ein Tool tatsächlich zurückgibt. Weißt du etwas "
@@ -702,8 +810,9 @@ class RealtimeVoiceSession:
         _tools = [
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
+            SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
-            ASK_AGENT_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
+            ASK_AGENT_TOOL, PLAN_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
@@ -1030,6 +1139,23 @@ class RealtimeVoiceSession:
             return
         if name == "search_knowledge":
             await self._respond(tool_use_id, await self._search_knowledge(str(args.get("query") or "")))
+            return
+        if name == "search_brain":
+            await self._respond(tool_use_id, await self._search_brain(str(args.get("query") or "")))
+            return
+        if name == "skill_search":
+            await self._respond(tool_use_id, await self._skill_search(str(args.get("query") or "")))
+            return
+        if name == "m365_calendar_today":
+            await self._respond(tool_use_id, await self._m365_calendar_today(int(args.get("days_ahead") or 1)))
+            return
+        if name == "m365_mail_recent":
+            await self._respond(tool_use_id, await self._m365_mail_recent(int(args.get("limit") or 8)))
+            return
+        if name == "plan_task":
+            await self._respond(tool_use_id, await self._plan_task(
+                str(args.get("instruction") or ""), str(args.get("title") or ""),
+            ))
             return
         if name == "save_memory":
             await self._respond(tool_use_id, await self._save_memory(str(args.get("content") or ""), str(args.get("key") or "")))
@@ -1754,6 +1880,171 @@ class RealtimeVoiceSession:
             for r in hits[:5]
         ]
         return f"Aus meinem Wissen zu „{q}“:\n" + "\n".join(lines)
+
+    async def _search_brain(self, query: str, limit: int = 5) -> str:
+        """Hybrid-search the agent's mounted Second-Brain vaults directly (vector +
+        keyword), no agent round-trip. Scope = the brains mounted to this agent."""
+        q = (query or "").strip()
+        if not q:
+            return "Wonach soll ich im zweiten Gehirn suchen?"
+        from app.db.session import async_session_factory
+        from app.services import vault_search
+        from app.models.second_brain import SecondBrain
+        from app.models.agent import Agent
+        from sqlalchemy import select
+        try:
+            async with async_session_factory() as db:
+                agent = await db.get(Agent, self.agent_id)
+                mounts = list((agent.config or {}).get("mounts", [])) if agent else []
+                if not mounts:
+                    return "Mir ist kein zweites Gehirn (Vault) zugewiesen."
+                brains = (await db.execute(
+                    select(SecondBrain).where(
+                        SecondBrain.label.in_(mounts), SecondBrain.is_active.is_(True)
+                    )
+                )).scalars().all()
+                if not brains:
+                    return "Mir ist kein aktives zweites Gehirn zugewiesen."
+                all_hits: list[tuple[str, dict]] = []
+                for b in brains:
+                    try:
+                        hits = await vault_search.hybrid_search(db, b.label, b.host_path, q, limit)
+                    except Exception:  # noqa: BLE001 — one vault failing must not kill the search
+                        logger.warning("voice search_brain vault failed label=%s", b.label, exc_info=True)
+                        continue
+                    for h in hits:
+                        all_hits.append((b.name, h))
+        except Exception:  # noqa: BLE001
+            logger.warning("voice search_brain failed agent=%s", self.agent_id, exc_info=True)
+            return "Die Vault-Suche hat gerade nicht geklappt."
+        if not all_hits:
+            return f"Zu „{q}“ habe ich im zweiten Gehirn nichts gefunden."
+        all_hits.sort(key=lambda x: float(x[1].get("score") or 0), reverse=True)
+        lines = []
+        for name, h in all_hits[:5]:
+            snip = " ".join(h.get("snippets") or []).strip().replace(chr(10), " ")[:220]
+            lines.append(f"{name}/{h.get('path') or ''}: {snip}")
+        return f"Aus dem zweiten Gehirn zu „{q}“:\n" + "\n".join(lines)
+
+    async def _skill_search(self, query: str, limit: int = 5) -> str:
+        """Search the skill catalog directly (vector primary, ILIKE fallback) — the
+        same store the skill_search MCP tool uses, no agent round-trip."""
+        q = (query or "").strip()
+        if not q:
+            return "Wofür soll ich einen Skill suchen?"
+        from app.db.session import async_session_factory
+        from app.services.embedding_service import get_embedding_service
+        from app.models.skill import Skill
+        from sqlalchemy import select, text as sa_text
+        lim = max(1, min(limit, 8))
+        try:
+            async with async_session_factory() as db:
+                skill_ids: list = []
+                svc = get_embedding_service()
+                if getattr(svc, "enabled", False):
+                    vec = await svc.embed(q)
+                    if vec is not None:
+                        rows = (await db.execute(sa_text(
+                            """
+                            SELECT id FROM skills
+                            WHERE status = 'ACTIVE' AND embedding IS NOT NULL
+                            ORDER BY embedding <=> CAST(:qv AS vector)
+                            LIMIT :lim
+                            """
+                        ), {"qv": str(vec), "lim": lim})).mappings().all()
+                        skill_ids = [r["id"] for r in rows]
+                if not skill_ids:
+                    like = f"%{q}%"
+                    rows = (await db.execute(sa_text(
+                        """
+                        SELECT id FROM skills
+                        WHERE status = 'ACTIVE' AND (name ILIKE :like OR description ILIKE :like)
+                        LIMIT :lim
+                        """
+                    ), {"like": like, "lim": lim})).mappings().all()
+                    skill_ids = [r["id"] for r in rows]
+                if not skill_ids:
+                    return f"Zu „{q}“ habe ich keinen passenden Skill gefunden."
+                skills = (await db.execute(select(Skill).where(Skill.id.in_(skill_ids)))).scalars().all()
+                order = {sid: i for i, sid in enumerate(skill_ids)}
+                skills.sort(key=lambda s: order.get(s.id, 999))
+        except Exception:  # noqa: BLE001
+            logger.warning("voice skill_search failed", exc_info=True)
+            return "Die Skill-Suche hat gerade nicht geklappt."
+        lines = [f"{s.name}: {(s.description or '').strip()[:160]}" for s in skills[:5]]
+        return f"Passende Skills zu „{q}“:\n" + "\n".join(lines)
+
+    async def _m365_token(self) -> str | None:
+        """Resolve a valid MS Graph access token for the calling user (auto-refresh);
+        None if the user isn't connected or has no session."""
+        if not self.user_id or self.user_id == "unknown":
+            return None
+        from app.db.session import async_session_factory
+        from app.services.oauth_service import OAuthService
+        try:
+            async with async_session_factory() as db:
+                return await OAuthService(db, None).get_valid_token("microsoft", self.user_id)
+        except Exception:  # noqa: BLE001 — ValueError not-connected / refresh failure
+            return None
+
+    async def _m365_calendar_today(self, days_ahead: int = 1) -> str:
+        """Read the user's M365 calendar directly via Graph, no agent round-trip."""
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden — das richtest du in den Einstellungen unter Integrationen ein."
+        from app.core.msgraph_mcp import handle_tool
+        try:
+            text = await handle_tool(
+                "ms_list_calendar_events", {"days_ahead": max(1, min(days_ahead, 14))}, token
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("voice m365 calendar failed", exc_info=True)
+            return "Ich konnte den Kalender gerade nicht abrufen."
+        return text or "Ich habe keine Termine gefunden."
+
+    async def _m365_mail_recent(self, limit: int = 8) -> str:
+        """Read the user's most recent inbox mail directly via Graph, no round-trip."""
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden — das richtest du in den Einstellungen unter Integrationen ein."
+        from app.core.msgraph_mcp import handle_tool
+        try:
+            text = await handle_tool(
+                "ms_list_emails", {"folder": "inbox", "limit": max(1, min(limit, 20))}, token
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("voice m365 mail failed", exc_info=True)
+            return "Ich konnte das Postfach gerade nicht abrufen."
+        return text or "Ich habe keine neuen Mails gefunden."
+
+    async def _plan_task(self, instruction: str, title: str = "") -> str:
+        """Schedule real work as a persistent Task on this agent's board (the same
+        task system proactive/scheduled tasks use). Unlike ask_agent, the task
+        survives the call and the agent works it off independently."""
+        ins = (instruction or "").strip()
+        if not ins:
+            return "Was genau soll ich einplanen?"
+        t = (title or "").strip() or ins[:60]
+        from app.db.session import async_session_factory
+        from app.core.task_router import TaskRouter
+        from app.core.load_balancer import LoadBalancer
+        try:
+            from app.api import ws as ws_module
+            docker = getattr(ws_module, "_docker", None)
+            async with async_session_factory() as db:
+                router = TaskRouter(db, self.redis, LoadBalancer(self.redis), docker_service=docker)
+                task = await router.create_and_route_task(
+                    title=t, prompt=ins, agent_id=self.agent_id,
+                )
+        except Exception:  # noqa: BLE001
+            logger.warning("voice plan_task failed agent=%s", self.agent_id, exc_info=True)
+            return "Das Einplanen hat gerade nicht geklappt."
+        tid = str(getattr(task, "id", "") or "")[:8]
+        return (
+            f"Eingeplant: „{t}“ (Aufgabe {tid}). Ich arbeite das eigenständig ab — auch nachdem "
+            "wir aufgelegt haben. Sag dem Nutzer knapp in der ICH-Form, dass du das eingeplant "
+            "hast und dich meldest, sobald es fertig ist. Lies die id NICHT vor."
+        )
 
     async def _save_memory(self, content: str, key: str = "") -> str:
         """Write a memory into the agent's own long-term store (same table the

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.105.0] — 2026-07-29
+
+### Added
+- **Voice-Layer kann jetzt so viel wissen wie der Agent + Arbeit einplanen.** Der Realtime-Voice-Layer (Nova Sonic / Azure) bekommt fünf neue Direkt-Tools, damit er nicht mehr für jede Wissensfrage delegieren muss:
+  - `search_brain` — durchsucht die dem Agenten gemounteten Second-Brain/Vaults direkt (hybride Vektor+Keyword-Suche über `vault_search.hybrid_search`), statt zu delegieren.
+  - `skill_search` — durchsucht den Skill-Katalog direkt (Vektor, ILIKE-Fallback).
+  - `m365_calendar_today` / `m365_mail_recent` — liest Kalender/Postfach des Nutzers direkt über MS Graph (per-User-Token via `OAuthService.get_valid_token`), ohne Agenten-Roundtrip.
+  - `plan_task` — plant **echte, dauerhafte Arbeit** als Task auf dem Agenten-Board ein (`TaskRouter.create_and_route_task`). Anders als `ask_agent` (kurze Antwort im Gespräch) läuft ein so eingeplanter Task eigenständig weiter — auch nachdem der Voice-Call beendet ist.
+- Systemprompt entsprechend erweitert: Lesen (Wissen/Brain/Kalender/Mail) läuft direkt; für echte Arbeit unterscheidet der Voice-Agent jetzt zwischen `ask_agent` (zügig, Ergebnis im Call) und `plan_task` (größere/spätere Arbeit, läuft weiter).
+
+---
+
 ## [1.104.0] — 2026-07-29
 
 ### Added
