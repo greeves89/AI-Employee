@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.103.0] — 2026-07-29
+
+### Added
+- Modell-Katalog: **Auto-Discovery + Admin-Freischaltung** statt fest verdrahteter Liste. Ein Admin kann in den Einstellungen (Tab „Modelle" → „Modelle freischalten") per Klick die Provider-APIs abfragen (Anthropic `/v1/models`, OpenAI `/v1/models`); erkannte Modelle werden erfasst und je Modell per Schalter freigeschaltet. Neu erkannte Modelle sind zunächst deaktiviert („erkannt, aber Admin schaltet frei"). `GET /agents/models` liefert nur noch freigeschaltete Modelle — damit steuert die Freischaltung, was bei der Agent-Erstellung und in den Agent-Einstellungen wählbar ist.
+- Neuer Service `model_registry_service.py` (Discovery + effektiver/Admin-Katalog + Freischaltung), gespeichert über die bestehende `platform_settings`-Key-Value-Infrastruktur (keine neue Tabelle). Neue Admin-Endpoints: `GET /agents/models/admin`, `POST /agents/models/discover`, `PUT /agents/models/enabled`.
+
+### Unverändert (bewusst)
+- Die kuratierte Liste in `model_catalog.py` bleibt als **Seed** (immer verfügbar, provider-korrekte Strings inkl. Bedrock-ARNs/Vertex-Varianten) und ist standardmäßig freigeschaltet — kein Regressionsrisiko.
+- Die harten Harness-Guards (`is_model_allowed_for_mode` / `coerce_model_for_mode`) sind unverändert davorgeschaltet: die Freischaltung regelt nur das UI-Angebot, nie was technisch erlaubt ist (kein Codex-Agent auf Claude-Modell etc.).
+
+---
+
 ## [1.102.7] — 2026-07-26
 
 ### Fixed
