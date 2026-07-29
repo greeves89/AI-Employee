@@ -59,6 +59,15 @@ PERMISSION_PACKAGES = {
 # Default permissions for new agents
 DEFAULT_PERMISSIONS = ["package-install"]
 
+# All Codex (codex_cli) agents share ONE ChatGPT auth.json whose refresh token is
+# single-use and rotates on every use. Recreating several at once makes their CLIs
+# refresh in parallel → the first rotates the token, the rest die with
+# "refresh_token_reused" (fleet-wide Codex outage). Serialize Codex container
+# (re)creation — one at a time, with a settle delay — so a bulk "Update All" can no
+# longer trigger that collision. See memory: codex-shared-auth-recreate-gotcha.
+_codex_recreate_lock = asyncio.Lock()
+_CODEX_RECREATE_STAGGER_S = 5.0
+
 
 def generate_sudoers(permissions: list[str]) -> str:
     """Generate sudoers file content from permission package names."""
@@ -1214,19 +1223,29 @@ class AgentManager:
         catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
-        container = self.docker.create_container(
-            image=settings.agent_image,
-            name=container_name,
-            environment=env_vars,
-            volume_name=volume_name,
-            session_volume_name=session_volume,
-            shared_volume_name="ai-employee-shared",
-            network=settings.agent_network,
-            memory_limit=settings.agent_memory_limit,
-            cpu_quota=settings.agent_cpu_quota,
-            needs_sudo=needs_sudo,
-            bind_mounts=bind_mounts,
-        )
+        def _create_agent_container():
+            return self.docker.create_container(
+                image=settings.agent_image,
+                name=container_name,
+                environment=env_vars,
+                volume_name=volume_name,
+                session_volume_name=session_volume,
+                shared_volume_name="ai-employee-shared",
+                network=settings.agent_network,
+                memory_limit=settings.agent_memory_limit,
+                cpu_quota=settings.agent_cpu_quota,
+                needs_sudo=needs_sudo,
+                bind_mounts=bind_mounts,
+            )
+        if mode == "codex_cli":
+            # Serialize Codex recreation: only ONE codex container comes up at a time
+            # (+ settle delay) so their CLIs never refresh the shared single-use token
+            # in parallel — the cause of the fleet-wide refresh_token_reused outage.
+            async with _codex_recreate_lock:
+                container = _create_agent_container()
+                await asyncio.sleep(_CODEX_RECREATE_STAGGER_S)
+        else:
+            container = _create_agent_container()
 
         # 4. Re-apply permissions
         try:
@@ -1389,19 +1408,29 @@ class AgentManager:
         catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
-        container = self.docker.create_container(
-            image=settings.agent_image,
-            name=container_name,
-            environment=env_vars,
-            volume_name=volume_name,
-            session_volume_name=session_volume,
-            shared_volume_name="ai-employee-shared",
-            network=settings.agent_network,
-            memory_limit=settings.agent_memory_limit,
-            cpu_quota=settings.agent_cpu_quota,
-            needs_sudo=needs_sudo,
-            bind_mounts=bind_mounts,
-        )
+        def _create_agent_container():
+            return self.docker.create_container(
+                image=settings.agent_image,
+                name=container_name,
+                environment=env_vars,
+                volume_name=volume_name,
+                session_volume_name=session_volume,
+                shared_volume_name="ai-employee-shared",
+                network=settings.agent_network,
+                memory_limit=settings.agent_memory_limit,
+                cpu_quota=settings.agent_cpu_quota,
+                needs_sudo=needs_sudo,
+                bind_mounts=bind_mounts,
+            )
+        if mode == "codex_cli":
+            # Serialize Codex recreation: only ONE codex container comes up at a time
+            # (+ settle delay) so their CLIs never refresh the shared single-use token
+            # in parallel — the cause of the fleet-wide refresh_token_reused outage.
+            async with _codex_recreate_lock:
+                container = _create_agent_container()
+                await asyncio.sleep(_CODEX_RECREATE_STAGGER_S)
+        else:
+            container = _create_agent_container()
 
         # 4. Re-apply permission packages from config
         try:

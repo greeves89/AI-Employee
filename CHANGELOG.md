@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.7] — 2026-07-26
+
+### Fixed
+- Codex-Agenten: Massen-Recreate („Update All") kann die geteilte, rotierende ChatGPT-Auth nicht mehr fleet-weit killen. Codex-Container-(Neu-)Erstellung wird jetzt **serialisiert** (globales Lock + Settle-Delay in `agent_manager.py`) — es kommt nur EIN Codex-Container gleichzeitig hoch, statt dass mehrere ihren Single-Use-Refresh-Token parallel rotieren (`refresh_token_reused`). Behebt den Auslöser des Codex-Auth-Ausfalls; Claude-Agenten laufen unverändert parallel.
+
+---
+
 ## [1.102.6] — 2026-07-11
 
 ### Fixed
