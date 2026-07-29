@@ -16,7 +16,7 @@ from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
 from app.core.realtime_catalog import IMPLEMENTED_ENGINES
 from app.db.session import get_db
-from app.dependencies import get_docker_service, get_redis_service, is_agent_principal, require_auth, require_auth_or_agent, require_manager, verify_agent_token
+from app.dependencies import get_docker_service, get_redis_service, is_agent_principal, require_admin, require_auth, require_auth_or_agent, require_manager, verify_agent_token
 from app.models.agent import Agent, AgentState
 from app.security.agent_guard import check_inter_agent_message, notify_security_block
 from app.models.chat_message import ChatMessage
@@ -83,12 +83,44 @@ async def get_permission_packages(user=Depends(require_auth)):
 
 
 @router.get("/models")
-async def get_model_catalog(user=Depends(require_auth)):
-    """Provider/model catalog per harness (mode). The create modal and the
-    per-agent settings render their provider + model dropdowns straight from
-    this — one source of truth instead of hardcoded lists in three UI files."""
-    from app.core.model_catalog import catalog_payload
-    return catalog_payload()
+async def get_model_catalog(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Provider/model catalog per harness (mode) — only ENABLED models. The
+    create modal and the per-agent settings render their provider + model
+    dropdowns straight from this (one source of truth). The set is the seed
+    (model_catalog) plus admin-freigeschaltete discovered models."""
+    from app.services.model_registry_service import get_effective_payload
+    return await get_effective_payload(db)
+
+
+@router.get("/models/admin")
+async def get_model_catalog_admin(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Full catalog for the admin freischaltungs-UI: every known model (seed +
+    discovered) with its ``enabled`` flag + ``source`` and the last discovery time."""
+    from app.services.model_registry_service import get_admin_catalog
+    return await get_admin_catalog(db)
+
+
+@router.post("/models/discover")
+async def discover_models(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Query the provider APIs (Anthropic/OpenAI) for available models and cache
+    any new ones (default disabled → admin enables). Returns the admin catalog."""
+    from app.services.model_registry_service import discover
+    return await discover(db)
+
+
+@router.put("/models/enabled")
+async def set_models_enabled(
+    payload: dict = Body(...),
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin freischaltung: body ``{"overrides": {"<model_value>": true|false}}``.
+    Merges into the persisted enable map and returns the updated admin catalog."""
+    overrides = payload.get("overrides")
+    if not isinstance(overrides, dict) or not overrides:
+        raise HTTPException(status_code=422, detail="overrides map required")
+    from app.services.model_registry_service import set_enabled_bulk
+    return await set_enabled_bulk(db, {str(k): bool(v) for k, v in overrides.items()})
 
 
 @router.get("/logs")

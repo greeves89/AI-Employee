@@ -234,8 +234,52 @@ export interface ModelCatalogMode {
 }
 // Provider/model catalog per harness — single source of truth served by the
 // backend so create-modal and settings don't keep divergent hardcoded lists.
+// Returns only ENABLED (admin-freigeschaltete) models.
 export async function getModelCatalog(): Promise<{ modes: ModelCatalogMode[] }> {
   return fetchJSON(`${getBase()}/agents/models`);
+}
+
+// ── Admin model catalog: auto-discovery + freischaltung ──────
+export interface AdminModelCatalogModel extends ModelCatalogModel {
+  enabled: boolean;
+  source: "seed" | "discovered";
+}
+export interface AdminModelCatalogProvider {
+  provider: string;
+  models: AdminModelCatalogModel[];
+}
+export interface AdminModelCatalogMode {
+  mode: string;
+  label: string;
+  default_provider: string;
+  default_model: string;
+  providers: AdminModelCatalogProvider[];
+}
+export interface AdminModelCatalog {
+  modes: AdminModelCatalogMode[];
+  discovered_at: string | null;
+  last_discovery?: {
+    anthropic_found: number;
+    openai_found: number;
+    new_extras: number;
+    anthropic_queried: boolean;
+    openai_queried: boolean;
+  };
+}
+// Full catalog incl. disabled models + source flags (admin only).
+export async function getAdminModelCatalog(): Promise<AdminModelCatalog> {
+  return fetchJSON(`${getBase()}/agents/models/admin`);
+}
+// Query provider APIs for available models and cache new ones (admin only).
+export async function discoverModels(): Promise<AdminModelCatalog> {
+  return fetchJSON(`${getBase()}/agents/models/discover`, { method: "POST" });
+}
+// Enable/disable models (freischaltung). overrides: { model_value: boolean }.
+export async function setModelsEnabled(overrides: Record<string, boolean>): Promise<AdminModelCatalog> {
+  return fetchJSON(`${getBase()}/agents/models/enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ overrides }),
+  });
 }
 
 export async function updateLLMConfig(

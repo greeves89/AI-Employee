@@ -116,6 +116,9 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
+    # Dynamic model catalog: provider auto-discovery cache + admin enable map (JSON)
+    "model_discovery_cache",       # JSON {discovered_at, models:[...]} — non-seed extras
+    "model_enabled_overrides",     # JSON {model_value: bool} — admin freischaltung
 }
 
 
