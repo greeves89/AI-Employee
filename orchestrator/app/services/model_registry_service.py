@@ -192,13 +192,39 @@ async def set_enabled_bulk(db: AsyncSession, overrides_in: dict[str, bool]) -> d
     return await get_admin_catalog(db)
 
 
+async def _anthropic_auth_headers() -> dict | None:
+    """Auth headers for the Anthropic models endpoint.
+
+    Prefers an explicit API key (x-api-key). Falls back to the bot's OAuth token
+    (Claude Pro/Team login) as a Bearer with the oauth beta header — best-effort:
+    if that token isn't accepted for /v1/models the caller logs and skips, and
+    the seed list + manual freischaltung still work.
+    """
+    if settings.anthropic_api_key:
+        return {
+            "x-api-key": settings.anthropic_api_key,
+            "anthropic-version": "2023-06-01",
+        }
+    oauth = None
+    try:
+        from app.services.claude_token_service import ClaudeTokenService
+        oauth = await ClaudeTokenService()._get_db_token()
+    except Exception:  # noqa: BLE001
+        oauth = None
+    oauth = oauth or (settings.claude_code_oauth_token or None)
+    if oauth:
+        return {
+            "authorization": f"Bearer {oauth}",
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "oauth-2025-04-20",
+        }
+    return None
+
+
 async def _discover_anthropic() -> list[dict]:
-    if not settings.anthropic_api_key:
+    headers = await _anthropic_auth_headers()
+    if not headers:
         return []
-    headers = {
-        "x-api-key": settings.anthropic_api_key,
-        "anthropic-version": "2023-06-01",
-    }
     out: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
@@ -262,6 +288,8 @@ async def discover(db: AsyncSession) -> dict:
     for its own strings). Newly discovered models stay DISABLED until an admin
     enables them.
     """
+    anthropic_queried = bool(await _anthropic_auth_headers())
+    openai_queried = bool(settings.openai_api_key)
     anthropic = await _discover_anthropic()
     openai = await _discover_openai()
     found = anthropic + openai
@@ -283,8 +311,8 @@ async def discover(db: AsyncSession) -> dict:
         "discovered_at": datetime.now(timezone.utc).isoformat(),
         "models": extras,
         "providers_queried": {
-            "anthropic": bool(settings.anthropic_api_key),
-            "openai": bool(settings.openai_api_key),
+            "anthropic": anthropic_queried,
+            "openai": openai_queried,
         },
     }
     await svc.set(CACHE_KEY, json.dumps(cache))
@@ -298,7 +326,7 @@ async def discover(db: AsyncSession) -> dict:
         "anthropic_found": len(anthropic),
         "openai_found": len(openai),
         "new_extras": len(extras),
-        "anthropic_queried": bool(settings.anthropic_api_key),
-        "openai_queried": bool(settings.openai_api_key),
+        "anthropic_queried": anthropic_queried,
+        "openai_queried": openai_queried,
     }
     return result
