@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.106.1] — 2026-07-30
+
+### Fixed
+- Voice native-async-Härtung: Die kosmetischen Nachbereitungs-Schritte einer Delegation (Datei-Karten, UI-Events) sind gekapselt, sodass ein Fehler dort das **toolResult nie verhindern** kann. Bei Nova 2 Sonics async Tool-Calling würde ein unbeantwortetes toolUse die Session sonst in einen Wartezustand hängen — jetzt ist „das Tool wird immer beantwortet" garantiert.
+
+---
+
 ## [1.106.0] — 2026-07-29
 
 ### Changed

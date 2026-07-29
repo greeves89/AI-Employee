@@ -1514,15 +1514,22 @@ class RealtimeVoiceSession:
         rec["result"] = (answer or "")[:300]
         if self._closed:
             return
-        # Surface any files the agent produced — even if it only mentioned the path.
-        await self._surface_new_files()
-        # Distinct "this delegation finished" signal — the UI uses THIS (not the
-        # generic response event, which also fires on my own speech) to know a task
-        # is done. Carries the instruction so the right task can be marked complete.
-        await self._emit({"type": "delegate_done", "data": {
-            "instruction": instruction, "task_id": rec["id"],
-        }})
-        await self._emit({"type": "response", "data": {"text": answer}})
+        # Cosmetic UI steps are wrapped so a failure here can NEVER prevent the
+        # toolResult below — with native async, an unanswered toolUse would leave
+        # Nova waiting forever (unresponsive session). Answering the tool is the
+        # one invariant that must always hold.
+        try:
+            # Surface any files the agent produced — even if it only mentioned the path.
+            await self._surface_new_files()
+            # Distinct "this delegation finished" signal — the UI uses THIS (not the
+            # generic response event, which also fires on my own speech) to know a task
+            # is done. Carries the instruction so the right task can be marked complete.
+            await self._emit({"type": "delegate_done", "data": {
+                "instruction": instruction, "task_id": rec["id"],
+            }})
+            await self._emit({"type": "response", "data": {"text": answer}})
+        except Exception:  # noqa: BLE001 — never let UI surfacing block the toolResult
+            logger.warning("voice delegation post-steps failed agent=%s", self.agent_id, exc_info=True)
         if not self._nova:
             return
         if tool_use_id:
