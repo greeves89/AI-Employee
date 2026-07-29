@@ -1,5 +1,6 @@
 """Admin API - aggregated stats, system overview, and agent assignments (admin-only)."""
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import AGENT_VERSION, settings
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
@@ -27,6 +29,97 @@ async def _require_admin(user=Depends(require_auth)):
     if user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Admin only")
     return user
+
+
+# ── System control: remote status + restart (off-LAN management) ──────────────
+# Lets an admin restart the platform from the already-exposed web UI (via the
+# Cloudflare tunnel) without SSH. The orchestrator already talks to Docker
+# through the hardened socket proxy (CONTAINERS+POST), so a container restart is
+# permitted; restarting the orchestrator itself is dispatched to the daemon and
+# completes server-side even as this container goes down.
+def _restart_targets() -> dict[str, str]:
+    return {
+        "orchestrator": settings.orchestrator_container_name,
+        "frontend": settings.frontend_container_name,
+    }
+
+
+class SystemRestartRequest(BaseModel):
+    target: str  # "orchestrator" | "frontend"
+
+
+@router.get("/system/status")
+async def get_system_status(
+    user=Depends(_require_admin),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Container states + version for remote monitoring."""
+    names = {
+        "orchestrator": settings.orchestrator_container_name,
+        "frontend": settings.frontend_container_name,
+        "postgres": settings.postgres_container_name,
+        "redis": settings.redis_container_name,
+    }
+
+    def _state(name: str) -> str:
+        try:
+            return docker.get_container_status(name)
+        except Exception:  # noqa: BLE001 — absent/unreachable → report, don't 500
+            return "absent"
+
+    containers = {label: _state(name) for label, name in names.items()}
+    try:
+        agent_containers = len(docker.list_agent_containers())
+    except Exception:  # noqa: BLE001
+        agent_containers = None
+    return {
+        "version": AGENT_VERSION,
+        "containers": containers,
+        "agent_containers": agent_containers,
+    }
+
+
+@router.post("/system/restart")
+async def restart_system_component(
+    payload: SystemRestartRequest,
+    user=Depends(_require_admin),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Restart the orchestrator or frontend. Restricted to those two so a
+    misclick can't take down the DB/Redis/proxy."""
+    targets = _restart_targets()
+    if payload.target not in targets:
+        raise HTTPException(
+            status_code=422,
+            detail=f"target must be one of {list(targets)}",
+        )
+    name = targets[payload.target]
+    actor = getattr(user, "email", None) or getattr(user, "id", "?")
+    logger.warning("[AdminSystem] restart '%s' (%s) requested by %s", payload.target, name, actor)
+
+    if payload.target == "orchestrator":
+        # Self-restart: answer first, then restart detached so the HTTP response
+        # is delivered before this process is torn down.
+        async def _delayed_self_restart() -> None:
+            await asyncio.sleep(1.0)
+            try:
+                docker.restart_container(name)
+            except Exception as e:  # noqa: BLE001
+                logger.error("[AdminSystem] self-restart failed: %s", e)
+
+        asyncio.create_task(_delayed_self_restart())
+        return {
+            "status": "restarting",
+            "target": payload.target,
+            "note": "Orchestrator startet in ~1s neu — kurze Nichterreichbarkeit, danach Seite neu laden.",
+        }
+
+    try:
+        docker.restart_container(name)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[AdminSystem] restart '%s' failed: %s", name, e)
+        raise HTTPException(status_code=502, detail=f"Restart fehlgeschlagen: {e}")
+    return {"status": "restarted", "target": payload.target}
 
 
 @router.get("/agents/{agent_id}/stats")

@@ -292,6 +292,24 @@ export async function updateLLMConfig(
   });
 }
 
+// ── Admin system control: remote status + restart (off-LAN management) ──────
+export interface SystemStatus {
+  version: string;
+  containers: Record<string, string>;
+  agent_containers: number | null;
+}
+export async function getSystemStatus(): Promise<SystemStatus> {
+  return fetchJSON(`${getBase()}/admin/system/status`);
+}
+export async function restartSystemComponent(
+  target: "orchestrator" | "frontend",
+): Promise<{ status: string; target: string; note?: string }> {
+  return fetchJSON(`${getBase()}/admin/system/restart`, {
+    method: "POST",
+    body: JSON.stringify({ target }),
+  });
+}
+
 export async function getPermissionPackages(): Promise<{ packages: PermissionPackage[]; defaults: string[] }> {
   return fetchJSON(`${getBase()}/agents/permissions`);
 }

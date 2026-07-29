@@ -156,6 +156,13 @@ class DockerService:
         container = self.client.containers.get(container_id)
         container.start()
 
+    def restart_container(self, container_id: str, timeout: int = 10) -> None:
+        """Restart a container by name/id. The daemon (via the socket proxy)
+        performs stop+start server-side, so this completes even for the
+        orchestrator's own container once the request has been dispatched."""
+        container = self.client.containers.get(container_id)
+        container.restart(timeout=timeout)
+
     def remove_container(self, container_id: str, force: bool = True) -> None:
         container = self.client.containers.get(container_id)
         container.remove(force=force)
