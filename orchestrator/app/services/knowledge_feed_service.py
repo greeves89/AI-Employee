@@ -40,7 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import async_session_factory
+from app.db.session import resilient_session
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.services.redis_service import RedisService
 
@@ -338,7 +338,7 @@ class KnowledgeFeedService:
         summary = {"ran": 0, "errors": 0, "new_items": 0}
         now = datetime.now(timezone.utc)
 
-        async with async_session_factory() as session:
+        async with resilient_session() as session:
             result = await session.execute(
                 select(KnowledgeFeed).where(KnowledgeFeed.enabled.is_(True))
             )
@@ -381,7 +381,7 @@ class KnowledgeFeedService:
 
     async def run_now(self, feed_id: int) -> dict[str, Any]:
         """Manually trigger one feed (used by the API endpoint)."""
-        async with async_session_factory() as session:
+        async with resilient_session() as session:
             feed = await session.get(KnowledgeFeed, feed_id)
             if not feed:
                 raise ValueError(f"feed {feed_id} not found")

@@ -10,6 +10,7 @@ import logging
 from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import resilient_session
 from app.models.memory import AgentMemory
 from app.models.knowledge import KnowledgeEntry
 from app.services.embedding_service import get_embedding_service
@@ -143,7 +144,7 @@ async def run_backfill_loop(db_factory) -> None:
     total_skills = 0
     while True:
         try:
-            async with db_factory() as db:
+            async with resilient_session(session_factory=db_factory) as db:
                 mem_count = await backfill_memory_embeddings(db)
                 total_memories += mem_count
                 kb_count = await backfill_knowledge_embeddings(db)

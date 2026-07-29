@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.db.session import async_session_factory
+from app.db.session import resilient_session
 from app.models.skill import Skill, SkillCategory, SkillStatus
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ class TrendService:
     async def _get_existing_source_repos(self) -> set[str]:
         """Return set of source_repos already in DB to avoid duplicates."""
         from sqlalchemy import select
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             result = await db.execute(select(Skill.source_repo).where(Skill.source_repo.isnot(None)))
             return {row[0] for row in result.all()}
 
@@ -232,7 +232,7 @@ class TrendService:
     async def _save_skill(self, skill: dict) -> None:
         """Persist a generated skill as DRAFT."""
         from sqlalchemy import select
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             # Skip if name already exists
             existing = await db.scalar(select(Skill).where(Skill.name == skill["name"]))
             if existing:
