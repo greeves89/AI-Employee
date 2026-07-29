@@ -261,12 +261,13 @@ async def _discover_openai() -> list[dict]:
             for m in resp.json().get("data", []):
                 mid = m.get("id", "")
                 # The codex_cli harness authenticates via a ChatGPT account and
-                # runs the dotted GPT-5 line only (gpt-5.5, gpt-5.4, …) — NOT the
-                # ~100 API-only variants an OpenAI key lists (gpt-5-mini/-nano/
-                # -chat, dated snapshots). The "gpt-5." prefix surfaces the next
-                # gpt-5.x without flooding the UI. is_model_allowed_for_mode
-                # still drops gpt-5-codex (API-key-only).
-                if not mid.startswith("gpt-5."):
+                # runs the plain dotted GPT-5 line only (gpt-5.5, gpt-5.4, …) —
+                # NOT the API-only variants an OpenAI key also lists (-codex,
+                # -pro, -mini, -nano, -chat-latest, dated snapshots, codenames),
+                # which the ChatGPT-account harness rejects at runtime. Match
+                # exactly "gpt-5.<digits>" so the next clean gpt-5.x surfaces
+                # without flooding the UI.
+                if not (mid.startswith("gpt-5.") and mid[len("gpt-5."):].isdigit()):
                     continue
                 if model_family(mid) != "codex_cli":
                     continue
