@@ -220,11 +220,11 @@ class SkillCrawlerService:
     async def _sync_to_db(self, skills: list[dict]) -> None:
         """Sync crawled skills to the DB marketplace (upsert by name)."""
         try:
-            from app.db.session import async_session_factory
+            from app.db.session import resilient_session
             from app.models.skill import Skill, SkillStatus
             from sqlalchemy import select
 
-            async with async_session_factory() as db:
+            async with resilient_session() as db:
                 imported = 0
                 for s in skills:
                     existing = (await db.execute(

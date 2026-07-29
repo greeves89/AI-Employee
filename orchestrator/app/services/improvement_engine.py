@@ -124,9 +124,9 @@ class ImprovementEngine:
 
         Returns the analysis interval for the next sleep cycle.
         """
-        from app.db.session import async_session_factory
+        from app.db.session import resilient_session
 
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             thresholds = await _load_thresholds(db)
             interval = thresholds["analysis_interval"]
 

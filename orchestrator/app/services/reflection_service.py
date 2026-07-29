@@ -29,7 +29,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.session import async_session_factory
+from app.db.session import resilient_session
 from app.models.agent import Agent
 from app.models.audit_log import AuditLog
 from app.models.chat_message import ChatMessage
@@ -104,7 +104,7 @@ class ReflectionService:
         """Run once per day at the configured local hour. Cheap when disabled."""
         if self._running:
             return None
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             cfg = await self._load_config(db)
             if not cfg["enabled"]:
                 return None
@@ -134,7 +134,7 @@ class ReflectionService:
             self._running = False
 
     async def _run_inner(self, trigger: str) -> dict:
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             cfg = await self._load_config(db)
             run = ReflectionRun(mode=cfg["mode"], trigger=trigger, stats={})
             db.add(run)
@@ -152,7 +152,7 @@ class ReflectionService:
         run_started = datetime.now(timezone.utc)
 
         try:
-            async with async_session_factory() as db:
+            async with resilient_session() as db:
                 watermarks = await self._load_watermarks(db)
                 agents = (await db.execute(
                     select(Agent).where(Agent.user_id.isnot(None))
@@ -206,7 +206,7 @@ class ReflectionService:
             logger.error("[Reflection] run failed: %s", e, exc_info=True)
 
         # Finalize run row + audit + digest
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             run = await db.get(ReflectionRun, run_id)
             if run:
                 run.finished_at = datetime.now(timezone.utc)

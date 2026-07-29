@@ -17,7 +17,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.session import async_session_factory
+from app.db.session import resilient_session
 from app.models.agent import Agent
 from app.models.notification import Notification
 from app.models.task import Task, TaskStatus
@@ -86,7 +86,7 @@ class SelfTestService:
         start = time.monotonic()
         results: list[TestResult] = []
 
-        async with async_session_factory() as db:
+        async with resilient_session() as db:
             # Create test run record
             test_run = TestRun(
                 started_at=datetime.now(timezone.utc),
