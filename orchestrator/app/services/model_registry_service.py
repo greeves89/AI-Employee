@@ -260,8 +260,13 @@ async def _discover_openai() -> list[dict]:
             resp.raise_for_status()
             for m in resp.json().get("data", []):
                 mid = m.get("id", "")
-                # Only GPT/o-series that the codex_cli harness can actually run
-                # (is_model_allowed_for_mode drops e.g. gpt-5-codex).
+                # The codex_cli harness authenticates via a ChatGPT account and
+                # only runs the current GPT-5 line (not the ~100 legacy API-only
+                # models an OpenAI key lists). Restrict to gpt-5* so discovery
+                # surfaces the next GPT-5.x without flooding the UI. is_model_
+                # allowed_for_mode still drops gpt-5-codex (API-key-only).
+                if not mid.startswith("gpt-5"):
+                    continue
                 if model_family(mid) != "codex_cli":
                     continue
                 if not is_model_allowed_for_mode("codex_cli", mid):
