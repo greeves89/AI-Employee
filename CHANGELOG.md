@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.106.0] — 2026-07-29
+
+### Changed
+- **Voice-Delegation auf Nova 2 Sonics natives asynchrones Tool-Calling umgebaut.** Statt bei `ask_agent`/`refine_task` sofort eine synthetische Quittung als Tool-Ergebnis zu senden und die echte Antwort später als künstlichen Nutzer-Turn (`inject_user_text`) nachzuschieben, wird jetzt der **echte Agenten-Output als `toolResult` desselben toolUse nachgereicht** — Nova hält das Gespräch eigenständig am Laufen, während der Agent viele Tools abarbeitet, und spricht das Ergebnis kontextuell aus, sobald es landet. Das ist der von AWS vorgesehene Weg („asynchronous tool calling", out of the box) statt unseres bisherigen Workarounds. `delegate_tasks` (mehrere Tasks aus einem toolUse) behält den Sammel-Ack, da ein toolUse nur genau ein toolResult beantworten kann.
+
+### Added
+- **Prompt-getriebene Füller:** Beim Aufruf von `ask_agent` sagt der Voice-Agent sofort selbst einen kurzen, variierenden Füller in der Ich-Form („Moment, ich schau mal…") statt stumm zu werden — passend zum async-Modell, das derweil weiterredet.
+- **Gedrosselte gesprochene Fortschritts-Häppchen (#3):** Bei länger laufenden Delegationen (>15 s) sagt der Agent gelegentlich einen kurzen Zwischenstand („bin noch dran, arbeite gerade an…") — throttled (≤1 Satz/15 s) und unterdrückt, solange der Nutzer spricht, damit nichts übereinanderredet.
+
+### Fixed
+- **Event-Interleave abgesichert:** Ein `_seq_lock` serialisiert im Nova-Provider die mehrteiligen Sende-Sequenzen (contentStart→content→contentEnd), damit gleichzeitig nachgereichte Tool-Ergebnisse / Fortschritts-Injektionen sich nicht auf dem Bidi-Stream verschränken. (Azure-Realtime war über die bestehende Response-Queue bereits abgesichert.)
+
+---
+
 ## [1.105.0] — 2026-07-29
 
 ### Added

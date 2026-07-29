@@ -87,6 +87,10 @@ class NovaSonicSession:
         self._recv_task: asyncio.Task | None = None
         self._closed = False
         self._audio_started = False
+        # Serializes multi-event sequences (contentStart→content→contentEnd) so
+        # concurrently-fired tool results / text injections can't interleave on the
+        # wire. Single-event audio sends stay lock-free (own persistent content block).
+        self._seq_lock = asyncio.Lock()
 
     # ── stream setup ────────────────────────────────────────────────
 
@@ -201,17 +205,18 @@ class NovaSonicSession:
         if self._closed:
             return
         content_name = str(uuid.uuid4())
-        await self._send_event({"contentStart": {
-            "promptName": self._prompt_name, "contentName": content_name, "type": "TEXT",
-            "interactive": True, "role": "USER",
-            "textInputConfiguration": {"mediaType": "text/plain"},
-        }})
-        await self._send_event({"textInput": {
-            "promptName": self._prompt_name, "contentName": content_name, "content": text,
-        }})
-        await self._send_event({"contentEnd": {
-            "promptName": self._prompt_name, "contentName": content_name,
-        }})
+        async with self._seq_lock:
+            await self._send_event({"contentStart": {
+                "promptName": self._prompt_name, "contentName": content_name, "type": "TEXT",
+                "interactive": True, "role": "USER",
+                "textInputConfiguration": {"mediaType": "text/plain"},
+            }})
+            await self._send_event({"textInput": {
+                "promptName": self._prompt_name, "contentName": content_name, "content": text,
+            }})
+            await self._send_event({"contentEnd": {
+                "promptName": self._prompt_name, "contentName": content_name,
+            }})
 
     # ── tool result ─────────────────────────────────────────────────
 
@@ -220,22 +225,23 @@ class NovaSonicSession:
         if self._closed:
             return
         content_name = str(uuid.uuid4())
-        await self._send_event({"contentStart": {
-            "promptName": self._prompt_name, "contentName": content_name,
-            "interactive": False, "type": "TOOL", "role": "TOOL",
-            "toolResultInputConfiguration": {
-                "toolUseId": tool_use_id, "type": "TEXT",
-                "textInputConfiguration": {"mediaType": "text/plain"},
-            },
-        }})
-        # Nova Sonic requires the tool result content as a JSON string, not prose.
-        await self._send_event({"toolResult": {
-            "promptName": self._prompt_name, "contentName": content_name,
-            "content": json.dumps({"result": result}),
-        }})
-        await self._send_event({"contentEnd": {
-            "promptName": self._prompt_name, "contentName": content_name,
-        }})
+        async with self._seq_lock:
+            await self._send_event({"contentStart": {
+                "promptName": self._prompt_name, "contentName": content_name,
+                "interactive": False, "type": "TOOL", "role": "TOOL",
+                "toolResultInputConfiguration": {
+                    "toolUseId": tool_use_id, "type": "TEXT",
+                    "textInputConfiguration": {"mediaType": "text/plain"},
+                },
+            }})
+            # Nova Sonic requires the tool result content as a JSON string, not prose.
+            await self._send_event({"toolResult": {
+                "promptName": self._prompt_name, "contentName": content_name,
+                "content": json.dumps({"result": result}),
+            }})
+            await self._send_event({"contentEnd": {
+                "promptName": self._prompt_name, "contentName": content_name,
+            }})
 
     # ── receive loop ────────────────────────────────────────────────
 
