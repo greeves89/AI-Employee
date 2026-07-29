@@ -12,6 +12,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.102.7] — 2026-07-29
+
+### Fixed
+- Codex-Auth-Haertung: Der geteilte, rotierende ChatGPT-Refresh-Token (alle Codex-Agenten teilen EINE `auth.json`) wird jetzt **zentral & proaktiv im Orchestrator** erneuert (Scheduler, single-threaded, sobald der Access-Token < 48h Restlaufzeit hat) und der rotierte Token in die DB zurueckgeschrieben. Damit refreshen die Agenten den Single-Use-Token nie mehr gleichzeitig — der `refresh_token_reused`-Ausfall bei einem parallelen „Update All" kann nicht mehr auftreten. Neu: `CodexAuthService.ensure_fresh()` + Scheduler-Hook (alle 2h Check).
+
+---
+
 ## [1.102.6] — 2026-07-11
 
 ### Fixed

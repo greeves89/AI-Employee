@@ -49,6 +49,7 @@ class SchedulerService:
         self._dreaming_counter = 0
         self._reflection_counter = 0
         self._reflection_service = None
+        self._codex_refresh_counter = 0
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
@@ -159,6 +160,19 @@ class SchedulerService:
                             logger.info("[Scheduler] Reflection: %s", result)
                     except Exception as e:
                         logger.warning("[Scheduler] Reflection error: %s", e)
+
+                # Codex token: keep the shared ChatGPT auth fresh CENTRALLY (single
+                # thread) so agents never refresh the single-use token concurrently
+                # (which killed all Codex agents on a simultaneous "Update All").
+                # Checked every 2h; only actually refreshes when near expiry (~8 days).
+                self._codex_refresh_counter += 30
+                if self._codex_refresh_counter >= 7200:
+                    self._codex_refresh_counter = 0
+                    try:
+                        from app.services.codex_auth_service import CodexAuthService
+                        await CodexAuthService().ensure_fresh()
+                    except Exception as e:
+                        logger.warning("[Scheduler] Codex refresh error: %s", e)
             except Exception as e:
                 logger.error("[Scheduler] ERROR: %s", e, exc_info=True)
             await asyncio.sleep(30)
