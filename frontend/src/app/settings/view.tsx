@@ -14,6 +14,7 @@ import { Header } from "@/components/layout/header";
 import { TemplateManager } from "@/components/settings/template-manager";
 import { VoiceSettings } from "@/components/settings/voice-settings";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
+import { SystemControl } from "@/components/settings/system-control";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -1098,6 +1099,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         {/* ─── Tab: System ─── */}
         {secTab === "system" && (
         <div className="space-y-6">
+        {/* ─── System-Steuerung (Fernwartung: Status + Neustart) ─── */}
+        {isAdmin && <SystemControl />}
         {/* ─── Automatisierung ─── */}
         {isAdmin && (
           <section>

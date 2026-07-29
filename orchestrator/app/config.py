@@ -66,6 +66,11 @@ class Settings(BaseSettings):
 
     # Docker
     agent_image: str = "ai-employee-agent:latest"
+    # Platform container names for admin system control (restart/status from the UI)
+    orchestrator_container_name: str = "ai-employee-orchestrator"
+    frontend_container_name: str = "ai-employee-frontend"
+    postgres_container_name: str = "ai-employee-postgres"
+    redis_container_name: str = "ai-employee-redis"
     agent_network: str = "ai-employee-network"
     max_agents: int = 10
     agent_memory_limit: str = "8g"  # 8g: video renders/builds need >4g (4g forces low-memory render, 1 worker, slow)

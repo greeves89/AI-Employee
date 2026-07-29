@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.104.0] — 2026-07-29
+
+### Added
+- **Fernwartung ohne SSH**: Admin kann Orchestrator und Frontend aus der (über den Cloudflare-Tunnel schon von außen erreichbaren) Web-Oberfläche neustarten. Neue Karte „System-Steuerung" in Einstellungen → System zeigt Container-Status (Orchestrator/Frontend/Postgres/Redis) + laufende Agent-Container und bietet Neustart-Buttons (mit Bestätigung). Damit lässt sich die Plattform von außerhalb des Heimnetzes neustarten, ohne SSH.
+- Neue Admin-Endpoints `GET /admin/system/status` + `POST /admin/system/restart` (require_admin). Nutzt den bereits vorhandenen, gehärteten Docker-Socket-Proxy (CONTAINERS+POST); Neustart ist bewusst auf Orchestrator/Frontend beschränkt (DB/Redis/Proxy ausgenommen). Der Orchestrator-Selbstneustart wird an den Daemon dispatcht und läuft serverseitig zu Ende, während der Container heruntergeht.
+
+---
+
 ## [1.103.0] — 2026-07-29
 
 ### Added
