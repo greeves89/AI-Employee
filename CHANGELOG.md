@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.112.0] — 2026-07-30
+
+### Added
+- **Voice kann jetzt die Apps des Agenten verwalten.** Drei neue Direkt-Tools, damit „analysiere mal meine Apps" funktioniert:
+  - `list_apps` — nennt die vom Agenten deployten Apps (docker-compose-Projekte im Workspace) mit Status (läuft/teilweise/gestoppt/nicht gestartet); Erkennung über das compose-Projekt-Label `agent-{id8}-…` wie der `/agents/{id}/apps`-Endpoint.
+  - `app_logs(app)` — liest die Docker-Logs der App-Container (SDK, über den gehärteten Socket-Proxy), damit der Agent Fehler erkennt. Log-Inhalte werden über `_clean_text` bereinigt an Nova gesendet.
+  - `restart_app(app)` — startet die laufenden Container einer App neu.
+  - **Analysieren → beheben-Kette** im Systemprompt verdrahtet: erst `list_apps`/`app_logs`, Fehler zusammenfassen, dann zum Fixen/Anpassen/Deployen per `plan_task` an den Agenten (der den App-Ordner + Fehler bekommt und mit bash/Dateizugriff arbeitet). Scope: der Voice-Agent sieht/steuert nur die Apps SEINES Agenten (Projekt-Prefix-Ownership).
+
+---
+
 ## [1.111.1] — 2026-07-30
 
 ### Fixed
