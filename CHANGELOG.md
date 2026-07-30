@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.111.0] — 2026-07-30
+
+### Added
+- **Voice M365-Aktionen & proaktive Hinweise — Batch 3.**
+  - **`m365_send_mail(to, subject, body, send?)`:** Mail senden ODER (Default) als Outlook-Entwurf anlegen. Sicherheit: der Agent liest Empfänger/Betreff/Inhalt vor und braucht ein klares „ja, absenden" — sonst `send=false` (Entwurf zum Prüfen).
+  - **`m365_create_event(subject, start, end?, attendees?, location?)`:** Kalendertermin anlegen; Start/Ende als ISO aus dem Gesagten, Default-Zeitzone Europe/Berlin, `end` = Start+1h wenn nicht genannt.
+  - **Proaktive Kalender-Hinweise (`_proactive_loop`):** Läuft im Gespräch (nur wenn M365 verbunden), erinnert **von selbst** an einen bevorstehenden Termin („in etwa N Minuten beginnt dein Termin X") — jeder Termin nur einmal, ~alle 5 min geprüft, unterdrückt solange der Nutzer spricht. Aus reaktiv wird proaktiv. Wird beim Session-Ende sauber beendet.
+
+---
+
 ## [1.110.1] — 2026-07-30
 
 ### Fixed
