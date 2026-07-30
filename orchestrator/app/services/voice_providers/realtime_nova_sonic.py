@@ -45,6 +45,24 @@ OUTPUT_SAMPLE_RATE = 24000
 EventCallback = Callable[[str, dict], Awaitable[None]]
 
 
+def _clean_text(s: Any) -> str:
+    """Sanitize text going INTO Nova (tool results / injected turns).
+
+    File/PDF-derived tool content can carry NUL bytes, control chars or broken
+    UTF-8 (e.g. lone surrogates from pypdf) — sending those over the bidi stream
+    makes Bedrock fail the turn with a generic 'unexpected error during
+    processing' / decode error. Strip control chars (keep \\n and \\t) and force
+    valid UTF-8 so the payload is always clean."""
+    if not isinstance(s, str):
+        s = str(s)
+    # Force valid UTF-8 (drops lone surrogates / undecodable bytes).
+    s = s.encode("utf-8", "replace").decode("utf-8", "replace")
+    # Drop NUL + other C0/C1 control chars except tab/newline/carriage-return.
+    return "".join(
+        ch for ch in s if ch in "\t\n\r" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
+    )
+
+
 class NovaSonicSession:
     """One bidirectional Nova Sonic conversation.
 
@@ -212,7 +230,7 @@ class NovaSonicSession:
                 "textInputConfiguration": {"mediaType": "text/plain"},
             }})
             await self._send_event({"textInput": {
-                "promptName": self._prompt_name, "contentName": content_name, "content": text,
+                "promptName": self._prompt_name, "contentName": content_name, "content": _clean_text(text),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,
@@ -237,7 +255,7 @@ class NovaSonicSession:
             # Nova Sonic requires the tool result content as a JSON string, not prose.
             await self._send_event({"toolResult": {
                 "promptName": self._prompt_name, "contentName": content_name,
-                "content": json.dumps({"result": result}),
+                "content": json.dumps({"result": _clean_text(result)}),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,
@@ -256,7 +274,14 @@ class NovaSonicSession:
                 val = getattr(getattr(result, "value", None), "bytes_", None)
                 if val is None:
                     continue
-                data = json.loads(val.decode("utf-8"))
+                # Tolerant decode: a single malformed byte from the service must not
+                # kill the loop with an "invalid byte" UnicodeDecodeError — best-effort
+                # parse and skip anything that still isn't valid JSON.
+                try:
+                    data = json.loads(val.decode("utf-8", "replace"))
+                except (ValueError, TypeError):
+                    logger.debug("NovaSonic: skipped an undecodable stream frame")
+                    continue
                 event = data.get("event", {})
                 if not event:
                     continue

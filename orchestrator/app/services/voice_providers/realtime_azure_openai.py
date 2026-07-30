@@ -167,9 +167,10 @@ class AzureRealtimeSession:
         """Inject a user text turn mid-session so the model speaks it proactively."""
         if self._closed:
             return
+        from app.services.voice_providers.realtime_nova_sonic import _clean_text
         await self._send({"type": "conversation.item.create", "item": {
             "type": "message", "role": "user",
-            "content": [{"type": "input_text", "text": text}],
+            "content": [{"type": "input_text", "text": _clean_text(text)}],
         }})
         await self._create_response()
 
@@ -179,10 +180,11 @@ class AzureRealtimeSession:
         """Feed a function_call_output back so the model incorporates + speaks it."""
         if self._closed:
             return
+        from app.services.voice_providers.realtime_nova_sonic import _clean_text
         await self._send({"type": "conversation.item.create", "item": {
             "type": "function_call_output",
             "call_id": tool_use_id,
-            "output": result,
+            "output": _clean_text(result),
         }})
         await self._create_response()
 
