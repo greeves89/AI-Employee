@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.109.0] — 2026-07-30
+
+### Added
+- **Voice-Task-Lebenszyklus — Batch 1.** Drei Erweiterungen der Voice↔Container-Interaktion:
+  - **`plan_task` meldet sich jetzt zurück:** Der Voice-Layer abonniert `task:completions` und **spricht das Ergebnis mitten im Gespräch aus**, sobald ein eingeplanter Task fertig (oder fehlgeschlagen) ist — kein „ich hab's eingeplant und du hörst nie wieder davon" mehr. Der Fall „nach dem Call" ist weiterhin über die bestehende Task-fertig-Notification (WS + APNs an den Owner) abgedeckt. Watcher wird beim Session-Ende sauber beendet.
+  - **`cancel_task` (Stoppen per Stimme):** „stopp / brich ab / hör auf" stoppt die laufende Delegation (Signal `agent:{id}:chat:cancel`) und bricht noch eingereihte geplante Tasks ab (`TaskRouter.cancel_task`).
+  - **`voice_help`:** „was kannst du / was kann ich sagen" → gesprochener Fähigkeits-Überblick.
+- Delegations-Timeout für Sprach-`ask_agent` von 180 s auf **480 s** erhöht (native async hält das Gespräch ohnehin am Laufen), damit längere Aufgaben nicht vorzeitig mit „konnte gerade nicht" abbrechen.
+
+---
+
 ## [1.108.1] — 2026-07-30
 
 ### Security
