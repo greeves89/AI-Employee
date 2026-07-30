@@ -66,6 +66,27 @@ jobs:
           KIOSK_ENABLED: "false"
         run: pytest -q
 
+  # ── Agent MCP arg-parse smoke: guards the #342/#285 regression class where
+  #    Responses-API tool arguments delivered only on the `.done` event get
+  #    dropped, so every string parameter reaches the server empty. The agent
+  #    suite is not otherwise run in CI, so this targeted job is the guard. ──
+  agent-argparse-smoke:
+    name: Agent MCP arg-parse smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install agent (+ test deps)
+        working-directory: agent
+        run: |
+          pip install --no-cache-dir -e .
+          pip install --no-cache-dir pytest pytest-asyncio
+      - name: Run arg-parse regression tests
+        working-directory: agent
+        run: pytest -q tests/test_openai_responses_tool_args.py tests/test_responses_stream_smoke.py
+
   # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
   compose-config:
     name: docker compose config
