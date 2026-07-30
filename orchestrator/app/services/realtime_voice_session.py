@@ -401,14 +401,47 @@ APP_LOGS_TOOL = {
     }
 }
 
+START_APP_TOOL = {
+    "toolSpec": {
+        "name": "start_app",
+        "description": (
+            "START / bring up one of my apps via docker-compose ('starte App X', 'fahr X hoch', "
+            "'deploy X', 'mach die Pokémon-App an'). The ORCHESTRATOR runs docker compose up (I as "
+            "the agent have no docker myself — so NEVER try to run docker/compose via a task). Pass "
+            "the app name (workspace folder from list_apps/search_files). A first build can take a "
+            "moment; I answer right away and tell you when it's up + how to reach it."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"app": {"type": "string", "description": "App name / workspace folder."}},
+            "required": ["app"],
+        })},
+    }
+}
+
+STOP_APP_TOOL = {
+    "toolSpec": {
+        "name": "stop_app",
+        "description": (
+            "STOP / bring down one of my apps ('stopp App X', 'fahr X runter', 'mach X aus') via "
+            "docker compose down (orchestrator-side). Pass the app name (workspace folder)."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"app": {"type": "string", "description": "App name / workspace folder."}},
+            "required": ["app"],
+        })},
+    }
+}
+
 RESTART_APP_TOOL = {
     "toolSpec": {
         "name": "restart_app",
         "description": (
-            "Restart the running containers of one of my apps ('starte App X neu', 'restart X'). "
-            "Pass the app name (workspace folder from list_apps). To START a stopped/new app, "
-            "DEPLOY it, or CHANGE its code/config, hand it to me as a task with plan_task instead "
-            "(then I edit the files and bring it up)."
+            "Restart the ALREADY-RUNNING containers of one of my apps ('starte App X neu', "
+            "'restart X'). Pass the app name. To bring up a stopped/new app use start_app; to "
+            "CHANGE its code/config, hand it to me as a task with plan_task (I edit the files, "
+            "then start_app brings it up)."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
@@ -875,13 +908,15 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Nutzer will etwas ins zweite Gehirn/Wiki/Vault SCHREIBEN ('schreib das ins Wiki', 'halt "
         "das im zweiten Gehirn fest', 'dokumentiere …') → write_brain (speichert eine Notiz im "
         "Vault). Für einen kurzen persönlichen Merker → save_memory.\n"
-        "• MEINE APPS ('analysiere meine Apps', 'welche Apps hab ich', 'laufen die') → list_apps "
-        "(nennt meine Apps + Status). 'was ist mit App X los / schau in die Logs / warum läuft X "
-        "nicht' → app_logs(app) (liest die Docker-Logs, fasse Fehler zusammen). 'starte X neu / "
-        "restart' → restart_app(app). WICHTIG für 'analysiere und behebe': erst list_apps/app_logs, "
-        "die Fehler ZUSAMMENFASSEN, und dann zum FIXEN/ANPASSEN/DEPLOYEN per plan_task an mich "
-        "geben — mit dem App-Ordner + dem konkreten Fehler (ich habe dort bash + Dateizugriff und "
-        "arbeite es ab). App-Namen sind die Workspace-Ordner aus list_apps.\n"
+        "• MEINE APPS: 'analysiere/welche Apps/laufen die' → list_apps (Apps + Status). 'was ist "
+        "mit X los / schau in die Logs / warum läuft X nicht' → app_logs(app) (Docker-Logs, Fehler "
+        "zusammenfassen). 'starte X / fahr X hoch / mach X an / deploy X' → start_app(app). 'stopp "
+        "X / fahr X runter' → stop_app(app). 'starte X neu' (läuft schon) → restart_app(app). "
+        "GANZ WICHTIG: Eine Docker-App starten/stoppen macht der ORCHESTRATOR über diese Tools — "
+        "versuche NIEMALS, docker oder docker-compose per plan_task/ask_agent laufen zu lassen (ich "
+        "als Agent habe selbst KEIN Docker, das schlägt fehl). Nur den CODE/die KONFIG einer App "
+        "ÄNDERN oder einen Fehler BEHEBEN geht per plan_task an mich (ich editiere die Dateien, "
+        "danach start_app). App-Namen = Workspace-Ordner aus list_apps.\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -1066,7 +1101,7 @@ class RealtimeVoiceSession:
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
-            LIST_APPS_TOOL, APP_LOGS_TOOL, RESTART_APP_TOOL,
+            LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1445,6 +1480,12 @@ class RealtimeVoiceSession:
             return
         if name == "app_logs":
             await self._respond(tool_use_id, await self._app_logs(str(args.get("app") or "")))
+            return
+        if name == "start_app":
+            await self._respond(tool_use_id, await self._start_app(str(args.get("app") or "")))
+            return
+        if name == "stop_app":
+            await self._respond(tool_use_id, await self._stop_app(str(args.get("app") or "")))
             return
         if name == "restart_app":
             await self._respond(tool_use_id, await self._restart_app(str(args.get("app") or "")))
@@ -2807,6 +2848,89 @@ class RealtimeVoiceSession:
         text = "\n\n".join(blocks).strip()
         # Keep short for the realtime context (see read_file).
         return f"Logs von „{rel}“:\n{text[-1500:]}"
+
+    async def _start_app(self, app: str) -> str:
+        """Bring up an app via the ORCHESTRATOR's docker-compose (the agent has no
+        docker). Runs in the background (a first build is slow) with an immediate ack;
+        the result is voiced when it's up."""
+        rel = (app or "").strip().strip("/")
+        if not rel:
+            return "Welche App soll ich starten?"
+        if not self.user_id or self.user_id == "unknown":
+            return "Ich kann Apps nur mit Nutzerkontext starten — bitte einmal über die Web-Oberfläche."
+        asyncio.create_task(self._start_app_bg(rel))
+        return (
+            f"Ich fahre die App „{rel}“ jetzt über den Orchestrator hoch (ein erster Build kann "
+            "einen Moment dauern). Sag dem Nutzer knapp in der ICH-Form, dass du sie startest und "
+            "dich meldest, sobald sie läuft."
+        )
+
+    async def _start_app_bg(self, rel: str) -> None:
+        from app.db.session import async_session_factory
+        from app.services.docker_service import DockerService
+        from app.models.user import User
+        from app.api.docker_apps import start_app as _api_start_app
+        result, err = None, None
+        try:
+            async with async_session_factory() as db:
+                user = await db.get(User, self.user_id)
+                if user is None:
+                    raise RuntimeError("kein Nutzerkontext")
+                result = await _api_start_app(
+                    self.agent_id, path=rel, user=user, db=db, docker=DockerService(),
+                )
+        except Exception as e:  # noqa: BLE001 — HTTPException.detail or generic
+            err = getattr(e, "detail", None) or str(e)
+            logger.warning("voice start_app failed agent=%s app=%s: %s", self.agent_id, rel, err)
+        if self._closed or not self._nova:
+            return
+        if result:
+            conts = result.get("containers") or []
+            access = ""
+            for c in conts:
+                for p in (c.get("ports") or []):
+                    access = f" Sie ist auf Port {p.get('host_port')} erreichbar."
+                    break
+                if access:
+                    break
+            note = (
+                f"HINWEIS (kein Nutzerbefehl): Die App „{rel}“ wurde erfolgreich gestartet "
+                f"({len(conts)} Container).{access}\nSag dem Nutzer JETZT kurz in der ICH-Form, "
+                "dass die App läuft" + (" und wie er sie erreicht." if access else ".")
+            )
+        else:
+            note = (
+                f"HINWEIS (kein Nutzerbefehl): Der Start der App „{rel}“ ist fehlgeschlagen: "
+                f"{(err or 'unbekannter Fehler')[:300]}\nSag dem Nutzer kurz Bescheid — ich kann "
+                "den Fehler auch als Aufgabe an mich zum Beheben geben (plan_task)."
+            )
+        try:
+            await self._nova.inject_user_text(note)
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def _stop_app(self, app: str) -> str:
+        """Bring an app down via the orchestrator's docker-compose down."""
+        rel = (app or "").strip().strip("/")
+        if not rel:
+            return "Welche App soll ich stoppen?"
+        if not self.user_id or self.user_id == "unknown":
+            return "Ich kann Apps nur mit Nutzerkontext steuern — bitte einmal über die Web-Oberfläche."
+        from app.db.session import async_session_factory
+        from app.services.docker_service import DockerService
+        from app.models.user import User
+        from app.api.docker_apps import stop_app as _api_stop_app
+        try:
+            async with async_session_factory() as db:
+                user = await db.get(User, self.user_id)
+                if user is None:
+                    return "Mir fehlt der Nutzerkontext, um die App zu stoppen."
+                await _api_stop_app(self.agent_id, path=rel, user=user, db=db, docker=DockerService())
+        except Exception as e:  # noqa: BLE001
+            detail = getattr(e, "detail", None) or str(e)
+            logger.warning("voice stop_app failed agent=%s app=%s: %s", self.agent_id, rel, detail)
+            return f"Das Stoppen von „{rel}“ hat nicht geklappt: {str(detail)[:200]}"
+        return f"Ich habe die App „{rel}“ gestoppt. Bestätige das kurz in der ICH-Form."
 
     async def _restart_app(self, app: str) -> str:
         """Restart the running containers of an app (SDK restart on each project container)."""

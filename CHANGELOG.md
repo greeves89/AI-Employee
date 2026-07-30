@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.113.0] — 2026-07-30
+
+### Added
+- **Voice kann Apps jetzt WIRKLICH starten/stoppen — orchestrator-seitig.** Neue Tools `start_app(app)` und `stop_app(app)` rufen den Compose-Up/-Down des Orchestrators auf (`docker_apps.start_app`/`stop_app`, via Socket-Proxy + Compose-Runner). Vorher versuchte der Voice-Agent, „docker compose up" per Delegation im Agent-Container laufen zu lassen — der hat aber KEIN Docker („nicht verfügbar") und lief zudem in den Bedrock-Timeout. `start_app` läuft im Hintergrund (erster Build ist langsam) mit sofortiger Ansage und meldet Erfolg + Zugriffs-Port zurück. Systemprompt geschärft: App starten/stoppen macht der Orchestrator (start_app/stop_app), NIEMALS docker per Task an den Agenten; nur Code/Config ändern geht per plan_task.
+
+---
+
 ## [1.112.2] — 2026-07-30
 
 ### Fixed
