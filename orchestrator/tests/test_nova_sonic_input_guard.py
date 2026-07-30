@@ -86,5 +86,40 @@ class TestNovaSonicInputGuard(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sess._stream.input_stream.sends, before)
 
 
+class TestNovaSonicDispatch(unittest.IsolatedAsyncioTestCase):
+    async def test_vad_events_do_not_warn(self):
+        """userSpeechStart/End are normal VAD telemetry, not exceptions —
+        they must not hit the UNHANDLED WARNING path (log-spam regression)."""
+        sess = _make_session()
+        with self.assertLogs(
+            "app.services.voice_providers.realtime_nova_sonic", level="DEBUG"
+        ) as cm:
+            await sess._dispatch("userSpeechStart", {"userSpeechStart": {}})
+            await sess._dispatch("userSpeechEnd", {"userSpeechEnd": {}})
+        joined = "\n".join(cm.output)
+        self.assertNotIn("UNHANDLED", joined)
+        self.assertIn("VAD event", joined)
+
+    async def test_genuine_exception_still_surfaces(self):
+        """A real Bedrock modeled exception must still warn AND emit an error."""
+        errors = []
+
+        async def _capture(kind, data):
+            if kind == "error":
+                errors.append(data)
+
+        sess = _make_session()
+        sess.on_event = _capture
+        with self.assertLogs(
+            "app.services.voice_providers.realtime_nova_sonic", level="WARNING"
+        ) as cm:
+            await sess._dispatch(
+                "validationException", {"validationException": {"message": "boom"}}
+            )
+        self.assertIn("UNHANDLED", "\n".join(cm.output))
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]["message"], "boom")
+
+
 if __name__ == "__main__":
     unittest.main()

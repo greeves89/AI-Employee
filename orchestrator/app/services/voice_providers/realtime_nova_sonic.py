@@ -354,6 +354,13 @@ class NovaSonicSession:
             })
         elif kind in ("contentEnd", "completionStart", "completionEnd"):
             pass  # lifecycle only
+        elif kind in ("userSpeechStart", "userSpeechEnd"):
+            # Nova's server-side VAD telemetry (user began/stopped speaking).
+            # Barge-in audio interruption is already driven by the `interrupted`
+            # textOutput signal above, so these are informational only — log at
+            # debug, never WARNING, to avoid flooding the error log on every
+            # utterance (they arrive twice per user turn).
+            logger.debug("NovaSonic VAD event kind=%s", kind)
         else:
             # Bedrock modeled exceptions (internalServerException / modelStreamError /
             # validationException / throttlingException) arrive as their own event
