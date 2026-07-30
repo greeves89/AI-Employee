@@ -707,6 +707,12 @@ class AgentManager:
 
     async def _publish_event(self, agent_id: str, event_type: str, message: str) -> None:
         """Publish a lifecycle event to the agent's log channel."""
+        if self.redis.client is None:
+            # No connected Redis client (e.g. a freshly instantiated RedisService in
+            # the lifecycle recreate path) — nothing to publish to. Debug, not warn,
+            # so the periodic sweep does not spam the log.
+            logger.debug(f"Skip publish event for agent {agent_id}: no Redis client")
+            return
         try:
             event = json.dumps({
                 "agent_id": agent_id,
@@ -735,6 +741,9 @@ class AgentManager:
         Published on the same channel (``agent:{id}:chat:response``) the agent container
         streams responses on — no new mechanism.
         """
+        if self.redis.client is None:
+            logger.debug(f"Skip cancel open chats for agent {agent_id}: no Redis client")
+            return
         try:
             event = json.dumps({
                 "agent_id": agent_id,
@@ -1146,15 +1155,22 @@ class AgentManager:
         await self._cancel_open_chats(agent_id, "Agent wird neu gestartet — laufende Antwort abgebrochen.")
         agent = await self._get_agent(agent_id)
         config = agent.config or {}
+        container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
 
         # 1. Stop and remove old container (volumes stay!)
-        if agent.container_id:
+        # Reconcile by BOTH the stored container_id AND the deterministic name:
+        # a stale container_id can point at an already-removed container while a
+        # container under the fixed name still exists, which would make the create
+        # below collide with a 409 (name already in use). Same pattern as update_agent.
+        for ref in [agent.container_id, container_name]:
+            if not ref:
+                continue
             try:
-                self.docker.stop_container(agent.container_id)
+                self.docker.stop_container(ref)
             except (NotFound, APIError):
                 pass
             try:
-                self.docker.remove_container(agent.container_id)
+                self.docker.remove_container(ref)
             except (NotFound, APIError):
                 pass
 
@@ -1163,7 +1179,6 @@ class AgentManager:
         session_volume = config.get("session_volume", f"claude-session-{agent_id}")
         role = config.get("role", "")
         model = agent.model or settings.default_model
-        container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
         mode = agent.mode or "claude_code"
         if mode == "claude_code" and (config.get("model_provider") or settings.model_provider) == "codex":
             mode = "codex_cli"

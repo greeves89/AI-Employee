@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.114.2] — 2026-07-30
+
+### Fixed
+- **Agent-Recreate kollidiert nicht mehr mit einem bereits vergebenen Container-Namen (#364).** `AgentManager.restart_agent` entfernte den alten Container nur über die (evtl. veraltete) `container_id` und legte danach unter dem festen Namen `ai-agent-<slug>-<id>` neu an — existierte noch ein Container unter genau diesem Namen, warf `docker create` einen **409 Conflict** und der Recreate scheiterte periodisch. Der Recreate reconciliiert jetzt über **beide** Referenzen (`container_id` **und** Name), wie `update_agent` es bereits tat.
+- **Kein WARNING-Spam mehr im Lifecycle-Sweep ohne verbundenen Redis-Client (#364).** `_publish_event` / `_cancel_open_chats` steigen jetzt mit `logger.debug` früh aus, wenn `redis.client is None` (frisch instanziierter `RedisService` im Recreate-Pfad), statt pro Sweep zwei `NoneType … publish`-WARNINGs zu erzeugen, die echte Lifecycle-Fehler verschleierten.
+
 ## [1.114.0] — 2026-07-30
 
 ### Added
