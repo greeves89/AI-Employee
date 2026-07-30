@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.113.1] — 2026-07-30
+
+### Fixed
+- `start_app` (Voice) meldet jetzt korrekt Erfolg, wenn die App **tatsächlich läuft**, obwohl `docker compose up` einen nicht-Null-Code zurückgab (typisch bei compose-Dateien mit festem `container_name` → „name already in use", App kommt trotzdem hoch). Fallback: bei „Fehler" wird der echte Container-Status geprüft; laufen Container, wird Erfolg + Zugriffs-Port gemeldet statt „fehlgeschlagen".
+
+---
+
 ## [1.113.0] — 2026-07-30
 
 ### Added

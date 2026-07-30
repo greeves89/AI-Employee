@@ -2884,8 +2884,22 @@ class RealtimeVoiceSession:
             logger.warning("voice start_app failed agent=%s app=%s: %s", self.agent_id, rel, err)
         if self._closed or not self._nova:
             return
-        if result:
-            conts = result.get("containers") or []
+        conts = result.get("containers") if result else None
+        if conts is None:
+            # compose can report a non-zero (e.g. a fixed container_name conflict) while
+            # the app actually came up — verify the real state before declaring failure.
+            try:
+                from app.api.docker_apps import _project_name, _get_project_containers
+                from app.services.docker_service import DockerService
+                live = await asyncio.to_thread(
+                    _get_project_containers, DockerService(), _project_name(self.agent_id, rel)
+                )
+                running = [c for c in live if c.get("state") == "running"]
+                if running:
+                    conts = running  # it's actually up → treat as success
+            except Exception:  # noqa: BLE001
+                pass
+        if conts:
             access = ""
             for c in conts:
                 for p in (c.get("ports") or []):
