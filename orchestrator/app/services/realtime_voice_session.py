@@ -2521,9 +2521,9 @@ class RealtimeVoiceSession:
         where = sub or "meinem Workspace"
         parts = []
         if dirs:
-            parts.append(f"Ordner ({len(dirs)}): " + ", ".join(dirs[:25]))
+            parts.append(f"Ordner ({len(dirs)}): " + ", ".join(dirs[:15]))
         if files:
-            parts.append(f"Dateien ({len(files)}): " + ", ".join(files[:25]))
+            parts.append(f"Dateien ({len(files)}): " + ", ".join(files[:15]))
         return f"In {where}:\n" + "\n".join(parts)
 
     async def _search_files(self, query: str) -> str:
@@ -2545,7 +2545,7 @@ class RealtimeVoiceSession:
         if not hits:
             return f"Zu „{q}“ habe ich keine Datei oder keinen Ordner im Workspace gefunden."
         lines = []
-        for h in hits[:12]:
+        for h in hits[:8]:
             rel = h["path"].replace("/workspace/", "", 1)
             lines.append(f"{'Ordner' if h['type'] == 'directory' else 'Datei'}: {rel}")
         return f"Zu „{q}“ gefunden:\n" + "\n".join(lines)
@@ -2604,7 +2604,10 @@ class RealtimeVoiceSession:
             try:
                 raw = await asyncio.to_thread(fm.read_file, self._container_id, full)
                 from app.core.msgraph_mcp import _extract_document_text
-                text = await asyncio.to_thread(_extract_document_text, raw, rel_disp, "", 8000)
+                # Keep it SHORT — a realtime voice model only needs enough to speak a
+                # summary; large results bloat Nova's context and trigger "unexpected
+                # error during processing" after a few file/log turns accumulate.
+                text = await asyncio.to_thread(_extract_document_text, raw, rel_disp, "", 1600)
             except Exception:  # noqa: BLE001
                 logger.warning("voice read_file extract failed agent=%s path=%s", self.agent_id, full, exc_info=True)
                 return f"Ich konnte „{rel_disp}“ nicht auswerten — soll ich den Agenten dranstellen?"
@@ -2637,9 +2640,9 @@ class RealtimeVoiceSession:
             return f"„{rel_disp}“ scheint keine Textdatei zu sein — die kann ich nicht vorlesen."
         if not text:
             return f"„{rel_disp}“ ist leer."
-        max_chars = 8000
+        max_chars = 1600  # short for the realtime voice context (see PDF branch above)
         clipped = text[:max_chars]
-        note = "" if len(text) <= max_chars else f"\n[… gekürzt, Datei hat {len(text)} Zeichen]"
+        note = "" if len(text) <= max_chars else f"\n[… gekürzt, Datei hat {len(text)} Zeichen; frag nach mehr, dann lese ich weiter]"
         return f"Inhalt von „{rel_disp}“:\n{clipped}{note}"
 
     _MIME_BY_EXT = {
@@ -2800,9 +2803,10 @@ class RealtimeVoiceSession:
             except Exception:  # noqa: BLE001
                 log = ""
             label = c.get("service") or c.get("name") or "container"
-            blocks.append(f"[{label} — {c.get('state', '?')}]\n{log[-1800:]}" if log else f"[{label}] (keine Logs)")
+            blocks.append(f"[{label} — {c.get('state', '?')}]\n{log[-900:]}" if log else f"[{label}] (keine Logs)")
         text = "\n\n".join(blocks).strip()
-        return f"Logs von „{rel}“:\n{text[-6000:]}"
+        # Keep short for the realtime context (see read_file).
+        return f"Logs von „{rel}“:\n{text[-1500:]}"
 
     async def _restart_app(self, app: str) -> str:
         """Restart the running containers of an app (SDK restart on each project container)."""

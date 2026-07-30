@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.112.2] — 2026-07-30
+
+### Fixed
+- **Voice „unexpected error during processing" (Kontext-Bloat) angegangen.** Nova Sonic ist ein Realtime-Modell mit begrenztem Kontext; große Tool-Ergebnisse (Datei-Inhalte, Docker-Logs, Datei-Listen) häuften sich über mehrere Turns an und ließen Bedrock den Turn mit einem generischen Fehler abbrechen (im Screenshot: nach kompletter Datei-Liste + Projekt-Inhalt). Tool-Ergebnisse für die Sprachausgabe jetzt hart gekürzt: `read_file`/PDF 8000→1600 Zeichen, `app_logs` 6000→1500 (900/Container), `list_workspace` 25→15 Einträge, `search_files` 12→8. Das Modell braucht nur genug zum Zusammenfassen — bei Bedarf „lese ich weiter".
+
+### Diagnostics
+- Nova-Provider: unbehandelte Bedrock-Event-Kinds (modellierte Exceptions wie `internalServerException`/`modelStreamErrorException`) werden jetzt geloggt + als Fehler-Event surfaced; Receive-Loop-Fehler werden immer geloggt (auch beim Schließen) — damit die eigentliche Ursache von „unexpected error" beim nächsten Auftreten sichtbar ist.
+
+---
+
 ## [1.112.1] — 2026-07-30
 
 ### Changed

@@ -298,8 +298,10 @@ class NovaSonicSession:
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
+            # Always log (even if already closing) so the real Bedrock error is never
+            # invisible — this is how "unexpected error during processing" surfaces.
+            logger.warning("NovaSonic receive loop error (closed=%s): %r", self._closed, e, exc_info=True)
             if not self._closed:
-                logger.warning("NovaSonic receive loop error: %s", e, exc_info=True)
                 await self._safe_emit("error", {"message": str(e)})
         finally:
             # The server has completed the stream; any further input write would
@@ -350,7 +352,17 @@ class NovaSonicSession:
                 "role": payload.get("role", ""),
                 "type": payload.get("type", ""),
             })
-        # contentEnd/completionStart/completionEnd: lifecycle only
+        elif kind in ("contentEnd", "completionStart", "completionEnd"):
+            pass  # lifecycle only
+        else:
+            # Bedrock modeled exceptions (internalServerException / modelStreamError /
+            # validationException / throttlingException) arrive as their own event
+            # kind — surface them so "unexpected error during processing" is diagnosable.
+            msg = payload.get("message") if isinstance(payload, dict) else ""
+            logger.warning("NovaSonic UNHANDLED event kind=%s message=%s payload=%s",
+                           kind, msg, str(payload)[:400])
+            if "exception" in kind.lower() or "error" in kind.lower():
+                await self._safe_emit("error", {"message": msg or f"Nova: {kind}"})
 
     async def _safe_emit(self, kind: str, data: dict) -> None:
         try:
