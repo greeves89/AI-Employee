@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.107.0] — 2026-07-30
+
+### Added
+- **Voice kann jetzt den Workspace durchsuchen/auflisten.** Zwei neue Direkt-Tools im Realtime-Voice-Layer, damit „welche Projekte/Dateien hab ich", „was liegt in Ordner X", „such die Datei…" endlich funktionieren (vorher hatte Voice keinen Datei-/Workspace-Zugriff und tat bei solchen Fragen nichts):
+  - `list_workspace(path?)` — listet Ordner/Dateien im Agenten-Workspace (default: Top-Level, wo die Projekte liegen) über `FileManager.list_directory`, ohne Agenten-Roundtrip.
+  - `search_files(query)` — namensbasierte Suche im Workspace (neue `FileManager.search_files`, `find -iname`, auf `/workspace` begrenzt, injection-sicher über List-Args).
+- Der Voice-Layer greift dafür wie beim Datei-Präsentieren über den Orchestrator (`FileManager` + Docker) in den Container; blockierende `find`/`list`-Aufrufe laufen in `asyncio.to_thread`. Versteckte Dateien werden für die Sprachausgabe ausgeblendet.
+
+---
+
 ## [1.106.1] — 2026-07-30
 
 ### Fixed

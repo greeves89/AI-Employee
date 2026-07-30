@@ -159,6 +159,38 @@ class FileManager:
         logger.info(f"Uploaded {len(files)} files ({total_size} bytes) to {target_path}")
         return len(files)
 
+    def search_files(
+        self, container_id: str, query: str, base: str = "/workspace", limit: int = 40
+    ) -> list[dict]:
+        """Find files/folders BY NAME (case-insensitive) under ``base`` (kept within
+        /workspace). Args passed as a list — no shell interpretation/injection."""
+        safe_base = _validate_path(base)
+        q = (query or "").strip()
+        if not q:
+            return []
+        exit_code, output = self.docker.exec_in_container(
+            container_id,
+            ["find", safe_base, "-maxdepth", "5", "-not", "-type", "l",
+             "-iname", f"*{q}*", "-printf", "%y|%s|%p\n"],
+        )
+        entries: list[dict] = []
+        for line in output.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split("|", 2)
+            if len(parts) != 3:
+                continue
+            file_type, size, full = parts
+            entries.append({
+                "name": full.rsplit("/", 1)[-1],
+                "type": "directory" if file_type == "d" else "file",
+                "size": int(size) if size.isdigit() else 0,
+                "path": full,
+            })
+            if len(entries) >= limit:
+                break
+        return entries
+
     def get_file_info(self, container_id: str, file_path: str) -> dict:
         safe_path = _validate_path(file_path)
         exit_code, output = self.docker.exec_in_container(

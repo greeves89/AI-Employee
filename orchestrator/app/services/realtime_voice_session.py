@@ -236,6 +236,39 @@ M365_MAIL_RECENT_TOOL = {
     }
 }
 
+LIST_WORKSPACE_TOOL = {
+    "toolSpec": {
+        "name": "list_workspace",
+        "description": (
+            "List the files and folders in MY workspace — my projects, documents, data, "
+            "scripts, videos etc. Use for 'welche Projekte hab ich', 'was liegt in meinem "
+            "Workspace', 'liste meine Dateien/Ordner', 'was ist im Ordner X'. Fast, direct read "
+            "of my workspace. Pass the subfolder to look into (optional; default = top level, "
+            "where my projects live). Name the folders/files back to the user; don't invent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"path": {"type": "string", "description": "Subfolder to list, e.g. 'data' or 'videos' (optional; default = workspace top level)."}},
+        })},
+    }
+}
+
+SEARCH_FILES_TOOL = {
+    "toolSpec": {
+        "name": "search_files",
+        "description": (
+            "Find a file or folder in MY workspace BY NAME ('such die Datei…', 'wo liegt…', "
+            "'find mir den Ordner…', 'hab ich was zu…'). Fast, direct name search across my "
+            "workspace. Report the matches with their location; if none, say so."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Part of the file/folder name to search for."}},
+            "required": ["query"],
+        })},
+    }
+}
+
 PLAN_TASK_TOOL = {
     "toolSpec": {
         "name": "plan_task",
@@ -647,6 +680,12 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Fragen nach neuen Mails ('was ist neu im Postfach', 'letzte Mails', 'Mail von X') → "
         "m365_mail_recent (sofort, liest M365 direkt). NUR Lesen — Senden/Antworten ist echte "
         "Arbeit → ask_agent.\n"
+        "• Fragen nach meinen PROJEKTEN/Dateien/Ordnern in meinem Workspace ('welche Projekte hab "
+        "ich', 'was liegt in meinem Workspace', 'liste meine Dateien/Ordner', 'was ist im Ordner "
+        "X') → list_workspace (sofort, liest meinen Workspace direkt). Für 'was ist in Ordner X' "
+        "den Unterordner als path mitgeben.\n"
+        "• Nutzer will eine BESTIMMTE Datei/einen Ordner FINDEN ('such die Datei…', 'wo liegt…', "
+        "'hab ich was zu…') → search_files (sofort, Namenssuche in meinem Workspace).\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -817,6 +856,7 @@ class RealtimeVoiceSession:
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
+            LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1158,6 +1198,12 @@ class RealtimeVoiceSession:
             return
         if name == "m365_mail_recent":
             await self._respond(tool_use_id, await self._m365_mail_recent(int(args.get("limit") or 8)))
+            return
+        if name == "list_workspace":
+            await self._respond(tool_use_id, await self._list_workspace(str(args.get("path") or "")))
+            return
+        if name == "search_files":
+            await self._respond(tool_use_id, await self._search_files(str(args.get("query") or "")))
             return
         if name == "plan_task":
             await self._respond(tool_use_id, await self._plan_task(
@@ -2076,6 +2122,59 @@ class RealtimeVoiceSession:
             logger.warning("voice m365 mail failed", exc_info=True)
             return "Ich konnte das Postfach gerade nicht abrufen."
         return text or "Ich habe keine neuen Mails gefunden."
+
+    async def _list_workspace(self, path: str = "") -> str:
+        """List files/folders in the agent's workspace directly (via the orchestrator
+        reaching into the container, FileManager) — no agent round-trip. This is how
+        the voice layer answers 'list my projects/files'."""
+        if not self._container_id:
+            return "Ich komme gerade nicht an meinen Workspace."
+        sub = (path or "").strip().strip("/")
+        target = "/workspace" + (f"/{sub}" if sub else "")
+        from app.core.file_manager import FileManager
+        from app.services.docker_service import DockerService
+        try:
+            fm = FileManager(DockerService())
+            entries = await asyncio.to_thread(fm.list_directory, self._container_id, target)
+        except Exception:  # noqa: BLE001 — bad path / container gone
+            logger.warning("voice list_workspace failed agent=%s path=%s", self.agent_id, target, exc_info=True)
+            return f"Ich konnte „{sub or 'Workspace'}“ gerade nicht auflisten."
+        visible = [e for e in entries if not e["name"].startswith(".")]
+        if not visible:
+            return f"In „{sub or 'meinem Workspace'}“ liegt nichts (Sichtbares)."
+        dirs = [e["name"] for e in visible if e["type"] == "directory"]
+        files = [e["name"] for e in visible if e["type"] == "file"]
+        where = sub or "meinem Workspace"
+        parts = []
+        if dirs:
+            parts.append(f"Ordner ({len(dirs)}): " + ", ".join(dirs[:25]))
+        if files:
+            parts.append(f"Dateien ({len(files)}): " + ", ".join(files[:25]))
+        return f"In {where}:\n" + "\n".join(parts)
+
+    async def _search_files(self, query: str) -> str:
+        """Search the agent's workspace for a file/folder by name (direct, no round-trip)."""
+        q = (query or "").strip()
+        if not q:
+            return "Wonach soll ich im Workspace suchen?"
+        if not self._container_id:
+            return "Ich komme gerade nicht an meinen Workspace."
+        from app.core.file_manager import FileManager
+        from app.services.docker_service import DockerService
+        try:
+            fm = FileManager(DockerService())
+            hits = await asyncio.to_thread(fm.search_files, self._container_id, q)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice search_files failed agent=%s q=%s", self.agent_id, q, exc_info=True)
+            return "Die Dateisuche hat gerade nicht geklappt."
+        hits = [h for h in hits if "/." not in h["path"]]  # skip hidden files/dirs
+        if not hits:
+            return f"Zu „{q}“ habe ich keine Datei oder keinen Ordner im Workspace gefunden."
+        lines = []
+        for h in hits[:12]:
+            rel = h["path"].replace("/workspace/", "", 1)
+            lines.append(f"{'Ordner' if h['type'] == 'directory' else 'Datei'}: {rel}")
+        return f"Zu „{q}“ gefunden:\n" + "\n".join(lines)
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
         """Schedule real work as a persistent Task on this agent's board (the same
