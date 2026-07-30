@@ -898,11 +898,11 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "Gehirn schreiben, mit Kollegen-Agenten zusammenarbeiten) kann ich ALLES, was ich als Agent "
         "kann — sage NIE 'das kann ich nicht'. Dafür habe ich ZWEI Wege:\n"
         "   – ask_agent: für eine ZÜGIGE Aufgabe, deren Ergebnis ich dir noch im Gespräch vorlesen "
-        "kann. WICHTIG: Sobald du ask_agent aufrufst, sag SOFORT von dir aus einen kurzen, "
-        "natürlichen Füller in der ICH-Form ('Moment, ich schau mal…', 'einen Augenblick, ich bin "
-        "dran…', variiere) — geh NICHT stumm. Du arbeitest im Hintergrund weiter und kannst normal "
-        "weiterreden; das Ergebnis kommt automatisch zurück und du sprichst es dann kurz in der "
-        "ICH-Form aus. Sprich NIE von ‚dem Agenten‘ oder ‚weitergeben‘, lies keine ids vor.\n"
+        "kann. Du bekommst SOFORT eine kurze Quittung zum Aussprechen (sag also gleich in der "
+        "ICH-Form, dass du dich jetzt drum kümmerst) — geh NICHT stumm. Die eigentliche Antwort "
+        "kommt Sekunden später von selbst, und die sprichst du dann kurz in der ICH-Form aus; der "
+        "Nutzer kann derweil weiterreden. Sprich NIE von ‚dem Agenten‘ oder ‚weitergeben‘, lies "
+        "keine ids vor.\n"
         "   – plan_task: für GRÖSSERE/LÄNGERE Arbeit oder wenn der Nutzer sagt 'plan das ein', "
         "'kümmer dich drum', 'mach mir bis morgen…'. Das legt einen ECHTEN Task an, den ich "
         "eigenständig abarbeite — er LÄUFT WEITER, auch wenn wir auflegen. Bestätige knapp, dass "
@@ -1518,10 +1518,16 @@ class RealtimeVoiceSession:
                     "mit ask_agent.",
                 )
                 return
-            # Native async: the refined result comes back as this tool's toolResult.
+            # Immediate spoken ack, then the refined result via inject (see ask_agent).
             asyncio.create_task(self._delegate_and_report(
-                instruction, task_id=rec["id"], refine=True, tool_use_id=tool_use_id,
+                instruction, task_id=rec["id"], refine=True,
             ))
+            await self._respond(
+                tool_use_id,
+                f"Ich ergänze die laufende Aufgabe „{rec['instruction']}“ um: „{instruction}“ "
+                "(dieselbe Aufgabe, kein Neustart). Sag dem Nutzer JETZT knapp in der ICH-Form, "
+                "dass du das direkt einarbeitest und dich mit dem Ergebnis meldest.",
+            )
             return
 
         # ── Slow tool: real work via the container agent (ASYNC report) ──
@@ -1532,13 +1538,18 @@ class RealtimeVoiceSession:
         if not instruction:
             await self._respond(tool_use_id, "Keine Instruktion erkannt.")
             return
-        # Native async tool calling (Nova 2 Sonic): do NOT answer this toolUse now.
-        # The model keeps the conversation flowing on its own (prompt-driven filler),
-        # and we send the REAL result back as this tool's toolResult when the agent
-        # is done (in _delegate_and_report). No synthetic ack, no inject_user_text.
+        # Reliable "I'm on it" announcement: answer the toolUse IMMEDIATELY with a
+        # short spoken ack (the model always speaks a tool result), then deliver the
+        # real result later as an injected turn (tool_use_id NOT passed → inject path).
+        # This restores the pre-async feel where the agent says WHAT it's doing first.
         tid = self._new_task_id()
-        asyncio.create_task(
-            self._delegate_and_report(instruction, task_id=tid, tool_use_id=tool_use_id)
+        asyncio.create_task(self._delegate_and_report(instruction, task_id=tid))
+        await self._respond(
+            tool_use_id,
+            f"Du kümmerst dich jetzt selbst um: „{instruction}“ (Aufgaben-id {tid} — für spätere "
+            "Korrekturen via refine_task). Sag dem Nutzer JETZT knapp in der ICH-Form, dass du "
+            "direkt dran bist und dich gleich mit dem Ergebnis meldest — sprich NICHT von ‚dem "
+            "Agenten‘ oder ‚weitergeben‘ und lies die id NICHT vor.",
         )
 
     async def _maybe_narrate_progress(self, rec: dict) -> None:
