@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.114.0] — 2026-07-30
+
+### Added
+- **Voice zeigt eine gestartete App direkt im Chat zum Öffnen.** Nach erfolgreichem `start_app` blendet der Voice-Layer die App als **Web-Karte** ein — über die tunnel-erreichbare **Proxy-URL** (`/api/v1/agents/{id}/apps/proxy/{container}/{internal_port}/`), nicht mehr das nutzlose `localhost:host_port` (das war der localhost des Pi). So kann der Nutzer die App direkt ansehen/öffnen statt eine unerreichbare Adresse zu hören.
+- Frontend: `safeHttpUrl` löst jetzt **relative** same-origin-URLs (die App-Proxy-Pfade) gegen die aktuelle Origin auf, statt sie zu verwerfen — nötig, damit die Web-Karte der App über den Tunnel lädt. Absolute URLs unverändert; weiterhin nur http(s).
+
+---
+
 ## [1.113.2] — 2026-07-30
 
 ### Fixed

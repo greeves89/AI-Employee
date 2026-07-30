@@ -29,10 +29,13 @@ type WebResultSet = { query: string; results: WebResult[] };
 function safeHttpUrl(raw: unknown): string | undefined {
   if (!raw) return undefined;
   try {
-    const parsed = new URL(String(raw));
+    // Relative same-origin paths (e.g. the app-proxy "/api/v1/.../apps/proxy/…") are
+    // resolved against the current origin; absolute URLs ignore the base. Only http(s) pass.
+    const base = typeof window !== "undefined" ? window.location.origin : undefined;
+    const parsed = new URL(String(raw), base);
     if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.toString();
   } catch {
-    // not a parsable absolute URL
+    // not a parsable URL
   }
   return undefined;
 }

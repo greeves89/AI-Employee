@@ -2900,17 +2900,41 @@ class RealtimeVoiceSession:
             except Exception:  # noqa: BLE001
                 pass
         if conts:
-            access = ""
-            for c in conts:
-                for p in (c.get("ports") or []):
-                    access = f" Sie ist auf Port {p.get('host_port')} erreichbar."
+            # Build the tunnel-reachable PROXY url (never localhost:host_port — that's the
+            # Pi's localhost, useless to the user) and SHOW the app as a web card in the
+            # voice UI. The proxy needs the container NAME + its INTERNAL port.
+            c0 = conts[0]
+            cname = c0.get("name") or ""
+            internal = ""
+            for p in (c0.get("ports") or []):
+                cp = str(p.get("container_port") or "").split("/")[0]
+                if cp.isdigit():
+                    internal = cp
                     break
-                if access:
-                    break
+            if not internal:
+                for ep in (c0.get("exposed_ports") or []):
+                    cp = str(ep).split("/")[0]
+                    if cp.isdigit():
+                        internal = cp
+                        break
+            shown = False
+            if cname and internal:
+                proxy_url = f"/api/v1/agents/{self.agent_id}/apps/proxy/{cname}/{internal}/"
+                try:
+                    await self._emit({"type": "media", "data": {
+                        "kind": "web", "url": proxy_url, "caption": f"App: {rel}",
+                        "embeddable": True, "auto_open": False,
+                    }})
+                    shown = True
+                except Exception:  # noqa: BLE001
+                    pass
             note = (
                 f"HINWEIS (kein Nutzerbefehl): Die App „{rel}“ wurde erfolgreich gestartet "
-                f"({len(conts)} Container).{access}\nSag dem Nutzer JETZT kurz in der ICH-Form, "
-                "dass die App läuft" + (" und wie er sie erreicht." if access else ".")
+                f"({len(conts)} Container)."
+                + (" Ich habe sie dem Nutzer HIER als Web-Karte zum Öffnen angezeigt." if shown else "")
+                + "\nSag dem Nutzer JETZT kurz in der ICH-Form, dass die App läuft"
+                + (" und dass du sie ihm hier direkt zum Ansehen/Öffnen eingeblendet hast." if shown
+                   else ". Zum Öffnen kann er über „Apps“ in der App gehen.")
             )
         else:
             note = (
