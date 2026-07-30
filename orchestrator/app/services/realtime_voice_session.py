@@ -289,6 +289,43 @@ READ_FILE_TOOL = {
     }
 }
 
+OPEN_FILE_TOOL = {
+    "toolSpec": {
+        "name": "open_file",
+        "description": (
+            "Show a workspace file to the user as a clickable card to open/download — for PDFs, "
+            "presentations, images, archives, any file. Use for 'zeig mir die Datei…', 'öffne …', "
+            "'gib mir das Pitchdeck'. Pass the path relative to my workspace. (To READ a text/PDF "
+            "aloud use read_file instead; to SHOW an image on the big stage use show_on_screen.)"
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"path": {"type": "string", "description": "File path relative to my workspace."}},
+            "required": ["path"],
+        })},
+    }
+}
+
+WRITE_BRAIN_TOOL = {
+    "toolSpec": {
+        "name": "write_brain",
+        "description": (
+            "Save a note into my SECOND BRAIN / knowledge vault so it's kept and searchable later. "
+            "Use when the user says 'schreib das ins Wiki / ins zweite Gehirn', 'halt das im Vault "
+            "fest', 'dokumentiere …'. Writes a markdown note to a writable mounted vault. (For a "
+            "quick personal reminder use save_memory instead.) Confirm briefly what you saved and where."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "The note text to store (markdown/plain)."},
+                "title": {"type": "string", "description": "Short title/heading for the note (optional)."},
+            },
+            "required": ["content"],
+        })},
+    }
+}
+
 CANCEL_TASK_TOOL = {
     "toolSpec": {
         "name": "cancel_task",
@@ -731,11 +768,16 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Nutzer will eine BESTIMMTE Datei/einen Ordner FINDEN ('such die Datei…', 'wo liegt…', "
         "'hab ich was zu…') → search_files (sofort, Namenssuche in meinem Workspace).\n"
         "• Steht die Antwort IN einer Datei ('was steht in…', 'lies mir … vor', 'fasse … "
-        "zusammen') → read_file (sofort, liest den Textinhalt). Für „was ist Projekt X / worum "
-        "geht es bei …“ ARBEITE IN ZWEI SCHRITTEN: erst mit list_workspace/search_files die "
-        "passende Datei finden (README, AGENT.md, eine .md im Projektordner), dann read_file und "
-        "aus dem Inhalt antworten — NICHT raten. PDFs/Bilder kann read_file nicht; die zeige ich "
-        "oder lasse sie vom Agenten auswerten.\n"
+        "zusammen') → read_file (sofort, liest Textdateien UND wertet PDF/Word/Excel aus). Für "
+        "„was ist Projekt X / worum geht es bei …“ ARBEITE IN ZWEI SCHRITTEN: erst mit "
+        "list_workspace/search_files die passende Datei finden (README, AGENT.md, .md/.pdf im "
+        "Projektordner), dann read_file und aus dem Inhalt antworten — NICHT raten.\n"
+        "• Nutzer will eine Datei SEHEN/ÖFFNEN/HERUNTERLADEN ('zeig mir die Datei…', 'öffne das "
+        "Pitchdeck', 'gib mir …') → open_file (legt sie als klickbare Karte bereit). Bilder auf die "
+        "große Bühne → show_on_screen; Text/PDF vorlesen → read_file.\n"
+        "• Nutzer will etwas ins zweite Gehirn/Wiki/Vault SCHREIBEN ('schreib das ins Wiki', 'halt "
+        "das im zweiten Gehirn fest', 'dokumentiere …') → write_brain (speichert eine Notiz im "
+        "Vault). Für einen kurzen persönlichen Merker → save_memory.\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -915,7 +957,7 @@ class RealtimeVoiceSession:
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
-            LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL,
+            LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1266,6 +1308,14 @@ class RealtimeVoiceSession:
             return
         if name == "read_file":
             await self._respond(tool_use_id, await self._read_file(str(args.get("path") or "")))
+            return
+        if name == "open_file":
+            await self._respond(tool_use_id, await self._open_file(str(args.get("path") or "")))
+            return
+        if name == "write_brain":
+            await self._respond(tool_use_id, await self._write_brain(
+                str(args.get("content") or ""), str(args.get("title") or ""),
+            ))
             return
         if name == "plan_task":
             await self._respond(tool_use_id, await self._plan_task(
@@ -2280,12 +2330,7 @@ class RealtimeVoiceSession:
         if not full:
             return "Diese Datei liegt außerhalb meines Workspace — das gebe ich nicht her."
         rel_disp = full.replace("/workspace/", "", 1) or full
-        if full.lower().endswith(self._BINARY_EXT):
-            return (
-                f"„{rel_disp}“ ist eine Binär-/Office-Datei (z. B. PDF/Bild), die ich nicht direkt "
-                "vorlesen kann. Ich kann sie dir zeigen oder den Agenten bitten, ihren Inhalt "
-                "auszuwerten — sag mir, was du möchtest."
-            )
+        lower = full.lower()
         from app.core.file_manager import FileManager
         from app.services.docker_service import DockerService
         fm = FileManager(DockerService())
@@ -2295,10 +2340,37 @@ class RealtimeVoiceSession:
             return f"Die Datei „{rel_disp}“ finde ich gerade nicht — soll ich danach suchen?"
         if str(info.get("type", "")).startswith("directory"):
             return f"„{rel_disp}“ ist ein Ordner — zum Auflisten nutze ich list_workspace."
-        if int(info.get("size", 0)) > 800_000:
+        size = int(info.get("size", 0))
+
+        # Documents (PDF/Word/Excel) → extract readable text so I can read them out.
+        if lower.endswith((".pdf", ".docx", ".xlsx")):
+            if size > 25_000_000:
+                return (f"„{rel_disp}“ ist sehr groß ({size // 1024 // 1024} MB) — soll ich den "
+                        "Agenten bitten, sie zusammenzufassen, statt sie komplett auszuwerten?")
+            try:
+                raw = await asyncio.to_thread(fm.read_file, self._container_id, full)
+                from app.core.msgraph_mcp import _extract_document_text
+                text = await asyncio.to_thread(_extract_document_text, raw, rel_disp, "", 8000)
+            except Exception:  # noqa: BLE001
+                logger.warning("voice read_file extract failed agent=%s path=%s", self.agent_id, full, exc_info=True)
+                return f"Ich konnte „{rel_disp}“ nicht auswerten — soll ich den Agenten dranstellen?"
+            if not text:
+                return f"Aus „{rel_disp}“ konnte ich keinen Text lesen (evtl. ein gescanntes Bild)."
+            return f"Inhalt von „{rel_disp}“:\n{text}"
+
+        # Images / media / archives → can't read as text; offer to show or delegate.
+        if lower.endswith(self._BINARY_EXT):
             return (
-                f"„{rel_disp}“ ist recht groß ({int(info['size']) // 1024} KB). Soll ich den "
-                "Agenten bitten, sie zusammenzufassen, statt sie komplett zu lesen?"
+                f"„{rel_disp}“ ist eine Binär-/Media-Datei, die ich nicht vorlesen kann. Ich kann "
+                "sie dir mit open_file auf den Bildschirm holen oder den Agenten bitten, ihren "
+                "Inhalt auszuwerten — sag mir, was du möchtest."
+            )
+
+        # Plain text files.
+        if size > 800_000:
+            return (
+                f"„{rel_disp}“ ist recht groß ({size // 1024} KB). Soll ich den Agenten bitten, "
+                "sie zusammenzufassen, statt sie komplett zu lesen?"
             )
         try:
             data = await asyncio.to_thread(fm.read_file, self._container_id, full)
@@ -2315,6 +2387,93 @@ class RealtimeVoiceSession:
         clipped = text[:max_chars]
         note = "" if len(text) <= max_chars else f"\n[… gekürzt, Datei hat {len(text)} Zeichen]"
         return f"Inhalt von „{rel_disp}“:\n{clipped}{note}"
+
+    _MIME_BY_EXT = {
+        "pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg",
+        "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp",
+        "html": "text/html", "md": "text/markdown", "txt": "text/plain",
+        "json": "application/json", "csv": "text/csv", "zip": "application/zip",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "mp4": "video/mp4", "mp3": "audio/mpeg", "wav": "audio/wav",
+    }
+
+    async def _open_file(self, path: str) -> str:
+        """Surface a workspace file as a clickable download/open card in the voice UI
+        (media event kind=file → frontend renders a download button hitting the
+        /agents/{id}/files/download endpoint). Works for any file type."""
+        p = (path or "").strip()
+        if not p:
+            return "Welche Datei soll ich dir zeigen?"
+        if not self._container_id:
+            return "Ich komme gerade nicht an meinen Workspace."
+        full = self._safe_ws_path(p)
+        if not full:
+            return "Diese Datei liegt außerhalb meines Workspace — das gebe ich nicht her."
+        rel_disp = full.replace("/workspace/", "", 1) or full
+        from app.core.file_manager import FileManager
+        from app.services.docker_service import DockerService
+        fm = FileManager(DockerService())
+        try:
+            info = await asyncio.to_thread(fm.get_file_info, self._container_id, full)
+        except Exception:  # noqa: BLE001
+            return f"Die Datei „{rel_disp}“ finde ich gerade nicht — soll ich danach suchen?"
+        if str(info.get("type", "")).startswith("directory"):
+            return f"„{rel_disp}“ ist ein Ordner — den kann ich mit list_workspace auflisten."
+        filename = full.rsplit("/", 1)[-1]
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        mime = self._MIME_BY_EXT.get(ext, "application/octet-stream")
+        await self._emit({"type": "media", "data": {
+            "kind": "file", "filename": filename, "media_type": mime,
+            "caption": rel_disp, "path": full,
+        }})
+        return (
+            f"Ich habe „{rel_disp}“ als Karte zum Öffnen/Herunterladen bereitgestellt. Sag dem "
+            "Nutzer kurz in der ICH-Form, dass die Datei rechts bereitliegt."
+        )
+
+    async def _write_brain(self, content: str, title: str = "") -> str:
+        """Write a markdown note into a WRITABLE mounted Second-Brain vault directly
+        (vault.write_file + index), so it's kept and searchable — no agent round-trip."""
+        c = (content or "").strip()
+        if not c:
+            return "Was soll ich ins zweite Gehirn schreiben?"
+        import re
+        from sqlalchemy import select
+        from app.db.session import async_session_factory
+        from app.core import vault, vault_indexer
+        from app.models.second_brain import SecondBrain
+        from app.models.agent import Agent
+        t = (title or "").strip() or c[:40]
+        slug = re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")[:60] or "notiz"
+        rel = f"voice-notizen/{slug}.md"
+        md = f"# {t}\n\n{c}\n"
+        try:
+            async with async_session_factory() as db:
+                agent = await db.get(Agent, self.agent_id)
+                mounts = list((agent.config or {}).get("mounts", [])) if agent else []
+                if not mounts:
+                    return "Mir ist kein zweites Gehirn zugewiesen, in das ich schreiben könnte."
+                brains = (await db.execute(
+                    select(SecondBrain).where(
+                        SecondBrain.label.in_(mounts),
+                        SecondBrain.is_active.is_(True),
+                        SecondBrain.default_mode == "rw",
+                    )
+                )).scalars().all()
+                if not brains:
+                    return "Ich habe auf mein zweites Gehirn nur Lesezugriff — schreiben geht dort nicht."
+                b = brains[0]
+                await asyncio.to_thread(vault.write_file, b.host_path, rel, md)
+                try:
+                    await vault_indexer.index_file(db, b.label, b.host_path, rel)
+                except Exception:  # noqa: BLE001 — indexing best-effort, note is written
+                    logger.warning("voice write_brain index failed label=%s", b.label, exc_info=True)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice write_brain failed agent=%s", self.agent_id, exc_info=True)
+            return "Das Schreiben ins zweite Gehirn hat gerade nicht geklappt."
+        return f"Ins zweite Gehirn „{b.name}“ geschrieben: „{t}“. Bestätige das dem Nutzer kurz in der ICH-Form."
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
         """Schedule real work as a persistent Task on this agent's board (the same
