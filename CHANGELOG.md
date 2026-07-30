@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.110.0] — 2026-07-30
+
+### Added
+- **Voice Dateien & Brain — Batch 2.**
+  - **`read_file` liest jetzt auch PDF/Word/Excel:** Für PDF/DOCX/XLSX extrahiert der Voice-Layer den Text (`_extract_document_text`, pypdf/python-docx/openpyxl) und liest/fasst ihn zusammen — „lies mir das Pitchdeck vor" funktioniert. Reine Binär-/Media-Dateien verweisen auf `open_file`.
+  - **`open_file(path)`:** Legt eine beliebige Workspace-Datei als klickbare Öffnen/Download-Karte in der Voice-UI bereit (`media`/kind=file → Download-Endpoint). „zeig mir die Datei / öffne das Pitchdeck".
+  - **`write_brain(content, title?)`:** Schreibt eine Markdown-Notiz direkt in ein **beschreibbares** gemountetes Second-Brain/Vault (`vault.write_file` + Index) — „schreib das ins Wiki / halt das im zweiten Gehirn fest". Nur `rw`-Vaults; sonst Hinweis auf Lesezugriff. Gegenstück zum bereits vorhandenen `search_brain` (lesen).
+
+---
+
 ## [1.109.0] — 2026-07-30
 
 ### Added
