@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.112.1] — 2026-07-30
+
+### Changed
+- **Voice: „ich mache jetzt X"-Ansage wieder zuverlässig (behebt hakelige Interaktion).** Die native-async-Umstellung (v1.106) hatte die sofortige gesprochene Ansage vor der Arbeit wegoptimiert und sich darauf verlassen, dass das Modell den Füller selbst sagt — was unzuverlässig war (er machte, wurde still, sprach das Ergebnis erst später aus). Zurück zum bewährten Muster für `ask_agent`/`refine_task`: **sofortige Quittung als Tool-Antwort** (das Modell sagt garantiert „ich kümmere mich jetzt drum"), **echtes Ergebnis** kommt Sekunden später als injizierter Turn. Systemprompt entsprechend zurückgesetzt. (`delegate_tasks`/`plan_task` hatten die Sofort-Ansage ohnehin behalten.)
+
+---
+
 ## [1.112.0] — 2026-07-30
 
 ### Added
