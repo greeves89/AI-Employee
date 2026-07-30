@@ -269,6 +269,26 @@ SEARCH_FILES_TOOL = {
     }
 }
 
+READ_FILE_TOOL = {
+    "toolSpec": {
+        "name": "read_file",
+        "description": (
+            "Read the CONTENT of a text file in my workspace and use it to answer. Use whenever "
+            "the answer lives IN a file: 'was steht in …', 'lies mir … vor', 'fasse die Datei … "
+            "zusammen', or to explain a project ('was ist Projekt X', 'worum geht es bei …') — "
+            "for that, first find the right file with search_files/list_workspace (a README, "
+            "AGENT.md, or a .md in the project folder), THEN read_file it and answer from its "
+            "content. Fast, direct read (text files only). Pass the path relative to my workspace "
+            "(e.g. 'AGENT.md' or 'roadtrip-oesterreich/plan.md')."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"path": {"type": "string", "description": "File path relative to my workspace (or absolute under /workspace)."}},
+            "required": ["path"],
+        })},
+    }
+}
+
 PLAN_TASK_TOOL = {
     "toolSpec": {
         "name": "plan_task",
@@ -686,6 +706,12 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "den Unterordner als path mitgeben.\n"
         "• Nutzer will eine BESTIMMTE Datei/einen Ordner FINDEN ('such die Datei…', 'wo liegt…', "
         "'hab ich was zu…') → search_files (sofort, Namenssuche in meinem Workspace).\n"
+        "• Steht die Antwort IN einer Datei ('was steht in…', 'lies mir … vor', 'fasse … "
+        "zusammen') → read_file (sofort, liest den Textinhalt). Für „was ist Projekt X / worum "
+        "geht es bei …“ ARBEITE IN ZWEI SCHRITTEN: erst mit list_workspace/search_files die "
+        "passende Datei finden (README, AGENT.md, eine .md im Projektordner), dann read_file und "
+        "aus dem Inhalt antworten — NICHT raten. PDFs/Bilder kann read_file nicht; die zeige ich "
+        "oder lasse sie vom Agenten auswerten.\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -856,7 +882,7 @@ class RealtimeVoiceSession:
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
-            LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL,
+            LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1204,6 +1230,9 @@ class RealtimeVoiceSession:
             return
         if name == "search_files":
             await self._respond(tool_use_id, await self._search_files(str(args.get("query") or "")))
+            return
+        if name == "read_file":
+            await self._respond(tool_use_id, await self._read_file(str(args.get("path") or "")))
             return
         if name == "plan_task":
             await self._respond(tool_use_id, await self._plan_task(
@@ -2175,6 +2204,61 @@ class RealtimeVoiceSession:
             rel = h["path"].replace("/workspace/", "", 1)
             lines.append(f"{'Ordner' if h['type'] == 'directory' else 'Datei'}: {rel}")
         return f"Zu „{q}“ gefunden:\n" + "\n".join(lines)
+
+    # Binary/office types we can't read as plain text for speech.
+    _BINARY_EXT = (
+        ".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".tar", ".gz", ".png", ".jpg",
+        ".jpeg", ".gif", ".webp", ".ico", ".mp4", ".mov", ".mp3", ".wav", ".bin",
+        ".woff", ".woff2", ".ttf", ".so", ".pyc",
+    )
+
+    async def _read_file(self, path: str) -> str:
+        """Read a workspace text file's content directly (FileManager, via the
+        orchestrator into the container) so the model can answer FROM the file —
+        e.g. explain a project by reading its README/AGENT.md. Text files only."""
+        p = (path or "").strip()
+        if not p:
+            return "Welche Datei soll ich öffnen?"
+        if not self._container_id:
+            return "Ich komme gerade nicht an meinen Workspace."
+        rel = p.lstrip("/")
+        full = p if p.startswith("/workspace") else f"/workspace/{rel}"
+        rel_disp = full.replace("/workspace/", "", 1)
+        if full.lower().endswith(self._BINARY_EXT):
+            return (
+                f"„{rel_disp}“ ist eine Binär-/Office-Datei (z. B. PDF/Bild), die ich nicht direkt "
+                "vorlesen kann. Ich kann sie dir zeigen oder den Agenten bitten, ihren Inhalt "
+                "auszuwerten — sag mir, was du möchtest."
+            )
+        from app.core.file_manager import FileManager
+        from app.services.docker_service import DockerService
+        fm = FileManager(DockerService())
+        try:
+            info = await asyncio.to_thread(fm.get_file_info, self._container_id, full)
+        except Exception:  # noqa: BLE001 — not found / bad path
+            return f"Die Datei „{rel_disp}“ finde ich gerade nicht — soll ich danach suchen?"
+        if str(info.get("type", "")).startswith("directory"):
+            return f"„{rel_disp}“ ist ein Ordner — zum Auflisten nutze ich list_workspace."
+        if int(info.get("size", 0)) > 800_000:
+            return (
+                f"„{rel_disp}“ ist recht groß ({int(info['size']) // 1024} KB). Soll ich den "
+                "Agenten bitten, sie zusammenzufassen, statt sie komplett zu lesen?"
+            )
+        try:
+            data = await asyncio.to_thread(fm.read_file, self._container_id, full)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice read_file failed agent=%s path=%s", self.agent_id, full, exc_info=True)
+            return f"Ich konnte „{rel_disp}“ nicht lesen."
+        try:
+            text = data.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            return f"„{rel_disp}“ scheint keine Textdatei zu sein — die kann ich nicht vorlesen."
+        if not text:
+            return f"„{rel_disp}“ ist leer."
+        max_chars = 8000
+        clipped = text[:max_chars]
+        note = "" if len(text) <= max_chars else f"\n[… gekürzt, Datei hat {len(text)} Zeichen]"
+        return f"Inhalt von „{rel_disp}“:\n{clipped}{note}"
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
         """Schedule real work as a persistent Task on this agent's board (the same

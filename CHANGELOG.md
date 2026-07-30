@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.108.0] — 2026-07-30
+
+### Added
+- **Voice kann jetzt in Dateien reinschauen.** Neues Direkt-Tool `read_file(path)` liest den Textinhalt einer Workspace-Datei über `FileManager.read_file` (kein Agenten-Roundtrip). Damit beantwortet der Voice-Agent Fragen, deren Antwort IN einer Datei steht („was steht in…", „lies mir … vor", „fasse … zusammen"). Für „was ist Projekt X" nutzt er die Kette **finden → lesen → antworten** (erst `search_files`/`list_workspace`, dann `read_file` auf README/AGENT.md/…, dann aus dem Inhalt antworten). Binär-/Office-Dateien (PDF/Bild/…) werden erkannt und sauber abgelehnt (Vorschlag: zeigen oder vom Agenten auswerten lassen); Größenlimit 800 KB, Textausgabe auf 8000 Zeichen gekappt.
+
+---
+
 ## [1.107.0] — 2026-07-30
 
 ### Added
