@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.108.1] — 2026-07-30
+
+### Security
+- Voice-Workspace-Tools (`read_file`/`list_workspace`): Pfad-Konstruktion aus User-/Modell-Eingabe wird jetzt **explizit kanonisiert + auf `/workspace` eingegrenzt** (`_safe_ws_path` via `posixpath.normpath`, `..`-Traversal wird abgewiesen), als Defense-in-Depth zusätzlich zur bestehenden `FileManager._validate_path`-Prüfung. (Automatischer Security-Review-Hinweis; war durch die Downstream-Validierung nicht real ausnutzbar, jetzt zweifach abgesichert.)
+
+---
+
 ## [1.108.0] — 2026-07-30
 
 ### Added

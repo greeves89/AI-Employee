@@ -2159,7 +2159,9 @@ class RealtimeVoiceSession:
         if not self._container_id:
             return "Ich komme gerade nicht an meinen Workspace."
         sub = (path or "").strip().strip("/")
-        target = "/workspace" + (f"/{sub}" if sub else "")
+        target = self._safe_ws_path(f"/workspace/{sub}" if sub else "/workspace")
+        if not target:
+            return "Dieser Ordner liegt außerhalb meines Workspace."
         from app.core.file_manager import FileManager
         from app.services.docker_service import DockerService
         try:
@@ -2205,6 +2207,20 @@ class RealtimeVoiceSession:
             lines.append(f"{'Ordner' if h['type'] == 'directory' else 'Datei'}: {rel}")
         return f"Zu „{q}“ gefunden:\n" + "\n".join(lines)
 
+    @staticmethod
+    def _safe_ws_path(p: str) -> str | None:
+        """Canonicalize a user/model-supplied path and confirm it stays under
+        /workspace — defense-in-depth on top of FileManager._validate_path.
+        Returns the clean absolute path, or None if it escapes the workspace."""
+        import posixpath
+        if not p or "\x00" in p:
+            return None
+        raw = p if p.startswith("/workspace") else "/workspace/" + p.lstrip("/")
+        full = posixpath.normpath(raw)
+        if full == "/workspace" or full.startswith("/workspace/"):
+            return full
+        return None
+
     # Binary/office types we can't read as plain text for speech.
     _BINARY_EXT = (
         ".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".tar", ".gz", ".png", ".jpg",
@@ -2221,9 +2237,10 @@ class RealtimeVoiceSession:
             return "Welche Datei soll ich öffnen?"
         if not self._container_id:
             return "Ich komme gerade nicht an meinen Workspace."
-        rel = p.lstrip("/")
-        full = p if p.startswith("/workspace") else f"/workspace/{rel}"
-        rel_disp = full.replace("/workspace/", "", 1)
+        full = self._safe_ws_path(p)
+        if not full:
+            return "Diese Datei liegt außerhalb meines Workspace — das gebe ich nicht her."
+        rel_disp = full.replace("/workspace/", "", 1) or full
         if full.lower().endswith(self._BINARY_EXT):
             return (
                 f"„{rel_disp}“ ist eine Binär-/Office-Datei (z. B. PDF/Bild), die ich nicht direkt "
