@@ -236,6 +236,52 @@ M365_MAIL_RECENT_TOOL = {
     }
 }
 
+M365_SEND_MAIL_TOOL = {
+    "toolSpec": {
+        "name": "m365_send_mail",
+        "description": (
+            "Send an email from the user's M365 mailbox — or create a DRAFT for review. "
+            "SAFETY: ALWAYS read back recipient, subject and the gist of the body to the user and "
+            "get an explicit 'ja, absenden' FIRST. Without a clear confirmation, set send=false "
+            "(creates an Outlook draft the user reviews). Only set send=true after the user "
+            "explicitly confirms sending."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email (or comma-separated)."},
+                "subject": {"type": "string", "description": "Subject."},
+                "body": {"type": "string", "description": "Email body (plain text)."},
+                "send": {"type": "boolean", "description": "true = send now (only after explicit user confirmation); false/omitted = create a draft to review."},
+            },
+            "required": ["to", "subject", "body"],
+        })},
+    }
+}
+
+M365_CREATE_EVENT_TOOL = {
+    "toolSpec": {
+        "name": "m365_create_event",
+        "description": (
+            "Create an event in the user's M365 calendar ('trag mir … ein', 'mach einen Termin', "
+            "'blocke … für …'). Compute start/end as ISO 8601 from what the user says (you know "
+            "the current date/time). Read the event back before creating. Default timezone "
+            "Europe/Berlin unless the user says otherwise."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "Event title."},
+                "start": {"type": "string", "description": "Start ISO 8601, e.g. 2026-07-31T10:00:00."},
+                "end": {"type": "string", "description": "End ISO 8601. If omitted, defaults to 1h after start."},
+                "attendees": {"type": "string", "description": "Comma-separated attendee emails (optional)."},
+                "location": {"type": "string", "description": "Location (optional)."},
+            },
+            "required": ["subject", "start"],
+        })},
+    }
+}
+
 LIST_WORKSPACE_TOOL = {
     "toolSpec": {
         "name": "list_workspace",
@@ -759,8 +805,13 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Fragen nach Terminen/Kalender ('hab ich heute Termine', 'nächstes Meeting', 'was steht "
         "im Kalender') → m365_calendar_today (sofort, liest M365 direkt).\n"
         "• Fragen nach neuen Mails ('was ist neu im Postfach', 'letzte Mails', 'Mail von X') → "
-        "m365_mail_recent (sofort, liest M365 direkt). NUR Lesen — Senden/Antworten ist echte "
-        "Arbeit → ask_agent.\n"
+        "m365_mail_recent (sofort, liest M365 direkt).\n"
+        "• Nutzer will eine MAIL SENDEN ('schreib X eine Mail', 'antworte …') → m365_send_mail. "
+        "SICHERHEIT: Lies IMMER Empfänger, Betreff und Kerninhalt vor und hol dir ein klares 'ja, "
+        "absenden' — erst DANN send=true. Ohne klare Bestätigung send=false (legt einen Entwurf an).\n"
+        "• Nutzer will einen TERMIN anlegen ('trag mir … ein', 'mach einen Termin', 'blocke …') → "
+        "m365_create_event. Rechne Start/Ende aus dem Gesagten in ISO-Zeit um (du kennst Datum/"
+        "Uhrzeit) und lies den Termin vor dem Anlegen kurz zurück.\n"
         "• Fragen nach meinen PROJEKTEN/Dateien/Ordnern in meinem Workspace ('welche Projekte hab "
         "ich', 'was liegt in meinem Workspace', 'liste meine Dateien/Ordner', 'was ist im Ordner "
         "X') → list_workspace (sofort, liest meinen Workspace direkt). Für 'was ist in Ordner X' "
@@ -898,6 +949,9 @@ class RealtimeVoiceSession:
     # case is covered by the standard task-completion notification to the owner.)
     _planned: dict = field(default_factory=dict)
     _task_watcher: asyncio.Task | None = None
+    # Proactive calendar heads-up (#2): background loop + set of already-announced event ids.
+    _proactive_task: asyncio.Task | None = None
+    _announced_events: set = field(default_factory=set)
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -957,6 +1011,7 @@ class RealtimeVoiceSession:
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
+            M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
@@ -996,6 +1051,7 @@ class RealtimeVoiceSession:
         await self._nova.open()
         self._pump_task = asyncio.create_task(self._audio_pump())
         self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+        self._proactive_task = asyncio.create_task(self._proactive_loop())
         logger.info(
             "RealtimeVoiceSession init agent=%s user=%s engine=%s voice=%s source=%s",
             self.agent_id, self.user_id, engine, voice_id, creds.get("source"),
@@ -1299,6 +1355,19 @@ class RealtimeVoiceSession:
             return
         if name == "m365_mail_recent":
             await self._respond(tool_use_id, await self._m365_mail_recent(int(args.get("limit") or 8)))
+            return
+        if name == "m365_send_mail":
+            await self._respond(tool_use_id, await self._m365_send_mail(
+                str(args.get("to") or ""), str(args.get("subject") or ""),
+                str(args.get("body") or ""), bool(args.get("send") or False),
+            ))
+            return
+        if name == "m365_create_event":
+            await self._respond(tool_use_id, await self._m365_create_event(
+                str(args.get("subject") or ""), str(args.get("start") or ""),
+                str(args.get("end") or ""), str(args.get("attendees") or ""),
+                str(args.get("location") or ""),
+            ))
             return
         if name == "list_workspace":
             await self._respond(tool_use_id, await self._list_workspace(str(args.get("path") or "")))
@@ -2241,6 +2310,117 @@ class RealtimeVoiceSession:
             return "Ich konnte das Postfach gerade nicht abrufen."
         return text or "Ich habe keine neuen Mails gefunden."
 
+    async def _m365_send_mail(self, to: str, subject: str, body: str, send: bool = False) -> str:
+        """Send an email or (default) create a draft. Sending must be user-confirmed —
+        the tool description makes the model read it back and only pass send=true then."""
+        to, subject, body = to.strip(), subject.strip(), body.strip()
+        if not to or not subject or not body:
+            return "Mir fehlt Empfänger, Betreff oder Inhalt für die Mail."
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden."
+        from app.core.msgraph_mcp import handle_tool
+        try:
+            await handle_tool(
+                "ms_send_email",
+                {"to": to, "subject": subject, "body": body, "draft": not send},
+                token,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("voice m365 send_mail failed", exc_info=True)
+            return "Das hat mit der Mail gerade nicht geklappt."
+        if send:
+            return f"Mail an {to} mit Betreff „{subject}“ ist raus. Bestätige das kurz."
+        return (
+            f"Ich habe einen Entwurf an {to} („{subject}“) in deinem Postfach angelegt — du kannst "
+            "ihn in Outlook prüfen und absenden. Sag dem Nutzer das kurz."
+        )
+
+    async def _m365_create_event(
+        self, subject: str, start: str, end: str = "", attendees: str = "", location: str = "",
+    ) -> str:
+        """Create a calendar event via Graph. end defaults to +1h if omitted."""
+        subject, start = subject.strip(), start.strip()
+        if not subject or not start:
+            return "Mir fehlt der Titel oder die Startzeit für den Termin."
+        end = end.strip()
+        if not end:
+            try:
+                from datetime import datetime, timedelta
+                base = datetime.fromisoformat(start.replace("Z", ""))
+                end = (base + timedelta(hours=1)).isoformat(timespec="seconds")
+            except Exception:  # noqa: BLE001
+                end = start
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden."
+        args = {"subject": subject, "start": start, "end": end, "timezone": "Europe/Berlin"}
+        if attendees.strip():
+            args["attendees"] = attendees.strip()
+        if location.strip():
+            args["location"] = location.strip()
+        from app.core.msgraph_mcp import handle_tool
+        try:
+            await handle_tool("ms_create_calendar_event", args, token)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice m365 create_event failed", exc_info=True)
+            return "Den Termin konnte ich gerade nicht anlegen."
+        return f"Termin „{subject}“ ist im Kalender eingetragen. Bestätige das kurz in der ICH-Form."
+
+    async def _proactive_loop(self) -> None:
+        """(#2) Proactively remind the user of an imminent calendar event during the call.
+        Best-effort: only if M365 is connected; announces each event once, ~every 5 min,
+        and never talks over the user. Time is spoken as 'in etwa N Minuten' (no timezone
+        math). Exits silently if M365 isn't connected."""
+        from datetime import datetime, timezone, timedelta
+        first = True
+        while not self._closed:
+            try:
+                await asyncio.sleep(20 if first else 300)
+                first = False
+                if self._closed:
+                    return
+                token = await self._m365_token()
+                if not token:
+                    return  # not connected → no proactive calendar
+                now = datetime.now(timezone.utc)
+                end = now + timedelta(minutes=16)
+                from app.core.msgraph_mcp import _graph
+                path = (
+                    f"/me/calendarView?startDateTime={now.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                    f"&endDateTime={end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                    "&$orderby=start/dateTime&$top=5"
+                )
+                data = await _graph("GET", path, token)
+                for ev in (data.get("value") or []):
+                    eid = ev.get("id")
+                    subj = (ev.get("subject") or "Termin").strip()
+                    sdt = ((ev.get("start") or {}).get("dateTime") or "").strip()
+                    if not eid or eid in self._announced_events or not sdt:
+                        continue
+                    try:
+                        st = datetime.fromisoformat(sdt[:19]).replace(tzinfo=timezone.utc)
+                    except ValueError:
+                        continue
+                    mins = int((st - now).total_seconds() // 60)
+                    if mins < 0 or mins > 16:
+                        continue
+                    if time.monotonic() - self._last_user_ts < 4.0:
+                        continue  # don't talk over the user; catch it next tick
+                    self._announced_events.add(eid)
+                    when = "gleich" if mins <= 1 else f"in etwa {mins} Minuten"
+                    if self._nova:
+                        await self._nova.inject_user_text(
+                            "HINWEIS (proaktiv, KEIN Nutzerbefehl): Sag dem Nutzer JETZT kurz in der "
+                            f"ICH-Form Bescheid, dass {when} sein Termin „{subj}“ beginnt. Nur ein "
+                            "knapper Hinweis, keine Frage."
+                        )
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — proactive is best-effort, never fatal
+                logger.debug("voice proactive loop tick failed", exc_info=True)
+        return
+
     async def _list_workspace(self, path: str = "") -> str:
         """List files/folders in the agent's workspace directly (via the orchestrator
         reaching into the container, FileManager) — no agent round-trip. This is how
@@ -2792,7 +2972,7 @@ class RealtimeVoiceSession:
                 pass
         if self._nova:
             await self._nova.close()
-        for t in (self._pump_task, self._keepalive_task, self._task_watcher):
+        for t in (self._pump_task, self._keepalive_task, self._task_watcher, self._proactive_task):
             if t and not t.done():
                 t.cancel()
                 try:
