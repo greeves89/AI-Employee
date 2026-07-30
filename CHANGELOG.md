@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.110.1] — 2026-07-30
+
+### Fixed
+- `write_brain` (Voice): falscher Import-Pfad korrigiert (`vault_indexer` liegt in `app.services`, nicht `app.core`) — hätte das Schreiben ins Vault zur Laufzeit gecrasht.
+
+---
+
 ## [1.110.0] — 2026-07-30
 
 ### Added
