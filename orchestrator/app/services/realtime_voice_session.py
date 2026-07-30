@@ -372,6 +372,52 @@ WRITE_BRAIN_TOOL = {
     }
 }
 
+LIST_APPS_TOOL = {
+    "toolSpec": {
+        "name": "list_apps",
+        "description": (
+            "List MY deployed apps — the docker-compose projects in my workspace — with their "
+            "status (läuft / teilweise / gestoppt / nicht gestartet). Use for 'analysiere meine "
+            "Apps', 'welche Apps hab ich', 'laufen meine Apps'. Fast, direct."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
+APP_LOGS_TOOL = {
+    "toolSpec": {
+        "name": "app_logs",
+        "description": (
+            "Read the recent docker logs of one of my apps to find errors ('schau in die Logs von "
+            "App X', 'was ist mit X los', 'warum läuft X nicht'). Pass the app name (its workspace "
+            "folder, as shown by list_apps). Summarize the errors spoken. To actually FIX them, "
+            "hand it to me as a task with plan_task (give the app folder + the concrete error)."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"app": {"type": "string", "description": "App name / workspace folder (from list_apps)."}},
+            "required": ["app"],
+        })},
+    }
+}
+
+RESTART_APP_TOOL = {
+    "toolSpec": {
+        "name": "restart_app",
+        "description": (
+            "Restart the running containers of one of my apps ('starte App X neu', 'restart X'). "
+            "Pass the app name (workspace folder from list_apps). To START a stopped/new app, "
+            "DEPLOY it, or CHANGE its code/config, hand it to me as a task with plan_task instead "
+            "(then I edit the files and bring it up)."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"app": {"type": "string", "description": "App name / workspace folder."}},
+            "required": ["app"],
+        })},
+    }
+}
+
 CANCEL_TASK_TOOL = {
     "toolSpec": {
         "name": "cancel_task",
@@ -829,6 +875,13 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Nutzer will etwas ins zweite Gehirn/Wiki/Vault SCHREIBEN ('schreib das ins Wiki', 'halt "
         "das im zweiten Gehirn fest', 'dokumentiere …') → write_brain (speichert eine Notiz im "
         "Vault). Für einen kurzen persönlichen Merker → save_memory.\n"
+        "• MEINE APPS ('analysiere meine Apps', 'welche Apps hab ich', 'laufen die') → list_apps "
+        "(nennt meine Apps + Status). 'was ist mit App X los / schau in die Logs / warum läuft X "
+        "nicht' → app_logs(app) (liest die Docker-Logs, fasse Fehler zusammen). 'starte X neu / "
+        "restart' → restart_app(app). WICHTIG für 'analysiere und behebe': erst list_apps/app_logs, "
+        "die Fehler ZUSAMMENFASSEN, und dann zum FIXEN/ANPASSEN/DEPLOYEN per plan_task an mich "
+        "geben — mit dem App-Ordner + dem konkreten Fehler (ich habe dort bash + Dateizugriff und "
+        "arbeite es ab). App-Namen sind die Workspace-Ordner aus list_apps.\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -1013,6 +1066,7 @@ class RealtimeVoiceSession:
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
+            LIST_APPS_TOOL, APP_LOGS_TOOL, RESTART_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1385,6 +1439,15 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._write_brain(
                 str(args.get("content") or ""), str(args.get("title") or ""),
             ))
+            return
+        if name == "list_apps":
+            await self._respond(tool_use_id, await self._list_apps())
+            return
+        if name == "app_logs":
+            await self._respond(tool_use_id, await self._app_logs(str(args.get("app") or "")))
+            return
+        if name == "restart_app":
+            await self._respond(tool_use_id, await self._restart_app(str(args.get("app") or "")))
             return
         if name == "plan_task":
             await self._respond(tool_use_id, await self._plan_task(
@@ -2655,6 +2718,111 @@ class RealtimeVoiceSession:
             logger.warning("voice write_brain failed agent=%s", self.agent_id, exc_info=True)
             return "Das Schreiben ins zweite Gehirn hat gerade nicht geklappt."
         return f"Ins zweite Gehirn „{b.name}“ geschrieben: „{t}“. Bestätige das dem Nutzer kurz in der ICH-Form."
+
+    async def _list_apps(self) -> str:
+        """List the agent's deployed apps (compose projects in the workspace) + status —
+        same discovery the /agents/{id}/apps endpoint uses, direct, no round-trip."""
+        if not self._container_id:
+            return "Ich komme gerade nicht an meine Apps."
+        from app.api.docker_apps import _project_name, _get_project_containers
+        from app.services.docker_service import DockerService
+        docker = DockerService()
+        try:
+            _ec, out = await asyncio.to_thread(
+                docker.exec_in_container, self._container_id,
+                ["sh", "-c", "find /workspace -maxdepth 3 \\( -name docker-compose.yml -o "
+                 "-name docker-compose.yaml -o -name compose.yml -o -name compose.yaml \\) 2>/dev/null"],
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("voice list_apps find failed agent=%s", self.agent_id, exc_info=True)
+            return "Ich konnte meine Apps gerade nicht auflisten."
+        seen, apps = set(), []
+        for f in (out or "").splitlines():
+            d = f.strip().rsplit("/", 1)[0]
+            rel = d.replace("/workspace/", "", 1).strip("/")
+            if not rel or rel in seen or rel.split("/")[0] in ("AI-Employee",):
+                continue
+            seen.add(rel)
+            try:
+                conts = await asyncio.to_thread(_get_project_containers, docker, _project_name(self.agent_id, rel))
+            except Exception:  # noqa: BLE001
+                conts = []
+            running = sum(1 for c in conts if c.get("state") == "running")
+            total = len(conts)
+            status = ("läuft" if total and running == total else
+                      "teilweise" if running else
+                      "gestoppt" if total else "nicht gestartet")
+            apps.append((rel, status, running, total))
+        if not apps:
+            return "Ich habe keine Apps (docker-compose-Projekte) in meinem Workspace gefunden."
+        lines = [
+            f"{rel}: {status}" + (f" ({running}/{total} Container)" if total else "")
+            for rel, status, running, total in apps[:12]
+        ]
+        return "Meine Apps:\n" + "\n".join(lines)
+
+    async def _app_logs(self, app: str, lines: int = 120) -> str:
+        """Read recent docker logs of an app's containers so I can spot errors."""
+        rel = (app or "").strip().strip("/")
+        if not rel:
+            return "Welche App soll ich mir ansehen?"
+        if not self._container_id:
+            return "Ich komme gerade nicht an meine Apps."
+        from app.api.docker_apps import _project_name, _get_project_containers
+        from app.services.docker_service import DockerService
+        docker = DockerService()
+        try:
+            conts = await asyncio.to_thread(_get_project_containers, docker, _project_name(self.agent_id, rel))
+        except Exception:  # noqa: BLE001
+            logger.warning("voice app_logs failed agent=%s app=%s", self.agent_id, rel, exc_info=True)
+            return f"Ich komme an die App „{rel}“ gerade nicht ran."
+        if not conts:
+            return f"Zur App „{rel}“ laufen gerade keine Container — soll ich sie starten lassen (als Aufgabe)?"
+        blocks = []
+        for c in conts[:4]:
+            def _read(cid=c["id"]):
+                return docker.client.containers.get(cid).logs(
+                    tail=max(20, min(lines, 300)), timestamps=False
+                ).decode("utf-8", "replace")
+            try:
+                log = (await asyncio.to_thread(_read)).strip()
+            except Exception:  # noqa: BLE001
+                log = ""
+            label = c.get("service") or c.get("name") or "container"
+            blocks.append(f"[{label} — {c.get('state', '?')}]\n{log[-1800:]}" if log else f"[{label}] (keine Logs)")
+        text = "\n\n".join(blocks).strip()
+        return f"Logs von „{rel}“:\n{text[-6000:]}"
+
+    async def _restart_app(self, app: str) -> str:
+        """Restart the running containers of an app (SDK restart on each project container)."""
+        rel = (app or "").strip().strip("/")
+        if not rel:
+            return "Welche App soll ich neustarten?"
+        if not self._container_id:
+            return "Ich komme gerade nicht an meine Apps."
+        from app.api.docker_apps import _project_name, _get_project_containers
+        from app.services.docker_service import DockerService
+        docker = DockerService()
+        try:
+            conts = await asyncio.to_thread(_get_project_containers, docker, _project_name(self.agent_id, rel))
+        except Exception:  # noqa: BLE001
+            logger.warning("voice restart_app failed agent=%s app=%s", self.agent_id, rel, exc_info=True)
+            return f"Ich komme an die App „{rel}“ gerade nicht ran."
+        if not conts:
+            return (f"Zur App „{rel}“ laufen keine Container zum Neustarten. Soll ich sie als "
+                    "Aufgabe starten/deployen lassen?")
+        n = 0
+        for c in conts:
+            def _restart(cid=c["id"]):
+                docker.client.containers.get(cid).restart(timeout=10)
+            try:
+                await asyncio.to_thread(_restart)
+                n += 1
+            except Exception:  # noqa: BLE001
+                pass
+        if not n:
+            return f"Der Neustart von „{rel}“ hat gerade nicht geklappt."
+        return f"Ich habe {n} Container der App „{rel}“ neu gestartet. Bestätige das kurz in der ICH-Form."
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
         """Schedule real work as a persistent Task on this agent's board (the same
