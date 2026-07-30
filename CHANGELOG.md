@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.111.1] — 2026-07-30
+
+### Fixed
+- **Voice „invalid byte" / „unexpected error during processing" behoben (wahrscheinlichster Auslöser).** Tool-Ergebnisse aus Datei-/PDF-Inhalten (`read_file`, PDF-Extraktion, `list_workspace`, `search_files`) konnten NUL-Bytes, Steuerzeichen oder kaputte UTF-8-Sequenzen (z. B. lone surrogates aus pypdf) enthalten. Über den Nova-Sonic-/Azure-Bidi-Stream gesendet, ließ das Bedrock/OpenAI den Turn mit einem generischen Fehler abbrechen. Fix: neue `_clean_text`-Bereinigung (erzwingt gültiges UTF-8, entfernt Steuerzeichen außer Tab/Zeilenumbruch) auf ALLE an die Realtime-Modelle gesendeten Texte — `toolResult` UND `inject_user_text`, für Nova Sonic UND Azure Realtime.
+- Nova-Empfangs-Decoding tolerant gemacht (`utf-8`/`replace` + JSON-Guard): ein einzelnes fehlerhaftes Byte aus dem Service killt nicht mehr die Empfangs-Schleife mit „invalid byte", sondern wird übersprungen.
+
+---
+
 ## [1.111.0] — 2026-07-30
 
 ### Added
