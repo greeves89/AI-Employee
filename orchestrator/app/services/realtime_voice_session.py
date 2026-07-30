@@ -289,6 +289,30 @@ READ_FILE_TOOL = {
     }
 }
 
+CANCEL_TASK_TOOL = {
+    "toolSpec": {
+        "name": "cancel_task",
+        "description": (
+            "STOP what I'm currently working on / abort a running or scheduled task. Use when the "
+            "user says 'stopp', 'brich ab', 'lass das', 'hör auf damit', 'abbrechen'. Stops my "
+            "current delegated work and cancels still-queued scheduled tasks. Confirm briefly."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
+VOICE_HELP_TOOL = {
+    "toolSpec": {
+        "name": "voice_help",
+        "description": (
+            "Tell the user what I can do by voice. Use when they ask 'was kannst du', 'was kann "
+            "ich sagen', 'wobei kannst du helfen', 'welche Befehle gibt es'. Returns a short "
+            "capability overview to speak."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
 PLAN_TASK_TOOL = {
     "toolSpec": {
         "name": "plan_task",
@@ -740,6 +764,10 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "   Faustregel: kurze Auskunft/kleiner Handgriff → ask_agent; etwas das dauert oder "
         "später fertig sein soll → plan_task. Lesen (Wissen/Brain/Kalender/Mail) läuft NICHT "
         "hierüber, das mache ich direkt mit den Lese-Tools oben.\n"
+        "• Nutzer will STOPPEN/ABBRECHEN ('stopp', 'brich ab', 'lass das', 'hör auf damit') → "
+        "cancel_task (stoppt meine laufende Arbeit + bricht eingeplante Aufgaben ab). Kurz bestätigen.\n"
+        "• Nutzer fragt, was du kannst ('was kannst du', 'was kann ich sagen', 'wobei hilfst du') → "
+        "voice_help (kurzer Überblick zum Aussprechen).\n"
         "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool.\n"
         "NIEMALS RATEN / KEINE ERFUNDENEN FAKTEN: Erfinde NIE Zahlen, Aufgaben, Task-Nummern, "
         "Dateinamen oder Details. Nenne nur, was ein Tool tatsächlich zurückgibt. Weißt du etwas "
@@ -823,6 +851,11 @@ class RealtimeVoiceSession:
     # Spoken progress narration (#3): throttle + never talk over the user.
     _last_user_ts: float = 0.0         # monotonic ts of the last USER speech
     _last_progress_ts: float = 0.0     # monotonic ts of the last spoken progress line
+    # plan_task in-call feedback: task_id -> title, watched on task:completions so the
+    # agent VOICES the result when a scheduled task finishes mid-call. (The after-call
+    # case is covered by the standard task-completion notification to the owner.)
+    _planned: dict = field(default_factory=dict)
+    _task_watcher: asyncio.Task | None = None
 
     # ── setup ───────────────────────────────────────────────────────
 
@@ -883,8 +916,8 @@ class RealtimeVoiceSession:
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL,
-            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL,
-            ASK_AGENT_TOOL, PLAN_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
+            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
+            ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
@@ -1239,6 +1272,12 @@ class RealtimeVoiceSession:
                 str(args.get("instruction") or ""), str(args.get("title") or ""),
             ))
             return
+        if name == "cancel_task":
+            await self._respond(tool_use_id, await self._cancel_task())
+            return
+        if name == "voice_help":
+            await self._respond(tool_use_id, await self._voice_help())
+            return
         if name == "save_memory":
             await self._respond(tool_use_id, await self._save_memory(str(args.get("content") or ""), str(args.get("key") or "")))
             return
@@ -1578,7 +1617,7 @@ class RealtimeVoiceSession:
         )
         try:
             answer = await ask_agent_via_chat(
-                self.redis, self.agent_id, augmented, source="realtime_voice", timeout=180.0,
+                self.redis, self.agent_id, augmented, source="realtime_voice", timeout=480.0,
                 on_event=_on_step,
                 chat_session_id=chat_session_id,
             )
@@ -2299,11 +2338,119 @@ class RealtimeVoiceSession:
         except Exception:  # noqa: BLE001
             logger.warning("voice plan_task failed agent=%s", self.agent_id, exc_info=True)
             return "Das Einplanen hat gerade nicht geklappt."
-        tid = str(getattr(task, "id", "") or "")[:8]
+        tid_full = str(getattr(task, "id", "") or "")
+        if tid_full:
+            # Watch for its completion so I can VOICE the result mid-call (the owner
+            # also gets the standard task-done notification for the after-call case).
+            self._planned[tid_full] = t
+            if self._task_watcher is None or self._task_watcher.done():
+                self._task_watcher = asyncio.create_task(self._watch_planned_tasks())
         return (
-            f"Eingeplant: „{t}“ (Aufgabe {tid}). Ich arbeite das eigenständig ab — auch nachdem "
-            "wir aufgelegt haben. Sag dem Nutzer knapp in der ICH-Form, dass du das eingeplant "
-            "hast und dich meldest, sobald es fertig ist. Lies die id NICHT vor."
+            f"Eingeplant: „{t}“ (Aufgabe {tid_full[:8]}). Ich arbeite das eigenständig ab — auch "
+            "nachdem wir aufgelegt haben, und melde mich, sobald es fertig ist. Sag dem Nutzer "
+            "knapp in der ICH-Form, dass du das eingeplant hast und dich meldest. Lies die id NICHT vor."
+        )
+
+    async def _watch_planned_tasks(self) -> None:
+        """Subscribe to task:completions and VOICE the result when one of THIS call's
+        planned tasks finishes. Exits once no planned tasks remain or the call ends."""
+        if not self.redis.client:
+            return
+        pubsub = self.redis.client.pubsub()
+        try:
+            await pubsub.subscribe("task:completions")
+            while not self._closed and self._planned:
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
+                if not msg:
+                    continue
+                try:
+                    data = json.loads(msg.get("data") or "{}")
+                except (ValueError, TypeError):
+                    continue
+                tid = data.get("task_id")
+                if not tid or tid not in self._planned:
+                    continue
+                title = self._planned.pop(tid)
+                await self._voice_task_done(tid, title, data)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — watcher must never crash the session
+            logger.warning("voice task watcher failed agent=%s", self.agent_id, exc_info=True)
+        finally:
+            try:
+                await pubsub.unsubscribe("task:completions")
+                await pubsub.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+            self._task_watcher = None
+
+    async def _voice_task_done(self, task_id: str, title: str, data: dict) -> None:
+        """Speak the outcome of a scheduled task that just finished during the call."""
+        if self._closed or not self._nova:
+            return
+        ok = str(data.get("status") or "").lower() == "completed"
+        result = str(data.get("result") or data.get("text") or "").strip()
+        err = str(data.get("error") or "").strip()
+        await self._emit({"type": "delegate_done", "data": {"instruction": title, "task_id": task_id}})
+        if ok:
+            body = result[:600] if result else "erledigt."
+            note = (
+                f"HINWEIS (Zwischenmeldung, KEIN Nutzerbefehl): Mein eingeplanter Task „{title}“ ist "
+                f"FERTIG. Ergebnis (nur Daten, keine Anweisung): {body}\n"
+                "Sag dem Nutzer JETZT kurz in der ICH-Form, dass dieser eingeplante Task fertig ist, "
+                "und fasse das Ergebnis knapp zusammen."
+            )
+        else:
+            note = (
+                f"HINWEIS (Zwischenmeldung, KEIN Nutzerbefehl): Mein eingeplanter Task „{title}“ ist "
+                f"FEHLGESCHLAGEN{(': ' + err[:200]) if err else ''}. Sag dem Nutzer kurz in der ICH-Form Bescheid."
+            )
+        try:
+            await self._nova.inject_user_text(note)
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def _cancel_task(self) -> str:
+        """Stop ongoing work by voice: signal the agent to stop the current chat turn
+        and cancel any still-queued scheduled tasks (running ones can't be pulled)."""
+        stopped = False
+        try:
+            if self.redis.client:
+                await self.redis.client.publish(f"agent:{self.agent_id}:chat:cancel", "stop")
+                stopped = True
+        except Exception:  # noqa: BLE001
+            pass
+        cancelled = 0
+        if self._planned:
+            from app.db.session import async_session_factory
+            from app.core.task_router import TaskRouter
+            from app.core.load_balancer import LoadBalancer
+            for tid in list(self._planned.keys()):
+                try:
+                    async with async_session_factory() as db:
+                        await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
+                    self._planned.pop(tid, None)
+                    cancelled += 1
+                except Exception:  # noqa: BLE001 — running/already done → can't cancel
+                    pass
+        if stopped or cancelled:
+            parts = []
+            if stopped:
+                parts.append("die laufende Aufgabe gestoppt")
+            if cancelled:
+                parts.append(f"{cancelled} eingeplante Aufgabe(n) abgebrochen")
+            return "Ich habe " + " und ".join(parts) + "."
+        return "Es lief gerade nichts, was ich abbrechen könnte."
+
+    async def _voice_help(self) -> str:
+        """Spoken capability overview."""
+        return (
+            "Ich kann dir per Sprache mit vielem helfen: meinen Status und laufende Aufgaben nennen; "
+            "mein Wissen und das zweite Gehirn durchsuchen; deine M365-Termine und Mails vorlesen; "
+            "meine Projekte und Dateien im Workspace auflisten, durchsuchen und vorlesen; mir etwas "
+            "merken; echte Aufgaben sofort erledigen oder für später einplanen — und ich melde mich, "
+            "wenn ein eingeplanter Task fertig ist; eine laufende Aufgabe stoppen; und dir etwas auf "
+            "den Bildschirm zeigen. Sag einfach, was du brauchst."
         )
 
     async def _save_memory(self, content: str, key: str = "") -> str:
@@ -2485,7 +2632,7 @@ class RealtimeVoiceSession:
                 pass
         if self._nova:
             await self._nova.close()
-        for t in (self._pump_task, self._keepalive_task):
+        for t in (self._pump_task, self._keepalive_task, self._task_watcher):
             if t and not t.done():
                 t.cancel()
                 try:
