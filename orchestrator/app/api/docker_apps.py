@@ -706,13 +706,17 @@ async def proxy_app(
     await _get_agent(agent_id, user, db)  # ownership + running-container check
 
     prefix = f"agent-{agent_id[:8]}-"
-    if "/" in container or ".." in container or not container.startswith(prefix):
+    # Injection guard on the name used as the upstream host (no path/traversal).
+    if "/" in container or ".." in container or not container:
         raise HTTPException(status_code=403, detail="Forbidden")
     if not port.isdigit() or not (1 <= int(port) <= 65535):
         raise HTTPException(status_code=400, detail="Invalid port")
 
-    # Authoritative check: the container must belong to a compose project we started
-    # for THIS agent (the project label is set by our own `-p`, not by the agent).
+    # AUTHORITATIVE ownership check: the container must belong to a compose project we
+    # started for THIS agent (the `com.docker.compose.project` label is set by our own
+    # `-p agent-{id}-…`, not by agent-authored code, so it can't be forged). We key on
+    # this label, NOT the container's own NAME — apps may set a fixed `container_name`
+    # (e.g. `pokemon-tracker`) that doesn't carry the prefix, and those must still work.
     try:
         c = docker.client.containers.get(container)
     except Exception:

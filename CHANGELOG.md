@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.113.2] — 2026-07-30
+
+### Fixed
+- **App-Proxy: Apps mit festem `container_name` waren nicht aufrufbar (403 Forbidden).** Der Reverse-Proxy (`/agents/{id}/apps/proxy/{container}/{port}/`) verlangte, dass der Container-NAME das Agent-Präfix `agent-{id8}-` trägt. Apps, deren compose-Datei einen festen `container_name` setzt (z. B. `pokemon-tracker`), scheiterten daran. Der Präfix-Namens-Check ist entfernt; die Ownership wird weiterhin **autoritativ** über das server-seitig gesetzte `com.docker.compose.project`-Label geprüft (unfälschbar), plus die Injection-Guards (`/`, `..`) auf dem Upstream-Host. Sicherheit unverändert, aber Apps mit festem Container-Namen sind jetzt erreichbar.
+
+---
+
 ## [1.113.1] — 2026-07-30
 
 ### Fixed
