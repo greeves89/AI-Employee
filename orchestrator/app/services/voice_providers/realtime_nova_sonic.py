@@ -105,6 +105,11 @@ class NovaSonicSession:
         self._recv_task: asyncio.Task | None = None
         self._closed = False
         self._audio_started = False
+        # Set once the server has completed the HTTP/2 stream (receive loop ended).
+        # Further input writes to a completed stream make awscrt raise
+        # AWS_ERROR_HTTP_STREAM_HAS_COMPLETED from an internal task whose exception
+        # is never retrieved — so all sends short-circuit once this is True.
+        self._input_dead = False
         # Serializes multi-event sequences (contentStart→content→contentEnd) so
         # concurrently-fired tool results / text injections can't interleave on the
         # wire. Single-event audio sends stay lock-free (own persistent content block).
@@ -138,6 +143,10 @@ class NovaSonicSession:
         )
 
     async def _send_event(self, event: dict) -> None:
+        # Never write to a stream the server has already completed — awscrt would
+        # raise AWS_ERROR_HTTP_STREAM_HAS_COMPLETED from an unretrieved internal task.
+        if self._input_dead or self._stream is None:
+            return
         from aws_sdk_bedrock_runtime.models import (
             InvokeModelWithBidirectionalStreamInputChunk as InChunk,
             BidirectionalInputPayloadPart as Payload,
@@ -204,7 +213,7 @@ class NovaSonicSession:
 
     async def send_audio(self, pcm_16k: bytes) -> None:
         """Stream one chunk of 16 kHz/16-bit/mono PCM to the model."""
-        if self._closed or not self._audio_started:
+        if self._closed or self._input_dead or not self._audio_started:
             return
         b64 = base64.b64encode(pcm_16k).decode("ascii")
         await self._send_event({"audioInput": {
@@ -293,6 +302,9 @@ class NovaSonicSession:
                 logger.warning("NovaSonic receive loop error: %s", e, exc_info=True)
                 await self._safe_emit("error", {"message": str(e)})
         finally:
+            # The server has completed the stream; any further input write would
+            # crash awscrt with an unretrieved-task exception. Fence off all sends.
+            self._input_dead = True
             await self._safe_emit("done", {})
 
     async def _dispatch(self, kind: str, event: dict) -> None:
@@ -362,6 +374,10 @@ class NovaSonicSession:
             await self._stream.input_stream.close()
         except Exception:  # noqa: BLE001
             logger.debug("NovaSonic close cleanup error", exc_info=True)
+        finally:
+            # Input stream is closed now — block any concurrent send from racing a
+            # write onto the completed stream during teardown.
+            self._input_dead = True
         if self._recv_task and not self._recv_task.done():
             self._recv_task.cancel()
             try:
