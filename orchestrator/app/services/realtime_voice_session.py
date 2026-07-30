@@ -2442,7 +2442,8 @@ class RealtimeVoiceSession:
         import re
         from sqlalchemy import select
         from app.db.session import async_session_factory
-        from app.core import vault, vault_indexer
+        from app.core import vault
+        from app.services import vault_indexer
         from app.models.second_brain import SecondBrain
         from app.models.agent import Agent
         t = (title or "").strip() or c[:40]
