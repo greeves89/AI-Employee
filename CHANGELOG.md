@@ -5,10 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.115.3] — 2026-07-31
+## [1.115.6] — 2026-07-31
 
 ### Fixed
 - **App-Proxy 502 bei langen Container-Namen behoben.** Der Reverse-Proxy proxte über den Container-NAMEN; compose-generierte Namen überschreiten aber oft das **63-Zeichen-DNS-Limit** (z. B. `agent-<id>-<langer-pfad>-<service>-1`, 81 Zeichen) und sind dann von Dockers DNS **nicht auflösbar** → 502 (Cloudflare Bad Gateway). Der Proxy nutzt jetzt die **Container-IP** auf `ai-employee-network` (Fallback: Name). Damit sind auch Apps mit langen Namen (Unterordner-Projekte) über den Tunnel erreichbar.
+
+---
+
+## [1.115.5] — 2026-07-31
+
+### Fixed
+- **Orchestrator-Start überschreibt nicht mehr den gültigen Shared-Token mit einem veralteten `.env`-Wert (Issue #377).** `ClaudeTokenService.write_initial_token()` folgte einer anderen Prioritätenreihenfolge als `refresh_access_token()` und der Modul-Doku: Es übersprang Priorität 1 (die DB) und fiel von der Keychain-Datei direkt auf `settings.claude_code_oauth_token` (`.env`) zurück. Da es beim Start läuft, überschrieb es die bereits gültige `/shared/.auth/token.json` auf dem persistenten Volume mit einem möglicherweise veralteten `.env`-Token — Agents im Zeitfenster bis zum ersten `refresh_access_token()`-Lauf (~50 s) meldeten irreführend `401 OAuth access token has been revoked`. Jetzt ist `write_initial_token()` `async` und konsultiert dieselbe Reihenfolge wie `refresh_access_token()` (DB → Keychain → env), sodass ein gültiger Shared-Token nicht mehr überschrieben wird. Zusätzlich weigert sich `_write_shared_token()` jetzt, eine **vorhandene** Token-Datei mit einem offensichtlich unbrauchbaren (zu kurzen) Platzhalter zu überschreiben. Beide `write_initial_token()`-Aufrufstellen in `main.py` werden nun `await`et. (Deploy-Gate: Orchestrator-Rebuild.)
+
+---
+
+## [1.115.4] — 2026-07-31
+
+### Security
+- **Computer-Use-Bridge sendet den JWT nicht mehr als URL-Query-Parameter (Issue #373, CWE-532).** Der Bridge-Client hängte den Token als `?token=…` an die WebSocket-URL, sodass uvicorns Access-Log (Server) und die Client-Log-Datei den vollständigen Token bei jedem Verbindungsversuch protokollierten — bei einem abgelaufenen Token hunderte Male pro Stunde durch den 5-Sekunden-Reconnect. Der Token wird jetzt ausschließlich über den `Authorization: Bearer …`-Header übertragen (den der Server via `_authenticate_ws` bereits liest, wenn kein Query-Token vorhanden ist); die URL trägt nur noch `session_id`, und der Client loggt nur noch Schema/Host/Pfad statt der vollständigen URL. Rein clientseitige Änderung, abwärtskompatibel (der Server akzeptiert weiterhin auch den Query-Token).
+
+---
+
+## [1.115.3] — 2026-07-31
+
+### Security
+- **Telegram-Bot-Token nicht mehr im Klartext geloggt oder zurückgegeben (Issue #372, CWE-532).** Schlug der Start eines Agent-Bots fehl, enthielt die `InvalidToken`-Meldung von `python-telegram-bot` den eingegebenen Token wörtlich (*„The token … was rejected"*) — dieser landete über `{e}` im Orchestrator-Log und wurde vom `PUT /agents/{id}/telegram`-Endpoint an den Client zurückgegeben. Jetzt: (1) neuer Telegram-Token-Redaction-Pattern in `log_redaction`, mit dem alle Fehler-Logs im `bot_manager` maskiert werden; (2) die API-Fehlerantwort läuft durch `redact_logs`; (3) das Token-Format wird server-seitig **vor** dem Persistieren/Start geprüft (`^\d{6,}:[A-Za-z0-9_-]{30,}$`) — eine eingefügte BotFather-Nachricht wird mit HTTP 400 abgewiesen, ohne gespeichert oder an Telegram gesendet zu werden.
 
 ---
 

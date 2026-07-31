@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 HOST_TOKEN_PATH = "/host-auth/token.json"
 SHARED_TOKEN_PATH = "/shared/.auth/token.json"
 
+# Real Claude OAuth tokens are ~100+ chars (e.g. sk-ant-oat…); anything markedly
+# shorter is an obvious placeholder. Used to avoid clobbering a known-good shared
+# token file with an unusable value at startup (issue #377).
+_MIN_PLAUSIBLE_TOKEN_LEN = 40
+
+
+def _is_plausible_token(token: str | None) -> bool:
+    return bool(token) and len(token) >= _MIN_PLAUSIBLE_TOKEN_LEN
+
 
 class ClaudeTokenService:
     """Manages Claude OAuth tokens — prefers DB (own session), falls back to Keychain sync."""
@@ -123,25 +132,57 @@ class ClaudeTokenService:
 
         return True
 
-    def write_initial_token(self) -> None:
-        """Load token from files at startup and write to shared volume."""
-        token_data = self._read_token_data(HOST_TOKEN_PATH)
-        if token_data:
-            token = token_data["access_token"]
-            settings.claude_code_oauth_token = token
-            self._last_token_suffix = token[-8:]
-            logger.info(
-                f"Loaded initial token from Keychain sync (…{token[-8:]})"
-            )
-        else:
+    async def write_initial_token(self) -> None:
+        """Load the best available token at startup and write to shared volume.
+
+        Follows the SAME priority order as refresh_access_token():
+        1. DB (anthropic integration) — bot's own session
+        2. /host-auth/token.json (Keychain sync)
+        3. settings.claude_code_oauth_token (env/manual)
+
+        Consulting the DB first prevents a stale ``.env`` value from overwriting
+        the already-valid shared token file on the persistent volume (issue #377).
+        """
+        token = None
+        source = "unknown"
+
+        # Priority 1: DB (own OAuth session)
+        db_token = await self._get_db_token()
+        if db_token:
+            token = db_token
+            source = "db (own session)"
+
+        # Priority 2: Keychain sync file
+        if not token:
+            token_data = self._read_token_data(HOST_TOKEN_PATH)
+            if token_data:
+                token = token_data["access_token"]
+                source = "keychain"
+
+        # Priority 3: Env/manual
+        if not token and settings.claude_code_oauth_token:
             token = settings.claude_code_oauth_token
+            source = "settings"
 
         if token:
+            settings.claude_code_oauth_token = token
+            self._last_token_suffix = token[-8:]
             self._write_shared_token(token)
+            logger.info(f"Loaded initial Claude token from {source} (…{token[-8:]})")
 
     def _write_shared_token(self, access_token: str) -> None:
-        """Write token to shared volume for agent containers."""
+        """Write token to shared volume for agent containers.
+
+        Guards against clobbering an existing valid token file with an obviously
+        unusable value (e.g. a short placeholder) — see issue #377.
+        """
         try:
+            if not _is_plausible_token(access_token) and os.path.exists(SHARED_TOKEN_PATH):
+                logger.warning(
+                    "Refusing to overwrite existing shared token with an "
+                    f"implausible value (len={len(access_token or '')})"
+                )
+                return
             os.makedirs(os.path.dirname(SHARED_TOKEN_PATH), exist_ok=True)
             payload = {
                 "access_token": access_token,
