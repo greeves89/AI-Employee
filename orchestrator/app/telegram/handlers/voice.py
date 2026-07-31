@@ -19,10 +19,27 @@ def _get_openai_key() -> str:
 
 
 async def _transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> str:
-    """Transcribe audio bytes via OpenAI Whisper API."""
+    """Transcribe audio bytes via the local STT service (faster-whisper).
+
+    Falls back to the OpenAI Whisper API only if the local service is unreachable.
+    Mirrors the local-first pattern of `_text_to_speech()` and `agent_bot.py`.
+    """
+    stt_url = settings.stt_service_url
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{stt_url}/transcribe",
+                files={"file": (filename, io.BytesIO(file_bytes), "audio/ogg")},
+            )
+            resp.raise_for_status()
+            return (resp.json().get("text") or "").strip()
+    except Exception as e:
+        logger.warning(f"Local STT service unavailable ({e}), falling back to OpenAI Whisper")
+
+    # Fallback: OpenAI Whisper API (requires API key)
     api_key = _get_openai_key()
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY not set")
+        raise RuntimeError("STT service unreachable and OPENAI_API_KEY not set")
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
@@ -74,12 +91,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not voice:
         return
 
-    if not _get_openai_key():
-        await update.message.reply_text(
-            "Spracherkennung nicht verfugbar. OPENAI_API_KEY fehlt."
-        )
-        return
-
     # Show recording indicator
     await update.effective_chat.send_action("record_voice")
 
@@ -88,7 +99,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         tg_file = await voice.get_file()
         file_bytes = bytes(await tg_file.download_as_bytearray())
 
-        # Transcribe via Whisper
+        # Transcribe via local STT service (OpenAI Whisper fallback)
         transcript = await _transcribe_voice(file_bytes)
 
         if not transcript.strip():
