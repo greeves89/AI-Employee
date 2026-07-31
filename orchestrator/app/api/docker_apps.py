@@ -264,11 +264,17 @@ def _connect_containers_to_network(docker: DockerService, project_name: str) -> 
 
 
 async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> dict:
-    # Find all compose files in workspace (max depth 3 to avoid deep recursion)
-    exit_code, stdout = docker.exec_in_container(
-        agent.container_id,
-        "find /workspace -maxdepth 3 -name 'docker-compose.yml' -o -name 'docker-compose.yaml' -o -name 'compose.yml' -o -name 'compose.yaml'",
-    )
+    # Find all compose files in workspace (max depth 3 to avoid deep recursion).
+    # The agent's own container may be momentarily stopped (DB still has its id) — in
+    # that case exec raises a 409; treat it as "no reachable apps" instead of a 500.
+    try:
+        exit_code, stdout = docker.exec_in_container(
+            agent.container_id,
+            "find /workspace -maxdepth 3 -name 'docker-compose.yml' -o -name 'docker-compose.yaml' -o -name 'compose.yml' -o -name 'compose.yaml'",
+        )
+    except Exception as e:  # noqa: BLE001 — container not running / unreachable
+        logger.info("discover_apps: workspace not reachable for agent %s: %s", agent_id, e)
+        return {"apps": []}
 
     if exit_code != 0 or not stdout.strip():
         return {"apps": []}

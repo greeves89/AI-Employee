@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.116.1] — 2026-07-31
+
+### Fixed
+- **App-Discovery liefert leere Liste statt 500, wenn der Agent-Container gerade nicht läuft.** `_discover_core` (geteilt von der User-Apps-Seite und den neuen Agent-Endpoints) führte ein `find` im Agent-Container aus; war dessen Container gestoppt (DB hält die id noch), warf der docker-socket-proxy 409 → 500. Jetzt wird das abgefangen und als „keine erreichbaren Apps" (`{"apps": []}`) behandelt. Betrifft nur verwaiste/gestoppte Agenten; ein Agent, der die Endpoints selbst aufruft, läuft ohnehin.
+
+---
+
 ## [1.116.0] — 2026-07-31
 
 ### Added
