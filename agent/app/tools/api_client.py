@@ -899,6 +899,64 @@ class OrchestratorAPIClient:
             )
         return f"Error recording skill usage: {result}"
 
+    # ── App Management (my own docker-compose apps; orchestrator runs them) ──
+
+    async def list_apps(self, params: dict) -> str:
+        """List my own apps (docker-compose projects) + running status."""
+        result = await self._request("GET", "/agent-apps")
+        if isinstance(result, str):
+            return result
+        apps = result.get("apps", [])
+        if not apps:
+            return "Du hast noch keine Apps (docker-compose-Projekte) in /workspace/projects/."
+        lines = []
+        for a in apps:
+            svc = ", ".join(s.get("name", "") for s in a.get("services", []))
+            conts = len(a.get("containers", []))
+            extra = f", {conts} Container" if conts else ""
+            svc_s = f" [services: {svc}]" if svc else ""
+            lines.append(f"- {a.get('name')} (path: {a.get('path')}) — {a.get('status')}{extra}{svc_s}")
+        return "Meine Apps:\n" + "\n".join(lines)
+
+    async def app_logs(self, params: dict) -> str:
+        """Container logs of one of my apps."""
+        query: dict[str, Any] = {"path": params.get("path", "")}
+        if params.get("service"):
+            query["service"] = params["service"]
+        if params.get("lines"):
+            query["lines"] = params["lines"]
+        result = await self._request("GET", "/agent-apps/logs", params=query)
+        if isinstance(result, str):
+            return result
+        logs = result.get("logs", [])
+        if not logs:
+            return f"Keine laufenden Container/Logs für „{params.get('path')}“."
+        text = "\n".join(f"[{l.get('service')}] {l.get('line')}" for l in logs)
+        return text[-8000:]
+
+    async def start_app(self, params: dict) -> str:
+        """Start one of my apps (up -d --build)."""
+        result = await self._request("POST", "/agent-apps/up", params={"path": params.get("path", "")})
+        if isinstance(result, str):
+            return result
+        conts = len(result.get("containers", []))
+        return f"App „{params.get('path')}“ gestartet ({conts} Container, {result.get('status')})."
+
+    async def stop_app(self, params: dict) -> str:
+        """Stop one of my apps (down)."""
+        result = await self._request("POST", "/agent-apps/down", params={"path": params.get("path", "")})
+        if isinstance(result, str):
+            return result
+        return f"App „{params.get('path')}“ gestoppt ({result.get('status')})."
+
+    async def rebuild_app(self, params: dict) -> str:
+        """Rebuild one of my apps from current code (up -d --build --force-recreate)."""
+        result = await self._request("POST", "/agent-apps/rebuild", params={"path": params.get("path", "")})
+        if isinstance(result, str):
+            return result
+        conts = len(result.get("containers", []))
+        return f"App „{params.get('path')}“ neu gebaut und gestartet ({conts} Container, {result.get('status')})."
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()

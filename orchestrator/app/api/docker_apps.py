@@ -40,11 +40,10 @@ COMPOSE_RUNNER_IMAGE = "docker:cli"
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-async def _get_agent(agent_id: str, user, db: AsyncSession) -> Agent:
-    """Get agent and verify ownership."""
-    from app.dependencies import require_agent_access
-    await require_agent_access(agent_id, user, db)
-
+async def _load_agent(agent_id: str, db: AsyncSession) -> Agent:
+    """Load an agent + verify it has a container. NO ownership check — the caller
+    must have already established the principal (a user via _get_agent, or the agent
+    itself via a verified agent token that IS this agent_id)."""
     from sqlalchemy import select
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
@@ -53,6 +52,13 @@ async def _get_agent(agent_id: str, user, db: AsyncSession) -> Agent:
     if not agent.container_id:
         raise HTTPException(status_code=400, detail="Agent has no running container")
     return agent
+
+
+async def _get_agent(agent_id: str, user, db: AsyncSession) -> Agent:
+    """Get agent and verify the USER owns/has access to it."""
+    from app.dependencies import require_agent_access
+    await require_agent_access(agent_id, user, db)
+    return await _load_agent(agent_id, db)
 
 
 def _project_name(agent_id: str, app_path: str) -> str:
@@ -249,20 +255,15 @@ def _connect_containers_to_network(docker: DockerService, project_name: str) -> 
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-@router.get("")
-async def discover_apps(
-    agent_id: str,
-    user=Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-    docker: DockerService = Depends(get_docker_service),
-):
-    """Discover docker-compose.yml files in agent workspace.
+# ══════════════════════════════════════════════════════════════════════════════
+# CORE OPERATIONS (principal-agnostic — caller loads `agent` after authN/authZ)
+# These are shared by the USER-facing endpoints (require_auth) and the AGENT-facing
+# endpoints (verify_agent_token, self-scoped) in agent_apps.py. Keep app logic here
+# only — never duplicate it in a router.
+# ══════════════════════════════════════════════════════════════════════════════
 
-    Scans the workspace for docker-compose.yml and docker-compose.yaml files,
-    parses them, and returns a list of available apps with their services.
-    """
-    agent = await _get_agent(agent_id, user, db)
 
+async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> dict:
     # Find all compose files in workspace (max depth 3 to avoid deep recursion)
     exit_code, stdout = docker.exec_in_container(
         agent.container_id,
@@ -341,48 +342,24 @@ async def discover_apps(
     return {"apps": apps}
 
 
-@router.post("/up")
-async def start_app(
-    agent_id: str,
-    path: str = Query(..., description="Relative path to project in /workspace"),
-    user=Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-    docker: DockerService = Depends(get_docker_service),
-):
-    """Start a docker-compose project from agent workspace."""
-    agent = await _get_agent(agent_id, user, db)
+def _resolve_compose_file(docker: DockerService, agent: Agent, path: str, *, require: bool) -> str:
+    """Return the path of the compose file in /workspace/<path>/, trying the 4 known
+    names. If require=True and none exists, raise 404; else default to docker-compose.yml."""
+    for name in ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]:
+        candidate = f"/workspace/{path}/{name}"
+        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {shlex.quote(candidate)}")
+        if ec == 0:
+            return candidate
+    if require:
+        raise HTTPException(
+            status_code=404, detail=f"No docker-compose file found in /workspace/{path}/",
+        )
+    return f"/workspace/{path}/docker-compose.yml"
 
-    # Validate path to prevent directory traversal
-    if ".." in path or path.startswith("/"):
-        raise HTTPException(status_code=400, detail="Invalid path")
 
-    # Verify compose file exists (shell-quote path to prevent injection)
-    safe_path = shlex.quote(f"/workspace/{path}/docker-compose.yml")
-    exit_code, _ = docker.exec_in_container(
-        agent.container_id, f"test -f {safe_path}"
-    )
-    compose_file = f"/workspace/{path}/docker-compose.yml"
-    if exit_code != 0:
-        # Try alternative names
-        for alt in ["docker-compose.yaml", "compose.yml", "compose.yaml"]:
-            alt_path = f"/workspace/{path}/{alt}"
-            safe_alt = shlex.quote(alt_path)
-            ec, _ = docker.exec_in_container(agent.container_id, f"test -f {safe_alt}")
-            if ec == 0:
-                compose_file = alt_path
-                break
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No docker-compose file found in /workspace/{path}/",
-            )
-
-    project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
-
-    # Ensure referenced env files exist — compose hard-fails if an `env_file:` target
-    # is missing. Touch the project-root `.env` plus every `env_file` declared in the
-    # compose (also nested like `backend/.env`), creating parent dirs as needed.
+def _ensure_env_files(docker: DockerService, agent: Agent, path: str, compose_file: str) -> None:
+    """Create every env_file referenced by the compose (plus project-root .env) so
+    compose does not hard-fail on a missing env_file target."""
     env_targets: set[str] = {".env"}
     try:
         _content = docker.get_file_from_container(agent.container_id, compose_file)
@@ -399,14 +376,21 @@ async def start_app(
     for _rel in env_targets:
         full = f"/workspace/{path}/{_rel}"
         q = shlex.quote(full)
-        # Robust: create the parent dir, remove an accidentally-created EMPTY dir at the
-        # target (Docker creates missing bind/env sources as dirs → compose then fails
-        # with "is a directory"), then create the file only if it doesn't exist.
-        # MUST run in a shell — exec_in_container passes argv (no shell), so wrap in sh -c.
         docker.exec_in_container(
             agent.container_id,
             ["sh", "-c", f'f={q}; mkdir -p "$(dirname "$f")"; [ -d "$f" ] && rmdir "$f" 2>/dev/null; [ -e "$f" ] || touch "$f"'],
         )
+
+
+async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: str) -> dict:
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    compose_file = _resolve_compose_file(docker, agent, path, require=True)
+    project_name = _project_name(agent_id, path)
+    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+
+    _ensure_env_files(docker, agent, path, compose_file)
 
     logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
 
@@ -416,7 +400,6 @@ async def start_app(
         _prepare_free_port_compose, docker, agent, path, compose_file
     )
 
-    # Run compose up in background to not block the request
     exit_code, output = await asyncio.to_thread(
         _run_compose,
         docker, workspace_volume, project_name, compose_file,
@@ -425,25 +408,110 @@ async def start_app(
 
     if exit_code != 0:
         logger.error(f"Failed to start {project_name}: {output}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to start app: {output}",
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
-    # Connect app containers to agent network so agent can reach them
     _connect_containers_to_network(docker, project_name)
-
-    # Get status of started containers
     containers = _get_project_containers(docker, project_name)
-
     logger.info(f"Docker app started: {project_name} ({len(containers)} containers)")
+    return {"project": project_name, "status": "running", "containers": containers, "output": output}
 
-    return {
-        "project": project_name,
-        "status": "running",
-        "containers": containers,
-        "output": output,
-    }
+
+async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: str) -> dict:
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    project_name = _project_name(agent_id, path)
+    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+    compose_file = _resolve_compose_file(docker, agent, path, require=False)
+
+    logger.info(f"Stopping Docker app: {project_name}")
+    exit_code, output = await asyncio.to_thread(
+        _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
+    )
+    if exit_code != 0:
+        logger.warning(f"Compose down warning for {project_name}: {output}")
+    return {"project": project_name, "status": "stopped", "output": output}
+
+
+async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path: str) -> dict:
+    if ".." in path or path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    compose_file = _resolve_compose_file(docker, agent, path, require=False)
+    project_name = _project_name(agent_id, path)
+    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+
+    docker.exec_in_container(agent.container_id, f"touch {shlex.quote(f'/workspace/{path}/.env')}")
+    logger.info(f"Rebuilding Docker app: {project_name}")
+
+    compose_file = await asyncio.to_thread(
+        _prepare_free_port_compose, docker, agent, path, compose_file
+    )
+    exit_code, output = await asyncio.to_thread(
+        _run_compose, docker, workspace_volume, project_name, compose_file,
+        ["up", "-d", "--build", "--force-recreate"],
+    )
+    if exit_code != 0:
+        logger.error(f"Failed to rebuild {project_name}: {output}")
+        raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")
+
+    _connect_containers_to_network(docker, project_name)
+    containers = _get_project_containers(docker, project_name)
+    return {"project": project_name, "status": "running", "containers": containers, "output": output}
+
+
+def _logs_core(docker: DockerService, agent_id: str, path: str, service: str | None, lines: int) -> dict:
+    project_name = _project_name(agent_id, path)
+    containers = _get_project_containers(docker, project_name)
+    if not containers:
+        return {"logs": [], "project": project_name}
+
+    if service:
+        containers = [c for c in containers if c["service"] == service]
+        if not containers:
+            raise HTTPException(status_code=404, detail=f"Service '{service}' not found")
+
+    logs = []
+    for container_info in containers:
+        try:
+            container = docker.client.containers.get(container_info["id"])
+            log_output = container.logs(tail=lines, timestamps=True).decode("utf-8")
+            for line in log_output.strip().split("\n"):
+                if line:
+                    logs.append({"service": container_info["service"], "line": line})
+        except Exception as e:
+            logs.append({"service": container_info["service"], "line": f"[Error reading logs: {e}]"})
+
+    return {"logs": logs, "project": project_name, "total_lines": len(logs)}
+
+
+@router.get("")
+async def discover_apps(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Discover docker-compose.yml files in agent workspace.
+
+    Scans the workspace for docker-compose.yml and docker-compose.yaml files,
+    parses them, and returns a list of available apps with their services.
+    """
+    agent = await _get_agent(agent_id, user, db)
+    return await _discover_core(docker, agent, agent_id)
+
+
+@router.post("/up")
+async def start_app(
+    agent_id: str,
+    path: str = Query(..., description="Relative path to project in /workspace"),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Start a docker-compose project from agent workspace."""
+    agent = await _get_agent(agent_id, user, db)
+    return await _start_core(docker, agent, agent_id, path)
 
 
 @router.post("/down")
@@ -455,39 +523,8 @@ async def stop_app(
     docker: DockerService = Depends(get_docker_service),
 ):
     """Stop a docker-compose project."""
-    if ".." in path or path.startswith("/"):
-        raise HTTPException(status_code=400, detail="Invalid path")
-
     agent = await _get_agent(agent_id, user, db)
-
-    project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
-
-    # Find compose file
-    compose_file = f"/workspace/{path}/docker-compose.yml"
-    for name in ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]:
-        candidate = f"/workspace/{path}/{name}"
-        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {shlex.quote(candidate)}")
-        if ec == 0:
-            compose_file = candidate
-            break
-
-    logger.info(f"Stopping Docker app: {project_name}")
-
-    exit_code, output = await asyncio.to_thread(
-        _run_compose,
-        docker, workspace_volume, project_name, compose_file,
-        ["down"],
-    )
-
-    if exit_code != 0:
-        logger.warning(f"Compose down warning for {project_name}: {output}")
-
-    return {
-        "project": project_name,
-        "status": "stopped",
-        "output": output,
-    }
+    return await _stop_core(docker, agent, agent_id, path)
 
 
 @router.get("/status")
@@ -537,41 +574,7 @@ async def app_logs(
 ):
     """Get logs from a docker-compose project's containers."""
     await _get_agent(agent_id, user, db)
-
-    project_name = _project_name(agent_id, path)
-    containers = _get_project_containers(docker, project_name)
-
-    if not containers:
-        return {"logs": [], "project": project_name}
-
-    # Filter by service if specified
-    if service:
-        containers = [c for c in containers if c["service"] == service]
-        if not containers:
-            raise HTTPException(status_code=404, detail=f"Service '{service}' not found")
-
-    logs = []
-    for container_info in containers:
-        try:
-            container = docker.client.containers.get(container_info["id"])
-            log_output = container.logs(tail=lines, timestamps=True).decode("utf-8")
-            for line in log_output.strip().split("\n"):
-                if line:
-                    logs.append({
-                        "service": container_info["service"],
-                        "line": line,
-                    })
-        except Exception as e:
-            logs.append({
-                "service": container_info["service"],
-                "line": f"[Error reading logs: {e}]",
-            })
-
-    return {
-        "logs": logs,
-        "project": project_name,
-        "total_lines": len(logs),
-    }
+    return await asyncio.to_thread(_logs_core, docker, agent_id, path, service, lines)
 
 
 @router.post("/rebuild")
@@ -583,51 +586,8 @@ async def rebuild_app(
     docker: DockerService = Depends(get_docker_service),
 ):
     """Rebuild and restart a docker-compose project (forces image rebuild)."""
-    if ".." in path or path.startswith("/"):
-        raise HTTPException(status_code=400, detail="Invalid path")
-
     agent = await _get_agent(agent_id, user, db)
-
-    compose_file = f"/workspace/{path}/docker-compose.yml"
-    for name in ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]:
-        candidate = f"/workspace/{path}/{name}"
-        ec, _ = docker.exec_in_container(agent.container_id, f"test -f {shlex.quote(candidate)}")
-        if ec == 0:
-            compose_file = candidate
-            break
-
-    project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
-
-    # Ensure .env file exists
-    docker.exec_in_container(agent.container_id, f"touch {shlex.quote(f'/workspace/{path}/.env')}")
-
-    logger.info(f"Rebuilding Docker app: {project_name}")
-
-    compose_file = await asyncio.to_thread(
-        _prepare_free_port_compose, docker, agent, path, compose_file
-    )
-
-    exit_code, output = await asyncio.to_thread(
-        _run_compose,
-        docker, workspace_volume, project_name, compose_file,
-        ["up", "-d", "--build", "--force-recreate"],
-    )
-
-    if exit_code != 0:
-        logger.error(f"Failed to rebuild {project_name}: {output}")
-        raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")
-
-    # Re-connect to agent network (force-recreate drops network connections)
-    _connect_containers_to_network(docker, project_name)
-
-    containers = _get_project_containers(docker, project_name)
-    return {
-        "project": project_name,
-        "status": "running",
-        "containers": containers,
-        "output": output,
-    }
+    return await _rebuild_core(docker, agent, agent_id, path)
 
 
 @router.post("/restart-service")

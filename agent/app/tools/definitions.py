@@ -1270,6 +1270,67 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
+    # ── App Management (my own docker-compose apps; orchestrator runs them) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "list_apps",
+            "description": "List MY OWN docker-compose apps (the projects under /workspace/projects/) with running status and containers. I have NO docker myself — the platform (orchestrator) runs them; use the app_* tools to drive them. Use the app 'path' from here for the other app tools.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "app_logs",
+            "description": "Read the container logs of one of MY apps (to debug why it won't start or misbehaves). Pass the app 'path' from list_apps.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "App path in /workspace (from list_apps)."},
+                    "service": {"type": "string", "description": "Optional: only this compose service."},
+                    "lines": {"type": "integer", "description": "Log lines to fetch (10-1000, default 100)."},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_app",
+            "description": "Start one of MY apps via the orchestrator (docker compose up -d --build). Use to bring a stopped or newly-created app up. Pass the app 'path' from list_apps.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "App path in /workspace (from list_apps)."}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_app",
+            "description": "Stop one of MY apps (docker compose down). Pass the app 'path' from list_apps.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "App path in /workspace (from list_apps)."}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rebuild_app",
+            "description": "Rebuild one of MY apps from its CURRENT code and restart it (docker compose up -d --build --force-recreate). ALWAYS use this after I changed an app's code/config in the workspace — a plain start of an already-built app does NOT pick up my changes. Pass the app 'path' from list_apps.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "App path in /workspace (from list_apps)."}},
+                "required": ["path"],
+            },
+        },
+    },
 ]
 
 # ── Combined Tool List ──

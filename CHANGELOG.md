@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.116.0] — 2026-07-31
+
+### Added
+- **Der Agent kann seine eigenen Apps jetzt selbst managen (list/logs/start/stop/rebuild).** Bisher konnten Apps nur über die Web-Oberfläche (Buttons) oder den Voice-Layer gestartet/neu gebaut werden — der Agent selbst hatte KEINE App-Tools und kein Docker. Damit fehlte die End-to-End-Schleife: Der Agent editierte App-Code per Task, aber jemand anderes musste danach neu bauen. Neu:
+  - **Agent-facing Endpoints** `/agent-apps/{,logs,up,down,rebuild}` im Orchestrator — authentifiziert per `verify_agent_token` und HART self-scoped (ein Agent kann ausschließlich SEINE eigenen Apps anfassen). Die eigentliche Logik liegt geteilt in `docker_apps` (`_start_core`/`_stop_core`/`_rebuild_core`/`_logs_core`/`_discover_core`); User- und Agent-Endpoints nutzen denselben Kern (keine Doppel-Logik).
+  - **5 Agent-Tools** für BEIDE Agent-Laufzeiten: Claude via MCP (`orchestrator-server.mjs`) und Codex via `definitions.py` + `api_client.py` (`list_apps`, `app_logs`, `start_app`, `stop_app`, `rebuild_app`).
+  - **System-Prompt (AGENT.md):** Volle Schleife dokumentiert — Code in `/workspace/projects/<name>/` ändern → `rebuild_app` (übernimmt Änderungen via `--build --force-recreate`) → `app_logs` zum Verifizieren. Weiterhin: Agent hat KEIN eigenes Docker, treibt Apps nur über diese Tools.
+- Greift für neue/aktualisierte Agenten (Agent-Image-Rebuild + Recreate nötig; Codex-Agenten gestaffelt).
+
+---
+
 ## [1.115.9] — 2026-07-31
 
 ### Added

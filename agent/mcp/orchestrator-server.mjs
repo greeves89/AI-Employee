@@ -675,6 +675,70 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["trigger_id"],
       },
     },
+    {
+      name: "list_apps",
+      description:
+        "List MY OWN docker-compose apps (the projects under /workspace/projects/) with their " +
+        "running status and containers. I have NO docker myself — the platform (orchestrator) " +
+        "runs them; use these app_* tools to drive them. Use the app 'path' from here for the " +
+        "other app tools.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "app_logs",
+      description:
+        "Read the container logs of one of MY apps (to debug why it won't start or misbehaves). " +
+        "Pass the app 'path' from list_apps.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "App path in /workspace (from list_apps)." },
+          service: { type: "string", description: "Optional: only this compose service." },
+          lines: { type: "number", description: "Log lines to fetch (10-1000, default 100)." },
+        },
+        required: ["path"],
+      },
+    },
+    {
+      name: "start_app",
+      description:
+        "Start one of MY apps via the orchestrator (docker compose up -d --build). Use to bring a " +
+        "stopped or newly-created app up. Pass the app 'path' from list_apps.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "App path in /workspace (from list_apps)." },
+        },
+        required: ["path"],
+      },
+    },
+    {
+      name: "stop_app",
+      description:
+        "Stop one of MY apps (docker compose down). Pass the app 'path' from list_apps.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "App path in /workspace (from list_apps)." },
+        },
+        required: ["path"],
+      },
+    },
+    {
+      name: "rebuild_app",
+      description:
+        "Rebuild one of MY apps from its CURRENT code and restart it (docker compose up -d --build " +
+        "--force-recreate). ALWAYS use this after I changed an app's code/config in the workspace — " +
+        "a plain start of an already-built app does NOT pick up my changes. Pass the app 'path' " +
+        "from list_apps.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "App path in /workspace (from list_apps)." },
+        },
+        required: ["path"],
+      },
+    },
   ],
 }));
 
@@ -1271,6 +1335,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           text: `Trigger #${result.id} "${result.name}" is now ${result.enabled ? "enabled" : "disabled"}.`,
         }],
       };
+    }
+
+    case "list_apps": {
+      const result = await apiCall(`/agent-apps`);
+      const apps = result.apps || [];
+      if (apps.length === 0) {
+        return { content: [{ type: "text", text: "Du hast noch keine Apps (docker-compose-Projekte) in /workspace/projects/." }] };
+      }
+      const lines = apps.map((a) => {
+        const svc = (a.services || []).map((s) => s.name).join(", ");
+        const conts = (a.containers || []).length;
+        return `- ${a.name} (path: ${a.path}) — ${a.status}${conts ? `, ${conts} Container` : ""}${svc ? ` [services: ${svc}]` : ""}`;
+      });
+      return { content: [{ type: "text", text: `Meine Apps:\n${lines.join("\n")}` }] };
+    }
+
+    case "app_logs": {
+      const q = new URLSearchParams({ path: args.path });
+      if (args.service) q.set("service", args.service);
+      if (args.lines) q.set("lines", String(args.lines));
+      const result = await apiCall(`/agent-apps/logs?${q.toString()}`);
+      const logs = result.logs || [];
+      if (logs.length === 0) {
+        return { content: [{ type: "text", text: `Keine laufenden Container/Logs für „${args.path}".` }] };
+      }
+      const text = logs.map((l) => `[${l.service}] ${l.line}`).join("\n");
+      return { content: [{ type: "text", text: wrapData("app-logs", text.slice(-8000)) }] };
+    }
+
+    case "start_app": {
+      const q = new URLSearchParams({ path: args.path });
+      const result = await apiCall(`/agent-apps/up?${q.toString()}`, { method: "POST" });
+      const conts = (result.containers || []).length;
+      return { content: [{ type: "text", text: `App „${args.path}" gestartet (${conts} Container, ${result.status}).` }] };
+    }
+
+    case "stop_app": {
+      const q = new URLSearchParams({ path: args.path });
+      const result = await apiCall(`/agent-apps/down?${q.toString()}`, { method: "POST" });
+      return { content: [{ type: "text", text: `App „${args.path}" gestoppt (${result.status}).` }] };
+    }
+
+    case "rebuild_app": {
+      const q = new URLSearchParams({ path: args.path });
+      const result = await apiCall(`/agent-apps/rebuild?${q.toString()}`, { method: "POST" });
+      const conts = (result.containers || []).length;
+      return { content: [{ type: "text", text: `App „${args.path}" neu gebaut und gestartet (${conts} Container, ${result.status}).` }] };
     }
 
     default:
