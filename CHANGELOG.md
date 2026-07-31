@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.1] — 2026-07-31
+
+### Fixed
+- Alembic-Migration für `mcp_servers.headers_encrypted` nachgereicht. Der reine Startup-Ensure-Block greift nur im `create_all`-Fallback (nicht wenn Alembic normal durchläuft), sodass die Spalte auf produktiven DBs fehlte. Migration `a1b2c3d4e5f6` (idempotentes `ADD COLUMN IF NOT EXISTS`) legt sie beim Deploy zuverlässig an.
+
+---
+
 ## [1.115.0] — 2026-07-31
 
 ### Fixed (externe MCP-Server — Feedback aus Kollegen-Setup)
