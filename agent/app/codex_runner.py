@@ -176,11 +176,13 @@ class CodexAgentRunner:
         self._process = None
         return result
 
-    async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str) -> dict:
+    async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str, resume: bool = False) -> dict:
         # Prompt via STDIN ("-") not argv → avoids E2BIG ("Argument list too long")
         # on large prompts (PR diffs etc.), same reason the claude path pipes stdin.
-        cmd = [
-            "codex", "exec",
+        # resume=True → `codex exec resume --last` continues the just-run session so a
+        # folded (steering) message keeps the conversation instead of starting over.
+        head = ["codex", "exec"] + (["resume", "--last"] if resume else [])
+        cmd = head + [
             "--json",
             "--skip-git-repo-check",
             "--dangerously-bypass-approvals-and-sandbox",
@@ -265,7 +267,11 @@ class CodexAgentRunner:
             result_data["result"] = final_text
             result_data["text"] = final_text
 
-            if returncode != 0:
+            if returncode in (-2, -15, 130):
+                # SIGINT/SIGTERM = graceful interrupt for live steering (a new message
+                # arrived and we cut the turn short to fold it) — not a failure.
+                logger.info("Codex CLI interrupted (signal %s) — new messages pending", returncode)
+            elif returncode != 0:
                 stderr_text = "\n".join(stderr_lines).strip()
                 # The Codex CLI runs with stdin=DEVNULL: after finishing its turn it
                 # tries to read more input, hits EOF and prints "Reading additional
@@ -303,17 +309,50 @@ class CodexChatHandler:
     def __init__(self, log_publisher: LogPublisher):
         self.log_publisher = log_publisher
         self._process: asyncio.subprocess.Process | None = None
+        self._runner: "CodexAgentRunner | None" = None
         self.is_running = False
+        # Live steering: set by the ChatConsumer (see steering.py).
+        self.pending_drain = None
 
     async def handle_message(self, message_id: str, text: str, model: str | None = None) -> dict:
+        """Run a Codex chat turn with live steering.
+
+        A message that arrives on this channel mid-turn interrupts the run (SIGINT,
+        handled gracefully) and is folded into a follow-up turn that resumes the same
+        session via `codex exec resume --last`. See steering.py.
+        """
+        from app.steering import run_turns_with_steering
         self.is_running = True
         model = model or settings.default_model
+        # ONE runner for the whole (possibly multi-fold) exchange so interrupt() hits
+        # the live process and `resume --last` continues the same session.
         self._runner = CodexAgentRunner(self.log_publisher)
-        result = await self._runner._run_codex(message_id, text, model, stream="chat")
+
+        async def _run_turn(t: str, is_resume: bool) -> dict:
+            res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=is_resume)
+            # If `resume --last` isn't supported / no session was saved, don't lose the
+            # folded message — fall back to a fresh turn.
+            if is_resume and res.get("status") == "error":
+                logger.warning("Codex resume failed, retrying fresh: %s", str(res.get("error"))[:120])
+                res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=False)
+            return res
+
+        try:
+            result = await run_turns_with_steering(
+                initial_text=text,
+                run_turn=_run_turn,
+                stop_current=self.stop_current,
+                pending_drain=self.pending_drain,
+                publish_system=lambda m: self.log_publisher.publish_chat(
+                    message_id, "system", {"message": m}
+                ),
+            )
+        finally:
+            self.is_running = False
+            self._runner = None
+            self._process = None
+
         await self.log_publisher.publish_chat(message_id, "done", result)
-        self.is_running = False
-        self._runner = None
-        self._process = None
         return result
 
     async def stop_current(self) -> None:

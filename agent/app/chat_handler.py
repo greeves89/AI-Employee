@@ -22,57 +22,76 @@ class ChatHandler:
         self.session_id: str | None = None
         self._process: asyncio.subprocess.Process | None = None
         self.is_running = False
+        # Live steering: set by the ChatConsumer to an async callable returning the
+        # list of messages that arrived on this channel mid-turn (see steering.py).
+        self.pending_drain = None
+
+    async def _run_turn_with_retries(
+        self, message_id: str, text: str, model: str
+    ) -> dict:
+        """One Claude CLI turn (resumes via self.session_id) + session/auth retries."""
+        result = await self._execute_cli(message_id, text, model)
+
+        # If --resume failed, reset session and retry without it
+        if (
+            result.get("status") == "error"
+            and self.session_id
+            and "no conversation found" in result.get("error", "").lower()
+        ):
+            logger.warning(f"Session {self.session_id} not found, resetting and retrying")
+            self.session_id = None
+            await self.log_publisher.publish_chat(
+                message_id, "system",
+                {"message": "Session expired, starting fresh conversation..."},
+            )
+            result = await self._execute_cli(message_id, text, model)
+
+        # If auth error, wait for token refresh and retry once
+        error_text = result.get("error", "").lower()
+        if result.get("status") == "error" and any(
+            phrase in error_text
+            for phrase in [
+                "does not have access", "invalid_grant", "unauthorized",
+                "401", "token", "oauth", "authentication",
+            ]
+        ):
+            logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
+            await self.log_publisher.publish_chat(
+                message_id, "system",
+                {"message": "Auth token issue detected, refreshing and retrying..."},
+            )
+            await asyncio.sleep(10)  # Wait for token sync
+            result = await self._execute_cli(message_id, text, model)
+        return result
 
     async def handle_message(
         self, message_id: str, text: str, model: str | None = None
     ) -> dict:
-        """Send a chat message to Claude CLI and stream the response."""
+        """Send a chat message to Claude CLI and stream the response.
+
+        Live steering: if a new message arrives on this channel while the turn runs,
+        it interrupts (SIGINT → -2, graceful) and folds the message into a follow-up
+        turn that resumes the same session (--resume). See steering.py.
+        """
+        from app.steering import run_turns_with_steering
         model = model or settings.default_model
         self.is_running = True
 
+        async def _run_turn(t: str, _is_resume: bool) -> dict:
+            # session_id (set on the first turn) makes _execute_cli use --resume,
+            # so a folded message continues the SAME conversation.
+            return await self._run_turn_with_retries(message_id, t, model)
+
         try:
-            result = await self._execute_cli(message_id, text, model)
-
-            # If --resume failed, reset session and retry without it
-            if (
-                result.get("status") == "error"
-                and self.session_id
-                and "no conversation found" in result.get("error", "").lower()
-            ):
-                logger.warning(
-                    f"Session {self.session_id} not found, resetting and retrying"
-                )
-                self.session_id = None
-                await self.log_publisher.publish_chat(
-                    message_id,
-                    "system",
-                    {"message": "Session expired, starting fresh conversation..."},
-                )
-                result = await self._execute_cli(message_id, text, model)
-
-            # If auth error, wait for token refresh and retry once
-            error_text = result.get("error", "").lower()
-            if result.get("status") == "error" and any(
-                phrase in error_text
-                for phrase in [
-                    "does not have access",
-                    "invalid_grant",
-                    "unauthorized",
-                    "401",
-                    "token",
-                    "oauth",
-                    "authentication",
-                ]
-            ):
-                logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
-                await self.log_publisher.publish_chat(
-                    message_id,
-                    "system",
-                    {"message": "Auth token issue detected, refreshing and retrying..."},
-                )
-                await asyncio.sleep(10)  # Wait for token sync
-                result = await self._execute_cli(message_id, text, model)
-
+            result = await run_turns_with_steering(
+                initial_text=text,
+                run_turn=_run_turn,
+                stop_current=self.stop_current,
+                pending_drain=self.pending_drain,
+                publish_system=lambda m: self.log_publisher.publish_chat(
+                    message_id, "system", {"message": m}
+                ),
+            )
         finally:
             self.is_running = False
             self._process = None

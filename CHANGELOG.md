@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.0] — 2026-07-31
+
+### Added
+- **Live-Steering für Claude- UND Codex-Agenten (Chat + Telegram).** Bisher konnte man eine laufende CLI-Arbeit nur im `custom_llm`-Modus mitten im Turn steuern; bei `claude_code`/`codex_cli` wurde eine während der Arbeit eintreffende Nachricht erst NACH dem ganzen Turn verarbeitet ("nach dem Task-Bulk"). Neu — plattform-standard-Muster **Queue → Interrupt (SIGINT, als `-2` bereits graceful behandelt) → Resume**:
+  - Neuer gemeinsamer Helper `agent/app/steering.py` (`run_turns_with_steering`): ein Watcher pollt `pending_drain`; trifft eine neue Nachricht desselben Kanals ein, wird der laufende Subprozess unterbrochen und die Nachricht in einen Folge-Turn gefaltet (Iterations-Cap 6).
+  - **Claude** (`chat_handler.py`): Fortsetzung via `--resume <session_id>` (Session-Handling bestand bereits); Retry-Logik in `_run_turn_with_retries` gekapselt.
+  - **Codex** (`codex_runner.py`): `_run_codex(resume=True)` → `codex exec resume --last` setzt die gerade unterbrochene Session fort (behebt nebenbei die bisherige Lücke „Codex vergisst den Verlauf"); Fallback auf frischen Turn, falls Resume nicht greift; SIGINT/-2/-15/130 als graceful behandelt.
+  - **Custom-LLM** unverändert (hatte den Mechanismus schon). Funktioniert automatisch für Web-Chat UND Telegram, da beide dieselbe `agent:{id}:chat`-Queue + `source_key`-Zuordnung nutzen.
+
+---
+
 ## [1.117.2] — 2026-07-31
 
 ### Changed
