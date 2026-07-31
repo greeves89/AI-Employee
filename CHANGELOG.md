@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.117.1] — 2026-07-31
+
+### Changed
+- **Aufwand proportional zur Anfrage — Agenten laden nicht mehr bei JEDER Nachricht den vollen Kontext.** Der System-Prompt zwang bisher per „Self-Improvement (MANDATORY after every task)" + „Nach jeder Aufgabe (PFLICHT)" dazu, VOR und NACH jeder Chat-Nachricht memory/brain/skill-marktplatz/todos zu laden, `memory_save`, `knowledge.md` zu updaten, `rate_task`, Feedback zu fragen — auch bei Trivialfragen wie „wie war das Passwort?" (in der Praxis 97k–635k Input-Tokens pro Nachricht). Neu:
+  - **Trivial-Turns** (Frage, Status, Ja/Nein, Lookup) → direkt antworten; kritische Memories inkl. `credentials` sind ohnehin vorgeladen. Kein memory/brain-Search, kein Marktplatz, kein Speichern/Raten.
+  - **Kontext einmal-dann-bei-Bedarf**: Fundament-Kontext nur zu Beginn einer neuen Unterhaltung/echten Aufgabe laden; danach Verlauf + vorgeladene Memories nutzen, nur gezielt nachsuchen. Nie alles pro Turn neu laden.
+  - **Self-Improvement nur nach substanzieller Arbeit** (gebaut/geändert/gefixt/entschieden oder User-Korrektur) — nicht nach jeder Zeile. `skill_search` nur für wiederholbare Prozeduren.
+  - Nebenbei: Emoji (⭐) aus dem Prompt entfernt.
+
+---
+
 ## [1.117.0] — 2026-07-31
 
 ### Added
