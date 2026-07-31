@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.1] — 2026-08-01
+
+### Fixed
+- **Codex-Steering: `codex exec resume` korrekt aufgerufen + Interrupt sauber.** (1) `codex exec resume` akzeptiert kein `-C` (Working-Dir) → wurde entfernt; der Subprozess startet ohnehin mit `cwd=workspace_dir`, und resume filtert per cwd zur richtigen Session. Resume greift jetzt wirklich (Kontext-Fortsetzung, kein Fallback nötig). (2) Codex beendet sich bei SIGINT mit Exit-Code 1 (nicht -2) → der unterbrochene Turn meldete fälschlich „Codex CLI exited with code 1" als Fehler an den User. Neues `_interrupted`-Flag (in `interrupt()` gesetzt) unterdrückt das. Auf dem Pi verifiziert: mid-turn 2. Nachricht → „1 neue Nachricht aufgenommen" → gesteuerte Antwort, ohne Fehler-Rauschen; normale Einzelnachrichten unverändert. Analoges `_interrupted`-Flag defensiv auch im Claude-Handler.
+
+---
+
 ## [1.118.0] — 2026-07-31
 
 ### Added

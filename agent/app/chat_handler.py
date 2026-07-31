@@ -127,6 +127,7 @@ class ChatHandler:
             if oauth_token:
                 env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
 
+        self._interrupted = False  # set by stop_current() when steering cuts this turn short
         result_data: dict = {"status": "completed", "text": ""}
         stream_had_error = False
         accumulated_tool_calls: list[dict] = []  # Track tool calls for persistence
@@ -320,9 +321,10 @@ class ChatHandler:
             await stdin_task
 
             if returncode != 0 and not stream_had_error:
-                # Code -2 (SIGINT) = graceful interrupt for queued messages — not an error
-                if returncode == -2:
-                    logger.info("Claude CLI interrupted (SIGINT) — new messages pending")
+                # Code -2 (SIGINT) = graceful interrupt for queued messages — not an error.
+                # Also honor the explicit _interrupted flag (some exit codes vary).
+                if returncode == -2 or getattr(self, "_interrupted", False):
+                    logger.info("Claude CLI interrupted — folding new message(s)")
                 else:
                     stderr_text = "\n".join(stderr_lines).strip()
                     error_msg = stderr_text or f"Claude CLI exited with code {returncode}"
@@ -373,6 +375,7 @@ class ChatHandler:
 
     async def stop_current(self) -> None:
         """Stop the currently running Claude CLI process."""
+        self._interrupted = True
         if self._process and self._process.returncode is None:
             logger.info("Stopping current chat process (SIGINT)")
             try:

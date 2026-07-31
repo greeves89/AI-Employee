@@ -177,19 +177,24 @@ class CodexAgentRunner:
         return result
 
     async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str, resume: bool = False) -> dict:
+        self._interrupted = False  # set by interrupt() when a steering message cuts this turn short
         # Prompt via STDIN ("-") not argv → avoids E2BIG ("Argument list too long")
         # on large prompts (PR diffs etc.), same reason the claude path pipes stdin.
         # resume=True → `codex exec resume --last` continues the just-run session so a
         # folded (steering) message keeps the conversation instead of starting over.
-        head = ["codex", "exec"] + (["resume", "--last"] if resume else [])
-        cmd = head + [
+        # NOTE: `codex exec resume` does NOT accept `-C` (working dir); it filters
+        # sessions by cwd by default and we already start the subprocess with
+        # cwd=workspace_dir, so the right session is found without it.
+        common = [
             "--json",
             "--skip-git-repo-check",
             "--dangerously-bypass-approvals-and-sandbox",
-            "-C", settings.workspace_dir,
             "-m", model,
-            "-",
         ]
+        if resume:
+            cmd = ["codex", "exec", "resume"] + common + ["--last", "-"]
+        else:
+            cmd = ["codex", "exec"] + common + ["-C", settings.workspace_dir, "-"]
         env = _codex_env()
 
         stderr_lines: list[str] = []
@@ -267,10 +272,11 @@ class CodexAgentRunner:
             result_data["result"] = final_text
             result_data["text"] = final_text
 
-            if returncode in (-2, -15, 130):
-                # SIGINT/SIGTERM = graceful interrupt for live steering (a new message
-                # arrived and we cut the turn short to fold it) — not a failure.
-                logger.info("Codex CLI interrupted (signal %s) — new messages pending", returncode)
+            if returncode in (-2, -15, 130) or getattr(self, "_interrupted", False):
+                # Interrupt for live steering (a new message arrived and we cut the turn
+                # short to fold it) — not a failure. Codex may exit 1 on SIGINT, so we
+                # also honor the explicit _interrupted flag set by interrupt().
+                logger.info("Codex CLI interrupted (rc=%s) — folding new message(s)", returncode)
             elif returncode != 0:
                 stderr_text = "\n".join(stderr_lines).strip()
                 # The Codex CLI runs with stdin=DEVNULL: after finishing its turn it
@@ -295,6 +301,7 @@ class CodexAgentRunner:
         return result_data
 
     async def interrupt(self) -> None:
+        self._interrupted = True
         if self._process and self._process.returncode is None:
             try:
                 self._process.send_signal(signal.SIGINT)
