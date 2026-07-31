@@ -17,3 +17,7 @@ class McpServer(Base, TimestampMixin):
     # Optional Bearer token (Fernet-encrypted) sent as `Authorization: Bearer <token>`
     # on discovery and on every agent tool call to this server.
     auth_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional custom auth headers (Fernet-encrypted JSON {header: value}) merged over
+    # the base headers — for servers that expect a non-Bearer key (x-api-key,
+    # x-consumer-api-key, X-Auth-Token, …). The bearer_token above stays as a shortcut.
+    headers_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

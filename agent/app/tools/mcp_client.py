@@ -31,6 +31,8 @@ class MCPHTTPClient:
         self._servers: dict[str, str] = {}
         # server_name -> bearer token (from CUSTOM_MCP_AUTH)
         self._auth: dict[str, str] = {}
+        # server_name -> {header: value} custom auth headers (from CUSTOM_MCP_HEADERS)
+        self._headers: dict[str, dict] = {}
         # tool_name -> (server_name, original_tool_name)
         self._tool_registry: dict[str, tuple[str, str]] = {}
         # server_name -> MCP session id, for stateful Streamable HTTP servers
@@ -59,6 +61,15 @@ class MCPHTTPClient:
                     self._auth = auth
             except (json.JSONDecodeError, TypeError):
                 logger.warning("Could not parse CUSTOM_MCP_AUTH env var")
+        # Optional per-server custom auth headers (x-api-key etc.)
+        custom_headers = os.environ.get("CUSTOM_MCP_HEADERS", "")
+        if custom_headers:
+            try:
+                hdrs = json.loads(custom_headers)
+                if isinstance(hdrs, dict):
+                    self._headers = hdrs
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Could not parse CUSTOM_MCP_HEADERS env var")
 
     def _mcp_headers(self, server_name: str | None = None, session_id: str | None = None) -> dict[str, str]:
         headers = {
@@ -70,6 +81,11 @@ class MCPHTTPClient:
         token = self._auth.get(server_name) if server_name else None
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        # Custom auth headers (x-api-key etc.) merged on top — lets non-Bearer servers
+        # authenticate; can also override the Bearer default if the server needs that.
+        extra = self._headers.get(server_name) if server_name else None
+        if isinstance(extra, dict):
+            headers.update({str(k): str(v) for k, v in extra.items() if k})
         return headers
 
     @staticmethod

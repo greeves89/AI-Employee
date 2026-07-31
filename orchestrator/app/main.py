@@ -666,6 +666,17 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure second_brains MCP columns: {e}")
 
+    # External MCP servers: optional custom auth headers (Fernet-encrypted JSON) for
+    # servers that expect a non-Bearer key (x-api-key, x-consumer-api-key, …).
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS headers_encrypted text"
+            ))
+        logger.info("mcp_servers headers_encrypted column ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure mcp_servers headers column: {e}")
+
     # Agent clone origin: distributed copies of a "trained" source agent track it
     # via agents.source_agent_id. Ensure idempotently (create_all never ALTERs).
     try:

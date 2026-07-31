@@ -349,6 +349,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [addName, setAddName] = useState("");
   const [addUrl, setAddUrl] = useState("");
   const [addBearer, setAddBearer] = useState("");
+  const [addHeaders, setAddHeaders] = useState("");  // one "Name: value" per line
   const [adding, setAdding] = useState(false);
   const [expandedServer, setExpandedServer] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState<number | null>(null);
@@ -369,15 +370,32 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     loadServers();
   }, []);
 
+  const parseHeaderLines = (text: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      const i = t.indexOf(":");
+      if (i <= 0) continue;
+      const k = t.slice(0, i).trim();
+      if (k) out[k] = t.slice(i + 1).trim();
+    }
+    return out;
+  };
+
   const handleAdd = async () => {
     if (!addName.trim() || !addUrl.trim()) return;
     setAdding(true);
     try {
-      const server = await api.addMcpServer(addName.trim(), addUrl.trim(), addBearer.trim() || undefined);
+      const headers = parseHeaderLines(addHeaders);
+      const server = await api.addMcpServer(
+        addName.trim(), addUrl.trim(), addBearer.trim() || undefined,
+        Object.keys(headers).length ? headers : undefined,
+      );
       setServers((prev) => [server, ...prev]);
       setAddName("");
       setAddUrl("");
       setAddBearer("");
+      setAddHeaders("");
       setShowAdd(false);
       setExpandedServer(server.id);
       onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefuegt (${server.tools.length} Tools)` });
@@ -480,6 +498,21 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                 className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+                Eigene Header <span className="text-muted-foreground/40">(optional — ein „Name: Wert" pro Zeile)</span>
+              </label>
+              <textarea
+                value={addHeaders}
+                onChange={(e) => setAddHeaders(e.target.value)}
+                rows={2}
+                placeholder={"x-api-key: dein-schlüssel\nx-consumer-api-key: …"}
+                className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-y"
+              />
+              <p className="text-[10px] text-muted-foreground/50 mt-1">
+                Für Server, die statt „Bearer" einen eigenen Header erwarten (z. B. Composio: x-consumer-api-key).
+              </p>
             </div>
             <div className="flex items-center gap-2 pt-1">
               <button

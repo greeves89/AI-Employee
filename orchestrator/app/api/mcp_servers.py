@@ -25,6 +25,8 @@ class McpServerCreate(BaseModel):
     name: str
     url: str
     bearer_token: str | None = None  # plaintext on input; stored Fernet-encrypted
+    # Custom auth headers {name: value} for servers expecting a non-Bearer key.
+    headers: dict[str, str] | None = None
 
     @field_validator("name")
     @classmethod
@@ -37,6 +39,7 @@ class McpServerUpdate(BaseModel):
     url: str | None = None
     enabled: bool | None = None
     bearer_token: str | None = None  # "" clears the token; None leaves it unchanged
+    headers: dict[str, str] | None = None  # {} clears; None leaves unchanged
 
 
 def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
@@ -60,12 +63,21 @@ def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
         return None
 
 
-async def _discover_tools(url: str, bearer_token: str | None = None) -> list[dict]:
+async def _discover_tools(
+    url: str,
+    bearer_token: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> list[dict]:
     """Connect to an MCP server via Streamable HTTP and list its tools.
 
     Handles both application/json and text/event-stream (SSE) responses,
     as servers like n8n respond with SSE format. An optional Bearer token is
-    sent as ``Authorization: Bearer <token>``.
+    sent as ``Authorization: Bearer <token>``; ``extra_headers`` (e.g. an
+    ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
+
+    Failures of the TARGET server raise ``HTTPException(400)`` (not 502) with the
+    real cause in ``detail`` — a 502 would be swallowed by a fronting Cloudflare
+    tunnel (its own Bad-Gateway page), hiding the actual reason from the operator.
     """
     headers = {
         "Content-Type": "application/json",
@@ -73,6 +85,8 @@ async def _discover_tools(url: str, bearer_token: str | None = None) -> list[dic
     }
     if bearer_token:
         headers["Authorization"] = f"Bearer {bearer_token}"
+    if extra_headers:
+        headers.update({str(k): str(v) for k, v in extra_headers.items() if k})
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         # Step 1: Initialize
@@ -89,15 +103,16 @@ async def _discover_tools(url: str, bearer_token: str | None = None) -> list[dic
 
         if init_resp.status_code != 200:
             raise HTTPException(
-                status_code=502,
-                detail=f"MCP server returned {init_resp.status_code} on initialize",
+                status_code=400,
+                detail=f"MCP server returned {init_resp.status_code} on initialize "
+                       "(check URL and auth token/headers)",
             )
 
         init_data = _parse_jsonrpc_response(init_resp)
         if not init_data or "result" not in init_data:
             raise HTTPException(
-                status_code=502,
-                detail="MCP server returned invalid initialize response",
+                status_code=400,
+                detail="MCP server returned an invalid initialize response",
             )
 
         # Extract session ID from response header if present (for stateful servers)
@@ -122,7 +137,7 @@ async def _discover_tools(url: str, bearer_token: str | None = None) -> list[dic
 
         if tools_resp.status_code != 200:
             raise HTTPException(
-                status_code=502,
+                status_code=400,
                 detail=f"MCP server returned {tools_resp.status_code} on tools/list",
             )
 
@@ -153,6 +168,7 @@ async def list_mcp_servers(user=Depends(require_auth), db: AsyncSession = Depend
                 "tools": s.tools or [],
                 "enabled": s.enabled,
                 "has_auth": bool(s.auth_token_encrypted),
+                "has_headers": bool(s.headers_encrypted),
                 "created_at": s.created_at.isoformat() if s.created_at else None,
             }
             for s in servers
@@ -170,16 +186,17 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
 
     # Discover tools
     try:
-        tools = await _discover_tools(body.url, body.bearer_token)
+        tools = await _discover_tools(body.url, body.bearer_token, body.headers)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not connect to MCP server: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {e}")
 
     from app.core.encryption import encrypt_token
     server = McpServer(
         name=body.name, url=body.url, tools=tools, enabled=True,
         auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,
+        headers_encrypted=encrypt_token(json_mod.dumps(body.headers)) if body.headers else None,
     )
     db.add(server)
     await db.commit()
@@ -192,6 +209,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
         "tools": tools,
         "enabled": server.enabled,
         "has_auth": bool(server.auth_token_encrypted),
+        "has_headers": bool(server.headers_encrypted),
     }
 
 
@@ -205,12 +223,13 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
 
     from app.core.encryption import decrypt_token
     token = decrypt_token(server.auth_token_encrypted) if server.auth_token_encrypted else None
+    extra = json_mod.loads(decrypt_token(server.headers_encrypted)) if server.headers_encrypted else None
     try:
-        tools = await _discover_tools(server.url, token)
+        tools = await _discover_tools(server.url, token, extra)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not connect: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not connect: {e}")
 
     server.tools = tools
     from sqlalchemy.orm.attributes import flag_modified
@@ -224,6 +243,7 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
         "tools": tools,
         "enabled": server.enabled,
         "has_auth": bool(server.auth_token_encrypted),
+        "has_headers": bool(server.headers_encrypted),
     }
 
 
@@ -246,6 +266,9 @@ async def update_mcp_server(
     if body.bearer_token is not None:
         from app.core.encryption import encrypt_token
         server.auth_token_encrypted = encrypt_token(body.bearer_token) if body.bearer_token.strip() else None
+    if body.headers is not None:
+        from app.core.encryption import encrypt_token
+        server.headers_encrypted = encrypt_token(json_mod.dumps(body.headers)) if body.headers else None
 
     await db.commit()
     return {
@@ -255,6 +278,7 @@ async def update_mcp_server(
         "tools": server.tools or [],
         "enabled": server.enabled,
         "has_auth": bool(server.auth_token_encrypted),
+        "has_headers": bool(server.headers_encrypted),
     }
 
 
@@ -275,10 +299,13 @@ async def delete_mcp_server(server_id: int, user=Depends(require_admin), db: Asy
 async def probe_mcp_server(body: McpServerCreate, user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Probe an MCP server URL without saving it. Returns discovered tools."""
     try:
-        tools = await _discover_tools(body.url)
+        # Pass the submitted bearer token AND custom headers so a probe against a
+        # protected server actually authenticates (previously both were dropped →
+        # a correctly-configured server always failed the connection test).
+        tools = await _discover_tools(body.url, body.bearer_token, body.headers)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not connect to MCP server: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {e}")
 
     return {"url": body.url, "tools": tools, "tool_count": len(tools)}
