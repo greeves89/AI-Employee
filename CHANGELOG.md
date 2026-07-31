@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.116.2] — 2026-07-31
+
+### Changed
+- **System-Prompt (AGENT.md): klare Regel für Login/Passwortschutz in Apps.** Der App-Proxy entfernt aus Sicherheitsgründen Cookies + Authorization und sandboxed das Dokument — ein SERVER-seitiger Login (Session-Cookie, Redirect auf `/login`) funktioniert eingebettet in AI-Employee daher NICHT (Login-Schleife; absolute `/login`-Redirects brechen aus dem Proxy-Unterpfad aus). Neue Prompt-Regel: (1) Passwortschutz CLIENT-seitig bauen (JS-Overlay, Zustand nur im Speicher, kein Cookie/Storage, kein Server-Redirect) — nur weicher Gate, echter Schutz ist ohnehin der Plattform-Login davor; (2) der Agent sagt dem User PROAKTIV, dass eine echte-Login-App eingebettet nicht sauber läuft und dafür eine eigene Domain braucht; (3) generell proxy-taugliche Apps: relative statt absolute Pfade. Greift für neue/aktualisierte Agenten (CLAUDE.md wird beim Recreate bzw. per Live-Push neu geschrieben).
+
+---
+
 ## [1.116.1] — 2026-07-31
 
 ### Fixed
