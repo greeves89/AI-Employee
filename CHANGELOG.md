@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.3] — 2026-07-31
+
+### Fixed
+- **App-Proxy 502 bei langen Container-Namen behoben.** Der Reverse-Proxy proxte über den Container-NAMEN; compose-generierte Namen überschreiten aber oft das **63-Zeichen-DNS-Limit** (z. B. `agent-<id>-<langer-pfad>-<service>-1`, 81 Zeichen) und sind dann von Dockers DNS **nicht auflösbar** → 502 (Cloudflare Bad Gateway). Der Proxy nutzt jetzt die **Container-IP** auf `ai-employee-network` (Fallback: Name). Damit sind auch Apps mit langen Namen (Unterordner-Projekte) über den Tunnel erreichbar.
+
+---
+
 ## [1.115.2] — 2026-07-31
 
 ### Fixed

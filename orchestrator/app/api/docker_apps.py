@@ -724,7 +724,27 @@ async def proxy_app(
     if not str(c.labels.get("com.docker.compose.project", "")).startswith(prefix):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    target = f"http://{container}:{int(port)}/{rest}"
+    # Route to the container's IP on the shared platform network, NOT its name:
+    # compose-generated container names routinely exceed the 63-char DNS label limit
+    # (e.g. "agent-<id>-<longpath>-<service>-1") and are then UNRESOLVABLE by Docker's
+    # embedded DNS → the proxy 502s. The IP always works (both are on this network).
+    # Fall back to the name for short-named containers that predate this.
+    host = container
+    try:
+        nets = ((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
+        shared = nets.get("ai-employee-network") or {}
+        ip = shared.get("IPAddress") or ""
+        if not ip:
+            for _n in nets.values():
+                if _n.get("IPAddress"):
+                    ip = _n["IPAddress"]
+                    break
+        if ip:
+            host = ip
+    except Exception:  # noqa: BLE001 — fall back to the name
+        pass
+
+    target = f"http://{host}:{int(port)}/{rest}"
     body = await request.body()
     # NEVER forward the platform auth credentials to the app — it runs agent-authored
     # code and could otherwise read the owner's session cookie / bearer token.
