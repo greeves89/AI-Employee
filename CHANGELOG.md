@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.9] — 2026-07-31
+
+### Added
+- **Voice-Layer kann Apps jetzt auch neu bauen (`rebuild_app`).** Der Sprach-Layer hatte bisher nur `start_app` (baut beim ersten Hochfahren), `stop_app` und `restart_app` (bloßer Neustart, übernimmt KEINE Code-Änderungen). Neues Tool `rebuild_app` ruft — analog zum „Neu bauen"-Button — orchestrator-seitig `docker compose up -d --build --force-recreate` (bestehender `/agents/{id}/apps/rebuild`-Endpoint), im Hintergrund mit sofortiger Ansage und Web-Karte, sobald die App wieder läuft. Sprachbefehle: „bau App X neu / rebuild X / X mit den neuen Daten hochfahren / X aktualisieren". Start-/Rebuild-Reporting in einen gemeinsamen Helper `_report_app_up(verb)` zusammengezogen (keine Doppel-Logik). `voice_help` nennt den neuen Befehl.
+
+---
+
 ## [1.115.8] — 2026-07-31
 
 ### Added

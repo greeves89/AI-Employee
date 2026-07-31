@@ -451,6 +451,25 @@ RESTART_APP_TOOL = {
     }
 }
 
+REBUILD_APP_TOOL = {
+    "toolSpec": {
+        "name": "rebuild_app",
+        "description": (
+            "REBUILD one of my apps from its CURRENT code and restart it ('bau App X neu', "
+            "'rebuild X', 'X neu bauen', 'X mit den neuen Daten hochfahren', 'App X aktualisieren'). "
+            "Runs docker compose up -d --build --force-recreate orchestrator-side, so code/config "
+            "changes in the workspace actually take effect (a plain restart_app would NOT pick them "
+            "up). Pass the app name (workspace folder). Slower than restart because it rebuilds the "
+            "image."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"app": {"type": "string", "description": "App name / workspace folder."}},
+            "required": ["app"],
+        })},
+    }
+}
+
 CANCEL_TASK_TOOL = {
     "toolSpec": {
         "name": "cancel_task",
@@ -912,11 +931,14 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "mit X los / schau in die Logs / warum läuft X nicht' → app_logs(app) (Docker-Logs, Fehler "
         "zusammenfassen). 'starte X / fahr X hoch / mach X an / deploy X' → start_app(app). 'stopp "
         "X / fahr X runter' → stop_app(app). 'starte X neu' (läuft schon) → restart_app(app). "
-        "GANZ WICHTIG: Eine Docker-App starten/stoppen macht der ORCHESTRATOR über diese Tools — "
-        "versuche NIEMALS, docker oder docker-compose per plan_task/ask_agent laufen zu lassen (ich "
-        "als Agent habe selbst KEIN Docker, das schlägt fehl). Nur den CODE/die KONFIG einer App "
-        "ÄNDERN oder einen Fehler BEHEBEN geht per plan_task an mich (ich editiere die Dateien, "
-        "danach start_app). App-Namen = Workspace-Ordner aus list_apps.\n"
+        "'bau X neu / rebuild X / X mit den neuen Daten hochfahren' (nach Code-Änderungen) → "
+        "rebuild_app(app) — baut das Image neu (--build --force-recreate), damit Änderungen greifen; "
+        "ein bloßer restart_app übernimmt sie NICHT. "
+        "GANZ WICHTIG: Eine Docker-App starten/stoppen/neu bauen macht der ORCHESTRATOR über diese "
+        "Tools — versuche NIEMALS, docker oder docker-compose per plan_task/ask_agent laufen zu "
+        "lassen (ich als Agent habe selbst KEIN Docker, das schlägt fehl). Nur den CODE/die KONFIG "
+        "einer App ÄNDERN oder einen Fehler BEHEBEN geht per plan_task an mich (ich editiere die "
+        "Dateien, danach rebuild_app). App-Namen = Workspace-Ordner aus list_apps.\n"
         "• Wissensfragen / aktuelle Infos (News, Wetter, Preise, Fakten, Doku) → web_search "
         "(sofort, ohne den Agenten). Fasse die Ergebnisse gesprochen kurz zusammen.\n"
         "• Nutzer sagt 'merk dir …' / 'behalte … im Kopf' → save_memory (sofort, legt es in mein "
@@ -1102,6 +1124,7 @@ class RealtimeVoiceSession:
             M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
+            REBUILD_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1486,6 +1509,9 @@ class RealtimeVoiceSession:
             return
         if name == "stop_app":
             await self._respond(tool_use_id, await self._stop_app(str(args.get("app") or "")))
+            return
+        if name == "rebuild_app":
+            await self._respond(tool_use_id, await self._rebuild_app(str(args.get("app") or "")))
             return
         if name == "restart_app":
             await self._respond(tool_use_id, await self._restart_app(str(args.get("app") or "")))
@@ -2882,6 +2908,47 @@ class RealtimeVoiceSession:
         except Exception as e:  # noqa: BLE001 — HTTPException.detail or generic
             err = getattr(e, "detail", None) or str(e)
             logger.warning("voice start_app failed agent=%s app=%s: %s", self.agent_id, rel, err)
+        await self._report_app_up(rel, result, err, "gestartet")
+
+    async def _rebuild_app(self, app: str) -> str:
+        """Rebuild an app from its CURRENT workspace code (up -d --build --force-recreate)
+        via the orchestrator, so code/config changes actually take effect. Background +
+        immediate ack, result voiced when it's back up."""
+        rel = (app or "").strip().strip("/")
+        if not rel:
+            return "Welche App soll ich neu bauen?"
+        if not self.user_id or self.user_id == "unknown":
+            return "Ich kann Apps nur mit Nutzerkontext neu bauen — bitte einmal über die Web-Oberfläche."
+        asyncio.create_task(self._rebuild_app_bg(rel))
+        return (
+            f"Ich baue die App „{rel}“ jetzt aus dem aktuellen Stand neu und fahre sie hoch (das "
+            "dauert etwas länger als ein Neustart). Sag dem Nutzer knapp in der ICH-Form, dass du "
+            "sie neu baust und dich meldest, sobald sie wieder läuft."
+        )
+
+    async def _rebuild_app_bg(self, rel: str) -> None:
+        from app.db.session import async_session_factory
+        from app.services.docker_service import DockerService
+        from app.models.user import User
+        from app.api.docker_apps import rebuild_app as _api_rebuild_app
+        result, err = None, None
+        try:
+            async with async_session_factory() as db:
+                user = await db.get(User, self.user_id)
+                if user is None:
+                    raise RuntimeError("kein Nutzerkontext")
+                result = await _api_rebuild_app(
+                    self.agent_id, path=rel, user=user, db=db, docker=DockerService(),
+                )
+        except Exception as e:  # noqa: BLE001 — HTTPException.detail or generic
+            err = getattr(e, "detail", None) or str(e)
+            logger.warning("voice rebuild_app failed agent=%s app=%s: %s", self.agent_id, rel, err)
+        await self._report_app_up(rel, result, err, "neu gebaut")
+
+    async def _report_app_up(self, rel: str, result, err, verb: str) -> None:
+        """Shared voicing for start_app/rebuild_app: verify real container state, show a
+        web card via the proxy URL, and inject a spoken status note. `verb` is the past
+        participle used in the message ('gestartet' / 'neu gebaut')."""
         if self._closed or not self._nova:
             return
         conts = result.get("containers") if result else None
@@ -2929,7 +2996,7 @@ class RealtimeVoiceSession:
                 except Exception:  # noqa: BLE001
                     pass
             note = (
-                f"HINWEIS (kein Nutzerbefehl): Die App „{rel}“ wurde erfolgreich gestartet "
+                f"HINWEIS (kein Nutzerbefehl): Die App „{rel}“ wurde erfolgreich {verb} "
                 f"({len(conts)} Container)."
                 + (" Ich habe sie dem Nutzer HIER als Web-Karte zum Öffnen angezeigt." if shown else "")
                 + "\nSag dem Nutzer JETZT kurz in der ICH-Form, dass die App läuft"
@@ -2938,7 +3005,7 @@ class RealtimeVoiceSession:
             )
         else:
             note = (
-                f"HINWEIS (kein Nutzerbefehl): Der Start der App „{rel}“ ist fehlgeschlagen: "
+                f"HINWEIS (kein Nutzerbefehl): Die App „{rel}“ konnte nicht {verb} werden: "
                 f"{(err or 'unbekannter Fehler')[:300]}\nSag dem Nutzer kurz Bescheid — ich kann "
                 "den Fehler auch als Aufgabe an mich zum Beheben geben (plan_task)."
             )
