@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.8] — 2026-07-31
+
+### Added
+- **„Neu bauen"-Button auf der Apps-Seite.** Bisher gab es nur Starten/Stoppen/Öffnen/Logs — „Starten" reused nur das bestehende Image/den Container, sodass Code-/Datenänderungen einer App nie übernommen wurden. Neuer Button ruft `docker compose up -d --build --force-recreate` (bestehender `/agents/{id}/apps/rebuild`-Endpoint) → die App wird aus dem aktuellen Workspace-Code neu gebaut. Erscheint bei jeder App mit bekanntem Workspace-Pfad (laufend wie gestoppt).
+
+---
+
 ## [1.115.7] — 2026-07-31
 
 ### Changed

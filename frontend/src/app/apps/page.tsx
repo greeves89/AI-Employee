@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag, CheckCircle2 } from "lucide-react";
+import { AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag, CheckCircle2, Hammer } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -158,6 +158,13 @@ export default function AppsPage() {
                       <button onClick={() => act(app.project, () => api.stopApp(app.project))} disabled={isBusy}
                         className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors">
                         {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />} Stoppen
+                      </button>
+                    )}
+                    {app.path && (
+                      <button onClick={() => act(app.project, () => api.rebuildDockerApp(app.agent_id, app.path!))} disabled={isBusy}
+                        title="Image aus dem aktuellen Code neu bauen (--build --force-recreate) — übernimmt Code-/Datenänderungen"
+                        className="flex items-center gap-1.5 rounded-lg bg-blue-500/10 px-3 py-1.5 text-sm font-medium text-blue-400 hover:bg-blue-500/20 disabled:opacity-50 transition-colors">
+                        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hammer className="h-4 w-4" />} Neu bauen
                       </button>
                     )}
                     {app.containers.length > 0 && (
