@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.log_redaction import redact_logs
 from app.models.agent import Agent
 from app.telegram.agent_bot import TelegramAgentBot
 
@@ -62,7 +63,7 @@ class TelegramBotManager:
             self._bots[agent_id] = bot
             self._retry_tasks.pop(agent_id, None)
         except Exception as e:
-            print(f"[Telegram] Failed to start bot for {agent_name}: {e}")
+            print(redact_logs(f"[Telegram] Failed to start bot for {agent_name}: {e}"))
             raise
 
     async def stop_bot(self, agent_id: str) -> None:
@@ -115,7 +116,7 @@ class TelegramBotManager:
                 try:
                     await self.start_bot(agent.id, agent.name, bot_token, auth_key)
                 except Exception as e:
-                    print(f"[Telegram] Bot for {agent.name} not started yet: {e}")
+                    print(redact_logs(f"[Telegram] Bot for {agent.name} not started yet: {e}"))
                     self._schedule_retry(agent.id, agent.name, bot_token, auth_key)
 
     def _schedule_retry(self, agent_id: str, agent_name: str, bot_token: str, auth_key: str) -> None:
@@ -131,7 +132,7 @@ class TelegramBotManager:
                     await self.start_bot(agent_id, agent_name, bot_token, auth_key)
                     return
                 except Exception as e:
-                    print(f"[Telegram] Retry failed for {agent_name}: {e}")
+                    print(redact_logs(f"[Telegram] Retry failed for {agent_name}: {e}"))
                     delay = min(delay * 2, 300)
 
         self._retry_tasks[agent_id] = asyncio.create_task(retry_loop())

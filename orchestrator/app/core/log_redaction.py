@@ -25,6 +25,10 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
     # JWTs (three base64url segments).
     (re.compile(r"\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"), "[REDACTED_JWT]"),
+    # Telegram bot tokens: <bot_id>:<secret> (e.g. from InvalidToken error text
+    # "The token 123456:AA... was rejected by the server"). Not a bearer/JWT, so
+    # it needs its own rule.
+    (re.compile(r"\b\d{6,}:[A-Za-z0-9_\-]{30,}"), "[REDACTED_TELEGRAM_TOKEN]"),
     # KEY=VALUE / "key": "value" for anything that smells sensitive. The
     # separator swallows an optional closing quote of the key so JSON-style
     # `"password": "…"` is caught as well as env-style `PASSWORD=…`.

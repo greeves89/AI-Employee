@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -2376,6 +2377,13 @@ class TelegramConfigUpdate(BaseModel):
     bot_token: str
 
 
+# A Telegram bot token is "<bot_id>:<secret>". Validating the shape before any
+# provider round-trip rejects a pasted BotFather confirmation message (which
+# embeds the token in prose) up front, so an invalid value is neither persisted
+# nor echoed back through an error string. See issue #372.
+_TELEGRAM_TOKEN_RE = re.compile(r"^\d{6,}:[A-Za-z0-9_-]{30,}$")
+
+
 @router.get("/{agent_id}/telegram")
 async def get_agent_telegram(
     agent_id: str,
@@ -2427,13 +2435,25 @@ async def set_agent_telegram(
     from sqlalchemy.orm.attributes import flag_modified
     from app.telegram.bot_manager import generate_auth_key
 
+    from app.core.log_redaction import redact_logs
+
+    bot_token = body.bot_token.strip()
+    # Reject a malformed value (e.g. a pasted BotFather message) before it is
+    # persisted or sent to Telegram, so the secret never reaches a log or an
+    # error response. See issue #372.
+    if not _TELEGRAM_TOKEN_RE.match(bot_token):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid bot token format. Paste only the token (e.g. 123456:AA...), not the whole BotFather message.",
+        )
+
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
 
         # Generate auth key if not exists
         auth_key = config.get("telegram_auth_key") or generate_auth_key()
-        config["telegram_bot_token"] = body.bot_token
+        config["telegram_bot_token"] = bot_token
         config["telegram_auth_key"] = auth_key
         agent.config = config
         flag_modified(agent, "config")
@@ -2445,15 +2465,16 @@ async def set_agent_telegram(
             import app.main as main_mod
             tg_manager = getattr(main_mod.app.state, "telegram_bot_manager", None)
             if tg_manager:
-                await tg_manager.start_bot(agent_id, agent.name, body.bot_token, auth_key)
+                await tg_manager.start_bot(agent_id, agent.name, bot_token, auth_key)
                 bot_running = True
         except Exception as e:
-            # Token may be invalid - save config but report error
+            # Token may be invalid - save config but report error. Redact so a
+            # provider error that echoes the token verbatim never leaks (#372).
             return {
                 "agent_id": agent_id,
                 "auth_key": auth_key,
                 "bot_running": False,
-                "error": str(e),
+                "error": redact_logs(str(e)),
             }
 
         return {
