@@ -791,6 +791,14 @@ class AgentManager:
             s.name: decrypt_token(s.auth_token_encrypted)
             for s in servers if s.auth_token_encrypted
         }
+        # Custom auth headers (x-api-key etc.) for servers that don't use Bearer.
+        headers_map: dict[str, dict] = {}
+        for s in servers:
+            if getattr(s, "headers_encrypted", None):
+                try:
+                    headers_map[s.name] = json.loads(decrypt_token(s.headers_encrypted))
+                except Exception:  # noqa: BLE001 — skip a corrupt entry, don't break the agent
+                    logger.warning("Could not decode custom headers for MCP server %s", s.name)
 
         # Auto-inject MS Graph MCP server when agent has microsoft integration.
         # The agent's MCP client authenticates with the agent's HMAC bearer token
@@ -810,6 +818,8 @@ class AgentManager:
         env = {"CUSTOM_MCP_SERVERS": json.dumps(mcp_map)}
         if auth_map:
             env["CUSTOM_MCP_AUTH"] = json.dumps(auth_map)
+        if headers_map:
+            env["CUSTOM_MCP_HEADERS"] = json.dumps(headers_map)
         return env
 
     async def _get_integration_env(self, agent_integrations: list[str], user_id: str | None = None) -> dict[str, str]:

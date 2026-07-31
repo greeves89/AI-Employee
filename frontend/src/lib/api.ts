@@ -1056,6 +1056,7 @@ export interface McpServerInfo {
   tools: McpTool[];
   enabled: boolean;
   has_auth?: boolean;
+  has_headers?: boolean;
   created_at: string | null;
 }
 
@@ -1069,10 +1070,16 @@ export async function getMcpServers(): Promise<{ servers: McpServerInfo[] }> {
   return fetchJSON(`${getBase()}/mcp-servers`);
 }
 
-export async function addMcpServer(name: string, url: string, bearerToken?: string): Promise<McpServerInfo> {
+export async function addMcpServer(
+  name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
+): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers`, {
     method: "POST",
-    body: JSON.stringify({ name, url, ...(bearerToken ? { bearer_token: bearerToken } : {}) }),
+    body: JSON.stringify({
+      name, url,
+      ...(bearerToken ? { bearer_token: bearerToken } : {}),
+      ...(headers && Object.keys(headers).length ? { headers } : {}),
+    }),
   });
 }
 
@@ -1080,7 +1087,10 @@ export async function refreshMcpServer(id: number): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers/${id}/refresh`, { method: "POST" });
 }
 
-export async function updateMcpServer(id: number, data: { name?: string; url?: string; enabled?: boolean }): Promise<McpServerInfo> {
+export async function updateMcpServer(
+  id: number,
+  data: { name?: string; url?: string; enabled?: boolean; bearer_token?: string; headers?: Record<string, string> },
+): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -1091,10 +1101,18 @@ export async function deleteMcpServer(id: number): Promise<void> {
   await fetchJSON(`${getBase()}/mcp-servers/${id}`, { method: "DELETE" });
 }
 
-export async function probeMcpServer(name: string, url: string): Promise<{ url: string; tools: McpTool[]; tool_count: number }> {
+// Probe an MCP server WITHOUT saving — must include the same auth (bearer token +
+// custom headers) so a protected server can actually be reached during the test.
+export async function probeMcpServer(
+  name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
+): Promise<{ url: string; tools: McpTool[]; tool_count: number }> {
   return fetchJSON(`${getBase()}/mcp-servers/probe`, {
     method: "POST",
-    body: JSON.stringify({ name, url }),
+    body: JSON.stringify({
+      name, url,
+      ...(bearerToken ? { bearer_token: bearerToken } : {}),
+      ...(headers && Object.keys(headers).length ? { headers } : {}),
+    }),
   });
 }
 

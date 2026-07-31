@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.0] — 2026-07-31
+
+### Fixed (externe MCP-Server — Feedback aus Kollegen-Setup)
+- **`/mcp-servers/probe` reicht den Bearer-Token (und Custom-Header) jetzt durch.** Bisher rief `probe_mcp_server` `_discover_tools(url)` ohne Auth auf → ein „Verbindung testen" gegen einen geschützten MCP-Server schlug IMMER fehl, auch bei korrektem Token. Backend + Frontend (`probeMcpServer`) senden nun die Auth mit.
+- **Ziel-Server-Fehler kommen als 400 statt 502** (mit der echten Ursache im `detail`). Ein 502 wurde von einem vorgelagerten Cloudflare-Tunnel durch dessen eigene Bad-Gateway-Seite ersetzt → die eigentliche Meldung ging verloren und der Betreiber hielt den eigenen Dienst für ausgefallen. Jetzt übersteht die Fehlermeldung den Proxy.
+
+### Added
+- **Freie Auth-Header für externe MCP-Server.** Neben dem Bearer-Token kann pro MCP-Server jetzt ein Satz **eigener Header** (z. B. `x-api-key`, `x-consumer-api-key`, `X-Auth-Token`) hinterlegt werden — Fernet-verschlüsselt wie der Token. Nötig für Server wie Composio (dokumentiert `x-consumer-api-key`), Home Assistant, UniFi. Umgesetzt am Model (`headers_encrypted`), in `_discover_tools` (Merge), allen Endpoints, im Agent-MCP-Client (`_mcp_headers` + `CUSTOM_MCP_HEADERS`-Env) und im Integrations-Formular (ein „Name: Wert" pro Zeile). Der bestehende `bearer_token` bleibt als Kurzform.
+
+> Hinweis: Der Orchestrator-seitige Teil (Verbindungstest, Anlegen, Tool-Discovery mit Header) wirkt sofort. Der Agent-seitige Laufzeit-Header-Merge greift, sobald das Agent-Image neu gebaut und der jeweilige Agent neu erstellt wird.
+
+---
+
 ## [1.114.0] — 2026-07-30
 
 ### Added
