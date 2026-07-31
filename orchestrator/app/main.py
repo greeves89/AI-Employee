@@ -221,8 +221,8 @@ async def _refresh_claude_token() -> None:
 
     service = ClaudeTokenService()
 
-    # Load initial token from Keychain file (or fallback to env/DB)
-    service.write_initial_token()
+    # Load initial token (DB → Keychain file → env, same order as refresh)
+    await service.write_initial_token()
 
     last_forced_refresh_date: str = ""
 
@@ -1243,7 +1243,7 @@ clean Markdown; you don't need to commit.
     from app.services.claude_token_service import ClaudeTokenService
 
     token_svc = ClaudeTokenService()
-    token_svc.write_initial_token()
+    await token_svc.write_initial_token()
     logger.info("Claude token initialized (background sync every 2 min from Keychain file)")
 
     try:
