@@ -10,6 +10,7 @@ except ImportError:
     _CRONITER_AVAILABLE = False
 
 from sqlalchemy import and_, delete, select
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_manager import PROACTIVE_PROMPT
@@ -28,6 +29,13 @@ from app.services.watchdog import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Connect-level DB errors that resilient_session already retried and exhausted
+# during a brief DB blip (restart/failover). They self-heal on the next tick, so
+# the two bare DB-touching sub-ticks below log them as a clean WARNING instead of
+# letting them surface as a full-traceback ERROR via the outer loop handler —
+# matching how every other sub-tick in run() reports its own failures.
+_TRANSIENT_DB_ERRORS = (OperationalError, DBAPIError, ConnectionError, TimeoutError)
 
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
@@ -75,7 +83,13 @@ class SchedulerService:
                     await self._tick_missed_schedule_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] MissedScheduleWatchdog error: %s", e)
-                await self._check_due_schedules()
+                try:
+                    await self._check_due_schedules()
+                except _TRANSIENT_DB_ERRORS as e:
+                    logger.warning(
+                        "[Scheduler] DueSchedules DB unavailable (transient, "
+                        "retrying next tick): %s", e,
+                    )
                 # Stale-task watchdog: flag RUNNING tasks with no heartbeat >30min.
                 try:
                     await self._tick_stale_task_watchdog()
@@ -98,7 +112,12 @@ class SchedulerService:
                 self._gc_counter += 30
                 if self._gc_counter >= _GC_INTERVAL_SECONDS:
                     self._gc_counter = 0
-                    await self._gc_expired_tasks()
+                    try:
+                        await self._gc_expired_tasks()
+                    except _TRANSIENT_DB_ERRORS as e:
+                        logger.warning(
+                            "[Scheduler] GC DB unavailable (transient): %s", e,
+                        )
                 self._idle_stop_counter += 30
                 if self._idle_stop_counter >= 300:  # every 5 min
                     self._idle_stop_counter = 0
