@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.117.0] — 2026-07-31
+
+### Added
+- **Agent gibt dem User jetzt die KORREKTE, teilbare App-URL** (statt `localhost`/Host-Port/„docker compose"/ZIP). Ursache des Dauerproblems: der Agent wusste nicht, dass er INNERHALB der Plattform läuft, und kannte seine öffentliche App-URL nicht.
+  - Neues Setting `PUBLIC_APP_URL` (Cloudflare-Tunnel-Domain, z. B. `https://agents.future-app.de`) in Config + docker-compose (`environment`).
+  - `list_apps`/`start_app`/`rebuild_app` liefern pro laufender App die **absolute App-Proxy-URL** (`{PUBLIC_APP_URL}/api/v1/agents/<id>/apps/proxy/<container>/<port>/`) — in beiden Agent-Laufzeiten (MCP `.mjs` + Codex `api_client.py`) und in der Ausgabe an den Agenten.
+  - **System-Prompt:** Wenn der User den App-Link will → GENAU die URL aus `list_apps` weitergeben (Plattform-Link, von überall nach AI-Employee-Login erreichbar). NIEMALS `localhost`, Host-Ports, `docker compose up` oder „ZIP entpacken". Plus Klarstellung: App-Daten persistieren SERVER-seitig im Docker-Volume (kein Browser-Speicher).
+
+### Changed
+- Agent-Image-Version → 1.117.0 (Recreate nötig, damit bestehende Agenten die URL-Ausgabe bekommen).
+
+---
+
 ## [1.116.2] — 2026-07-31
 
 ### Changed

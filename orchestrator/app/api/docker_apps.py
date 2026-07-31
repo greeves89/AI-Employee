@@ -263,6 +263,39 @@ def _connect_containers_to_network(docker: DockerService, project_name: str) -> 
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _app_public_url(agent_id: str, containers: list[dict]) -> str | None:
+    """Build the absolute, tunnel-reachable app-proxy URL for a RUNNING app, or None.
+
+    Needs ``settings.public_app_url`` (e.g. https://agents.future-app.de) plus a running
+    container's NAME + its internal port. This is THE link an agent hands to the user
+    (never localhost/host-port — those don't work off-device). Requires the platform
+    login, like every other /api/* route.
+    """
+    from app.config import settings
+    base = (settings.public_app_url or "").rstrip("/")
+    if not base:
+        return None
+    for c in containers:
+        if c.get("state") != "running" and c.get("status") != "running":
+            continue
+        name = c.get("name") or ""
+        internal = ""
+        for p in (c.get("ports") or []):
+            cp = str(p.get("container_port") or "").split("/")[0]
+            if cp.isdigit():
+                internal = cp
+                break
+        if not internal:
+            for ep in (c.get("exposed_ports") or []):
+                cp = str(ep).split("/")[0]
+                if cp.isdigit():
+                    internal = cp
+                    break
+        if name and internal:
+            return f"{base}/api/v1/agents/{agent_id}/apps/proxy/{name}/{internal}/"
+    return None
+
+
 async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> dict:
     # Find all compose files in workspace (max depth 3 to avoid deep recursion).
     # The agent's own container may be momentarily stopped (DB still has its id) — in
@@ -343,6 +376,7 @@ async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> 
             "services": services,
             "status": status,
             "containers": running_containers,
+            "url": _app_public_url(agent_id, running_containers) if status in ("running", "partial") else None,
         })
 
     return {"apps": apps}
@@ -419,7 +453,8 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
     _connect_containers_to_network(docker, project_name)
     containers = _get_project_containers(docker, project_name)
     logger.info(f"Docker app started: {project_name} ({len(containers)} containers)")
-    return {"project": project_name, "status": "running", "containers": containers, "output": output}
+    return {"project": project_name, "status": "running", "containers": containers,
+            "url": _app_public_url(agent_id, containers), "output": output}
 
 
 async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: str) -> dict:
@@ -463,7 +498,8 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
 
     _connect_containers_to_network(docker, project_name)
     containers = _get_project_containers(docker, project_name)
-    return {"project": project_name, "status": "running", "containers": containers, "output": output}
+    return {"project": project_name, "status": "running", "containers": containers,
+            "url": _app_public_url(agent_id, containers), "output": output}
 
 
 def _logs_core(docker: DockerService, agent_id: str, path: str, service: str | None, lines: int) -> dict:

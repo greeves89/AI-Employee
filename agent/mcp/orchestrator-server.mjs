@@ -1346,9 +1346,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const lines = apps.map((a) => {
         const svc = (a.services || []).map((s) => s.name).join(", ");
         const conts = (a.containers || []).length;
-        return `- ${a.name} (path: ${a.path}) — ${a.status}${conts ? `, ${conts} Container` : ""}${svc ? ` [services: ${svc}]` : ""}`;
+        const url = a.url ? `\n    Link (an User geben): ${a.url}` : "";
+        return `- ${a.name} (path: ${a.path}) — ${a.status}${conts ? `, ${conts} Container` : ""}${svc ? ` [services: ${svc}]` : ""}${url}`;
       });
-      return { content: [{ type: "text", text: `Meine Apps:\n${lines.join("\n")}` }] };
+      return { content: [{ type: "text", text: `Meine Apps:\n${lines.join("\n")}\n\nHINWEIS: Wenn der User den Link/die URL zu einer App will, gib GENAU die obige "Link"-URL weiter (das ist der Plattform-Link, von überall erreichbar nach AI-Employee-Login). NIEMALS localhost, Host-Ports oder "docker compose"/ZIP nennen.` }] };
     }
 
     case "app_logs": {
@@ -1368,7 +1369,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const q = new URLSearchParams({ path: args.path });
       const result = await apiCall(`/agent-apps/up?${q.toString()}`, { method: "POST" });
       const conts = (result.containers || []).length;
-      return { content: [{ type: "text", text: `App „${args.path}" gestartet (${conts} Container, ${result.status}).` }] };
+      const url = result.url ? ` Link für den User: ${result.url}` : "";
+      return { content: [{ type: "text", text: `App „${args.path}" gestartet (${conts} Container, ${result.status}).${url}` }] };
     }
 
     case "stop_app": {
@@ -1381,7 +1383,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const q = new URLSearchParams({ path: args.path });
       const result = await apiCall(`/agent-apps/rebuild?${q.toString()}`, { method: "POST" });
       const conts = (result.containers || []).length;
-      return { content: [{ type: "text", text: `App „${args.path}" neu gebaut und gestartet (${conts} Container, ${result.status}).` }] };
+      const url = result.url ? ` Link für den User: ${result.url}` : "";
+      return { content: [{ type: "text", text: `App „${args.path}" neu gebaut und gestartet (${conts} Container, ${result.status}).${url}` }] };
     }
 
     default:

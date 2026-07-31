@@ -162,6 +162,12 @@ class Settings(BaseSettings):
     oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
 
+    # Public, externally-reachable base URL of THIS platform (e.g. the Cloudflare
+    # tunnel domain "https://agents.future-app.de"). Used to build absolute,
+    # shareable app links (the app-proxy URL) that an agent can hand to the user via
+    # Telegram/chat/voice. Empty → only a relative path is available (web UI only).
+    public_app_url: str = ""
+
     # Expose the MS Graph MCP server to external LLM clients (e.g. OpenWebUI) via
     # our built-in OAuth 2.1 AS. Admin-only; only effective when a Microsoft app
     # registration (oauth_microsoft_client_id) is configured. Default OFF.

@@ -915,8 +915,14 @@ class OrchestratorAPIClient:
             conts = len(a.get("containers", []))
             extra = f", {conts} Container" if conts else ""
             svc_s = f" [services: {svc}]" if svc else ""
-            lines.append(f"- {a.get('name')} (path: {a.get('path')}) — {a.get('status')}{extra}{svc_s}")
-        return "Meine Apps:\n" + "\n".join(lines)
+            url_s = f"\n    Link (an User geben): {a['url']}" if a.get("url") else ""
+            lines.append(f"- {a.get('name')} (path: {a.get('path')}) — {a.get('status')}{extra}{svc_s}{url_s}")
+        return (
+            "Meine Apps:\n" + "\n".join(lines)
+            + "\n\nHINWEIS: Wenn der User den Link/die URL zu einer App will, gib GENAU die obige "
+            "„Link\"-URL weiter (Plattform-Link, von überall erreichbar nach AI-Employee-Login). "
+            "NIEMALS localhost, Host-Ports oder „docker compose\"/ZIP nennen."
+        )
 
     async def app_logs(self, params: dict) -> str:
         """Container logs of one of my apps."""
@@ -940,7 +946,8 @@ class OrchestratorAPIClient:
         if isinstance(result, str):
             return result
         conts = len(result.get("containers", []))
-        return f"App „{params.get('path')}“ gestartet ({conts} Container, {result.get('status')})."
+        url_s = f" Link für den User: {result['url']}" if result.get("url") else ""
+        return f"App „{params.get('path')}“ gestartet ({conts} Container, {result.get('status')}).{url_s}"
 
     async def stop_app(self, params: dict) -> str:
         """Stop one of my apps (down)."""
@@ -955,7 +962,8 @@ class OrchestratorAPIClient:
         if isinstance(result, str):
             return result
         conts = len(result.get("containers", []))
-        return f"App „{params.get('path')}“ neu gebaut und gestartet ({conts} Container, {result.get('status')})."
+        url_s = f" Link für den User: {result['url']}" if result.get("url") else ""
+        return f"App „{params.get('path')}“ neu gebaut und gestartet ({conts} Container, {result.get('status')}).{url_s}"
 
     async def close(self) -> None:
         """Close the HTTP client."""
