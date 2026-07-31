@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.2] — 2026-07-31
+
+### Fixed
+- **Alembic-Cycle behoben (durch die 1.115.1-Migration verursacht).** Die Revision-ID `a1b2c3d4e5f6` existierte bereits mehrfach im Repo; die neue Migration kollidierte und alembic meldete beim vollständigen Traversieren „Cycle is detected". Die Migration ist entfernt; `mcp_servers.headers_encrypted` wird jetzt — wie job_state/reflection — über einen **immer laufenden, idempotenten Ensure-Block** angelegt (die Migrations-Kette ist bewusst multi-head, es werden keine neuen Migrations mehr angehängt). Der Orchestrator läuft damit wieder über den normalen Alembic-Pfad statt in den create_all-Fallback zu kippen.
+
+---
+
 ## [1.115.1] — 2026-07-31
 
 ### Fixed
