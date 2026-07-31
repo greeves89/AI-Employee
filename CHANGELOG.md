@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.5] — 2026-07-31
+
+### Fixed
+- **Orchestrator-Start überschreibt nicht mehr den gültigen Shared-Token mit einem veralteten `.env`-Wert (Issue #377).** `ClaudeTokenService.write_initial_token()` folgte einer anderen Prioritätenreihenfolge als `refresh_access_token()` und der Modul-Doku: Es übersprang Priorität 1 (die DB) und fiel von der Keychain-Datei direkt auf `settings.claude_code_oauth_token` (`.env`) zurück. Da es beim Start läuft, überschrieb es die bereits gültige `/shared/.auth/token.json` auf dem persistenten Volume mit einem möglicherweise veralteten `.env`-Token — Agents im Zeitfenster bis zum ersten `refresh_access_token()`-Lauf (~50 s) meldeten irreführend `401 OAuth access token has been revoked`. Jetzt ist `write_initial_token()` `async` und konsultiert dieselbe Reihenfolge wie `refresh_access_token()` (DB → Keychain → env), sodass ein gültiger Shared-Token nicht mehr überschrieben wird. Zusätzlich weigert sich `_write_shared_token()` jetzt, eine **vorhandene** Token-Datei mit einem offensichtlich unbrauchbaren (zu kurzen) Platzhalter zu überschreiben. Beide `write_initial_token()`-Aufrufstellen in `main.py` werden nun `await`et. (Deploy-Gate: Orchestrator-Rebuild.)
+
+---
+
 ## [1.115.4] — 2026-07-31
 
 ### Security
