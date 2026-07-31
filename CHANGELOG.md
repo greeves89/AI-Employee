@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.117.2] — 2026-07-31
+
+### Changed
+- **Proportionalitäts-Regel jetzt in den echten Runtime-Instructions** (`DEFAULT_CLAUDE_MD` in agent_manager.py → wird als `AGENT.md`/`CLAUDE.md` in jeden Agenten geschrieben). Die 1.117.1-Fassung lag im `_PLATFORM_SECTION` (Create-Zeit-Knowledge) und erreichte laufende Agenten nicht. Zusätzlich die konkreten Dauer-Trigger entschärft: „memory_search at START of every conversation", „list_todos ALWAYS FIRST", „Knowledge Access — use EVERY session", „At START of every conversation 3× brain_search", „knowledge.md at START/END of every task" → alle auf „am Anfang einer NEUEN Unterhaltung / echten Aufgabe, dann on-demand; bei Trivialfragen überspringen". Neue Leitregel „Effort proportional to the request" ganz oben. Live in die laufenden Container gepusht (kein Recreate).
+
+---
+
 ## [1.117.1] — 2026-07-31
 
 ### Changed
