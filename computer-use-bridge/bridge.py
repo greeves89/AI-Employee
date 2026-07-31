@@ -429,11 +429,17 @@ class Bridge:
                 "then pass the session ID with --session <id>."
             )
 
-        query = urllib.parse.urlencode({"session_id": self.session_id, "token": self.token})
+        # The JWT is sent as an Authorization header only, never in the URL:
+        # query strings land in reverse-proxy access logs, referrer headers and
+        # log rotation. The server reads the header when no query token is
+        # present. See issue #373.
+        query = urllib.parse.urlencode({"session_id": self.session_id})
         url = f"{self.ws_url}/ws/computer-use/bridge?{query}"
         headers = {"Authorization": f"Bearer {self.token}"}
         ssl_context = _ssl_ctx if url.startswith("wss://") else None
-        log.info(f"Connecting to {url}")
+        # Log without the query string so no credential (now or in future) leaks
+        # into the client log file.
+        log.info(f"Connecting to {self.ws_url}/ws/computer-use/bridge")
 
         async for ws in websockets.connect(
             url,
