@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.3] — 2026-07-31
+
+### Security
+- **Telegram-Bot-Token nicht mehr im Klartext geloggt oder zurückgegeben (Issue #372, CWE-532).** Schlug der Start eines Agent-Bots fehl, enthielt die `InvalidToken`-Meldung von `python-telegram-bot` den eingegebenen Token wörtlich (*„The token … was rejected"*) — dieser landete über `{e}` im Orchestrator-Log und wurde vom `PUT /agents/{id}/telegram`-Endpoint an den Client zurückgegeben. Jetzt: (1) neuer Telegram-Token-Redaction-Pattern in `log_redaction`, mit dem alle Fehler-Logs im `bot_manager` maskiert werden; (2) die API-Fehlerantwort läuft durch `redact_logs`; (3) das Token-Format wird server-seitig **vor** dem Persistieren/Start geprüft (`^\d{6,}:[A-Za-z0-9_-]{30,}$`) — eine eingefügte BotFather-Nachricht wird mit HTTP 400 abgewiesen, ohne gespeichert oder an Telegram gesendet zu werden.
+
+---
+
 ## [1.115.2] — 2026-07-31
 
 ### Fixed

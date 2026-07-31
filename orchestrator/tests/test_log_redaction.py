@@ -37,6 +37,14 @@ class LogRedactionTests(unittest.TestCase):
         ]:
             self._assert_gone(line, secret)
 
+    def test_telegram_bot_token_redacted(self):
+        # python-telegram-bot's InvalidToken embeds the token in prose.
+        token = "123456789:AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP"
+        self._assert_gone(f"The token {token} was rejected by the server", token)
+        self._assert_gone(
+            f"[Telegram] Failed to start bot for Bob: The token `{token}` was rejected", token
+        )
+
     def test_private_key_block_redacted(self):
         block = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----"
         self._assert_gone(f"key:\n{block}", "MIIEowIBAAKCAQEA")
