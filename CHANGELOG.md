@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.115.7] — 2026-07-31
+
+### Changed
+- **System-Prompt (AGENT.md): klare Regel, wo Apps hingehören.** Agenten legten lauffähige Apps teils in `/workspace/transfer/` an (der Ausliefer-Ordner) statt in `/workspace/projects/` — die Plattform entdeckte dann zwei Kopien und startete beide. Der Prompt sagt jetzt explizit: Docker-/Web-Apps gehören in EINE Stelle `/workspace/projects/<name>/`, NIE zusätzlich in `transfer/`; der Agent-Container hat selbst KEIN Docker (`docker compose` nicht selbst ausführen) — die Plattform entdeckt Apps unter `projects/` und startet sie über den Orchestrator; erreichbar über den App-Proxy, nicht über einen Host-Port. Greift für neue/aktualisierte Agenten.
+
+---
+
 ## [1.115.6] — 2026-07-31
 
 ### Fixed
