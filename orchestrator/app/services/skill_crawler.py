@@ -268,8 +268,13 @@ class SkillCrawlerService:
             raise RuntimeError("invalid ref")
 
         tmp = tempfile.mkdtemp(prefix="skillsrc-")
+        real_tmp = os.path.realpath(tmp)
         try:
-            cmd = ["git", "clone", "--depth", "1"]
+            # `-c core.symlinks=false` makes git materialise any symlink in the repo as a
+            # PLAIN TEXT file (its target path as content) instead of a real link. A
+            # malicious repo therefore cannot point SKILL.md at a host file
+            # (/shared/.auth/token.json, the encryption key, …) to exfiltrate it.
+            cmd = ["git", "-c", "core.symlinks=false", "clone", "--depth", "1"]
             if ref:
                 cmd += ["--branch", ref]
             # `--` terminates option parsing so the URL/dir can never be read as flags.
@@ -287,11 +292,26 @@ class SkillCrawlerService:
                 # Scrub the injected credential from any error before it surfaces.
                 err = (stderr.decode("utf-8", "replace") if stderr else "").replace(clone_url, url)
                 raise RuntimeError(f"git clone failed: {err.strip()[:180]}")
-            base = os.path.join(tmp, src["subdir"].strip("/")) if src.get("subdir") else tmp
+
+            # Re-anchor the subdir INSIDE the checkout — a "../.." subdir must not escape.
+            sub = (src.get("subdir") or "").strip("/")
+            base = os.path.realpath(os.path.join(tmp, sub))
+            if base != real_tmp and not base.startswith(real_tmp + os.sep):
+                raise RuntimeError("invalid subdir")
+
             skills = []
             for p in glob.glob(os.path.join(base, "**", "SKILL.md"), recursive=True):
                 try:
-                    with open(p, encoding="utf-8", errors="replace") as f:
+                    # Defense in depth (even with core.symlinks=false): never follow a
+                    # symlink, and require the resolved path to stay inside the checkout
+                    # (guards against a directory symlink escaping via a parent).
+                    if os.path.islink(p) or not os.path.isfile(p):
+                        continue
+                    rp = os.path.realpath(p)
+                    if rp != real_tmp and not rp.startswith(real_tmp + os.sep):
+                        continue
+                    fd = os.open(p, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                    with os.fdopen(fd, "r", encoding="utf-8", errors="replace") as f:
                         content = f.read()
                     rel = os.path.relpath(p, tmp)
                     s = self._skill_from_content(content, rel, url)

@@ -1942,7 +1942,9 @@ export interface SkillSourceInput {
   trusted?: boolean;
 }
 
-export async function getSkillSources(): Promise<{ sources: SkillSource[] }> {
+export interface BuiltinSkillSource { location: string; kind: string; from_env: boolean }
+
+export async function getSkillSources(): Promise<{ sources: SkillSource[]; builtin: BuiltinSkillSource[] }> {
   return fetchJSON(`${getBase()}/skills/sources`);
 }
 

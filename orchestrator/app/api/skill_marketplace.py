@@ -1547,10 +1547,17 @@ def _source_out(s) -> dict:
 
 @router.get("/sources")
 async def list_skill_sources(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """List all admin-configured skill sources (built-in defaults are not shown)."""
+    """List admin-configured sources PLUS the built-in/env GitHub defaults (read-only),
+    so the admin sees EVERYTHING that gets crawled — not just their own additions."""
     from app.models.skill import SkillSource
+    from app.services.skill_crawler import _configured_repos, DEFAULT_SKILL_REPOS
     rows = (await db.execute(select(SkillSource).order_by(SkillSource.id))).scalars().all()
-    return {"sources": [_source_out(s) for s in rows]}
+    defaults = set(DEFAULT_SKILL_REPOS)
+    builtin = [
+        {"location": r, "kind": "github", "from_env": r not in defaults}
+        for r in _configured_repos()
+    ]
+    return {"sources": [_source_out(s) for s in rows], "builtin": builtin}
 
 
 @router.post("/sources", status_code=201)
@@ -1560,6 +1567,10 @@ async def create_skill_source(body: SkillSourceIn, user=Depends(require_admin),
     from app.core.encryption import encrypt_token
     if not body.name.strip() or not body.location.strip():
         raise HTTPException(status_code=400, detail="name and location are required")
+    if body.subdir and (".." in body.subdir or body.subdir.strip().startswith("/")):
+        raise HTTPException(status_code=400, detail="subdir must be a relative path without '..'")
+    if body.location.strip().startswith("-"):
+        raise HTTPException(status_code=400, detail="invalid location")
     kind = SkillSourceKind(body.kind) if body.kind in ("github", "git") else SkillSourceKind.GITHUB
     s = SkillSource(
         name=body.name.strip(),
@@ -1591,10 +1602,14 @@ async def update_skill_source(source_id: int, body: SkillSourcePatch,
     if body.kind in ("github", "git"):
         s.kind = SkillSourceKind(body.kind)
     if body.location is not None:
+        if body.location.strip().startswith("-"):
+            raise HTTPException(status_code=400, detail="invalid location")
         s.location = body.location.strip()
     if body.ref is not None:
         s.ref = body.ref.strip() or None
     if body.subdir is not None:
+        if body.subdir and (".." in body.subdir or body.subdir.strip().startswith("/")):
+            raise HTTPException(status_code=400, detail="subdir must be a relative path without '..'")
         s.subdir = body.subdir.strip() or None
     if body.enabled is not None:
         s.enabled = body.enabled

@@ -19,6 +19,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.119.2] — 2026-08-01
+
+### Security
+- **Git-Skill-Crawler gegen Symlink-Exfiltration + Path-Traversal gehärtet** (Automated-Review-Funde). (1) [HIGH] Ein bösartiges Repo mit `SKILL.md` als Symlink auf eine Host-Datei (`/shared/.auth/token.json`, ENCRYPTION_KEY …) hätte deren Inhalt als „Skill" ausgelesen. Fix: `git -c core.symlinks=false clone` (Symlinks werden als Plain-Text materialisiert) + pro Datei `islink`/`isfile`-Check, `O_NOFOLLOW`-open und realpath-muss-im-Checkout-bleiben. (2) [MEDIUM] Path-Traversal via `subdir`: Basis wird jetzt per `realpath` re-verankert und muss im Klon liegen; API lehnt `subdir` mit `..`/absolut und `location` mit führendem `-` ab.
+
+### Added
+- **Admin-UI zeigt jetzt AUCH die eingebauten/env-Skill-Quellen** (read-only), nicht nur die selbst hinzugefügten — `GET /skills/sources` liefert zusätzlich `builtin` (Defaults + `SKILL_REPOS`), das Panel listet sie als „Eingebaut — werden immer gecrawlt".
+
+---
+
 ## [1.119.1] — 2026-08-01
 
 ### Fixed

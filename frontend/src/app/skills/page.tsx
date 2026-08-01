@@ -455,6 +455,7 @@ const EMPTY_SOURCE: api.SkillSourceInput = {
 function SkillSourcesAdmin() {
   const [open, setOpen] = useState(false);
   const [sources, setSources] = useState<SkillSource[]>([]);
+  const [builtin, setBuiltin] = useState<api.BuiltinSkillSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<api.SkillSourceInput>(EMPTY_SOURCE);
@@ -465,8 +466,9 @@ function SkillSourcesAdmin() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { sources } = await api.getSkillSources();
+      const { sources, builtin } = await api.getSkillSources();
       setSources(sources);
+      setBuiltin(builtin || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Laden fehlgeschlagen");
     } finally {
@@ -551,6 +553,21 @@ function SkillSourcesAdmin() {
                   <button onClick={() => remove(s)} className="text-muted-foreground hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {builtin.length > 0 && (
+            <div className="rounded-lg border border-foreground/[0.05] bg-foreground/[0.01] p-2.5">
+              <p className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                Eingebaut ({builtin.length}) — werden immer gecrawlt (nur Lesen)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {builtin.map((b) => (
+                  <span key={b.location} className="flex items-center gap-1 rounded border border-foreground/[0.06] bg-foreground/[0.02] px-2 py-0.5 text-[11px] text-muted-foreground">
+                    <Globe className="h-3 w-3 text-sky-400/70" /> {b.location}{b.from_env ? " (env)" : ""}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
