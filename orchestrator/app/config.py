@@ -187,6 +187,12 @@ class Settings(BaseSettings):
     # GitHub API token for skill crawler (avoids 60 req/h rate limit → 5000 req/h)
     github_token: str = ""
 
+    # Additional skill-crawler source repos (env: SKILL_REPOS), comma-separated
+    # "owner/repo" entries. Added to the built-in defaults so new sources can be
+    # onboarded without a code change + release (issue #371 phase 1). Empty by
+    # default → behaviour identical to the previous hardcoded list.
+    skill_repos: str = ""
+
     # Skill file attachments — stored on shared Docker volume
     skill_files_root: str = "/shared/skill-files"
 

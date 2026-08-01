@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.7] — 2026-08-01
+
+### Added
+- **Skill-Quellen ohne Release erweiterbar** (Issue #371 Phase 1, gemeldet von tiko0). Die Repos, die der Skill-Crawler durchsucht, waren eine hartkodierte Python-Konstante (`SKILL_REPOS` in `skill_crawler.py`) — jede neue Quelle bedeutete Code-Änderung + Rebuild + Release. Neu: zusätzliche Quellen sind über die Einstellung `SKILL_REPOS` (kommaseparierte `owner/repo`-Einträge, in `docker-compose.yml` durchgereicht) konfigurierbar. Die Einträge werden **additiv** zu den eingebauten Defaults hinzugefügt, dedupliziert und reihenfolge-erhaltend — leere Konfiguration verhält sich exakt wie die bisherige Liste, bestehende Deployments bleiben unberührt. Damit wird u. a. der offene *„Evaluate: <repo>"*-Backlog zu je einem Konfig-Eintrag statt einem Commit. (Phase 2 = clone-basiertes Fetching für Nicht-GitHub-/private-Hosts, Phase 3 = UI-Verwaltung — noch offen.)
+
+---
+
 ## [1.118.6] — 2026-08-01
 
 ### Added

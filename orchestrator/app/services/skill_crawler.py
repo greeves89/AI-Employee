@@ -15,8 +15,10 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Repos to crawl for skills. Format: "owner/repo"
-SKILL_REPOS = [
+# Built-in repos to crawl for skills. Format: "owner/repo".
+# Additional sources can be added at runtime via settings.skill_repos
+# (env SKILL_REPOS) without a code change — see _configured_repos() (issue #371).
+DEFAULT_SKILL_REPOS = [
     "vercel-labs/skills",
     "vercel-labs/agent-skills",
     "vercel-labs/next-skills",
@@ -29,6 +31,26 @@ SKILL_REPOS = [
     "remotion-dev/skills",
     "squirrelscan/skills",
 ]
+
+# Backwards-compatible alias (older imports referenced SKILL_REPOS directly).
+SKILL_REPOS = DEFAULT_SKILL_REPOS
+
+
+def _configured_repos() -> list[str]:
+    """Built-in defaults plus any repos configured via settings.skill_repos
+    (env SKILL_REPOS, comma-separated "owner/repo"). Additive, de-duplicated and
+    order-preserving so onboarding a new source needs no code change/release
+    (issue #371 phase 1). Empty config → identical to the built-in list."""
+    from app.config import settings
+
+    repos = list(DEFAULT_SKILL_REPOS)
+    seen = set(repos)
+    for entry in (settings.skill_repos or "").split(","):
+        entry = entry.strip()
+        if entry and entry not in seen:
+            seen.add(entry)
+            repos.append(entry)
+    return repos
 
 # Category heuristics — values MUST match SkillCategory enum (uppercase)
 CATEGORY_KEYWORDS = {
@@ -76,7 +98,7 @@ class SkillCrawlerService:
 
     def __init__(self, redis_service):
         self.redis = redis_service
-        self._repos = list(SKILL_REPOS)
+        self._repos = _configured_repos()
 
     async def run(self):
         """Background loop - crawl immediately on startup, then every 24h."""
