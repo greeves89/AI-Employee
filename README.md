@@ -271,6 +271,14 @@ Real scenarios AI-Employee is already used for:
 
 ## Roadmap
 
+**North Star:** the trustworthy autonomous AI workforce for the German Mittelstand — self-hosted, DSGVO, isolated multi-agents a business can trust to run unattended. Tracked in **[Epic #397](https://github.com/greeves89/AI-Employee/issues/397)**.
+
+<p align="center">
+  <img src="docs/assets/vision-roadmap.png" alt="Vision roadmap H2 2026: Trust & Control, Reliability, Reach, Time-to-Value" width="960">
+</p>
+
+### Current status
+
 What we shipped recently, what's in progress, and what's planned next:
 
 <p align="center">
