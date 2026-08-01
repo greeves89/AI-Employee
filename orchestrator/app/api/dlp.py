@@ -44,6 +44,7 @@ async def update_settings(
     body: DlpSettingsUpdate, user=Depends(require_admin), db: AsyncSession = Depends(get_db)
 ):
     await SettingsService(db).set("dlp_enabled", "true" if body.enabled else "false")
+    await db.commit()  # SettingsService.set() does not commit; persist explicitly
     return {"enabled": body.enabled}
 
 
