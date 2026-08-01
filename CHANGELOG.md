@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.2] — 2026-08-01
+
+### Fixed
+- **Claude-OAuth-Login über die Web-UI funktioniert jetzt zuverlässig.** Ein erfolgreicher UI-Login („Mit Claude einloggen" → Code einfügen) konnte stillschweigend wirkungslos bleiben. Ursachen behoben:
+  - **`_get_db_token()` nutzte `scalar_one_or_none()`** → bei 2+ `anthropic`-Integrationen (z. B. Alt-Zeile mit `user_id` + neue mit `user_id=NULL`) kam `None` zurück, der frische Token landete nie im Shared-File, Agenten blieben auf dem abgelaufenen. Jetzt: neueste Integration (`order_by(expires_at desc).first()`).
+  - **`persist_tokens()` räumt Dubletten auf**: globale Provider (anthropic/github/…) behalten genau EINE Zeile; alte gleicher Provider werden beim Login gelöscht.
+  - **Frontend-Einfügefeld parst robust**: ganze Callback-URL (`…?code=X&state=Y`), `code#state` oder nackter Code werden erkannt; der eingefügte State wird mitgeschickt (behebt „Invalid state" bei mehreren Login-Tabs).
+
+---
+
 ## [1.118.1] — 2026-08-01
 
 ### Fixed

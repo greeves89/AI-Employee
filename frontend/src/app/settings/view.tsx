@@ -542,12 +542,34 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
+  // Robustly extract {code, state} from whatever the user pastes: the full callback
+  // URL (…?code=X&state=Y), the Anthropic "code#state" form, or a bare code. Using the
+  // pasted state (when present) instead of only the stored one avoids the "invalid
+  // state" mismatch when several login tabs were opened.
+  const parsePastedCode = (raw: string): { code: string; state: string } => {
+    const v = raw.trim();
+    try {
+      if (/^https?:\/\//i.test(v)) {
+        const u = new URL(v);
+        return { code: u.searchParams.get("code") || "", state: u.searchParams.get("state") || "" };
+      }
+    } catch {
+      /* not a URL */
+    }
+    if (v.includes("#")) {
+      const [c, s] = v.split("#");
+      return { code: c.trim(), state: (s || "").trim() };
+    }
+    return { code: v, state: "" };
+  };
+
   const handleClaudeCodeSubmit = async () => {
     if (!claudeCode.trim()) return;
     setClaudeLoginLoading(true);
     setClaudeLoginError("");
     try {
-      await api.exchangeOAuthCode("anthropic", claudeCode.trim(), claudeAuthState);
+      const parsed = parsePastedCode(claudeCode);
+      await api.exchangeOAuthCode("anthropic", parsed.code, parsed.state || claudeAuthState);
       setClaudeLoginOpen(false);
       setClaudeCode("");
       setMessage("Claude Login erfolgreich! Bot hat eigene Session.");

@@ -246,6 +246,19 @@ class OAuthService:
             )
             self.db.add(integration)
 
+        # Global providers (anthropic, github, …) keep exactly ONE row. A legacy row
+        # (e.g. created with a user_id before user_id normalisation) would otherwise
+        # linger and make the token reader's scalar_one_or_none() return None — a valid
+        # fresh login then looks like it "did nothing". Drop any other same-provider rows.
+        if not _is_per_user(provider_name):
+            await self.db.flush()  # ensure `integration` has a PK so identity-map excludes it
+            others = (await self.db.execute(
+                select(OAuthIntegration).where(OAuthIntegration.provider == provider_enum)
+            )).scalars().all()
+            for o in others:
+                if o is not integration:
+                    await self.db.delete(o)
+
         await self.db.commit()
         await self.db.refresh(integration)
         return integration

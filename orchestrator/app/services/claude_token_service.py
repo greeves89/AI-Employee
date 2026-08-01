@@ -65,12 +65,17 @@ class ClaudeTokenService:
             from sqlalchemy import select
 
             async with async_session_factory() as db:
+                # Pick the NEWEST anthropic integration. Must NOT use
+                # scalar_one_or_none() here: a re-login can leave more than one
+                # anthropic row, and scalar_one_or_none() returns None on 2+ rows —
+                # which silently drops a perfectly valid fresh token (the exact bug
+                # that made a successful UI login look like it "did nothing").
                 result = await db.execute(
-                    select(OAuthIntegration).where(
-                        OAuthIntegration.provider == OAuthProvider.ANTHROPIC
-                    )
+                    select(OAuthIntegration)
+                    .where(OAuthIntegration.provider == OAuthProvider.ANTHROPIC)
+                    .order_by(OAuthIntegration.expires_at.desc().nullslast())
                 )
-                integration = result.scalar_one_or_none()
+                integration = result.scalars().first()
                 if not integration:
                     return None
 
