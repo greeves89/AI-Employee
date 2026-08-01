@@ -449,10 +449,10 @@ export default function VaultGraph3D({
               nodeResolution={16}
               nodeThreeObjectExtend={true}
               nodeThreeObject={nodeThreeObject}
-              linkColor={() => "rgba(140,160,220,0.22)"}
-              linkWidth={0.6}
+              linkColor={(l: any) => (l.kind === "semantic" ? "rgba(168,130,230,0.22)" : "rgba(140,160,220,0.32)")}
+              linkWidth={(l: any) => (l.kind === "semantic" ? 0.35 : 0.7)}
               linkOpacity={0.5}
-              linkDirectionalParticles={1}
+              linkDirectionalParticles={(l: any) => (l.kind === "semantic" ? 0 : 1)}
               linkDirectionalParticleWidth={1.4}
               linkDirectionalParticleSpeed={0.006}
               controlType="orbit"
@@ -848,18 +848,25 @@ function VaultGraph2D({
           if (!a || !b) return null;
           const active = highlight ? highlight.has(l.source) && highlight.has(l.target) : false;
           const dim = highlight && !active;
+          const semantic = (l as { kind?: string }).kind === "semantic";
           // Gentle curve (perpendicular offset at the midpoint) instead of a hard line.
           const dx = b.x - a.x, dy = b.y - a.y;
           const cx = (a.x + b.x) / 2 - dy * 0.12;
           const cy = (a.y + b.y) / 2 + dx * 0.12;
+          const stroke = active
+            ? "rgba(96,165,250,0.75)"
+            : semantic
+              ? "rgba(168,130,230,0.30)"   // semantic edges: violet + dashed
+              : "rgba(140,160,220,0.20)";
           return (
             <path
               key={i}
               d={`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`}
               fill="none"
-              stroke={active ? "rgba(96,165,250,0.75)" : "rgba(140,160,220,0.20)"}
-              strokeWidth={active ? 1.6 : 0.7}
+              stroke={stroke}
+              strokeWidth={active ? 1.6 : semantic ? 0.6 : 0.7}
               strokeLinecap="round"
+              strokeDasharray={semantic && !active ? "3 3" : undefined}
               opacity={dim ? 0.35 : 1}
             />
           );

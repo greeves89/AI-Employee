@@ -111,7 +111,12 @@ async def get_related(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return semantically related knowledge entries for a given entry."""
+    """Second Brain neighbors of a knowledge entry — cross-system (#157).
+
+    ``related``           semantically related KNOWLEDGE entries (from brain_links).
+    ``related_memories``  semantically related AGENT MEMORIES of the caller's own
+                          agents — the bridge that joins the two silos into one brain.
+    """
     from app.models.user import UserRole
 
     entry = await db.get(KnowledgeEntry, entry_id)
@@ -142,7 +147,35 @@ async def get_related(
             node["similarity"] = sim
             result.append(node)
 
-    return {"entry_id": entry_id, "related": result}
+    # Cross-system bridge: semantically related agent memories of the caller's OWN
+    # agents (live embedding query — mirrors /memory/{id}/related's knowledge half).
+    related_memories: list[dict] = []
+    from sqlalchemy import text as sa_text
+    row = (await db.execute(
+        sa_text("SELECT embedding FROM knowledge_entries WHERE id = :id AND embedding IS NOT NULL"),
+        {"id": entry_id},
+    )).fetchone()
+    if row and row[0] is not None:
+        vec = str(row[0])
+        threshold = 0.60  # a touch looser than the auto-link threshold, for discovery
+        rel_mem = (await db.execute(
+            sa_text("""
+                SELECT m.id, m.key, m.category, LEFT(m.content, 200) AS snippet,
+                       1 - (m.embedding <=> CAST(:vec AS vector)) AS similarity
+                FROM agent_memories m
+                JOIN agents a ON a.id = m.agent_id
+                WHERE a.user_id = :uid AND m.embedding IS NOT NULL AND m.superseded_by IS NULL
+                ORDER BY m.embedding <=> CAST(:vec AS vector)
+                LIMIT :lim
+            """),
+            {"vec": vec, "uid": str(user.id), "lim": limit},
+        )).fetchall()
+        related_memories = [
+            {"id": r[0], "key": r[1], "category": r[2], "snippet": r[3], "similarity": round(float(r[4]), 3)}
+            for r in rel_mem if r[4] is not None and float(r[4]) >= threshold
+        ]
+
+    return {"entry_id": entry_id, "related": result, "related_memories": related_memories}
 
 
 # ── Agent-facing ───────────────────────────────────────────────────────────────

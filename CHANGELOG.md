@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.122.0] — 2026-08-01
+
+### Added
+- **Second Brain Stufe 1 vervollständigt** (Issue #157). Aufbauend auf dem Memory-Auto-Linker (v1.121.0) sind jetzt alle Abnahmekriterien der Stufe 1 erfüllt:
+  - **Cross-System-Related von der Wissens-Seite:** der bestehende Endpoint `GET /brain/related/{id}` liefert zusätzlich zu semantisch verwandten Wissenseinträgen nun auch verwandte **Agent-Memories** (der eigenen Agenten) — die Brücke zwischen den zwei Silos, jetzt in beide Richtungen (Memory→Wissen war in v1.121.0, Wissen→Memory neu). Kein Parallel-Endpoint gebaut, der vorhandene wurde additiv erweitert.
+  - **„Semantisch verwandt"-Panel** in der Knowledge-Detail-Ansicht: zeigt verwandte Wissenseinträge (klickbar) + Agent-Memories mit Similarity-Prozent.
+  - **Graph-View unterscheidet Kantentypen:** Backlinks (durchgezogen, blau, mit Fluss-Partikeln) vs. semantische Kanten (2D echt gestrichelt + violett, 3D violett/leiser ohne Partikel). Der `/brain/graph`-Endpoint lieferte den `type` bereits — die Unterscheidung war rein visuell im Renderer nachzuziehen.
+  - **Tests:** 8 Unit-Tests für den Auto-Linker (Threshold-Grenze, manuelle Links respektiert, Backfill-Aggregation, Fehler-Rollback).
+
+### Docs
+- **COMPARISON.md** mit Stand-Datum **01.08.2026** versehen.
+
+---
+
 ## [1.121.1] — 2026-08-01
 
 ### Fixed

@@ -989,6 +989,26 @@ export async function getRelatedMemory(
   return fetchJSON(`${getBase()}/memory/${memoryId}/related`);
 }
 
+// Second Brain cross-system bridge from the knowledge side (#157). Reuses the
+// existing /brain/related endpoint (knowledge neighbors from brain_links) which was
+// extended to also return cross-system agent memories; maps to the shared shape.
+export async function getRelatedKnowledge(
+  entryId: number,
+): Promise<{ related_knowledge: RelatedKnowledgeItem[]; related_memories: RelatedMemoryItem[] }> {
+  const data = await fetchJSON<{
+    related?: Array<{ id: number; title: string; similarity?: number | null }>;
+    related_memories?: RelatedMemoryItem[];
+  }>(`${getBase()}/brain/related/${entryId}`);
+  return {
+    related_knowledge: (data.related ?? []).map((r) => ({
+      id: r.id,
+      title: r.title,
+      similarity: r.similarity ?? 0,
+    })),
+    related_memories: data.related_memories ?? [],
+  };
+}
+
 // Reflection ("Nachtschicht")
 export async function getReflectionStatus(): Promise<ReflectionStatus> {
   return fetchJSON(`${getBase()}/reflection/status`);
@@ -1309,6 +1329,7 @@ export interface VaultGraphNode {
 export interface VaultGraphEdge {
   source: string;
   target: string;
+  kind?: "backlink" | "semantic";
 }
 
 export interface VaultGraph {

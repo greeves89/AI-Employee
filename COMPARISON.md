@@ -1,5 +1,7 @@
 # AI-Employee vs. The Field
 
+> **Stand: 01.08.2026** — Feature-Matrix und Bewertungen entsprechen dem Entwicklungsstand zu diesem Datum. Star-Zahlen und Fremdprodukt-Details sind grobe Momentaufnahmen.
+
 An honest, detailed comparison of AI-Employee against the most common alternatives. We believe comparisons should help you pick the *right* tool — not trick you into picking ours.
 
 ## Who this comparison is for

@@ -573,6 +573,7 @@ export interface KnowledgeGraphEdge {
   target: number;
   type?: "backlink" | "semantic";
   weight?: number;
+  similarity?: number | null;
 }
 
 export type MeetingRoomState = "idle" | "running" | "paused" | "completed";

@@ -6,16 +6,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Plus, Search, Tag, Network, FileText,
   Trash2, ArrowLeft, Clock, User, Link2, X, Hash,
+  Brain, Loader2, Sparkles,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import {
-  getAllKnowledgeEntries, getKnowledgeEntry, createKnowledgeEntry,
+  getAllKnowledgeEntries, getKnowledgeEntry, getRelatedKnowledge, createKnowledgeEntry,
   updateKnowledgeEntry, deleteKnowledgeEntry, getKnowledgeTags,
   getBrainGraph,
 } from "@/lib/api";
 import type { KnowledgeEntry, KnowledgeTag, KnowledgeGraphNode, KnowledgeGraphEdge } from "@/lib/types";
+import type { RelatedMemoryItem, RelatedKnowledgeItem } from "@/lib/api";
 import type { VaultGraph } from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 
@@ -32,6 +34,9 @@ export default function KnowledgePage() {
   const [total, setTotal] = useState(0);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<KnowledgeEntry | null>(null);
+  // Second Brain: cross-system related for the open entry (#157)
+  const [related, setRelated] = useState<{ related_knowledge: RelatedKnowledgeItem[]; related_memories: RelatedMemoryItem[] } | null>(null);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -78,6 +83,13 @@ export default function KnowledgePage() {
       setIsNew(false);
       setPreviousView((prev) => (prev === "editor" ? prev : viewMode === "editor" ? "list" : viewMode));
       setViewMode("editor");
+      // Load the Second Brain cross-system related panel (non-blocking)
+      setRelated(null);
+      setRelatedLoading(true);
+      getRelatedKnowledge(id)
+        .then(setRelated)
+        .catch(() => setRelated(null))
+        .finally(() => setRelatedLoading(false));
     } catch (e) {
       console.error("Failed to load entry:", e);
     }
@@ -186,7 +198,7 @@ export default function KnowledgePage() {
     const ids = new Set(nodes.map((n) => n.id));
     const seenEdge = new Set<string>();
     const edges = graphData.edges
-      .map((e) => ({ source: String(e.source), target: String(e.target) }))
+      .map((e) => ({ source: String(e.source), target: String(e.target), kind: e.type }))
       .filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target)
       .filter((e) => {
         const k = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
@@ -499,6 +511,62 @@ export default function KnowledgePage() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Second Brain: cross-system related (semantic) — memories + knowledge (#157) */}
+            {!isNew && selectedEntry && (relatedLoading || (related && (related.related_knowledge.length > 0 || related.related_memories.length > 0))) && (
+              <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
+                <h4 className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                  <Sparkles className="h-3 w-3 text-primary" /> Semantisch verwandt
+                </h4>
+                {relatedLoading ? (
+                  <div className="flex items-center gap-2 text-[12px] text-muted-foreground/50">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Suche Verknüpfungen...
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
+                    {related && related.related_knowledge.length > 0 && (
+                      <div className="flex-1">
+                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                          <Link2 className="h-2.5 w-2.5 text-sky-400" /> Wissen
+                        </p>
+                        <div className="flex flex-col gap-1">
+                          {related.related_knowledge.map((r) => (
+                            <button
+                              key={`k${r.id}`}
+                              onClick={() => openEntry(r.id)}
+                              className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-[12px] transition-colors hover:bg-foreground/[0.04]"
+                            >
+                              <span className="w-9 shrink-0 text-right text-[11px] text-sky-400/80">{Math.round(r.similarity * 100)}%</span>
+                              <span className="truncate">{r.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {related && related.related_memories.length > 0 && (
+                      <div className="flex-1">
+                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                          <Brain className="h-2.5 w-2.5 text-emerald-400" /> Agent-Memories
+                        </p>
+                        <div className="flex flex-col gap-1">
+                          {related.related_memories.map((r) => (
+                            <div
+                              key={`m${r.id}`}
+                              className="flex items-center gap-2 px-2 py-1 text-[12px]"
+                              title={r.snippet}
+                            >
+                              <span className="w-9 shrink-0 text-right text-[11px] text-emerald-400/80">{Math.round(r.similarity * 100)}%</span>
+                              <span className="truncate font-medium">{r.key}</span>
+                              <span className="truncate text-muted-foreground/60">— {r.snippet}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </motion.div>
