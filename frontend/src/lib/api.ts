@@ -1914,6 +1914,54 @@ export async function deleteMarketplaceSkill(id: number): Promise<{ deleted: num
   return fetchJSON(`${getBase()}/skills/marketplace/${id}`, { method: "DELETE" });
 }
 
+// --- Skill Sources (admin) — configurable crawl sources incl. self-hosted Git (#371) ---
+
+export interface SkillSource {
+  id: number;
+  name: string;
+  kind: "github" | "git";
+  location: string;
+  ref: string | null;
+  subdir: string | null;
+  has_credential: boolean;
+  enabled: boolean;
+  trusted: boolean;
+  last_crawled_at: string | null;
+  last_status: string | null;
+  created_by: string;
+}
+
+export interface SkillSourceInput {
+  name: string;
+  kind: "github" | "git";
+  location: string;
+  ref?: string | null;
+  subdir?: string | null;
+  credential?: string | null;
+  enabled?: boolean;
+  trusted?: boolean;
+}
+
+export async function getSkillSources(): Promise<{ sources: SkillSource[] }> {
+  return fetchJSON(`${getBase()}/skills/sources`);
+}
+
+export async function createSkillSource(data: SkillSourceInput): Promise<SkillSource> {
+  return fetchJSON(`${getBase()}/skills/sources`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateSkillSource(id: number, data: Partial<SkillSourceInput>): Promise<SkillSource> {
+  return fetchJSON(`${getBase()}/skills/sources/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteSkillSource(id: number): Promise<void> {
+  return fetchJSON(`${getBase()}/skills/sources/${id}`, { method: "DELETE" });
+}
+
+export async function recrawlSkillSources(): Promise<{ status: string }> {
+  return fetchJSON(`${getBase()}/skills/sources/recrawl`, { method: "POST" });
+}
+
 export async function assignSkill(skillId: number, agentId: string): Promise<{ status: string }> {
   return fetchJSON(`${getBase()}/skills/marketplace/${skillId}/assign`, {
     method: "POST", body: JSON.stringify({ agent_id: agentId, skill_id: skillId }),

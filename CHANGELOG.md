@@ -19,6 +19,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.119.0] — 2026-08-01
+
+### Added
+- **Skill-Quellen komplett verwaltbar — Admin-UI + selbst-gehostete Git-Hosts (Issue #371 Phase 2+3).** Skill-Quellen waren zuletzt nur env-basiert (`SKILL_REPOS`, .env editieren + Neustart). Jetzt vollständig, verzahnt in den bestehenden Crawl→Import→Security→Marketplace-Fluss:
+  - **DB-Model `SkillSource`** (via `create_all` angelegt): Name, Typ (`github`/`git`), Ort, ref/subdir, verschlüsselte Credentials (Fernet), enabled, trusted-Provenance, letzter Crawl-Status.
+  - **Clone-basiertes Fetching** für JEDEN Git-Host: `git clone --depth 1 --branch <ref>` → host-agnostisch, also **Forgejo/GitLab/Gitea/Azure DevOps** und **private Repos** (Token wird in die Clone-URL injiziert und NIE geloggt). GitHub-Quellen nutzen weiter den schnellen API-Pfad; env/Defaults bleiben unverändert.
+  - **Security-Gate greift auch für gecrawlte Skills** (`check_skill_content`, #192) — bisher umgangen; blockierte Skills werden geloggt und übersprungen. Provenance (`source_repo`/`source_url`/trusted) wird gesetzt.
+  - **Admin-API** `GET/POST/PATCH/DELETE /skills/sources` + `POST /skills/sources/recrawl` (require_admin). Credentials nur `has_credential` nach außen, nie im Klartext.
+  - **Admin-UI** im Skill-Marketplace: einklappbares „Skill-Quellen (Admin)"-Panel — Quelle hinzufügen (GitHub owner/repo ODER Git-URL + optional Token/ref/subdir/trusted), aktivieren/deaktivieren, löschen, „Jetzt crawlen". Nur für Admins sichtbar.
+  - Damit lassen sich z. B. die **internen mindcode/Forgejo-Skills** direkt im Admin eintragen und crawlen — die Self-Hosting-Prämisse der Plattform ist erfüllt.
+
+---
+
 ## [1.118.5] — 2026-08-01
 
 ### Fixed

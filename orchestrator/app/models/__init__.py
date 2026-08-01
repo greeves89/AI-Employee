@@ -29,7 +29,7 @@ from app.models.team import Team  # noqa: F401
 from app.models.approval_rule import ApprovalRule
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.models.event_trigger import EventTrigger
-from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
+from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion, SkillSource, SkillSourceKind
 from app.models.autonomy_preset_rule import AutonomyPresetRule
 from app.models.url_allowlist import UrlAllowlistTemplate, UrlAllowlistTemplateEntry, AgentUrlAllowlist
 from app.models.user_profile import UserProfile, UserProfileEvent

@@ -192,3 +192,34 @@ class SkillFile(Base):
         default=lambda: datetime.now(timezone.utc),
         index=True,
     )
+
+
+class SkillSourceKind(str, enum.Enum):
+    GITHUB = "github"   # "owner/repo" via the GitHub API (fast path, public repos)
+    GIT = "git"         # any Git URL via `git clone` — self-hosted Forgejo/GitLab/Gitea,
+    #                     private repos (stored credential), and non-main/master refs.
+
+
+class SkillSource(Base, TimestampMixin):
+    """An admin-configured source the skill crawler pulls SKILL.md files from.
+
+    Replaces the hardcoded/env-only repo list (issue #371, phases 2+3). GitHub
+    sources use the fast API path; git sources are cloned (host-agnostic — works for
+    self-hosted forges and private repos via a masked, encrypted credential).
+    """
+    __tablename__ = "skill_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)  # human label shown in the admin UI
+    kind: Mapped[SkillSourceKind] = mapped_column(Enum(SkillSourceKind), default=SkillSourceKind.GITHUB)
+    # GITHUB → "owner/repo". GIT → full clone URL (https://host/owner/repo.git).
+    location: Mapped[str] = mapped_column(String, nullable=False)
+    ref: Mapped[str | None] = mapped_column(String, nullable=True)      # branch/tag; None → main/master auto
+    subdir: Mapped[str | None] = mapped_column(String, nullable=True)   # only crawl SKILL.md under this path
+    credential_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)  # git token (Fernet), never returned raw
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Provenance: an org's own source is trusted; an arbitrary public repo is not.
+    trusted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String, default="admin")
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String, nullable=True)  # "ok: N skills" / short error

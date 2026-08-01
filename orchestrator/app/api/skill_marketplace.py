@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timezone
 
 from app.db.session import get_db
-from app.dependencies import require_auth, verify_agent_token
+from app.dependencies import require_auth, require_admin, verify_agent_token
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.task import Task
 from app.models.audit_log import AuditLog, AuditEventType
@@ -1497,3 +1497,133 @@ async def seed_from_crawler(
         return {"status": "ok", "imported": len(skills)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crawl failed: {e}")
+
+
+# ── Skill Sources (admin) — configurable crawl sources incl. self-hosted Git (#371) ──
+# The crawler pulls SKILL.md files from these. GitHub sources use the fast API path;
+# git sources are cloned (Forgejo/GitLab/Gitea, private repos, non-main refs). Crawled
+# skills pass the same security gate as API imports. Credentials are stored Fernet-
+# encrypted and NEVER returned (only `has_credential` is exposed).
+
+
+class SkillSourceIn(BaseModel):
+    name: str
+    kind: str = "github"            # "github" | "git"
+    location: str                   # "owner/repo" (github) | clone URL (git)
+    ref: str | None = None
+    subdir: str | None = None
+    credential: str | None = None   # git token for private repos (stored encrypted)
+    enabled: bool = True
+    trusted: bool = False
+
+
+class SkillSourcePatch(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    location: str | None = None
+    ref: str | None = None
+    subdir: str | None = None
+    credential: str | None = None   # provide to set/replace; "" clears; omit keeps
+    enabled: bool | None = None
+    trusted: bool | None = None
+
+
+def _source_out(s) -> dict:
+    return {
+        "id": s.id,
+        "name": s.name,
+        "kind": s.kind.value if hasattr(s.kind, "value") else str(s.kind),
+        "location": s.location,
+        "ref": s.ref,
+        "subdir": s.subdir,
+        "has_credential": bool(s.credential_encrypted),
+        "enabled": s.enabled,
+        "trusted": s.trusted,
+        "last_crawled_at": s.last_crawled_at.isoformat() if s.last_crawled_at else None,
+        "last_status": s.last_status,
+        "created_by": s.created_by,
+    }
+
+
+@router.get("/sources")
+async def list_skill_sources(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """List all admin-configured skill sources (built-in defaults are not shown)."""
+    from app.models.skill import SkillSource
+    rows = (await db.execute(select(SkillSource).order_by(SkillSource.id))).scalars().all()
+    return {"sources": [_source_out(s) for s in rows]}
+
+
+@router.post("/sources", status_code=201)
+async def create_skill_source(body: SkillSourceIn, user=Depends(require_admin),
+                              db: AsyncSession = Depends(get_db)):
+    from app.models.skill import SkillSource, SkillSourceKind
+    from app.core.encryption import encrypt_token
+    if not body.name.strip() or not body.location.strip():
+        raise HTTPException(status_code=400, detail="name and location are required")
+    kind = SkillSourceKind(body.kind) if body.kind in ("github", "git") else SkillSourceKind.GITHUB
+    s = SkillSource(
+        name=body.name.strip(),
+        kind=kind,
+        location=body.location.strip(),
+        ref=(body.ref.strip() or None) if body.ref else None,
+        subdir=(body.subdir.strip() or None) if body.subdir else None,
+        credential_encrypted=encrypt_token(body.credential) if body.credential else None,
+        enabled=body.enabled,
+        trusted=body.trusted,
+        created_by=f"user:{getattr(user, 'id', '')}",
+    )
+    db.add(s)
+    await db.commit()
+    await db.refresh(s)
+    return _source_out(s)
+
+
+@router.patch("/sources/{source_id}")
+async def update_skill_source(source_id: int, body: SkillSourcePatch,
+                              user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    from app.models.skill import SkillSource, SkillSourceKind
+    from app.core.encryption import encrypt_token
+    s = await db.get(SkillSource, source_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if body.name is not None:
+        s.name = body.name.strip()
+    if body.kind in ("github", "git"):
+        s.kind = SkillSourceKind(body.kind)
+    if body.location is not None:
+        s.location = body.location.strip()
+    if body.ref is not None:
+        s.ref = body.ref.strip() or None
+    if body.subdir is not None:
+        s.subdir = body.subdir.strip() or None
+    if body.enabled is not None:
+        s.enabled = body.enabled
+    if body.trusted is not None:
+        s.trusted = body.trusted
+    if body.credential is not None:  # "" clears, non-empty replaces, omit (None) keeps
+        s.credential_encrypted = encrypt_token(body.credential) if body.credential else None
+    await db.commit()
+    await db.refresh(s)
+    return _source_out(s)
+
+
+@router.delete("/sources/{source_id}", status_code=204)
+async def delete_skill_source(source_id: int, user=Depends(require_admin),
+                              db: AsyncSession = Depends(get_db)):
+    from app.models.skill import SkillSource
+    s = await db.get(SkillSource, source_id)
+    if s:
+        await db.delete(s)
+        await db.commit()
+    return None
+
+
+@router.post("/sources/recrawl")
+async def recrawl_skill_sources(request: Request, user=Depends(require_admin)):
+    """Trigger an immediate crawl of all sources (built-in + env + DB) in the background."""
+    import asyncio as _asyncio
+    crawler = getattr(request.app.state, "skill_crawler", None)
+    if not crawler:
+        raise HTTPException(status_code=503, detail="Skill crawler not running")
+    _asyncio.create_task(crawler.crawl())
+    return {"status": "started"}

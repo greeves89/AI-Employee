@@ -7,11 +7,13 @@ import {
   GitBranch, Layers, Repeat, ChefHat,
   CheckCircle2, Bot, ChevronDown, Plus, Pencil, Trash2, X, Save,
   Paperclip, Upload, File as FileIcon,
+  Server, Globe, ShieldCheck, ChevronRight,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { CatalogSkill, AgentSkill, MarketplaceSkill, SkillFileAttachment } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
+import type { CatalogSkill, AgentSkill, MarketplaceSkill, SkillFileAttachment, SkillSource } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
@@ -445,6 +447,152 @@ function SkillModal({ initial, onClose, onSave }: SkillModalProps) {
   );
 }
 
+// ── Admin: configurable skill crawl sources incl. self-hosted Git (#371) ──
+const EMPTY_SOURCE: api.SkillSourceInput = {
+  name: "", kind: "github", location: "", ref: "", subdir: "", credential: "", trusted: false,
+};
+
+function SkillSourcesAdmin() {
+  const [open, setOpen] = useState(false);
+  const [sources, setSources] = useState<SkillSource[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState<api.SkillSourceInput>(EMPTY_SOURCE);
+  const [saving, setSaving] = useState(false);
+  const [recrawling, setRecrawling] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { sources } = await api.getSkillSources();
+      setSources(sources);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Laden fehlgeschlagen");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  const save = async () => {
+    if (!form.name.trim() || !form.location.trim()) { setError("Name und Ort sind Pflicht"); return; }
+    setSaving(true); setError("");
+    try {
+      await api.createSkillSource({ ...form, ref: form.ref || null, subdir: form.subdir || null, credential: form.credential || null });
+      setForm(EMPTY_SOURCE); setAdding(false); await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
+    } finally { setSaving(false); }
+  };
+
+  const toggle = async (s: SkillSource) => {
+    try { await api.updateSkillSource(s.id, { enabled: !s.enabled }); await load(); } catch { /* ignore */ }
+  };
+  const remove = async (s: SkillSource) => {
+    if (!confirm(`Quelle „${s.name}" löschen?`)) return;
+    try { await api.deleteSkillSource(s.id); await load(); } catch { /* ignore */ }
+  };
+  const recrawl = async () => {
+    setRecrawling(true);
+    try { await api.recrawlSkillSources(); setTimeout(load, 4000); } finally { setTimeout(() => setRecrawling(false), 4000); }
+  };
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.08] bg-card/60">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+      >
+        <span className="flex items-center gap-2">
+          <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
+          <Server className="h-4 w-4 text-violet-400" />
+          Skill-Quellen (Admin)
+          <span className="text-xs text-muted-foreground">— GitHub + selbst-gehostete Git-Hosts (Forgejo/GitLab)</span>
+        </span>
+        {open && (
+          <span
+            onClick={(e) => { e.stopPropagation(); recrawl(); }}
+            className="flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2 py-1 text-xs hover:bg-accent/50"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", recrawling && "animate-spin")} /> Jetzt crawlen
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="border-t border-foreground/[0.06] p-4 space-y-3">
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          {loading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Lade…</div>
+          ) : sources.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Keine eigenen Quellen. Die eingebauten GitHub-Defaults werden trotzdem gecrawlt.</p>
+          ) : (
+            <div className="space-y-2">
+              {sources.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-xs">
+                  {s.kind === "git" ? <Server className="h-4 w-4 text-emerald-400 shrink-0" /> : <Globe className="h-4 w-4 text-sky-400 shrink-0" />}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{s.name}</span>
+                      {s.trusted && <span className="flex items-center gap-0.5 text-[10px] text-emerald-400"><ShieldCheck className="h-3 w-3" />trusted</span>}
+                      {s.has_credential && <span className="text-[10px] text-amber-400">Credential</span>}
+                    </div>
+                    <div className="text-muted-foreground truncate">
+                      {s.location}{s.ref ? `#${s.ref}` : ""}{s.subdir ? ` /${s.subdir}` : ""}
+                      {s.last_status ? ` · ${s.last_status}` : ""}
+                    </div>
+                  </div>
+                  <button onClick={() => toggle(s)} className={cn("rounded px-2 py-1 text-[11px] border", s.enabled ? "border-emerald-500/40 text-emerald-400" : "border-foreground/10 text-muted-foreground")}>
+                    {s.enabled ? "aktiv" : "aus"}
+                  </button>
+                  <button onClick={() => remove(s)} className="text-muted-foreground hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {adding ? (
+            <div className="rounded-lg border border-foreground/[0.08] p-3 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <input className="rounded border border-foreground/10 bg-background px-2 py-1.5 text-xs" placeholder="Name (Label)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <select className="rounded border border-foreground/10 bg-background px-2 py-1.5 text-xs" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as "github" | "git" })}>
+                  <option value="github">GitHub (owner/repo)</option>
+                  <option value="git">Git-URL (Forgejo/GitLab/privat)</option>
+                </select>
+              </div>
+              <input className="w-full rounded border border-foreground/10 bg-background px-2 py-1.5 text-xs" placeholder={form.kind === "git" ? "https://mindcode.mindsquare.de/Alisch/skills.git" : "owner/repo"} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+              <div className="grid grid-cols-2 gap-2">
+                <input className="rounded border border-foreground/10 bg-background px-2 py-1.5 text-xs" placeholder="ref (Branch/Tag, optional)" value={form.ref ?? ""} onChange={(e) => setForm({ ...form, ref: e.target.value })} />
+                <input className="rounded border border-foreground/10 bg-background px-2 py-1.5 text-xs" placeholder="Unterordner (optional)" value={form.subdir ?? ""} onChange={(e) => setForm({ ...form, subdir: e.target.value })} />
+              </div>
+              {form.kind === "git" && (
+                <input type="password" autoComplete="new-password" className="w-full rounded border border-foreground/10 bg-background px-2 py-1.5 text-xs" placeholder="Token für privates Repo (optional, verschlüsselt gespeichert)" value={form.credential ?? ""} onChange={(e) => setForm({ ...form, credential: e.target.value })} />
+              )}
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={!!form.trusted} onChange={(e) => setForm({ ...form, trusted: e.target.checked })} />
+                Vertrauenswürdige interne Quelle (Provenance)
+              </label>
+              <div className="flex gap-2">
+                <button onClick={save} disabled={saving} className="flex items-center gap-1 rounded-lg bg-violet-500/90 px-3 py-1.5 text-xs text-white hover:bg-violet-500 disabled:opacity-50">
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Speichern
+                </button>
+                <button onClick={() => { setAdding(false); setForm(EMPTY_SOURCE); setError(""); }} className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs">Abbrechen</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setAdding(true)} className="flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-xs hover:bg-accent/50">
+              <Plus className="h-3.5 w-3.5" /> Quelle hinzufügen
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SkillsPage() {
   const [catalog, setCatalog] = useState<CatalogSkill[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -464,6 +612,8 @@ export default function SkillsPage() {
   const [editSkill, setEditSkill] = useState<AgentSkill | null>(null);
   const [deletingSkill, setDeletingSkill] = useState<string | null>(null);
   const [detailSkill, setDetailSkill] = useState<MarketplaceSkill | null>(null);
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === "admin";
 
   const refreshAgentSkills = useCallback(async (agent: Agent) => {
     const skills = await api.getAgentSkills(agent.id).catch(() => []);
@@ -585,6 +735,7 @@ export default function SkillsPage() {
       <Header title="Skills" subtitle="Browse, install, and create skills for your agents" />
 
       <div className="p-6 space-y-6">
+        {isAdmin && <SkillSourcesAdmin />}
         {/* Top bar */}
         <div className="flex items-center gap-3 flex-wrap">
           {/* Agent Selector */}
