@@ -980,6 +980,15 @@ export async function getMemoryHistory(
   return fetchJSON(`${getBase()}/memory/${memoryId}/history`);
 }
 
+// Second Brain cross-system "related" (#157)
+export interface RelatedMemoryItem { id: number; key: string; category: string; snippet: string; similarity: number }
+export interface RelatedKnowledgeItem { id: number; title: string; similarity: number }
+export async function getRelatedMemory(
+  memoryId: number,
+): Promise<{ related_memories: RelatedMemoryItem[]; related_knowledge: RelatedKnowledgeItem[] }> {
+  return fetchJSON(`${getBase()}/memory/${memoryId}/related`);
+}
+
 // Reflection ("Nachtschicht")
 export async function getReflectionStatus(): Promise<ReflectionStatus> {
   return fetchJSON(`${getBase()}/reflection/status`);

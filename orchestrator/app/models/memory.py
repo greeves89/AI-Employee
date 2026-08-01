@@ -12,6 +12,7 @@ Memory system upgrade (issue #24):
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -107,6 +108,11 @@ class AgentMemoryLink(Base):
         Integer, ForeignKey("agent_memories.id", ondelete="CASCADE"), primary_key=True
     )
     relation: Mapped[str] = mapped_column(String(50), primary_key=True)
+    # Populated by the memory auto-linker (#157): cosine similarity of the two
+    # memories' embeddings, and whether the link was auto-generated (vs a manual
+    # link written via memory_save). Nullable so pre-existing/manual rows are fine.
+    similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    auto_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

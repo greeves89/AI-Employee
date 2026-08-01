@@ -28,7 +28,7 @@ from app.core.memory_key_schema import (
 )
 from app.core.memory_scoring import ScoringInputs, final_score
 from app.db.session import get_db
-from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent, verify_agent_token
+from app.dependencies import get_redis_service, is_agent_principal, require_admin, require_agent_access, require_auth, require_auth_or_agent, verify_agent_token
 from app.models.memory import AgentMemory, AgentMemoryLink, AgentMemoryTag
 from app.services.redis_service import RedisService
 
@@ -347,6 +347,13 @@ async def save_memory_core(
                     {"emb": str(embedding), "id": new_mem.id},
                 )
                 await db.commit()
+                # #157: auto-link the fresh memory into the semantic memory graph
+                # (populates agent_memory_links). Fire-and-forget — never blocks/breaks.
+                try:
+                    from app.services.memory_linker import link_memory
+                    await link_memory(new_mem.id, new_mem.agent_id, db)
+                except Exception:  # noqa: BLE001
+                    pass
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Failed to generate embedding: {e}")
@@ -837,3 +844,78 @@ def _to_response(m: AgentMemory) -> dict:
         "superseded_by": m.superseded_by,
         "source": m.source,
     }
+
+
+# ── Second Brain: cross-system "related" + link backfill (issue #157) ──
+
+
+@router.get("/{memory_id:int}/related")
+async def related_memory(
+    memory_id: int,
+    limit: int = Query(5, ge=1, le=20),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Top semantically-similar MEMORIES (same agent) AND KNOWLEDGE entries (the
+    viewer's brain) for one memory — the cross-system bridge that turns the two
+    silos into one Second Brain. User-facing: requires access to the memory's agent.
+    """
+    mem = await db.get(AgentMemory, memory_id)
+    if not mem:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    await require_agent_access(mem.agent_id, user, db)  # ownership/access gate
+
+    row = (await db.execute(
+        sa_text("SELECT embedding FROM agent_memories WHERE id = :id AND embedding IS NOT NULL"),
+        {"id": memory_id},
+    )).fetchone()
+    if not row or row[0] is None:
+        return {"related_memories": [], "related_knowledge": []}
+    vec = str(row[0])
+    threshold = 0.60  # a touch looser than the auto-link threshold, for discovery
+
+    rel_mem = (await db.execute(
+        sa_text("""
+            SELECT id, key, category, LEFT(content, 200) AS snippet,
+                   1 - (embedding <=> CAST(:vec AS vector)) AS similarity
+            FROM agent_memories
+            WHERE agent_id = :aid AND id != :mid AND embedding IS NOT NULL AND superseded_by IS NULL
+            ORDER BY embedding <=> CAST(:vec AS vector)
+            LIMIT :lim
+        """),
+        {"vec": vec, "aid": mem.agent_id, "mid": memory_id, "lim": limit},
+    )).fetchall()
+
+    rel_know = (await db.execute(
+        sa_text("""
+            SELECT id, title, 1 - (embedding <=> CAST(:vec AS vector)) AS similarity
+            FROM knowledge_entries
+            WHERE user_id = :uid AND embedding IS NOT NULL
+            ORDER BY embedding <=> CAST(:vec AS vector)
+            LIMIT :lim
+        """),
+        {"vec": vec, "uid": user.id, "lim": limit},
+    )).fetchall()
+
+    return {
+        "related_memories": [
+            {"id": r[0], "key": r[1], "category": r[2], "snippet": r[3], "similarity": round(float(r[4]), 3)}
+            for r in rel_mem if r[4] is not None and float(r[4]) >= threshold
+        ],
+        "related_knowledge": [
+            {"id": r[0], "title": r[1], "similarity": round(float(r[2]), 3)}
+            for r in rel_know if r[2] is not None and float(r[2]) >= threshold
+        ],
+    }
+
+
+@router.post("/relink")
+async def relink_memories(
+    agent_id: str | None = Query(None, description="Only this agent (default: all)"),
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Backfill: run the semantic memory auto-linker over EXISTING memories (once),
+    so the pre-existing knowledge base gets its semantic links. Admin-only."""
+    from app.services.memory_linker import backfill_all
+    return await backfill_all(db, agent_id)

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   History,
+  Link2,
   Loader2,
   Moon,
   Pencil,
@@ -16,7 +17,8 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deleteMemory, getAgentMemories, getMemoryHistory, updateMemory } from "@/lib/api";
+import { deleteMemory, getAgentMemories, getMemoryHistory, getRelatedMemory, updateMemory } from "@/lib/api";
+import type { RelatedMemoryItem, RelatedKnowledgeItem } from "@/lib/api";
 import type { AgentMemory } from "@/lib/types";
 
 // Provenance badge per memory source (null → no badge).
@@ -56,6 +58,10 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
   const [openHistoryId, setOpenHistoryId] = useState<number | null>(null);
   const [histories, setHistories] = useState<Record<number, AgentMemory[]>>({});
   const [historyLoadingId, setHistoryLoadingId] = useState<number | null>(null);
+  // Second Brain: cross-system "related" per memory (#157)
+  const [openRelatedId, setOpenRelatedId] = useState<number | null>(null);
+  const [relateds, setRelateds] = useState<Record<number, { related_memories: RelatedMemoryItem[]; related_knowledge: RelatedKnowledgeItem[] }>>({});
+  const [relatedLoadingId, setRelatedLoadingId] = useState<number | null>(null);
 
   const fetchMemories = useCallback(async () => {
     setLoading(true);
@@ -115,6 +121,24 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
         // ignore
       }
       setHistoryLoadingId(null);
+    }
+  };
+
+  const toggleRelated = async (memId: number) => {
+    if (openRelatedId === memId) {
+      setOpenRelatedId(null);
+      return;
+    }
+    setOpenRelatedId(memId);
+    if (!relateds[memId]) {
+      setRelatedLoadingId(memId);
+      try {
+        const data = await getRelatedMemory(memId);
+        setRelateds((prev) => ({ ...prev, [memId]: data }));
+      } catch {
+        // ignore
+      }
+      setRelatedLoadingId(null);
     }
   };
 
@@ -206,6 +230,8 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
             const SourceIcon = source?.icon;
             const isHistoryOpen = openHistoryId === mem.id;
             const history = histories[mem.id];
+            const isRelatedOpen = openRelatedId === mem.id;
+            const related = relateds[mem.id];
 
             return (
               <div
@@ -295,7 +321,71 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                           <ChevronRight className="h-2.5 w-2.5" />
                         )}
                       </button>
+                      <button
+                        onClick={() => toggleRelated(mem.id)}
+                        className={cn(
+                          "flex items-center gap-1 text-[10px] transition-colors",
+                          isRelatedOpen ? "text-foreground" : "text-muted-foreground/50 hover:text-foreground",
+                        )}
+                      >
+                        <Link2 className="h-2.5 w-2.5" />
+                        Verknüpft
+                        {isRelatedOpen ? (
+                          <ChevronDown className="h-2.5 w-2.5" />
+                        ) : (
+                          <ChevronRight className="h-2.5 w-2.5" />
+                        )}
+                      </button>
                     </div>
+
+                    {/* Second Brain: semantically related memories + knowledge (#157) */}
+                    {isRelatedOpen && (
+                      <div className="mt-2 border-t border-border/50 pt-2 space-y-2">
+                        {relatedLoadingId === mem.id ? (
+                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground/50">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Suche Verknüpfungen...
+                          </div>
+                        ) : !related || (related.related_memories.length === 0 && related.related_knowledge.length === 0) ? (
+                          <p className="py-1 text-[11px] text-muted-foreground/50">
+                            Keine semantisch ähnlichen Einträge gefunden.
+                          </p>
+                        ) : (
+                          <>
+                            {related.related_memories.length > 0 && (
+                              <div>
+                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                                  <Brain className="h-2.5 w-2.5 text-emerald-400" /> Memories
+                                </p>
+                                <div className="space-y-1">
+                                  {related.related_memories.map((r) => (
+                                    <div key={`m${r.id}`} className="flex items-center gap-2 text-[11px]">
+                                      <span className="w-8 shrink-0 text-right text-emerald-400/80">{Math.round(r.similarity * 100)}%</span>
+                                      <span className="font-medium">{r.key}</span>
+                                      <span className="truncate text-muted-foreground/70">— {r.snippet}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {related.related_knowledge.length > 0 && (
+                              <div>
+                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                                  <Link2 className="h-2.5 w-2.5 text-sky-400" /> Wissen (Second Brain)
+                                </p>
+                                <div className="space-y-1">
+                                  {related.related_knowledge.map((r) => (
+                                    <div key={`k${r.id}`} className="flex items-center gap-2 text-[11px]">
+                                      <span className="w-8 shrink-0 text-right text-sky-400/80">{Math.round(r.similarity * 100)}%</span>
+                                      <span className="truncate">{r.title}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     {/* History: supersede chain, newest first */}
                     {isHistoryOpen && (

@@ -848,6 +848,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure skill_sources table: {e}")
 
+    # Memory auto-linker columns (#157): added to AgentMemoryLink, but create_all
+    # never ALTERs an existing table. Ensure idempotently so the /related endpoint
+    # and the semantic memory graph work on already-provisioned DBs.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "ALTER TABLE agent_memory_links ADD COLUMN IF NOT EXISTS similarity double precision"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE agent_memory_links ADD COLUMN IF NOT EXISTS auto_generated boolean NOT NULL DEFAULT false"
+            ))
+        logger.info("agent_memory_links auto-link columns ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure agent_memory_links columns: {e}")
+
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
     # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.

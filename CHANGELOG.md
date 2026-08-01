@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.121.0] — 2026-08-01
+
+### Added
+- **Second Brain: automatische Verknüpfung von Agent-Memories** (Issue #157). Der Memory-Graph (`agent_memory_links`) wurde nie befüllt — jede Memory stand isoliert, das „zweite Gehirn" hatte keine Kanten. Neu: `memory_linker` erzeugt beim Speichern einer Memory semantische Kanten aus Embedding-Kosinus-Ähnlichkeit (Schwelle 0.75, max. 10 Links, `relation='semantic_similar'`, `auto_generated=true`) — analog zum bestehenden `brain_linker` für Knowledge-Einträge. Manuelle Links werden respektiert (ein Paar mit bereits existierender Kante in einer der beiden Richtungen wird übersprungen). Verzahnung statt Silo: der neue Endpoint `GET /memory/{id}/related` liefert **sowohl** semantisch ähnliche Memories **als auch** verwandte Second-Brain-Wissenseinträge (Cross-System-Brücke Memory↔Knowledge). Im Frontend zeigt jede Memory einen neuen „Verknüpft"-Aufklapper (Memories + Wissen mit Similarity-Prozent). `POST /memory/relink` (Admin) backfüllt die bestehende Wissensbasis einmalig. Immer-laufender Ensure-Block ergänzt die Spalten `similarity` + `auto_generated` an `agent_memory_links` (create_all ist nur Fresh-DB-Fallback).
+
+---
+
 ## [1.120.0] — 2026-08-01
 
 ### Added
