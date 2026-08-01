@@ -59,6 +59,13 @@ It is built for **KMU (small and medium-sized businesses) and regulated industri
 
 Here is how AI-Employee compares to the platforms people usually evaluate alongside it:
 
+<p align="center">
+  <img src="docs/assets/comparison.png" alt="Feature comparison: AI-Employee vs OpenClaw, CrewAI, Lindy, OpenAI GPTs" width="900">
+</p>
+
+<details>
+<summary>Same comparison as a table</summary>
+
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI GPTs |
 |---|:---:|:---:|:---:|:---:|:---:|
 | Self-hosted | Yes | Yes | Yes (BYO) | No | No |
@@ -75,6 +82,8 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Agents deploy & operate Docker apps | Yes | No | No | No | No |
 | 26 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
 | LLM-agnostic (Claude / GPT-5.x via Codex / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | No | No |
+
+</details>
 
 For a detailed, honest comparison including scenarios where competitors are a better fit, see **[COMPARISON.md](COMPARISON.md)**.
 
@@ -171,6 +180,13 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 ## Architecture
 
+<p align="center">
+  <img src="docs/assets/architecture.png" alt="AI-Employee architecture: clients → Caddy/Traefik TLS → Orchestrator → Redis, Postgres/pgvector, Embedding Service, Agent Pool" width="900">
+</p>
+
+<details>
+<summary>ASCII version</summary>
+
 ```
 +----------------------------------------------------------------+
 |                        Browser / Mobile                        |
@@ -199,6 +215,8 @@ Database migrations run automatically on startup. Your data is persisted in name
                  |                                 |  Skills, MCP
                  +---------------------------------+
 ```
+
+</details>
 
 ## Agent Templates
 
