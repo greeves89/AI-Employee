@@ -60,13 +60,13 @@ It is built for **KMU (small and medium-sized businesses) and regulated industri
 Here is how AI-Employee compares to the platforms people usually evaluate alongside it:
 
 <p align="center">
-  <img src="docs/assets/comparison.png" alt="Feature comparison: AI-Employee vs OpenClaw, CrewAI, Lindy, OpenAI GPTs" width="900">
+  <img src="docs/assets/comparison.png" alt="Feature comparison: AI-Employee vs OpenClaw, CrewAI, Lindy, OpenAI Agents SDK" width="900">
 </p>
 
 <details>
 <summary>Same comparison as a table</summary>
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI GPTs |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI Responses API / Agents SDK |
 |---|:---:|:---:|:---:|:---:|:---:|
 | Self-hosted | Yes | Yes | Yes (BYO) | No | No |
 | Multi-agent (isolated containers) | Yes | No (shared FS) | No | No | No |
@@ -77,11 +77,11 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Governance audit trail | Yes | Yes | Yes | Yes (Business+) | Yes (Enterprise) |
 | Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
 | Persistent agent teams + lead-routing | Yes | No | Partial | No | No |
-| DSGVO-compliant by default | Yes* | Partial | BYO | No | No |
+| DSGVO-compliant by default | Yes* | Partial | BYO | No (SOC2/GDPR, US cloud) | No (EU residency/ZDR on Enterprise) |
 | Telegram + Voice (STT/TTS + realtime voice) | Yes | Yes | BYO | No | No |
-| Agents deploy & operate Docker apps | Yes | No | No | No | No |
-| 26 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
-| LLM-agnostic (Claude / GPT-5.x via Codex / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | No | No |
+| Agents deploy & operate Docker apps | Yes | Partial (Docker via shell) | No | No | No |
+| 27 pre-built agent templates | Yes | Marketplace | Yes (Marketplace) | Yes | Yes |
+| LLM-agnostic (Claude / GPT-5.x via Codex / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | Partial (GPT/Claude, no BYO/local) | No |
 
 </details>
 
@@ -220,7 +220,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 ## Agent Templates
 
-26 pre-configured roles, ready to launch with one click:
+27 pre-configured roles, ready to launch with one click:
 
 | # | Template | Description |
 |---|---|---|
@@ -250,6 +250,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 | 24 | **Personal Assistant** | Calendar, email triage, reminders |
 | 25 | **Executive Assistant** | Briefings, travel, meeting prep, minutes |
 | 26 | **OS Agent (Brain)** | Orchestrator — decomposes goals, delegates to specialist agents, monitors, learns |
+| 27 | **Meeting Agent** | Records/transcribes meetings, writes minutes, tracks action items, schedules follow-ups |
 
 Each template ships with a role prompt, recommended skills, default approval rules, and example tasks.
 
@@ -270,22 +271,33 @@ Real scenarios AI-Employee is already used for:
 
 ## Roadmap
 
-What's actively in development or planned next:
+What we shipped recently, what's in progress, and what's planned next:
 
-### In Progress
-- **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
+<p align="center">
+  <img src="docs/assets/roadmap.png" alt="Roadmap: recently shipped, in progress, and planned features" width="960">
+</p>
 
-### Planned
-- **Autonomy Level → Sudo Package coupling** — Setting an agent to L1 automatically applies minimal OS permissions; L4 grants full root. One setting controls both prompt whitelist and container permissions.
-- **SSO / SAML** — Enterprise single sign-on via SAML 2.0 and OIDC. Map identity provider groups to AI-Employee roles.
-- **Multi-tenant agent assignment** — Admins assign specific agents to specific users or teams. Fine-grained access control beyond the current RLS model.
-- **Mobile PWA** — Installable progressive web app for iOS/Android with push notifications for approval requests and task completions.
-- **Webhook triggers** — Trigger agent tasks from external events (GitHub PR, Jira ticket, form submission) via configurable inbound webhooks.
-- **Skill ratings analytics** — Aggregate skill performance across all agents: which skills are used most, highest/lowest rated, most often replaced.
+<details>
+<summary>Roadmap as text</summary>
 
-### Community Requested
-- Agent-to-agent file handoff notifications
-- DATEV / Lexware export improvements for tax workflows
+**Recently shipped** (was on the roadmap, now live)
+- **Enterprise Volume Mounts** ([#134](https://github.com/greeves89/AI-Employee/issues/134)) — mount company file shares (NFS/SMB via host bind) into agent workspaces, with per-user mount access control.
+- **Inbound webhook triggers** ([#105](https://github.com/greeves89/AI-Employee/issues/105)) — trigger agent tasks from external events (GitHub PR, forms) via configurable routing rules.
+- **Skill ratings analytics** ([#154](https://github.com/greeves89/AI-Employee/issues/154)) — usage count, average rating, time-saved and ROI per skill in the analytics dashboard.
+- **Multi-tenant agent assignment** ([#122](https://github.com/greeves89/AI-Employee/issues/122)) — assign agents to specific users/teams via `agent_access` + teams + custom-role permission packages.
+- **OIDC SSO (Google / Microsoft)** ([#133](https://github.com/greeves89/AI-Employee/issues/133)) — enterprise single sign-on via OpenID Connect.
+
+**In progress**
+- **Second Brain: Weekly Synthesis & Capture** ([#384](https://github.com/greeves89/AI-Employee/issues/384) / [#385](https://github.com/greeves89/AI-Employee/issues/385)) — semantic auto-linking of memory & knowledge is live; weekly synthesis and the capture pipeline are next.
+- **Autonomy Level → container-sudo coupling** — an autonomy level already drives the prompt whitelist and approval rules; next it will also derive the container sudo package automatically.
+- **Agent-to-agent file handoff** — handoff messaging exists; files currently pass through the shared volume, first-class file handoff is in progress.
+
+**Planned**
+- **SAML 2.0 + IdP group mapping** — SAML 2.0 SSO alongside the existing OIDC, with automatic mapping of identity-provider groups to AI-Employee roles.
+- **Mobile PWA + Web Push** — installable PWA for iOS/Android with web push for approvals and task completions (native iOS push already exists).
+- **DATEV / Lexware export** — export improvements for DACH tax workflows.
+
+</details>
 
 ---
 

@@ -23,7 +23,7 @@ If you are evaluating AI agent platforms for:
 | **OpenClaw** | Messaging-first personal AI | Peter Steinberger | 60,000+ |
 | **CrewAI** | Python multi-agent framework | João Moura | 25,000+ |
 | **Lindy.ai** | Cloud no-code AI builder | Flo Crivello | Closed-source |
-| **OpenAI GPTs / Assistants API** | Cloud AI assistants | OpenAI | Closed-source |
+| **OpenAI Responses API / Agents SDK** | Cloud AI assistants (formerly GPTs / Assistants API — Assistants API shuts down 2026-08-26) | OpenAI | Closed-source |
 | **LangGraph** | Graph-based agent framework | LangChain Inc. | 9,000+ |
 | **AutoGen** | Multi-agent research framework | Microsoft Research | 35,000+ |
 | **n8n** | Workflow automation | n8n.io | 65,000+ |
@@ -109,7 +109,7 @@ If you are evaluating AI agent platforms for:
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Pre-built agent templates | **26** | Marketplace | No | ~50 | GPT Store | No | No | Templates |
+| Pre-built agent templates | **27** | Marketplace | Marketplace | ~50 | GPT Store | No | No | Templates |
 | Custom skills system | Yes | Plugins | Tools | No | Actions | Tools | Tools | Nodes |
 | Meeting rooms (multi-agent chat) | **Yes** | No | Partial | No | No | Partial | Yes | No |
 | Agent deploys Docker apps | **Yes** | No | No | No | No | No | No | No |
@@ -195,24 +195,25 @@ If you are evaluating AI agent platforms for:
 
 **Choose AI-Employee if:** your data cannot leave your infrastructure or you need DSGVO compliance.
 
-### OpenAI GPTs / Assistants API
+### OpenAI Responses API / Agents SDK
 
-**What it is:** OpenAI's first-party assistant platform. Tight integration with GPT-4o, DALL-E, Code Interpreter, and the GPT Store.
+**What it is:** OpenAI's first-party agent platform. Tight integration with the latest OpenAI models, Code Interpreter, and the GPT Store. Note: the older **Assistants API is deprecated and shuts down 2026-08-26** — OpenAI directs new work to the **Responses API** (GA March 2025) and the **Agents SDK** (which adds human-in-the-loop `needs_approval` gates).
 
 **Pros:**
 - Access to the best-in-class OpenAI models
 - Code Interpreter and built-in retrieval
 - GPT Store for distribution
 - Official, reliable, well-documented
+- Human-in-the-loop approvals via the Agents SDK; EU data residency + ZDR on Enterprise
 
 **Cons:**
 - Cloud only
 - Tied to OpenAI as a vendor
 - No self-host, no true data sovereignty
 - Limited multi-agent primitives
-- No governance/approval framework
+- No governance/approval framework beyond the Agents SDK primitives
 
-**Choose OpenAI GPTs if:** you want the best OpenAI model experience and are happy to live fully inside OpenAI's ecosystem.
+**Choose OpenAI's Agents SDK if:** you want the best OpenAI model experience and are happy to live fully inside OpenAI's ecosystem.
 
 **Choose AI-Employee if:** you need LLM-agnostic, self-hosted, multi-agent, multi-user, or DSGVO compliance.
 
@@ -296,7 +297,7 @@ We'd rather you pick the right tool than the wrong one:
 - **You are a solo hobbyist who wants the best iMessage/WhatsApp bot.** → Use **OpenClaw**.
 - **You want a pure Python framework to embed in your own SaaS.** → Use **CrewAI** or **LangGraph**.
 - **You want a no-code cloud tool with 3000 integrations and don't care about data residency.** → Use **Lindy**.
-- **You are fully committed to OpenAI and want the GPT Store.** → Use **OpenAI GPTs**.
+- **You are fully committed to OpenAI and want the GPT Store.** → Use **OpenAI's Responses API / Agents SDK**.
 - **You are doing academic research on multi-agent conversation patterns.** → Use **AutoGen**.
 - **You need workflow automation with AI as one step among many.** → Use **n8n**.
 
