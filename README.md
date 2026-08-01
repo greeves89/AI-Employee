@@ -5,7 +5,7 @@
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
 [![License: Source Available](https://img.shields.io/badge/license-Source%20Available-orange.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.55.24-green.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.118.6-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -43,7 +43,7 @@
 
 > **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Regeln und eine eigene Knowledge Base (automatisch von allen seinen Agents geteilt). Autonomie als **3-stufige Fähigkeits-Matrix (Erlaubt/Freigabe/Verboten)** mit L1–L4-Presets — alles auf „Freigabe" löst automatisch eine Freigabe-Anfrage aus, „Verboten" wird nie ausgeführt. Native Microsoft 365-Integration über 47 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für private Nutzung — gewerbliche Nutzung erfordert eine kommerzielle Lizenz. Kontakt: daniel.alisch@me.com
 
-> **Aktuell (v1.99):** 3-stufige **Autonomie-Matrix** (Erlaubt/Freigabe/Verboten) mit L1–L4-Presets · überarbeitete **Chat-Konsole** (Chats umbenennen/anpinnen/löschen, Kachel-Übersicht mit interaktivem Live-Modal, Datei-Drag&Drop, Schriftgröße) · **provider-abhängige Modellauswahl** (Claude / GPT-5.x via Codex / Custom-LLM) mit Guard, der jeder Harness nur passende Modelle erlaubt · **Agenten-Selbstdiagnose** über die eigenen Container-Logs plus secret-redigiertes **Plattform-Fehler-Log** · **Second-Brain-Schreiben** per MCP (Notizen anlegen/aktualisieren) · **Coding-&-Security-Disziplin** für die Agenten (Secure-Coding-Regeln + Security-Selbstreview vor Merge) · persistente **Agenten-Teams mit Lead-Routing** · **47 MS-Graph-Tools** inkl. Datei-Kopieren.
+> **Aktuell (v1.118):** **Realtime Voice Assistant** (Nova Sonic / Azure Realtime) — spricht live mit dem Nutzer und kann per Stimme das Workspace durchsuchen und Dateien lesen (inkl. PDF/Word/Excel), ins **Second Brain** schreiben, eigene **Docker-Apps verwalten** (list/logs/start/stop/**rebuild**), **Microsoft 365** nutzen (Mail senden, Termine anlegen), proaktiv an Kalendertermine erinnern und Tasks über den vollen Lebenszyklus steuern (Plan-Feedback, abbrechen, Sprach-Hilfe) · **Agenten-verwaltete Docker-App-Lifecycle** (Agent listet/startet/stoppt/rebuildet seine eigenen Apps; „Neu bauen"-Button; App-Proxy; teilbare `PUBLIC_APP_URL`) · **Live-Steering** — mitten im laufenden Turn nachsteuern (Queue → Interrupt → Resume), für Claude **und** Codex · **eigene Auth-Header für externe MCP-Server** (Composio, Home Assistant, UniFi, Computer-Use-Bridge) · 3-stufige **Autonomie-Matrix** (Erlaubt/Freigabe/Verboten) mit L1–L4-Presets · **provider-abhängige Modellauswahl** (Claude / GPT-5.x via Codex / Custom-LLM) · **Agenten-Selbstdiagnose** über Container-Logs plus secret-redigiertes **Plattform-Fehler-Log** · persistente **Agenten-Teams mit Lead-Routing** · **47 MS-Graph-Tools**.
 
 ---
 
@@ -71,8 +71,8 @@ Here is how AI-Employee compares to the platforms people usually evaluate alongs
 | Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
 | Persistent agent teams + lead-routing | Yes | No | Partial | No | No |
 | DSGVO-compliant by default | Yes* | Partial | BYO | No | No |
-| Telegram + Voice (STT/TTS) | Yes | Yes | BYO | No | No |
-| Agents deploy Docker apps | Yes | No | No | No | No |
+| Telegram + Voice (STT/TTS + realtime voice) | Yes | Yes | BYO | No | No |
+| Agents deploy & operate Docker apps | Yes | No | No | No | No |
 | 26 pre-built agent templates | Yes | Marketplace | No | Yes | Yes |
 | LLM-agnostic (Claude / GPT-5.x via Codex / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | No | No |
 
@@ -120,6 +120,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 - **LLM-agnostic** — Native Claude Code and OpenAI Codex (GPT-5.x) harnesses, plus Gemini (Vertex), AWS Bedrock, Azure Foundry, or local Ollama/LM-Studio models via the custom-LLM adapter.
 - **Auto-scaling** — Load balancer distributes tasks across available agent containers.
 - **Live log streaming** — WebSocket-powered log viewer, no polling.
+- **Live-Steering** — Send a new instruction while the agent is mid-task and it steers without losing context: the message is queued, the current turn is cleanly interrupted, and the run resumes with your correction folded in. Works on both the Claude and Codex runtimes.
 
 ### Multi-Agent Collaboration
 
@@ -150,11 +151,14 @@ Database migrations run automatically on startup. Your data is persisted in name
 ### Integrations
 
 - **Per-agent Telegram bots** — Each agent can have its own Telegram bot with voice STT/TTS.
+- **Realtime Voice Assistant** — A live, low-latency voice conversation with your agent (Amazon Nova Sonic or Azure OpenAI Realtime). It is not just talk: by voice it can **search and read your workspace files** (including PDF, Word, and Excel), **open a file**, **write notes to a Second Brain**, **manage the agent's own Docker apps** (list, tail logs, start, stop, and rebuild), use **Microsoft 365** (send mail, create calendar events), **proactively remind you** of upcoming calendar events, and drive the full **task lifecycle** (submit a task and hear plan feedback, cancel a running task, ask for spoken help). Responses are sanitized for natural speech.
 - **Microsoft 365 (MS Graph MCP)** — Native Office 365 integration via a built-in MCP server with 47 tools: read/send Outlook mail, manage Calendar events, post to Teams channels and 1:1 chats, Planner tasks, Microsoft To-Do lists, and OneDrive file search/read/move/copy. Each user connects their own M365 account via OAuth — tokens are stored per-user, never shared. Admin configures the Azure App Registration once in Settings; users sign in individually.
 - **OAuth integrations** — Per-user Google and Microsoft accounts with encrypted token storage. Gmail, Calendar, Outlook, Drive, OneDrive. Apple account support also included.
-- **MCP servers** — Memory, Knowledge, Notifications, Orchestrator, Skills, MS Graph. Plug in any third-party MCP server too.
+- **MCP servers** — Memory, Knowledge, Notifications, Orchestrator, Skills, MS Graph. Plug in any third-party MCP server too — with **custom auth headers** for servers that need them (encrypted per-server headers for Composio, Home Assistant, UniFi, the Computer-Use bridge, etc., including Cloudflare Access `CF-Access-Client-Id`/`Secret` handshake headers).
 - **Skills system** — Reusable capability modules (e.g. `invoice-parser`, `pdf-signer`, `contract-diff`) that any agent can pick up. Skills can carry file attachments (scripts, configs) that are pushed into the agent workspace automatically.
-- **Docker-deploy capability** — Agents can write and deploy their own docker-compose apps. Your marketing agent can literally ship its own tool.
+- **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via a Playwright MCP. Fill forms, scrape dynamic pages, and interact with web UIs that have no API.
+- **Desktop Bridge** — A native macOS/Windows tray app connects your local desktop to the AI-Employee server. Agents can take screenshots, click, type, open apps, and run shell commands on your machine. Download it from the agent's Computer-Use tab or the [latest release](https://github.com/greeves89/AI-Employee/releases/tag/bridge-latest). Granular capability permissions (screenshots, mouse, keyboard, clipboard, shell), folder-access restrictions, and a configurable **auth-header handshake** (incl. Cloudflare Access) are set from the tray menu.
+- **Agent-managed Docker app lifecycle** — Agents can write, deploy, and **operate** their own docker-compose apps end-to-end: list their apps, tail logs, start, stop, and **rebuild** them (five agent tools, on both the Claude and Codex runtimes), plus a **"Neu bauen" (rebuild)** button in the UI. Deployed apps are reachable through the built-in **app proxy** and get a **shareable public URL** (`PUBLIC_APP_URL`). Your marketing agent can literally ship — and maintain — its own tool.
 
 ### Self-Host & Operations
 
@@ -251,12 +255,9 @@ Real scenarios AI-Employee is already used for:
 What's actively in development or planned next:
 
 ### In Progress
-- **Computer Use (Browser Automation)** — Agents control a headless Chromium browser via Playwright MCP. Fill forms, scrape dynamic pages, interact with web UIs that have no API.
-- **Desktop Bridge** — Native macOS/Windows tray app connects your local desktop to the AI-Employee server. Agents can take screenshots, click, type, open apps and run shell commands on your machine. Download via the agent's Computer-Use tab or from the [latest release](https://github.com/greeves89/AI-Employee/releases/tag/bridge-latest). Granular capability permissions (screenshots, mouse, keyboard, clipboard, shell) and folder-access restrictions configurable from the tray menu.
 - **Enterprise Volume Mounts** — Mount shared company file shares (NFS, SMB) directly into agent workspaces for read/write access to existing infrastructure.
 
 ### Planned
-- **Task & Skill Analytics** — Dashboard showing task success rates, average cost/duration, skill usage stats, and rating trends. Identify which agents and skills perform best.
 - **Autonomy Level → Sudo Package coupling** — Setting an agent to L1 automatically applies minimal OS permissions; L4 grants full root. One setting controls both prompt whitelist and container permissions.
 - **SSO / SAML** — Enterprise single sign-on via SAML 2.0 and OIDC. Map identity provider groups to AI-Employee roles.
 - **Multi-tenant agent assignment** — Admins assign specific agents to specific users or teams. Fine-grained access control beyond the current RLS model.
@@ -265,7 +266,6 @@ What's actively in development or planned next:
 - **Skill ratings analytics** — Aggregate skill performance across all agents: which skills are used most, highest/lowest rated, most often replaced.
 
 ### Community Requested
-- Voice-to-task via Telegram (hands-free task submission)
 - Agent-to-agent file handoff notifications
 - DATEV / Lexware export improvements for tax workflows
 
