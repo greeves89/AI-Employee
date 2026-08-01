@@ -19,6 +19,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.119.1] — 2026-08-01
+
+### Fixed
+- **Skill-Quellen (#371): Tabelle wird zuverlässig angelegt + git-clone gegen Argument-Injection gehärtet.** (1) `skill_sources` hing an `create_all`, das aber nur im fresh-DB-Fallback läuft → auf der bestehenden DB fehlte die Tabelle. Jetzt always-run `CREATE TABLE IF NOT EXISTS` (kanonisches ensure-Muster). (2) Argv-Flag-Smuggling im `git clone` behoben: `--` vor die Positional-Args (URL/Dir können nie als Flags gelesen werden) + Guard, der URL/ref mit führendem `-` ablehnt.
+
+---
+
 ## [1.119.0] — 2026-08-01
 
 ### Added

@@ -259,12 +259,21 @@ class SkillCrawlerService:
             if token:
                 clone_url = url.replace("https://", f"https://{token}@", 1)
 
+        # Guard against argv flag smuggling: an admin-set URL/ref starting with "-"
+        # would otherwise be parsed by git as an option (e.g. --upload-pack=…).
+        if url.startswith("-") or clone_url.startswith("-"):
+            raise RuntimeError("invalid clone URL")
+        ref = src.get("ref")
+        if ref and ref.startswith("-"):
+            raise RuntimeError("invalid ref")
+
         tmp = tempfile.mkdtemp(prefix="skillsrc-")
         try:
             cmd = ["git", "clone", "--depth", "1"]
-            if src.get("ref"):
-                cmd += ["--branch", src["ref"]]
-            cmd += [clone_url, tmp]
+            if ref:
+                cmd += ["--branch", ref]
+            # `--` terminates option parsing so the URL/dir can never be read as flags.
+            cmd += ["--", clone_url, tmp]
             proc = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},

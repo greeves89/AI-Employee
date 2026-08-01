@@ -818,6 +818,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure oauth_clients table: {e}")
 
+    # Skill sources (issue #371): admin-managed crawl sources. Added as a model, but
+    # create_all only runs in the fresh-DB fallback — ensure it on every startup so
+    # the admin API + crawler work on already-provisioned DBs. `kind` as varchar (the
+    # model's Enum accepts the string value); IF NOT EXISTS skips it where create_all
+    # already made the native-enum column. Idempotent.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS skill_sources ("
+                "id serial PRIMARY KEY, "
+                "name varchar NOT NULL, "
+                "kind varchar NOT NULL DEFAULT 'github', "
+                "location varchar NOT NULL, "
+                "ref varchar, "
+                "subdir varchar, "
+                "credential_encrypted text, "
+                "enabled boolean NOT NULL DEFAULT true, "
+                "trusted boolean NOT NULL DEFAULT false, "
+                "created_by varchar DEFAULT 'admin', "
+                "last_crawled_at timestamptz, "
+                "last_status varchar, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+        logger.info("skill_sources table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure skill_sources table: {e}")
+
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
     # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.
