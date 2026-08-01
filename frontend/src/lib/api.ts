@@ -2322,12 +2322,38 @@ export async function regenerateTelegramKey(agentId: string): Promise<{ agent_id
 
 // --- Knowledge Base ---
 
-export async function getKnowledgeEntries(q?: string, tag?: string): Promise<{ entries: KnowledgeEntry[]; total: number }> {
+export async function getKnowledgeEntries(
+  q?: string,
+  tag?: string,
+  limit?: number,
+  offset?: number,
+): Promise<{ entries: KnowledgeEntry[]; total: number }> {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (tag) params.set("tag", tag);
+  if (limit != null) params.set("limit", String(limit));
+  if (offset != null) params.set("offset", String(offset));
   const qs = params.toString() ? `?${params}` : "";
   return fetchJSON(`${getBase()}/knowledge/entries${qs}`);
+}
+
+/**
+ * Fetch ALL knowledge entries, transparently paging via the endpoint's
+ * offset/limit so the UI is never silently capped at the server default.
+ */
+export async function getAllKnowledgeEntries(
+  q?: string,
+  tag?: string,
+): Promise<{ entries: KnowledgeEntry[]; total: number }> {
+  const PAGE = 200;
+  const first = await getKnowledgeEntries(q, tag, PAGE, 0);
+  const entries = [...first.entries];
+  while (entries.length < first.total) {
+    const next = await getKnowledgeEntries(q, tag, PAGE, entries.length);
+    if (next.entries.length === 0) break; // safety: avoid infinite loop
+    entries.push(...next.entries);
+  }
+  return { entries, total: first.total };
 }
 
 export async function getKnowledgeEntry(id: number): Promise<KnowledgeEntry> {

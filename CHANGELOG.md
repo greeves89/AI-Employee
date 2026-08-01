@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.121.1] — 2026-08-01
+
+### Fixed
+- **Knowledge Base zeigte nur 100 von tatsächlich vorhandenen Einträgen.** Der Listen-Endpoint hat einen Default `limit=100`, das Frontend übergab keinen Wert und zeigte im Badge zudem `entries.length` (die geladenen 100) statt des vom Endpoint korrekt gelieferten `total`. Bei 176 Einträgen fehlten damit 76 in der UI. Neu: `getAllKnowledgeEntries` paged transparent über den bereits vorhandenen `offset`-Parameter (Seiten à 200) bis alle Einträge geladen sind, und das Badge zeigt das echte `total`. Skaliert über das 500er-Server-Cap hinaus, da jede Einzelanfrage ≤500 bleibt.
+
+---
+
 ## [1.121.0] — 2026-08-01
 
 ### Added

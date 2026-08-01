@@ -11,7 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import {
-  getKnowledgeEntries, getKnowledgeEntry, createKnowledgeEntry,
+  getAllKnowledgeEntries, getKnowledgeEntry, createKnowledgeEntry,
   updateKnowledgeEntry, deleteKnowledgeEntry, getKnowledgeTags,
   getBrainGraph,
 } from "@/lib/api";
@@ -29,6 +29,7 @@ type ViewMode = "list" | "editor" | "graph";
 
 export default function KnowledgePage() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
+  const [total, setTotal] = useState(0);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<KnowledgeEntry | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -50,10 +51,11 @@ export default function KnowledgePage() {
     setLoading(true);
     try {
       const [entryData, tagData] = await Promise.all([
-        getKnowledgeEntries(searchQuery || undefined, activeTag || undefined),
+        getAllKnowledgeEntries(searchQuery || undefined, activeTag || undefined),
         getKnowledgeTags(),
       ]);
       setEntries(entryData.entries);
+      setTotal(entryData.total);
       setTags(tagData.tags);
     } catch (e) {
       console.error("Failed to load knowledge:", e);
@@ -209,7 +211,7 @@ export default function KnowledgePage() {
           <BookOpen className="h-6 w-6 text-primary" />
           <h1 className="truncate text-xl font-semibold">Knowledge Base</h1>
           <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-xs text-muted-foreground">
-            {entries.length} entries
+            {total} entries
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
