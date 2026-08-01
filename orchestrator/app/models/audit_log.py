@@ -49,6 +49,10 @@ class AuditEventType(str, Enum):
     # Reflection ("Nachtschicht") — nightly out-of-band transcript reflection
     REFLECTION_RUN = "reflection_run"             # one nightly run finished
     REFLECTION_CHANGE = "reflection_change"       # one applied memory/knowledge/skill change
+    # DLP egress filter (#388) — outbound message scanned for PII/secrets
+    DLP_BLOCKED = "dlp_blocked"                   # outbound message blocked (e.g. leaked secret)
+    DLP_MASKED = "dlp_masked"                     # outbound message sent with PII masked
+    DLP_FLAGGED = "dlp_flagged"                   # outbound message flagged (log-only)
 
 
 class AuditLog(Base):

@@ -871,7 +871,24 @@ class TelegramAgentBot:
                 pass
 
     async def _send_chunked(self, chat_id: int, text: str) -> None:
-        """Send text in Telegram-safe chunks (max 4096 chars)."""
+        """Send text in Telegram-safe chunks (max 4096 chars).
+
+        DLP egress filter (#388): the full message is scanned once before chunking.
+        A blocking verdict suppresses the message (a short notice is sent instead);
+        a masking verdict sends the redacted text. Passthrough when DLP is disabled.
+        """
+        try:
+            from app.core.dlp import evaluate_egress
+            verdict = await evaluate_egress(text, agent_id=self.agent_id, channel="telegram")
+            if verdict.blocked:
+                await self.app.bot.send_message(
+                    chat_id=chat_id,
+                    text="[Nachricht durch DLP-Filter blockiert — sie enthielt sensible Daten (z. B. ein Secret) und wurde nicht gesendet.]",
+                )
+                return
+            text = verdict.output
+        except Exception:
+            pass  # fail-open: never break message delivery on a DLP error
         for i in range(0, len(text), 4000):
             chunk = text[i : i + 4000]
             await self.app.bot.send_message(chat_id=chat_id, text=chunk)

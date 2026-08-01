@@ -137,9 +137,21 @@ class TelegramBot:
                     chat_id = settings.telegram_chat_id
                     if not chat_id or not self.app:
                         continue
+                    notif_text = data.get("text", "")
+                    # DLP egress filter (#388): scan operator notifications too
+                    # (they can carry agent-derived text, e.g. reflection digests).
+                    try:
+                        from app.core.dlp import evaluate_egress
+                        verdict = await evaluate_egress(notif_text, agent_id=data.get("agent_id"), channel="telegram_notification")
+                        if verdict.blocked:
+                            notif_text = "[Benachrichtigung durch DLP-Filter blockiert — enthielt sensible Daten.]"
+                        else:
+                            notif_text = verdict.output
+                    except Exception:
+                        pass  # fail-open
                     await self.app.bot.send_message(
                         chat_id=int(chat_id),
-                        text=data.get("text", ""),
+                        text=notif_text,
                         parse_mode=data.get("parse_mode"),
                     )
                 except Exception as e:

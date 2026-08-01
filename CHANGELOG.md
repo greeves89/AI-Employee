@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.124.0] — 2026-08-01
+
+### Added
+- **DLP-Egress-Filter** (Issue #388, Vision-Roadmap Säule „Vertrauen & Kontrolle"). Ausgehender, agent-generierter Text wird vor dem Versand auf PII/Secrets gescannt — das Argument für DSGVO-sensible Kunden:
+  - `core/dlp.py`: reiner, deterministischer Scanner (`classify`/`mask`) für die Klassen **secret** (Credential-Pattern aus `log_redaction` wiederverwendet), **iban**, **credit_card** (mit Luhn-Prüfung gegen False-Positives), **email**, **de_tax_id** (11-stellig). Plus DB-Auswerter `evaluate_egress`, der die Aktion pro Klasse aus `DlpRule` auflöst (agent-spezifisch > global > Default) und **allow/log/mask/block** anwendet.
+  - **Audit ohne Klartext:** jeder Treffer landet als `AuditLog` (`dlp_blocked`/`dlp_masked`/`dlp_flagged`) — nur Klassen + Anzahl, niemals der sensible Wert.
+  - **Egress-Hooks:** Agent→Telegram (`_send_chunked`, scannt den vollen Text vor dem Chunking) + Operator-Notifications (`bot._listen_notifications`). Blockierte Nachrichten werden durch einen Hinweis ersetzt, maskierte redigiert gesendet.
+  - **Opt-in & fail-open:** Passthrough, solange `dlp_enabled` nicht gesetzt ist (bestehende Deployments unberührt); interne Fehler blockieren niemals den Versand.
+  - **Admin-API** `/dlp` (require_admin): Toggle, Regeln pro Klasse/Agent (CRUD), Audit-Ansicht, `/dlp/test`-Scan-Vorschau. `dlp_rules`-Tabelle via always-run Ensure-Block + Default-Seed.
+  - 15 Unit-Tests für Scanner + Policy-Auflösung (Luhn, IBAN-vs-CC-Abgrenzung, Precedence, block/mask/log).
+
+---
+
 ## [1.123.0] — 2026-08-01
 
 ### Added

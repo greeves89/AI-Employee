@@ -119,6 +119,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Dynamic model catalog: provider auto-discovery cache + admin enable map (JSON)
     "model_discovery_cache",       # JSON {discovered_at, models:[...]} — non-seed extras
     "model_enabled_overrides",     # JSON {model_value: bool} — admin freischaltung
+    # DLP egress filter (#388): scan outbound text for PII/secrets before sending
+    "dlp_enabled",                 # "true" | "false" (default off — opt-in)
 }
 
 
