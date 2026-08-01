@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.5] — 2026-08-01
+
+### Fixed
+- **Voice: Datei-Upload-Hinweis wird jetzt GESPROCHEN, nicht nur geschrieben.** Lud man während einer laufenden Voice-Antwort eine Datei hoch, injizierte `notify_files_uploaded` die Notiz („Ich habe die Datei … gesehen, was soll ich damit tun?") SOFORT — mitten im Turn. Nova hängt sie dann nur als **Text** an (erscheint in der Chat-Bubble), erzeugt aber **kein Audio** dafür → geschrieben, nicht gesprochen. Fix: die Notiz wird **verzögert**, bis Nova den aktuellen Sprech-Turn beendet hat (Idle-Erkennung über den Zeitpunkt des zuletzt empfangenen Audios), und dann als **sauberer, gesprochener Turn** injiziert (mit 25s-Deadline als Absicherung). Reiner Orchestrator-Fix.
+
+---
+
 ## [1.118.4] — 2026-08-01
 
 ### Reverted

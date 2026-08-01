@@ -1299,12 +1299,30 @@ class RealtimeVoiceSession:
     async def notify_files_uploaded(self, files: list[str]) -> None:
         """Tell the agent that the user just dropped file(s) into its workspace.
 
-        Injected as a user turn so the agent reacts by voice: if no instruction was
-        given yet it asks what to do with the file; if the user already said what they
-        want, it just proceeds. Same channel as the greeting (works on both engines).
+        Injected as a user turn so the agent reacts by voice. IMPORTANT: a file is
+        usually uploaded WHILE Nova is still speaking the current answer. Injecting the
+        notice mid-turn makes Nova append it as TEXT only — it shows in the chat bubble
+        but is never SPOKEN (audio for the turn was already generated). So we defer the
+        injection until Nova has finished the current spoken turn, then inject it as a
+        CLEAN turn that actually gets voiced.
         """
         paths = [str(f).strip() for f in (files or []) if str(f).strip()]
         if not paths or self._closed or not self._nova:
+            return
+        asyncio.create_task(self._notify_files_bg(paths))
+
+    async def _notify_files_bg(self, paths: list[str]) -> None:
+        # Wait until Nova is idle (no spoken audio for a short gap and not mid barge-in
+        # drop), so the notice is a fresh, SPOKEN turn. Bounded so it never hangs.
+        deadline = time.monotonic() + 25.0
+        while not self._closed and self._nova:
+            quiet = time.monotonic() - getattr(self, "_last_spoken", 0.0)
+            if quiet > 1.2 and not self._drop_audio:
+                break
+            if time.monotonic() > deadline:
+                break
+            await asyncio.sleep(0.3)
+        if self._closed or not self._nova:
             return
         listing = ", ".join(paths[:10])
         try:
@@ -1366,6 +1384,7 @@ class RealtimeVoiceSession:
         if kind == "audio":
             if self._drop_audio:
                 return  # interrupted turn — drop the rest of its audio entirely
+            self._last_spoken = time.monotonic()  # Nova is speaking → used to defer injects
             b64 = base64.b64encode(data.get("pcm", b"")).decode("ascii")
             await self._emit({"type": "audio_chunk", "data": {
                 "b64": b64, "mime": "audio/pcm", "rate": 24000, "tag": "main",
