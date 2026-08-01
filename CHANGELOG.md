@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.4] — 2026-08-01
+
+### Reverted
+- **Den `_clean_text`-Längen-Cap aus 1.118.3 zurückgenommen — war die falsche Diagnose.** „Invalid event bytes" ist eine **awscrt-Eventstream-Meldung** (Decode-Fehler auf dem Empfangs-Stream von Nova), kommt NICHT aus unserem Code und hängt nicht an der Eingabelänge: AWS erlaubt bis 50 KB Text pro Message, die betroffene docx war ~5 KB. In den Logs stehen dazu passend `awscrt InvalidStateError: CANCELLED` (bekannte Nova-Sonic/awscrt-Stream-Instabilität). Ein Input-Cap behebt das nicht und würde nur legitime Inhalte unnötig kürzen. `_clean_text` ist wieder reines Sanitizing (UTF-8 + Control-Chars). Die eigentliche Ursache (Stream-Recovery bei awscrt-Decode-Fehlern) ist separat zu adressieren.
+
+---
+
 ## [1.118.3] — 2026-08-01
 
 ### Fixed

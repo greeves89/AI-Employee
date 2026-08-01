@@ -45,33 +45,22 @@ OUTPUT_SAMPLE_RATE = 24000
 EventCallback = Callable[[str, dict], Awaitable[None]]
 
 
-# Nova Sonic rejects an over-long text turn with a ValidationException that the
-# frontend surfaces as "Invalid event bytes" (seen when a whole document is read out
-# loud). A spoken turn never needs the full text anyway, so hard-cap what we send.
-_MAX_NOVA_TEXT = 3500
-
-
-def _clean_text(s: Any, max_len: int = _MAX_NOVA_TEXT) -> str:
+def _clean_text(s: Any) -> str:
     """Sanitize text going INTO Nova (tool results / injected turns).
 
     File/PDF-derived tool content can carry NUL bytes, control chars or broken
     UTF-8 (e.g. lone surrogates from pypdf) — sending those over the bidi stream
     makes Bedrock fail the turn with a generic 'unexpected error during
     processing' / decode error. Strip control chars (keep \\n and \\t) and force
-    valid UTF-8 so the payload is always clean. Also HARD-CAP the length: an
-    over-long turn (e.g. a whole docx read aloud) makes Nova reject the event
-    ('Invalid event bytes')."""
+    valid UTF-8 so the payload is always clean."""
     if not isinstance(s, str):
         s = str(s)
     # Force valid UTF-8 (drops lone surrogates / undecodable bytes).
     s = s.encode("utf-8", "replace").decode("utf-8", "replace")
     # Drop NUL + other C0/C1 control chars except tab/newline/carriage-return.
-    s = "".join(
+    return "".join(
         ch for ch in s if ch in "\t\n\r" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
     )
-    if max_len and len(s) > max_len:
-        s = s[:max_len].rstrip() + " … (gekürzt — frag nach Details)"
-    return s
 
 
 class NovaSonicSession:
