@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
   Timer, Hash, Cpu, DollarSign, Wrench, Bot,
   AlertTriangle, Terminal, FileText, RotateCcw, Send, MessageSquare,
-  Download, Paperclip,
+  Download, Paperclip, Play, Pause, ShieldCheck, FileJson, Printer,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -65,6 +65,9 @@ export default function TaskDetailPage() {
   const [replayIndex, setReplayIndex] = useState(0);
   const [replayLoaded, setReplayLoaded] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
+  // Decision-Trace (#387): auto-advance playback + enriched trace (duration/cost/governance)
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [trace, setTrace] = useState<api.TaskTrace | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const replayContainerRef = useRef<HTMLDivElement>(null);
@@ -128,9 +131,13 @@ export default function TaskDetailPage() {
   const loadReplay = useCallback(async () => {
     setReplayLoading(true);
     try {
-      const res = await api.getTaskSteps(taskId);
+      const [res, tr] = await Promise.all([
+        api.getTaskSteps(taskId),
+        api.getTaskTrace(taskId).catch(() => null),
+      ]);
       setReplaySteps(res.steps);
       setReplayIndex(res.steps.length);
+      setTrace(tr);
       setReplayLoaded(true);
     } catch {
       setReplayLoaded(true);
@@ -138,6 +145,21 @@ export default function TaskDetailPage() {
       setReplayLoading(false);
     }
   }, [taskId]);
+
+  // Auto-advance playback: step through the replay one event at a time until the end.
+  useEffect(() => {
+    if (!replayPlaying) return;
+    if (replayIndex >= replaySteps.length) { setReplayPlaying(false); return; }
+    const t = setTimeout(() => setReplayIndex((i) => Math.min(i + 1, replaySteps.length)), 700);
+    return () => clearTimeout(t);
+  }, [replayPlaying, replayIndex, replaySteps.length]);
+
+  // Per-step duration (ms) between the current step and the next, from the trace.
+  const currentStepDurationMs = useMemo(() => {
+    if (!trace || replayIndex <= 0) return null;
+    const e = trace.entries[replayIndex - 1];
+    return e ? e.duration_ms : null;
+  }, [trace, replayIndex]);
 
   // Fetch task data
   const loadTask = useCallback(async () => {
@@ -462,17 +484,34 @@ export default function TaskDetailPage() {
             <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
               <div className="flex items-center gap-2.5">
                 <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Schritt-Replay</span>
+                <span className="text-xs font-medium text-muted-foreground">Decision-Trace · Zeitreise</span>
               </div>
-              {!replayLoaded && (
+              {!replayLoaded ? (
                 <button
                   onClick={loadReplay}
                   disabled={replayLoading}
                   className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] disabled:opacity-50 transition-colors"
                 >
                   {replayLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                  Replay laden
+                  Trace laden
                 </button>
+              ) : replaySteps.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={api.taskTraceExportUrl(taskId)}
+                    className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] transition-colors"
+                    title="Trace als JSON herunterladen"
+                  >
+                    <FileJson className="h-3 w-3" /> JSON
+                  </a>
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] transition-colors"
+                    title="Als PDF drucken (Browser-Druckdialog)"
+                  >
+                    <Printer className="h-3 w-3" /> PDF
+                  </button>
+                </div>
               )}
             </div>
             {replayLoaded && (
@@ -484,16 +523,27 @@ export default function TaskDetailPage() {
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          if (replayIndex >= replaySteps.length) setReplayIndex(0);
+                          setReplayPlaying((p) => !p);
+                        }}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-colors"
+                        title={replayPlaying ? "Pause" : "Abspielen"}
+                      >
+                        {replayPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                      </button>
                       <input
                         type="range"
                         min={0}
                         max={replaySteps.length}
                         value={replayIndex}
-                        onChange={(e) => setReplayIndex(parseInt(e.target.value, 10))}
+                        onChange={(e) => { setReplayPlaying(false); setReplayIndex(parseInt(e.target.value, 10)); }}
                         className="flex-1 accent-blue-500"
                       />
-                      <span className="text-[11px] tabular-nums text-muted-foreground/70 w-20 text-right">
+                      <span className="text-[11px] tabular-nums text-muted-foreground/70 w-28 text-right">
                         Schritt {replayIndex}/{replaySteps.length}
+                        {currentStepDurationMs != null && <span className="text-muted-foreground/40"> · {formatDuration(currentStepDurationMs)}</span>}
                       </span>
                     </div>
                     <div ref={replayContainerRef} className="h-[400px] overflow-y-auto rounded-lg bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
@@ -501,9 +551,40 @@ export default function TaskDetailPage() {
                         <TaskLogLine key={i} event={ev} agentNames={agentNames} />
                       ))}
                       {replayIndex === 0 && (
-                        <p className="text-muted-foreground/40">Schieberegler bewegen, um die Ausführung Schritt für Schritt abzuspielen.</p>
+                        <p className="text-muted-foreground/40">Abspielen drücken oder den Schieberegler bewegen, um die Ausführung Schritt für Schritt nachzuvollziehen.</p>
                       )}
                     </div>
+                    {trace && (trace.summary.cost_usd != null || trace.governance.length > 0) && (
+                      <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
+                          {trace.summary.cost_usd != null && <span>Kosten <span className="text-foreground">${trace.summary.cost_usd.toFixed(4)}</span></span>}
+                          {trace.summary.num_turns != null && <span>Turns <span className="text-foreground">{trace.summary.num_turns}</span></span>}
+                          {trace.summary.duration_ms != null && <span>Dauer <span className="text-foreground">{formatDuration(trace.summary.duration_ms)}</span></span>}
+                          {(trace.summary.input_tokens != null || trace.summary.output_tokens != null) && (
+                            <span>Tokens <span className="text-foreground">{(trace.summary.input_tokens ?? 0)} / {(trace.summary.output_tokens ?? 0)}</span></span>
+                          )}
+                        </div>
+                        {trace.governance.length > 0 && (
+                          <div>
+                            <p className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                              <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" /> Governance ({trace.governance.length})
+                            </p>
+                            <div className="space-y-0.5">
+                              {trace.governance.slice(0, 8).map((g, i) => (
+                                <div key={i} className="flex items-center gap-2 text-[11px]">
+                                  <span className={cn(
+                                    "w-14 shrink-0 text-[10px]",
+                                    g.outcome === "blocked" ? "text-red-400" : g.outcome === "failure" ? "text-amber-400" : "text-emerald-400/70",
+                                  )}>{g.outcome ?? "—"}</span>
+                                  <span className="font-medium">{g.event_type}</span>
+                                  {g.command && <span className="truncate text-muted-foreground/60">{g.command}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>

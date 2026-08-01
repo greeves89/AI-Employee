@@ -539,6 +539,58 @@ export async function getTaskArtifacts(
   return fetchJSON(`${getBase()}/tasks/${id}/artifacts`);
 }
 
+// Decision-Trace / Zeitreise (#387): enriched, grouped timeline with per-step
+// duration, folded tool results, governance audit events and a cost summary.
+export interface TaskTraceEntry {
+  sequence: number;
+  type: string;
+  timestamp: string | null;
+  duration_ms: number | null;
+  text?: string;
+  tool?: string;
+  input?: unknown;
+  result?: unknown;
+  tool_duration_ms?: number | null;
+  content?: unknown;
+  error?: unknown;
+  summary?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+}
+export interface TaskTrace {
+  task_id: string;
+  agent_id: string | null;
+  summary: {
+    title: string;
+    status: string;
+    model: string | null;
+    cost_usd: number | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    duration_ms: number | null;
+    num_turns: number | null;
+    started_at: string | null;
+    completed_at: string | null;
+  };
+  governance: Array<{
+    event_type: string;
+    command: string | null;
+    outcome: string | null;
+    exit_code: number | null;
+    timestamp: string | null;
+  }>;
+  total_steps: number;
+  entries: TaskTraceEntry[];
+}
+
+export async function getTaskTrace(id: string): Promise<TaskTrace> {
+  return fetchJSON(`${getBase()}/tasks/${id}/trace`);
+}
+
+// URL for the JSON export download (served with a Content-Disposition attachment).
+export function taskTraceExportUrl(id: string): string {
+  return `${getBase()}/tasks/${id}/export?format=json`;
+}
+
 export async function createTask(data: {
   title: string;
   prompt: string;

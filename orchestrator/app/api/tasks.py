@@ -382,6 +382,63 @@ async def get_task_steps(
     }
 
 
+async def _assert_task_access(task_id: str, user, db: AsyncSession) -> Task:
+    """Load a task and enforce ownership (mirrors get_task_steps). 404/403 on failure."""
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if hasattr(user, "role"):
+        allowed = await _get_user_agent_ids(user, db)
+        if allowed is not None and task.agent_id not in allowed:
+            raise HTTPException(status_code=403, detail="Access denied")
+    return task
+
+
+@router.get("/{task_id}/trace")
+async def get_task_trace(
+    task_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Decision-Trace (issue #387): the enriched, grouped time-travel timeline for a
+    task — thought -> tool call (input) -> matching result (output), per-step
+    duration, governance audit events and a cost summary."""
+    from app.services.trace_service import assemble_trace
+
+    await _assert_task_access(task_id, user, db)
+    trace = await assemble_trace(task_id, db)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return trace
+
+
+@router.get("/{task_id}/export")
+async def export_task_trace(
+    task_id: str,
+    format: str = Query("json", pattern="^(json)$"),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the decision-trace as a file. JSON is served here; PDF is produced
+    client-side via the browser's print-to-PDF on the trace view (no server dep)."""
+    import json
+
+    from fastapi.responses import Response
+
+    from app.services.trace_service import assemble_trace
+
+    await _assert_task_access(task_id, user, db)
+    trace = await assemble_trace(task_id, db)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    body = json.dumps(trace, indent=2, ensure_ascii=False)
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="task-{task_id}-trace.json"'},
+    )
+
+
 @router.get("/{task_id}/artifacts")
 async def get_task_artifacts(
     task_id: str,

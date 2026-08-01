@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.123.0] — 2026-08-01
+
+### Added
+- **Decision-Trace / Zeitreise** (Issue #387, Vision-Roadmap Säule „Vertrauen & Kontrolle"). Der bestehende Schritt-Replay wird zur vollen, nachvollziehbaren Task-Timeline ausgebaut — „warum hat der Agent das getan?" auf Knopfdruck:
+  - Neuer `trace_service.assemble_trace` gruppiert die roh geloggten `TaskStep`s (Gedanke → Tool-Call → Ergebnis), faltet jedes `tool_result` in seinen `tool_call` (gematcht über `tool_use_id`), berechnet die Dauer pro Schritt aus den Timestamps und hängt die Governance-Audit-Events (`AuditLog`, task-scoped) + eine Kosten-/Token-Summe an. Rein lesend, keine Nebenwirkungen.
+  - Endpoints `GET /tasks/{id}/trace` (angereicherte Timeline) und `GET /tasks/{id}/export?format=json` (Download); Auth + Ownership analog `/steps`.
+  - Frontend (Task-Detail): **Play/Pause**-Abspielen der Zeitreise, **Dauer pro Schritt**, ein **Governance-&-Kosten-Strip** (blockierte/fehlgeschlagene Aktionen sichtbar) und **Export** als JSON bzw. PDF (Browser-Druck).
+  - 5 Unit-Tests für die Trace-Assembly (Folding, Orphan-Result, Dauer, Governance/Summary).
+
+---
+
 ## [1.122.0] — 2026-08-01
 
 ### Added
