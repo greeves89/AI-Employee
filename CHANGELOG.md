@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.6] — 2026-08-01
+
+### Added
+- **Computer-Use-Bridge: konfigurierbare Handshake-Header für Identity-Aware-Proxies** (Issue #374, gemeldet von tiko0). Die Bridge sendete beim WebSocket-Handshake nur den `Authorization`-Bearer — hinter einem Identity-Aware-Proxy (Cloudflare Access, Google IAP, oauth2-proxy, Authelia, Teleport) beantwortet der Proxy den Handshake dann mit einem eigenen Login-Challenge, den ein Non-Browser-Client nicht lösen kann. Bisheriger Workaround: den Proxy für die Bridge umgehen (zweiter Hostname mit *Bypass*) — genau die Schutzschicht, die man bewusst deployt hat, wird durchlöchert. Neu: zusätzliche Header sind aus drei Quellen konfigurierbar (Präzedenz aufsteigend): Cloudflare-Service-Token-Shortcuts `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET`, ein `extra_headers`-Objekt in `~/.ai_employee_bridge.json`, und wiederholbare `--header "Name: value"`-Flags. Die Header werden vor dem `Authorization`-Header gemischt, sodass der Bearer-Token nie überschrieben werden kann. **Header-Werte sind Credentials und werden nie geloggt** (nur die Namen). Setup-Hinweis in der Web-UI ergänzt.
+
+---
+
 ## [1.118.5] — 2026-08-01
 
 ### Fixed

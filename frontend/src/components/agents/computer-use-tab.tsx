@@ -404,6 +404,15 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
                     Erforderlich für AX-Tree und Eingabe-Steuerung.
                   </p>
                 </InstallStep>
+                <InstallStep step={5} title="Hinter einem Identity-Aware-Proxy (optional)">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Läuft die Plattform hinter Cloudflare Access, Google IAP, oauth2-proxy o. ä.,
+                    braucht die Bridge einen Service-Token als zusätzlichen Header. Mehrfach nutzbar
+                    per <code className="text-violet-400/80">--header</code>, oder für Cloudflare per
+                    Umgebungsvariablen. Die Werte werden nie geloggt.
+                  </p>
+                  <CodeBlock>{`# Cloudflare Access (Service-Token)\nCF_ACCESS_CLIENT_ID=<id> CF_ACCESS_CLIENT_SECRET=<secret> python tray_app.py\n\n# Beliebiger Proxy-Header\npython bridge.py --url ${baseUrl} --token <dein-token> --session <id> \\\n  --header 'CF-Access-Client-Id: <id>' --header 'CF-Access-Client-Secret: <secret>'`}</CodeBlock>
+                </InstallStep>
                 <div className="flex items-start gap-2 rounded-lg bg-amber-500/5 border border-amber-500/20 px-3 py-2.5">
                   <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-400/80">

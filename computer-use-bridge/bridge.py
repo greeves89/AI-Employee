@@ -407,10 +407,21 @@ class CommandDispatcher:
 # ── WebSocket Bridge ──────────────────────────────────────────────────────────
 
 class Bridge:
-    def __init__(self, ws_url: str, token: str, session_id: str | None = None):
+    def __init__(
+        self,
+        ws_url: str,
+        token: str,
+        session_id: str | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ):
         self.ws_url = ws_url
         self.token = token
         self.session_id = session_id
+        # Extra request headers to send on the WebSocket handshake, e.g. an
+        # identity-aware proxy's service-token headers (Cloudflare Access,
+        # Google IAP, oauth2-proxy, Authelia). See issue #374. Values are
+        # credentials and are never logged — only the header names are.
+        self.extra_headers: dict[str, str] = dict(extra_headers or {})
         self.dispatcher: CommandDispatcher | None = None
         self._running = False
 
@@ -435,11 +446,16 @@ class Bridge:
         # present. See issue #373.
         query = urllib.parse.urlencode({"session_id": self.session_id})
         url = f"{self.ws_url}/ws/computer-use/bridge?{query}"
-        headers = {"Authorization": f"Bearer {self.token}"}
+        # Merge any configured proxy headers in first, then set Authorization so
+        # our bearer token can never be shadowed by a stray extra header.
+        headers = {**self.extra_headers, "Authorization": f"Bearer {self.token}"}
         ssl_context = _ssl_ctx if url.startswith("wss://") else None
         # Log without the query string so no credential (now or in future) leaks
         # into the client log file.
         log.info(f"Connecting to {self.ws_url}/ws/computer-use/bridge")
+        if self.extra_headers:
+            # Names only — the values are service-token credentials.
+            log.info(f"Extra request headers: {', '.join(sorted(self.extra_headers))}")
 
         async for ws in websockets.connect(
             url,
@@ -510,6 +526,65 @@ class Bridge:
             log.info(f"Session ID: {self.session_id}")
 
 
+# ── Extra headers (identity-aware proxy support, issue #374) ──────────────────
+
+BRIDGE_CONFIG_PATH = os.path.expanduser("~/.ai_employee_bridge.json")
+
+
+def _parse_header_arg(raw: str) -> tuple[str, str]:
+    """Parse a ``--header "Name: value"`` string into a (name, value) pair."""
+    name, sep, value = raw.partition(":")
+    name = name.strip()
+    value = value.strip()
+    if not sep or not name:
+        raise ValueError(f"Invalid --header (expected 'Name: value'): {raw!r}")
+    return name, value
+
+
+def collect_extra_headers(header_args: list[str] | None) -> dict[str, str]:
+    """Gather extra WS handshake headers from three sources.
+
+    Precedence, lowest to highest (later wins):
+      1. Cloudflare service-token env shortcuts
+         (CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET).
+      2. ``extra_headers`` object in ~/.ai_employee_bridge.json.
+      3. Repeatable ``--header "Name: value"`` command-line flags.
+
+    Header values are credentials — this function never logs them.
+    """
+    headers: dict[str, str] = {}
+
+    cf_id = os.environ.get("CF_ACCESS_CLIENT_ID")
+    cf_secret = os.environ.get("CF_ACCESS_CLIENT_SECRET")
+    if cf_id:
+        headers["CF-Access-Client-Id"] = cf_id
+    if cf_secret:
+        headers["CF-Access-Client-Secret"] = cf_secret
+
+    try:
+        with open(BRIDGE_CONFIG_PATH, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        cfg_headers = cfg.get("extra_headers")
+        if isinstance(cfg_headers, dict):
+            for name, value in cfg_headers.items():
+                if isinstance(name, str) and name.strip():
+                    headers[name.strip()] = str(value)
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as e:
+        log.warning(f"Could not read {BRIDGE_CONFIG_PATH}: {e}")
+
+    for raw in header_args or []:
+        try:
+            name, value = _parse_header_arg(raw)
+        except ValueError as e:
+            log.warning(str(e))
+            continue
+        headers[name] = value
+
+    return headers
+
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -520,6 +595,12 @@ def main() -> None:
                         help="JWT auth token from AI-Employee web UI")
     parser.add_argument("--session", default=os.environ.get("AI_EMPLOYEE_SESSION", ""),
                         help="Optional: specific session ID to connect to")
+    parser.add_argument("--header", action="append", default=[], metavar="'Name: value'",
+                        help="Extra request header for the WebSocket handshake "
+                             "(repeatable). Use to authenticate through an "
+                             "identity-aware proxy, e.g. "
+                             "--header 'CF-Access-Client-Id: <id>'. Values are "
+                             "credentials and are never logged.")
     args = parser.parse_args()
 
     if not args.url:
@@ -554,7 +635,8 @@ def main() -> None:
             print("WARNING: pyobjc not installed — AX Tree unavailable. Run: pip install pyobjc-framework-ApplicationServices")
 
     ws_url = args.url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
-    bridge = Bridge(ws_url, args.token, args.session or None)
+    extra_headers = collect_extra_headers(args.header)
+    bridge = Bridge(ws_url, args.token, args.session or None, extra_headers=extra_headers)
 
     print(f"AI-Employee Computer-Use Bridge")
     print(f"  Platform: {platform.system()}")
@@ -568,10 +650,18 @@ def main() -> None:
         print("\nBridge stopped.")
 
 
-async def run(url: str, token: str, session_id: str, stop_event: threading.Event | None = None) -> None:
+async def run(
+    url: str,
+    token: str,
+    session_id: str,
+    stop_event: threading.Event | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> None:
     """Async entry point for use as a library (e.g. from tray_app)."""
     ws_url = url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
-    bridge = Bridge(ws_url, token, session_id)
+    if extra_headers is None:
+        extra_headers = collect_extra_headers(None)
+    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers)
     if stop_event:
         async def _watch_stop():
             while not stop_event.is_set():
