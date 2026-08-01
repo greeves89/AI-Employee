@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.118.3] — 2026-08-01
+
+### Fixed
+- **Voice: „Invalid event bytes" beim Vorlesen langer Inhalte (z. B. ganzer docx) behoben.** Nova Sonic lehnt einen zu langen Text-Turn mit einer ValidationException ab, die das Frontend als „Invalid event bytes" zeigt — die Sprachausgabe brach ab (der Satz wurde nicht gesprochen), obwohl der Text im Chat korrekt stand. `_clean_text` cappt jetzt hart auf 3500 Zeichen (mit „… (gekürzt — frag nach Details)"). Betrifft alle Injects/Tool-Results in den Voice-Layer. (Die mid-turn-Datei wurde per Live-Steering korrekt erkannt und ausgelesen — nur die Sprachausgabe des Volltextes scheiterte.)
+
+---
+
 ## [1.118.2] — 2026-08-01
 
 ### Fixed
