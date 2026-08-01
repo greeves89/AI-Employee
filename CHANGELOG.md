@@ -19,6 +19,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.119.3] — 2026-08-01
+
+### Fixed
+- **Toter Import in `task_service.py` behoben** (latente Mine): importierte `_compute_auto_rating`, das in `_compute_formula_rating` umbenannt wurde. Die Datei ist ungenutzt, aber ein Import hätte gecrasht — jetzt korrigiert. (#217 als geliefert geschlossen: Live-Steering deckt die Mid-Run-Injection ab.)
+
+### Notes
+- **Agenten-„Idle-Stop" ist kein Bug**, sondern der User-Lifecycle-Service: Agenten eines >30 Min inaktiven Users (ohne laufende Tasks) werden gestoppt. Bei aktiver App-Nutzung bleiben sie an. Ein per-Agent „always-on"-Flag (Ausnahme vom Lifecycle) existiert noch nicht — separates Mini-Feature bei Bedarf.
+
+---
+
 ## [1.119.2] — 2026-08-01
 
 ### Security

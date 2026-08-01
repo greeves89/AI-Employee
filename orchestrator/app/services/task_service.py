@@ -3,7 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
-from app.core.task_router import TaskRouter, _compute_auto_rating
+from app.core.task_router import TaskRouter, _compute_formula_rating
 from app.models.task import Task, TaskStatus
 from app.services.redis_service import RedisService
 
@@ -21,7 +21,7 @@ async def auto_rate_task(task: Task, db: AsyncSession) -> int:
     if not task.agent_id:
         raise ValueError(f"Cannot auto-rate task {task.id}: no agent_id")
 
-    rating = _compute_auto_rating(task)
+    rating = _compute_formula_rating(task)
     task_rating = TaskRating(
         task_id=task.id,
         agent_id=task.agent_id,
