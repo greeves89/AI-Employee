@@ -1201,6 +1201,25 @@ function AgentSettings({
   const [aiAcctModel, setAiAcctModel] = useState<string>(agent.model ?? "");
   const [aiAcctSaving, setAiAcctSaving] = useState(false);
 
+  // Always-on: exempt from idle auto-stop (user-lifecycle + idle sweep)
+  const [alwaysOn, setAlwaysOn] = useState<boolean>(Boolean((agent.config as Record<string, unknown> | null)?.["always_on"]));
+  const [aoSaving, setAoSaving] = useState(false);
+  const handleAlwaysOnToggle = async () => {
+    const next = !alwaysOn;
+    setAoSaving(true);
+    setAlwaysOn(next);
+    try {
+      await api.setAgentAlwaysOn(agent.id, next);
+      const fresh = await api.getAgent(agent.id);
+      onUpdated(fresh as Agent);
+    } catch (e) {
+      setAlwaysOn(!next);
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Speichern fehlgeschlagen" });
+    } finally {
+      setAoSaving(false);
+    }
+  };
+
   useEffect(() => {
     api.getPermissionPackages().then((data) => {
       setPackages(data.packages);
@@ -1508,6 +1527,29 @@ function AgentSettings({
 
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
+
+      {/* Always-on (Ausnahme vom Idle-Auto-Stopp) */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium">Immer an</div>
+            <div className="text-[11px] text-muted-foreground/60">
+              Agent wird NICHT automatisch gestoppt, wenn du inaktiv bist (Ausnahme von beiden Idle-Sweeps). Für Agenten, die dauerhaft laufen sollen.
+            </div>
+          </div>
+          <button
+            onClick={handleAlwaysOnToggle}
+            disabled={aoSaving}
+            aria-pressed={alwaysOn}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+              alwaysOn ? "bg-emerald-500/80" : "bg-foreground/15",
+            )}
+          >
+            <span className={cn("inline-block h-4 w-4 rounded-full bg-white transition-transform", alwaysOn ? "translate-x-6" : "translate-x-1")} />
+          </button>
+        </div>
+      </div>
 
       {/* Autonomy Level */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">

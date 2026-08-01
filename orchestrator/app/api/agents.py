@@ -1203,6 +1203,37 @@ async def update_agent_idle_stop(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.patch("/{agent_id}/always-on")
+async def update_agent_always_on(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Toggle 'always-on': exempt this agent from BOTH idle sweeps (user-lifecycle +
+    idle-stop), so it keeps running regardless of the owner's activity.
+
+    Body: {"always_on": bool}
+    """
+    await _check_owner(agent_id, user, db)
+    always_on = bool(body.get("always_on"))
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        if always_on:
+            cfg["always_on"] = True
+        else:
+            cfg.pop("always_on", None)
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {"agent_id": agent_id, "always_on": always_on}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 # Realtime voice interaction engines the agent can front with (besides the classic
 # staged STT→LLM→TTS pipeline). Single source of truth is the realtime catalog, so
 # the selector, session backends and this allowlist never drift apart — previously

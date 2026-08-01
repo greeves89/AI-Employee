@@ -94,6 +94,11 @@ class UserLifecycleService:
                 if not user:
                     continue
 
+                # Always-on agents are exempt from ALL idle reaping (independent of the
+                # owner's activity). Single flag honored by both idle sweeps.
+                if (agent.config or {}).get("always_on"):
+                    continue
+
                 # Per-agent timeout overrides global; 0 = never stop this agent
                 per_agent = agent.config.get("idle_timeout_minutes") if agent.config else None
                 if per_agent is not None:

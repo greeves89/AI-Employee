@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.120.0] — 2026-08-01
+
+### Added
+- **Per-Agent „Immer an" (always-on).** Neuer Config-Schalter, der einen Agenten von BEIDEN Idle-Sweeps ausnimmt (User-Lifecycle-Auto-Stop bei inaktivem User + Idle-Stop-Watchdog) — für Agenten, die dauerhaft laufen sollen, unabhängig von der App-Aktivität des Owners. `PATCH /agents/{id}/always-on`, Toggle in den Agent-Settings.
+
+### Security
+- **#192 statischer Gate erweitert: kompilierte Executables in Skill-Attachments werden geblockt.** Ein Skill liefert Doku + Text-Templates, kein Binary — ELF/PE/Mach-O/Wasm-Payloads (Dropper-Vektor) werden per Magic-Bytes abgelehnt (PE erfordert `MZ`+`PE\\0\\0`-Signatur, damit Text mit „MZ" kein False-Positive ist). Neue Unit-Tests (31 grün) decken post-install-Reject, Allowlist-Bypass, Hook-Dateien, Executable-Attachments und Benign-Akzeptanz ab. Offen bleiben die größeren #192-Teile: Runtime-Egress-Allowlist (überschneidet #194) + Review-Queue-UI.
+
+---
+
 ## [1.118.7] — 2026-08-01
 
 ### Added

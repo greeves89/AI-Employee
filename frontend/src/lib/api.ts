@@ -404,6 +404,14 @@ export async function setAgentIdleStop(agentId: string, idle_stop_minutes: numbe
   });
 }
 
+/** Always-on: exempt an agent from both idle sweeps (keeps running regardless of owner activity). */
+export async function setAgentAlwaysOn(agentId: string, always_on: boolean): Promise<{ agent_id: string; always_on: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/always-on`, {
+    method: "PATCH",
+    body: JSON.stringify({ always_on }),
+  });
+}
+
 export interface RolePermissions {
   max_agents?: number | null;
   template_ids?: number[] | null;

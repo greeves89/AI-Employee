@@ -85,14 +85,46 @@ def check_skill_content(content: str | None) -> None:
         )
 
 
+# Magic-byte prefixes of compiled executables. A skill bundle is documentation +
+# text templates — a native binary is a dropper vector, never a legitimate skill file.
+# NOTE: no bare 2-byte "MZ" here (it false-positives on text starting with "MZ"); PE
+# is detected separately by requiring both the MZ prefix AND the "PE\0\0" signature.
+_EXECUTABLE_MAGICS = (
+    b"\x7fELF",          # Linux/BSD ELF
+    b"\xfe\xed\xfa\xce",  # Mach-O 32 BE
+    b"\xfe\xed\xfa\xcf",  # Mach-O 64 BE
+    b"\xce\xfa\xed\xfe",  # Mach-O 32 LE
+    b"\xcf\xfa\xed\xfe",  # Mach-O 64 LE
+    b"\xca\xfe\xba\xbe",  # Mach-O fat / Java class
+    b"\x00asm",          # WebAssembly
+)
+
+
+def _is_executable_binary(data: bytes) -> bool:
+    if not isinstance(data, (bytes, bytearray)):
+        return False
+    if any(data.startswith(m) for m in _EXECUTABLE_MAGICS):
+        return True
+    # Windows PE: "MZ" DOS stub AND a "PE\0\0" signature in the header region.
+    if data.startswith(b"MZ") and b"PE\x00\x00" in data[:2048]:
+        return True
+    return False
+
+
 def check_skill_file(filename: str, data: bytes) -> None:
-    """Reject a skill file attachment that is a setup/lifecycle hook or a
-    package.json declaring a dangerous lifecycle script."""
+    """Reject a skill file attachment that is a setup/lifecycle hook, a compiled
+    executable/dropper, or a package.json declaring a dangerous lifecycle script."""
     name = os.path.basename(filename or "")
     if _DANGEROUS_HOOK_FILENAME.match(name):
         raise SkillSecurityError(
             f"File '{name}' is a setup/lifecycle hook, which is blocked as a "
             "post-install execution vector."
+        )
+    # Native executables (ELF/PE/Mach-O/Wasm) have no place in a skill bundle.
+    if _is_executable_binary(data):
+        raise SkillSecurityError(
+            f"File '{name or 'attachment'}' is a compiled executable, which is "
+            "blocked — a skill ships documentation and templates, not binaries."
         )
     if name.lower() == "package.json":
         try:

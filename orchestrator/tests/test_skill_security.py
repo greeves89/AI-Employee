@@ -63,6 +63,27 @@ def test_ordinary_files_are_accepted(name):
     check_skill_file(name, b"content")  # must not raise
 
 
+# --- compiled-executable attachments (dropper binaries) ---
+
+@pytest.mark.parametrize("payload", [
+    b"\x7fELF\x02\x01\x01\x00" + b"rest",              # Linux ELF
+    b"MZ\x90\x00" + b"\x00" * 60 + b"PE\x00\x00" + b"x",  # Windows PE (MZ + PE sig)
+    b"\xcf\xfa\xed\xfe\x07\x00\x00\x01" + b"rest",      # Mach-O 64 LE
+    b"\xca\xfe\xba\xbe\x00\x00\x00\x02" + b"rest",      # Mach-O fat
+    b"\x00asm\x01\x00\x00\x00" + b"rest",              # WebAssembly
+])
+def test_executable_attachments_are_rejected(payload):
+    # Even with an innocuous filename, a native binary payload must be blocked.
+    with pytest.raises(SkillSecurityError):
+        check_skill_file("attachment.dat", payload)
+
+
+def test_text_starting_with_mz_not_mistaken_for_binary():
+    # "MZ" alone (no PE signature) is common text — must NOT be flagged as a binary.
+    check_skill_file("notes.txt", b"MZ is a two-letter abbreviation for Mosambik")
+    check_skill_file("code.md", b"```\nprint('hello')\n```")
+
+
 def test_hook_filename_check_ignores_directory_prefix():
     with pytest.raises(SkillSecurityError):
         check_skill_file("nested/dir/postinstall.sh", b"x")

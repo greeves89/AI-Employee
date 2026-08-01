@@ -669,6 +669,10 @@ class SchedulerService:
                     logger.debug("[IdleStop] Skip %s (%s) — DB state is WORKING", agent.id, agent.name)
                     continue
 
+                # Always-on agents are never idle-reaped (same flag as the user-lifecycle sweep).
+                if (agent.config or {}).get("always_on"):
+                    continue
+
                 try:
                     live_status = await self.redis.get_agent_status(agent.id)
                 except Exception:
