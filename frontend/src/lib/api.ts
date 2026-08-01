@@ -2487,6 +2487,35 @@ export async function getAuditSummary(): Promise<AuditSummary> {
   return fetchJSON(`${getBase()}/audit/logs/summary`);
 }
 
+// DLP egress filter admin (#388)
+export interface DlpSettings { enabled: boolean; classes: string[]; actions: string[] }
+export interface DlpRule { id: number; pii_class: string; agent_id: string | null; action: string; enabled: boolean }
+export interface DlpAuditEvent {
+  id: number; agent_id: string; event_type: string; channel: string | null;
+  outcome: string; meta: Record<string, unknown> | null; created_at: string | null;
+}
+export async function getDlpSettings(): Promise<DlpSettings> {
+  return fetchJSON(`${getBase()}/dlp/settings`);
+}
+export async function setDlpEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
+  return fetchJSON(`${getBase()}/dlp/settings`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+}
+export async function getDlpRules(): Promise<{ rules: DlpRule[] }> {
+  return fetchJSON(`${getBase()}/dlp/rules`);
+}
+export async function upsertDlpRule(rule: { pii_class: string; action: string; agent_id?: string | null; enabled?: boolean }): Promise<DlpRule> {
+  return fetchJSON(`${getBase()}/dlp/rules`, { method: "POST", body: JSON.stringify(rule) });
+}
+export async function deleteDlpRule(id: number): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/dlp/rules/${id}`, { method: "DELETE" });
+}
+export async function getDlpAudit(limit = 100): Promise<{ events: DlpAuditEvent[] }> {
+  return fetchJSON(`${getBase()}/dlp/audit?limit=${limit}`);
+}
+export async function testDlpScan(text: string): Promise<{ classes: Record<string, number> }> {
+  return fetchJSON(`${getBase()}/dlp/test`, { method: "POST", body: JSON.stringify({ text }) });
+}
+
 // Computer-Use Bridge Sessions
 export interface ComputerUseSession {
   session_id: string;

@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.124.1] — 2026-08-02
+
+### Added
+- **DLP-Admin-UI** (Follow-up zu #388): neuer Admin-Tab „DLP-Filter" — Aktivieren/Deaktivieren per Schalter, Aktion pro Datenklasse (allow/log/mask/block) einstellbar, Test-Scan-Feld (welche Klassen erkennt ein Beispieltext?) und Liste der letzten DLP-Treffer (ohne Klartext). Nutzt die `/dlp`-Admin-API; damit ist der Egress-Filter ohne curl konfigurierbar.
+
+---
+
 ## [1.124.0] — 2026-08-01
 
 ### Added
