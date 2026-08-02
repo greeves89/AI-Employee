@@ -15,6 +15,21 @@ from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
+# Dry-Run / Simulation (#386): the agent produces a PLAN instead of executing, so
+# the user can preview (and approve) what would happen before anything is done.
+_DRY_RUN_WRAPPER = """[DRY-RUN / SIMULATION — NICHT AUSFÜHREN]
+Führe die unten stehende Aufgabe NICHT aus. Erstelle stattdessen einen klaren, strukturierten Ausführungsplan als Vorschau für den Nutzer:
+
+1. **Schritte:** Welche Schritte würdest du in welcher Reihenfolge gehen?
+2. **Auswirkungen:** Welche Dateien/Befehle/Ressourcen wären betroffen (konkrete Pfade/Kommandos)?
+3. **Externe Aktionen:** Welche Nachrichten/Mails/API-Calls würdest du an wen senden?
+4. **Aufwand:** grobe Zeit-/Kostenschätzung und mögliche Risiken.
+
+WICHTIG: Ändere nichts, sende nichts, führe keine Tools mit Nebenwirkungen aus. Gib NUR den Plan als Antwort zurück.
+
+--- AUFGABE ---
+{task}"""
+
 
 def _get_task_router(
     request: Request,
@@ -93,14 +108,24 @@ async def create_task(
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.VIEWER:
         raise HTTPException(status_code=403, detail="Viewers cannot create tasks")
+
+    prompt = data.prompt
+    metadata: dict = {}
+    if data.dry_run:
+        # Wrap the prompt so the agent only plans; keep the original for "execute for real".
+        metadata["dry_run"] = True
+        metadata["original_prompt"] = data.prompt
+        prompt = _DRY_RUN_WRAPPER.format(task=data.prompt)
+
     task = await router_.create_and_route_task(
-        title=data.title,
-        prompt=data.prompt,
+        title=(f"[Vorschau] {data.title}" if data.dry_run else data.title),
+        prompt=prompt,
         priority=data.priority,
         agent_id=data.agent_id,
         model=data.model,
         parent_task_id=data.parent_task_id,
         created_by_agent=data.created_by_agent,
+        metadata=metadata or None,
     )
     return TaskResponse.model_validate(task)
 
@@ -437,6 +462,32 @@ async def export_task_trace(
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="task-{task_id}-trace.json"'},
     )
+
+
+@router.post("/{task_id}/execute", response_model=TaskResponse, status_code=201)
+async def execute_dry_run(
+    task_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    router_: TaskRouter = Depends(_get_task_router),
+):
+    """Dry-Run (#386): take a plan-preview task and run it for real — same agent,
+    the original (unwrapped) prompt, no dry-run. Returns the new task."""
+    from app.models.user import UserRole
+    if hasattr(user, "role") and user.role == UserRole.VIEWER:
+        raise HTTPException(status_code=403, detail="Viewers cannot create tasks")
+    task = await _assert_task_access(task_id, user, db)
+    if not task.dry_run or not task.original_prompt:
+        raise HTTPException(status_code=400, detail="Task is not a dry-run preview")
+    real = await router_.create_and_route_task(
+        title=task.title.replace("[Vorschau] ", "", 1),
+        prompt=task.original_prompt,
+        priority=task.priority,
+        agent_id=task.agent_id,
+        model=task.model,
+        metadata={"executed_from_dry_run": task_id},
+    )
+    return TaskResponse.model_validate(real)
 
 
 @router.get("/{task_id}/artifacts")

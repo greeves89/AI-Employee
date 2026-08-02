@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, CheckCircle2, XCircle, Clock, Loader2,
   Timer, Hash, Cpu, DollarSign, Wrench, Bot,
   AlertTriangle, Terminal, FileText, RotateCcw, Send, MessageSquare,
-  Download, Paperclip, Play, Pause, ShieldCheck, FileJson, Printer,
+  Download, Paperclip, Play, Pause, ShieldCheck, FileJson, Printer, FlaskConical,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -68,6 +68,7 @@ export default function TaskDetailPage() {
   // Decision-Trace (#387): auto-advance playback + enriched trace (duration/cost/governance)
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [trace, setTrace] = useState<api.TaskTrace | null>(null);
+  const [executingReal, setExecutingReal] = useState(false);  // #386 dry-run -> real
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const replayContainerRef = useRef<HTMLDivElement>(null);
@@ -126,6 +127,17 @@ export default function TaskDetailPage() {
       setSendingFollowUp(false);
     }
   }, [followUp, task, router]);
+
+  // Dry-Run (#386): run this plan-preview task for real (same agent, original prompt).
+  const executeReal = useCallback(async () => {
+    setExecutingReal(true);
+    try {
+      const real = await api.executeDryRun(taskId);
+      router.push(`/tasks/${real.id}`);
+    } catch {
+      setExecutingReal(false);
+    }
+  }, [taskId, router]);
 
   // Load the persisted step history for time-travel replay
   const loadReplay = useCallback(async () => {
@@ -309,6 +321,28 @@ export default function TaskDetailPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
+        {/* Dry-Run preview banner (#386) */}
+        {task.dry_run && (
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+                <FlaskConical className="h-4 w-4" /> Vorschau (Dry-Run) — nichts wurde ausgeführt
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground/80">
+                Der Agent hat nur einen Ausführungsplan erstellt. Prüfe ihn unten und starte die Aufgabe dann wirklich.
+              </p>
+            </div>
+            <button
+              onClick={executeReal}
+              disabled={executingReal || task.status === "running" || task.status === "queued"}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-black hover:bg-amber-400 disabled:opacity-50 transition-colors"
+            >
+              {executingReal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Jetzt wirklich ausführen
+            </button>
+          </div>
+        )}
+
         {/* Task info cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <MiniCard icon={Hash} label="Task ID" value={task.id.slice(0, 8)} />

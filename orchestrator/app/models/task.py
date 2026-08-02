@@ -69,6 +69,17 @@ class Task(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
+    @property
+    def dry_run(self) -> bool:
+        """True if this task is a Dry-Run/Simulation (#386): the agent produces a
+        plan preview instead of executing. Stored in metadata_."""
+        return bool((self.metadata_ or {}).get("dry_run"))
+
+    @property
+    def original_prompt(self) -> str | None:
+        """For a Dry-Run task: the real prompt to use when executing for real."""
+        return (self.metadata_ or {}).get("original_prompt")
+
     agent: Mapped["Agent | None"] = relationship(back_populates="tasks")  # noqa: F821
     parent_task: Mapped["Task | None"] = relationship(
         "Task", remote_side="Task.id", foreign_keys=[parent_task_id]

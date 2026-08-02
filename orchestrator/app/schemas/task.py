@@ -13,6 +13,7 @@ class TaskCreate(BaseModel):
     model: str | None = None
     parent_task_id: str | None = None  # For subtask hierarchies
     created_by_agent: str | None = None  # Agent that delegated this task
+    dry_run: bool = False  # #386: produce a plan preview instead of executing
 
 
 class TaskResponse(BaseModel):
@@ -31,6 +32,8 @@ class TaskResponse(BaseModel):
     duration_ms: int | None
     num_turns: int | None
     parent_task_id: str | None = None
+    dry_run: bool = False
+    original_prompt: str | None = None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None

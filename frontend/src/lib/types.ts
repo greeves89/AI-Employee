@@ -163,6 +163,8 @@ export interface Task {
   duration_ms: number | null;
   num_turns: number | null;
   parent_task_id: string | null;
+  dry_run?: boolean;
+  original_prompt?: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;

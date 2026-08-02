@@ -26,6 +26,7 @@ export default function NewTaskPage() {
   const [priority, setPriority] = useState(1);
   const [agentId, setAgentId] = useState<string>("");
   const [files, setFiles] = useState<File[]>([]);
+  const [dryRun, setDryRun] = useState(false);  // #386: plan preview instead of executing
   const [submitting, setSubmitting] = useState(false);
   const [costEstimate, setCostEstimate] = useState<{
     min_usd: number;
@@ -82,6 +83,7 @@ export default function NewTaskPage() {
         prompt: finalPrompt,
         priority,
         agent_id: agentId || undefined,
+        dry_run: dryRun,
       });
       // Land directly on the new task's live view (progress + what the agent does)
       // instead of the task list — no more hunting for the task you just created.
@@ -289,6 +291,24 @@ export default function NewTaskPage() {
             )}
           </div>
 
+          {/* Dry-Run toggle (#386) */}
+          <button
+            type="button"
+            onClick={() => setDryRun((v) => !v)}
+            className="flex w-full items-center gap-3 rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-4 py-3 text-left hover:bg-foreground/[0.04] transition-colors"
+          >
+            <span className={cn(
+              "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+              dryRun ? "bg-amber-500" : "bg-foreground/15",
+            )}>
+              <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform", dryRun ? "translate-x-5" : "translate-x-0.5")} />
+            </span>
+            <span className="flex-1">
+              <span className="block text-sm font-medium">Dry-Run — nur Vorschau</span>
+              <span className="block text-xs text-muted-foreground/70">Der Agent erstellt einen Ausführungsplan und führt nichts aus. Danach kannst du ihn mit einem Klick wirklich starten.</span>
+            </span>
+          </button>
+
           {/* Actions */}
           <div className="flex gap-3 pt-3">
             <button
@@ -301,7 +321,7 @@ export default function NewTaskPage() {
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              {submitting ? "Creating..." : "Create Task"}
+              {submitting ? "Creating..." : dryRun ? "Vorschau erstellen" : "Create Task"}
             </button>
             <button
               type="button"

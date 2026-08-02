@@ -591,12 +591,18 @@ export function taskTraceExportUrl(id: string): string {
   return `${getBase()}/tasks/${id}/export?format=json`;
 }
 
+// Dry-Run (#386): run a plan-preview task for real (same agent, original prompt).
+export async function executeDryRun(taskId: string): Promise<Task> {
+  return fetchJSON(`${getBase()}/tasks/${taskId}/execute`, { method: "POST" });
+}
+
 export async function createTask(data: {
   title: string;
   prompt: string;
   priority?: number;
   agent_id?: string;
   model?: string;
+  dry_run?: boolean;
 }): Promise<Task> {
   return fetchJSON(`${getBase()}/tasks/`, {
     method: "POST",

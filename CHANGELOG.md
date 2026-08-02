@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.125.0] — 2026-08-02
+
+### Added
+- **Dry-Run / Simulationsmodus** (Issue #386, Vision-Roadmap Säule „Vertrauen & Kontrolle"). Vor der echten Ausführung kann eine Aufgabe als **Vorschau** laufen: der Agent erstellt einen strukturierten Ausführungsplan (Schritte, betroffene Dateien/Befehle, externe Aktionen, Aufwands-/Risiko-Schätzung) und führt **nichts** aus.
+  - Task-Erstellung hat einen Schalter **„Dry-Run — nur Vorschau"**; der Prompt wird serverseitig mit einer Planungs-Anweisung umhüllt (kein Agent-Image-Change), Original-Prompt bleibt in `metadata` erhalten.
+  - Die Task-Detailseite zeigt ein **Vorschau-Banner** mit **„Jetzt wirklich ausführen"** — `POST /tasks/{id}/execute` legt dieselbe Aufgabe mit dem Original-Prompt und demselben Agenten regulär an.
+  - `TaskCreate.dry_run`, `TaskResponse.dry_run/original_prompt` + Task-Model-Properties; 3 Unit-Tests.
+
+---
+
 ## [1.124.4] — 2026-08-02
 
 ### Changed
