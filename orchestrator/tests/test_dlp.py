@@ -43,6 +43,35 @@ class ClassifyTests(unittest.TestCase):
         self.assertNotIn("credit_card", c)
 
 
+class SampleTests(unittest.TestCase):
+    def test_mask_sample_format(self):
+        self.assertEqual(dlp.mask_sample("dfghjkas"), "df***as")   # first2 *** last2
+        self.assertEqual(dlp.mask_sample("ab"), "a***")            # short -> reveal less
+        self.assertEqual(dlp.mask_sample(""), "***")
+
+    def test_mask_sample_never_full_value(self):
+        secret = "sk-abcdEFGH1234567890xyzKLMN"
+        masked = dlp.mask_sample(secret)
+        self.assertNotIn("abcdEFGH1234567890", masked)   # middle removed
+        self.assertTrue(masked.startswith("sk"))
+        self.assertIn("***", masked)
+
+    def test_samples_of_masks_and_caps(self):
+        matches = dlp.scan_matches("Karte 4111 1111 1111 1111 und Mail a@b.de, c@d.de")
+        s = dlp.samples_of(matches, per_class=3)
+        self.assertIn("credit_card", s)
+        self.assertTrue(all("***" in x for xs in s.values() for x in xs))
+        # full card number never appears in a sample
+        for x in s.get("credit_card", []):
+            self.assertNotIn("4111111111111111", x.replace(" ", ""))
+
+    def test_scan_matches_counts_match_classify(self):
+        text = "IBAN DE89370400440532013000 mail x@y.de"
+        matches = dlp.scan_matches(text)
+        counts = dlp.classify(text)
+        self.assertEqual({c: len(v) for c, v in matches.items()}, counts)
+
+
 class MaskTests(unittest.TestCase):
     def test_masks_only_requested_classes(self):
         text = "Mail max@example.com und IBAN DE89370400440532013000"

@@ -134,5 +134,11 @@ class DlpTestRequest(BaseModel):
 
 @router.post("/test")
 async def test_scan(body: DlpTestRequest, user=Depends(require_admin)):
-    """Preview which classes a sample text would match (no side effects)."""
-    return {"classes": classify(body.text)}
+    """Preview which classes a sample text would match + masked excerpts (no side effects)."""
+    from app.core.dlp import samples_of, scan_matches
+
+    matches = scan_matches(body.text)
+    return {
+        "classes": {c: len(v) for c, v in matches.items()},
+        "samples": samples_of(matches),
+    }

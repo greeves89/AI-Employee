@@ -143,7 +143,9 @@ async def list_audit_logs(
                 "event_type": e.event_type,
                 "outcome": e.outcome,
                 "command": e.command,
-                "details": e.meta,
+                "exit_code": e.exit_code,
+                "details": e.meta,   # legacy key
+                "meta": e.meta,      # canonical key the frontend reads
                 "created_at": e.created_at.isoformat() if e.created_at else None,
             }
             for e in logs

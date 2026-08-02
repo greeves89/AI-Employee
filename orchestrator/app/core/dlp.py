@@ -60,30 +60,56 @@ def _luhn_ok(s: str) -> bool:
     return total % 10 == 0
 
 
-def _has_secret(text: str) -> bool:
-    return any(pat.search(text) for pat, _ in _SECRET_PATTERNS)
+def _finds(pat: re.Pattern, text: str) -> list[str]:
+    """Full matched substrings (group 0), so grouped secret patterns don't yield tuples."""
+    return [m.group(0) for m in pat.finditer(text)]
+
+
+def scan_matches(text: str) -> dict[str, list[str]]:
+    """Return ``{class: [raw matched substrings]}`` for every DLP class in ``text``."""
+    if not text:
+        return {}
+    out: dict[str, list[str]] = {}
+    secret: list[str] = []
+    for pat, _ in _SECRET_PATTERNS:
+        secret += _finds(pat, text)
+    if secret:
+        out["secret"] = secret
+    iban = _finds(_IBAN, text)
+    if iban:
+        out["iban"] = iban
+    cc = [m for m in _finds(_CC, text) if _luhn_ok(m)]
+    if cc:
+        out["credit_card"] = cc
+    email = _finds(_EMAIL, text)
+    if email:
+        out["email"] = email
+    tax = _finds(_DE_TAX, text)
+    if tax:
+        out["de_tax_id"] = tax
+    return out
 
 
 def classify(text: str) -> dict[str, int]:
     """Return ``{class: match_count}`` for every DLP class present in ``text``."""
-    if not text:
-        return {}
-    hits: dict[str, int] = {}
-    if _has_secret(text):
-        hits["secret"] = sum(len(pat.findall(text)) for pat, _ in _SECRET_PATTERNS) or 1
-    iban = _IBAN.findall(text)
-    if iban:
-        hits["iban"] = len(iban)
-    cc = [m for m in _CC.findall(text) if _luhn_ok(m)]
-    if cc:
-        hits["credit_card"] = len(cc)
-    email = _EMAIL.findall(text)
-    if email:
-        hits["email"] = len(email)
-    tax = _DE_TAX.findall(text)
-    if tax:
-        hits["de_tax_id"] = len(tax)
-    return hits
+    return {c: len(v) for c, v in scan_matches(text).items()}
+
+
+def mask_sample(s: str) -> str:
+    """A recognisable-but-safe excerpt of a matched value: first 2 + *** + last 2 chars.
+
+    Short values reveal less. Used so the audit shows *what* triggered a hit
+    (format ``df***as``) without storing the full sensitive value.
+    """
+    s = (s or "").strip()
+    if len(s) <= 4:
+        return (s[0] + "***") if s else "***"
+    return f"{s[:2]}***{s[-2:]}"
+
+
+def samples_of(matches: dict[str, list[str]], per_class: int = 3) -> dict[str, list[str]]:
+    """Masked excerpts (max ``per_class`` per class) for audit display."""
+    return {c: [mask_sample(x) for x in v[:per_class]] for c, v in matches.items()}
 
 
 def mask(text: str, classes: set[str]) -> str:
@@ -163,7 +189,8 @@ async def evaluate_egress(text: str, *, agent_id: str | None = None, channel: st
     if not text:
         return DlpVerdict(True, text, {}, {}, "allow")
     try:
-        classes = classify(text)
+        matches = scan_matches(text)
+        classes = {c: len(v) for c, v in matches.items()}
         if not classes:
             return DlpVerdict(True, text, {}, {}, "allow")
 
@@ -194,7 +221,14 @@ async def evaluate_egress(text: str, *, agent_id: str | None = None, channel: st
                     event_type=_EVENT_BY_ACTION[verdict.effective],
                     command=channel,
                     outcome="blocked" if verdict.blocked else "success",
-                    meta={"classes": classes, "actions": actions, "channel": channel},
+                    meta={
+                        "classes": classes,
+                        "actions": actions,
+                        "channel": channel,
+                        # masked excerpts (df***as) so the audit shows WHAT triggered
+                        # the hit, without ever storing the full sensitive value.
+                        "samples": samples_of(matches),
+                    },
                 ))
                 await db.commit()
             return verdict

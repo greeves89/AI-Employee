@@ -386,6 +386,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
   const meta = (log.meta ?? {}) as Record<string, unknown>;
   const classes = (meta.classes ?? {}) as Record<string, number>;
   const actions = (meta.actions ?? {}) as Record<string, string>;
+  const samples = (meta.samples ?? {}) as Record<string, string[]>;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -423,23 +424,32 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
             {Object.keys(classes).length === 0 ? (
               <p className="text-[12px] text-muted-foreground/50">Keine Klassen aufgezeichnet.</p>
             ) : (
-              <div className="space-y-1.5">
+              <div className="space-y-2.5">
                 {Object.entries(classes).map(([c, n]) => (
-                  <div key={c} className="flex items-center gap-2 text-[12px]">
-                    <span className="w-40 shrink-0">{DLP_CLASS_LABEL[c] ?? c}</span>
-                    <span className="text-muted-foreground/60">{n}×</span>
-                    <span className={cn(
-                      "ml-auto rounded-md px-2 py-0.5 text-[11px] font-medium",
-                      actions[c] === "block" ? "bg-red-500/10 text-red-400"
-                        : actions[c] === "mask" ? "bg-amber-500/10 text-amber-400"
-                        : "bg-sky-500/10 text-sky-400",
-                    )}>{DLP_ACTION_LABEL[actions[c]] ?? actions[c] ?? "—"}</span>
+                  <div key={c}>
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <span className="w-40 shrink-0">{DLP_CLASS_LABEL[c] ?? c}</span>
+                      <span className="text-muted-foreground/60">{n}×</span>
+                      <span className={cn(
+                        "ml-auto rounded-md px-2 py-0.5 text-[11px] font-medium",
+                        actions[c] === "block" ? "bg-red-500/10 text-red-400"
+                          : actions[c] === "mask" ? "bg-amber-500/10 text-amber-400"
+                          : "bg-sky-500/10 text-sky-400",
+                      )}>{DLP_ACTION_LABEL[actions[c]] ?? actions[c] ?? "—"}</span>
+                    </div>
+                    {(samples[c]?.length ?? 0) > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
+                        {samples[c].map((s, i) => (
+                          <code key={i} className="rounded bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">{s}</code>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
             <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/50">
-              Aus Datenschutzgründen wird der konkrete Wert (z. B. der Key oder die IBAN) bewusst <b>nicht</b> gespeichert — nur welche Datenklasse erkannt und wie darauf reagiert wurde.
+              Angezeigt wird nur ein <b>maskierter Ausschnitt</b> (z. B. <code className="font-mono">df***as</code>) — genug, um den Treffer zu erkennen. Der vollständige Wert (Key/IBAN etc.) wird bewusst <b>nie</b> gespeichert.
             </p>
           </div>
         ) : (

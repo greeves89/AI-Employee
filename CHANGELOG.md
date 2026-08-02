@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.124.3] — 2026-08-02
+
+### Fixed
+- **Audit-Detail-Modal zeigte keine Details.** Der `/audit/logs`-Endpoint lieferte das `meta`-Feld unter dem Schlüssel `details` statt `meta` — das Frontend las `meta` und bekam `null` („Keine Klassen aufgezeichnet"). Endpoint liefert jetzt beides (`meta` kanonisch, `details` legacy) + `exit_code`.
+
+### Added
+- **DLP-Treffer zeigen jetzt einen maskierten Ausschnitt** (`df***as`): der Scanner erfasst pro Klasse die gefundenen Stellen und speichert davon einen maskierten Auszug (erste 2 + `***` + letzte 2 Zeichen, kurze Werte weniger) im Audit-`meta.samples`. Damit sieht man im Detail-Modal **was** konkret erkannt wurde — der vollständige Wert (Key/IBAN etc.) wird weiterhin **nie** gespeichert. Auch der `/dlp/test`-Scan liefert die maskierten Ausschnitte. 4 neue Unit-Tests (Maskier-Format, kein Voll-Wert, Cap).
+
+---
+
 ## [1.124.2] — 2026-08-02
 
 ### Added
