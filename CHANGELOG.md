@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.125.1] — 2026-08-02
+
+### Added
+- **„Planen"-Button im Chat** (Ergänzung zu #386). Neben „Senden" gibt es jetzt einen **Planen**-Button: die Nachricht wird mit einer „nur planen, nichts ausführen"-Anweisung an den Agenten geschickt — er beschreibt die Schritte, die er gehen würde (Tools, Dateien, externe Aktionen, Aufwand), statt sie auszuführen. Die angezeigte Nutzer-Nachricht bleibt wie getippt; nur was der Agent empfängt, wird umhüllt. Schneller Weg zur Vorschau direkt im Gespräch.
+
+---
+
 ## [1.125.0] — 2026-08-02
 
 ### Added

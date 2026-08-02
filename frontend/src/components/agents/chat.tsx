@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Send, RotateCcw, Bot, AlertTriangle, WifiOff,
+  Send, RotateCcw, Bot, AlertTriangle, WifiOff, ListChecks,
   Paperclip, Loader2, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
   Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose,
@@ -815,7 +815,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     }
   }, [messages]);
 
-  const sendMessage = useCallback(async () => {
+  const sendMessage = useCallback(async (plan = false) => {
     const text = input.trim();
     const imgs = pendingImages;
     const files = pendingFiles;
@@ -859,6 +859,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       },
     ]);
     setMessageCount((c) => c + 1);
+
+    // Plan mode (#386): inject a "plan only" instruction so the agent describes the
+    // steps it WOULD take instead of executing. The visible user message stays as
+    // typed; only what the agent receives is wrapped.
+    if (plan) {
+      agentText = `[NUR PLANEN — NICHT AUSFÜHREN] Beschreibe kurz und konkret, welche Schritte du für die folgende Aufgabe gehen würdest (Tools, betroffene Dateien/Befehle, externe Aktionen, grober Aufwand/Risiken). Führe nichts aus, ändere nichts, sende nichts — gib NUR den Plan zurück.\n\nAufgabe: ${agentText}`;
+    }
 
     wsRef.current.send(JSON.stringify({
       text: agentText,
@@ -1400,13 +1407,23 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
               <Square className="h-4 w-4 fill-current" />
             </button>
           ) : (
-            <button
-              onClick={sendMessage}
-              disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
-            >
-              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </button>
+            <>
+              <button
+                onClick={() => sendMessage(true)}
+                disabled={!isConnected || isUploading || !input.trim()}
+                className="flex h-10 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-40 transition-all"
+                title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
+              >
+                <ListChecks className="h-4 w-4" /> Planen
+              </button>
+              <button
+                onClick={() => sendMessage()}
+                disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
+              >
+                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            </>
           )}
         </div>
       </div>
