@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Plug,
   Shield,
+  ScrollText,
   Bot,
   Sun,
   Moon,
@@ -109,9 +110,11 @@ const navGroups: NavGroup[] = [
     key: "admin",
     adminOnly: true,
     items: [
-      // Settings, AI-Accounts, Key Management, Health & Audit Log are now
-      // tabs inside the Admin-Konsole — one entry instead of six.
+      // Settings, AI-Accounts, Key Management, Health are tabs inside the
+      // Admin-Konsole — one entry instead of six. Audit Log is surfaced directly
+      // here for quick access to the compliance trail.
       { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
+      { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
     ],
   },
 ];

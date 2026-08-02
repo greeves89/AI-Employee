@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.124.2] — 2026-08-02
+
+### Added
+- **Audit-Log: klickbare Zeilen mit Detail-Modal.** Ein Klick auf einen Eintrag öffnet ein Modal mit allen Feldern (Zeit, Agent, Kanal/Command, Ergebnis, Task, Exit-Code). Für **DLP-Treffer** zeigt es zusätzlich die erkannten Datenklassen mit Anzahl + Aktion (block/mask/log) — plus den expliziten Hinweis, dass der konkrete Wert bewusst **nicht** gespeichert wird.
+- **Audit Log direkt in der linken Admin-Sidebar** (`/audit`) — Schnellzugriff auf den Compliance-Trail, statt nur als Tab in der Admin-Konsole.
+
+---
+
 ## [1.124.1] — 2026-08-02
 
 ### Added

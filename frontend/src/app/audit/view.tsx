@@ -14,6 +14,7 @@ import {
   DollarSign,
   Activity,
   Bot,
+  X,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAgents } from "@/hooks/use-agents";
@@ -67,6 +68,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
   const [agentFilter, setAgentFilter] = useState("");
   const [eventTypeFilter, setEventTypeFilter] = useState("");
   const [outcomeFilter, setOutcomeFilter] = useState("");
+  const [selected, setSelected] = useState<AuditLog | null>(null);
 
   const { agents } = useAgents();
 
@@ -297,7 +299,8 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                       key={log.id}
                       variants={itemVariants}
                       custom={i}
-                      className="hover:bg-foreground/[0.02] transition-colors"
+                      onClick={() => setSelected(log)}
+                      className="cursor-pointer hover:bg-foreground/[0.04] transition-colors"
                     >
                       <td className="px-4 py-2.5 text-muted-foreground/60 whitespace-nowrap font-mono">
                         {new Date(log.created_at).toLocaleString("de-DE", {
@@ -362,6 +365,101 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
           </>
         )}
       </div>
+
+      {selected && (
+        <AuditDetailModal log={selected} agentName={agentName(selected.agent_id)} onClose={() => setSelected(null)} />
+      )}
+    </div>
+  );
+}
+
+const DLP_CLASS_LABEL: Record<string, string> = {
+  secret: "Secrets / Keys", iban: "IBAN", credit_card: "Kreditkarte",
+  email: "E-Mail-Adresse", de_tax_id: "Steuer-ID (11-stellig)",
+};
+const DLP_ACTION_LABEL: Record<string, string> = {
+  allow: "Erlauben", log: "Nur loggen", mask: "Maskieren", block: "Blockieren",
+};
+
+function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentName: string; onClose: () => void }) {
+  const isDlp = log.event_type.startsWith("dlp_");
+  const meta = (log.meta ?? {}) as Record<string, unknown>;
+  const classes = (meta.classes ?? {}) as Record<string, number>;
+  const actions = (meta.actions ?? {}) as Record<string, string>;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl border border-foreground/[0.08] bg-card p-5 shadow-xl"
+      >
+        <div className="mb-4 flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+              OUTCOME_BADGE[log.outcome] ?? "text-muted-foreground",
+            )}>
+              {log.outcome === "blocked" && <AlertTriangle className="h-3 w-3" />}
+              {log.event_type.replace(/_/g, " ")}
+            </span>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
+        </div>
+
+        <dl className="space-y-2 text-[13px]">
+          <Row label="Zeit" value={new Date(log.created_at).toLocaleString("de-DE")} />
+          <Row label="Agent" value={agentName} />
+          <Row label={isDlp ? "Kanal" : "Command / Tool"} value={log.command ?? "—"} mono />
+          <Row label="Ergebnis" value={log.outcome} />
+          {log.task_id && <Row label="Task" value={log.task_id} mono />}
+          {log.exit_code != null && <Row label="Exit-Code" value={String(log.exit_code)} />}
+        </dl>
+
+        {isDlp ? (
+          <div className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Erkannte sensible Daten</p>
+            {Object.keys(classes).length === 0 ? (
+              <p className="text-[12px] text-muted-foreground/50">Keine Klassen aufgezeichnet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {Object.entries(classes).map(([c, n]) => (
+                  <div key={c} className="flex items-center gap-2 text-[12px]">
+                    <span className="w-40 shrink-0">{DLP_CLASS_LABEL[c] ?? c}</span>
+                    <span className="text-muted-foreground/60">{n}×</span>
+                    <span className={cn(
+                      "ml-auto rounded-md px-2 py-0.5 text-[11px] font-medium",
+                      actions[c] === "block" ? "bg-red-500/10 text-red-400"
+                        : actions[c] === "mask" ? "bg-amber-500/10 text-amber-400"
+                        : "bg-sky-500/10 text-sky-400",
+                    )}>{DLP_ACTION_LABEL[actions[c]] ?? actions[c] ?? "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/50">
+              Aus Datenschutzgründen wird der konkrete Wert (z. B. der Key oder die IBAN) bewusst <b>nicht</b> gespeichert — nur welche Datenklasse erkannt und wie darauf reagiert wurde.
+            </p>
+          </div>
+        ) : (
+          meta && Object.keys(meta).length > 0 && (
+            <div className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Details</p>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-muted-foreground/70">{JSON.stringify(meta, null, 2)}</pre>
+            </div>
+          )
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <dt className="w-28 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground/50">{label}</dt>
+      <dd className={cn("flex-1 break-words", mono && "font-mono text-[12px]")}>{value}</dd>
     </div>
   );
 }
