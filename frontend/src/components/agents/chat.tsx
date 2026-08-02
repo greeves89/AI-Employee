@@ -223,6 +223,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
+  // Resume (#chat-live): the agent is working on THIS session but the turn wasn't
+  // started from this connection (e.g. we just re-entered the chat). Shows a live
+  // indicator and reloads history when the turn finishes.
+  const [liveElsewhere, setLiveElsewhere] = useState(false);
+  const [historyReloadKey, setHistoryReloadKey] = useState(0);
+  const isWaitingRef = useRef(false);
   const pendingCountRef = useRef(0);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -266,6 +272,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    isWaitingRef.current = isWaiting;
+  }, [isWaiting]);
 
   // Load sessions from DB on mount
   useEffect(() => {
@@ -420,6 +430,30 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       }
     };
     loadHistory();
+  }, [agentId, activeSessionId, historyReloadKey]);
+
+  // Live-resume: while a conversation is open, poll the agent's status. If the agent
+  // is working on THIS session but not via our own turn (we re-entered mid-run), show
+  // a live indicator; when it finishes, reload history so the answer appears — even
+  // though this reconnected socket never received the (foreign message_id) stream.
+  useEffect(() => {
+    if (!activeSessionId) { setLiveElsewhere(false); return; }
+    let cancelled = false;
+    let prevBusy = false;
+    const check = async () => {
+      try {
+        const a = await api.getAgent(agentId);
+        const list = (a as unknown as { active_sessions?: string[] }).active_sessions;
+        const busy = Array.isArray(list) && list.includes(`chat:${activeSessionId}`);
+        if (cancelled) return;
+        setLiveElsewhere(busy && !isWaitingRef.current);
+        if (prevBusy && !busy) setHistoryReloadKey((k) => k + 1);  // a turn just finished
+        prevBusy = busy;
+      } catch { /* transient — ignore */ }
+    };
+    check();
+    const iv = setInterval(check, 4000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, [agentId, activeSessionId]);
 
   const connect = useCallback(async () => {
@@ -1280,6 +1314,22 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
               {thinkingElapsed > 30 && (
                 <span className="text-[10px] text-muted-foreground/60 italic">Complex task — this may take a while</span>
               )}
+            </div>
+          </div>
+        )}
+        {/* Live-resume: agent is working on this conversation (turn started elsewhere) */}
+        {liveElsewhere && !isWaiting && !messages.some((m) => m.isStreaming) && (
+          <div className="flex items-center gap-3 pl-1 py-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 shrink-0">
+              <Bot className="h-3.5 w-3.5 text-amber-400" />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <span className="text-xs text-muted-foreground">Agent arbeitet gerade an dieser Unterhaltung… die Antwort erscheint automatisch.</span>
             </div>
           </div>
         )}

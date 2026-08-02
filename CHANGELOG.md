@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.125.2] — 2026-08-02
+
+### Fixed
+- **Chat-Wiedereintritt zeigt laufenden Turn.** Beim Verlassen und erneuten Betreten eines Gesprächs (oder Umschalten in der Seitenleiste) sah man vorher nicht, dass der Agent gerade an dieser Unterhaltung arbeitet — die neu aufgebaute WebSocket-Verbindung verwarf die Live-Events des fremd gestarteten Turns, und History enthielt den unfertigen Turn nicht. Neu: der Chat pollt den Agent-Status; arbeitet der Agent an DIESER Session, erscheint ein Live-Indikator „Agent arbeitet gerade an dieser Unterhaltung…", und sobald der Turn fertig ist, wird die History automatisch nachgeladen und die Antwort erscheint. (Der vollständige Live-Token-Stream beim Resume bräuchte einen Agent-seitigen Puffer — als Folgeaufgabe notiert.)
+
+---
+
 ## [1.125.1] — 2026-08-02
 
 ### Added
