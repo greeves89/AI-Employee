@@ -896,6 +896,33 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure dlp_rules table: {e}")
 
+    # Workflow engine (#392): new tables; create_all is only a fresh-DB fallback.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS workflows ("
+                "id varchar PRIMARY KEY, name varchar NOT NULL, user_id varchar,"
+                "enabled boolean NOT NULL DEFAULT true, definition json NOT NULL DEFAULT '{}',"
+                "trigger json, created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS workflow_runs ("
+                "id varchar PRIMARY KEY,"
+                "workflow_id varchar REFERENCES workflows(id) ON DELETE CASCADE,"
+                "status varchar(20) NOT NULL DEFAULT 'running', context json NOT NULL DEFAULT '{}',"
+                "current_step varchar, current_task_id varchar, resume_at timestamptz,"
+                "steps_done integer NOT NULL DEFAULT 0, error text,"
+                "started_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz)"
+            ))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_workflow_runs_wf ON workflow_runs (workflow_id)"))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_workflow_runs_status ON workflow_runs (status)"))
+        logger.info("workflow tables ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure workflow tables: {e}")
+
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
     # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.

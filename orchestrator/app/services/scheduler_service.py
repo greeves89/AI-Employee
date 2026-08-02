@@ -95,6 +95,13 @@ class SchedulerService:
                     await self._tick_stale_task_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] StaleTaskWatchdog error: %s", e)
+                # Workflow engine (#392): advance every active run one move.
+                try:
+                    await self._advance_workflow_runs()
+                except _TRANSIENT_DB_ERRORS as e:
+                    logger.warning("[Scheduler] Workflow DB unavailable (transient): %s", e)
+                except Exception as e:
+                    logger.warning("[Scheduler] Workflow advance error: %s", e)
                 try:
                     started = await self._start_due_followups()
                     if started:
@@ -373,6 +380,32 @@ class SchedulerService:
                 except Exception as e:
                     await db.rollback()
                     logger.warning("[Scheduler] Failed to execute schedule %s: %s", schedule.id, e)
+
+    async def _advance_workflow_runs(self) -> None:
+        """Advance every active workflow run one move (#392)."""
+        from app.db.session import resilient_session
+        from app.models.workflow import Workflow, WorkflowRun
+        from app.services.workflow_engine import advance_run
+        from sqlalchemy import select
+
+        async with resilient_session() as db:
+            runs = (await db.execute(
+                select(WorkflowRun).where(WorkflowRun.status == "running")
+            )).scalars().all()
+            if not runs:
+                return
+            lb = LoadBalancer(self.redis)
+            router = TaskRouter(db, self.redis, lb, docker_service=self.docker)
+            for run in runs:
+                wf = (await db.execute(
+                    select(Workflow).where(Workflow.id == run.workflow_id)
+                )).scalar_one_or_none()
+                if not wf:
+                    run.status = "failed"
+                    run.error = "Workflow gelöscht"
+                    await db.commit()
+                    continue
+                await advance_run(run, wf, db, router)
 
     async def _execute_schedule(
         self,

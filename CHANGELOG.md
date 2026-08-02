@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.126.0] — 2026-08-02
+
+### Added
+- **Workflow-Engine — Basis** (Issue #392, Fundament für den visuellen Builder #394). Deklarative mehrstufige Agenten-Workflows, die wirklich laufen:
+  - Modelle `Workflow` (JSON-Definition: Start-Schritt + Schritt-Map) + `WorkflowRun` (ein Lauf mit Kontext/Status). Schritt-Typen v1: **agent_task** (erzeugt eine Agenten-Task, wartet auf deren Abschluss), **condition** (strukturierte Bedingung `contains/equals/…` → true/false-Zweig), **wait** (Verzögerung). Prompt-Platzhalter `{{schritt_id}}` setzen Ergebnisse vorheriger Schritte ein.
+  - `workflow_engine`: sichere Zustandsmaschine (kein `eval`), pro Scheduler-Tick ein Zug — erzeugt Tasks, wertet Bedingungen aus, springt nach Task-Abschluss weiter, Guard gegen Endlosschleifen.
+  - API `/workflows` (CRUD, require_auth, Definition-Validierung) + `POST /workflows/{id}/run` + Lauf-Historie `GET /workflows/{id}/runs` und `/workflows/runs/{id}`.
+  - Ausführung via neuem Scheduler-Sub-Tick `_advance_workflow_runs`; Tabellen via always-run Ensure-Block. 12 Unit-Tests.
+  - Der visuelle Drag-&-Drop-Builder (#394) editiert später dieselbe Definition — eine Wahrheit, keine Doppel-Logik.
+
+---
+
 ## [1.125.2] — 2026-08-02
 
 ### Fixed
