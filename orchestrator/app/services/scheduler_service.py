@@ -95,8 +95,9 @@ class SchedulerService:
                     await self._tick_stale_task_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] StaleTaskWatchdog error: %s", e)
-                # Workflow engine (#392): advance every active run one move.
+                # Workflow engine (#392): start cron-due workflows + advance active runs.
                 try:
+                    await self._start_due_workflows()
                     await self._advance_workflow_runs()
                 except _TRANSIENT_DB_ERRORS as e:
                     logger.warning("[Scheduler] Workflow DB unavailable (transient): %s", e)
@@ -380,6 +381,43 @@ class SchedulerService:
                 except Exception as e:
                     await db.rollback()
                     logger.warning("[Scheduler] Failed to execute schedule %s: %s", schedule.id, e)
+
+    async def _start_due_workflows(self) -> None:
+        """Start a run for every enabled workflow whose cron trigger just fired (#392)."""
+        from datetime import datetime, timedelta, timezone
+
+        from croniter import croniter
+        from sqlalchemy import select
+
+        from app.db.session import resilient_session
+        from app.models.workflow import Workflow
+        from app.services.workflow_engine import start_run
+
+        now = datetime.now(timezone.utc)
+        async with resilient_session() as db:
+            wfs = (await db.execute(
+                select(Workflow).where(Workflow.enabled.is_(True))
+            )).scalars().all()
+            for wf in wfs:
+                trig = wf.trigger or {}
+                cron = trig.get("cron")
+                if not cron or not (wf.definition or {}).get("start"):
+                    continue
+                try:
+                    last = trig.get("last_run")
+                    last_dt = datetime.fromisoformat(last) if last else (now - timedelta(hours=1))
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    prev = croniter(cron, now).get_prev(datetime)
+                    if prev.tzinfo is None:
+                        prev = prev.replace(tzinfo=timezone.utc)
+                    if prev > last_dt:
+                        await start_run(wf, db)
+                        wf.trigger = {**trig, "last_run": now.isoformat()}
+                        await db.commit()
+                        logger.info("[Scheduler] Workflow %s cron-triggered", wf.id)
+                except Exception as e:
+                    logger.warning("[Scheduler] Workflow cron %s error: %s", wf.id, e)
 
     async def _advance_workflow_runs(self) -> None:
         """Advance every active workflow run one move (#392)."""

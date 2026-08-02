@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.127.0] — 2026-08-02
+
+### Added
+- **Visueller Workflow-Builder (n8n-Stil)** (Issue #394) + **Cron-Auto-Trigger** (#392). Der Drag-&-Drop-Editor auf React Flow, aufgesetzt auf die Engine aus v1.126.0 — eine Definition, keine Doppel-Logik.
+  - Neue Seite **Workflows** (Sidebar → Automation): Liste + „Neuer Workflow".
+  - **Canvas-Editor** (`/workflows/{id}`): Bausteine **Aufgabe / Bedingung / Warten** per Klick hinzufügen, per Ziehen verbinden (Bedingung mit „ja"/„nein"-Ausgängen), pro Baustein ein Konfig-Panel (Agent, Prompt mit `{{schritt}}`-Platzhaltern, Operator/Wert, Sekunden). **Speichern** und **Ausführen** direkt aus dem Canvas; der laufende Schritt wird live hervorgehoben, Ergebnisse pro Schritt im Panel.
+  - Graph ↔ Definition-Mapping (Knoten/Kanten ↔ `steps`+`next/true/false`); Start = Knoten ohne eingehende Kante.
+  - **#392 Cron-Trigger:** Workflows mit `trigger.cron` starten automatisch (croniter, verpasste Slots werden einmalig nachgeholt). Inbound-Webhook-Trigger bleibt offen.
+
+---
+
 ## [1.126.0] — 2026-08-02
 
 ### Added

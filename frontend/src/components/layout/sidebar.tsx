@@ -14,6 +14,7 @@ import {
   Plug,
   Shield,
   ScrollText,
+  Workflow,
   Bot,
   Sun,
   Moon,
@@ -85,6 +86,7 @@ const navGroups: NavGroup[] = [
     label: "Automation",
     key: "automation",
     items: [
+      { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false },
       { href: "/skills", label: "Skill Marketplace", icon: Sparkles, simpleVisible: false },
       { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
     ],

@@ -2493,6 +2493,71 @@ export async function getAuditSummary(): Promise<AuditSummary> {
   return fetchJSON(`${getBase()}/audit/logs/summary`);
 }
 
+// Workflow engine (#392/#394)
+export interface WorkflowStep {
+  type: "agent_task" | "condition" | "wait";
+  title?: string;
+  prompt?: string;
+  agent_id?: string | null;
+  next?: string | null;
+  check?: { step: string; op: string; value?: string };
+  true?: string | null;
+  false?: string | null;
+  seconds?: number;
+  _pos?: { x: number; y: number };
+}
+export interface WorkflowDefinition {
+  start: string | null;
+  steps: Record<string, WorkflowStep>;
+}
+export interface Workflow {
+  id: string;
+  name: string;
+  user_id: string | null;
+  enabled: boolean;
+  definition: WorkflowDefinition;
+  trigger: Record<string, unknown> | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  status: string;
+  current_step: string | null;
+  current_task_id: string | null;
+  steps_done: number;
+  context: Record<string, { result?: string; task_id?: string }>;
+  error: string | null;
+  resume_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+export async function getWorkflows(): Promise<{ workflows: Workflow[] }> {
+  return fetchJSON(`${getBase()}/workflows`);
+}
+export async function getWorkflow(id: string): Promise<Workflow> {
+  return fetchJSON(`${getBase()}/workflows/${id}`);
+}
+export async function createWorkflow(body: { name: string; definition: WorkflowDefinition; trigger?: Record<string, unknown> | null; enabled?: boolean }): Promise<Workflow> {
+  return fetchJSON(`${getBase()}/workflows`, { method: "POST", body: JSON.stringify(body) });
+}
+export async function updateWorkflow(id: string, body: { name: string; definition: WorkflowDefinition; trigger?: Record<string, unknown> | null; enabled?: boolean }): Promise<Workflow> {
+  return fetchJSON(`${getBase()}/workflows/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export async function deleteWorkflow(id: string): Promise<{ deleted: string }> {
+  return fetchJSON(`${getBase()}/workflows/${id}`, { method: "DELETE" });
+}
+export async function runWorkflow(id: string): Promise<WorkflowRun> {
+  return fetchJSON(`${getBase()}/workflows/${id}/run`, { method: "POST" });
+}
+export async function getWorkflowRuns(id: string): Promise<{ runs: WorkflowRun[] }> {
+  return fetchJSON(`${getBase()}/workflows/${id}/runs`);
+}
+export async function getWorkflowRun(runId: string): Promise<WorkflowRun> {
+  return fetchJSON(`${getBase()}/workflows/runs/${runId}`);
+}
+
 // DLP egress filter admin (#388)
 export interface DlpSettings { enabled: boolean; classes: string[]; actions: string[] }
 export interface DlpRule { id: number; pii_class: string; agent_id: string | null; action: string; enabled: boolean }
