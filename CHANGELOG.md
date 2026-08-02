@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.124.4] — 2026-08-02
+
+### Changed
+- **Audit-Detail-Modal selbsterklärender.** Statt eines rohen Enum-Werts + JSON zeigt es jetzt einen **Klartext-Titel + Ein-Satz-Erklärung** pro Ereignistyp (z. B. „Reflexion — Änderung angewendet"), **freundliche Feld-Labels** (run_id → Reflexions-Lauf, applied → Ja/Nein) und ein verständliches Ergebnis (Erfolgreich/Blockiert). Die Rohdaten (JSON) bleiben als einklappbares Detail erhalten.
+
+---
+
 ## [1.124.3] — 2026-08-02
 
 ### Fixed

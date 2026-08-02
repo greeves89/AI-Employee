@@ -381,6 +381,40 @@ const DLP_ACTION_LABEL: Record<string, string> = {
   allow: "Erlauben", log: "Nur loggen", mask: "Maskieren", block: "Blockieren",
 };
 
+// Plain-language name + one-sentence explanation per event type, so the modal
+// says WHAT happened instead of showing a raw enum value.
+const EVENT_INFO: Record<string, { label: string; desc: string }> = {
+  reflection_change: { label: "Reflexion — Änderung angewendet", desc: "Die nächtliche Reflexion (Nachtschicht) hat einen Memory- oder Wissens-Eintrag automatisch angelegt oder aktualisiert." },
+  reflection_run: { label: "Reflexion — Lauf abgeschlossen", desc: "Ein nächtlicher Reflexions-Lauf über die Gespräche des Tages wurde abgeschlossen." },
+  command_executed: { label: "Befehl ausgeführt", desc: "Ein privilegierter/Sudo-Befehl wurde im Agenten-Container ausgeführt." },
+  command_approved: { label: "Befehl freigegeben", desc: "Ein Nutzer hat einen angefragten Befehl freigegeben." },
+  command_denied: { label: "Befehl abgelehnt", desc: "Ein Nutzer hat einen angefragten Befehl abgelehnt." },
+  command_blocked: { label: "Befehl blockiert", desc: "Ein Befehl wurde durch die Sicherheits-Regeln blockiert." },
+  approval_requested: { label: "Freigabe angefragt", desc: "Der Agent hat eine Nutzer-Freigabe angefragt." },
+  logs_read: { label: "Logs gelesen", desc: "Der Agent hat seine eigenen Container-Logs zur Selbstdiagnose gelesen." },
+  autonomy_level_changed: { label: "Autonomie-Level geändert", desc: "Das Autonomie-Level eines Agenten wurde geändert." },
+  agent_model_changed: { label: "Modell geändert", desc: "Das Modell bzw. der Provider eines Agenten wurde geändert." },
+  dlp_blocked: { label: "DLP — Nachricht blockiert", desc: "Eine ausgehende Nachricht wurde blockiert, weil sie sensible Daten (z. B. ein Secret) enthielt." },
+  dlp_masked: { label: "DLP — Daten maskiert", desc: "In einer ausgehenden Nachricht wurden sensible Daten geschwärzt, bevor sie gesendet wurde." },
+  dlp_flagged: { label: "DLP — erkannt & protokolliert", desc: "Sensible Daten wurden erkannt und protokolliert, die Nachricht aber durchgelassen." },
+};
+
+// Friendly labels for common meta keys (raw JSON is still available on demand).
+const META_LABEL: Record<string, string> = {
+  run_id: "Reflexions-Lauf", entry_id: "Eintrag-ID", applied: "Angewendet",
+  exit_code: "Exit-Code", stdout: "Ausgabe", stderr: "Fehlerausgabe",
+  reason: "Grund", old_level: "Vorheriges Level", new_level: "Neues Level",
+  old_model: "Vorheriges Modell", new_model: "Neues Modell", url: "URL",
+  title: "Titel", kind: "Art", source: "Quelle",
+};
+
+function fmtMetaValue(v: unknown): string {
+  if (typeof v === "boolean") return v ? "Ja" : "Nein";
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
 function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentName: string; onClose: () => void }) {
   const isDlp = log.event_type.startsWith("dlp_");
   const meta = (log.meta ?? {}) as Record<string, unknown>;
@@ -396,24 +430,28 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg rounded-2xl border border-foreground/[0.08] bg-card p-5 shadow-xl"
       >
-        <div className="mb-4 flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-              OUTCOME_BADGE[log.outcome] ?? "text-muted-foreground",
-            )}>
-              {log.outcome === "blocked" && <AlertTriangle className="h-3 w-3" />}
-              {log.event_type.replace(/_/g, " ")}
-            </span>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-[15px] font-semibold leading-snug">
+              {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
+            </h3>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground/70">
+              {EVENT_INFO[log.event_type]?.desc ?? "Protokollierter System-/Agenten-Vorgang."}
+            </p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
         </div>
 
-        <dl className="space-y-2 text-[13px]">
+        <dl className="space-y-2 border-t border-foreground/[0.06] pt-3 text-[13px]">
           <Row label="Zeit" value={new Date(log.created_at).toLocaleString("de-DE")} />
           <Row label="Agent" value={agentName} />
           <Row label={isDlp ? "Kanal" : "Command / Tool"} value={log.command ?? "—"} mono />
-          <Row label="Ergebnis" value={log.outcome} />
+          <Row label="Ergebnis" value={
+            log.outcome === "success" ? "Erfolgreich"
+              : log.outcome === "blocked" ? "Blockiert"
+              : log.outcome === "failure" ? "Fehlgeschlagen"
+              : log.outcome
+          } />
           {log.task_id && <Row label="Task" value={log.task_id} mono />}
           {log.exit_code != null && <Row label="Exit-Code" value={String(log.exit_code)} />}
         </dl>
@@ -456,7 +494,18 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
           meta && Object.keys(meta).length > 0 && (
             <div className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Details</p>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-muted-foreground/70">{JSON.stringify(meta, null, 2)}</pre>
+              <dl className="space-y-1.5">
+                {Object.entries(meta).map(([k, v]) => (
+                  <div key={k} className="flex items-baseline gap-3 text-[12px]">
+                    <dt className="w-36 shrink-0 text-muted-foreground/60">{META_LABEL[k] ?? k}</dt>
+                    <dd className="flex-1 break-words">{fmtMetaValue(v)}</dd>
+                  </div>
+                ))}
+              </dl>
+              <details className="mt-2.5">
+                <summary className="cursor-pointer text-[11px] text-muted-foreground/40 hover:text-muted-foreground/70">Rohdaten (JSON)</summary>
+                <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-muted-foreground/60">{JSON.stringify(meta, null, 2)}</pre>
+              </details>
             </div>
           )
         )}
