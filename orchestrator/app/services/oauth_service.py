@@ -20,6 +20,7 @@ from app.core.oauth_providers import (
     get_provider,
     get_provider_client_id,
     get_provider_client_secret,
+    get_provider_scopes,
     is_provider_available,
 )
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider, PER_USER_PROVIDERS
@@ -74,7 +75,7 @@ class OAuthService:
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
                 "response_type": "code",
-                "scope": " ".join(provider.scopes),
+                "scope": " ".join(get_provider_scopes(provider)),
                 "state": state,
                 "code_challenge": code_challenge,
                 "code_challenge_method": "S256",
@@ -85,7 +86,7 @@ class OAuthService:
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
                 "response_type": "code",
-                "scope": " ".join(provider.scopes),
+                "scope": " ".join(get_provider_scopes(provider)),
                 "state": state,
                 **provider.auth_extra_params,
             }
@@ -368,7 +369,7 @@ class OAuthService:
             integration.access_token_encrypted = encrypt_token(token)
             integration.refresh_token_encrypted = None
             integration.expires_at = None
-            integration.scopes = " ".join(provider.scopes)
+            integration.scopes = " ".join(get_provider_scopes(provider))
             integration.account_label = account_label
         else:
             integration = OAuthIntegration(
@@ -376,7 +377,7 @@ class OAuthService:
                 user_id=user_id,
                 access_token_encrypted=encrypt_token(token),
                 token_type="token",
-                scopes=" ".join(provider.scopes),
+                scopes=" ".join(get_provider_scopes(provider)),
                 account_label=account_label,
             )
             self.db.add(integration)
@@ -508,7 +509,7 @@ class OAuthService:
                 "connected": integration is not None,
                 "account_label": integration.account_label if integration else None,
                 "expires_at": integration.expires_at.isoformat() if integration and integration.expires_at else None,
-                "scopes": integration.scopes if integration else " ".join(provider.scopes),
+                "scopes": integration.scopes if integration else " ".join(get_provider_scopes(provider)),
                 "available": is_pat_provider or is_auth_json_provider or is_provider_available(provider),
                 "auth_type": "auth_json" if is_auth_json_provider else ("pat" if is_pat_provider else "oauth"),
                 "per_user": name in PER_USER_PROVIDERS,
