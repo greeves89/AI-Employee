@@ -261,6 +261,25 @@ async def _handle_rating_callback(query, data: str) -> None:
         await query.edit_message_text(f"❌ Fehler beim Bewerten: {e}")
 
 
+def _ensure_listener(bot, chat_id: int, agent_id: str, restart: bool = False) -> None:
+    """Ensure a response listener task is running for ``chat_id``.
+
+    ``restart=True`` always (re)creates the task (used by /chat). Otherwise the
+    listener is only started when none is currently running for this chat — the
+    lazy path that re-establishes the process-local task after a restart, since
+    only the chat mapping (not the asyncio.Task) survives in Redis.
+    """
+    existing = _chat_listeners.get(chat_id)
+    alive = existing is not None and not existing.done()
+    if alive and not restart:
+        return
+    if existing is not None:
+        existing.cancel()
+    _chat_listeners[chat_id] = asyncio.create_task(
+        _listen_agent_responses(bot, chat_id, agent_id)
+    )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle regular text messages - forward to active chat agent."""
     chat_id = update.effective_chat.id
@@ -272,6 +291,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "Kein aktiver Chat. Starte mit /chat einen Chat mit einem Agent."
         )
         return
+
+    # The chat mapping is persisted in Redis (survives restarts) but the response
+    # listener is a process-local asyncio.Task that is lost on restart. Re-establish
+    # it here, otherwise the agent's reply is published to Redis but never forwarded
+    # to Telegram — the bot would accept messages and stay silent (#408).
+    _ensure_listener(update.message.get_bot(), chat_id, agent_id)
 
     text = update.message.text
 
@@ -309,15 +334,9 @@ async def _start_chat_session(
     """Start a chat session with an agent and set up response listener."""
     await set_active_chat(chat_id, agent_id)
 
-    # Cancel existing listener if any
-    if chat_id in _chat_listeners:
-        _chat_listeners[chat_id].cancel()
-
-    # Start response listener
+    # (Re)start the response listener for this chat.
     bot = update.get_bot() if callback_query else update.message.get_bot()
-    _chat_listeners[chat_id] = asyncio.create_task(
-        _listen_agent_responses(bot, chat_id, agent_id)
-    )
+    _ensure_listener(bot, chat_id, agent_id, restart=True)
 
     msg = (
         f"💬 Chat mit Agent `{agent_id}` gestartet!\n\n"
