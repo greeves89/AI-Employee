@@ -1153,6 +1153,9 @@ export interface McpServerInfo {
   has_auth?: boolean;
   has_headers?: boolean;
   created_at: string | null;
+  last_checked_at: string | null;
+  last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | null;
+  last_error: string | null;
 }
 
 export interface McpTool {
@@ -1200,7 +1203,14 @@ export async function deleteMcpServer(id: number): Promise<void> {
 // custom headers) so a protected server can actually be reached during the test.
 export async function probeMcpServer(
   name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
-): Promise<{ url: string; tools: McpTool[]; tool_count: number }> {
+): Promise<{
+  url: string;
+  tools: McpTool[];
+  tool_count: number;
+  last_checked_at: string;
+  last_status: McpServerInfo["last_status"];
+  last_error: string | null;
+}> {
   return fetchJSON(`${getBase()}/mcp-servers/probe`, {
     method: "POST",
     body: JSON.stringify({

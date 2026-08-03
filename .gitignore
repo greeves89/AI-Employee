@@ -98,7 +98,12 @@ todo.md
 CLAUDE.md
 
 # Deployment-specific Caddy routes — operators drop *.caddy files into conf.d/.
-# The directory placeholder and its README stay tracked; operator routes do not.
+# conf.d/ holds whole site blocks (own hostname); conf.d/site/ holds extra paths
+# on the main host. The directory placeholders and README stay tracked; operator
+# routes do not.
 /conf.d/*
 !/conf.d/.gitkeep
 !/conf.d/README.md
+!/conf.d/site/
+/conf.d/site/*
+!/conf.d/site/.gitkeep

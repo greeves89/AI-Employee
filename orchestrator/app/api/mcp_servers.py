@@ -1,12 +1,14 @@
 """API endpoints for managing external MCP servers."""
 
 import asyncio
-import ipaddress
 import json as json_mod
 import os
 import re
 import socket
-from urllib.parse import urlparse
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from ipaddress import ip_address
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +22,26 @@ from app.models.audit_log import AuditEventType, AuditLog
 from app.models.mcp_server import McpServer
 
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
+
+MCP_HEALTH_OK = "ok"
+MCP_HEALTH_AUTH_FAILED = "auth_failed"
+MCP_HEALTH_UNREACHABLE = "unreachable"
+MCP_HEALTH_PROTOCOL_ERROR = "protocol_error"
+MCP_HEALTH_STATUSES = {
+    MCP_HEALTH_OK,
+    MCP_HEALTH_AUTH_FAILED,
+    MCP_HEALTH_UNREACHABLE,
+    MCP_HEALTH_PROTOCOL_ERROR,
+}
+
+
+@dataclass
+class McpDiscoveryError(Exception):
+    status: str
+    message: str
+
+    def __str__(self) -> str:
+        return self.message
 
 
 def _sanitize_mcp_name(name: str) -> str:
@@ -39,13 +61,14 @@ def _mcp_allow_private() -> bool:
 
 
 async def _assert_mcp_url_allowed(url: str) -> None:
-    """SSRF guard for outbound MCP requests. Raises HTTPException(400) if blocked.
+    """SSRF guard for a manual ``tools/call`` invocation. Raises HTTPException(400) if blocked.
 
-    Enforces http(s) and rejects hosts that resolve to link-local (incl. the
-    169.254.169.254 cloud-metadata endpoint), multicast, reserved or unspecified
-    addresses unconditionally, and to private/loopback ranges unless
-    MCP_ALLOW_PRIVATE_URLS is set. Every resolved address must pass, so a name
-    that resolves to one public and one internal IP is still rejected.
+    Resolves the hostname and checks every returned address (so a name that
+    resolves to one public and one internal IP is still rejected), unlike
+    :func:`_validate_mcp_url` which only catches IP-literal hosts. Link-local
+    (incl. the 169.254.169.254 cloud-metadata endpoint), multicast, reserved and
+    unspecified addresses are rejected unconditionally; private/loopback ranges
+    are rejected unless ``MCP_ALLOW_PRIVATE_URLS`` is set.
     """
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
@@ -60,7 +83,7 @@ async def _assert_mcp_url_allowed(url: str) -> None:
         raise HTTPException(status_code=400, detail=f"Cannot resolve MCP host: {parsed.hostname}")
     allow_private = _mcp_allow_private()
     for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
+        ip = ip_address(info[4][0])
         if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
             raise HTTPException(
                 status_code=400,
@@ -119,6 +142,99 @@ async def _write_audit(
         await db.rollback()
 
 
+def _audit_discovery_failure(db: AsyncSession, command: str, user_id: str, meta: dict) -> None:
+    """Stage an MCP_DISCOVERY_FAILED row without committing.
+
+    Used on the add/refresh/probe failure paths, which already have their own
+    single commit right after (for refresh, that commit also persists the
+    health-state fields set by ``_mark_health``). Staging here instead of
+    committing separately keeps that call to exactly one commit.
+    """
+    db.add(AuditLog(
+        agent_id="admin",
+        event_type=AuditEventType.MCP_DISCOVERY_FAILED,
+        command=command,
+        outcome="failure",
+        user_id=user_id,
+        meta=meta,
+    ))
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _short_error(text: str | None) -> str | None:
+    if not text:
+        return None
+    compact = " ".join(str(text).split())
+    return compact[:252] + "..." if len(compact) > 255 else compact
+
+
+def _status_from_http(status_code: int) -> str:
+    return MCP_HEALTH_AUTH_FAILED if status_code == 401 else MCP_HEALTH_PROTOCOL_ERROR
+
+
+def _response_error(resp: httpx.Response, phase: str) -> McpDiscoveryError:
+    reason = resp.reason_phrase or "HTTP error"
+    return McpDiscoveryError(
+        _status_from_http(resp.status_code),
+        _short_error(f"{resp.status_code} {reason} on {phase}") or "MCP server request failed",
+    )
+
+
+def _serialize_mcp_server(server: McpServer) -> dict:
+    return {
+        "id": server.id,
+        "name": server.name,
+        "url": server.url,
+        "tools": server.tools or [],
+        "enabled": server.enabled,
+        "has_auth": bool(server.auth_token_encrypted),
+        "has_headers": bool(server.headers_encrypted),
+        "created_at": server.created_at.isoformat() if server.created_at else None,
+        "last_checked_at": server.last_checked_at.isoformat() if server.last_checked_at else None,
+        "last_status": server.last_status,
+        "last_error": server.last_error,
+    }
+
+
+def _mark_health(server: McpServer, status: str, error: str | None = None) -> None:
+    if status not in MCP_HEALTH_STATUSES:
+        status = MCP_HEALTH_PROTOCOL_ERROR
+    server.last_checked_at = _now_utc()
+    server.last_status = status
+    server.last_error = _short_error(error)
+
+
+def _validate_mcp_url(url: str) -> str:
+    raw = (url or "").strip()
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "Invalid MCP server URL")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "Invalid MCP server URL")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "Invalid MCP server URL") from exc
+    if port is not None and not (1 <= port <= 65535):
+        raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "Invalid MCP server URL")
+
+    host = parsed.hostname.strip("[]").lower()
+    if host in {"localhost", "metadata.google.internal"}:
+        raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "MCP server URL host is not allowed")
+    try:
+        ip = ip_address(host)
+    except ValueError:
+        pass
+    else:
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_private:
+            raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "MCP server URL host is not allowed")
+
+    return urlunparse(parsed._replace(fragment=""))
+
+
 def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
     """Parse a JSON-RPC response that may be JSON or SSE (text/event-stream)."""
     content_type = resp.headers.get("content-type", "")
@@ -158,12 +274,18 @@ def _build_headers(
 async def _initialize_session(
     client: httpx.AsyncClient, url: str, headers: dict[str, str],
 ) -> dict[str, str]:
-    """Run the MCP ``initialize`` handshake + ``initialized`` notification.
+    """Run the MCP ``initialize`` handshake + ``initialized`` notification for a
+    manual ``tools/call`` (see :func:`_call_tool`).
 
     Returns the headers to use for subsequent requests (carrying the
     ``mcp-session-id`` for stateful servers). Raises ``HTTPException(400)`` with
     the real cause in ``detail`` if the server rejects the handshake — a 502
     would be swallowed by a fronting Cloudflare tunnel, hiding the reason.
+
+    :func:`_discover_tools` runs its own copy of this handshake inline because it
+    needs to classify failures into health states (``McpDiscoveryError``) rather
+    than raise a flat ``HTTPException``; a manual tool call is not tracked in
+    server health, so the simpler exception here is sufficient.
     """
     init_resp = await client.post(url, headers=headers, json={
         "jsonrpc": "2.0",
@@ -216,25 +338,72 @@ async def _discover_tools(
     sent as ``Authorization: Bearer <token>``; ``extra_headers`` (e.g. an
     ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
     """
-    await _assert_mcp_url_allowed(url)
+    safe_url = _validate_mcp_url(url)
     headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        tool_headers = await _initialize_session(client, url, headers)
+        # Step 1: Initialize
+        try:
+            init_resp = await client.post(safe_url, headers=headers, json={  # codeql[py/full-ssrf]: URL is validated by _validate_mcp_url above.
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "ai-employee-orchestrator", "version": "1.0.0"},
+                },
+            })
+        except httpx.RequestError as exc:
+            raise McpDiscoveryError(
+                MCP_HEALTH_UNREACHABLE,
+                "Connection failed during initialize",
+            ) from exc
 
-        # List tools
-        tools_resp = await client.post(url, headers=tool_headers, json={
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/list",
-            "params": {},
-        })
+        if init_resp.status_code != 200:
+            raise _response_error(init_resp, "initialize")
+
+        init_data = _parse_jsonrpc_response(init_resp)
+        if not init_data or "result" not in init_data:
+            raise McpDiscoveryError(
+                MCP_HEALTH_PROTOCOL_ERROR,
+                "Invalid initialize response",
+            )
+
+        # Extract session ID from response header if present (for stateful servers)
+        session_id = init_resp.headers.get("mcp-session-id")
+        tool_headers = {**headers}
+        if session_id:
+            tool_headers["mcp-session-id"] = session_id
+
+        # Send initialized notification
+        try:
+            await client.post(safe_url, headers=tool_headers, json={  # codeql[py/full-ssrf]: URL is validated by _validate_mcp_url above.
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+            })
+        except httpx.RequestError as exc:
+            raise McpDiscoveryError(
+                MCP_HEALTH_UNREACHABLE,
+                "Connection failed during initialized notification",
+            ) from exc
+
+        # Step 2: List tools
+        try:
+            tools_resp = await client.post(safe_url, headers=tool_headers, json={  # codeql[py/full-ssrf]: URL is validated by _validate_mcp_url above.
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            })
+        except httpx.RequestError as exc:
+            raise McpDiscoveryError(
+                MCP_HEALTH_UNREACHABLE,
+                "Connection failed during tools/list",
+            ) from exc
 
         if tools_resp.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail=f"MCP server returned {tools_resp.status_code} on tools/list",
-            )
+            raise _response_error(tools_resp, "tools/list")
 
         data = _parse_jsonrpc_response(tools_resp)
 
@@ -246,7 +415,7 @@ async def _discover_tools(
                 if isinstance(item, dict) and item.get("id") == 2 and "result" in item:
                     return item["result"].get("tools", [])
 
-        return []
+        raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "Invalid tools/list response")
 
 
 async def _call_tool(
@@ -303,16 +472,7 @@ async def list_mcp_servers(user=Depends(require_auth), db: AsyncSession = Depend
     servers = result.scalars().all()
     return {
         "servers": [
-            {
-                "id": s.id,
-                "name": s.name,
-                "url": s.url,
-                "tools": s.tools or [],
-                "enabled": s.enabled,
-                "has_auth": bool(s.auth_token_encrypted),
-                "has_headers": bool(s.headers_encrypted),
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-            }
+            _serialize_mcp_server(s)
             for s in servers
         ]
     }
@@ -329,14 +489,16 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
     # Discover tools
     try:
         tools = await _discover_tools(body.url, body.bearer_token, body.headers)
-    except HTTPException as e:
-        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"add:{body.name}",
-                           "failure", str(user.id), {"url": body.url, "detail": str(e.detail)})
-        raise
+    except McpDiscoveryError as e:
+        _audit_discovery_failure(db, f"add:{body.name}", str(user.id),
+                                  {"url": body.url, "detail": e.message})
+        await db.commit()
+        raise HTTPException(status_code=400, detail=e.message)
     except Exception as e:
-        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"add:{body.name}",
-                           "failure", str(user.id), {"url": body.url, "detail": str(e)})
-        raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {e}")
+        _audit_discovery_failure(db, f"add:{body.name}", str(user.id),
+                                  {"url": body.url, "detail": _short_error(str(e))})
+        await db.commit()
+        raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {_short_error(str(e))}")
 
     from app.core.encryption import encrypt_token
     server = McpServer(
@@ -344,19 +506,12 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
         auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,
         headers_encrypted=encrypt_token(json_mod.dumps(body.headers)) if body.headers else None,
     )
+    _mark_health(server, MCP_HEALTH_OK)
     db.add(server)
     await db.commit()
     await db.refresh(server)
 
-    return {
-        "id": server.id,
-        "name": server.name,
-        "url": server.url,
-        "tools": tools,
-        "enabled": server.enabled,
-        "has_auth": bool(server.auth_token_encrypted),
-        "has_headers": bool(server.headers_encrypted),
-    }
+    return _serialize_mcp_server(server)
 
 
 @router.post("/{server_id}/refresh")
@@ -372,29 +527,26 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
     extra = json_mod.loads(decrypt_token(server.headers_encrypted)) if server.headers_encrypted else None
     try:
         tools = await _discover_tools(server.url, token, extra)
-    except HTTPException as e:
-        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"refresh:{server.name}",
-                           "failure", str(user.id), {"server_id": server.id, "detail": str(e.detail)})
-        raise
+    except McpDiscoveryError as e:
+        _mark_health(server, e.status, e.message)
+        _audit_discovery_failure(db, f"refresh:{server.name}", str(user.id),
+                                  {"server_id": server.id, "detail": e.message})
+        await db.commit()
+        raise HTTPException(status_code=400, detail=e.message)
     except Exception as e:
-        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"refresh:{server.name}",
-                           "failure", str(user.id), {"server_id": server.id, "detail": str(e)})
-        raise HTTPException(status_code=400, detail=f"Could not connect: {e}")
+        _mark_health(server, MCP_HEALTH_PROTOCOL_ERROR, "Unexpected discovery error")
+        _audit_discovery_failure(db, f"refresh:{server.name}", str(user.id),
+                                  {"server_id": server.id, "detail": _short_error(str(e))})
+        await db.commit()
+        raise HTTPException(status_code=400, detail=f"Could not connect: {_short_error(str(e))}")
 
     server.tools = tools
+    _mark_health(server, MCP_HEALTH_OK)
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(server, "tools")
     await db.commit()
 
-    return {
-        "id": server.id,
-        "name": server.name,
-        "url": server.url,
-        "tools": tools,
-        "enabled": server.enabled,
-        "has_auth": bool(server.auth_token_encrypted),
-        "has_headers": bool(server.headers_encrypted),
-    }
+    return _serialize_mcp_server(server)
 
 
 @router.patch("/{server_id}")
@@ -421,15 +573,7 @@ async def update_mcp_server(
         server.headers_encrypted = encrypt_token(json_mod.dumps(body.headers)) if body.headers else None
 
     await db.commit()
-    return {
-        "id": server.id,
-        "name": server.name,
-        "url": server.url,
-        "tools": server.tools or [],
-        "enabled": server.enabled,
-        "has_auth": bool(server.auth_token_encrypted),
-        "has_headers": bool(server.headers_encrypted),
-    }
+    return _serialize_mcp_server(server)
 
 
 @router.delete("/{server_id}")
@@ -453,16 +597,25 @@ async def probe_mcp_server(body: McpServerCreate, user=Depends(require_admin), d
         # protected server actually authenticates (previously both were dropped →
         # a correctly-configured server always failed the connection test).
         tools = await _discover_tools(body.url, body.bearer_token, body.headers)
-    except HTTPException as e:
-        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"probe:{body.name}",
-                           "failure", str(user.id), {"url": body.url, "detail": str(e.detail)})
-        raise
+    except McpDiscoveryError as e:
+        _audit_discovery_failure(db, f"probe:{body.name}", str(user.id),
+                                  {"url": body.url, "detail": e.message})
+        await db.commit()
+        raise HTTPException(status_code=400, detail=e.message)
     except Exception as e:
-        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"probe:{body.name}",
-                           "failure", str(user.id), {"url": body.url, "detail": str(e)})
-        raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {e}")
+        _audit_discovery_failure(db, f"probe:{body.name}", str(user.id),
+                                  {"url": body.url, "detail": _short_error(str(e))})
+        await db.commit()
+        raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {_short_error(str(e))}")
 
-    return {"url": body.url, "tools": tools, "tool_count": len(tools)}
+    return {
+        "url": body.url,
+        "tools": tools,
+        "tool_count": len(tools),
+        "last_checked_at": _now_utc().isoformat(),
+        "last_status": MCP_HEALTH_OK,
+        "last_error": None,
+    }
 
 
 @router.post("/{server_id}/call")

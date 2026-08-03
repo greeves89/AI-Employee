@@ -193,6 +193,13 @@ class Settings(BaseSettings):
     # default → behaviour identical to the previous hardcoded list.
     skill_repos: str = ""
 
+    # Per-provider OAuth scope overrides — comma-separated, empty = use built-in defaults.
+    # Example: OAUTH_MICROSOFT_SCOPES="openid,email,profile,offline_access,User.Read,Mail.Read"
+    oauth_google_scopes: str = ""
+    oauth_microsoft_scopes: str = ""
+    oauth_github_scopes: str = ""
+    oauth_anthropic_scopes: str = ""
+
     # Skill file attachments — stored on shared Docker volume
     skill_files_root: str = "/shared/skill-files"
 
