@@ -26,7 +26,7 @@ def test_openai_endpoint_already_ending_in_v1_only_gets_models():
 
 def test_openai_default_endpoint_used_when_blank():
     req = build_discovery_request("openai", None, "sk")
-    assert req["url"].startswith("https://api.openai.com")
+    assert req["url"] == "https://api.openai.com/v1/models"
 
 
 def test_selfhosted_without_endpoint_is_unsupported():
