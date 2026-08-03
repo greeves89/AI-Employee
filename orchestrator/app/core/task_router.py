@@ -293,6 +293,14 @@ class TaskRouter:
             await self.db.refresh(task)
             return task
 
+        # Content-based routing (opt-in per agent): pick a model tier from the
+        # prompt itself, like OpenWebUI's router — but only when the caller
+        # didn't already request a specific model. Runs BEFORE the budget
+        # check below, which can still downgrade this further to the cheap
+        # fallback — content picks the ideal tier, budget can still veto it.
+        if model is None:
+            model = await self._route_model_by_content(agent_id, prompt)
+
         # Budget enforcement: downgrades the model to Haiku or blocks+stops
         # the agent once its (or its owner's) monthly budget is exhausted.
         model = await self._apply_budget_policy(agent_id, model)
@@ -948,6 +956,25 @@ class TaskRouter:
             )
         )
         return float(result.scalar() or 0)
+
+    async def _route_model_by_content(self, agent_id: str, prompt: str) -> str | None:
+        """Opt-in content-based model routing (agent.config["model_router"]).
+
+        Returns None (agent keeps its own default) unless the agent has
+        explicitly enabled the router — this must never silently change
+        behavior for agents that didn't ask for it.
+        """
+        from app.core.model_router import route_model
+        from app.models.agent import Agent
+
+        result = await self.db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalar_one_or_none()
+        if not agent:
+            return None
+        router_cfg = (agent.config or {}).get("model_router") or {}
+        if not router_cfg.get("enabled"):
+            return None
+        return route_model(prompt, router_cfg.get("rules"))
 
     async def _apply_budget_policy(
         self, agent_id: str, requested_model: str | None

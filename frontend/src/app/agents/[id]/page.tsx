@@ -1230,6 +1230,33 @@ function AgentSettings({
     }
   };
 
+  // Model-Router: opt-in content-based model routing (OpenWebUI-style)
+  const existingRouterCfg = (agent.config as { model_router?: api.ModelRouterConfig } | null)?.model_router;
+  const [routerEnabled, setRouterEnabled] = useState<boolean>(Boolean(existingRouterCfg?.enabled));
+  const [routerRules, setRouterRules] = useState({
+    simple: existingRouterCfg?.rules?.simple ?? "",
+    standard: existingRouterCfg?.rules?.standard ?? "",
+    complex: existingRouterCfg?.rules?.complex ?? "",
+  });
+  const [routerSaving, setRouterSaving] = useState(false);
+  const saveModelRouter = async (next: { enabled: boolean; rules: typeof routerRules }) => {
+    setRouterSaving(true);
+    try {
+      await api.setAgentModelRouter(agent.id, next);
+      const fresh = await api.getAgent(agent.id);
+      onUpdated(fresh as Agent);
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Speichern fehlgeschlagen" });
+    } finally {
+      setRouterSaving(false);
+    }
+  };
+  const handleRouterToggle = () => {
+    const next = !routerEnabled;
+    setRouterEnabled(next);
+    saveModelRouter({ enabled: next, rules: routerRules });
+  };
+
   useEffect(() => {
     api.getPermissionPackages().then((data) => {
       setPackages(data.packages);
@@ -1559,6 +1586,46 @@ function AgentSettings({
             <span className={cn("inline-block h-4 w-4 rounded-full bg-white transition-transform", alwaysOn ? "translate-x-6" : "translate-x-1")} />
           </button>
         </div>
+      </div>
+
+      {/* Model-Router: pick a model per task from its content instead of always using one fixed model */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium">Model-Router</div>
+            <div className="text-[11px] text-muted-foreground/60">
+              Waehlt pro Task automatisch ein Modell anhand des Prompt-Inhalts (einfach / normal / komplex) statt immer dasselbe Modell zu nutzen. Budget-Downgrade hat weiterhin Vorrang.
+            </div>
+          </div>
+          <button
+            onClick={handleRouterToggle}
+            disabled={routerSaving}
+            aria-pressed={routerEnabled}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+              routerEnabled ? "bg-emerald-500/80" : "bg-foreground/15",
+            )}
+          >
+            <span className={cn("inline-block h-4 w-4 rounded-full bg-white transition-transform", routerEnabled ? "translate-x-6" : "translate-x-1")} />
+          </button>
+        </div>
+        {routerEnabled && (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {(["simple", "standard", "complex"] as const).map((tier) => (
+              <div key={tier}>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1 capitalize">{tier}</label>
+                <input
+                  type="text"
+                  value={routerRules[tier]}
+                  placeholder={tier === "simple" ? "claude-haiku-4-5-20251001" : tier === "standard" ? "claude-sonnet-5" : "claude-opus-5"}
+                  onChange={(e) => setRouterRules((prev) => ({ ...prev, [tier]: e.target.value }))}
+                  onBlur={() => saveModelRouter({ enabled: routerEnabled, rules: routerRules })}
+                  className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Autonomy Level */}

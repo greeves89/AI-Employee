@@ -412,6 +412,21 @@ export async function setAgentAlwaysOn(agentId: string, always_on: boolean): Pro
   });
 }
 
+export interface ModelRouterConfig {
+  enabled: boolean;
+  rules: { simple?: string; standard?: string; complex?: string };
+}
+
+export async function setAgentModelRouter(
+  agentId: string,
+  config: ModelRouterConfig,
+): Promise<{ agent_id: string; model_router: ModelRouterConfig }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/model-router`, {
+    method: "PATCH",
+    body: JSON.stringify(config),
+  });
+}
+
 export interface RolePermissions {
   max_agents?: number | null;
   template_ids?: number[] | null;

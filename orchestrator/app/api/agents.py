@@ -1235,6 +1235,39 @@ async def update_agent_always_on(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.patch("/{agent_id}/model-router")
+async def update_agent_model_router(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Toggle content-based model routing for this agent (opt-in, off by default).
+
+    Body: {"enabled": bool, "rules": {"simple": str, "standard": str, "complex": str}}
+    When enabled, new tasks WITHOUT an explicit model pick a tier from the
+    prompt's content instead of always using the agent's default model — see
+    app/core/model_router.py. Budget-exceeded downgrade still overrides this.
+    """
+    await _check_owner(agent_id, user, db)
+    enabled = bool(body.get("enabled"))
+    rules = body.get("rules") or {}
+    if not isinstance(rules, dict) or not all(isinstance(v, str) for v in rules.values()):
+        raise HTTPException(status_code=400, detail="rules must be a dict of tier -> model name")
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        cfg["model_router"] = {"enabled": enabled, "rules": rules}
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {"agent_id": agent_id, "model_router": cfg["model_router"]}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 # Realtime voice interaction engines the agent can front with (besides the classic
 # staged STT→LLM→TTS pipeline). Single source of truth is the realtime catalog, so
 # the selector, session backends and this allowlist never drift apart — previously
