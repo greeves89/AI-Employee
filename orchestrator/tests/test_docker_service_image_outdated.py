@@ -24,12 +24,14 @@ class _FakeClient:
         self._container_image_id = container_image_id
         self._raise_on_tag = raise_on_tag
         self._raise_on_container = raise_on_container
+        self.images_get_calls = 0
 
     class _Images:
         def __init__(self, outer):
             self._outer = outer
 
         def get(self, _image_name):
+            self._outer.images_get_calls += 1
             if self._outer._raise_on_tag:
                 raise RuntimeError("image not found")
             return _FakeImage(self._outer._tag_image_id)
@@ -77,3 +79,20 @@ def test_not_outdated_when_tag_id_unknown():
 def test_not_outdated_when_container_id_unknown():
     svc = _service(tag_image_id="x", container_image_id="y", raise_on_container=True)
     assert svc.is_container_image_outdated("cid") is False
+
+
+def test_current_image_id_skips_tag_lookup():
+    # issue #449: when the caller already resolved the tag's image id (e.g. once
+    # for a whole agent list), is_container_image_outdated must not call
+    # images.get() again per container.
+    svc = _service(tag_image_id="sha256:new", container_image_id="sha256:old")
+    result = svc.is_container_image_outdated("cid", current_image_id="sha256:new")
+    assert result is True
+    assert svc.client.images_get_calls == 0
+
+
+def test_current_image_id_none_still_resolves_via_tag_lookup():
+    svc = _service(tag_image_id="sha256:same", container_image_id="sha256:same")
+    result = svc.is_container_image_outdated("cid", current_image_id=None)
+    assert result is False
+    assert svc.client.images_get_calls == 1
