@@ -472,7 +472,6 @@ def _make_panel(title, w, h):
     p.setTitle_(title)
     p.center()
     p.setReleasedWhenClosed_(False)
-    p.setLevel_(8)  # NSFloatingWindowLevel
     return p
 
 
@@ -695,6 +694,7 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     cancel_btn.setTarget_(h); cancel_btn.setAction_("cancel:")
     save_btn.setTarget_(h);   save_btn.setAction_("save:")
 
+    NSApp.activateIgnoringOtherApps_(True)
     NSApp.runModalForWindow_(panel)
     panel.close()
     return result_box[0]
@@ -784,6 +784,7 @@ def show_permissions_dialog(cfg: dict) -> None:
     del_btn.setTarget_(h);    del_btn.setAction_("delPath:")
     save_btn.setTarget_(h);   save_btn.setAction_("save:")
 
+    NSApp.activateIgnoringOtherApps_(True)
     NSApp.runModalForWindow_(panel)
     panel.close()
 
@@ -891,6 +892,7 @@ def show_status_window(cfg: dict) -> None:
     close_btn.setTarget_(h)
     close_btn.setAction_("close:")
 
+    NSApp.activateIgnoringOtherApps_(True)
     NSApp.runModalForWindow_(panel)
     panel.close()
 
