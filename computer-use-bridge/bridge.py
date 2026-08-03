@@ -278,17 +278,34 @@ class CommandDispatcher:
             elif action == "open_app":
                 app = params.get("app") or params["name"]
                 import subprocess
-                subprocess.Popen(["open", "-a", app])
+                result = subprocess.run(["open", "-a", app], capture_output=True, text=True)
+                if result.returncode != 0:
+                    return {"ok": False, "app": app, "error": result.stderr.strip() or f'"{app}" not found'}
                 return {"ok": True, "app": app}
 
             elif action == "close_app":
                 app = params.get("app") or params["name"]
                 import subprocess
                 if IS_MAC:
-                    subprocess.run(["osascript", "-e", f'tell application "{app}" to quit'], check=False)
+                    result = subprocess.run(
+                        ["osascript", "-e", f'tell application "{app}" to quit'],
+                        capture_output=True, text=True,
+                    )
+                    if result.returncode != 0:
+                        stderr = result.stderr.strip()
+                        if "-1743" in stderr:
+                            stderr = (
+                                f'Automation permission missing for "{app}". '
+                                "Grant it in System Settings > Privacy & Security > Automation."
+                            )
+                        return {"ok": False, "app": app, "error": stderr or f'Failed to quit "{app}"'}
+                    return {"ok": True, "app": app}
                 elif IS_WIN:
-                    subprocess.run(["taskkill", "/IM", app, "/F"], check=False)
-                return {"ok": True, "app": app}
+                    result = subprocess.run(["taskkill", "/IM", app, "/F"], capture_output=True, text=True)
+                    if result.returncode != 0:
+                        return {"ok": False, "app": app, "error": result.stderr.strip() or f'Failed to quit "{app}"'}
+                    return {"ok": True, "app": app}
+                return {"ok": False, "app": app, "error": "close_app not supported on this platform"}
 
             elif action in ("get_clipboard", "clipboard_read"):
                 if IS_MAC:
@@ -473,7 +490,8 @@ class Bridge:
                     "platform": platform.system(),
                     "bridge_version": BRIDGE_VERSION,
                     "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
-                                     "open_app", "get_clipboard", "set_clipboard", "find_element", "wait_for_element"],
+                                     "open_app", "close_app", "get_clipboard", "set_clipboard", "find_element",
+                                     "wait_for_element"],
                     "ax_tree_available": IS_MAC,
                 }
                 await ws.send(json.dumps(caps))

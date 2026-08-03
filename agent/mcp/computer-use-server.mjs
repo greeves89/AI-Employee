@@ -228,6 +228,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "computer_close_app",
+      description: "Quit an application by name (macOS only). E.g. 'Safari', 'Finder', 'Terminal'.",
+      inputSchema: {
+        type: "object",
+        required: ["app"],
+        properties: {
+          app: { type: "string", description: "Application name (e.g. 'Safari', 'Calculator')." },
+        },
+      },
+    },
+    {
       name: "computer_get_clipboard",
       description: "Read the current clipboard contents as text.",
       inputSchema: { type: "object", properties: {} },
@@ -354,6 +365,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "computer_open_app":
         result = await sendCommand("open_app", { app: args.app });
         return { content: [{ type: "text", text: result.ok ? `Opened "${args.app}".` : `Error: ${result.error}` }] };
+
+      case "computer_close_app":
+        result = await sendCommand("close_app", { app: args.app });
+        return { content: [{ type: "text", text: result.ok ? `Closed "${args.app}".` : `Error: ${result.error}` }] };
 
       case "computer_get_clipboard":
         result = await sendCommand("get_clipboard", {});
