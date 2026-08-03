@@ -111,6 +111,13 @@ def take_screenshot(scale: float = 1.0) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+def _applescript_string_literal(value: str) -> str:
+    """Escape a value for safe interpolation into a double-quoted AppleScript
+    string literal. Without this, an app name containing '"' can break out of
+    the literal and inject arbitrary AppleScript (e.g. `do shell script ...`)."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 # ── AXUIElement (macOS Accessibility Tree) ────────────────────────────────────
 
 def get_ax_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
@@ -170,7 +177,7 @@ def get_ax_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
         if app_name:
             import subprocess
             result = subprocess.run(
-                ["osascript", "-e", f'id of app "{app_name}"'],
+                ["osascript", "-e", f'id of app "{_applescript_string_literal(app_name)}"'],
                 capture_output=True, text=True
             )
             bundle_id = result.stdout.strip()
@@ -287,8 +294,9 @@ class CommandDispatcher:
                 app = params.get("app") or params["name"]
                 import subprocess
                 if IS_MAC:
+                    safe_app = _applescript_string_literal(app)
                     result = subprocess.run(
-                        ["osascript", "-e", f'tell application "{app}" to quit'],
+                        ["osascript", "-e", f'tell application "{safe_app}" to quit'],
                         capture_output=True, text=True,
                     )
                     if result.returncode != 0:
