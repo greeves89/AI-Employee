@@ -56,9 +56,9 @@ async def ask_agent_via_chat(
     await redis.client.lpush(f"agent:{agent_id}:chat", json.dumps(payload))
 
     collected: list[str] = []
-    deadline = asyncio.get_event_loop().time() + timeout
+    deadline = asyncio.get_running_loop().time() + timeout
     try:
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.5)
             if not msg or msg.get("type") != "message":
                 continue

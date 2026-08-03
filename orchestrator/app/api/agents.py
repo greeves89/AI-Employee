@@ -575,7 +575,7 @@ async def list_agents(
 
     # Resolve the ai-employee-agent:latest image id once for the whole list instead
     # of once per agent (issue #449: N*2 -> 1+N Docker socket calls).
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     current_image_id = await loop.run_in_executor(
         None, manager.docker.get_image_id, "ai-employee-agent:latest"
     )

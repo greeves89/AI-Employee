@@ -50,7 +50,7 @@ class DiskMonitorService:
             )
             agents = list(result.scalars().all())
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         for agent in agents:
             if not agent.container_id:
                 continue
@@ -118,7 +118,7 @@ class DiskMonitorService:
         try:
             # Write a final warning before stopping so the user sees why
             self._write_warning(agent.container_id, stats)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.docker.stop_container, agent.container_id)
         except Exception as exc:
             logger.error("Failed to stop disk-full agent %s: %s", agent.id, exc)

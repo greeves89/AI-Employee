@@ -480,7 +480,7 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
         command_msg = json.dumps({"type": "command", "id": cmd_id, "command": {"action": action, "params": params}})
         session["action_count"] = session.get("action_count", 0) + 1
         session.setdefault("audit_log", []).append({"cmd_id": cmd_id, "action": action, "params": params, "caller": str(agent.id), "ts": __import__("time").time()})
-        result_future: _asyncio.Future = _asyncio.get_event_loop().create_future()
+        result_future: _asyncio.Future = _asyncio.get_running_loop().create_future()
         session.setdefault("pending_results", {})[cmd_id] = result_future
         try:
             await session["bridge_ws"].send_text(command_msg)

@@ -58,7 +58,7 @@ async def _refresh_screenshot_cache(session_id: str) -> str | None:
     if not session or not session["bridge_connected"] or not session["bridge_ws"]:
         return None
     cmd_id = uuid.uuid4().hex[:8]
-    result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+    result_future: asyncio.Future = asyncio.get_running_loop().create_future()
     session["pending_results"][cmd_id] = result_future
     try:
         await session["bridge_ws"].send_text(json.dumps({
@@ -401,7 +401,7 @@ async def send_command(
         "ts": time.time(),
     })
 
-    result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+    result_future: asyncio.Future = asyncio.get_running_loop().create_future()
     session["pending_results"][cmd_id] = result_future
 
     try:
@@ -502,7 +502,7 @@ async def get_screenshot(
         "id": cmd_id,
         "command": {"action": "screenshot", "params": {"scale": 0.5}},
     })
-    result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+    result_future: asyncio.Future = asyncio.get_running_loop().create_future()
     session["pending_results"][cmd_id] = result_future
 
     try:
@@ -542,7 +542,7 @@ async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0)
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")
     cmd_id = uuid.uuid4().hex[:8]
-    future: asyncio.Future = asyncio.get_event_loop().create_future()
+    future: asyncio.Future = asyncio.get_running_loop().create_future()
     session["pending_results"][cmd_id] = future
     try:
         await session["bridge_ws"].send_text(json.dumps({
