@@ -24,6 +24,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Leaving them empty lets the runtime config (config.ts) dynamically
 # resolve the API URL from window.location.hostname, so the app
 # works from localhost, LAN IP, VPN, etc. without rebuilding.
+# The build-time app version is baked in so the running UI can detect
+# when the backend has been updated but the frontend bundle is stale.
+ARG APP_VERSION=dev
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 RUN npm run build
 
 # ---- Production ----
