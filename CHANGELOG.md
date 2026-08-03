@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.129.0] — 2026-08-03
+
+Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, Voice).
+
+### Added
+- **Replay-Modus: Ablauf einmal zeigen → wiederverwendbarer Skill.** Eine Computer-Use-Session lässt sich aufzeichnen (Aktion + Screenshot pro Schritt) und in einen Skill verwandeln.
+  - **Zwei Aufnahmequellen:** die eigenen Aktionen des Agenten *und* — neu — der **Mensch macht den Ablauf von Hand vor** (`InputRecorder` in der Bridge via pynput; getippter Text wird als ganze Strings geflusht, nicht als roher Keystroke-Strom).
+  - **Skill-Erzeugung:** ein Vision-Modell liest die Screenshots und schreibt ein SKILL.md in **Prosa** — semantische Klickziele („der Speichern-Button oben rechts") statt Pixel-Koordinaten, erkannte variable Werte als `{parameter}`. Abgespielt wird über die normalen `computer_*`-Tools des Agenten, dadurch überlebt der Skill Fenster-/UI-Drift und braucht keine zweite Ausführungs-Engine.
+  - Landet als **Entwurf** (nicht aktiv) im Skill-Marktplatz — maschinell generierter Inhalt wird erst nach Sichtung nutzbar.
+  - Eigene Capability `input_capture` (Default **aus**, Risiko hoch): während der Aufnahme sieht die Bridge alle Klicks/Tastatureingaben des Rechners. Stoppt zwangsweise bei Verbindungsabbruch.
+- **Model-Router (OpenWebUI-Stil), opt-in pro Agent.** Wählt pro Task ein Modell anhand des Prompt-Inhalts (einfach/normal/komplex) — deterministische Heuristik, **kein** zusätzlicher LLM-Call. Läuft **vor** der Budget-Policy: Inhalt wählt die Stufe, Budget-Erschöpfung übersteuert weiterhin.
+- **Team-Lead sieht die Tasks seiner Subagenten.** `GET /teams/{id}/tasks` (Lead + alle Mitglieder aggregiert) + MCP-Tool `list_team_tasks` (der Agent findet sein Team selbst, braucht keine IDs). Team-Karten mit Task-Ausklapper; die Task-Liste zeigt den Agent-**Namen** statt der rohen ID.
+- **Reasoning-Effort für GPT-Modelle** (low/medium/high) durch die ganze Kette — Responses-API (GPT-5/codex) und Chat-Completions (o1/o3/o4). Für andere Modelle wirkungslos ignoriert.
+- **Voice-Navigation im Second-Brain-Graph.** `control_ui` bekommt einen `query`-Parameter: „öffne den Graphen und such den Eintrag zu X" fokussiert den passenden Knoten automatisch (Titel > Tags > Pfad).
+- **Aktivität + Kosten pro Nutzer** in der Admin-Nutzerverwaltung (`last_active_at` wurde bereits getrackt, aber nie ausgeliefert; Kosten über alle Agents eines Nutzers aggregiert).
+- **Direktlink in einen Agenten-Sub-Tab** — `/agents/{id}?tab=speech` springt direkt in den Sprachchat.
+
+### Fixed
+- **`computer_close_app` fehlte im MCP-Server.** Der Agent kannte die Fähigkeit aus seiner Tool-Beschreibung, der Aufruf lief aber in „Unknown tool" — `close_app` war im Mai nur in der Bridge nachgerüstet, nie im MCP-Server registriert. Zusätzlich melden `open_app`/`close_app` jetzt **echte** Fehler statt immer `ok:true` (inkl. klarer Meldung bei fehlender macOS-Automation-Berechtigung).
+- **„Neue Version verfügbar" blieb nach einem VERSION-Bump hängen.** `AGENT_VERSION` war beim Modul-Import eingefroren — auf einem laufenden Orchestrator wirkte sich ein Bump weder auf das Banner noch auf den Pro-Agent-Update-Check aus. Wird jetzt bei jedem Aufruf frisch gelesen.
+- **Live-Desktop-Ansicht fühlte sich nicht live an.** Der Screenshot-Cache wird jetzt **event-getrieben** direkt nach jeder bildschirmverändernden Aktion aktualisiert; der Frontend-Poll dient nur noch als Fallback (4s → 1s).
+
+### Security
+- **IDOR auf `GET /teams/{id}/tasks` geschlossen.** Der neue Endpoint gab Task-Prompts/-Ergebnisse ohne jede Zugehörigkeitsprüfung heraus — jeder authentifizierte Nutzer/Agent hätte mit einer bekannten `team_id` fremde Team-Inhalte lesen können. Agenten müssen jetzt Lead/Mitglied sein, Menschen Admin oder Besitzer mindestens eines Team-Agenten.
+- **AppleScript-Injection in der Computer-Use-Bridge.** `open_app`/`close_app`/`ax_tree` interpolierten den App-Namen ungefiltert in AppleScript-String-Literale — ein Name mit `"` konnte aus dem Literal ausbrechen und beliebiges AppleScript (u. a. `do shell script`) ausführen.
+
+---
+
 ## [1.128.0] — 2026-08-03
 
 ### Added
