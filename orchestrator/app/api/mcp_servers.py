@@ -663,6 +663,59 @@ async def probe_mcp_server(body: McpServerCreate, user=Depends(require_admin), d
     }
 
 
+@router.get("/agent-health")
+async def mcp_agent_health(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Agent-side MCP connection health (#425 Phase 2).
+
+    Runs ``claude mcp list`` inside every running agent container and reports,
+    per registered external server, how the agents actually see it — a signal
+    independent of the orchestrator's own discovery check (``last_status``). This
+    is what catches the case a green orchestrator status hides: e.g. a per-agent
+    token that a server rejects with 401 on a URL the orchestrator reaches
+    anonymously. Admin-only and on-demand (each check does live connectivity
+    probes across N agents, so it is not run on every page load).
+    """
+    from app.models.agent import Agent, AgentState
+    from app.services.docker_service import DockerService
+    from app.services.mcp_agent_health import collect_agent_mcp_health
+
+    servers_result = await db.execute(select(McpServer))
+    name_to_id = {_sanitize_mcp_name(s.name): s.id for s in servers_result.scalars().all()}
+
+    agents_result = await db.execute(
+        select(Agent).where(
+            Agent.container_id.is_not(None),
+            Agent.state.in_([AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING]),
+        )
+    )
+    agents = list(agents_result.scalars().all())
+
+    docker = DockerService()
+
+    async def _exec_list(container_id: str) -> str | None:
+        def _run() -> str | None:
+            try:
+                _code, out = docker.exec_in_container(container_id, ["claude", "mcp", "list"])
+                return out
+            except Exception:
+                return None
+
+        return await asyncio.to_thread(_run)
+
+    health = await collect_agent_mcp_health(agents, _exec_list, name_to_id.keys())
+
+    servers_by_id = {
+        str(name_to_id[name]): {"name": name, **data}
+        for name, data in health["servers"].items()
+        if name in name_to_id
+    }
+    return {
+        "agents_checked": health["agents_checked"],
+        "agents_total": len(agents),
+        "servers": servers_by_id,
+    }
+
+
 @router.post("/{server_id}/call")
 async def call_mcp_tool(
     server_id: int, body: McpToolCall, user=Depends(require_admin), db: AsyncSession = Depends(get_db),
