@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Cpu, Plus, Trash2, Pencil, Check, X, Loader2, Power } from "lucide-react";
+import { Cpu, Plus, Trash2, Pencil, Check, X, Loader2, Power, RefreshCw, Search } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -52,6 +52,19 @@ const EMPTY_FORM: FormState = {
 
 const EMPTY_MODEL: ModelRow = { name: "", provider_type: "azure-openai", api_endpoint: "" };
 
+// Connection state from the last model-discovery check (#435).
+function accountHealthBadge(a: AIAccount): { label: string; className: string } | null {
+  if (!a.last_status) return null;
+  const map: Record<string, { label: string; className: string }> = {
+    ok: { label: "erreichbar", className: "text-emerald-400" },
+    auth_failed: { label: "Auth fehlgeschlagen", className: "text-amber-400" },
+    unreachable: { label: "nicht erreichbar", className: "text-red-400" },
+    protocol_error: { label: "Protokollfehler", className: "text-red-400" },
+    unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground/50" },
+  };
+  return map[a.last_status] ?? { label: a.last_status, className: "text-muted-foreground/60" };
+}
+
 function Toast({ type, message, onClose }: { type: "success" | "error"; message: string; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -77,6 +90,10 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
   const [newModel, setNewModel] = useState<ModelRow>(EMPTY_MODEL);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<{ id: string; label: string }[] | null>(null);
+  const [discoverMsg, setDiscoverMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [recheckId, setRecheckId] = useState<number | null>(null);
 
   const showToast = (type: "success" | "error", message: string) => setToast({ type, message });
 
@@ -92,8 +109,10 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const openCreate = () => { setForm(EMPTY_FORM); setNewModel(EMPTY_MODEL); setEditingId(null); setShowForm(true); };
+  const resetDiscovery = () => { setDiscovered(null); setDiscoverMsg(null); };
+  const openCreate = () => { setForm(EMPTY_FORM); setNewModel(EMPTY_MODEL); setEditingId(null); resetDiscovery(); setShowForm(true); };
   const openEdit = (a: AIAccount) => {
+    resetDiscovery();
     const extra = a.extra || {};
     setForm({
       name: a.name,
@@ -124,6 +143,61 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
   };
   const removeModel = (name: string) =>
     setForm((f) => ({ ...f, models: f.models.filter((m) => m.name !== name) }));
+
+  // #435: ask the provider which models actually exist. The result is the
+  // pick-list, validates typed names, and — via its status — is the connection
+  // state. When editing, the saved key is reused server-side (no re-entry).
+  const runDiscovery = async () => {
+    setDiscovering(true);
+    setDiscoverMsg(null);
+    try {
+      const res = await api.discoverAIAccountModels({
+        provider_type: form.provider_type,
+        api_endpoint: form.api_endpoint.trim() || null,
+        api_key: form.api_key.trim() || null,
+        account_id: editingId ?? undefined,
+      });
+      if (res.status === "ok") {
+        setDiscovered(res.models);
+        setDiscoverMsg({ ok: true, text: `${res.models.length} Modelle gefunden — auswählen zum Übernehmen.` });
+      } else {
+        setDiscovered(null);
+        setDiscoverMsg({ ok: false, text: res.error || res.status });
+      }
+    } catch (e) {
+      setDiscovered(null);
+      setDiscoverMsg({ ok: false, text: e instanceof Error ? e.message : "Abruf fehlgeschlagen" });
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const toggleDiscoveredModel = (id: string) => {
+    setForm((f) => {
+      if (f.models.some((m) => m.name === id)) {
+        return { ...f, models: f.models.filter((m) => m.name !== id) };
+      }
+      return { ...f, models: [...f.models, { name: id, provider_type: f.provider_type, api_endpoint: f.api_endpoint.trim() }] };
+    });
+  };
+
+  const recheck = async (a: AIAccount) => {
+    setRecheckId(a.id);
+    try {
+      const res = await api.discoverAIAccountModels({ account_id: a.id });
+      showToast(
+        res.status === "ok" ? "success" : "error",
+        res.status === "ok"
+          ? `${a.name}: erreichbar (${res.models.length} Modelle)`
+          : `${a.name}: ${res.error || res.status}`,
+      );
+      await load();
+    } catch {
+      showToast("error", "Prüfung fehlgeschlagen");
+    } finally {
+      setRecheckId(null);
+    }
+  };
 
   const save = async () => {
     const isBedrock = form.provider_type === "bedrock";
@@ -268,11 +342,48 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                         {m.provider_type}
                       </span>
                       <span className="text-[10px] text-muted-foreground/50 truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
+                      {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
+                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-400" title="Nicht in der vom Provider abgerufenen Liste">
+                          nicht in Liste
+                        </span>
+                      )}
                       <button type="button" onClick={() => removeModel(m.name)} className="shrink-0 text-muted-foreground hover:text-red-400">
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   ))}
+                </div>
+
+                {/* discovery: fetch the real model list from the provider (#435) */}
+                <div className="mb-2 rounded-lg border border-primary/20 bg-primary/[0.03] p-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-muted-foreground/70">
+                      Modelle direkt vom Provider abrufen (prüft zugleich die Verbindung)
+                    </span>
+                    <button type="button" onClick={runDiscovery} disabled={discovering}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/25 disabled:opacity-50 shrink-0">
+                      {discovering ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                      Abrufen
+                    </button>
+                  </div>
+                  {discoverMsg && (
+                    <p className={cn("text-[11px]", discoverMsg.ok ? "text-emerald-400" : "text-amber-400")}>
+                      {discoverMsg.text}
+                    </p>
+                  )}
+                  {discovered && discovered.length > 0 && (
+                    <div className="max-h-44 overflow-auto rounded-md border border-foreground/[0.06] bg-background/40 p-1.5 space-y-0.5">
+                      {discovered.map((m) => {
+                        const checked = form.models.some((x) => x.name === m.id);
+                        return (
+                          <label key={m.id} className="flex items-center gap-2 rounded px-2 py-1 text-[12px] hover:bg-foreground/[0.04] cursor-pointer">
+                            <input type="checkbox" checked={checked} onChange={() => toggleDiscoveredModel(m.id)} className="accent-primary" />
+                            <span className="font-mono truncate">{m.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* add-row: name + surface + endpoint */}
@@ -375,11 +486,22 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                     {!a.has_key && a.provider_type !== "ollama" && a.provider_type !== "lm-studio" && (
                       <span className="text-[10px] text-amber-400">kein Key</span>
                     )}
+                    {(() => {
+                      const h = accountHealthBadge(a);
+                      return h ? <span className={cn("text-[10px] font-medium", h.className)}>· {h.label}</span> : null;
+                    })()}
                   </div>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
                     {(a.models || []).map((m) => m.name).join(", ") || "— keine Modelle —"}
+                    {a.last_status && a.last_status !== "ok" && a.last_error && (
+                      <span className="text-red-400/70"> — {a.last_error}</span>
+                    )}
                   </p>
                 </div>
+                <button onClick={() => recheck(a)} disabled={recheckId === a.id} title="Verbindung prüfen (Modelle abrufen)"
+                  className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
+                  {recheckId === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                </button>
                 <button onClick={() => toggleActive(a)} title={a.is_active ? "Deaktivieren" : "Aktivieren"}
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", a.is_active ? "text-emerald-400" : "text-muted-foreground")}>
                   <Power className="h-4 w-4" />
