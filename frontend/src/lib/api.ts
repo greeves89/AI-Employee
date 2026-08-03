@@ -2694,6 +2694,8 @@ export interface ComputerUseSession {
   action_count: number;
   platform: string;
   bridge_version?: string | null;
+  bridge_host?: string | null;
+  bridge_public_url?: string | null;
   capabilities: string[];
   allowed_capabilities: string[];
   last_disconnected_at: number | null;
