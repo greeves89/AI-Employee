@@ -1,5 +1,15 @@
 # Internal reverse proxy - Cloudflare Tunnel terminates TLS
 # Caddy routes requests to the correct backend service
+#
+# Deployment-specific routes: do NOT edit this tracked file (a git pull would
+# clobber your changes). Drop your own `*.caddy` snippets into ./conf.d/ instead
+# — they are imported below and are git-ignored, so they survive every update.
+#
+# Reload caveat: this file is bind-mounted as a SINGLE file
+# (./Caddyfile:/etc/caddy/Caddyfile:ro). Editing it with `sed -i` replaces the
+# inode, so the container keeps serving the OLD config while `caddy validate`
+# and `caddy reload` both report success against the stale file. After such an
+# edit, run `docker restart ai-employee-caddy` to actually pick up the change.
 
 :80 {
 	# Security headers (defence in depth — also set by FastAPI middleware)
@@ -11,6 +21,12 @@
 		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
 		-Server
 	}
+
+	# Deployment-specific routes. Operators add their own handle/route blocks as
+	# ./conf.d/*.caddy files (see conf.d/README.md). handle blocks are matched
+	# most-specific-first, so custom specific paths win over the catch-all below.
+	# An empty glob (no *.caddy files) is not an error in Caddy v2.
+	import conf.d/*.caddy
 
 	# Kiosk is LOCAL-ONLY. Requests coming through the Cloudflare tunnel carry a
 	# Cf-Ray header → 404. Requests from the Pi's own browser hit Caddy directly
