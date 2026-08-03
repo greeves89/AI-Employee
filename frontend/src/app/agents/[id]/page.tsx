@@ -143,6 +143,16 @@ export default function AgentDetailPage() {
     if (!exists && groupsForMode.length) setActiveSub(groupsForMode[0].subs[0].key);
   }, [groupsForMode, activeSub]);
 
+  // Deep-linking: /agents/{id}?tab=speech jumps straight into e.g. the voice
+  // tab (same pattern as /kiosk?tab=...). Handy for linking a user directly
+  // into an agent's Sprachchat instead of them clicking through the tabs.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requested = new URLSearchParams(window.location.search).get("tab") as SubKey | null;
+    const validKeys = tabGroups.flatMap((g) => g.subs.map((s) => s.key));
+    if (requested && validKeys.includes(requested)) setActiveSub(requested);
+  }, []);
+
   useEffect(() => {
     const load = async () => {
       try {
