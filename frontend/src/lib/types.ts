@@ -131,6 +131,8 @@ export interface AdminUser {
   custom_role_id?: number | null;
   is_active: boolean;
   approved?: boolean;
+  last_active_at?: string | null;
+  monthly_cost_usd?: number;
 }
 
 export interface Integration {

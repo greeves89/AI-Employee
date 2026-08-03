@@ -4,6 +4,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
@@ -86,6 +87,8 @@ class UserResponse(BaseModel):
     custom_role_id: int | None = None
     is_active: bool
     approved: bool = True
+    last_active_at: datetime | None = None
+    monthly_cost_usd: float = 0.0
 
     model_config = {"from_attributes": True}
 
@@ -433,7 +436,37 @@ async def list_users(request: Request, db: AsyncSession = Depends(get_db)):
 
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
-    return {"users": [UserResponse.model_validate(u).model_dump() for u in users]}
+
+    from app.models.agent import Agent
+    from app.models.task import Task
+    from app.models.chat_message import ChatMessage
+
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    task_cost_rows = await db.execute(
+        select(Agent.user_id, func.coalesce(func.sum(Task.cost_usd), 0))
+        .join(Task, Task.agent_id == Agent.id)
+        .where(Task.cost_usd.isnot(None), Task.created_at >= month_start)
+        .group_by(Agent.user_id)
+    )
+    chat_cost_rows = await db.execute(
+        select(Agent.user_id, func.coalesce(func.sum(ChatMessage.cost_usd), 0))
+        .join(ChatMessage, ChatMessage.agent_id == Agent.id)
+        .where(ChatMessage.cost_usd.isnot(None), ChatMessage.timestamp >= month_start)
+        .group_by(Agent.user_id)
+    )
+    monthly_cost_by_user: dict[str, float] = defaultdict(float)
+    for user_id, cost in [*task_cost_rows.all(), *chat_cost_rows.all()]:
+        if user_id:
+            monthly_cost_by_user[user_id] += float(cost or 0)
+
+    users_out = []
+    for u in users:
+        data = UserResponse.model_validate(u).model_dump()
+        data["monthly_cost_usd"] = round(monthly_cost_by_user.get(u.id, 0.0), 4)
+        users_out.append(data)
+    return {"users": users_out}
 
 
 @router.patch("/users/{user_id}")

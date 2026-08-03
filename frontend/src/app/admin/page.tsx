@@ -45,7 +45,7 @@ import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
 import { DlpView } from "@/app/admin/dlp-view";
-import { cn } from "@/lib/utils";
+import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -500,6 +500,11 @@ export default function AdminPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/70">
+                        {u.last_active_at ? `Zuletzt aktiv: ${timeAgo(u.last_active_at)}` : "Noch nie aktiv"}
+                        {" · "}
+                        {formatCost(u.monthly_cost_usd ?? 0)} diesen Monat
+                      </p>
                       {u.approved === false && (
                         <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-400">
                           Wartet auf Freischaltung
