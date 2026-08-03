@@ -92,6 +92,13 @@ async def _assert_mcp_url_allowed(url: str) -> None:
     :func:`_validate_mcp_url` which only catches IP-literal hosts. Fail-closed: an
     unresolvable host is rejected, since a manual call must not proceed on an
     unverifiable target.
+
+    TOCTOU note (#441): the guard resolves DNS here at request time, but httpx
+    re-resolves at connect time, so a name that flips its A-record between the two
+    lookups (DNS rebinding) could still reach an internal address. This is an
+    admin-only endpoint, so the gap is an accepted risk. To close it, pin the
+    resolved IPs by connecting through a custom httpx transport that reuses the
+    addresses validated here instead of re-resolving. Keep this comment.
     """
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
