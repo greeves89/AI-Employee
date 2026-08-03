@@ -1200,6 +1200,32 @@ export async function refreshMcpServer(id: number): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers/${id}/refresh`, { method: "POST" });
 }
 
+export type AgentMcpStatus = "connected" | "failed" | "needs_auth" | "unknown";
+
+export interface McpAgentHealthEntry {
+  name: string;
+  connected: number;
+  failed: number;
+  needs_auth: number;
+  unknown: number;
+  agent_status: AgentMcpStatus | null;
+  agents: { agent_id: string; agent_name: string; status: AgentMcpStatus }[];
+}
+
+export interface McpAgentHealth {
+  agents_checked: number;
+  agents_total: number;
+  // Keyed by MCP server id (as a string).
+  servers: Record<string, McpAgentHealthEntry>;
+}
+
+// Agent-side MCP connection health (#425 Phase 2): what each running agent's
+// `claude mcp list` reports, independent of the orchestrator's own discovery
+// check. On-demand (admin-only) — each call runs live probes across all agents.
+export async function getMcpAgentHealth(): Promise<McpAgentHealth> {
+  return fetchJSON(`${getBase()}/mcp-servers/agent-health`);
+}
+
 export async function updateMcpServer(
   id: number,
   data: { name?: string; url?: string; enabled?: boolean; bearer_token?: string; headers?: Record<string, string> },

@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
-import type { McpServerInfo, McpTool } from "@/lib/api";
+import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 
 const PROVIDER_ICONS: Record<string, typeof Mail> = {
@@ -81,6 +81,48 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
     className: server.last_status === "auth_failed" ? "text-amber-400" : "text-red-400",
     title: MCP_HEALTH_ORCH_ONLY,
   };
+}
+
+// Agent-side view (#425 Phase 2): what each running agent's `claude mcp list`
+// reports for this server, rolled up across agents. Distinct from the
+// orchestrator discovery check above — an agent can fail a server (e.g. a 401
+// on its per-agent token) that the orchestrator reaches fine.
+function formatAgentHealth(
+  entry: McpAgentHealthEntry,
+): { label: string; className: string; ok: boolean } {
+  const total = entry.connected + entry.failed + entry.needs_auth + entry.unknown;
+  if (!entry.agent_status || total === 0) {
+    return { label: "Agent-Sicht: keine Daten", className: "text-muted-foreground/50", ok: false };
+  }
+  if (entry.agent_status === "connected") {
+    return {
+      label: `Agent-Sicht: verbunden (${entry.connected}/${total} Agents)`,
+      className: "text-emerald-400",
+      ok: true,
+    };
+  }
+  if (entry.agent_status === "needs_auth") {
+    return {
+      label: `Agent-Sicht: Authentifizierung nötig (${entry.needs_auth}/${total})`,
+      className: "text-amber-400",
+      ok: false,
+    };
+  }
+  if (entry.agent_status === "failed") {
+    return {
+      label: `Agent-Sicht: nicht erreichbar (${entry.failed}/${total})`,
+      className: "text-red-400",
+      ok: false,
+    };
+  }
+  return { label: "Agent-Sicht: unbekannt", className: "text-muted-foreground/60", ok: false };
+}
+
+// The signal #425 exists to surface: the orchestrator's own check says a server
+// is reachable, but the agents that actually call it disagree.
+function hasOrchAgentDisagreement(server: McpServerInfo, entry: McpAgentHealthEntry | undefined): boolean {
+  if (!entry || !entry.agent_status) return false;
+  return server.last_status === "ok" && (entry.agent_status === "failed" || entry.agent_status === "needs_auth");
 }
 
 export default function IntegrationsPage() {
@@ -419,6 +461,8 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [expandedServer, setExpandedServer] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [agentHealth, setAgentHealth] = useState<McpAgentHealth | null>(null);
+  const [checkingAgents, setCheckingAgents] = useState(false);
 
   const editingServer = editingId != null ? servers.find((s) => s.id === editingId) ?? null : null;
 
@@ -586,6 +630,22 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     }
   };
 
+  const handleCheckAgents = async () => {
+    setCheckingAgents(true);
+    try {
+      const health = await api.getMcpAgentHealth();
+      setAgentHealth(health);
+      onToast({
+        type: "success",
+        message: `Agent-Sicht geprüft (${health.agents_checked}/${health.agents_total} Agents)`,
+      });
+    } catch (e) {
+      onToast({ type: "error", message: e instanceof Error ? e.message : "Agent-Prüfung fehlgeschlagen" });
+    } finally {
+      setCheckingAgents(false);
+    }
+  };
+
   const handleToggle = async (server: McpServerInfo) => {
     try {
       const updated = await api.updateMcpServer(server.id, { enabled: !server.enabled });
@@ -599,13 +659,24 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">MCP Servers</h2>
-        <button
-          onClick={() => (showForm ? closeForm() : openAdd())}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
-        >
-          <Plus className="h-3 w-3" />
-          MCP Server hinzufuegen
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCheckAgents}
+            disabled={checkingAgents}
+            title="Führt in jedem laufenden Agent-Container `claude mcp list` aus und zeigt, wie die Agents die Server sehen (unabhängig von der Orchestrator-Prüfung)."
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-foreground border border-foreground/[0.1] hover:bg-foreground/[0.06] disabled:opacity-50 transition-all"
+          >
+            {checkingAgents ? <Loader2 className="h-3 w-3 animate-spin" /> : <Users className="h-3 w-3" />}
+            Agent-Sicht prüfen
+          </button>
+          <button
+            onClick={() => (showForm ? closeForm() : openAdd())}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+          >
+            <Plus className="h-3 w-3" />
+            MCP Server hinzufuegen
+          </button>
+        </div>
       </div>
 
       {/* Add / edit form */}
@@ -759,6 +830,9 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
             const isExpanded = expandedServer === server.id;
             const toolCount = server.tools?.length || 0;
             const health = formatMcpHealth(server);
+            const agentEntry = agentHealth?.servers[String(server.id)];
+            const agentView = agentEntry ? formatAgentHealth(agentEntry) : null;
+            const disagreement = hasOrchAgentDisagreement(server, agentEntry);
 
             return (
               <div
@@ -807,6 +881,21 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       {health.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
                       <span className="truncate">{health.label}</span>
                     </div>
+                    {agentView && (
+                      <div
+                        className={cn("mt-1 flex items-center gap-1.5 text-[11px]", agentView.className)}
+                        title="Ergebnis von `claude mcp list` in den laufenden Agent-Containern (Agent-Perspektive, #425)."
+                      >
+                        {agentView.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
+                        <span className="truncate">{agentView.label}</span>
+                      </div>
+                    )}
+                    {disagreement && (
+                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        <span className="truncate">Diskrepanz: Orchestrator erreichbar, Agents melden Probleme</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
