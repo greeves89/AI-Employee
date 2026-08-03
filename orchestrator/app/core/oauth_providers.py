@@ -173,6 +173,21 @@ def get_provider_client_secret(provider: OAuthProviderConfig) -> str:
     return getattr(settings, provider.client_secret_setting, "")
 
 
+def get_provider_scopes(provider: OAuthProviderConfig) -> list[str]:
+    """Return the effective scope list for a provider.
+
+    Reads OAUTH_<PROVIDER>_SCOPES from settings first (comma-separated string),
+    falling back to the built-in OAuthProviderConfig.scopes when unset or empty.
+    This lets an operator request a narrower (or wider) scope without patching source.
+    """
+    from app.config import settings
+    setting_name = f"oauth_{provider.name}_scopes"
+    override: str = getattr(settings, setting_name, "")
+    if override.strip():
+        return [s.strip() for s in override.split(",") if s.strip()]
+    return list(provider.scopes)
+
+
 def is_provider_available(provider: OAuthProviderConfig) -> bool:
     """Check if a provider has client credentials configured."""
     return bool(get_provider_client_id(provider))

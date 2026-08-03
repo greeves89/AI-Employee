@@ -1168,6 +1168,9 @@ export interface McpServerInfo {
   has_auth?: boolean;
   has_headers?: boolean;
   created_at: string | null;
+  last_checked_at: string | null;
+  last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | null;
+  last_error: string | null;
 }
 
 export interface McpTool {
@@ -1215,7 +1218,14 @@ export async function deleteMcpServer(id: number): Promise<void> {
 // custom headers) so a protected server can actually be reached during the test.
 export async function probeMcpServer(
   name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
-): Promise<{ url: string; tools: McpTool[]; tool_count: number }> {
+): Promise<{
+  url: string;
+  tools: McpTool[];
+  tool_count: number;
+  last_checked_at: string;
+  last_status: McpServerInfo["last_status"];
+  last_error: string | null;
+}> {
   return fetchJSON(`${getBase()}/mcp-servers/probe`, {
     method: "POST",
     body: JSON.stringify({
@@ -1223,6 +1233,24 @@ export async function probeMcpServer(
       ...(bearerToken ? { bearer_token: bearerToken } : {}),
       ...(headers && Object.keys(headers).length ? { headers } : {}),
     }),
+  });
+}
+
+export interface McpToolCallResult {
+  server_id: number;
+  tool: string;
+  result: Record<string, unknown>;  // raw JSON-RPC object (may carry an `error` member)
+  is_error: boolean;
+}
+
+// Admin: invoke a single tool on a saved MCP server by hand (#414). The attempt is
+// audit-logged server-side. Returns the raw JSON-RPC response verbatim.
+export async function callMcpTool(
+  id: number, name: string, args: Record<string, unknown>,
+): Promise<McpToolCallResult> {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/call`, {
+    method: "POST",
+    body: JSON.stringify({ name, arguments: args }),
   });
 }
 

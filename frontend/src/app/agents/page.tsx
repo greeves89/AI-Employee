@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, Users, StopCircle, ArrowUpCircle, Crown } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, Users, StopCircle, ArrowUpCircle, Crown, RotateCw } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
@@ -43,6 +43,7 @@ export default function AgentsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [stoppingAll, setStoppingAll] = useState(false);
   const [startingAll, setStartingAll] = useState(false);
+  const [restartingAll, setRestartingAll] = useState(false);
   const [updatingAll, setUpdatingAll] = useState(false);
   // Agents currently being updated — a Set so "Update All" can spin every card
   // independently (each clears the moment its own update finishes).
@@ -148,6 +149,26 @@ export default function AgentsPage() {
     }
   };
 
+  const handleRestartAll = async () => {
+    const active = agents.filter((a) => ["running", "idle", "working"].includes(a.state));
+    if (active.length === 0) return;
+    const ok = await confirm({
+      title: `${active.length} Agent(s) neu starten?`,
+      message:
+        "Alle aktiven Agents werden mit frischen Umgebungsvariablen (MCP-Server, Integrationen) neu erstellt. Alle aktuell laufenden Aufgaben werden dabei abgebrochen. Daten (Volumes, Wissen, Konfiguration) bleiben erhalten.",
+      variant: "warning",
+      confirmLabel: "Alle neu starten",
+    });
+    if (!ok) return;
+    setRestartingAll(true);
+    try {
+      await Promise.all(active.map((a) => api.restartAgent(a.id)));
+      await refresh();
+    } finally {
+      setRestartingAll(false);
+    }
+  };
+
   const handleStop = async (id: string) => {
     setActionLoading(id);
     try {
@@ -247,6 +268,18 @@ export default function AgentsPage() {
               >
                 {startingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Start All
+              </button>
+            )}
+
+            {/* Restart All */}
+            {agents.some((a) => ["running", "idle", "working"].includes(a.state)) && (
+              <button
+                onClick={handleRestartAll}
+                disabled={restartingAll}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
+              >
+                {restartingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                Restart All
               </button>
             )}
 

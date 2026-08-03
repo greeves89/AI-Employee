@@ -1,6 +1,8 @@
 """External MCP server registry."""
 
-from sqlalchemy import Boolean, Integer, JSON, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -21,3 +23,6 @@ class McpServer(Base, TimestampMixin):
     # the base headers — for servers that expect a non-Bearer key (x-api-key,
     # x-consumer-api-key, X-Auth-Token, …). The bearer_token above stays as a shortcut.
     headers_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)

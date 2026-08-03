@@ -11,6 +11,14 @@
 # and `caddy reload` both report success against the stale file. After such an
 # edit, run `docker restart ai-employee-caddy` to actually pick up the change.
 
+# TOP-LEVEL import: whole site blocks that define their OWN hostname (e.g. a
+# Cloudflare-Access "bypass" host that must be a separate site — see #374). A
+# snippet imported here may open its own `example.com:80 { ... }` block. Extra
+# PATHS on the existing host go in conf.d/site/ instead (imported below, inside
+# the :80 block). `import` is evaluated before parsing and may appear anywhere;
+# an empty glob is not an error in Caddy v2. See conf.d/README.md.
+import conf.d/*.caddy
+
 :80 {
 	# Security headers (defence in depth — also set by FastAPI middleware)
 	header {
@@ -22,11 +30,12 @@
 		-Server
 	}
 
-	# Deployment-specific routes. Operators add their own handle/route blocks as
-	# ./conf.d/*.caddy files (see conf.d/README.md). handle blocks are matched
-	# most-specific-first, so custom specific paths win over the catch-all below.
-	# An empty glob (no *.caddy files) is not an error in Caddy v2.
-	import conf.d/*.caddy
+	# Deployment-specific routes on THIS host. Operators add their own handle/route
+	# blocks as ./conf.d/site/*.caddy files (see conf.d/README.md). handle blocks
+	# are matched most-specific-first, so custom specific paths win over the
+	# catch-all below. An empty glob (no *.caddy files) is not an error in Caddy
+	# v2. Snippets that need their OWN hostname go in conf.d/ (top-level import).
+	import conf.d/site/*.caddy
 
 	# Kiosk is LOCAL-ONLY. Requests coming through the Cloudflare tunnel carry a
 	# Cf-Ray header → 404. Requests from the Pi's own browser hit Caddy directly
