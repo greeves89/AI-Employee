@@ -188,7 +188,7 @@ class OAuthService:
         refresh_token = token_data.get("refresh_token")
         expires_in = token_data.get("expires_in")
         token_type = token_data.get("token_type", "Bearer")
-        scope = token_data.get("scope", " ".join(provider.scopes))
+        scope = token_data.get("scope", " ".join(get_provider_scopes(provider)))
 
         expires_at = None
         if expires_in:

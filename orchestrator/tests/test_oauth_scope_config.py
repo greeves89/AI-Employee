@@ -50,3 +50,30 @@ def test_empty_override_falls_back():
     with patch("app.config.settings", _mock_settings(oauth_anthropic_scopes="")):
         scopes = get_provider_scopes(provider)
     assert scopes == list(provider.scopes)
+
+
+def test_no_raw_provider_scopes_in_oauth_service():
+    """Every scope read in oauth_service must go through get_provider_scopes so an
+    override is honored on ALL paths — including the recorded-granted-scope
+    fallback in persist_tokens (issue #419 point 3). A bare `provider.scopes`
+    would silently record/request the full hardcoded set, re-widening scopes.
+    """
+    import ast
+    import inspect
+
+    from app.services import oauth_service
+
+    src = inspect.getsource(oauth_service)
+    tree = ast.parse(src)
+    raw = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr == "scopes"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "provider"
+    ]
+    assert not raw, (
+        "oauth_service still reads provider.scopes directly; route it through "
+        "get_provider_scopes(provider) so scope overrides apply everywhere"
+    )
