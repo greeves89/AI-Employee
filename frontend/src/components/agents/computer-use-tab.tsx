@@ -493,7 +493,11 @@ function SessionCard({
     if (liveView && isConnected) {
       setScreenshotError(null);
       fetchScreenshot();
-      liveRef.current = setInterval(fetchScreenshot, 4000);
+      // 1s fallback poll — the orchestrator also pushes a fresh screenshot
+      // into its cache right after every agent action (event-driven), so in
+      // practice most polls just pick up an already-current image instead
+      // of waiting out the interval.
+      liveRef.current = setInterval(fetchScreenshot, 1000);
     } else if (liveView && !isConnected) {
       setScreenshotError("disconnected");
     }

@@ -39,6 +39,40 @@ _redis: RedisService | None = None
 SESSION_TIMEOUT_SECS = 30 * 60
 MAX_ACTIONS_PER_SESSION = 50
 
+# Actions that visibly change the screen — after one of these completes, the
+# cached screenshot the human's Live-View tab polls is stale until the next
+# 4s tick. Refreshing it right away (event-driven) instead of waiting for a
+# blind poll interval is what actually makes the live view feel live.
+_SCREEN_CHANGING_ACTIONS = {
+    "click", "type", "key", "scroll", "move", "drag", "open_app", "close_app",
+}
+
+
+async def _refresh_screenshot_cache(session_id: str) -> None:
+    """Fire-and-forget: pull a fresh screenshot from the bridge right after an
+    action and update the session cache, so the next poll from the Live-View
+    tab already sees the post-action state instead of a stale one."""
+    session = _sessions.get(session_id)
+    if not session or not session["bridge_connected"] or not session["bridge_ws"]:
+        return
+    cmd_id = uuid.uuid4().hex[:8]
+    result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+    session["pending_results"][cmd_id] = result_future
+    try:
+        await session["bridge_ws"].send_text(json.dumps({
+            "type": "command",
+            "id": cmd_id,
+            "command": {"action": "screenshot", "params": {"scale": 0.5}},
+        }))
+        result = await asyncio.wait_for(result_future, timeout=10.0)
+        screenshot_b64 = result.get("screenshot_b64", "")
+        if screenshot_b64:
+            session["last_screenshot"] = {"data": screenshot_b64, "ts": time.time()}
+    except Exception:
+        # Best-effort only — the next explicit poll will fall back to
+        # requesting its own fresh screenshot if this cache update failed.
+        session["pending_results"].pop(cmd_id, None)
+
 
 # ── Capability groups ─────────────────────────────────────────────────────────
 
@@ -359,6 +393,8 @@ async def send_command(
         await session["bridge_ws"].send_text(command_msg)
         result = await asyncio.wait_for(result_future, timeout=req.timeout)
         logger.info(f"[computer-use] session={session_id} action={req.action} #{session['action_count']}")
+        if req.action in _SCREEN_CHANGING_ACTIONS:
+            asyncio.create_task(_refresh_screenshot_cache(session_id))
         return {"result": result}
     except asyncio.TimeoutError:
         session["pending_results"].pop(cmd_id, None)
@@ -409,7 +445,13 @@ async def get_screenshot(
     session_id: str,
     user=Depends(require_auth),
 ):
-    """Request a screenshot from the bridge and return base64 PNG. Caches 3s."""
+    """Request a screenshot from the bridge and return base64 PNG.
+
+    Caches 1s — short enough that the Live-View tab's 1s poll almost always
+    just reads this cache instead of round-tripping to the bridge, while
+    _refresh_screenshot_cache() keeps it fresh event-driven after every
+    action so the human sees the post-action state immediately either way.
+    """
     session = _sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -418,7 +460,7 @@ async def get_screenshot(
 
     # Return cached screenshot if still fresh
     cached = session.get("last_screenshot")
-    if cached and time.time() - cached["ts"] < 3:
+    if cached and time.time() - cached["ts"] < 1:
         return {"screenshot_b64": cached["data"], "ts": cached["ts"]}
 
     if not session["bridge_connected"] or not session["bridge_ws"]:
