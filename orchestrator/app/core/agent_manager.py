@@ -9,7 +9,7 @@ from sqlalchemy import delete as sql_delete, select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.config import AGENT_VERSION, settings
+from app.config import get_agent_version, settings
 from app.core.encryption import decrypt_token
 from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
@@ -1069,7 +1069,7 @@ class AgentManager:
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "permissions": agent_permissions,
-                "agent_version": AGENT_VERSION,
+                "agent_version": get_agent_version(),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
             },
         )
@@ -1493,7 +1493,7 @@ class AgentManager:
         # 7. Update DB
         agent.container_id = container.id
         agent.state = AgentState.RUNNING
-        config["agent_version"] = AGENT_VERSION
+        config["agent_version"] = get_agent_version()
         agent.config = config
         flag_modified(agent, "config")
         await self.db.commit()
@@ -1614,7 +1614,7 @@ class AgentManager:
         # Check if agent version is outdated
         update_available = False
         stored_version = config.get("agent_version")
-        if stored_version != AGENT_VERSION:
+        if stored_version != get_agent_version():
             update_available = True
 
         # Build safe LLM config for response (no API key!)

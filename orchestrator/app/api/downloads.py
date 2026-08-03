@@ -4,18 +4,18 @@ import os
 
 from fastapi import APIRouter
 from fastapi.responses import RedirectResponse
-from app.config import AGENT_VERSION
+from app.config import get_agent_version
 
 router = APIRouter(prefix="/download", tags=["downloads"])
 
 GITHUB_REPO = os.getenv("GITHUB_REPO", "greeves89/AI-Employee")
 BRIDGE_TAG = os.getenv("BRIDGE_RELEASE_TAG", "bridge-latest")
-BRIDGE_MAC_ASSET = f"AI-Employee-Bridge-v{AGENT_VERSION}.dmg"
 
 
 @router.get("/bridge/mac")
 async def download_bridge_mac():
-    url = f"https://github.com/{GITHUB_REPO}/releases/download/{BRIDGE_TAG}/{BRIDGE_MAC_ASSET}"
+    bridge_asset = f"AI-Employee-Bridge-v{get_agent_version()}.dmg"
+    url = f"https://github.com/{GITHUB_REPO}/releases/download/{BRIDGE_TAG}/{bridge_asset}"
     return RedirectResponse(url=url, status_code=302)
 
 

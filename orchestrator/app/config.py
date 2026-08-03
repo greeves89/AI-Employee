@@ -15,6 +15,17 @@ def _read_version() -> str:
                 return v
     return "0.0.0"
 
+def get_agent_version() -> str:
+    """Read the VERSION file fresh on every call.
+
+    Must NOT be cached at import time — the orchestrator process stays up
+    across VERSION bumps, and a frozen value would make the "update
+    available" banner and per-agent update checks silently stop firing
+    until the next full restart.
+    """
+    return _read_version()
+
+
 AGENT_VERSION = _read_version()
 
 

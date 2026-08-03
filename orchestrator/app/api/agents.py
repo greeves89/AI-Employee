@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import AGENT_VERSION, settings
+from app.config import get_agent_version, settings
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
 from app.core.realtime_catalog import IMPLEMENTED_ENGINES
@@ -533,6 +533,7 @@ async def list_agents(
         ]
 
     if lite:
+        current_agent_version = get_agent_version()
         agent_responses = []
         for agent in agents:
             config = agent.config or {}
@@ -554,7 +555,7 @@ async def list_agents(
                 onboarding_complete=config.get("onboarding_complete", False),
                 integrations=config.get("integrations", []),
                 permissions=config.get("permissions", DEFAULT_PERMISSIONS),
-                update_available=config.get("agent_version") != AGENT_VERSION,
+                update_available=config.get("agent_version") != current_agent_version,
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
                 monthly_cost_usd=0.0,

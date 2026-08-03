@@ -7,7 +7,7 @@ import os
 import httpx
 from fastapi import APIRouter
 
-from app.config import AGENT_VERSION
+from app.config import get_agent_version
 
 logger = logging.getLogger(__name__)
 
@@ -131,13 +131,14 @@ def _version_tuple(v: str) -> tuple[int, ...]:
 async def check_version():
     """Return current version and check GitHub for updates."""
     remote_version = await _fetch_latest_version()
+    current_version = get_agent_version()
     # Only signal an update when remote is STRICTLY newer than local
     update_available = False
     if remote_version:
-        update_available = _version_tuple(remote_version) > _version_tuple(AGENT_VERSION)
+        update_available = _version_tuple(remote_version) > _version_tuple(current_version)
 
     return {
-        "current": AGENT_VERSION,
+        "current": current_version,
         "latest": remote_version,
         "update_available": update_available,
     }

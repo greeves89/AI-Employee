@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import AGENT_VERSION, settings
+from app.config import get_agent_version, settings
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
@@ -73,7 +73,7 @@ async def get_system_status(
     except Exception:  # noqa: BLE001
         agent_containers = None
     return {
-        "version": AGENT_VERSION,
+        "version": get_agent_version(),
         "containers": containers,
         "agent_containers": agent_containers,
     }
