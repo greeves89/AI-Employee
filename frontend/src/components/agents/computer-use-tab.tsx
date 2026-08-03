@@ -141,6 +141,52 @@ const RISK_COLORS = {
   high: "text-red-400",
 };
 
+type BridgeUrlSource = "bridge_host" | "configured" | "browser_derived";
+
+function buildBridgeWsUrl(base: string, sessionId: string): string {
+  const normalizedBase = base
+    .trim()
+    .replace(/^http:\/\//i, "ws://")
+    .replace(/^https:\/\//i, "wss://")
+    .replace(/\/$/, "");
+
+  if (normalizedBase.includes("/ws/computer-use/bridge")) {
+    try {
+      const url = new URL(normalizedBase);
+      url.searchParams.set("session_id", sessionId);
+      return url.toString();
+    } catch {
+      // Fall through to the base-URL shape below.
+    }
+  }
+
+  return `${normalizedBase}/ws/computer-use/bridge?session_id=${encodeURIComponent(sessionId)}`;
+}
+
+function bridgeBaseFromHost(host: string | null | undefined, browserWsBase: string): string | null {
+  const trimmed = host?.trim();
+  if (!trimmed || trimmed.includes("/") || trimmed.includes("\\") || /\s/.test(trimmed)) {
+    return null;
+  }
+  const scheme = browserWsBase.toLowerCase().startsWith("wss://") ? "wss" : "ws";
+  return `${scheme}://${trimmed}`;
+}
+
+function resolveBridgeUrl(session: ComputerUseSession, browserWsBase: string): { url: string; source: BridgeUrlSource } {
+  const bridgeHostBase = session.status === "connected"
+    ? bridgeBaseFromHost(session.bridge_host, browserWsBase)
+    : null;
+  if (bridgeHostBase) {
+    return { url: buildBridgeWsUrl(bridgeHostBase, session.session_id), source: "bridge_host" };
+  }
+
+  if (session.bridge_public_url?.trim()) {
+    return { url: buildBridgeWsUrl(session.bridge_public_url, session.session_id), source: "configured" };
+  }
+
+  return { url: buildBridgeWsUrl(browserWsBase, session.session_id), source: "browser_derived" };
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = false }: Props) {
@@ -228,7 +274,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
   };
 
   const baseUrl = getApiUrl().replace(/\/$/, "");
-  const wsBase = baseUrl.replace(/^http/, "ws");
+  const browserWsBase = baseUrl.replace(/^http/, "ws");
 
   return (
     <div className="h-full overflow-y-auto space-y-4 pr-1">
@@ -370,7 +416,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
               <SessionCard
                 key={session.session_id}
                 session={session}
-                wsBase={wsBase}
+                browserWsBase={browserWsBase}
                 expectedBridgeVersion={bridgeVersion}
                 onDelete={handleDelete}
                 onCapabilitiesChange={handleCapabilitiesChange}
@@ -448,20 +494,24 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
 
 function SessionCard({
   session,
-  wsBase,
+  browserWsBase,
   expectedBridgeVersion,
   onDelete,
   onCapabilitiesChange,
 }: {
   session: ComputerUseSession;
-  wsBase: string;
+  browserWsBase: string;
   expectedBridgeVersion: string | null;
   onDelete: (id: string) => void;
   onCapabilitiesChange: (id: string, caps: string[]) => void;
 }) {
   const bridgeStale = session.bridge_last_seen_at !== null && (Date.now() / 1000 - session.bridge_last_seen_at) > 20;
   const isConnected = session.status === "connected" && !bridgeStale;
-  const wsUrl = `${wsBase}/ws/computer-use/bridge?session_id=${session.session_id}`;
+  const bridgeUrl = resolveBridgeUrl(
+    isConnected ? session : { ...session, status: session.status === "connected" ? "waiting_for_bridge" : session.status },
+    browserWsBase,
+  );
+  const wsUrl = bridgeUrl.url;
   const visibleBridgeVersion = session.bridge_version || expectedBridgeVersion;
 
   const [copiedWs, setCopiedWs] = useState(false);
@@ -683,6 +733,21 @@ function SessionCard({
           <p className="text-[10px] text-muted-foreground/50">
             Bridge-App starten und diese URL einfügen:{" "}
             <code className="text-violet-400/80">python tray_app.py</code>
+          </p>
+        )}
+        {bridgeUrl.source === "browser_derived" && (
+          <p className="text-[10px] text-amber-400/70">
+            Abgeleitet aus der Adresse dieses Browsers. Wenn die Bridge über einen anderen Hostnamen verbindet, verwende diesen Hostnamen.
+          </p>
+        )}
+        {bridgeUrl.source === "bridge_host" && (
+          <p className="text-[10px] text-muted-foreground/50">
+            Hostname von der aktiven Bridge-Verbindung übernommen.
+          </p>
+        )}
+        {bridgeUrl.source === "configured" && (
+          <p className="text-[10px] text-muted-foreground/50">
+            Hostname aus der Server-Konfiguration übernommen.
           </p>
         )}
       </div>

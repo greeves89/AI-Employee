@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import get_db, is_agent_principal, require_auth, require_auth_or_agent
 from app.services.redis_service import RedisService
 
@@ -129,6 +130,11 @@ def init_computer_use(redis: RedisService) -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _public_bridge_base_url() -> str | None:
+    configured = settings.bridge_public_url.strip().rstrip("/")
+    return configured or None
+
+
 async def _resolve_caller_user_id(caller, db: AsyncSession) -> str | None:
     """Return the user_id for a caller (User object or agent SimpleNamespace)."""
     if is_agent_principal(caller):
@@ -153,6 +159,8 @@ def _session_view(sid: str, s: dict) -> dict:
         "last_disconnected_at": s.get("last_disconnected_at"),
         "bridge_last_seen_at": s.get("bridge_last_seen_at"),
         "bridge_version": s.get("bridge_version"),
+        "bridge_host": s.get("bridge_host"),
+        "bridge_public_url": _public_bridge_base_url(),
         "agent_id": s.get("agent_id"),
         "recording": bool(s.get("recording")),
     }
@@ -183,6 +191,7 @@ async def create_session(user=Depends(require_auth)):
         "allowed_capabilities": allowed,
         "last_disconnected_at": None,
         "bridge_last_seen_at": None,
+        "bridge_host": None,
         "agent_id": None,
         # Replay-Modus: while recording, every screen-changing action is
         # captured as a step (action + params + a screenshot taken right
@@ -460,6 +469,8 @@ async def get_session_status(
         "allowed_capabilities": sorted(session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)),
         "platform": session.get("platform"),
         "bridge_version": session.get("bridge_version"),
+        "bridge_host": session.get("bridge_host"),
+        "bridge_public_url": _public_bridge_base_url(),
         "action_count": session["action_count"],
     }
 
@@ -713,6 +724,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
     session["bridge_connected"] = True
     session["bridge_ws"] = websocket
     session["bridge_last_seen_at"] = time.time()
+    session["bridge_host"] = websocket.headers.get("host")
     logger.info(f"Bridge connected for session {session_id} (user {user_id})")
 
     await websocket.send_text(json.dumps({
