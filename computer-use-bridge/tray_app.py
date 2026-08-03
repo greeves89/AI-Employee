@@ -499,6 +499,38 @@ def _input(cv, x, y, w, placeholder="", secure=False, value=""):
     return f
 
 
+def _install_edit_menu() -> None:
+    """Install a minimal hidden Edit menu so Cmd+V/C/X/A/Z work in modal dialogs.
+
+    An LSUIElement app has no menu bar, so NSApp never translates Cmd+key into
+    responder-chain actions. A main menu that's invisible-to-the-user but present
+    in NSApplication fixes this for all modal NSWindow dialogs at once.
+    """
+    if not IS_MAC:
+        return
+    try:
+        from AppKit import NSApp, NSMenu, NSMenuItem
+        main_menu = NSMenu.alloc().init()
+        app_slot = NSMenuItem.alloc().init()
+        main_menu.addItem_(app_slot)
+
+        edit_menu = NSMenu.alloc().initWithTitle_("Edit")
+        for title, sel, key in (
+            ("Undo",       "undo:",       "z"),
+            ("Redo",       "redo:",       "Z"),   # Cmd+Shift+Z
+            ("Cut",        "cut:",        "x"),
+            ("Copy",       "copy:",       "c"),
+            ("Paste",      "paste:",      "v"),
+            ("Select All", "selectAll:",  "a"),
+        ):
+            # target=None -> action travels down the responder chain to the focused field
+            edit_menu.addItemWithTitle_action_keyEquivalent_(title, sel, key)
+        app_slot.setSubmenu_(edit_menu)
+        NSApp.setMainMenu_(main_menu)
+    except Exception:
+        pass  # non-macOS or AppKit not available - silent no-op
+
+
 def _button(cv, title, x, y, w=120, h=28, key="", style=1):
     from AppKit import NSButton
     b = NSButton.alloc().initWithFrame_(((x, y), (w, h)))
@@ -1485,6 +1517,8 @@ def run_macos(cfg: dict) -> None:
         import rumps
     except ImportError:
         print("Install rumps: pip install rumps"); sys.exit(1)
+
+    _install_edit_menu()
 
     class BridgeApp(rumps.App):
         def __init__(self):
