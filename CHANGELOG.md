@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.128.0] — 2026-08-03
+
+### Added
+- **Workflow-Organisation: Ordner + Freigaben.** Workflows lassen sich in **Ordner** („Projekte") gruppieren und mit **einzelnen Personen** teilen (Rolle Ansehen/Bearbeiten) — direkt oder über eine **Ordner-Freigabe** (teilt alle enthaltenen Workflows = Projekt-Zusammenarbeit).
+  - Modelle `WorkflowFolder` + `WorkflowShare` (+ `folder_id` an Workflow); Zugriffsmodell owner/editor/viewer (eigene + direkt geteilte + über geteilten Ordner). API: Ordner-CRUD, Workflow-/Ordner-Freigabe + Widerruf, minimaler Nutzer-Directory-Endpoint für den Teilen-Picker.
+  - Frontend: Ordner-Leiste in der Workflows-Liste (Alle / Ohne Ordner / Mit mir geteilt / je Ordner), Workflow per Dropdown in Ordner verschieben, **Teilen-Dialog** (Person + Rolle, Freigaben verwalten). Geteilte „Ansehen"-Workflows öffnen read-only.
+  - Ensure-Block für die neuen Tabellen/Spalte.
+  - Offen (Folge): Freigabe an ganze **Team-Gruppen** von Nutzern (es gibt aktuell keine Nutzer-Gruppen-Entität; das bestehende „Team" ist ein Agenten-Team).
+
+---
+
 ## [1.127.0] — 2026-08-02
 
 ### Added

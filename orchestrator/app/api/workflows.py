@@ -1,34 +1,47 @@
-"""Workflow API (#392): manage declarative multi-step agent workflows and their runs.
+"""Workflow API (#392/#394) + organisation: folders and sharing.
 
-The execution engine lives in ``services.workflow_engine`` and is driven by the
-scheduler tick; these endpoints just create/edit definitions and start/inspect runs.
+Workflows can live in folders ("projects") and be shared with individual users
+(viewer|editor), directly or via a shared folder. The execution engine lives in
+``services.workflow_engine`` and is driven by the scheduler tick.
 """
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.load_balancer import LoadBalancer
+from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import require_auth
-from app.models.workflow import Workflow, WorkflowRun
+from app.dependencies import get_redis_service, require_auth
+from app.models.workflow import Workflow, WorkflowFolder, WorkflowRun, WorkflowShare
+from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
+
+def _get_task_router(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+) -> TaskRouter:
+    lb = LoadBalancer(redis)
+    docker = getattr(request.app.state, "docker", None)
+    return TaskRouter(db, redis, lb, docker_service=docker)
+
 _VALID_TYPES = {"agent_task", "condition", "wait"}
+_ROLES = {"viewer", "editor"}
 
 
 def _validate_definition(defn: dict) -> None:
-    """Reject malformed definitions early (start present, ids resolvable, types known)."""
     if not isinstance(defn, dict):
         raise HTTPException(status_code=400, detail="definition must be an object")
     steps = defn.get("steps")
     if not isinstance(steps, dict) or not steps:
         raise HTTPException(status_code=400, detail="definition.steps must be a non-empty object")
-    start = defn.get("start")
-    if start not in steps:
+    if defn.get("start") not in steps:
         raise HTTPException(status_code=400, detail="definition.start must reference an existing step")
     ids = set(steps)
     for sid, step in steps.items():
@@ -37,14 +50,9 @@ def _validate_definition(defn: dict) -> None:
         t = step.get("type")
         if t not in _VALID_TYPES:
             raise HTTPException(status_code=400, detail=f"step '{sid}': unknown type '{t}'")
-        # every referenced target must exist (or be null = end)
-        refs = []
-        if t == "condition":
-            refs += [step.get("true"), step.get("false")]
-            if not isinstance(step.get("check"), dict):
-                raise HTTPException(status_code=400, detail=f"condition '{sid}' needs a check object")
-        else:
-            refs.append(step.get("next"))
+        refs = [step.get("true"), step.get("false")] if t == "condition" else [step.get("next")]
+        if t == "condition" and not isinstance(step.get("check"), dict):
+            raise HTTPException(status_code=400, detail=f"condition '{sid}' needs a check object")
         for r in refs:
             if r is not None and r not in ids:
                 raise HTTPException(status_code=400, detail=f"step '{sid}' references unknown step '{r}'")
@@ -55,25 +63,54 @@ def _is_admin(user) -> bool:
     return getattr(user, "role", None) == UserRole.ADMIN
 
 
-async def _get_owned(workflow_id: str, user, db: AsyncSession) -> Workflow:
+async def _shared_folder_ids(user, db: AsyncSession) -> set[str]:
+    rows = (await db.execute(
+        select(WorkflowShare.folder_id).where(
+            WorkflowShare.user_id == str(user.id), WorkflowShare.folder_id.isnot(None)
+        )
+    )).all()
+    return {r[0] for r in rows}
+
+
+async def _access_role(wf: Workflow, user, db: AsyncSession) -> str | None:
+    """Return 'owner' | 'editor' | 'viewer' | None for this user on a workflow."""
+    if _is_admin(user) or wf.user_id in (None, str(user.id)):
+        return "owner"
+    # direct share
+    direct = (await db.execute(
+        select(WorkflowShare.role).where(
+            WorkflowShare.workflow_id == wf.id, WorkflowShare.user_id == str(user.id)
+        )
+    )).scalar_one_or_none()
+    role = direct
+    # folder share
+    if wf.folder_id:
+        fshare = (await db.execute(
+            select(WorkflowShare.role).where(
+                WorkflowShare.folder_id == wf.folder_id, WorkflowShare.user_id == str(user.id)
+            )
+        )).scalar_one_or_none()
+        if fshare == "editor" or (fshare and role != "editor"):
+            role = fshare
+    return role
+
+
+async def _get_wf(workflow_id: str, user, db: AsyncSession, *, edit: bool = False) -> Workflow:
     wf = (await db.execute(select(Workflow).where(Workflow.id == workflow_id))).scalar_one_or_none()
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    if not _is_admin(user) and wf.user_id not in (None, str(user.id)):
+    role = await _access_role(wf, user, db)
+    if role is None:
         raise HTTPException(status_code=403, detail="Access denied")
+    if edit and role not in ("owner", "editor"):
+        raise HTTPException(status_code=403, detail="Nur Ansehen — keine Bearbeitungsrechte")
     return wf
 
 
-class WorkflowUpsert(BaseModel):
-    name: str
-    definition: dict
-    trigger: dict | None = None
-    enabled: bool = True
-
-
-def _wf_dict(wf: Workflow) -> dict:
+def _wf_dict(wf: Workflow, role: str = "owner") -> dict:
     return {
         "id": wf.id, "name": wf.name, "user_id": wf.user_id, "enabled": wf.enabled,
+        "folder_id": wf.folder_id, "role": role,
         "definition": wf.definition, "trigger": wf.trigger,
         "created_at": wf.created_at.isoformat() if wf.created_at else None,
         "updated_at": wf.updated_at.isoformat() if wf.updated_at else None,
@@ -91,13 +128,36 @@ def _run_dict(r: WorkflowRun) -> dict:
     }
 
 
+class WorkflowUpsert(BaseModel):
+    name: str
+    definition: dict
+    trigger: dict | None = None
+    enabled: bool = True
+    folder_id: str | None = None
+
+
+# ── list / create ────────────────────────────────────────────────────────────
+
 @router.get("")
 async def list_workflows(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    q = select(Workflow).order_by(Workflow.created_at.desc())
-    if not _is_admin(user):
-        q = q.where((Workflow.user_id == str(user.id)) | (Workflow.user_id.is_(None)))
-    rows = (await db.execute(q)).scalars().all()
-    return {"workflows": [_wf_dict(w) for w in rows]}
+    if _is_admin(user):
+        rows = (await db.execute(select(Workflow).order_by(Workflow.created_at.desc()))).scalars().all()
+        return {"workflows": [_wf_dict(w, "owner") for w in rows]}
+    uid = str(user.id)
+    folder_ids = await _shared_folder_ids(user, db)
+    shared_wf = (await db.execute(
+        select(WorkflowShare.workflow_id).where(WorkflowShare.user_id == uid, WorkflowShare.workflow_id.isnot(None))
+    )).all()
+    shared_ids = {r[0] for r in shared_wf}
+    rows = (await db.execute(select(Workflow).order_by(Workflow.created_at.desc()))).scalars().all()
+    out = []
+    for w in rows:
+        if w.user_id in (None, uid):
+            out.append(_wf_dict(w, "owner"))
+        elif w.id in shared_ids or (w.folder_id and w.folder_id in folder_ids):
+            role = await _access_role(w, user, db)
+            out.append(_wf_dict(w, role or "viewer"))
+    return {"workflows": out}
 
 
 @router.post("", status_code=201)
@@ -105,35 +165,163 @@ async def create_workflow(body: WorkflowUpsert, user=Depends(require_auth), db: 
     _validate_definition(body.definition)
     wf = Workflow(
         id=f"wf_{uuid.uuid4().hex[:12]}", name=body.name, user_id=str(user.id),
-        enabled=body.enabled, definition=body.definition, trigger=body.trigger,
+        enabled=body.enabled, definition=body.definition, trigger=body.trigger, folder_id=body.folder_id,
     )
     db.add(wf)
     await db.commit()
     await db.refresh(wf)
-    return _wf_dict(wf)
+    return _wf_dict(wf, "owner")
 
+
+# ── directory (minimal user list for share pickers) ──────────────────────────
+
+@router.get("/directory")
+async def user_directory(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Minimal id+name+email of users, so an owner can pick who to share with.
+    Excludes the caller. No sensitive fields."""
+    from app.models.user import User
+    rows = (await db.execute(select(User.id, User.name, User.email).order_by(User.name))).all()
+    return {"users": [{"id": r[0], "name": r[1], "email": r[2]} for r in rows if r[0] != str(user.id)]}
+
+
+# ── folders ──────────────────────────────────────────────────────────────────
+
+class FolderCreate(BaseModel):
+    name: str
+
+
+def _folder_dict(f: WorkflowFolder, shared: bool = False) -> dict:
+    return {"id": f.id, "name": f.name, "user_id": f.user_id, "shared": shared,
+            "created_at": f.created_at.isoformat() if f.created_at else None}
+
+
+@router.get("/folders")
+async def list_folders(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    uid = str(user.id)
+    own = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.user_id == uid).order_by(WorkflowFolder.name))).scalars().all()
+    shared_ids = await _shared_folder_ids(user, db)
+    shared = []
+    if shared_ids:
+        shared = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id.in_(shared_ids)))).scalars().all()
+    return {"folders": [_folder_dict(f) for f in own] + [_folder_dict(f, shared=True) for f in shared]}
+
+
+@router.post("/folders", status_code=201)
+async def create_folder(body: FolderCreate, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    f = WorkflowFolder(id=f"wff_{uuid.uuid4().hex[:12]}", name=body.name, user_id=str(user.id))
+    db.add(f)
+    await db.commit()
+    await db.refresh(f)
+    return _folder_dict(f)
+
+
+@router.delete("/folders/{folder_id}")
+async def delete_folder(folder_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    f = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id == folder_id))).scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if not _is_admin(user) and f.user_id != str(user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    # unassign workflows in this folder, drop its shares, then delete
+    for w in (await db.execute(select(Workflow).where(Workflow.folder_id == folder_id))).scalars().all():
+        w.folder_id = None
+    for s in (await db.execute(select(WorkflowShare).where(WorkflowShare.folder_id == folder_id))).scalars().all():
+        await db.delete(s)
+    await db.delete(f)
+    await db.commit()
+    return {"deleted": folder_id}
+
+
+# ── sharing ──────────────────────────────────────────────────────────────────
+
+class ShareCreate(BaseModel):
+    user_id: str
+    role: str = "viewer"
+
+
+def _share_dict(s: WorkflowShare, name: str | None = None) -> dict:
+    return {"id": s.id, "user_id": s.user_id, "user_name": name, "role": s.role,
+            "workflow_id": s.workflow_id, "folder_id": s.folder_id}
+
+
+@router.delete("/shares/{share_id}")
+async def revoke_share(share_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    s = (await db.execute(select(WorkflowShare).where(WorkflowShare.id == share_id))).scalar_one_or_none()
+    if not s:
+        raise HTTPException(status_code=404, detail="Share not found")
+    # only the owner of the shared workflow/folder (or admin) may revoke
+    if s.workflow_id:
+        await _get_wf(s.workflow_id, user, db, edit=True)
+    elif s.folder_id and not _is_admin(user):
+        f = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id == s.folder_id))).scalar_one_or_none()
+        if not f or f.user_id != str(user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
+    await db.delete(s)
+    await db.commit()
+    return {"deleted": share_id}
+
+
+@router.post("/folders/{folder_id}/share", status_code=201)
+async def share_folder(folder_id: str, body: ShareCreate, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    if body.role not in _ROLES:
+        raise HTTPException(status_code=400, detail="role must be viewer or editor")
+    f = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id == folder_id))).scalar_one_or_none()
+    if not f or (not _is_admin(user) and f.user_id != str(user.id)):
+        raise HTTPException(status_code=404, detail="Folder not found")
+    existing = (await db.execute(select(WorkflowShare).where(
+        WorkflowShare.folder_id == folder_id, WorkflowShare.user_id == body.user_id))).scalar_one_or_none()
+    if existing:
+        existing.role = body.role
+        s = existing
+    else:
+        s = WorkflowShare(id=f"wfs_{uuid.uuid4().hex[:12]}", folder_id=folder_id, user_id=body.user_id, role=body.role, granted_by=str(user.id))
+        db.add(s)
+    await db.commit()
+    return _share_dict(s)
+
+
+# ── run history (static path before /{workflow_id}) ──────────────────────────
+
+@router.get("/runs/{run_id}")
+async def get_run(run_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    run = (await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    await _get_wf(run.workflow_id, user, db)
+    return _run_dict(run)
+
+
+# ── single workflow (parametrised — keep after the static routes above) ──────
 
 @router.get("/{workflow_id}")
 async def get_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    return _wf_dict(await _get_owned(workflow_id, user, db))
+    wf = await _get_wf(workflow_id, user, db)
+    return _wf_dict(wf, await _access_role(wf, user, db) or "viewer")
 
 
 @router.put("/{workflow_id}")
 async def update_workflow(workflow_id: str, body: WorkflowUpsert, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_definition(body.definition)
-    wf = await _get_owned(workflow_id, user, db)
+    wf = await _get_wf(workflow_id, user, db, edit=True)
     wf.name = body.name
     wf.definition = body.definition
     wf.trigger = body.trigger
     wf.enabled = body.enabled
+    wf.folder_id = body.folder_id
     await db.commit()
     await db.refresh(wf)
-    return _wf_dict(wf)
+    return _wf_dict(wf, await _access_role(wf, user, db) or "editor")
 
 
 @router.delete("/{workflow_id}")
 async def delete_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    wf = await _get_owned(workflow_id, user, db)
+    wf = (await db.execute(select(Workflow).where(Workflow.id == workflow_id))).scalar_one_or_none()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if not _is_admin(user) and wf.user_id not in (None, str(user.id)):
+        raise HTTPException(status_code=403, detail="Nur der Eigentümer kann löschen")
+    for s in (await db.execute(select(WorkflowShare).where(WorkflowShare.workflow_id == workflow_id))).scalars().all():
+        await db.delete(s)
     await db.delete(wf)
     await db.commit()
     return {"deleted": workflow_id}
@@ -141,10 +329,8 @@ async def delete_workflow(workflow_id: str, user=Depends(require_auth), db: Asyn
 
 @router.post("/{workflow_id}/run", status_code=201)
 async def run_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Start a run. The scheduler tick advances it; poll GET /workflows/runs/{id}."""
     from app.services.workflow_engine import start_run
-
-    wf = await _get_owned(workflow_id, user, db)
+    wf = await _get_wf(workflow_id, user, db, edit=True)
     if not (wf.definition or {}).get("start"):
         raise HTTPException(status_code=400, detail="Workflow has no start step")
     run = await start_run(wf, db)
@@ -153,17 +339,37 @@ async def run_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSe
 
 @router.get("/{workflow_id}/runs")
 async def list_runs(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    await _get_owned(workflow_id, user, db)
+    await _get_wf(workflow_id, user, db)
     rows = (await db.execute(
         select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id).order_by(WorkflowRun.started_at.desc()).limit(50)
     )).scalars().all()
     return {"runs": [_run_dict(r) for r in rows]}
 
 
-@router.get("/runs/{run_id}")
-async def get_run(run_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    run = (await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))).scalar_one_or_none()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    await _get_owned(run.workflow_id, user, db)   # ownership via parent workflow
-    return _run_dict(run)
+@router.get("/{workflow_id}/shares")
+async def list_shares(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    await _get_wf(workflow_id, user, db, edit=True)
+    from app.models.user import User
+    rows = (await db.execute(select(WorkflowShare).where(WorkflowShare.workflow_id == workflow_id))).scalars().all()
+    names = {}
+    if rows:
+        urows = (await db.execute(select(User.id, User.name).where(User.id.in_([s.user_id for s in rows])))).all()
+        names = {u[0]: u[1] for u in urows}
+    return {"shares": [_share_dict(s, names.get(s.user_id)) for s in rows]}
+
+
+@router.post("/{workflow_id}/share", status_code=201)
+async def share_workflow(workflow_id: str, body: ShareCreate, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    if body.role not in _ROLES:
+        raise HTTPException(status_code=400, detail="role must be viewer or editor")
+    await _get_wf(workflow_id, user, db, edit=True)
+    existing = (await db.execute(select(WorkflowShare).where(
+        WorkflowShare.workflow_id == workflow_id, WorkflowShare.user_id == body.user_id))).scalar_one_or_none()
+    if existing:
+        existing.role = body.role
+        s = existing
+    else:
+        s = WorkflowShare(id=f"wfs_{uuid.uuid4().hex[:12]}", workflow_id=workflow_id, user_id=body.user_id, role=body.role, granted_by=str(user.id))
+        db.add(s)
+    await db.commit()
+    return _share_dict(s)

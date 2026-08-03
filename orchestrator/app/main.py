@@ -919,6 +919,21 @@ async def lifespan(app: FastAPI):
             ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_workflow_runs_wf ON workflow_runs (workflow_id)"))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_workflow_runs_status ON workflow_runs (status)"))
+            # Organisation (#394-org): folders + sharing.
+            await conn.execute(_txt("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS folder_id varchar"))
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS workflow_folders ("
+                "id varchar PRIMARY KEY, name varchar NOT NULL, user_id varchar NOT NULL,"
+                "created_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS workflow_shares ("
+                "id varchar PRIMARY KEY, workflow_id varchar, folder_id varchar,"
+                "user_id varchar NOT NULL, role varchar(20) NOT NULL DEFAULT 'viewer',"
+                "granted_by varchar, created_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_shares_user ON workflow_shares (user_id)"))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_folders_user ON workflow_folders (user_id)"))
         logger.info("workflow tables ensured")
     except Exception as e:
         logger.warning(f"Could not ensure workflow tables: {e}")

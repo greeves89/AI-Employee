@@ -250,6 +250,7 @@ export default function WorkflowEditorPage() {
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId), [nodes, selectedId]);
   const stepIds = nodes.map((n) => n.id);
+  const readOnly = wf?.role === "viewer";
 
   return (
     <div className="flex h-[calc(100dvh)] flex-col">
@@ -258,17 +259,23 @@ export default function WorkflowEditorPage() {
         <button onClick={() => router.push("/workflows")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-foreground/[0.06]"><ArrowLeft className="h-4 w-4" /></button>
         <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg bg-transparent px-2 py-1 text-sm font-semibold outline-none focus:bg-foreground/[0.04]" />
         <div className="ml-auto flex items-center gap-2">
-          <div className="mr-1 flex items-center gap-1">
-            <PaletteBtn icon={<Bot className="h-3.5 w-3.5" />} label="Aufgabe" onClick={() => addNode("agent_task")} />
-            <PaletteBtn icon={<GitBranch className="h-3.5 w-3.5" />} label="Bedingung" onClick={() => addNode("condition")} />
-            <PaletteBtn icon={<Clock className="h-3.5 w-3.5" />} label="Warten" onClick={() => addNode("wait")} />
-          </div>
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-sm hover:bg-foreground/[0.1] disabled:opacity-50">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Speichern
-          </button>
-          <button onClick={runNow} disabled={running} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Ausführen
-          </button>
+          {readOnly ? (
+            <span className="rounded-lg bg-sky-500/10 px-3 py-1.5 text-[12px] text-sky-400">Nur Ansehen — geteilt</span>
+          ) : (
+            <>
+              <div className="mr-1 flex items-center gap-1">
+                <PaletteBtn icon={<Bot className="h-3.5 w-3.5" />} label="Aufgabe" onClick={() => addNode("agent_task")} />
+                <PaletteBtn icon={<GitBranch className="h-3.5 w-3.5" />} label="Bedingung" onClick={() => addNode("condition")} />
+                <PaletteBtn icon={<Clock className="h-3.5 w-3.5" />} label="Warten" onClick={() => addNode("wait")} />
+              </div>
+              <button onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-sm hover:bg-foreground/[0.1] disabled:opacity-50">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Speichern
+              </button>
+              <button onClick={runNow} disabled={running} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Ausführen
+              </button>
+            </>
+          )}
         </div>
       </div>
 

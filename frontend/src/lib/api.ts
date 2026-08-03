@@ -2515,11 +2515,16 @@ export interface Workflow {
   name: string;
   user_id: string | null;
   enabled: boolean;
+  folder_id?: string | null;
+  role?: string;   // owner | editor | viewer
   definition: WorkflowDefinition;
   trigger: Record<string, unknown> | null;
   created_at: string | null;
   updated_at: string | null;
 }
+export interface WorkflowFolder { id: string; name: string; user_id: string; shared: boolean; created_at: string | null }
+export interface WorkflowShare { id: string; user_id: string; user_name: string | null; role: string; workflow_id: string | null; folder_id: string | null }
+export interface DirectoryUser { id: string; name: string; email: string }
 export interface WorkflowRun {
   id: string;
   workflow_id: string;
@@ -2539,11 +2544,36 @@ export async function getWorkflows(): Promise<{ workflows: Workflow[] }> {
 export async function getWorkflow(id: string): Promise<Workflow> {
   return fetchJSON(`${getBase()}/workflows/${id}`);
 }
-export async function createWorkflow(body: { name: string; definition: WorkflowDefinition; trigger?: Record<string, unknown> | null; enabled?: boolean }): Promise<Workflow> {
+export async function createWorkflow(body: { name: string; definition: WorkflowDefinition; trigger?: Record<string, unknown> | null; enabled?: boolean; folder_id?: string | null }): Promise<Workflow> {
   return fetchJSON(`${getBase()}/workflows`, { method: "POST", body: JSON.stringify(body) });
 }
-export async function updateWorkflow(id: string, body: { name: string; definition: WorkflowDefinition; trigger?: Record<string, unknown> | null; enabled?: boolean }): Promise<Workflow> {
+export async function updateWorkflow(id: string, body: { name: string; definition: WorkflowDefinition; trigger?: Record<string, unknown> | null; enabled?: boolean; folder_id?: string | null }): Promise<Workflow> {
   return fetchJSON(`${getBase()}/workflows/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+// Organisation: folders + sharing
+export async function getWorkflowFolders(): Promise<{ folders: WorkflowFolder[] }> {
+  return fetchJSON(`${getBase()}/workflows/folders`);
+}
+export async function createWorkflowFolder(name: string): Promise<WorkflowFolder> {
+  return fetchJSON(`${getBase()}/workflows/folders`, { method: "POST", body: JSON.stringify({ name }) });
+}
+export async function deleteWorkflowFolder(id: string): Promise<{ deleted: string }> {
+  return fetchJSON(`${getBase()}/workflows/folders/${id}`, { method: "DELETE" });
+}
+export async function shareWorkflowFolder(folderId: string, userId: string, role: string): Promise<WorkflowShare> {
+  return fetchJSON(`${getBase()}/workflows/folders/${folderId}/share`, { method: "POST", body: JSON.stringify({ user_id: userId, role }) });
+}
+export async function getWorkflowDirectory(): Promise<{ users: DirectoryUser[] }> {
+  return fetchJSON(`${getBase()}/workflows/directory`);
+}
+export async function getWorkflowShares(id: string): Promise<{ shares: WorkflowShare[] }> {
+  return fetchJSON(`${getBase()}/workflows/${id}/shares`);
+}
+export async function shareWorkflow(id: string, userId: string, role: string): Promise<WorkflowShare> {
+  return fetchJSON(`${getBase()}/workflows/${id}/share`, { method: "POST", body: JSON.stringify({ user_id: userId, role }) });
+}
+export async function revokeWorkflowShare(shareId: string): Promise<{ deleted: string }> {
+  return fetchJSON(`${getBase()}/workflows/shares/${shareId}`, { method: "DELETE" });
 }
 export async function deleteWorkflow(id: string): Promise<{ deleted: string }> {
   return fetchJSON(`${getBase()}/workflows/${id}`, { method: "DELETE" });

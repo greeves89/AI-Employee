@@ -27,12 +27,47 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 
+class WorkflowFolder(Base):
+    """Organisational folder ("project") that groups a user's workflows and can be
+    shared as a whole (see WorkflowShare with folder_id set)."""
+
+    __tablename__ = "workflow_folders"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)  # owner
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class WorkflowShare(Base):
+    """Grants a user access to a workflow OR a whole folder (role viewer|editor).
+
+    Exactly one of workflow_id / folder_id is set. A folder share extends to every
+    workflow inside that folder — the 'project collaboration' case.
+    """
+
+    __tablename__ = "workflow_shares"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    workflow_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    folder_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)  # grantee
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")  # viewer|editor
+    granted_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class Workflow(Base):
     __tablename__ = "workflows"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     user_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    folder_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     definition: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     # Optional trigger config, e.g. {"cron": "0 7 * * 1"} — v1 supports manual + cron.
