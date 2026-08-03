@@ -1407,6 +1407,29 @@ export async function deleteAIAccount(id: number): Promise<{ ok: boolean; id: nu
   return fetchJSON(`${getBase()}/ai-accounts/${id}`, { method: "DELETE" });
 }
 
+// Discovered model list + connection state for an AI account (#435). status ∈
+// ok | auth_failed | unreachable | protocol_error | unsupported.
+export interface DiscoveredModels {
+  status: string;
+  models: { id: string; label: string }[];
+  error: string | null;
+}
+
+// Probe a provider's /v1/models (OpenAI-compatible, Anthropic, Google). Pass the
+// typed credentials to check an unsaved account, or an account_id to re-check a
+// saved one with its stored key (which also stamps that account's health state).
+export async function discoverAIAccountModels(payload: {
+  provider_type?: string;
+  api_endpoint?: string | null;
+  api_key?: string | null;
+  account_id?: number;
+}): Promise<DiscoveredModels> {
+  return fetchJSON(`${getBase()}/ai-accounts/discover-models`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Second Brains (department-shared knowledge vaults) ──
 export interface SecondBrainPayload {
   name: string;

@@ -29,6 +29,11 @@ class AIAccount(Base):
     # vertex_project, max_tokens, temperature, ...
     extra: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Connection health from the last model-discovery check against the provider
+    # (mirrors McpServer). last_status ∈ ok|auth_failed|unreachable|protocol_error|unsupported.
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

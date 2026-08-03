@@ -1028,6 +1028,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure mcp_servers columns: {e}")
 
+    # AI accounts: model-discovery health columns (#435), mirroring mcp_servers.
+    try:
+        from app.db.session import engine as _eng_ai
+        from sqlalchemy import text as _txt_ai
+        async with _eng_ai.begin() as conn:
+            await conn.execute(_txt_ai(
+                "ALTER TABLE ai_accounts ADD COLUMN IF NOT EXISTS last_checked_at timestamptz"
+            ))
+            await conn.execute(_txt_ai(
+                "ALTER TABLE ai_accounts ADD COLUMN IF NOT EXISTS last_status varchar(32)"
+            ))
+            await conn.execute(_txt_ai(
+                "ALTER TABLE ai_accounts ADD COLUMN IF NOT EXISTS last_error varchar(255)"
+            ))
+        logger.info("ai_accounts health columns ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure ai_accounts columns: {e}")
+
     # Reflection/"Dreaming": provenance column + run-log table. Ensured on every
     # startup, independent of Alembic (multi-head chain → no new migrations).
     try:
