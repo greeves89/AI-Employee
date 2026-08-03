@@ -505,11 +505,18 @@ def _install_edit_menu() -> None:
     An LSUIElement app has no menu bar, so NSApp never translates Cmd+key into
     responder-chain actions. A main menu that's invisible-to-the-user but present
     in NSApplication fixes this for all modal NSWindow dialogs at once.
+
+    Note: this runs BEFORE rumps starts its run loop, so the shared NSApplication
+    may not exist yet — the bare `NSApp` global would still be nil here and the
+    menu would silently never install. We call `NSApplication.sharedApplication()`
+    to obtain (creating if needed) the singleton rumps will reuse, so the menu
+    actually sticks.
     """
     if not IS_MAC:
         return
     try:
-        from AppKit import NSApp, NSMenu, NSMenuItem
+        from AppKit import NSApplication, NSMenu, NSMenuItem
+        app = NSApplication.sharedApplication()
         main_menu = NSMenu.alloc().init()
         app_slot = NSMenuItem.alloc().init()
         main_menu.addItem_(app_slot)
@@ -526,9 +533,11 @@ def _install_edit_menu() -> None:
             # target=None -> action travels down the responder chain to the focused field
             edit_menu.addItemWithTitle_action_keyEquivalent_(title, sel, key)
         app_slot.setSubmenu_(edit_menu)
-        NSApp.setMainMenu_(main_menu)
-    except Exception:
-        pass  # non-macOS or AppKit not available - silent no-op
+        app.setMainMenu_(main_menu)
+    except Exception as e:
+        # AppKit unavailable or menu install failed. Don't crash the tray app,
+        # but make it traceable — a silent no-op here is what re-breaks Cmd+V.
+        print(f"[edit-menu] could not install Edit menu: {e}")
 
 
 def _button(cv, title, x, y, w=120, h=28, key="", style=1):
