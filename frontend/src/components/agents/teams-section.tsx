@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Users, Crown, Pencil, Send, Trash2, Loader2 } from "lucide-react";
+import { Plus, Users, Crown, Pencil, Send, Trash2, Loader2, ListTodo } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Team } from "@/lib/api";
-import type { Agent } from "@/lib/types";
+import type { Agent, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
@@ -22,6 +22,28 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
   const [editTeam, setEditTeam] = useState<Team | null>(null);
   const [delegateTeam, setDelegateTeam] = useState<Team | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedTasksTeam, setExpandedTasksTeam] = useState<string | null>(null);
+  const [teamTasks, setTeamTasks] = useState<Record<string, Task[]>>({});
+  const [tasksLoading, setTasksLoading] = useState<string | null>(null);
+
+  const toggleTeamTasks = useCallback(async (teamId: string) => {
+    if (expandedTasksTeam === teamId) {
+      setExpandedTasksTeam(null);
+      return;
+    }
+    setExpandedTasksTeam(teamId);
+    if (!teamTasks[teamId]) {
+      setTasksLoading(teamId);
+      try {
+        const { tasks } = await api.getTeamTasks(teamId);
+        setTeamTasks((prev) => ({ ...prev, [teamId]: tasks }));
+      } catch {
+        setTeamTasks((prev) => ({ ...prev, [teamId]: [] }));
+      } finally {
+        setTasksLoading(null);
+      }
+    }
+  }, [expandedTasksTeam, teamTasks]);
 
   const agentById = useCallback(
     (id: string) => agents.find((a) => a.id === id) ?? null,
@@ -190,6 +212,18 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                           <Send className="h-3.5 w-3.5" />
                         </button>
                         <button
+                          onClick={() => toggleTeamTasks(team.id)}
+                          className={cn(
+                            "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                            expandedTasksTeam === team.id
+                              ? "text-primary bg-primary/10"
+                              : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          )}
+                          title="Tasks des ganzen Teams anzeigen (Lead + Mitglieder)"
+                        >
+                          <ListTodo className="h-3.5 w-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleDelete(team)}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/15 transition-colors"
                           title="Team loeschen"
@@ -241,6 +275,43 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                     </span>
                   )}
                 </div>
+
+                {/* Team-wide task list — lead + all members, so a lead can see
+                    work it delegated even after the container's own chat
+                    scrolled past it. */}
+                {expandedTasksTeam === team.id && (
+                  <div className="mt-3 border-t border-foreground/[0.06] pt-3">
+                    {tasksLoading === team.id ? (
+                      <div className="flex items-center justify-center py-3">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (teamTasks[team.id]?.length ?? 0) === 0 ? (
+                      <p className="text-xs text-muted-foreground/60">Noch keine Tasks in diesem Team.</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                        {teamTasks[team.id].map((t) => {
+                          const taskAgent = agentById(t.agent_id ?? "");
+                          return (
+                            <div key={t.id} className="flex items-center gap-2 text-xs">
+                              <span
+                                className={cn(
+                                  "shrink-0 h-1.5 w-1.5 rounded-full",
+                                  t.status === "completed" ? "bg-emerald-400" :
+                                  t.status === "failed" ? "bg-red-400" :
+                                  t.status === "running" ? "bg-blue-400" : "bg-amber-400"
+                                )}
+                              />
+                              <span className="truncate flex-1">{t.title}</span>
+                              <span className="shrink-0 text-muted-foreground/60">
+                                {taskAgent?.name ?? t.agent_id}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             );
           })}

@@ -3077,3 +3077,7 @@ export async function delegateToTeam(
     body: JSON.stringify(body),
   });
 }
+
+export async function getTeamTasks(id: string): Promise<{ tasks: Task[]; total: number; team_id: string }> {
+  return fetchJSON(`${getBase()}/teams/${id}/tasks`);
+}

@@ -205,6 +205,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "list_team_tasks",
+      description:
+        "List every task across your WHOLE team (yourself + all members), if you are " +
+        "a team lead. Use this when the user asks about work you delegated to a " +
+        "subagent — list_tasks with an explicit agent_id only shows one member at a " +
+        "time and requires already knowing their ID; this shows all of them at once.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
       name: "list_agent_messages",
       description:
         "List recent inter-agent messages involving you. Use this when the user asks " +
@@ -890,6 +902,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           {
             type: "text",
             text: `${result.tasks.length} tasks:\n\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+
+    case "list_team_tasks": {
+      const teams = await apiCall("/teams/");
+      const myTeam = (teams.teams || []).find((t) => t.lead_agent_id === AGENT_ID);
+      if (!myTeam) {
+        return {
+          content: [{
+            type: "text",
+            text: "You are not the lead of any team, so there is no team-wide task list. " +
+                  "Use list_tasks with an explicit agent_id to check a single agent's tasks.",
+          }],
+        };
+      }
+      const result = await apiCall(`/teams/${myTeam.id}/tasks`);
+      if (!result.tasks || result.tasks.length === 0) {
+        return {
+          content: [{ type: "text", text: `No tasks yet across team "${myTeam.name}".` }],
+        };
+      }
+      const lines = result.tasks.map(
+        (t) => `[${t.status}] #${t.id}: ${t.title} — agent: ${t.agent_id}${t.agent_id === AGENT_ID ? " (you)" : ""}`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Team "${myTeam.name}" — ${result.tasks.length} tasks across ${myTeam.member_agent_ids.length} members:\n\n${lines.join("\n")}`,
           },
         ],
       };

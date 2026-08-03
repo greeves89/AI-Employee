@@ -152,8 +152,14 @@ export default function TasksPage() {
 
 function SingleTasksView() {
   const { tasks, loading, refresh, total } = useTasks();
+  const { agents } = useAgents();
   const [filter, setFilter] = useState<string>("active");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+
+  const agentNameById = agents.reduce<Record<string, string>>((acc, a) => {
+    acc[a.id] = a.name;
+    return acc;
+  }, {});
 
   const filteredTasks = (() => {
     if (filter === "all") return tasks;
@@ -347,8 +353,8 @@ function SingleTasksView() {
                     </span>
                   )}
                   {task.agent_id && (
-                    <span className="flex items-center gap-1">
-                      <Cpu className="h-3 w-3" />{task.agent_id}
+                    <span className="flex items-center gap-1" title={task.agent_id}>
+                      <Cpu className="h-3 w-3" />{agentNameById[task.agent_id] ?? task.agent_id}
                     </span>
                   )}
                   {task.duration_ms && (

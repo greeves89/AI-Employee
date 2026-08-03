@@ -4,13 +4,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.tasks import _get_task_router
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, require_auth_or_agent
 from app.models.agent import Agent
 from app.models.team import Team
 
@@ -68,14 +68,48 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
 
 
 @router.get("/")
-async def list_teams(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def list_teams(user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(Team).where(Team.is_active == True))).scalars().all()  # noqa: E712
     return {"teams": [_serialize(t) for t in rows]}
 
 
 @router.get("/{team_id}")
-async def get_team(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def get_team(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     return _serialize(await _get_team(team_id, db))
+
+
+@router.get("/{team_id}/tasks")
+async def list_team_tasks(
+    team_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+    router_: TaskRouter = Depends(_get_task_router),
+):
+    """All tasks across every member of the team — lead + subagents.
+
+    A team lead delegates work to its members via create_task, which creates
+    a SEPARATE Task row owned by that member (agent_id = member). The lead's
+    own task list (agent_id = lead) never included those — so a lead had no
+    way to see what its subagents were actually doing with delegated work.
+    """
+    from app.models.task import Task
+    from app.schemas.task import TaskResponse
+
+    t = await _get_team(team_id, db)
+    member_ids = t.member_agent_ids or []
+    if not member_ids:
+        return {"tasks": [], "total": 0, "team_id": team_id}
+    tasks = await router_.list_tasks(agent_ids=member_ids, limit=limit, offset=offset)
+    total = (
+        await db.execute(select(func.count(Task.id)).where(Task.agent_id.in_(member_ids)))
+    ).scalar() or 0
+    return {
+        "tasks": [TaskResponse.model_validate(task).model_dump() for task in tasks],
+        "total": int(total),
+        "team_id": team_id,
+    }
 
 
 @router.patch("/{team_id}")
