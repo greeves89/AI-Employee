@@ -1171,6 +1171,12 @@ export interface McpServerInfo {
   last_checked_at: string | null;
   last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | null;
   last_error: string | null;
+  // Client-side OAuth (#426)
+  oauth_enabled?: boolean;
+  oauth_client_id?: string | null;
+  oauth_connected?: boolean;  // a refresh token is stored → the flow completed
+  oauth_scope?: string | null;
+  oauth_expires_at?: string | null;
 }
 
 export interface McpTool {
@@ -1278,6 +1284,34 @@ export async function callMcpTool(
     method: "POST",
     body: JSON.stringify({ name, arguments: args }),
   });
+}
+
+// Client-side OAuth for OAuth-protected MCP servers (#426).
+export interface McpOAuthDiscovery {
+  oauth_enabled: boolean;
+  authorization_endpoint: string | null;
+  token_endpoint: string | null;
+  registration_endpoint: string | null;
+  scope: string | null;
+  resource: string | null;
+  client_id: string | null;
+  dynamically_registered: boolean;
+  needs_client_id: boolean;
+  redirect_uri: string;
+}
+
+// Admin: discover a server's OAuth config (RFC 9728 → RFC 8414) and register a
+// client via DCR when available. Pass a client_id for servers without DCR.
+export async function discoverMcpOAuth(id: number, clientId?: string): Promise<McpOAuthDiscovery> {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/oauth/discover`, {
+    method: "POST",
+    body: JSON.stringify(clientId ? { client_id: clientId } : {}),
+  });
+}
+
+// Admin: start authorization_code + PKCE — returns the URL to open in the browser.
+export async function connectMcpOAuth(id: number): Promise<{ authorization_url: string }> {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/oauth/connect`);
 }
 
 // Admin: User Management

@@ -4,22 +4,25 @@ import asyncio
 import json as json_mod
 import os
 import re
+import secrets
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from ipaddress import ip_address
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_admin, require_auth
+from app.dependencies import get_redis_service, require_admin, require_auth
 from app.models.audit_log import AuditEventType, AuditLog
 from app.models.mcp_server import McpServer
+from app.services.redis_service import RedisService
 
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 
@@ -240,6 +243,14 @@ def _serialize_mcp_server(server: McpServer) -> dict:
         "last_checked_at": server.last_checked_at.isoformat() if server.last_checked_at else None,
         "last_status": server.last_status,
         "last_error": server.last_error,
+        "oauth_enabled": bool(getattr(server, "oauth_enabled", False)),
+        "oauth_client_id": getattr(server, "oauth_client_id", None),
+        "oauth_connected": bool(getattr(server, "oauth_refresh_token_encrypted", None)),
+        "oauth_scope": getattr(server, "oauth_scope", None),
+        "oauth_expires_at": (
+            server.oauth_access_expires_at.isoformat()
+            if getattr(server, "oauth_access_expires_at", None) else None
+        ),
     }
 
 
@@ -759,3 +770,265 @@ async def call_mcp_tool(
                        {"server_id": server.id, "tool": body.name})
 
     return {"server_id": server.id, "tool": body.name, "result": rpc, "is_error": is_error}
+
+
+# ===========================================================================
+# Client-side OAuth for OAuth-protected MCP servers (#426)
+# ===========================================================================
+#
+# The orchestrator drives authorization_code + PKCE against the MCP server's own
+# authorization server, stores the refresh token, and keeps a fresh access token
+# in `auth_token_encrypted` (which already flows to agents). The flow runs in the
+# operator's browser against the orchestrator's public URL — never inside an agent
+# container, whose localhost callback would never arrive.
+
+_STATE_PREFIX = "mcp_oauth_client:state:"
+_STATE_TTL_SECONDS = 600  # 10 min to complete the browser round-trip
+
+
+def _callback_redirect_uri() -> str:
+    """Public redirect URI the authorization server sends the browser back to."""
+    from app.core import mcp_oauth as oas
+    return f"{oas.issuer()}/api/v1/mcp-servers/oauth/callback"
+
+
+def _integrations_redirect(status: str, **params) -> RedirectResponse:
+    """Bounce the browser back to the integrations page with a result marker."""
+    from app.core import mcp_oauth as oas
+    query = "&".join([f"mcp_oauth={quote(status)}"] + [f"{k}={quote(str(v))}" for k, v in params.items()])
+    return RedirectResponse(f"{oas.issuer()}/integrations?{query}", status_code=302)
+
+
+async def _oauth_fetch_json(url: str) -> dict:
+    """SSRF-guarded GET of an OAuth discovery document (PRM / AS metadata)."""
+    await _assert_mcp_url_allowed(url)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(url, headers={"Accept": "application/json"}, follow_redirects=True)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=400, detail=f"Discovery document {url} returned {resp.status_code}")
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Discovery document {url} was not JSON") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail=f"Discovery document {url} was not a JSON object")
+    return data
+
+
+async def _oauth_probe_challenge(url: str) -> str | None:
+    """Send an unauthenticated MCP initialize and return the WWW-Authenticate header.
+
+    An OAuth-protected server answers with 401 + a Bearer challenge carrying the
+    RFC 9728 ``resource_metadata`` pointer. Returns None when the server does not
+    challenge (i.e. it is not OAuth-protected on this path).
+    """
+    safe_url = _validate_mcp_url(url)
+    await _assert_discovery_host_allowed(safe_url)
+    headers = _build_headers(None, None)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.post(safe_url, headers=headers, json={  # codeql[py/full-ssrf]: URL validated by _validate_mcp_url.
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                           "clientInfo": {"name": "ai-employee-orchestrator", "version": "1.0.0"}},
+            })
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=400, detail=f"Could not reach MCP server: {_short_error(str(exc))}") from exc
+    return resp.headers.get("www-authenticate")
+
+
+async def _register_oauth_client(registration_endpoint: str, redirect_uri: str) -> dict:
+    """RFC 7591 Dynamic Client Registration against the MCP authorization server."""
+    from app.services import mcp_oauth_client as oc
+    await _assert_mcp_url_allowed(registration_endpoint)
+    body = oc.build_registration_request(redirect_uri=redirect_uri, client_name="AI-Employee")
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(registration_endpoint, json=body,
+                                 headers={"Accept": "application/json"}, follow_redirects=False)
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=400,
+                            detail=f"Dynamic client registration failed ({resp.status_code})")
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Registration response was not JSON") from exc
+    if not data.get("client_id"):
+        raise HTTPException(status_code=400, detail="Registration response had no client_id")
+    return data
+
+
+class OAuthDiscoverRequest(BaseModel):
+    # Optional manual client_id for authorization servers that do not offer DCR.
+    client_id: str | None = None
+
+
+@router.post("/{server_id}/oauth/discover")
+async def oauth_discover(
+    server_id: int, body: OAuthDiscoverRequest | None = None,
+    user=Depends(require_admin), db: AsyncSession = Depends(get_db),
+):
+    """Discover a server's OAuth configuration (RFC 9728 → RFC 8414) and store it.
+
+    Registers the orchestrator as an OAuth client via DCR when the AS offers it;
+    otherwise a ``client_id`` must be supplied (some Entra/Okta setups pre-register
+    the client). Does not obtain any token — that happens in the Connect flow.
+    """
+    from app.services import mcp_oauth_client as oc
+    from app.core.encryption import encrypt_token
+
+    server = await db.get(McpServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    www_auth = await _oauth_probe_challenge(server.url)
+    prm_url = oc.resource_metadata_url(www_auth, server.url)
+    if not prm_url:
+        raise HTTPException(status_code=400,
+                            detail="Server did not advertise OAuth (no WWW-Authenticate resource_metadata)")
+
+    prm = await _oauth_fetch_json(prm_url)
+    issuer = oc.pick_authorization_server(prm)
+    if not issuer:
+        raise HTTPException(status_code=400, detail="Protected-resource metadata lists no authorization server")
+
+    as_meta = None
+    for candidate in oc.as_metadata_urls(issuer):
+        try:
+            as_meta = await _oauth_fetch_json(candidate)
+            break
+        except HTTPException:
+            continue
+    if not as_meta:
+        raise HTTPException(status_code=400, detail="Could not fetch authorization-server metadata")
+
+    endpoints = oc.select_endpoints(as_meta)
+    if not endpoints["authorization_endpoint"] or not endpoints["token_endpoint"]:
+        raise HTTPException(status_code=400, detail="Authorization server metadata is missing endpoints")
+
+    server.oauth_enabled = True
+    server.oauth_authorization_endpoint = endpoints["authorization_endpoint"]
+    server.oauth_token_endpoint = endpoints["token_endpoint"]
+    server.oauth_registration_endpoint = endpoints["registration_endpoint"]
+    server.oauth_scope = oc.default_scope(prm, as_meta) or server.oauth_scope
+    server.oauth_resource = prm.get("resource") or server.oauth_resource
+
+    registered = False
+    if body and body.client_id:
+        server.oauth_client_id = body.client_id.strip()
+        server.oauth_client_secret_encrypted = None
+    elif not server.oauth_client_id and endpoints["registration_endpoint"]:
+        reg = await _register_oauth_client(endpoints["registration_endpoint"], _callback_redirect_uri())
+        server.oauth_client_id = reg["client_id"]
+        secret = reg.get("client_secret")
+        server.oauth_client_secret_encrypted = encrypt_token(secret) if secret else None
+        registered = True
+
+    await db.commit()
+    await db.refresh(server)
+    return {
+        "oauth_enabled": True,
+        "authorization_endpoint": server.oauth_authorization_endpoint,
+        "token_endpoint": server.oauth_token_endpoint,
+        "registration_endpoint": server.oauth_registration_endpoint,
+        "scope": server.oauth_scope,
+        "resource": server.oauth_resource,
+        "client_id": server.oauth_client_id,
+        "dynamically_registered": registered,
+        "needs_client_id": not server.oauth_client_id,
+        "redirect_uri": _callback_redirect_uri(),
+    }
+
+
+@router.get("/{server_id}/oauth/connect")
+async def oauth_connect(
+    server_id: int, user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db), redis: RedisService = Depends(get_redis_service),
+):
+    """Begin authorization_code + PKCE: return the URL to open in the browser."""
+    from app.services import mcp_oauth_client as oc
+
+    server = await db.get(McpServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    if not server.oauth_enabled or not server.oauth_authorization_endpoint:
+        raise HTTPException(status_code=400, detail="Run OAuth discovery for this server first")
+    if not server.oauth_client_id:
+        raise HTTPException(status_code=400, detail="No client_id — provide one or use a server that supports DCR")
+
+    verifier, challenge = oc.gen_pkce()
+    state = secrets.token_urlsafe(32)
+    await redis.client.setex(_STATE_PREFIX + state, _STATE_TTL_SECONDS, json_mod.dumps({
+        "server_id": server.id, "code_verifier": verifier, "user_id": str(user.id),
+    }))
+    auth_url = oc.build_authorization_url(
+        authorization_endpoint=server.oauth_authorization_endpoint,
+        client_id=server.oauth_client_id,
+        redirect_uri=_callback_redirect_uri(),
+        state=state,
+        code_challenge=challenge,
+        scope=server.oauth_scope or "",
+        resource=server.oauth_resource or None,
+    )
+    return {"authorization_url": auth_url}
+
+
+@router.get("/oauth/callback")
+async def oauth_callback(
+    request: Request, db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Authorization-server redirect target: exchange the code for tokens.
+
+    Public route (the browser arrives here after the IdP redirect); the CSRF and
+    server binding come from the single-use ``state`` stored in Redis by
+    :func:`oauth_connect`, not from an auth dependency.
+    """
+    from app.services import mcp_oauth_client as oc
+    from app.services.mcp_oauth_refresh import (
+        OAuthTokenError, apply_token_to_server, perform_token_request,
+    )
+    from app.core.encryption import decrypt_token
+
+    q = request.query_params
+    if q.get("error"):
+        return _integrations_redirect("error", detail=q.get("error", "authorization_failed"))
+
+    code = q.get("code", "")
+    state = q.get("state", "")
+    if not code or not state:
+        return _integrations_redirect("error", detail="missing code or state")
+
+    key = _STATE_PREFIX + state
+    raw = await redis.client.get(key)
+    if raw is None:
+        return _integrations_redirect("error", detail="invalid or expired state")
+    await redis.client.delete(key)  # single-use
+    st = json_mod.loads(raw)
+
+    server = await db.get(McpServer, st["server_id"])
+    if not server or not server.oauth_token_endpoint or not server.oauth_client_id:
+        return _integrations_redirect("error", detail="server not found or not configured")
+
+    client_secret = (
+        decrypt_token(server.oauth_client_secret_encrypted)
+        if server.oauth_client_secret_encrypted else None
+    )
+    data = oc.build_token_exchange_data(
+        code=code,
+        code_verifier=st["code_verifier"],
+        client_id=server.oauth_client_id,
+        redirect_uri=_callback_redirect_uri(),
+        client_secret=client_secret,
+        resource=server.oauth_resource or None,
+    )
+    try:
+        parsed = await perform_token_request(server.oauth_token_endpoint, data)
+    except OAuthTokenError as exc:
+        _mark_health(server, MCP_HEALTH_AUTH_FAILED, str(exc))
+        await db.commit()
+        return _integrations_redirect("error", server=server.name, detail=_short_error(str(exc)) or "token exchange failed")
+
+    apply_token_to_server(server, parsed)
+    _mark_health(server, MCP_HEALTH_OK)
+    await db.commit()
+    return _integrations_redirect("connected", server=server.name)
