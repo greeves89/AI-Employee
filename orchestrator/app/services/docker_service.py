@@ -306,8 +306,21 @@ class DockerService:
         stdout = output[0].decode("utf-8", errors="replace") if output[0] else ""
         return exit_code, stdout
 
-    def write_file_in_container(self, container_id: str, path: str, content: str) -> None:
-        """Write a file into a running container using tar archive."""
+    def write_file_in_container(
+        self,
+        container_id: str,
+        path: str,
+        content: str,
+        uid: int = 1000,
+        gid: int = 1000,
+    ) -> None:
+        """Write a file into a running container using tar archive.
+
+        Files are owned by the agent user (uid/gid 1000) by default so the agent
+        process can modify them afterwards (e.g. /workspace/knowledge.md). A freshly
+        constructed TarInfo defaults to uid/gid 0, which put_archive honours and would
+        otherwise leave the file root-owned and unwritable for the agent.
+        """
         import io
         import tarfile
 
@@ -322,15 +335,26 @@ class DockerService:
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
             info = tarfile.TarInfo(name=filename)
             info.size = len(data)
+            info.uid = uid
+            info.gid = gid
             tar.addfile(info, io.BytesIO(data))
         tar_stream.seek(0)
 
         container.put_archive(dir_path, tar_stream)
 
     def write_files_in_container(
-        self, container_id: str, target_dir: str, files: list[tuple[str, bytes]]
+        self,
+        container_id: str,
+        target_dir: str,
+        files: list[tuple[str, bytes]],
+        uid: int = 1000,
+        gid: int = 1000,
     ) -> None:
-        """Write multiple files into a container directory using a single tar archive."""
+        """Write multiple files into a container directory using a single tar archive.
+
+        Files are owned by the agent user (uid/gid 1000) by default; see
+        write_file_in_container for why.
+        """
         import io
         import tarfile
 
@@ -341,6 +365,8 @@ class DockerService:
             for filename, data in files:
                 info = tarfile.TarInfo(name=filename)
                 info.size = len(data)
+                info.uid = uid
+                info.gid = gid
                 tar.addfile(info, io.BytesIO(data))
         tar_stream.seek(0)
 
