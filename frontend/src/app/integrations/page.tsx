@@ -5,7 +5,7 @@ import {
   Plug, Mail, Cloud, Smartphone, CheckCircle2,
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
-  Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap,
+  Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap, Play,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
-import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry } from "@/lib/api";
+import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry, McpToolCallResult } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 
 const PROVIDER_ICONS: Record<string, typeof Mail> = {
@@ -123,6 +123,110 @@ function formatAgentHealth(
 function hasOrchAgentDisagreement(server: McpServerInfo, entry: McpAgentHealthEntry | undefined): boolean {
   if (!entry || !entry.agent_status) return false;
   return server.last_status === "ok" && (entry.agent_status === "failed" || entry.agent_status === "needs_auth");
+}
+
+// Admin diagnostic tool runner (#414): invoke a single MCP tool by hand from the
+// server's tool list and show the raw JSON-RPC response. The inputs are generated
+// from the tool's stored inputSchema; the call is audit-logged server-side.
+function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<McpToolCallResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const schema = (tool.inputSchema ?? {}) as {
+    properties?: Record<string, { type?: string; description?: string }>;
+    required?: string[];
+  };
+  const properties = schema.properties ?? {};
+  const required = new Set(schema.required ?? []);
+  const propNames = Object.keys(properties);
+
+  const run = async () => {
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const args: Record<string, unknown> = {};
+      for (const [key, raw] of Object.entries(values)) {
+        if (raw === "") continue;
+        const t = properties[key]?.type;
+        if (t === "number" || t === "integer") {
+          const n = Number(raw);
+          args[key] = Number.isNaN(n) ? raw : n;
+        } else if (t === "boolean") {
+          args[key] = raw === "true";
+        } else {
+          args[key] = raw;
+        }
+      }
+      setResult(await api.callMcpTool(serverId, tool.name, args));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Aufruf fehlgeschlagen");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
+      >
+        <Play className="h-3 w-3" /> {open ? "Schliessen" : "Tool testen"}
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-2 rounded-md bg-foreground/[0.02] border border-foreground/[0.04] p-2.5">
+          {propNames.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground/50">Keine Parameter.</p>
+          ) : (
+            propNames.map((key) => {
+              const prop = properties[key] || {};
+              return (
+                <div key={key} className="space-y-0.5">
+                  <label className="block text-[10px] font-mono text-muted-foreground/70">
+                    {key}
+                    {required.has(key) && <span className="text-red-400">*</span>}
+                    {prop.type && <span className="text-muted-foreground/40"> : {prop.type}</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={values[key] ?? ""}
+                    onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                    placeholder={prop.description || ""}
+                    className="w-full rounded-md bg-background border border-foreground/10 px-2 py-1 text-[11px] font-mono focus:outline-none focus:border-violet-400/40"
+                  />
+                </div>
+              );
+            })
+          )}
+          <button
+            onClick={run}
+            disabled={running}
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/15 text-violet-300 px-2.5 py-1 text-[11px] font-medium hover:bg-violet-500/25 disabled:opacity-50"
+          >
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+            Ausfuehren
+          </button>
+          {error && <p className="text-[10px] text-red-400">{error}</p>}
+          {result && (
+            <pre
+              className={cn(
+                "mt-1 max-h-56 overflow-auto rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap break-all",
+                result.is_error
+                  ? "border-red-500/30 bg-red-500/[0.06] text-red-300"
+                  : "border-emerald-500/20 bg-emerald-500/[0.04] text-foreground/80",
+              )}
+            >
+              {JSON.stringify(result.result, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function IntegrationsPage() {
@@ -959,11 +1063,12 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                             className="flex items-start gap-2.5 rounded-lg bg-foreground/[0.02] border border-foreground/[0.04] px-3 py-2"
                           >
                             <Wrench className="h-3.5 w-3.5 text-violet-400 shrink-0 mt-0.5" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <span className="text-[12px] font-medium font-mono text-foreground">{tool.name}</span>
                               {tool.description && (
                                 <p className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-2">{tool.description}</p>
                               )}
+                              <McpToolRunner serverId={server.id} tool={tool} />
                             </div>
                           </div>
                         ))}
