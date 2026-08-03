@@ -60,41 +60,78 @@ def _mcp_allow_private() -> bool:
     return os.getenv("MCP_ALLOW_PRIVATE_URLS", "").strip().lower() in ("1", "true", "yes")
 
 
+def _forbidden_ip_reason(ip) -> str | None:
+    """Return a rejection reason if ``ip`` is an SSRF-forbidden address, else None.
+
+    Link-local (incl. the 169.254.169.254 cloud-metadata endpoint), multicast,
+    reserved and unspecified addresses are rejected unconditionally; private and
+    loopback ranges are rejected unless ``MCP_ALLOW_PRIVATE_URLS`` is set.
+    """
+    if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+        return f"MCP host resolves to a forbidden address ({ip})"
+    if (ip.is_private or ip.is_loopback) and not _mcp_allow_private():
+        return (
+            f"MCP host resolves to a private address ({ip}); "
+            "set MCP_ALLOW_PRIVATE_URLS=true to allow internal MCP servers"
+        )
+    return None
+
+
+async def _resolve_host_ips(hostname: str, port: int) -> list:
+    """Resolve ``hostname`` to a list of ip_address objects (may raise socket.gaierror)."""
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+    return [ip_address(info[4][0]) for info in infos]
+
+
 async def _assert_mcp_url_allowed(url: str) -> None:
     """SSRF guard for a manual ``tools/call`` invocation. Raises HTTPException(400) if blocked.
 
     Resolves the hostname and checks every returned address (so a name that
     resolves to one public and one internal IP is still rejected), unlike
-    :func:`_validate_mcp_url` which only catches IP-literal hosts. Link-local
-    (incl. the 169.254.169.254 cloud-metadata endpoint), multicast, reserved and
-    unspecified addresses are rejected unconditionally; private/loopback ranges
-    are rejected unless ``MCP_ALLOW_PRIVATE_URLS`` is set.
+    :func:`_validate_mcp_url` which only catches IP-literal hosts. Fail-closed: an
+    unresolvable host is rejected, since a manual call must not proceed on an
+    unverifiable target.
     """
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise HTTPException(status_code=400, detail="MCP server URL must be a valid http(s) URL")
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    loop = asyncio.get_running_loop()
     try:
-        infos = await loop.getaddrinfo(parsed.hostname, port, proto=socket.IPPROTO_TCP)
+        ips = await _resolve_host_ips(parsed.hostname, port)
     except socket.gaierror as e:
         raise HTTPException(status_code=400, detail=f"Cannot resolve MCP host: {parsed.hostname}") from e
-    if not infos:
+    if not ips:
         raise HTTPException(status_code=400, detail=f"Cannot resolve MCP host: {parsed.hostname}")
-    allow_private = _mcp_allow_private()
-    for info in infos:
-        ip = ip_address(info[4][0])
-        if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
-            raise HTTPException(
-                status_code=400,
-                detail=f"MCP host resolves to a forbidden address ({ip})",
-            )
-        if (ip.is_private or ip.is_loopback) and not allow_private:
-            raise HTTPException(
-                status_code=400,
-                detail=f"MCP host resolves to a private address ({ip}); "
-                       "set MCP_ALLOW_PRIVATE_URLS=true to allow internal MCP servers",
-            )
+    for ip in ips:
+        reason = _forbidden_ip_reason(ip)
+        if reason:
+            raise HTTPException(status_code=400, detail=reason)
+
+
+async def _assert_discovery_host_allowed(url: str) -> None:
+    """DNS-resolving SSRF guard for the add/refresh/probe discovery path.
+
+    Raises :class:`McpDiscoveryError` (so the failure is health-classified like every
+    other discovery error) if the host resolves to a forbidden/private address. This
+    closes the gap where :func:`_validate_mcp_url` only blocks IP *literals*, letting a
+    name like ``http://redis/`` through. Fail-open on resolution failure: an
+    unresolvable host carries no SSRF risk and is left to the httpx layer, which
+    classifies it as UNREACHABLE. Scheme/IP-literal checks are already done by
+    :func:`_validate_mcp_url`, which callers run first.
+    """
+    parsed = urlparse((url or "").strip())
+    if not parsed.hostname:
+        return
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        ips = await _resolve_host_ips(parsed.hostname, port)
+    except socket.gaierror:
+        return
+    for ip in ips:
+        reason = _forbidden_ip_reason(ip)
+        if reason:
+            raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, reason)
 
 
 class McpServerCreate(BaseModel):
@@ -339,6 +376,7 @@ async def _discover_tools(
     ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
     """
     safe_url = _validate_mcp_url(url)
+    await _assert_discovery_host_allowed(safe_url)
     headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=15.0) as client:

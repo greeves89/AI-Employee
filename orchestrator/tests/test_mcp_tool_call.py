@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.api import mcp_servers
 from app.api.mcp_servers import _call_tool, call_mcp_tool
-from app.models.audit_log import AuditEventType
+from app.models.audit_log import AuditEventType, AuditLog
 
 
 def _httpx_ctx(responses):
@@ -86,7 +86,7 @@ def _server():
 def _added_audit(db):
     for c in db.add.call_args_list:
         arg = c.args[0]
-        if arg.__class__.__name__ == "AuditLog":
+        if isinstance(arg, AuditLog):
             return arg
     return None
 
@@ -218,3 +218,49 @@ async def test_guard_still_blocks_metadata_even_when_private_allowed(monkeypatch
         with pytest.raises(HTTPException) as ei:
             await mcp_servers._assert_mcp_url_allowed("http://metadata/mcp")
     assert "forbidden" in ei.value.detail.lower()
+
+
+# --- Discovery-path SSRF guard (_assert_discovery_host_allowed, #443) --------
+
+@pytest.mark.asyncio
+async def test_discovery_guard_blocks_private_hostname():
+    """A hostname (not an IP literal) that resolves to a private IP must be blocked
+    on the add/refresh/probe path — the gap _validate_mcp_url alone left open."""
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("10.0.0.5")):
+        with pytest.raises(mcp_servers.McpDiscoveryError) as ei:
+            await mcp_servers._assert_discovery_host_allowed("http://redis/mcp")
+    assert ei.value.status == mcp_servers.MCP_HEALTH_PROTOCOL_ERROR
+
+
+@pytest.mark.asyncio
+async def test_discovery_guard_blocks_cloud_metadata_hostname():
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("169.254.169.254")):
+        with pytest.raises(mcp_servers.McpDiscoveryError):
+            await mcp_servers._assert_discovery_host_allowed("http://metadata/mcp")
+
+
+@pytest.mark.asyncio
+async def test_discovery_guard_allows_public_hostname():
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("93.184.216.34")):
+        await mcp_servers._assert_discovery_host_allowed("https://mcp.example.test/mcp")
+
+
+@pytest.mark.asyncio
+async def test_discovery_guard_fail_open_on_unresolvable_host():
+    """Fail-open: an unresolvable host carries no SSRF risk and is left to httpx
+    (which classifies it as UNREACHABLE), so the guard must not raise here."""
+    loop = MagicMock()
+    loop.getaddrinfo = AsyncMock(side_effect=__import__("socket").gaierror("nxdomain"))
+    with patch("app.api.mcp_servers.asyncio.get_running_loop", return_value=loop):
+        await mcp_servers._assert_discovery_host_allowed("https://does-not-resolve.invalid/mcp")
+
+
+@pytest.mark.asyncio
+async def test_discovery_guard_allows_private_when_env_set(monkeypatch):
+    monkeypatch.setenv("MCP_ALLOW_PRIVATE_URLS", "true")
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("10.0.0.5")):
+        await mcp_servers._assert_discovery_host_allowed("http://redis/mcp")
