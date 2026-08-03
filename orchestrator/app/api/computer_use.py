@@ -795,6 +795,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
         ping_task.cancel()
         session["bridge_connected"] = False
         session["bridge_ws"] = None
+        session["bridge_host"] = None
         session["last_disconnected_at"] = time.time()
         for future in session["pending_results"].values():
             if not future.done():
