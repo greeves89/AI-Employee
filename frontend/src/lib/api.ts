@@ -2644,6 +2644,52 @@ export interface ComputerUseSession {
   allowed_capabilities: string[];
   last_disconnected_at: number | null;
   bridge_last_seen_at: number | null;
+  recording?: boolean;
+}
+
+/* Replay-Modus: record a workflow once (agent actions and/or the human
+   demonstrating it), then turn the transcript into a reusable skill. */
+
+export interface RecordingStep {
+  action: string;
+  params: Record<string, unknown>;
+  ts: number;
+  screenshot_b64?: string | null;
+  source?: "human" | string;
+}
+
+export async function startRecording(
+  sessionId: string,
+  captureHuman = false,
+): Promise<{ session_id: string; recording: boolean; capture_human: boolean }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/recording/start`, {
+    method: "POST",
+    body: JSON.stringify({ capture_human: captureHuman }),
+  });
+}
+
+export async function stopRecording(
+  sessionId: string,
+): Promise<{ session_id: string; recording: boolean; steps: RecordingStep[]; step_count: number }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/recording/stop`, {
+    method: "POST",
+  });
+}
+
+export async function getRecording(
+  sessionId: string,
+): Promise<{ session_id: string; recording: boolean; steps: RecordingStep[]; step_count: number }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/recording`);
+}
+
+export async function recordingToSkill(
+  sessionId: string,
+  goalHint = "",
+): Promise<{ skill_id: number; name: string; description: string; status: string; step_count: number }> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/recording/to-skill`, {
+    method: "POST",
+    body: JSON.stringify({ goal_hint: goalHint }),
+  });
 }
 
 export interface CapabilityGroup {

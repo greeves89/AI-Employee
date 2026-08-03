@@ -32,6 +32,9 @@ import {
   Settings2,
   Activity,
   WifiIcon,
+  Circle,
+  Square,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -41,6 +44,10 @@ import {
   updateAgentBrowserMode,
   getComputerUseScreenshot,
   updateSessionCapabilities,
+  startRecording,
+  stopRecording,
+  getRecording,
+  recordingToSkill,
   type ComputerUseSession,
 } from "@/lib/api";
 import { getApiUrl, getBase } from "@/lib/config";
@@ -115,6 +122,14 @@ const CAPABILITY_META: CapabilityMeta[] = [
     label: "Shell Commands",
     description: "Execute terminal commands on your machine",
     icon: <TerminalIcon className="h-3.5 w-3.5" />,
+    risk: "high",
+    defaultOn: false,
+  },
+  {
+    id: "input_capture",
+    label: "Eingaben mitschneiden",
+    description: "Zeichnet deine eigenen Klicks und Tastatureingaben auf (nur waehrend einer Aufnahme)",
+    icon: <Keyboard className="h-3.5 w-3.5" />,
     risk: "high",
     defaultOn: false,
   },
@@ -743,7 +758,187 @@ function SessionCard({
           </AnimatePresence>
         </div>
       )}
+
+      <ReplayPanel
+        sessionId={session.session_id}
+        isConnected={isConnected}
+        humanCaptureAllowed={allowedSet.has("input_capture")}
+      />
     </motion.div>
+  );
+}
+
+// ── Replay-Modus ──────────────────────────────────────────────────────────────
+
+/** Record a workflow once — the agent's own actions and/or the human doing it
+ *  by hand — then let a vision model turn that transcript into a reusable
+ *  skill. The generated skill lands as a DRAFT for review, never live. */
+function ReplayPanel({
+  sessionId,
+  isConnected,
+  humanCaptureAllowed,
+}: {
+  sessionId: string;
+  isConnected: boolean;
+  humanCaptureAllowed: boolean;
+}) {
+  const [recording, setRecording] = useState(false);
+  const [captureHuman, setCaptureHuman] = useState(false);
+  const [stepCount, setStepCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [goalHint, setGoalHint] = useState("");
+  const [status, setStatus] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+
+  // Poll the step counter while recording so the user sees it filling up.
+  useEffect(() => {
+    if (!recording) return;
+    const id = setInterval(async () => {
+      try {
+        const r = await getRecording(sessionId);
+        setStepCount(r.step_count);
+      } catch { /* transient — next tick retries */ }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [recording, sessionId]);
+
+  const start = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      await startRecording(sessionId, captureHuman);
+      setRecording(true);
+      setStepCount(0);
+    } catch (e) {
+      setStatus({ kind: "error", text: e instanceof Error ? e.message : "Aufnahme konnte nicht gestartet werden" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async () => {
+    setBusy(true);
+    try {
+      const r = await stopRecording(sessionId);
+      setRecording(false);
+      setStepCount(r.step_count);
+    } catch (e) {
+      setStatus({ kind: "error", text: e instanceof Error ? e.message : "Aufnahme konnte nicht gestoppt werden" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const makeSkill = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const r = await recordingToSkill(sessionId, goalHint);
+      setRecording(false);
+      setStatus({
+        kind: "success",
+        text: `Skill "${r.name}" aus ${r.step_count} Schritten erstellt — liegt als Entwurf im Skill-Marktplatz bereit.`,
+      });
+    } catch (e) {
+      setStatus({ kind: "error", text: e instanceof Error ? e.message : "Skill konnte nicht erstellt werden" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="px-4 pb-3 pt-3 border-t border-foreground/[0.06] space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+            Replay-Modus
+          </p>
+          <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+            Ablauf einmal aufzeichnen, dann als wiederverwendbaren Skill speichern.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!recording ? (
+            <button
+              onClick={start}
+              disabled={busy || !isConnected}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40"
+            >
+              <Circle className="h-3 w-3 fill-current" />
+              Aufnahme
+            </button>
+          ) : (
+            <button
+              onClick={stop}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] border border-foreground/[0.1] px-3 py-1.5 text-[11px] font-medium hover:bg-foreground/[0.1] transition-colors disabled:opacity-40"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              Stopp
+            </button>
+          )}
+        </div>
+      </div>
+
+      {recording && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-500/[0.07] border border-red-500/20 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+          <span className="text-[11px] text-red-400">
+            Nimmt auf — {stepCount} {stepCount === 1 ? "Schritt" : "Schritte"} erfasst
+            {captureHuman && " (inkl. deiner eigenen Eingaben)"}
+          </span>
+        </div>
+      )}
+
+      {!recording && (
+        <label className={cn(
+          "flex items-start gap-2 text-[11px]",
+          humanCaptureAllowed ? "text-muted-foreground/80" : "text-muted-foreground/40",
+        )}>
+          <input
+            type="checkbox"
+            checked={captureHuman && humanCaptureAllowed}
+            disabled={!humanCaptureAllowed}
+            onChange={(e) => setCaptureHuman(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Meine eigenen Eingaben mitschneiden (Ablauf von Hand vormachen).
+            {humanCaptureAllowed
+              ? " Achtung: waehrend der Aufnahme werden alle Klicks und Tastatureingaben erfasst — keine Passwoerter eingeben."
+              : " Dafuer zuerst die Berechtigung „Eingaben mitschneiden“ aktivieren."}
+          </span>
+        </label>
+      )}
+
+      {stepCount > 0 && !recording && (
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={goalHint}
+            onChange={(e) => setGoalHint(e.target.value)}
+            placeholder="Was war das Ziel? (optional, z.B. 'Rechnung in Ablage einsortieren')"
+            className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-[11px] outline-none focus:border-violet-500/50 transition-all"
+          />
+          <button
+            onClick={makeSkill}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-[11px] font-medium text-violet-400 hover:bg-violet-500/20 transition-colors disabled:opacity-40"
+          >
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            Skill aus {stepCount} Schritten erzeugen
+          </button>
+        </div>
+      )}
+
+      {status && (
+        <p className={cn(
+          "text-[11px]",
+          status.kind === "error" ? "text-red-400" : "text-emerald-400",
+        )}>
+          {status.text}
+        </p>
+      )}
+    </div>
   );
 }
 
