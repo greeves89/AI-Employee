@@ -96,3 +96,9 @@ konkurrenzanalyse-*.pdf
 SECURITY-TODO.md
 todo.md
 CLAUDE.md
+
+# Deployment-specific Caddy routes — operators drop *.caddy files into conf.d/.
+# The directory placeholder and its README stay tracked; operator routes do not.
+/conf.d/*
+!/conf.d/.gitkeep
+!/conf.d/README.md

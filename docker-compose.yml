@@ -263,6 +263,10 @@ services:
     container_name: ai-employee-caddy
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Deployment-specific routes: drop *.caddy snippets into ./conf.d/ (git-ignored,
+      # imported by Caddyfile). Mounting the directory (not a single file) also avoids
+      # the inode-replacement reload trap documented in the Caddyfile.
+      - ./conf.d:/etc/caddy/conf.d:ro
     depends_on:
       - orchestrator
       - frontend
