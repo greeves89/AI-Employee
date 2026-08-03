@@ -107,6 +107,30 @@ async def _get_wf(workflow_id: str, user, db: AsyncSession, *, edit: bool = Fals
     return wf
 
 
+def _is_owner(wf: Workflow, user) -> bool:
+    return _is_admin(user) or wf.user_id in (None, str(user.id))
+
+
+async def _get_wf_owned(workflow_id: str, user, db: AsyncSession) -> Workflow:
+    """Load a workflow and require the caller to be its owner (or admin)."""
+    wf = (await db.execute(select(Workflow).where(Workflow.id == workflow_id))).scalar_one_or_none()
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if not _is_owner(wf, user):
+        raise HTTPException(status_code=403, detail="Nur der Eigentümer darf das")
+    return wf
+
+
+async def _assert_owns_folder(folder_id: str | None, user, db: AsyncSession) -> None:
+    """A workflow may only be placed into a folder the caller owns (prevents leaking
+    a workflow into someone else's — potentially shared — folder)."""
+    if not folder_id:
+        return
+    f = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id == folder_id))).scalar_one_or_none()
+    if not f or (not _is_admin(user) and f.user_id != str(user.id)):
+        raise HTTPException(status_code=403, detail="Ordner gehört dir nicht")
+
+
 def _wf_dict(wf: Workflow, role: str = "owner") -> dict:
     return {
         "id": wf.id, "name": wf.name, "user_id": wf.user_id, "enabled": wf.enabled,
@@ -163,6 +187,7 @@ async def list_workflows(user=Depends(require_auth), db: AsyncSession = Depends(
 @router.post("", status_code=201)
 async def create_workflow(body: WorkflowUpsert, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_definition(body.definition)
+    await _assert_owns_folder(body.folder_id, user, db)
     wf = Workflow(
         id=f"wf_{uuid.uuid4().hex[:12]}", name=body.name, user_id=str(user.id),
         enabled=body.enabled, definition=body.definition, trigger=body.trigger, folder_id=body.folder_id,
@@ -251,7 +276,7 @@ async def revoke_share(share_id: str, user=Depends(require_auth), db: AsyncSessi
         raise HTTPException(status_code=404, detail="Share not found")
     # only the owner of the shared workflow/folder (or admin) may revoke
     if s.workflow_id:
-        await _get_wf(s.workflow_id, user, db, edit=True)
+        await _get_wf_owned(s.workflow_id, user, db)
     elif s.folder_id and not _is_admin(user):
         f = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id == s.folder_id))).scalar_one_or_none()
         if not f or f.user_id != str(user.id):
@@ -303,11 +328,17 @@ async def get_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSe
 async def update_workflow(workflow_id: str, body: WorkflowUpsert, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_definition(body.definition)
     wf = await _get_wf(workflow_id, user, db, edit=True)
+    # Re-parenting into a folder is owner-only and only into a folder you own — an
+    # editor must not move a shared workflow (could leak it via a shared folder).
+    if body.folder_id != wf.folder_id:
+        if not _is_owner(wf, user):
+            raise HTTPException(status_code=403, detail="Nur der Eigentümer kann den Ordner ändern")
+        await _assert_owns_folder(body.folder_id, user, db)
+        wf.folder_id = body.folder_id
     wf.name = body.name
     wf.definition = body.definition
     wf.trigger = body.trigger
     wf.enabled = body.enabled
-    wf.folder_id = body.folder_id
     await db.commit()
     await db.refresh(wf)
     return _wf_dict(wf, await _access_role(wf, user, db) or "editor")
@@ -328,12 +359,20 @@ async def delete_workflow(workflow_id: str, user=Depends(require_auth), db: Asyn
 
 
 @router.post("/{workflow_id}/run", status_code=201)
-async def run_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    from app.services.workflow_engine import start_run
+async def run_workflow(
+    workflow_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    task_router: TaskRouter = Depends(_get_task_router),
+):
+    from app.services.workflow_engine import advance_run, start_run
     wf = await _get_wf(workflow_id, user, db, edit=True)
     if not (wf.definition or {}).get("start"):
         raise HTTPException(status_code=400, detail="Workflow has no start step")
     run = await start_run(wf, db)
+    # Advance immediately instead of waiting for the next scheduler tick (up to 30s) —
+    # the user clicked "Ausführen" and expects the first step to kick off right away.
+    await advance_run(run, wf, db, task_router)
     return _run_dict(run)
 
 
@@ -348,7 +387,7 @@ async def list_runs(workflow_id: str, user=Depends(require_auth), db: AsyncSessi
 
 @router.get("/{workflow_id}/shares")
 async def list_shares(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    await _get_wf(workflow_id, user, db, edit=True)
+    await _get_wf_owned(workflow_id, user, db)
     from app.models.user import User
     rows = (await db.execute(select(WorkflowShare).where(WorkflowShare.workflow_id == workflow_id))).scalars().all()
     names = {}
@@ -362,7 +401,7 @@ async def list_shares(workflow_id: str, user=Depends(require_auth), db: AsyncSes
 async def share_workflow(workflow_id: str, body: ShareCreate, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     if body.role not in _ROLES:
         raise HTTPException(status_code=400, detail="role must be viewer or editor")
-    await _get_wf(workflow_id, user, db, edit=True)
+    await _get_wf_owned(workflow_id, user, db)   # only the owner may manage shares
     existing = (await db.execute(select(WorkflowShare).where(
         WorkflowShare.workflow_id == workflow_id, WorkflowShare.user_id == body.user_id))).scalar_one_or_none()
     if existing:
