@@ -5,7 +5,7 @@ import {
   Plug, Mail, Cloud, Smartphone, CheckCircle2,
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
-  Eye, EyeOff, Save, Users, Copy, Info,
+  Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
@@ -345,15 +345,22 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const confirm = useConfirm();
   const [servers, setServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);  // null = add mode
   const [addName, setAddName] = useState("");
   const [addUrl, setAddUrl] = useState("");
   const [addBearer, setAddBearer] = useState("");
   const [addHeaders, setAddHeaders] = useState("");  // one "Name: value" per line
+  const [removeToken, setRemoveToken] = useState(false);
+  const [removeHeaders, setRemoveHeaders] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [expandedServer, setExpandedServer] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+
+  const editingServer = editingId != null ? servers.find((s) => s.id === editingId) ?? null : null;
 
   const loadServers = async () => {
     try {
@@ -382,6 +389,38 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     return out;
   };
 
+  const resetForm = () => {
+    setAddName("");
+    setAddUrl("");
+    setAddBearer("");
+    setAddHeaders("");
+    setRemoveToken(false);
+    setRemoveHeaders(false);
+    setProbeResult(null);
+  };
+
+  const openAdd = () => {
+    setEditingId(null);
+    resetForm();
+    setShowForm(true);
+  };
+
+  const openEdit = (server: McpServerInfo) => {
+    setEditingId(server.id);
+    resetForm();
+    setAddName(server.name);
+    setAddUrl(server.url);
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    resetForm();
+  };
+
+  const handleSubmit = () => (editingId == null ? handleAdd() : handleSave());
+
   const handleAdd = async () => {
     if (!addName.trim() || !addUrl.trim()) return;
     setAdding(true);
@@ -392,17 +431,64 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         Object.keys(headers).length ? headers : undefined,
       );
       setServers((prev) => [server, ...prev]);
-      setAddName("");
-      setAddUrl("");
-      setAddBearer("");
-      setAddHeaders("");
-      setShowAdd(false);
+      closeForm();
       setExpandedServer(server.id);
       onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefuegt (${server.tools.length} Tools)` });
     } catch (e) {
       onToast({ type: "error", message: e instanceof Error ? e.message : "Verbindung fehlgeschlagen" });
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (editingId == null || !addName.trim() || !addUrl.trim()) return;
+    setAdding(true);
+    try {
+      const data: { name?: string; url?: string; bearer_token?: string; headers?: Record<string, string> } = {
+        name: addName.trim(),
+        url: addUrl.trim(),
+      };
+      // Token: only send when the user typed one, or explicitly asked to remove it
+      // (""). Leaving it untouched keeps the stored credential (PATCH: None = unchanged).
+      if (removeToken) data.bearer_token = "";
+      else if (addBearer.trim()) data.bearer_token = addBearer.trim();
+      // Headers: same rule — {} clears, omitting leaves them unchanged.
+      if (removeHeaders) data.headers = {};
+      else {
+        const headers = parseHeaderLines(addHeaders);
+        if (Object.keys(headers).length) data.headers = headers;
+      }
+      const updated = await api.updateMcpServer(editingId, data);
+      setServers((prev) => prev.map((s) => (s.id === editingId ? updated : s)));
+      closeForm();
+      onToast({ type: "success", message: `MCP Server "${updated.name}" aktualisiert` });
+    } catch (e) {
+      onToast({ type: "error", message: e instanceof Error ? e.message : "Speichern fehlgeschlagen" });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleProbe = async () => {
+    if (!addUrl.trim()) return;
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const headers = parseHeaderLines(addHeaders);
+      const res = await api.probeMcpServer(
+        addName.trim() || "probe", addUrl.trim(),
+        addBearer.trim() || undefined,
+        Object.keys(headers).length ? headers : undefined,
+      );
+      setProbeResult({
+        ok: true,
+        message: `Verbindung OK — ${res.tool_count} Tool${res.tool_count !== 1 ? "s" : ""} gefunden`,
+      });
+    } catch (e) {
+      setProbeResult({ ok: false, message: e instanceof Error ? e.message : "Verbindung fehlgeschlagen" });
+    } finally {
+      setProbing(false);
     }
   };
 
@@ -453,7 +539,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">MCP Servers</h2>
         <button
-          onClick={() => setShowAdd(!showAdd)}
+          onClick={() => (showForm ? closeForm() : openAdd())}
           className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
         >
           <Plus className="h-3 w-3" />
@@ -461,10 +547,13 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         </button>
       </div>
 
-      {/* Add form */}
-      {showAdd && (
+      {/* Add / edit form */}
+      {showForm && (
         <div className="max-w-3xl mb-4 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-sm p-5">
           <div className="space-y-3">
+            <p className="text-xs font-semibold text-foreground">
+              {editingId == null ? "Neuen MCP Server hinzufuegen" : `„${editingServer?.name ?? ""}" bearbeiten`}
+            </p>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Name</label>
               <input
@@ -483,48 +572,104 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                 onChange={(e) => setAddUrl(e.target.value)}
                 placeholder="http://localhost:8080/mcp"
                 className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
-                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               />
             </div>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
-                Bearer Token <span className="text-muted-foreground/40">(optional)</span>
+                Bearer Token{" "}
+                <span className="text-muted-foreground/40">
+                  {editingServer?.has_auth ? "(leer lassen = unverändert)" : "(optional)"}
+                </span>
               </label>
               <input
                 type="password"
                 value={addBearer}
                 onChange={(e) => setAddBearer(e.target.value)}
-                placeholder="für geschützte MCP-Server (Authorization: Bearer …)"
-                className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
-                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                disabled={removeToken}
+                placeholder={editingServer?.has_auth ? "unverändert" : "für geschützte MCP-Server (Authorization: Bearer …)"}
+                className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all disabled:opacity-40"
+                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               />
+              {editingServer?.has_auth && (
+                <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/70 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={removeToken}
+                    onChange={(e) => { setRemoveToken(e.target.checked); if (e.target.checked) setAddBearer(""); }}
+                    className="h-3 w-3 rounded border-foreground/20 accent-red-500"
+                  />
+                  Gespeicherten Token entfernen
+                </label>
+              )}
             </div>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
-                Eigene Header <span className="text-muted-foreground/40">(optional — ein „Name: Wert" pro Zeile)</span>
+                Eigene Header{" "}
+                <span className="text-muted-foreground/40">
+                  {editingServer?.has_headers
+                    ? "(leer lassen = unverändert — ein Name: Wert pro Zeile)"
+                    : "(optional — ein Name: Wert pro Zeile)"}
+                </span>
               </label>
               <textarea
                 value={addHeaders}
                 onChange={(e) => setAddHeaders(e.target.value)}
+                disabled={removeHeaders}
                 rows={2}
-                placeholder={"x-api-key: dein-schlüssel\nx-consumer-api-key: …"}
-                className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-y"
+                placeholder={editingServer?.has_headers ? "unverändert" : "x-api-key: dein-schlüssel\nx-consumer-api-key: …"}
+                className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-y disabled:opacity-40"
               />
+              {editingServer?.has_headers && (
+                <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/70 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={removeHeaders}
+                    onChange={(e) => { setRemoveHeaders(e.target.checked); if (e.target.checked) setAddHeaders(""); }}
+                    className="h-3 w-3 rounded border-foreground/20 accent-red-500"
+                  />
+                  Gespeicherte Header entfernen
+                </label>
+              )}
               <p className="text-[10px] text-muted-foreground/50 mt-1">
                 Für Server, die statt „Bearer" einen eigenen Header erwarten (z. B. Composio: x-consumer-api-key).
               </p>
             </div>
+            {probeResult && (
+              <div className={cn(
+                "rounded-lg border px-3 py-2 text-[11px] flex items-center gap-2",
+                probeResult.ok
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                  : "bg-red-500/10 border-red-500/20 text-red-400"
+              )}>
+                {probeResult.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
+                {probeResult.message}
+              </div>
+            )}
+            {editingServer?.has_auth && !addBearer.trim() && !removeToken && (
+              <p className="text-[10px] text-muted-foreground/50">
+                Hinweis: Der Verbindungstest nutzt nur ein hier eingegebenes Token — der gespeicherte Token kann dafür nicht ausgelesen werden.
+              </p>
+            )}
             <div className="flex items-center gap-2 pt-1">
               <button
-                onClick={handleAdd}
+                onClick={handleSubmit}
                 disabled={adding || !addName.trim() || !addUrl.trim()}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
               >
-                {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plug className="h-3 w-3" />}
-                {adding ? "Verbinde..." : "Verbinden & Tools laden"}
+                {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : editingId == null ? <Plug className="h-3 w-3" /> : <Save className="h-3 w-3" />}
+                {adding ? "Speichere..." : editingId == null ? "Verbinden & Tools laden" : "Speichern"}
               </button>
               <button
-                onClick={() => { setShowAdd(false); setAddName(""); setAddUrl(""); }}
+                onClick={handleProbe}
+                disabled={probing || !addUrl.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-foreground border border-foreground/[0.1] hover:bg-foreground/[0.06] disabled:opacity-50 transition-all"
+              >
+                {probing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlugZap className="h-3 w-3" />}
+                Verbindung testen
+              </button>
+              <button
+                onClick={closeForm}
                 className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
               >
                 Abbrechen
@@ -539,7 +684,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         <div className="flex items-center justify-center h-20">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         </div>
-      ) : servers.length === 0 && !showAdd ? (
+      ) : servers.length === 0 && !showForm ? (
         <div className="max-w-3xl rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center">
           <Globe className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground mb-1">Keine MCP Server konfiguriert</p>
@@ -578,6 +723,15 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold">{server.name}</h3>
+                      {server.has_auth && (
+                        <span
+                          title="Zugangs-Token gespeichert"
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400"
+                        >
+                          <KeyRound className="h-2.5 w-2.5" />
+                          Token
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
                         <Wrench className="h-2.5 w-2.5" />
                         {toolCount} Tool{toolCount !== 1 && "s"}
@@ -602,6 +756,13 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       title={server.enabled ? "Deaktivieren" : "Aktivieren"}
                     >
                       <Power className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => openEdit(server)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                      title="Bearbeiten"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => handleRefresh(server.id)}
