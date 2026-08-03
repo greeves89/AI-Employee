@@ -60,6 +60,10 @@ class OpenAIProvider(BaseLLMProvider):
 
     def __init__(self, **kwargs):
         self.thinking_mode = kwargs.pop("thinking_mode", "auto")  # "off", "auto", "on"
+        # OpenAI reasoning-model effort knob ("low"/"medium"/"high"). None/"" = let
+        # the API use its default. Only meaningful for o-series and GPT-5 — see
+        # _supports_reasoning_effort(); harmless no-op otherwise.
+        self.reasoning_effort = kwargs.pop("reasoning_effort", "") or ""
         self.is_azure = bool(kwargs.pop("is_azure", False))
         self.api_version = kwargs.pop("api_version", "") or ""
         super().__init__(**kwargs)
@@ -82,6 +86,17 @@ class OpenAIProvider(BaseLLMProvider):
         if "chat-latest" in m or "gpt-chat" in m:
             return False
         return True
+
+    def _supports_reasoning_effort(self) -> bool:
+        """True for OpenAI reasoning models that accept an effort knob:
+        o-series (o1/o3/o4) and GPT-5 — excluding the *-chat-latest alias,
+        which is the non-reasoning chat variant and 400s on this param."""
+        m = self.model_name.lower()
+        if "chat-latest" in m or "gpt-chat" in m:
+            return False
+        if self._is_responses_model():
+            return True
+        return m.startswith(("o1", "o3", "o4"))
 
     @staticmethod
     def _parse_function_arguments(arguments_json: str, final_arguments: str | None = None) -> dict:
@@ -373,6 +388,8 @@ class OpenAIProvider(BaseLLMProvider):
         # Codex models don't support temperature
         if self.temperature is not None and not self._is_responses_model():
             body["temperature"] = self.temperature
+        if self.reasoning_effort and self._supports_reasoning_effort():
+            body["reasoning"] = {"effort": self.reasoning_effort}
 
         # Tools in Responses API format
         if tools:
@@ -628,6 +645,9 @@ class OpenAIProvider(BaseLLMProvider):
             body["max_tokens"] = self.max_tokens
             if self._supports_custom_temperature():
                 body["temperature"] = self.temperature
+
+        if self.reasoning_effort and self._supports_reasoning_effort():
+            body["reasoning_effort"] = self.reasoning_effort
 
         if tools:
             body["tools"] = tools

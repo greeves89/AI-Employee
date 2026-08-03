@@ -17,6 +17,10 @@ BudgetExceededAction = Literal["haiku", "stop"]
 
 ThinkingMode = Literal["off", "auto", "on"]
 
+# OpenAI reasoning-model effort knob. "" = API default (only o-series/GPT-5
+# accept this at all — silently ignored by the provider for other models).
+ReasoningEffort = Literal["", "low", "medium", "high"]
+
 
 class LLMConfig(BaseModel):
     """Configuration for a custom LLM provider."""
@@ -29,6 +33,7 @@ class LLMConfig(BaseModel):
     system_prompt: str = ""
     tools_enabled: bool = True
     thinking_mode: ThinkingMode = "auto"  # "off"=never, "auto"=model decides, "on"=always
+    reasoning_effort: ReasoningEffort = ""
 
 
 class LLMConfigUpdate(BaseModel):
@@ -40,6 +45,7 @@ class LLMConfigUpdate(BaseModel):
     temperature: float | None = None
     system_prompt: str | None = None
     tools_enabled: bool | None = None
+    reasoning_effort: ReasoningEffort | None = None
 
 
 class LLMConfigResponse(BaseModel):
@@ -52,6 +58,7 @@ class LLMConfigResponse(BaseModel):
     system_prompt: str
     tools_enabled: bool
     thinking_mode: str = "auto"
+    reasoning_effort: str = ""
 
 
 class AgentCreate(BaseModel):

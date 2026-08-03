@@ -684,6 +684,7 @@ class AgentManager:
                     "system_prompt": extra.get("system_prompt", ""),
                     "tools_enabled": extra.get("tools_enabled", True),
                     "thinking_mode": extra.get("thinking_mode", "auto"),
+                    "reasoning_effort": extra.get("reasoning_effort", ""),
                     "api_version": extra.get("api_version", ""),
                     "deployment": mname,
                 }
@@ -707,6 +708,7 @@ class AgentManager:
             "LLM_SYSTEM_PROMPT": cfg.get("system_prompt", "") or "",
             "LLM_TOOLS_ENABLED": str(cfg.get("tools_enabled", True)).lower(),
             "LLM_THINKING_MODE": cfg.get("thinking_mode", "auto"),
+            "LLM_REASONING_EFFORT": cfg.get("reasoning_effort", "") or "",
             # Azure OpenAI specifics (empty for other providers)
             "LLM_API_VERSION": cfg.get("api_version", "") or "",
             "LLM_DEPLOYMENT": cfg.get("deployment", "") or "",
@@ -1542,6 +1544,7 @@ class AgentManager:
             "temperature": llm_cfg.get("temperature", 0.7),
             "system_prompt": llm_cfg.get("system_prompt", ""),
             "tools_enabled": llm_cfg.get("tools_enabled", True),
+            "reasoning_effort": llm_cfg.get("reasoning_effort", ""),
         }
 
     async def remove_agent(self, agent_id: str, remove_data: bool = False) -> None:
@@ -1629,6 +1632,7 @@ class AgentManager:
                 "temperature": llm_cfg.get("temperature", 0.7),
                 "system_prompt": llm_cfg.get("system_prompt", ""),
                 "tools_enabled": llm_cfg.get("tools_enabled", True),
+                "reasoning_effort": llm_cfg.get("reasoning_effort", ""),
             }
 
         # Monthly spend (current calendar month) for budget display.

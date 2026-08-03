@@ -206,6 +206,7 @@ export function CreateAgentModal({
   const [llmModelName, setLlmModelName] = useState("gpt-4o");
   const [llmMaxTokens, setLlmMaxTokens] = useState("4096");
   const [llmTemperature, setLlmTemperature] = useState("0.7");
+  const [llmReasoningEffort, setLlmReasoningEffort] = useState<"" | "low" | "medium" | "high">("");
   const [llmSystemPrompt, setLlmSystemPrompt] = useState("");
   const [llmToolsEnabled, setLlmToolsEnabled] = useState(true);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -416,6 +417,7 @@ export function CreateAgentModal({
           temperature: parseFloat(llmTemperature) || 0.7,
           system_prompt: llmSystemPrompt.trim(),
           tools_enabled: llmToolsEnabled,
+          reasoning_effort: llmReasoningEffort,
         };
         created = await api.createAgent(
           name.trim(),
@@ -860,6 +862,29 @@ export function CreateAgentModal({
                               0 = praezise, 1 = kreativ. Fuer Coding: 0.2-0.5 empfohlen.
                             </p>
                           </div>
+
+                          {/* Reasoning Effort — OpenAI reasoning models only (o1/o3/o4, GPT-5) */}
+                          {llmProvider === "openai" && (
+                            <div>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                                Reasoning-Effort{" "}
+                                <span className="text-muted-foreground/40">(nur o1/o3/o4, GPT-5)</span>
+                              </label>
+                              <select
+                                value={llmReasoningEffort}
+                                onChange={(e) => setLlmReasoningEffort(e.target.value as "" | "low" | "medium" | "high")}
+                                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                              >
+                                <option value="">Standard (API-Default)</option>
+                                <option value="low">Low — schnell, wenig Denkaufwand</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High — gruendlich, langsamer</option>
+                              </select>
+                              <p className="text-[11px] text-muted-foreground/50 mt-1">
+                                Wird von allen anderen Modellen ignoriert.
+                              </p>
+                            </div>
+                          )}
 
                           {/* System Prompt */}
                           <div>

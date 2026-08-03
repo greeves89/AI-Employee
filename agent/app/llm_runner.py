@@ -172,6 +172,7 @@ class LLMRunner:
                 max_tokens=settings.llm_max_tokens,
                 temperature=settings.llm_temperature,
                 thinking_mode=settings.llm_thinking_mode,
+                reasoning_effort=settings.llm_reasoning_effort,
                 api_version=settings.llm_api_version,
             )
         return self._provider

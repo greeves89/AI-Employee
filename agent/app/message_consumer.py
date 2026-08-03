@@ -105,6 +105,7 @@ class MessageConsumer:
                 model_name=(model if (model and model != "default") else settings.llm_model_name),
                 max_tokens=settings.llm_max_tokens,
                 temperature=settings.llm_temperature,
+                reasoning_effort=settings.llm_reasoning_effort,
                 api_version=settings.llm_api_version,
             )
             system = settings.llm_system_prompt or (

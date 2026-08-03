@@ -26,6 +26,7 @@ export interface LLMConfig {
   temperature?: number;
   system_prompt?: string;
   tools_enabled?: boolean;
+  reasoning_effort?: "" | "low" | "medium" | "high";
 }
 
 export interface LLMConfigResponse {
