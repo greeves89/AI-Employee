@@ -7,10 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.tasks import _get_task_router
+from app.api.tasks import _get_task_router, _get_user_agent_ids
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import require_auth, require_auth_or_agent
+from app.dependencies import is_agent_principal, require_auth, require_auth_or_agent
 from app.models.agent import Agent
 from app.models.team import Team
 
@@ -53,6 +53,31 @@ async def _get_team(team_id: str, db: AsyncSession) -> Team:
     return t
 
 
+async def _is_team_member(team: Team, user, db: AsyncSession) -> bool:
+    """True if `user` may see this team's internals (roster/tasks).
+
+    Agent principals: must literally be the lead or a member — an agent has
+    no business enumerating teams it isn't part of.
+    Human users: admins see everything; everyone else must own (or have
+    AgentAccess to) the lead or at least one member agent — mirrors the
+    ownership scoping tasks.py already applies to the plain task list.
+    """
+    member_ids = set(team.member_agent_ids or [])
+    if team.lead_agent_id:
+        member_ids.add(team.lead_agent_id)
+    if is_agent_principal(user):
+        return str(getattr(user, "id", "")) in member_ids
+    agent_ids = await _get_user_agent_ids(user, db)
+    if agent_ids is None:  # admin — no restriction
+        return True
+    return bool(member_ids & set(agent_ids))
+
+
+async def _require_team_access(team: Team, user, db: AsyncSession) -> None:
+    if not await _is_team_member(team, user, db):
+        raise HTTPException(status_code=403, detail="Not a member of this team")
+
+
 @router.post("/", status_code=201)
 async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_lead(body.member_agent_ids, body.lead_agent_id)
@@ -70,12 +95,22 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
 @router.get("/")
 async def list_teams(user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(Team).where(Team.is_active == True))).scalars().all()  # noqa: E712
+    # Agent principals only enumerate teams they're actually part of (this is
+    # also all the list_team_tasks MCP tool needs: scanning for "my own team").
+    # Human-facing listing keeps its existing (pre-existing, unrestricted)
+    # behavior — narrowing that is a separate, bigger change out of scope here.
+    if is_agent_principal(user):
+        rows = [t for t in rows if await _is_team_member(t, user, db)]
     return {"teams": [_serialize(t) for t in rows]}
 
 
 @router.get("/{team_id}")
 async def get_team(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
-    return _serialize(await _get_team(team_id, db))
+    t = await _get_team(team_id, db)
+    # Same scoping as list_teams: agents may only look up teams they're in.
+    if is_agent_principal(user):
+        await _require_team_access(t, user, db)
+    return _serialize(t)
 
 
 @router.get("/{team_id}/tasks")
@@ -98,6 +133,11 @@ async def list_team_tasks(
     from app.schemas.task import TaskResponse
 
     t = await _get_team(team_id, db)
+    # This returns task PROMPTS/RESULTS, not just team metadata — must be
+    # scoped to whoever actually belongs to the team (fixes an IDOR where any
+    # authenticated user/agent in the deployment could read any team's task
+    # content just by knowing/guessing its team_id).
+    await _require_team_access(t, user, db)
     member_ids = t.member_agent_ids or []
     if not member_ids:
         return {"tasks": [], "total": 0, "team_id": team_id}
