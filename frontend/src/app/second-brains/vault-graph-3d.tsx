@@ -74,6 +74,7 @@ export default function VaultGraph3D({
   onOpenFile,
   externalGraph,
   onNodeSelect,
+  initialQuery,
 }: {
   brainId?: number;
   onOpenFile?: (path: string) => void;
@@ -81,6 +82,9 @@ export default function VaultGraph3D({
   // graph directly instead of fetching a vault, and handle node clicks yourself.
   externalGraph?: VaultGraph;
   onNodeSelect?: (node: VaultGraphNode) => void;
+  // Voice-driven deep link ("such mir den Eintrag zu X raus"): once the graph
+  // loads, auto-focus the best-matching node instead of an empty view.
+  initialQuery?: string;
 }) {
   const fgRef = useRef<any>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -391,6 +395,23 @@ export default function VaultGraph3D({
     },
     [brainId, focusNode, onNodeSelect],
   );
+
+  // Voice deep-link: once the graph is loaded, find the best match for
+  // initialQuery (title > tags > path substring, case-insensitive) and focus
+  // it exactly like a click would. Re-runs if the agent asks for a NEW query
+  // in the same open graph (e.g. "such jetzt nach aehnlichen Themen").
+  const appliedQueryRef = useRef<string | null>(null);
+  useEffect(() => {
+    const q = initialQuery?.trim().toLowerCase();
+    if (!q || !graph || graph.nodes.length === 0) return;
+    if (appliedQueryRef.current === q) return;
+    appliedQueryRef.current = q;
+    const match =
+      graph.nodes.find((n) => n.name.toLowerCase().includes(q)) ??
+      graph.nodes.find((n) => n.tags.some((t) => t.toLowerCase().includes(q))) ??
+      graph.nodes.find((n) => n.path.toLowerCase().includes(q));
+    if (match) handleNodeClick(match);
+  }, [initialQuery, graph, handleNodeClick]);
 
   const nodeThreeObject = useCallback((node: any) => {
     const sprite: any = new SpriteText(node.name);

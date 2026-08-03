@@ -558,6 +558,10 @@ CONTROL_UI_TOOL = {
             "target (navigate to a page): 'dashboard', 'tasks', 'agents', 'meeting_rooms', "
             "'knowledge', 'skills', 'triggers', 'approvals', 'integrations', 'settings', "
             "'analytics'. You may also pass a concrete app path like '/tasks'.\n"
+            "query (optional, knowledge_graph only): when the user asks to find/open an "
+            "entry by topic (e.g. 'such mir den Eintrag zu Rechnungen raus'), pass that "
+            "topic here — the graph opens with the best-matching node already focused "
+            "instead of an empty view. Omit to just open the graph as-is.\n"
             "Say briefly what you are doing (e.g. 'ich zeige dir den Graphen')."
         ),
         "inputSchema": {"json": json.dumps({
@@ -565,6 +569,7 @@ CONTROL_UI_TOOL = {
             "properties": {
                 "action": {"type": "string", "description": "open | close | navigate"},
                 "target": {"type": "string", "description": "View to open/close, or page to navigate to."},
+                "query": {"type": "string", "description": "Optional topic to focus in the knowledge_graph."},
             },
             "required": ["action", "target"],
         })},
@@ -1467,6 +1472,7 @@ class RealtimeVoiceSession:
         if name == "control_ui":
             await self._respond(tool_use_id, await self._control_ui(
                 str(args.get("action") or ""), str(args.get("target") or ""),
+                str(args.get("query") or ""),
             ))
             return
         if name == "rename_conversation":
@@ -2085,21 +2091,28 @@ class RealtimeVoiceSession:
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
 
-    async def _control_ui(self, action: str, target: str) -> str:
+    async def _control_ui(self, action: str, target: str, query: str = "") -> str:
         """Emit a UI command the Speech front-end acts on (open/close overlay or navigate).
 
         The backend just forwards intent — the browser owns what each target renders,
         so this stays one thin channel (like show_on_screen) instead of a second system.
+        `query` is passed through as-is for the knowledge_graph target, where the
+        frontend uses it to auto-focus the best-matching node instead of an empty view.
         """
         action = (action or "").strip().lower()
         target = (target or "").strip().lower()
+        query = (query or "").strip()
         if action not in ("open", "close", "navigate"):
             return "Unbekannte Aktion. Nutze open, close oder navigate."
         if not target:
             return "Kein Ziel angegeben."
-        await self._emit({"type": "ui_command", "data": {"action": action, "target": target}})
+        data: dict = {"action": action, "target": target}
+        if query:
+            data["query"] = query
+        await self._emit({"type": "ui_command", "data": data})
         verb = {"open": "öffne", "close": "schließe", "navigate": "wechsle zu"}[action]
-        return f"Ich {verb} {target} auf dem Bildschirm."
+        suffix = f" und suche nach „{query}“" if query else ""
+        return f"Ich {verb} {target} auf dem Bildschirm{suffix}."
 
     async def _rename_conversation(self, title: str) -> str:
         """Set this call's thematic title — the SAME ChatSession.title the conversation

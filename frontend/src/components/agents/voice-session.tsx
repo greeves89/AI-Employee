@@ -119,7 +119,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   // Page the agent asked to show inside the app (iframe modal).
   const [webModal, setWebModal] = useState<{ url: string; caption?: string } | null>(null);
   // Voice-driven UI overlay (e.g. the knowledge graph) shown on top of the cockpit.
-  const [graphOverlay, setGraphOverlay] = useState<{ brainId: number | null } | null>(null);
+  const [graphOverlay, setGraphOverlay] = useState<{ brainId: number | null; query?: string } | null>(null);
   const router = useRouter();
   // URLs whose auto-open we already attempted, and those the popup blocker swallowed.
   const autoOpenedRef = useRef<Set<string>>(new Set());
@@ -275,7 +275,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   }, [agentId]);
 
   // Interpret a voice UI command: open/close an in-app overlay, or navigate a page.
-  const handleUiCommand = useCallback(async (action: string, target: string) => {
+  const handleUiCommand = useCallback(async (action: string, target: string, query?: string) => {
     const a = (action || "").toLowerCase().trim();
     const t = (target || "").toLowerCase().trim();
     if (a === "close") { setGraphOverlay(null); return; }
@@ -286,7 +286,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         const labels = (mountsResp.mounts || []).filter((l) => l.startsWith("brain-"));
         brainId = all.find((b) => labels.includes(b.label))?.id ?? all[0]?.id ?? null;
       } catch { /* fall back to an empty graph */ }
-      setGraphOverlay({ brainId });
+      setGraphOverlay({ brainId, query: query?.trim() || undefined });
       return;
     }
     // Navigate to an app page. `target` is LLM output (untrusted) → only allow a known
@@ -421,7 +421,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       }
       case "ui_command":
         // Agent drives the app UI by voice: open/close an overlay, or navigate.
-        handleUiCommand(String(data.action || ""), String(data.target || ""));
+        handleUiCommand(String(data.action || ""), String(data.target || ""), data.query ? String(data.query) : undefined);
         break;
       case "transcript":
         reconnectsRef.current = 0; // real conversation data → healthy session
@@ -1218,7 +1218,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                 </div>
                 <div className="min-h-0 flex-1">
                   {graphOverlay.brainId != null ? (
-                    <VaultGraph3D brainId={graphOverlay.brainId} />
+                    <VaultGraph3D brainId={graphOverlay.brainId} initialQuery={graphOverlay.query} />
                   ) : (
                     <div className="flex h-full items-center justify-center text-sm text-muted-foreground/60">
                       Kein Second Brain für diesen Agenten gefunden.
