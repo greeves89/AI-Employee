@@ -37,12 +37,16 @@ class _FakeSession:
     def __init__(self, server):
         self.server = server
         self.commits = 0
+        self.added = []
 
     async def execute(self, _stmt):
         return _ScalarResult(self.server)
 
     async def commit(self):
         self.commits += 1
+
+    def add(self, obj):
+        self.added.append(obj)
 
 
 class _FakeListSession:
