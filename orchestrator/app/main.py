@@ -1024,7 +1024,38 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_error varchar(255)"
             ))
-        logger.info("mcp_servers auth/header + health columns ensured")
+            # Client-side OAuth columns (#426).
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_enabled boolean DEFAULT false"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_authorization_endpoint text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_token_endpoint text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_registration_endpoint text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_scope text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_resource text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_client_id varchar"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_client_secret_encrypted text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_refresh_token_encrypted text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_access_expires_at timestamptz"
+            ))
+        logger.info("mcp_servers auth/header + health + oauth columns ensured")
     except Exception as e:
         logger.warning(f"Could not ensure mcp_servers columns: {e}")
 

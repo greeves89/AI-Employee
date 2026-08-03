@@ -805,6 +805,18 @@ class AgentManager:
             except Exception as e:
                 logger.warning(f"MCP role filter failed for agent {agent_id}: {e}")
 
+        # OAuth-protected servers (#426): mint/refresh a fresh access token before
+        # handing it to the agent, so a short-lived token never arrives already
+        # expired. Best-effort — a refresh failure leaves the (possibly stale)
+        # token in place rather than blocking agent startup.
+        try:
+            from app.services.mcp_oauth_refresh import refresh_if_needed
+            for s in servers:
+                if getattr(s, "oauth_enabled", False):
+                    await refresh_if_needed(s, self.db)
+        except Exception as e:
+            logger.warning(f"MCP OAuth token refresh pass failed: {e}")
+
         mcp_map = {s.name: s.url for s in servers}
         # Bearer tokens passed alongside so the agent can authenticate per server.
         auth_map = {

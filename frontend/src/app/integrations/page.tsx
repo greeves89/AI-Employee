@@ -5,7 +5,8 @@ import {
   Plug, Mail, Cloud, Smartphone, CheckCircle2,
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
-  Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap, Play,
+  Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap,
+  ShieldCheck, LogIn, Play,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
@@ -593,6 +594,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [deleting, setDeleting] = useState<number | null>(null);
   const [agentHealth, setAgentHealth] = useState<McpAgentHealth | null>(null);
   const [checkingAgents, setCheckingAgents] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState<number | null>(null);
 
   const editingServer = editingId != null ? servers.find((s) => s.id === editingId) ?? null : null;
 
@@ -610,6 +612,51 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   useEffect(() => {
     loadServers();
   }, []);
+
+  // Surface the result of the OAuth browser round-trip (#426): the callback
+  // redirects back to /integrations?mcp_oauth=connected|error, then we clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("mcp_oauth");
+    if (!result) return;
+    const name = params.get("server");
+    if (result === "connected") {
+      onToast({ type: "success", message: `OAuth verbunden${name ? `: ${name}` : ""}` });
+      loadServers();
+    } else {
+      onToast({ type: "error", message: `OAuth fehlgeschlagen: ${params.get("detail") || "unbekannt"}` });
+    }
+    const url = new URL(window.location.href);
+    ["mcp_oauth", "server", "detail"].forEach((k) => url.searchParams.delete(k));
+    window.history.replaceState({}, "", url.toString());
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Discover OAuth config (once) then start the authorization_code flow, sending
+  // the browser to the authorization server. Returns via the callback → /integrations.
+  const handleOAuthConnect = async (server: McpServerInfo) => {
+    setOauthBusy(server.id);
+    try {
+      if (!server.oauth_enabled || !server.oauth_client_id) {
+        const disc = await api.discoverMcpOAuth(server.id);
+        if (disc.needs_client_id) {
+          const clientId = window.prompt(
+            "Dieser Authorization-Server bietet keine dynamische Registrierung. " +
+            "Bitte die vorab registrierte client_id eingeben:",
+          );
+          if (!clientId?.trim()) {
+            setOauthBusy(null);
+            return;
+          }
+          await api.discoverMcpOAuth(server.id, clientId.trim());
+        }
+      }
+      const { authorization_url } = await api.connectMcpOAuth(server.id);
+      window.location.href = authorization_url;
+    } catch (e) {
+      onToast({ type: "error", message: e instanceof Error ? e.message : "OAuth-Start fehlgeschlagen" });
+      setOauthBusy(null);
+    }
+  };
 
   const parseHeaderLines = (text: string): Record<string, string> => {
     const out: Record<string, string> = {};
@@ -998,6 +1045,22 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                           Token
                         </span>
                       )}
+                      {server.oauth_enabled && (
+                        <span
+                          title={server.oauth_connected
+                            ? "OAuth verbunden — Access-Token wird serverseitig automatisch erneuert"
+                            : "OAuth konfiguriert, aber noch nicht verbunden — auf „Verbinden“ klicken"}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            server.oauth_connected
+                              ? "bg-emerald-500/10 text-emerald-400"
+                              : "bg-amber-500/10 text-amber-400"
+                          )}
+                        >
+                          <ShieldCheck className="h-2.5 w-2.5" />
+                          {server.oauth_connected ? "OAuth" : "OAuth offen"}
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
                         <Wrench className="h-2.5 w-2.5" />
                         {toolCount} Tool{toolCount !== 1 && "s"} entdeckt
@@ -1041,6 +1104,25 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       title={server.enabled ? "Deaktivieren" : "Aktivieren"}
                     >
                       <Power className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleOAuthConnect(server)}
+                      disabled={oauthBusy === server.id}
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                        server.oauth_connected
+                          ? "text-emerald-400 hover:bg-emerald-500/15"
+                          : "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06]"
+                      )}
+                      title={server.oauth_connected
+                        ? "OAuth erneut verbinden (neuer Login)"
+                        : "Mit OAuth verbinden (Login im Browser)"}
+                    >
+                      {oauthBusy === server.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <LogIn className="h-3.5 w-3.5" />
+                      )}
                     </button>
                     <button
                       onClick={() => openEdit(server)}
