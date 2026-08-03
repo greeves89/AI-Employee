@@ -53,6 +53,10 @@ class AuditEventType(str, Enum):
     DLP_BLOCKED = "dlp_blocked"                   # outbound message blocked (e.g. leaked secret)
     DLP_MASKED = "dlp_masked"                     # outbound message sent with PII masked
     DLP_FLAGGED = "dlp_flagged"                   # outbound message flagged (log-only)
+    # External MCP servers (#414) — operator-triggered diagnostics
+    MCP_TOOL_CALLED = "mcp_tool_called"           # admin invoked a tool by hand (tools/call)
+    MCP_TOOL_CALL_FAILED = "mcp_tool_call_failed" # manual tool invocation could not reach/run
+    MCP_DISCOVERY_FAILED = "mcp_discovery_failed" # add/refresh/probe tools/list handshake failed
 
 
 class AuditLog(Base):

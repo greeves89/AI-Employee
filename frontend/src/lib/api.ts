@@ -1221,6 +1221,24 @@ export async function probeMcpServer(
   });
 }
 
+export interface McpToolCallResult {
+  server_id: number;
+  tool: string;
+  result: Record<string, unknown>;  // raw JSON-RPC object (may carry an `error` member)
+  is_error: boolean;
+}
+
+// Admin: invoke a single tool on a saved MCP server by hand (#414). The attempt is
+// audit-logged server-side. Returns the raw JSON-RPC response verbatim.
+export async function callMcpTool(
+  id: number, name: string, args: Record<string, unknown>,
+): Promise<McpToolCallResult> {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/call`, {
+    method: "POST",
+    body: JSON.stringify({ name, arguments: args }),
+  });
+}
+
 // Admin: User Management
 export async function getUsers(): Promise<{ users: AdminUser[] }> {
   return fetchJSON(`${getBase()}/auth/users`);
