@@ -48,13 +48,15 @@ _SCREEN_CHANGING_ACTIONS = {
 }
 
 
-async def _refresh_screenshot_cache(session_id: str) -> None:
-    """Fire-and-forget: pull a fresh screenshot from the bridge right after an
-    action and update the session cache, so the next poll from the Live-View
-    tab already sees the post-action state instead of a stale one."""
+async def _refresh_screenshot_cache(session_id: str) -> str | None:
+    """Pull a fresh screenshot from the bridge right after an action and
+    update the session cache, so the next poll from the Live-View tab already
+    sees the post-action state instead of a stale one. Returns the base64 PNG
+    (or None on failure) so callers that need the image itself — e.g. a
+    Replay-Modus recording step — can await this instead of firing it blind."""
     session = _sessions.get(session_id)
     if not session or not session["bridge_connected"] or not session["bridge_ws"]:
-        return
+        return None
     cmd_id = uuid.uuid4().hex[:8]
     result_future: asyncio.Future = asyncio.get_event_loop().create_future()
     session["pending_results"][cmd_id] = result_future
@@ -68,10 +70,13 @@ async def _refresh_screenshot_cache(session_id: str) -> None:
         screenshot_b64 = result.get("screenshot_b64", "")
         if screenshot_b64:
             session["last_screenshot"] = {"data": screenshot_b64, "ts": time.time()}
+            return screenshot_b64
+        return None
     except Exception:
         # Best-effort only — the next explicit poll will fall back to
         # requesting its own fresh screenshot if this cache update failed.
         session["pending_results"].pop(cmd_id, None)
+        return None
 
 
 # ── Capability groups ─────────────────────────────────────────────────────────
@@ -146,6 +151,7 @@ def _session_view(sid: str, s: dict) -> dict:
         "bridge_last_seen_at": s.get("bridge_last_seen_at"),
         "bridge_version": s.get("bridge_version"),
         "agent_id": s.get("agent_id"),
+        "recording": bool(s.get("recording")),
     }
 
 
@@ -175,6 +181,11 @@ async def create_session(user=Depends(require_auth)):
         "last_disconnected_at": None,
         "bridge_last_seen_at": None,
         "agent_id": None,
+        # Replay-Modus: while recording, every screen-changing action is
+        # captured as a step (action + params + a screenshot taken right
+        # after it) — see /recording/start|stop below.
+        "recording": False,
+        "recording_steps": [],
     }
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
     return {
@@ -394,7 +405,18 @@ async def send_command(
         result = await asyncio.wait_for(result_future, timeout=req.timeout)
         logger.info(f"[computer-use] session={session_id} action={req.action} #{session['action_count']}")
         if req.action in _SCREEN_CHANGING_ACTIONS:
-            asyncio.create_task(_refresh_screenshot_cache(session_id))
+            if session.get("recording"):
+                # Recording: wait for the screenshot so the step carries the
+                # correct post-action image, then append it to the transcript.
+                screenshot_b64 = await _refresh_screenshot_cache(session_id)
+                session["recording_steps"].append({
+                    "action": req.action,
+                    "params": req.params,
+                    "ts": time.time(),
+                    "screenshot_b64": screenshot_b64,
+                })
+            else:
+                asyncio.create_task(_refresh_screenshot_cache(session_id))
         return {"result": result}
     except asyncio.TimeoutError:
         session["pending_results"].pop(cmd_id, None)
@@ -492,6 +514,54 @@ async def get_screenshot(
     except Exception as e:
         session["pending_results"].pop(cmd_id, None)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Replay-Modus: record a step-by-step transcript (action + screenshot per
+# step) of what happened in a session, for later review or skill authoring.
+#
+# This is the recording half only — turning a transcript into an actual
+# reusable Skill (parameterizing steps, writing a SKILL.md) is a separate,
+# larger piece and deliberately NOT built here yet; see todo.md.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _require_owned_session(session_id: str, user) -> dict:
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(user.id) != session["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return session
+
+
+@router.post("/sessions/{session_id}/recording/start")
+async def start_recording(session_id: str, user=Depends(require_auth)):
+    """Begin capturing a step-by-step transcript of this session."""
+    session = _require_owned_session(session_id, user)
+    session["recording"] = True
+    session["recording_steps"] = []
+    return {"session_id": session_id, "recording": True}
+
+
+@router.post("/sessions/{session_id}/recording/stop")
+async def stop_recording(session_id: str, user=Depends(require_auth)):
+    """Stop capturing and return the full transcript (steps with screenshots)."""
+    session = _require_owned_session(session_id, user)
+    session["recording"] = False
+    steps = session.get("recording_steps", [])
+    return {"session_id": session_id, "recording": False, "steps": steps, "step_count": len(steps)}
+
+
+@router.get("/sessions/{session_id}/recording")
+async def get_recording(session_id: str, user=Depends(require_auth)):
+    """Peek at the transcript recorded so far without stopping the recording."""
+    session = _require_owned_session(session_id, user)
+    steps = session.get("recording_steps", [])
+    return {
+        "session_id": session_id,
+        "recording": bool(session.get("recording")),
+        "steps": steps,
+        "step_count": len(steps),
+    }
 
 
 # ── Bridge WebSocket ──────────────────────────────────────────────────────────
