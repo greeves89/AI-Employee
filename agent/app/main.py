@@ -53,6 +53,55 @@ def _run_mcp_add(args: list[str]) -> bool:
         return False
 
 
+def _load_custom_mcp_auth() -> dict:
+    """Parse CUSTOM_MCP_AUTH ({server_name: bearer_token}) from the environment."""
+    raw = os.environ.get("CUSTOM_MCP_AUTH", "")
+    if not raw:
+        return {}
+    try:
+        auth = json.loads(raw)
+        return auth if isinstance(auth, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        print("[Agent] Warning: Could not parse CUSTOM_MCP_AUTH")
+        return {}
+
+
+def _load_custom_mcp_headers() -> dict:
+    """Parse CUSTOM_MCP_HEADERS ({server_name: {header: value}}) from the environment."""
+    raw = os.environ.get("CUSTOM_MCP_HEADERS", "")
+    if not raw:
+        return {}
+    try:
+        hdrs = json.loads(raw)
+        return hdrs if isinstance(hdrs, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        print("[Agent] Warning: Could not parse CUSTOM_MCP_HEADERS")
+        return {}
+
+
+def _auth_headers_for(name: str, auth: dict, headers: dict) -> dict:
+    """Return the merged {header: value} map for a server (keyed by original name).
+
+    A bearer token from CUSTOM_MCP_AUTH becomes an Authorization header; explicit
+    CUSTOM_MCP_HEADERS entries are added on top (and win on key collision).
+    """
+    result: dict[str, str] = {}
+    token = auth.get(name)
+    if token:
+        result["Authorization"] = f"Bearer {token}"
+    extra = headers.get(name)
+    if isinstance(extra, dict):
+        for key, value in extra.items():
+            if key and value is not None:
+                result[str(key)] = str(value)
+    return result
+
+
+def _auth_header_args(name: str, auth: dict, headers: dict) -> list[str]:
+    """Return `claude mcp add --header` values ("Key: Value") for a server."""
+    return [f"{k}: {v}" for k, v in _auth_headers_for(name, auth, headers).items()]
+
+
 def register_mcp_servers() -> None:
     """Register MCP servers via `claude mcp add` so Claude Code discovers them in -p mode.
 
@@ -197,13 +246,18 @@ def register_mcp_servers() -> None:
     # Custom HTTP servers from env (passed by orchestrator)
     custom_mcp = os.environ.get("CUSTOM_MCP_SERVERS", "")
     if custom_mcp:
+        auth = _load_custom_mcp_auth()
+        headers = _load_custom_mcp_headers()
         try:
             servers = json.loads(custom_mcp)
             for name, url in servers.items():
                 safe_name = _sanitize_mcp_name(name)
                 cmd_args = ["--transport", "http", safe_name, url]
+                for header in _auth_header_args(name, auth, headers):
+                    cmd_args += ["--header", header]
                 if _run_mcp_add(cmd_args):
-                    print(f"[Agent] Registered MCP server: {safe_name} -> {url} (http)")
+                    suffix = " (authenticated)" if len(cmd_args) > 4 else ""
+                    print(f"[Agent] Registered MCP server: {safe_name} -> {url} (http){suffix}")
                 else:
                     print(f"[Agent] WARN: Failed to register MCP server: {safe_name}")
         except (json.JSONDecodeError, AttributeError) as e:
@@ -231,9 +285,15 @@ def _write_mcp_json_fallback() -> None:
     # Custom servers
     custom_mcp = os.environ.get("CUSTOM_MCP_SERVERS", "")
     if custom_mcp:
+        auth = _load_custom_mcp_auth()
+        headers = _load_custom_mcp_headers()
         try:
             for name, url in json.loads(custom_mcp).items():
-                mcp_config["mcpServers"][_sanitize_mcp_name(name)] = {"url": url}
+                entry: dict = {"url": url}
+                hdrs = _auth_headers_for(name, auth, headers)
+                if hdrs:
+                    entry["headers"] = hdrs
+                mcp_config["mcpServers"][_sanitize_mcp_name(name)] = entry
         except (json.JSONDecodeError, AttributeError):
             pass
 
