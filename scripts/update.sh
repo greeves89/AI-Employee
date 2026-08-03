@@ -81,7 +81,7 @@ else
         [ -z "$line" ] && continue
         cid="${line%% *}"
         cname="${line#* }"
-        running_img="$(docker inspect "$cid" --format '{{.Image}}' 2>/dev/null | sed 's/^sha256://')"
+        running_img="$(docker inspect "$cid" --format '{{.Image}}' 2>/dev/null | sed 's/^sha256://' || true)"
         if [ -n "$NEW_AGENT_IMAGE_ID" ] && [ "${running_img#$NEW_AGENT_IMAGE_ID}" = "$running_img" ]; then
             STALE_AGENTS="${STALE_AGENTS}  • ${cname}\n"
         fi
