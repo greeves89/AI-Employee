@@ -1004,10 +1004,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure job_state table: {e}")
 
-    # External MCP servers: optional custom auth headers (Fernet-encrypted JSON) for
-    # servers expecting a non-Bearer key (x-api-key, x-consumer-api-key, …). Ensured on
-    # every startup, independent of Alembic (the migration chain is multi-head — no new
-    # migrations ship; see the reflection/job_state ensures above). Idempotent.
+    # External MCP servers: optional custom auth headers and persisted discovery
+    # health. Ensured on every startup, independent of Alembic (the migration chain
+    # is multi-head — no new migrations ship; see the reflection/job_state ensures
+    # above). Idempotent, so existing databases receive new columns after deploy.
     try:
         from app.db.session import engine as _eng_mh
         from sqlalchemy import text as _txt_mh
@@ -1015,9 +1015,18 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS headers_encrypted text"
             ))
-        logger.info("mcp_servers headers_encrypted column ensured")
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_checked_at timestamptz"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_status varchar(32)"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_error varchar(255)"
+            ))
+        logger.info("mcp_servers auth/header + health columns ensured")
     except Exception as e:
-        logger.warning(f"Could not ensure mcp_servers headers column: {e}")
+        logger.warning(f"Could not ensure mcp_servers columns: {e}")
 
     # Reflection/"Dreaming": provenance column + run-log table. Ensured on every
     # startup, independent of Alembic (multi-head chain → no new migrations).
