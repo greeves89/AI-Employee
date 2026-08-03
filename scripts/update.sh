@@ -52,6 +52,9 @@ fi
 
 # ── 4. Rebuild + restart the compose services (orchestrator, frontend, ...) ────
 info "Rebuilding and restarting the stack..."
+# Bake the current VERSION into the frontend bundle so the running UI can warn
+# when the served bundle is older than the backend (see update-banner.tsx).
+export APP_VERSION="$(cat VERSION 2>/dev/null || echo dev)"
 docker compose up -d --build
 ok "Stack restarted"
 
