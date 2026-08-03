@@ -237,7 +237,7 @@ export function UpdateBanner() {
               {/* Footer */}
               <div className="border-t border-foreground/[0.06] px-6 py-3 flex items-center justify-between">
                 <p className="text-[11px] text-muted-foreground/50">
-                  Update: <code className="font-mono text-[10px]">docker compose up --build</code>
+                  Update: <code className="font-mono text-[10px]">git pull && docker compose up -d --build</code>
                 </p>
                 <Dialog.Close className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors">
                   Verstanden
