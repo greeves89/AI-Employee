@@ -3,6 +3,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from functools import partial
 
 from docker.errors import APIError, NotFound
 from sqlalchemy import delete as sql_delete, select, update as sql_update
@@ -1580,7 +1581,13 @@ class AgentManager:
         await self.db.delete(agent)
         await self.db.commit()
 
-    async def get_agent_with_metrics(self, agent_id: str, include_stats: bool = True) -> dict:
+    async def get_agent_with_metrics(
+        self,
+        agent_id: str,
+        include_stats: bool = True,
+        image_id_resolved: bool = False,
+        current_image_id: str | None = None,
+    ) -> dict:
         agent = await self._get_agent(agent_id)
 
         # Sync DB state with actual Docker container status (lightweight check).
@@ -1623,15 +1630,26 @@ class AgentManager:
         # Check if the running container is on a stale agent image (issue #433):
         # the ai-employee-agent:latest tag can be rebuilt without agents being
         # recreated, so a live agent may silently serve two-day-old code.
+        # image_id_resolved lets a caller iterating many agents (the list endpoint)
+        # resolve the ai-employee-agent:latest image id once and pass it in here,
+        # instead of one images.get() call per agent (issue #449).
         image_outdated = False
         if agent.container_id and agent.state in (
             AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
         ):
             loop = asyncio.get_event_loop()
             try:
-                image_outdated = await loop.run_in_executor(
-                    None, self.docker.is_container_image_outdated, agent.container_id
-                )
+                if image_id_resolved and current_image_id is None:
+                    image_outdated = False
+                else:
+                    image_outdated = await loop.run_in_executor(
+                        None,
+                        partial(
+                            self.docker.is_container_image_outdated,
+                            agent.container_id,
+                            current_image_id=current_image_id,
+                        ),
+                    )
             except Exception:
                 image_outdated = False
 
