@@ -23,6 +23,54 @@ const PROVIDER_ICONS: Record<string, typeof Mail> = {
   Github,
 };
 
+function formatRelativeCheckedAt(value: string | null): string {
+  if (!value) return "noch nicht geprüft";
+  const checkedAt = new Date(value).getTime();
+  if (Number.isNaN(checkedAt)) return "Zeitpunkt unbekannt";
+
+  const diffMs = Math.max(0, Date.now() - checkedAt);
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return "gerade geprüft";
+  if (diffMinutes < 60) return `geprüft vor ${diffMinutes} Min`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `geprüft vor ${diffHours} Std`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `geprüft vor ${diffDays} Tag${diffDays === 1 ? "" : "en"}`;
+}
+
+function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; className: string } {
+  const checked = formatRelativeCheckedAt(server.last_checked_at);
+  if (!server.last_status) {
+    return {
+      ok: false,
+      label: `Status unbekannt · ${checked}`,
+      className: "text-muted-foreground/60",
+    };
+  }
+
+  if (server.last_status === "ok") {
+    return {
+      ok: true,
+      label: `erreichbar · ${checked}`,
+      className: "text-emerald-400",
+    };
+  }
+
+  const fallback = {
+    auth_failed: "Authentifizierung fehlgeschlagen",
+    unreachable: "nicht erreichbar",
+    protocol_error: "Protokollfehler",
+  }[server.last_status] ?? "Fehler";
+
+  return {
+    ok: false,
+    label: `${server.last_error || fallback} · ${checked}`,
+    className: server.last_status === "auth_failed" ? "text-amber-400" : "text-red-400",
+  };
+}
+
 export default function IntegrationsPage() {
   const confirm = useConfirm();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -499,6 +547,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       setServers((prev) => prev.map((s) => (s.id === id ? updated : s)));
       onToast({ type: "success", message: `Tools aktualisiert (${updated.tools.length} Tools)` });
     } catch (e) {
+      await loadServers();
       onToast({ type: "error", message: e instanceof Error ? e.message : "Refresh fehlgeschlagen" });
     } finally {
       setRefreshing(null);
@@ -697,6 +746,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
           {servers.map((server) => {
             const isExpanded = expandedServer === server.id;
             const toolCount = server.tools?.length || 0;
+            const health = formatMcpHealth(server);
 
             return (
               <div
@@ -734,13 +784,17 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       )}
                       <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
                         <Wrench className="h-2.5 w-2.5" />
-                        {toolCount} Tool{toolCount !== 1 && "s"}
+                        {toolCount} Tool{toolCount !== 1 && "s"} entdeckt
                       </span>
                       {!server.enabled && (
                         <span className="text-[10px] text-muted-foreground/50">deaktiviert</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground/60 font-mono truncate mt-0.5">{server.url}</p>
+                    <div className={cn("mt-1 flex items-center gap-1.5 text-[11px]", health.className)}>
+                      {health.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
+                      <span className="truncate">{health.label}</span>
+                    </div>
                   </div>
 
                   {/* Actions */}
