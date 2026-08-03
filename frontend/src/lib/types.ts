@@ -95,6 +95,7 @@ export interface Agent {
   integrations: string[];
   permissions: string[];
   update_available: boolean;
+  image_outdated?: boolean;
   budget_usd: number | null;
   budget_exceeded_action: "haiku" | "stop";
   monthly_cost_usd: number;

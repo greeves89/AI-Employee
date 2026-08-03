@@ -1620,6 +1620,21 @@ class AgentManager:
         if stored_version != get_agent_version():
             update_available = True
 
+        # Check if the running container is on a stale agent image (issue #433):
+        # the ai-employee-agent:latest tag can be rebuilt without agents being
+        # recreated, so a live agent may silently serve two-day-old code.
+        image_outdated = False
+        if agent.container_id and agent.state in (
+            AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
+        ):
+            loop = asyncio.get_event_loop()
+            try:
+                image_outdated = await loop.run_in_executor(
+                    None, self.docker.is_container_image_outdated, agent.container_id
+                )
+            except Exception:
+                image_outdated = False
+
         # Build safe LLM config for response (no API key!)
         llm_config_response = None
         if agent.mode == "custom_llm" and agent.llm_config:
@@ -1695,6 +1710,7 @@ class AgentManager:
             "integrations": config.get("integrations", []),
             "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,
+            "image_outdated": image_outdated,
             "budget_usd": agent.budget_usd,
             "budget_exceeded_action": agent.budget_exceeded_action,
             "monthly_cost_usd": monthly_cost_usd,
