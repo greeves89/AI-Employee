@@ -9,7 +9,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.config import settings
-from app.telegram.handlers.commands import _active_chats
+from app.telegram.active_chats import get_active_chat
 
 logger = logging.getLogger(__name__)
 
@@ -113,13 +113,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             f"Ich habe verstanden: _{transcript}_", parse_mode="Markdown"
         )
 
-        if chat_id not in _active_chats:
+        agent_id = await get_active_chat(chat_id)
+        if agent_id is None:
             await update.message.reply_text(
                 "Kein aktiver Chat. Starte mit /chat einen Chat mit einem Agent."
             )
             return
-
-        agent_id = _active_chats[chat_id]
 
         # Forward transcribed text to agent via Redis (same as handle_message)
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)

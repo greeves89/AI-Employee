@@ -7,12 +7,18 @@ from telegram.ext import ContextTypes
 
 from app.config import settings
 from app.telegram._bridge_auth import authed_client
+from app.telegram.active_chats import (
+    clear_active_chat,
+    get_active_chat,
+    set_active_chat,
+)
 
 # Use localhost since the bot runs INSIDE the orchestrator container
 API_BASE = "http://127.0.0.1:8000/api/v1"
 
-# Track which Telegram user chats with which agent
-_active_chats: dict[int, str] = {}  # chat_id -> agent_id
+# The chat_id -> agent_id mapping is persisted in Redis (see active_chats.py) so
+# it survives orchestrator restarts. Only the per-chat listener tasks stay in
+# memory — asyncio.Task objects are process-local and cannot be persisted.
 _chat_listeners: dict[int, asyncio.Task] = {}  # chat_id -> listener task
 
 
@@ -188,8 +194,8 @@ async def cmd_stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Stop the current chat session."""
     chat_id = update.effective_chat.id
 
-    if chat_id in _active_chats:
-        agent_id = _active_chats.pop(chat_id)
+    agent_id = await clear_active_chat(chat_id)
+    if agent_id:
         # Cancel listener
         if chat_id in _chat_listeners:
             _chat_listeners[chat_id].cancel()
@@ -259,14 +265,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle regular text messages - forward to active chat agent."""
     chat_id = update.effective_chat.id
 
-    if chat_id not in _active_chats:
+    agent_id = await get_active_chat(chat_id)
+    if agent_id is None:
         # No active chat - show hint
         await update.message.reply_text(
             "Kein aktiver Chat. Starte mit /chat einen Chat mit einem Agent."
         )
         return
 
-    agent_id = _active_chats[chat_id]
     text = update.message.text
 
     # Send to agent via Redis (use internal Docker hostname)
@@ -301,7 +307,7 @@ async def _start_chat_session(
     callback_query=None,
 ) -> None:
     """Start a chat session with an agent and set up response listener."""
-    _active_chats[chat_id] = agent_id
+    await set_active_chat(chat_id, agent_id)
 
     # Cancel existing listener if any
     if chat_id in _chat_listeners:
