@@ -40,13 +40,23 @@ function formatRelativeCheckedAt(value: string | null): string {
   return `geprüft vor ${diffDays} Tag${diffDays === 1 ? "" : "en"}`;
 }
 
-function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; className: string } {
+// This status reflects the ORCHESTRATOR → MCP-server discovery check only. The
+// agent container's view (what actually fails a tool call, e.g. a 401 that the
+// orchestrator path never sees) is a separate #425 Phase-2 signal. The tooltip
+// spells that out so a green "erreichbar" is not misread as "agents can use it".
+const MCP_HEALTH_ORCH_ONLY =
+  "Server-seitige Discovery-Prüfung (Orchestrator → MCP-Server). " +
+  "Sie spiegelt nicht die Agent-Sicht wider — ein Server kann für Agent-Aufrufe " +
+  "trotzdem fehlschlagen (z. B. 401). Agent-Perspektive folgt in #425 Phase 2.";
+
+function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; className: string; title: string } {
   const checked = formatRelativeCheckedAt(server.last_checked_at);
   if (!server.last_status) {
     return {
       ok: false,
       label: `Status unbekannt · ${checked}`,
       className: "text-muted-foreground/60",
+      title: "Noch keine Discovery-Prüfung durch den Orchestrator.",
     };
   }
 
@@ -55,6 +65,7 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
       ok: true,
       label: `erreichbar · ${checked}`,
       className: "text-emerald-400",
+      title: MCP_HEALTH_ORCH_ONLY,
     };
   }
 
@@ -68,6 +79,7 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
     ok: false,
     label: `${server.last_error || fallback} · ${checked}`,
     className: server.last_status === "auth_failed" ? "text-amber-400" : "text-red-400",
+    title: MCP_HEALTH_ORCH_ONLY,
   };
 }
 
@@ -791,7 +803,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground/60 font-mono truncate mt-0.5">{server.url}</p>
-                    <div className={cn("mt-1 flex items-center gap-1.5 text-[11px]", health.className)}>
+                    <div className={cn("mt-1 flex items-center gap-1.5 text-[11px]", health.className)} title={health.title}>
                       {health.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
                       <span className="truncate">{health.label}</span>
                     </div>
