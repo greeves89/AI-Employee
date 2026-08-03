@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
+from app.models.audit_log import AuditEventType, AuditLog
 from app.models.mcp_server import McpServer
 
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
@@ -42,6 +43,30 @@ class McpServerUpdate(BaseModel):
     headers: dict[str, str] | None = None  # {} clears; None leaves unchanged
 
 
+class McpToolCall(BaseModel):
+    name: str
+    arguments: dict = {}
+
+
+async def _write_audit(
+    db: AsyncSession, event_type: AuditEventType, command: str,
+    outcome: str, user_id: str, meta: dict | None = None,
+) -> None:
+    """Persist one MCP audit row. Never raises — auditing must not break the request."""
+    try:
+        db.add(AuditLog(
+            agent_id="admin",
+            event_type=event_type,
+            command=command,
+            outcome=outcome,
+            user_id=user_id,
+            meta=meta,
+        ))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
+
 def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
     """Parse a JSON-RPC response that may be JSON or SSE (text/event-stream)."""
     content_type = resp.headers.get("content-type", "")
@@ -63,6 +88,70 @@ def _parse_jsonrpc_response(resp: httpx.Response) -> dict | None:
         return None
 
 
+def _build_headers(
+    bearer_token: str | None, extra_headers: dict[str, str] | None,
+) -> dict[str, str]:
+    """Build the Streamable-HTTP request headers, merging Bearer + custom auth."""
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
+    if extra_headers:
+        headers.update({str(k): str(v) for k, v in extra_headers.items() if k})
+    return headers
+
+
+async def _initialize_session(
+    client: httpx.AsyncClient, url: str, headers: dict[str, str],
+) -> dict[str, str]:
+    """Run the MCP ``initialize`` handshake + ``initialized`` notification.
+
+    Returns the headers to use for subsequent requests (carrying the
+    ``mcp-session-id`` for stateful servers). Raises ``HTTPException(400)`` with
+    the real cause in ``detail`` if the server rejects the handshake — a 502
+    would be swallowed by a fronting Cloudflare tunnel, hiding the reason.
+    """
+    init_resp = await client.post(url, headers=headers, json={
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "ai-employee-orchestrator", "version": "1.0.0"},
+        },
+    })
+
+    if init_resp.status_code != 200:
+        raise HTTPException(
+            status_code=400,
+            detail=f"MCP server returned {init_resp.status_code} on initialize "
+                   "(check URL and auth token/headers)",
+        )
+
+    init_data = _parse_jsonrpc_response(init_resp)
+    if not init_data or "result" not in init_data:
+        raise HTTPException(
+            status_code=400,
+            detail="MCP server returned an invalid initialize response",
+        )
+
+    # Extract session ID from response header if present (for stateful servers)
+    session_id = init_resp.headers.get("mcp-session-id")
+    tool_headers = {**headers}
+    if session_id:
+        tool_headers["mcp-session-id"] = session_id
+
+    # Send initialized notification
+    await client.post(url, headers=tool_headers, json={
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+    })
+    return tool_headers
+
+
 async def _discover_tools(
     url: str,
     bearer_token: str | None = None,
@@ -74,60 +163,13 @@ async def _discover_tools(
     as servers like n8n respond with SSE format. An optional Bearer token is
     sent as ``Authorization: Bearer <token>``; ``extra_headers`` (e.g. an
     ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
-
-    Failures of the TARGET server raise ``HTTPException(400)`` (not 502) with the
-    real cause in ``detail`` — a 502 would be swallowed by a fronting Cloudflare
-    tunnel (its own Bad-Gateway page), hiding the actual reason from the operator.
     """
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-    if bearer_token:
-        headers["Authorization"] = f"Bearer {bearer_token}"
-    if extra_headers:
-        headers.update({str(k): str(v) for k, v in extra_headers.items() if k})
+    headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        # Step 1: Initialize
-        init_resp = await client.post(url, headers=headers, json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "ai-employee-orchestrator", "version": "1.0.0"},
-            },
-        })
+        tool_headers = await _initialize_session(client, url, headers)
 
-        if init_resp.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail=f"MCP server returned {init_resp.status_code} on initialize "
-                       "(check URL and auth token/headers)",
-            )
-
-        init_data = _parse_jsonrpc_response(init_resp)
-        if not init_data or "result" not in init_data:
-            raise HTTPException(
-                status_code=400,
-                detail="MCP server returned an invalid initialize response",
-            )
-
-        # Extract session ID from response header if present (for stateful servers)
-        session_id = init_resp.headers.get("mcp-session-id")
-        tool_headers = {**headers}
-        if session_id:
-            tool_headers["mcp-session-id"] = session_id
-
-        # Send initialized notification
-        await client.post(url, headers=tool_headers, json={
-            "jsonrpc": "2.0",
-            "method": "notifications/initialized",
-        })
-
-        # Step 2: List tools
+        # List tools
         tools_resp = await client.post(url, headers=tool_headers, json={
             "jsonrpc": "2.0",
             "id": 2,
@@ -152,6 +194,52 @@ async def _discover_tools(
                     return item["result"].get("tools", [])
 
         return []
+
+
+async def _call_tool(
+    url: str,
+    tool_name: str,
+    arguments: dict,
+    bearer_token: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> dict:
+    """Invoke a single tool (``tools/call``) and return the raw JSON-RPC object.
+
+    Reuses the same handshake as :func:`_discover_tools`. The returned dict is the
+    server's response verbatim — including a JSON-RPC ``error`` member if the tool
+    itself failed — so the operator sees exactly what the server said. Transport
+    failures raise ``HTTPException(400)`` with the real cause in ``detail``.
+    """
+    headers = _build_headers(bearer_token, extra_headers)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        tool_headers = await _initialize_session(client, url, headers)
+
+        call_resp = await client.post(url, headers=tool_headers, json={
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments or {}},
+        })
+
+        if call_resp.status_code != 200:
+            raise HTTPException(
+                status_code=400,
+                detail=f"MCP server returned {call_resp.status_code} on tools/call",
+            )
+
+        data = _parse_jsonrpc_response(call_resp)
+        if isinstance(data, list):
+            # Batch response — pick the entry matching our request id
+            for item in data:
+                if isinstance(item, dict) and item.get("id") == 3:
+                    return item
+        if isinstance(data, dict):
+            return data
+        raise HTTPException(
+            status_code=400,
+            detail="MCP server returned an unparseable tools/call response",
+        )
 
 
 @router.get("")
@@ -187,9 +275,13 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
     # Discover tools
     try:
         tools = await _discover_tools(body.url, body.bearer_token, body.headers)
-    except HTTPException:
+    except HTTPException as e:
+        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"add:{body.name}",
+                           "failure", str(user.id), {"url": body.url, "detail": str(e.detail)})
         raise
     except Exception as e:
+        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"add:{body.name}",
+                           "failure", str(user.id), {"url": body.url, "detail": str(e)})
         raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {e}")
 
     from app.core.encryption import encrypt_token
@@ -226,9 +318,13 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
     extra = json_mod.loads(decrypt_token(server.headers_encrypted)) if server.headers_encrypted else None
     try:
         tools = await _discover_tools(server.url, token, extra)
-    except HTTPException:
+    except HTTPException as e:
+        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"refresh:{server.name}",
+                           "failure", str(user.id), {"server_id": server.id, "detail": str(e.detail)})
         raise
     except Exception as e:
+        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"refresh:{server.name}",
+                           "failure", str(user.id), {"server_id": server.id, "detail": str(e)})
         raise HTTPException(status_code=400, detail=f"Could not connect: {e}")
 
     server.tools = tools
@@ -303,9 +399,58 @@ async def probe_mcp_server(body: McpServerCreate, user=Depends(require_admin), d
         # protected server actually authenticates (previously both were dropped →
         # a correctly-configured server always failed the connection test).
         tools = await _discover_tools(body.url, body.bearer_token, body.headers)
-    except HTTPException:
+    except HTTPException as e:
+        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"probe:{body.name}",
+                           "failure", str(user.id), {"url": body.url, "detail": str(e.detail)})
         raise
     except Exception as e:
+        await _write_audit(db, AuditEventType.MCP_DISCOVERY_FAILED, f"probe:{body.name}",
+                           "failure", str(user.id), {"url": body.url, "detail": str(e)})
         raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {e}")
 
     return {"url": body.url, "tools": tools, "tool_count": len(tools)}
+
+
+@router.post("/{server_id}/call")
+async def call_mcp_tool(
+    server_id: int, body: McpToolCall, user=Depends(require_admin), db: AsyncSession = Depends(get_db),
+):
+    """Invoke a single tool on a saved MCP server by hand and record the attempt.
+
+    Diagnostic plumbing for operators (#414): a successful ``tools/call`` against a
+    real server settles in one step whether URL + credential + connection state all
+    line up, and a persisted audit row turns "it broke yesterday" into something
+    answerable. Admin-only, like every other route here. The raw JSON-RPC result is
+    returned verbatim (including a JSON-RPC ``error`` member if the tool failed).
+    """
+    result = await db.execute(select(McpServer).where(McpServer.id == server_id))
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    from app.core.encryption import decrypt_token
+    token = decrypt_token(server.auth_token_encrypted) if server.auth_token_encrypted else None
+    extra = json_mod.loads(decrypt_token(server.headers_encrypted)) if server.headers_encrypted else None
+
+    try:
+        rpc = await _call_tool(server.url, body.name, body.arguments, token, extra)
+    except HTTPException as e:
+        # Transport / handshake failure — the call never ran on the server.
+        await _write_audit(db, AuditEventType.MCP_TOOL_CALL_FAILED, f"{server.name}:{body.name}",
+                           "failure", str(user.id), {"server_id": server.id, "tool": body.name,
+                                                      "detail": str(e.detail)})
+        raise
+    except Exception as e:
+        await _write_audit(db, AuditEventType.MCP_TOOL_CALL_FAILED, f"{server.name}:{body.name}",
+                           "failure", str(user.id), {"server_id": server.id, "tool": body.name,
+                                                      "detail": str(e)})
+        raise HTTPException(status_code=400, detail=f"Could not call tool: {e}")
+
+    # A well-formed response can still carry a JSON-RPC error (the tool itself failed).
+    is_error = isinstance(rpc, dict) and "error" in rpc
+    # Do NOT persist arguments (may contain secrets) — only server + tool + outcome.
+    await _write_audit(db, AuditEventType.MCP_TOOL_CALLED, f"{server.name}:{body.name}",
+                       "failure" if is_error else "success", str(user.id),
+                       {"server_id": server.id, "tool": body.name})
+
+    return {"server_id": server.id, "tool": body.name, "result": rpc, "is_error": is_error}
