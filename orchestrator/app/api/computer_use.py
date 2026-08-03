@@ -564,6 +564,51 @@ async def get_recording(session_id: str, user=Depends(require_auth)):
     }
 
 
+class SkillFromRecordingRequest(BaseModel):
+    goal_hint: str = ""
+    model: str | None = None
+
+
+@router.post("/sessions/{session_id}/recording/to-skill", status_code=201)
+async def recording_to_skill(
+    session_id: str,
+    req: SkillFromRecordingRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Turn the recorded transcript into a reusable Skill (stored as DRAFT).
+
+    Stops the recording first so the transcript is final. The heavy lifting
+    (vision model reads the screenshots, writes parameterized prose steps)
+    lives in services/replay_skill_service.py.
+    """
+    from app.services.replay_skill_service import ReplaySkillError, create_skill_from_recording
+
+    session = _require_owned_session(session_id, user)
+    session["recording"] = False
+    steps = session.get("recording_steps", [])
+    if not steps:
+        raise HTTPException(status_code=400, detail="Nothing recorded yet — start a recording and perform some actions first.")
+
+    try:
+        skill = await create_skill_from_recording(
+            db, steps,
+            created_by=f"replay:{user.id}",
+            goal_hint=req.goal_hint,
+            model=req.model,
+        )
+    except ReplaySkillError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {
+        "skill_id": skill.id,
+        "name": skill.name,
+        "description": skill.description,
+        "status": skill.status.value,
+        "step_count": len(steps),
+    }
+
+
 # ── Bridge WebSocket ──────────────────────────────────────────────────────────
 
 ws_router = APIRouter(prefix="/ws/computer-use", tags=["computer-use-ws"])
