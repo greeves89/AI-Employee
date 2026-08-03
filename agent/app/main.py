@@ -87,7 +87,7 @@ def _auth_headers_for(name: str, auth: dict, headers: dict) -> dict:
     """
     result: dict[str, str] = {}
     token = auth.get(name)
-    if token:
+    if token is not None and token:
         result["Authorization"] = f"Bearer {token}"
     extra = headers.get(name)
     if isinstance(extra, dict):
@@ -252,11 +252,12 @@ def register_mcp_servers() -> None:
             servers = json.loads(custom_mcp)
             for name, url in servers.items():
                 safe_name = _sanitize_mcp_name(name)
+                header_args = _auth_header_args(name, auth, headers)
                 cmd_args = ["--transport", "http", safe_name, url]
-                for header in _auth_header_args(name, auth, headers):
+                for header in header_args:
                     cmd_args += ["--header", header]
                 if _run_mcp_add(cmd_args):
-                    suffix = " (authenticated)" if len(cmd_args) > 4 else ""
+                    suffix = " (authenticated)" if header_args else ""
                     print(f"[Agent] Registered MCP server: {safe_name} -> {url} (http){suffix}")
                 else:
                     print(f"[Agent] WARN: Failed to register MCP server: {safe_name}")
