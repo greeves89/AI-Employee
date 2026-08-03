@@ -1,7 +1,12 @@
 """API endpoints for managing external MCP servers."""
 
+import asyncio
+import ipaddress
 import json as json_mod
+import os
 import re
+import socket
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +25,53 @@ router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 def _sanitize_mcp_name(name: str) -> str:
     """Sanitize MCP server name: only letters, numbers, hyphens, underscores."""
     return re.sub(r"[^a-zA-Z0-9_-]", "-", name).strip("-")
+
+
+def _mcp_allow_private() -> bool:
+    """Whether MCP server URLs may point at private/loopback hosts.
+
+    Off by default (secure): the URL is operator-supplied infrastructure, but a
+    typo or a compromised admin session must not turn this into an SSRF pivot to
+    the DB, Redis or the cloud metadata endpoint. Deployments whose MCP servers
+    genuinely live on the internal docker network set MCP_ALLOW_PRIVATE_URLS=true.
+    """
+    return os.getenv("MCP_ALLOW_PRIVATE_URLS", "").strip().lower() in ("1", "true", "yes")
+
+
+async def _assert_mcp_url_allowed(url: str) -> None:
+    """SSRF guard for outbound MCP requests. Raises HTTPException(400) if blocked.
+
+    Enforces http(s) and rejects hosts that resolve to link-local (incl. the
+    169.254.169.254 cloud-metadata endpoint), multicast, reserved or unspecified
+    addresses unconditionally, and to private/loopback ranges unless
+    MCP_ALLOW_PRIVATE_URLS is set. Every resolved address must pass, so a name
+    that resolves to one public and one internal IP is still rejected.
+    """
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="MCP server URL must be a valid http(s) URL")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(parsed.hostname, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as e:
+        raise HTTPException(status_code=400, detail=f"Cannot resolve MCP host: {parsed.hostname}") from e
+    if not infos:
+        raise HTTPException(status_code=400, detail=f"Cannot resolve MCP host: {parsed.hostname}")
+    allow_private = _mcp_allow_private()
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+            raise HTTPException(
+                status_code=400,
+                detail=f"MCP host resolves to a forbidden address ({ip})",
+            )
+        if (ip.is_private or ip.is_loopback) and not allow_private:
+            raise HTTPException(
+                status_code=400,
+                detail=f"MCP host resolves to a private address ({ip}); "
+                       "set MCP_ALLOW_PRIVATE_URLS=true to allow internal MCP servers",
+            )
 
 
 class McpServerCreate(BaseModel):
@@ -164,6 +216,7 @@ async def _discover_tools(
     sent as ``Authorization: Bearer <token>``; ``extra_headers`` (e.g. an
     ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
     """
+    await _assert_mcp_url_allowed(url)
     headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -210,6 +263,7 @@ async def _call_tool(
     itself failed — so the operator sees exactly what the server said. Transport
     failures raise ``HTTPException(400)`` with the real cause in ``detail``.
     """
+    await _assert_mcp_url_allowed(url)
     headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=30.0) as client:

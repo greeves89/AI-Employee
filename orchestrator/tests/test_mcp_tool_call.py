@@ -43,7 +43,8 @@ async def test_call_tool_returns_raw_rpc_result():
     call = _resp(body={"jsonrpc": "2.0", "id": 3, "result": {"content": [{"type": "text", "text": "hi"}]}})
     ctx = _httpx_ctx([init, notified, call])
 
-    with patch("app.api.mcp_servers.httpx.AsyncClient", return_value=ctx):
+    with patch("app.api.mcp_servers.httpx.AsyncClient", return_value=ctx), \
+            patch("app.api.mcp_servers._assert_mcp_url_allowed", AsyncMock()):
         out = await _call_tool("http://x/mcp", "greet", {"name": "Ada"})
 
     assert out["result"]["content"][0]["text"] == "hi"
@@ -56,7 +57,8 @@ async def test_call_tool_passes_through_jsonrpc_error():
     call = _resp(body={"jsonrpc": "2.0", "id": 3, "error": {"code": -32602, "message": "bad args"}})
     ctx = _httpx_ctx([init, notified, call])
 
-    with patch("app.api.mcp_servers.httpx.AsyncClient", return_value=ctx):
+    with patch("app.api.mcp_servers.httpx.AsyncClient", return_value=ctx), \
+            patch("app.api.mcp_servers._assert_mcp_url_allowed", AsyncMock()):
         out = await _call_tool("http://x/mcp", "greet", {})
 
     assert out["error"]["message"] == "bad args"
@@ -148,3 +150,71 @@ async def test_route_404_when_server_missing():
     with pytest.raises(HTTPException) as ei:
         await call_mcp_tool(999, body, user=user, db=db)
     assert ei.value.status_code == 404
+
+
+# --- SSRF guard (_assert_mcp_url_allowed) -----------------------------------
+
+def _fake_loop_resolving_to(*ips):
+    """A stand-in event loop whose getaddrinfo yields the given IP literals."""
+    loop = MagicMock()
+    infos = [(2, 1, 6, "", (ip, 443)) for ip in ips]
+    loop.getaddrinfo = AsyncMock(return_value=infos)
+    return loop
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_non_http_scheme():
+    with pytest.raises(HTTPException) as ei:
+        await mcp_servers._assert_mcp_url_allowed("ftp://example.com/mcp")
+    assert ei.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_loopback():
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("127.0.0.1")):
+        with pytest.raises(HTTPException) as ei:
+            await mcp_servers._assert_mcp_url_allowed("http://localhost/mcp")
+    assert "private" in ei.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_cloud_metadata():
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("169.254.169.254")):
+        with pytest.raises(HTTPException) as ei:
+            await mcp_servers._assert_mcp_url_allowed("http://metadata/mcp")
+    assert "forbidden" in ei.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_guard_rejects_mixed_public_and_private():
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("93.184.216.34", "10.0.0.5")):
+        with pytest.raises(HTTPException):
+            await mcp_servers._assert_mcp_url_allowed("https://example.com/mcp")
+
+
+@pytest.mark.asyncio
+async def test_guard_allows_public():
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("93.184.216.34")):
+        await mcp_servers._assert_mcp_url_allowed("https://example.com/mcp")
+
+
+@pytest.mark.asyncio
+async def test_guard_allows_private_when_env_set(monkeypatch):
+    monkeypatch.setenv("MCP_ALLOW_PRIVATE_URLS", "true")
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("10.0.0.5")):
+        await mcp_servers._assert_mcp_url_allowed("http://internal-mcp/mcp")
+
+
+@pytest.mark.asyncio
+async def test_guard_still_blocks_metadata_even_when_private_allowed(monkeypatch):
+    monkeypatch.setenv("MCP_ALLOW_PRIVATE_URLS", "true")
+    with patch("app.api.mcp_servers.asyncio.get_running_loop",
+               return_value=_fake_loop_resolving_to("169.254.169.254")):
+        with pytest.raises(HTTPException) as ei:
+            await mcp_servers._assert_mcp_url_allowed("http://metadata/mcp")
+    assert "forbidden" in ei.value.detail.lower()
