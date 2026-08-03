@@ -51,6 +51,31 @@ def test_register_passes_header_to_claude_mcp_add(monkeypatch):
     assert "Authorization: Bearer tok123" in args
 
 
+def test_register_uses_original_name_for_auth_but_sanitized_for_add(monkeypatch):
+    """Auth is keyed by the ORIGINAL server name, while the server is registered
+    under the sanitized name — a mismatch must not drop the credential (W2 / #430)."""
+    monkeypatch.setenv("CUSTOM_MCP_SERVERS", json.dumps({"My Server": "https://x/mcp"}))
+    monkeypatch.setenv("CUSTOM_MCP_AUTH", json.dumps({"My Server": "tok123"}))
+    monkeypatch.delenv("CUSTOM_MCP_HEADERS", raising=False)
+    monkeypatch.delenv("COMPUTER_USE_BRIDGE_MCP_URL", raising=False)
+
+    calls = []
+    monkeypatch.setattr(main, "_run_mcp_add", lambda args: calls.append(args) or True)
+    monkeypatch.setattr(main, "_write_mcp_json_fallback", lambda: None)
+    monkeypatch.setattr(main, "_sanitize_mcp_name", lambda n: n.replace(" ", "-"))
+
+    main.register_mcp_servers()
+
+    custom_calls = [c for c in calls if "https://x/mcp" in c]
+    assert len(custom_calls) == 1
+    args = custom_calls[0]
+    # Registered under the sanitized name...
+    assert "My-Server" in args
+    assert "My Server" not in args
+    # ...but the credential (looked up by original name) is still present.
+    assert "Authorization: Bearer tok123" in args
+
+
 def test_mcp_json_fallback_includes_headers(monkeypatch, tmp_path):
     monkeypatch.setenv("CUSTOM_MCP_SERVERS", json.dumps({"composio": "https://x/mcp"}))
     monkeypatch.setenv("CUSTOM_MCP_AUTH", json.dumps({"composio": "tok123"}))
