@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import platform
+import queue
 import ssl
 import sys
 import threading
@@ -109,6 +110,111 @@ def take_screenshot(scale: float = 1.0) -> str:
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return base64.b64encode(buf.getvalue()).decode()
+
+
+class InputRecorder:
+    """Capture what the HUMAN does (clicks + typed text) to demonstrate a workflow.
+
+    Replay-Modus has two recording sources: the agent's own tool calls (recorded
+    server-side) and this one — a person doing the task once by hand so the agent
+    can learn it. Events are buffered here and drained by the WebSocket loop.
+
+    PRIVACY: while active this observes EVERY click and EVERY keystroke on the
+    machine, including other windows and anything typed into a password field.
+    It therefore only runs between an explicit start/stop, logs loudly at both
+    ends, and never writes to disk — events go straight out to the session that
+    asked for them. Typed text is flushed as whole strings on Enter/Tab/click,
+    so the transcript reads as "typed X into the field" rather than a raw
+    keylogger stream.
+    """
+
+    def __init__(self, emit) -> None:
+        self._emit = emit          # called with one event dict per captured step
+        self._listeners: list = []
+        self._text_buffer: list[str] = []
+        self.active = False
+
+    def _flush_text(self) -> None:
+        if not self._text_buffer:
+            return
+        text = "".join(self._text_buffer)
+        self._text_buffer.clear()
+        if text.strip():
+            self._push("type", {"text": text})
+
+    def _push(self, action: str, params: dict) -> None:
+        try:
+            shot = take_screenshot(0.5)
+        except Exception:  # noqa: BLE001 — a failed screenshot must not kill capture
+            shot = None
+        self._emit({
+            "action": action,
+            "params": params,
+            "ts": time.time(),
+            "screenshot_b64": shot,
+            "source": "human",
+        })
+
+    def _on_click(self, x, y, button, pressed) -> None:
+        if not pressed:
+            return
+        self._flush_text()  # a click ends whatever was being typed
+        self._push("click", {"x": int(x), "y": int(y), "button": str(button).split(".")[-1]})
+
+    def _on_key(self, key) -> None:
+        from pynput import keyboard
+
+        if key in (keyboard.Key.enter, keyboard.Key.tab):
+            self._flush_text()
+            self._push("key", {"keys": [str(key).split(".")[-1]]})
+            return
+        if key == keyboard.Key.backspace:
+            if self._text_buffer:
+                self._text_buffer.pop()
+            return
+        char = getattr(key, "char", None)
+        if char is not None:
+            self._text_buffer.append(char)
+        elif key == keyboard.Key.space:
+            self._text_buffer.append(" ")
+
+    def start(self) -> dict:
+        if self.active:
+            return {"ok": True, "already_active": True}
+        try:
+            from pynput import keyboard, mouse
+        except ImportError:
+            return {
+                "ok": False,
+                "error": "pynput is not installed — human input capture unavailable. "
+                         "Install it with: pip install pynput",
+            }
+        log.warning(
+            "INPUT CAPTURE STARTED — every click and keystroke on this machine is being "
+            "recorded until you stop it. Do not type passwords while this runs."
+        )
+        self._text_buffer.clear()
+        m = mouse.Listener(on_click=self._on_click)
+        k = keyboard.Listener(on_press=self._on_key)
+        m.start()
+        k.start()
+        self._listeners = [m, k]
+        self.active = True
+        return {"ok": True}
+
+    def stop(self) -> dict:
+        if not self.active:
+            return {"ok": True, "already_stopped": True}
+        self._flush_text()
+        for listener in self._listeners:
+            try:
+                listener.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        self._listeners.clear()
+        self.active = False
+        log.warning("INPUT CAPTURE STOPPED — no longer recording clicks/keystrokes.")
+        return {"ok": True}
 
 
 def _applescript_string_literal(value: str) -> str:
@@ -234,13 +340,25 @@ class InputController:
 class CommandDispatcher:
     def __init__(self):
         self._ctrl = InputController()
+        # Set by the WS client so human-capture events can be pushed upstream.
+        self.input_recorder: InputRecorder | None = None
 
     def dispatch(self, command: dict) -> dict:
         action = command.get("action", "")
         params = command.get("params", {})
 
         try:
-            if action == "screenshot":
+            if action == "start_input_capture":
+                if not self.input_recorder:
+                    return {"ok": False, "error": "input capture not wired up"}
+                return self.input_recorder.start()
+
+            elif action == "stop_input_capture":
+                if not self.input_recorder:
+                    return {"ok": False, "error": "input capture not wired up"}
+                return self.input_recorder.stop()
+
+            elif action == "screenshot":
                 scale = params.get("scale", 1.0)
                 return {"screenshot_b64": take_screenshot(scale)}
 
@@ -449,13 +567,41 @@ class Bridge:
         self.extra_headers: dict[str, str] = dict(extra_headers or {})
         self.dispatcher: CommandDispatcher | None = None
         self._running = False
+        # Human-capture events are produced on pynput's own threads, so they
+        # land in a thread-safe queue and are drained by an asyncio task that
+        # owns the WebSocket (never send from the listener thread directly).
+        self._input_events: queue.Queue = queue.Queue(maxsize=1000)
 
     def _ensure_dispatcher(self) -> CommandDispatcher:
         if self.dispatcher is None:
             log.info("Initializing desktop control")
             self.dispatcher = CommandDispatcher()
+            self.dispatcher.input_recorder = InputRecorder(self._queue_input_event)
             log.info("Desktop control ready")
         return self.dispatcher
+
+    def _queue_input_event(self, event: dict) -> None:
+        """Called from the pynput listener thread — must not block or send."""
+        try:
+            self._input_events.put_nowait(event)
+        except queue.Full:
+            log.warning("Input-capture queue full — dropping event")
+
+    async def _drain_input_events(self, ws) -> None:
+        """Forward queued human-capture events to the orchestrator."""
+        while self._running:
+            try:
+                event = await asyncio.get_event_loop().run_in_executor(
+                    None, self._input_events.get, True, 0.5
+                )
+            except queue.Empty:
+                continue
+            except Exception:  # noqa: BLE001 — loop shutting down
+                return
+            try:
+                await ws.send(json.dumps({"type": "input_event", "event": event}))
+            except Exception:  # noqa: BLE001 — connection gone; reconnect loop handles it
+                return
 
     async def connect(self) -> None:
         if not self.session_id:
@@ -499,7 +645,7 @@ class Bridge:
                     "bridge_version": BRIDGE_VERSION,
                     "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
                                      "open_app", "close_app", "get_clipboard", "set_clipboard", "find_element",
-                                     "wait_for_element"],
+                                     "wait_for_element", "start_input_capture", "stop_input_capture"],
                     "ax_tree_available": IS_MAC,
                 }
                 await ws.send(json.dumps(caps))
@@ -513,8 +659,15 @@ class Bridge:
                         "error": f"desktop_control_unavailable: {e}",
                     }))
 
-                async for raw in ws:
-                    await self._handle_message(ws, raw)
+                drain_task = asyncio.create_task(self._drain_input_events(ws))
+                try:
+                    async for raw in ws:
+                        await self._handle_message(ws, raw)
+                finally:
+                    drain_task.cancel()
+                    if self.dispatcher and self.dispatcher.input_recorder:
+                        # Never leave a keylogger running past the connection.
+                        self.dispatcher.input_recorder.stop()
 
             except websockets.ConnectionClosed as e:
                 log.warning(f"Connection closed: {e}. Reconnecting in 5s...")

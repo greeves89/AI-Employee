@@ -90,6 +90,9 @@ CAPABILITY_GROUPS: dict[str, list[str]] = {
     "apps": ["open_app", "close_app"],
     "clipboard": ["clipboard_read", "clipboard_write"],
     "shell": ["shell_run"],
+    # Replay-Modus: observe the human's own clicks/keystrokes. Off by default
+    # like shell — while active it sees everything typed on that machine.
+    "input_capture": ["start_input_capture", "stop_input_capture"],
 }
 
 # Groups enabled for all new sessions unless the user changes them.
@@ -186,6 +189,7 @@ async def create_session(user=Depends(require_auth)):
         # after it) — see /recording/start|stop below.
         "recording": False,
         "recording_steps": [],
+        "capture_human": False,
     }
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
     return {
@@ -533,19 +537,73 @@ def _require_owned_session(session_id: str, user) -> dict:
     return session
 
 
+async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0) -> dict:
+    """Send a bare action to the bridge and await its result."""
+    if not session["bridge_connected"] or not session["bridge_ws"]:
+        raise HTTPException(status_code=503, detail="Bridge not connected")
+    cmd_id = uuid.uuid4().hex[:8]
+    future: asyncio.Future = asyncio.get_event_loop().create_future()
+    session["pending_results"][cmd_id] = future
+    try:
+        await session["bridge_ws"].send_text(json.dumps({
+            "type": "command", "id": cmd_id, "command": {"action": action, "params": {}},
+        }))
+        return await asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        session["pending_results"].pop(cmd_id, None)
+        raise HTTPException(status_code=504, detail=f"Bridge timed out on {action}")
+
+
+class RecordingStartRequest(BaseModel):
+    # Also record what the HUMAN does at the machine (needs the input_capture
+    # capability). Off by default — see the privacy note on InputRecorder.
+    capture_human: bool = False
+
+
 @router.post("/sessions/{session_id}/recording/start")
-async def start_recording(session_id: str, user=Depends(require_auth)):
-    """Begin capturing a step-by-step transcript of this session."""
+async def start_recording(
+    session_id: str,
+    req: RecordingStartRequest | None = None,
+    user=Depends(require_auth),
+):
+    """Begin capturing a step-by-step transcript of this session.
+
+    Records the agent's own actions by default; with capture_human the bridge
+    additionally observes the user's clicks/keystrokes so a workflow can be
+    demonstrated by hand.
+    """
     session = _require_owned_session(session_id, user)
+    capture_human = bool(req and req.capture_human)
+
+    if capture_human:
+        allowed: set[str] = session.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)
+        if not _action_allowed("start_input_capture", allowed):
+            raise HTTPException(
+                status_code=403,
+                detail="Human input capture is disabled for this session — enable the "
+                       "'input_capture' capability first.",
+            )
+        result = await _send_bridge_action(session, "start_input_capture")
+        if not result.get("ok"):
+            raise HTTPException(status_code=502, detail=result.get("error") or "Bridge could not start input capture")
+
     session["recording"] = True
     session["recording_steps"] = []
-    return {"session_id": session_id, "recording": True}
+    session["capture_human"] = capture_human
+    return {"session_id": session_id, "recording": True, "capture_human": capture_human}
 
 
 @router.post("/sessions/{session_id}/recording/stop")
 async def stop_recording(session_id: str, user=Depends(require_auth)):
     """Stop capturing and return the full transcript (steps with screenshots)."""
     session = _require_owned_session(session_id, user)
+    if session.get("capture_human"):
+        try:
+            await _send_bridge_action(session, "stop_input_capture")
+        except HTTPException:
+            # Bridge already gone — it stops capture itself on disconnect.
+            pass
+        session["capture_human"] = False
     session["recording"] = False
     steps = session.get("recording_steps", [])
     return {"session_id": session_id, "recording": False, "steps": steps, "step_count": len(steps)}
@@ -705,6 +763,16 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                 session["capabilities"] = msg.get("capabilities", [])
                 session["platform"] = msg.get("platform", "unknown")
                 session["bridge_version"] = msg.get("bridge_version")
+
+            elif msg_type == "input_event":
+                # Replay-Modus, human source: the bridge observed the USER
+                # clicking/typing and pushed it up unsolicited. Same transcript
+                # the agent's own actions land in, so skill authoring doesn't
+                # care which source demonstrated the workflow.
+                if session.get("recording"):
+                    event = msg.get("event") or {}
+                    if event.get("action"):
+                        session["recording_steps"].append(event)
 
             elif msg_type == "pong":
                 pass  # bridge_last_seen_at already updated above
