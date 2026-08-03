@@ -319,6 +319,32 @@ export default function IntegrationsPage() {
                               Not configured — set OAUTH_{integration.provider.toUpperCase()}_CLIENT_ID in settings
                             </p>
                           )}
+                          {integration.auth_type === "oauth" && integration.scopes?.trim() && (() => {
+                            const scopeList = integration.scopes.split(/\s+/).filter(Boolean);
+                            return (
+                              <details className="mt-1.5 group">
+                                <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/60 hover:text-muted-foreground/90 select-none">
+                                  {integration.connected ? "Erteilte" : "Angeforderte"} Berechtigungen ({scopeList.length})
+                                  <span className="ml-1 text-muted-foreground/40 group-open:hidden">· anzeigen</span>
+                                </summary>
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {scopeList.map((s) => (
+                                    <span
+                                      key={s}
+                                      className="inline-block rounded bg-foreground/[0.05] border border-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/70"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))}
+                                </div>
+                                {!integration.connected && (
+                                  <p className="mt-1 text-[10px] text-muted-foreground/40">
+                                    Anpassbar via OAUTH_{integration.provider.toUpperCase()}_SCOPES.
+                                  </p>
+                                )}
+                              </details>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
