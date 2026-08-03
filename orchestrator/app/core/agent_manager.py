@@ -1637,7 +1637,7 @@ class AgentManager:
         if agent.container_id and agent.state in (
             AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
         ):
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             try:
                 if image_id_resolved and current_image_id is None:
                     image_outdated = False
@@ -1773,7 +1773,7 @@ class AgentManager:
 
         # Add Docker stats if running (run in thread pool to avoid blocking)
         if include_stats and agent.container_id and agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             try:
                 stats = await loop.run_in_executor(
                     None, self.docker.get_container_stats, agent.container_id
