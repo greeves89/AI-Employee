@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.135.1] — 2026-08-04
+
+Drei Fehler aus dem ersten echten Sprach-Test der Desktop-Bridge — alle drei sorgten dafür, dass der Agent Erfolg meldete, wo keiner war.
+
+### Fixed
+- **Der Agent behauptete, Apps geöffnet zu haben, die nicht aufgingen.** „Chrome ist jetzt bei dir geöffnet" — war es nicht. Die Bridge meldet Misserfolg sauber als `ok: false` samt Grund; mein Handler gab trotzdem stur eine Erfolgsmeldung zurück, und der Agent hat sie gutgläubig weitergereicht. Jetzt wird der Fehlertext der Bridge wörtlich durchgereicht, mit ausdrücklicher Anweisung, den Erfolg nicht zu behaupten.
+- **„Öffne google" konnte gar nicht funktionieren.** Adressen liefen über `open -a`, und `-a` erwartet eine **Anwendung**, keine URL. Neue Bridge-Aktion `open_url` (macOS `open`, Windows `start`, Linux `xdg-open`); der Sprach-Agent erkennt Adressen selbst und ergänzt fehlendes `https://`. In der Freigabe-Gruppe `apps` registriert — ohne diesen Eintrag wäre die Aktion fail-closed abgewiesen worden.
+- **Auf deutscher Tastatur tippte die Bridge Unsinn.** `pyautogui.typewrite` schickt Tastenpositionen statt Zeichen: aus `open -a "Google Chrome"` wurde `open ßa #Google Chrome#`. Auf macOS tippt jetzt System Events zeichenbasiert und damit layoutunabhängig, mit Rückfall auf den alten Weg, falls das scheitert.
+
+### Bekannt, noch offen
+- **Der Sprach-Agent sieht Screenshots nicht.** Er kann sie machen und anzeigen, aber Nova Sonic hat keinen Bildkanal — auf „was siehst du?" muss er passen. Seit v1.135.0 sagt er das ehrlich, statt zu raten. Damit er den Bildschirm wirklich auswerten kann, müsste das Bild an ein bildfähiges Modell gehen.
+
 ## [1.135.0] — 2026-08-04
 
 ### Added

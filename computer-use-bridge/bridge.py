@@ -317,6 +317,24 @@ class InputController:
             self._pyautogui.click(x, y, button=button)
 
     def type_text(self, text: str, interval: float = 0.02) -> None:
+        """Text tippen — layouttreu.
+
+        `pyautogui.typewrite` schickt TASTENPOSITIONEN, keine Zeichen. Auf einer
+        deutschen Tastatur kommt damit aus `-` ein `ß` und aus `"` ein `#`: aus
+        `open -a "Google Chrome"` wurde beim Kunden `open ßa #Google Chrome#`.
+        Auf macOS tippt System Events zeichenbasiert und damit unabhaengig vom
+        Layout; nur dort, wo es das nicht gibt, bleibt der alte Weg.
+        """
+        if sys.platform == "darwin" and text:
+            import subprocess
+            r = subprocess.run(
+                ["osascript", "-e",
+                 f'tell application "System Events" to keystroke "{_applescript_string_literal(text)}"'],
+                capture_output=True, text=True,
+            )
+            if r.returncode == 0:
+                return
+            log.warning("keystroke via System Events failed, falling back: %s", r.stderr.strip())
         self._pyautogui.typewrite(text, interval=interval)
 
     def key_press(self, keys: list[str]) -> None:
@@ -407,6 +425,26 @@ class CommandDispatcher:
                 if result.returncode != 0:
                     return {"ok": False, "app": app, "error": result.stderr.strip() or f'"{app}" not found'}
                 return {"ok": True, "app": app}
+
+            elif action == "open_url":
+                # Eigener Zweig, weil `open -a <url>` NICHT funktioniert: -a erwartet eine
+                # Anwendung. Eine Adresse geht ohne -a an den Standardbrowser. Genau daran
+                # scheiterte "oeffne google" im Sprachmodus.
+                url = str(params.get("url") or "").strip()
+                if not url.startswith(("http://", "https://")):
+                    return {"ok": False, "error": "Nur http/https-Adressen."}
+                import subprocess
+                if sys.platform == "darwin":
+                    cmd = ["open", url]
+                elif sys.platform.startswith("win"):
+                    cmd = ["cmd", "/c", "start", "", url]
+                else:
+                    cmd = ["xdg-open", url]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    return {"ok": False, "url": url,
+                            "error": result.stderr.strip() or "Browser liess sich nicht oeffnen"}
+                return {"ok": True, "url": url}
 
             elif action == "close_app":
                 app = params.get("app") or params["name"]
@@ -647,7 +685,7 @@ class Bridge:
                     "platform": platform.system(),
                     "bridge_version": BRIDGE_VERSION,
                     "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
-                                     "open_app", "close_app", "get_clipboard", "set_clipboard", "find_element",
+                                     "open_app", "open_url", "close_app", "get_clipboard", "set_clipboard", "find_element",
                                      "wait_for_element", "start_input_capture", "stop_input_capture"],
                     "ax_tree_available": IS_MAC,
                 }

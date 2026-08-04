@@ -2179,9 +2179,16 @@ class RealtimeVoiceSession:
         # Sprachbefehl → Bridge-Aktion. Nur diese vier; alles Weitere gehört in eine
         # richtige Aufgabe per ask_agent, nicht in ein Zuruf-Tool.
         if action == "open":
-            if not target.strip():
+            tgt = target.strip()
+            if not tgt:
                 return "Mir fehlt, was ich öffnen soll."
-            act, params = "open_app", {"name": target.strip()}
+            # `open -a <url>` gibt es nicht — eine Adresse braucht den URL-Weg.
+            if tgt.startswith(("http://", "https://")) or "." in tgt.split("/")[0]:
+                if not tgt.startswith(("http://", "https://")):
+                    tgt = "https://" + tgt
+                act, params = "open_url", {"url": tgt}
+            else:
+                act, params = "open_app", {"name": tgt}
         elif action == "screenshot":
             act, params = "screenshot", {"scale": 0.5}
         elif action == "click":
@@ -2220,6 +2227,13 @@ class RealtimeVoiceSession:
             return "Der Rechner des Nutzers hat nicht reagiert."
 
         result = (out or {}).get("result") or {}
+        # Die Bridge meldet Misserfolg als ok=False — das MUSS beim Nutzer ankommen.
+        # Vorher stand hier ein unbedingtes „ist geöffnet", worauf der Agent den Erfolg
+        # behauptete, obwohl die Bridge „Chrome not found" zurückgegeben hatte.
+        if isinstance(result, dict) and result.get("ok") is False:
+            why = str(result.get("error") or "").strip()
+            return (f"Das hat NICHT geklappt: {why or 'die Bridge meldet einen Fehler'}. "
+                    "Sag ihm genau das und behaupte auf keinen Fall, es sei geöffnet.")
         if act == "screenshot":
             b64 = result.get("screenshot_b64") or ""
             if not b64:
@@ -2231,8 +2245,8 @@ class RealtimeVoiceSession:
             return ("Screenshot gemacht und dem Nutzer angezeigt. ACHTUNG: Ich selbst SEHE das "
                     "Bild nicht. Sage nur, dass es jetzt auf dem Schirm ist, und frage, was er "
                     "damit machen will — beschreibe auf KEINEN Fall Inhalte, die ich nicht kenne.")
-        if act == "open_app":
-            return f"'{target.strip()}' ist auf seinem Rechner geöffnet."
+        if act in ("open_app", "open_url"):
+            return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
         return "Erledigt."
 
     async def _control_ui(self, action: str, target: str, query: str = "") -> str:

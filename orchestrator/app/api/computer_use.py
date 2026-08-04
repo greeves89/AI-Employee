@@ -93,7 +93,7 @@ CAPABILITY_GROUPS: dict[str, list[str]] = {
     "mouse": ["mouse_move", "mouse_click", "mouse_scroll", "drag"],
     "keyboard": ["key", "type", "hotkey"],
     "accessibility": ["ax_tree"],
-    "apps": ["open_app", "close_app"],
+    "apps": ["open_app", "close_app", "open_url"],
     "clipboard": ["clipboard_read", "clipboard_write"],
     "shell": ["shell_run"],
     # Replay-Modus: observe the human's own clicks/keystrokes. Off by default

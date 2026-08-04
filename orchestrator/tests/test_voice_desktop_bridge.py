@@ -265,3 +265,57 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BridgeResultHonestyTests(unittest.IsolatedAsyncioTestCase):
+    """Aus dem Live-Mitschnitt 2026-08-04: „Chrome ist jetzt bei dir geoeffnet."
+    Chrome war nicht offen. Die Bridge hatte ok=False gemeldet, der Handler gab
+    trotzdem stur Erfolg zurueck — der Agent behauptete es dann gutglaeubig.
+    """
+
+    def _voice(self):
+        from app.services.realtime_voice_session import RealtimeVoiceSession
+        v = RealtimeVoiceSession.__new__(RealtimeVoiceSession)
+        v.user_id, v.agent_id = "u1", "agent-1"
+        v._emit = AsyncMock()
+        return v
+
+    async def _run(self, action, target="", result=None):
+        v = self._voice()
+        with unittest.mock.patch.object(
+            cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
+        ), unittest.mock.patch.object(
+            cu, "dispatch_bridge_command", new=AsyncMock(return_value={"result": result or {}}),
+        ) as disp:
+            out = await v._desktop(action, target)
+        return out, disp
+
+    async def test_failed_open_is_reported_as_failure(self):
+        out, _ = await self._run("open", "Google Chrome",
+                                 result={"ok": False, "error": '"Google Chrome" not found'})
+        self.assertIn("NICHT geklappt", out)
+        self.assertIn("not found", out)
+        self.assertNotIn("wurde geöffnet", out)
+
+    async def test_successful_open_is_reported_as_success(self):
+        out, _ = await self._run("open", "Safari", result={"ok": True, "app": "Safari"})
+        self.assertIn("geöffnet", out)
+
+    async def test_url_uses_open_url_not_open_app(self):
+        """`open -a <url>` gibt es nicht — genau daran scheiterte „oeffne google"."""
+        _out, disp = await self._run("open", "https://google.de", result={"ok": True})
+        act = disp.await_args[0][1]
+        self.assertEqual(act, "open_url")
+
+    async def test_bare_domain_gets_a_scheme(self):
+        _out, disp = await self._run("open", "google.de", result={"ok": True})
+        self.assertEqual(disp.await_args[0][1], "open_url")
+        self.assertEqual(disp.await_args[0][2]["url"], "https://google.de")
+
+    async def test_plain_app_name_still_uses_open_app(self):
+        _out, disp = await self._run("open", "Taschenrechner", result={"ok": True})
+        self.assertEqual(disp.await_args[0][1], "open_app")
+
+    async def test_open_url_is_a_known_capability(self):
+        """Unbekannte Aktionen sind fail-closed — ohne Eintrag waere open_url tot."""
+        self.assertEqual(cu._ACTION_TO_GROUP.get("open_url"), "apps")
