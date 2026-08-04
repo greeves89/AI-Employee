@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.134.3] — 2026-08-04
+
+### Fixed
+- **Der Sprach-Agent wimmelte interne Adressen ab.** Auf „öffne das Ticketsystem Matrix42" antwortete er sinngemäß „das ist eine interne Adresse, ruf sie selbst im Browser auf". Er hat **keine** `computer_*`-Werkzeuge — die Desktop-Bridge steht ihm gar nicht zur Verfügung, die Anleitung aus #475 ging an die Agenten-Container, nicht an diese Laufzeit. Erreichen musste er die Adresse aber nie: Der **Browser des Nutzers** steht im selben Netz. Neue Regel im Sprach-Prompt: interne Adressen sind keine Sackgasse — mit `show_on_screen kind='tab'` im Browser des Nutzers öffnen, und soll dort etwas *getan* werden, per `ask_agent` an den Agenten mit Computer-Use delegieren. „Ruf es selbst auf" ist ausdrücklich als schlechteste Antwort benannt.
+- **Der Agent kündigte einen Seitenwechsel an, der keiner mehr ist.** Seit v1.134.0 erscheinen App-Seiten im Cockpit statt als Navigation; Werkzeug-Beschreibung und Prompt sagten aber weiter „switches the whole page". Beide nachgezogen — inklusive der neuen Ziele Apps, Audit-Log, System-Health und Schedules.
+
 ## [1.134.2] — 2026-08-04
 
 ### Fixed
