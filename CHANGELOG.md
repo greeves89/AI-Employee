@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.130.1] — 2026-08-04
+
+### Changed
+- **Denktiefe-Auswahl im Chat neu gestaltet.** Das native `<select>` passte optisch nicht zwischen die Pill-Buttons der Eingabezeile. Jetzt ein Icon-Button im gleichen Stil wie Anhang/Mikrofon (Gehirn-Symbol, violett hervorgehoben sobald eine Stufe gewählt ist, mit Kurzlabel) und ein eigenes Popover darüber statt des Browser-Dropdowns.
+
+---
+
 ## [1.130.0] — 2026-08-04
 
 Nachbesserungs-Release aus dem Kundentest von v1.129.0 — inklusive zweier Punkte, die in v1.129.0 falsch gebaut waren.

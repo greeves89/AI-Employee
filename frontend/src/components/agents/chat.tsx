@@ -5,7 +5,7 @@ import {
   Send, RotateCcw, Bot, AlertTriangle, WifiOff, ListChecks,
   Paperclip, Loader2, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
-  Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose,
+  Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose, Brain, Check,
 } from "lucide-react";
 import { ChatOverview } from "./chat-overview";
 import { SessionRail } from "./session-rail";
@@ -17,6 +17,19 @@ import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
+
+/** How hard the agent should think before answering. "" keeps whatever the
+ *  agent's harness is configured with; the rest is an explicit per-message
+ *  override. `short` is what's shown next to the icon once a level is picked. */
+type ReasoningLevel = "" | "off" | "low" | "medium" | "high";
+
+const REASONING_OPTIONS: { value: ReasoningLevel; label: string; short: string }[] = [
+  { value: "", label: "Standard", short: "" },
+  { value: "off", label: "Nicht nachdenken", short: "aus" },
+  { value: "low", label: "Kurz nachdenken", short: "kurz" },
+  { value: "medium", label: "Mittel", short: "mittel" },
+  { value: "high", label: "Gründlich nachdenken", short: "gründlich" },
+];
 
 interface TextStep {
   type: "text";
@@ -219,7 +232,19 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const [input, setInput] = useState("");
   // Per-message reasoning depth, picked by the user (like the thinking selector
   // in ChatGPT/Claude Code). "" = leave the agent's harness at its default.
-  const [reasoning, setReasoning] = useState<"" | "off" | "low" | "medium" | "high">("");
+  const [reasoning, setReasoning] = useState<ReasoningLevel>("");
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const reasoningRef = useRef<HTMLDivElement | null>(null);
+  // Close the popover on an outside click — it sits above the input, so leaving
+  // it open would cover the conversation.
+  useEffect(() => {
+    if (!reasoningOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!reasoningRef.current?.contains(e.target as Node)) setReasoningOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [reasoningOpen]);
   const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
   // Files attached via drag&drop or paperclip — uploaded on send, like pasted images.
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -1449,24 +1474,46 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           >
             <Mic className="h-4 w-4" />
           </button>
-          <select
-            value={reasoning}
-            onChange={(e) => setReasoning(e.target.value as typeof reasoning)}
-            disabled={!isConnected}
-            title="Wie gründlich soll der Agent nachdenken, bevor er antwortet?"
-            className={cn(
-              "h-10 shrink-0 rounded-xl border bg-background/80 px-2 text-xs outline-none transition-all disabled:opacity-40",
-              reasoning && reasoning !== "off"
-                ? "border-violet-500/40 text-violet-300"
-                : "border-border text-muted-foreground hover:text-foreground",
+          <div className="relative shrink-0" ref={reasoningRef}>
+            <button
+              onClick={() => setReasoningOpen((o) => !o)}
+              disabled={!isConnected}
+              title={`Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === reasoning)?.label}`}
+              className={cn(
+                "flex h-10 items-center gap-1.5 rounded-xl border px-2.5 transition-all disabled:opacity-40",
+                reasoning
+                  ? "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+                  : "border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]",
+              )}
+            >
+              <Brain className="h-4 w-4" />
+              {reasoning && (
+                <span className="text-[11px] font-medium">
+                  {REASONING_OPTIONS.find((o) => o.value === reasoning)?.short}
+                </span>
+              )}
+            </button>
+            {reasoningOpen && (
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/20">
+                <p className="px-3 pt-2.5 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  Wie gründlich denken?
+                </p>
+                {REASONING_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value || "default"}
+                    onClick={() => { setReasoning(opt.value); setReasoningOpen(false); }}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06]",
+                      reasoning === opt.value ? "text-violet-300" : "text-foreground/80",
+                    )}
+                  >
+                    <span>{opt.label}</span>
+                    {reasoning === opt.value && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  </button>
+                ))}
+              </div>
             )}
-          >
-            <option value="">Denken: Standard</option>
-            <option value="off">Denken: aus</option>
-            <option value="low">Denken: kurz</option>
-            <option value="medium">Denken: mittel</option>
-            <option value="high">Denken: gründlich</option>
-          </select>
+          </div>
           <textarea
             ref={inputRef}
             value={input}
