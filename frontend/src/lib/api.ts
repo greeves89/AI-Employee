@@ -1169,7 +1169,7 @@ export interface McpServerInfo {
   has_headers?: boolean;
   created_at: string | null;
   last_checked_at: string | null;
-  last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | null;
+  last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | "needs_oauth" | null;
   last_error: string | null;
   // Client-side OAuth (#426)
   oauth_enabled?: boolean;
