@@ -209,6 +209,26 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
         await asyncio.sleep(300)  # Check every 5 minutes
 
 
+async def _refresh_mcp_oauth_tokens() -> None:
+    """Keep OAuth-protected MCP server tokens fresh on a timer (#488).
+
+    ``refresh_if_needed`` previously ran only while building a new agent container,
+    so a stored MCP access token expired within ~1h and every agent lost the server
+    until recreated. This periodic sweep keeps the persisted token valid; the
+    per-server advisory lock (#462) makes it safe to run alongside agent startup.
+    """
+    while True:
+        try:
+            from app.db.session import async_session_factory
+            from app.services.mcp_oauth_refresh import refresh_all_oauth_servers
+
+            async with async_session_factory() as db:
+                await refresh_all_oauth_servers(db)
+        except Exception:
+            logger.exception("MCP OAuth periodic sweep failed; will retry in 5 min")
+        await asyncio.sleep(300)  # Check every 5 minutes
+
+
 async def _refresh_claude_token() -> None:
     """Background task that manages the Claude OAuth token lifecycle.
 
@@ -1635,6 +1655,9 @@ clean Markdown; you don't need to commit.
     # Start third-party OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
 
+    # Start OAuth-protected MCP server token refresh background task (#488)
+    mcp_oauth_refresh_task = asyncio.create_task(_refresh_mcp_oauth_tokens())
+
     # Start Claude Code OAuth token refresh background task
     claude_token_task = asyncio.create_task(_refresh_claude_token())
 
@@ -1721,6 +1744,7 @@ clean Markdown; you don't need to commit.
     chat_persist_task.cancel()
     step_persist_task.cancel()
     oauth_refresh_task.cancel()
+    mcp_oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
     skill_crawler_task.cancel()
