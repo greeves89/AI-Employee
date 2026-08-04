@@ -30,11 +30,16 @@ MCP_HEALTH_OK = "ok"
 MCP_HEALTH_AUTH_FAILED = "auth_failed"
 MCP_HEALTH_UNREACHABLE = "unreachable"
 MCP_HEALTH_PROTOCOL_ERROR = "protocol_error"
+# The server answered 401 with an RFC 9728 OAuth challenge: not an error, it just
+# still needs the Connect flow. Distinguished from auth_failed (a rejected static
+# token) so the UI can steer the operator to "Verbinden" instead of showing red.
+MCP_HEALTH_NEEDS_OAUTH = "needs_oauth"
 MCP_HEALTH_STATUSES = {
     MCP_HEALTH_OK,
     MCP_HEALTH_AUTH_FAILED,
     MCP_HEALTH_UNREACHABLE,
     MCP_HEALTH_PROTOCOL_ERROR,
+    MCP_HEALTH_NEEDS_OAUTH,
 }
 
 
@@ -534,6 +539,26 @@ async def list_mcp_servers(user=Depends(require_auth), db: AsyncSession = Depend
     }
 
 
+async def _advertises_oauth(url: str) -> bool:
+    """True when the server answers the initialize probe with an RFC 9728 OAuth
+    challenge (``WWW-Authenticate: Bearer resource_metadata="…"``).
+
+    Used to tell an OAuth-protected server (which SHOULD be created so the Connect
+    flow becomes reachable) apart from a genuinely rejected static token. Best
+    effort: any probe failure returns False so we fall back to the normal abort.
+    """
+    from app.services import mcp_oauth_client as oc
+    try:
+        www_auth = await _oauth_probe_challenge(url)
+    except HTTPException:
+        return False
+    # Only the challenge's own ``resource_metadata`` pointer counts. Passing the
+    # server URL as a fallback would derive a well-known path for ANY https host,
+    # so a plain rejected static token (401 with no OAuth challenge) would be
+    # misread as OAuth. RFC 9728 requires the pointer to be advertised explicitly.
+    return bool(www_auth and oc.resource_metadata_url(www_auth))
+
+
 @router.post("")
 async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Register a new MCP server and discover its tools."""
@@ -542,10 +567,30 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"MCP server '{body.name}' already exists")
 
+    from app.core.encryption import encrypt_token
+
     # Discover tools
     try:
         tools = await _discover_tools(body.url, body.bearer_token, body.headers)
     except McpDiscoveryError as e:
+        # A 401 that carries an OAuth challenge is not a failure: the server is
+        # OAuth-protected and simply needs the Connect flow, which can only be
+        # started against a server that already exists (issue #465). Create the
+        # row in a needs_oauth state instead of aborting, so the "OAuth offen"
+        # badge and "Verbinden" button become reachable. Any static creds the
+        # caller supplied are irrelevant to OAuth, so they are not stored.
+        if e.status == MCP_HEALTH_AUTH_FAILED and await _advertises_oauth(body.url):
+            server = McpServer(
+                name=body.name, url=body.url, tools=[], enabled=True,
+                oauth_enabled=True,
+            )
+            _mark_health(server, MCP_HEALTH_NEEDS_OAUTH,
+                         "OAuth erforderlich — auf 'Verbinden' klicken, um die Autorisierung zu starten")
+            db.add(server)
+            await db.commit()
+            await db.refresh(server)
+            return {**_serialize_mcp_server(server), "needs_oauth": True}
+
         _audit_discovery_failure(db, f"add:{body.name}", str(user.id),
                                   {"url": body.url, "detail": e.message})
         await db.commit()
@@ -556,7 +601,6 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
         await db.commit()
         raise HTTPException(status_code=400, detail=f"Could not connect to MCP server: {_short_error(str(e))}")
 
-    from app.core.encryption import encrypt_token
     server = McpServer(
         name=body.name, url=body.url, tools=tools, enabled=True,
         auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,

@@ -70,6 +70,15 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
     };
   }
 
+  if (server.last_status === "needs_oauth") {
+    return {
+      ok: false,
+      label: `OAuth erforderlich — auf „Verbinden“ klicken · ${checked}`,
+      className: "text-amber-400",
+      title: "Der Server ist OAuth-geschützt und wurde angelegt, aber noch nicht verbunden. Auf „Verbinden“ klicken, um die Autorisierung zu starten.",
+    };
+  }
+
   const fallback = {
     auth_failed: "Authentifizierung fehlgeschlagen",
     unreachable: "nicht erreichbar",
