@@ -96,7 +96,7 @@ interface SessionTab {
 }
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
-import { VoiceSessionModal } from "./voice-session";
+import { useVoiceSession } from "./voice-session-provider";
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
@@ -248,7 +248,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
   // Files attached via drag&drop or paperclip — uploaded on send, like pasted images.
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  const voiceSession = useVoiceSession();
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   // Resume (#chat-live): the agent is working on THIS session but the turn wasn't
@@ -1197,18 +1197,6 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           </div>
         </div>
       )}
-      {voiceOpen && (
-        <VoiceSessionModal
-          agentId={agentId}
-          agentName={agentId}
-          onClose={() => {
-            setVoiceOpen(false);
-            // Surface the just-persisted voice conversation as a session tab without reload.
-            void refreshSessions();
-          }}
-          resumeSessionId={activeSessionId ?? undefined}
-        />
-      )}
       {/* Conversation rail (shared with the Speech tab) — hidden in embedded (modal) mode */}
       {!embedded && railOpen && (
         <SessionRail
@@ -1467,7 +1455,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
           </button>
           <button
-            onClick={() => setVoiceOpen(true)}
+            onClick={() => {
+              voiceSession.startSession({
+                agentId,
+                agentName: agentId,
+                resumeSessionId: activeSessionId ?? undefined,
+              });
+              // Surface a just-persisted voice conversation as a session tab without reload.
+              void refreshSessions();
+            }}
             disabled={!isConnected}
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-all shrink-0"
             title="Live-Sprachsession starten"

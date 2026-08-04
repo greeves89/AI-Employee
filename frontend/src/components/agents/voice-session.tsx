@@ -76,6 +76,16 @@ function safeHttpUrl(raw: unknown): string | undefined {
 type VoiceState = "connecting" | "ready" | "listening" | "processing" | "speaking" | "error";
 type Mode = "classic" | "nova_sonic";
 
+export type VoiceSessionSnapshot = {
+  state: VoiceState;
+  mode: Mode;
+  transcript: string;
+  response: string;
+  statusMsg: string;
+  paused: boolean;
+  delegating: boolean;
+};
+
 /** ArrayBuffer → base64 without spreading a typed array (build-safe). */
 function bufToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -130,9 +140,25 @@ interface Props {
   /** Render inline inside a page/tab instead of as a fixed modal overlay:
    *  no dark backdrop, no close button, fills its container (used by the Speech tab). */
   embedded?: boolean;
+  /** Keep the session/audio graph mounted while the provider shows only the compact indicator. */
+  hidden?: boolean;
+  /** Called when the user explicitly ends the call; unlike onClose this tears down provider state. */
+  onEnd?: () => void;
+  /** Mirrors high-level state to the app-level provider for the floating indicator. */
+  onSnapshot?: (snapshot: VoiceSessionSnapshot) => void;
 }
 
-export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resumeSessionId, embedded = false }: Props) {
+export function VoiceSessionModal({
+  agentId,
+  agentName,
+  onClose,
+  getTicket,
+  resumeSessionId,
+  embedded = false,
+  hidden = false,
+  onEnd,
+  onSnapshot,
+}: Props) {
   const [state, setState] = useState<VoiceState>("connecting");
   const [mode, setMode] = useState<Mode>("classic");
   const [transcript, setTranscript] = useState("");
@@ -174,6 +200,10 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const lastApprovalIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    onSnapshot?.({ state, mode, transcript, response, statusMsg, paused, delegating });
+  }, [state, mode, transcript, response, statusMsg, paused, delegating, onSnapshot]);
 
   const changeVolume = useCallback((v: number) => {
     setVolume(v);
@@ -876,8 +906,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const endLive = useCallback(() => {
     teardownRealtime();
     wsRef.current?.close();
-    onClose();
-  }, [teardownRealtime, onClose]);
+    onEnd?.();
+    if (!onEnd) onClose();
+  }, [teardownRealtime, onClose, onEnd]);
 
   const bargeIn = useCallback(() => {
     beginBargeIn(); // already sends the interrupt to the server
@@ -947,8 +978,8 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   return (
     <div
       className={embedded
-        ? "w-full h-full"
-        : "fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"}
+        ? `${hidden ? "hidden " : ""}w-full h-full`
+        : `${hidden ? "hidden " : ""}fixed inset-0 z-50 flex items-stretch justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4`}
       onClick={embedded ? undefined : onClose}
     >
       <div

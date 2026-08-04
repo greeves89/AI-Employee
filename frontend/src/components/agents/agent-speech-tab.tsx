@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PanelLeft, PanelLeftClose } from "lucide-react";
+import { Maximize2, Mic, PanelLeft, PanelLeftClose, PhoneOff, Radio } from "lucide-react";
 import * as api from "@/lib/api";
 import type { ChatSession } from "@/lib/api";
 import { SessionRail } from "./session-rail";
-import { VoiceSessionModal } from "./voice-session";
+import { useVoiceSession } from "./voice-session-provider";
 
 /** Speech tab: a "Gespräche" rail (shared component with the text chat, incl.
  *  pin/rename/delete) plus the embedded live voice view. Picking a conversation
@@ -17,6 +17,7 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [railOpen, setRailOpen] = useState(true);  // collapsible like the chat rail
+  const voiceSession = useVoiceSession();
 
   const loadSessions = useCallback(async () => {
     try {
@@ -80,7 +81,7 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
         />
       )}
 
-      {/* Right — live voice view (remounts per selected session) */}
+      {/* Right — app-level live voice session control */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Toolbar — mirrors the chat's collapse control (icon-only). */}
         <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0">
@@ -93,14 +94,62 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
           </button>
         </div>
         <div className="min-h-0 flex-1 pt-3">
-          <VoiceSessionModal
-            key={`voice-${agentId}-${selected ?? "new"}`}
-            agentId={agentId}
-            agentName={agentName}
-            resumeSessionId={selected ?? undefined}
-            onClose={() => setSelected(null)}
-            embedded
-          />
+          <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-2xl border border-border bg-card px-6 text-center">
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-fuchsia-500/15 text-fuchsia-300">
+              <Mic className="h-6 w-6" />
+            </div>
+            <h3 className="mt-4 text-base font-semibold">Live-Gespräch</h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              {voiceSession.activeSession
+                ? `Aktive Session mit ${voiceSession.activeSession.agentName}`
+                : selected
+                  ? "Setzt das ausgewählte Gespräch per Sprache fort."
+                  : "Startet ein neues Sprachgespräch mit diesem Agenten."}
+            </p>
+            {voiceSession.activeSession && (
+              <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-3 py-1 text-xs text-fuchsia-300">
+                {voiceSession.snapshot?.mode === "nova_sonic" && <Radio className="h-3 w-3" />}
+                {voiceSession.snapshot?.state === "speaking"
+                  ? "Spricht"
+                  : voiceSession.snapshot?.state === "listening"
+                    ? "Hört zu"
+                    : voiceSession.snapshot?.state === "processing"
+                      ? "Arbeitet"
+                      : "Verbunden"}
+              </div>
+            )}
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <button
+                onClick={() => voiceSession.startSession({
+                  agentId,
+                  agentName,
+                  resumeSessionId: selected ?? undefined,
+                })}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <Mic className="h-4 w-4" />
+                {voiceSession.isActiveForAgent(agentId) ? "Gespräch öffnen" : "Gespräch starten"}
+              </button>
+              {voiceSession.activeSession && (
+                <>
+                  <button
+                    onClick={voiceSession.expandSession}
+                    className="inline-flex items-center gap-2 rounded-lg bg-foreground/[0.06] px-4 py-2 text-sm font-medium hover:bg-foreground/[0.10]"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    Aufklappen
+                  </button>
+                  <button
+                    onClick={voiceSession.endSession}
+                    className="inline-flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/20"
+                  >
+                    <PhoneOff className="h-4 w-4" />
+                    Beenden
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu } from "lucide-react";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { VoiceSessionProvider } from "@/components/agents/voice-session-provider";
 import { SidebarProvider, useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { cn } from "@/lib/utils";
 
@@ -78,15 +79,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Pages with custom layout (e.g. /chat has its own sidebar)
   const hasCustomLayout = CUSTOM_LAYOUT_PATHS.some((p) => pathname.startsWith(p));
-  if (hasCustomLayout) {
-    return <>{children}</>;
-  }
 
   // Authenticated — full layout, unless the page is being embedded somewhere.
   return (
-    <Suspense fallback={null}>
-      <ShellOrBare>{children}</ShellOrBare>
-    </Suspense>
+    <VoiceSessionProvider>
+      {hasCustomLayout ? (
+        <>{children}</>
+      ) : (
+        <Suspense fallback={null}>
+          <ShellOrBare>{children}</ShellOrBare>
+        </Suspense>
+      )}
+    </VoiceSessionProvider>
   );
 }
 
