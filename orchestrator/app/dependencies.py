@@ -148,6 +148,30 @@ async def require_auth(
     return await get_current_user(request, db)
 
 
+async def optional_auth(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Like ``require_auth``, but returns ``None`` instead of raising on 401.
+
+    ONLY for routes that have their own authorisation gate and may legitimately
+    serve an anonymous caller — currently just the app proxy, where a public
+    share token can stand in for a login (#467). Every such route must decide
+    for itself what an anonymous caller may see; ``None`` is never "allowed".
+
+    The setup-mode placeholder counts as anonymous here, NOT as the admin it
+    pretends to be for the rest of the platform: before the first registration
+    ``get_current_user`` hands out an admin for a request with no token at all,
+    and these routes are the ones strangers can reach on purpose. Bootstrapping
+    the platform must not double as a way into someone's apps.
+    """
+    try:
+        user = await get_current_user(request, db)
+    except HTTPException:
+        return None
+    return None if isinstance(user, _AnonymousUser) else user
+
+
 async def require_admin(
     request: Request,
     db: AsyncSession = Depends(get_db),

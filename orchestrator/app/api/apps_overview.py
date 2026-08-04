@@ -9,21 +9,37 @@ owns. Admins see all. This is the platform-wide counterpart to the per-agent
 
 import json
 import logging
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.app_sharing import (
+    ACCESS_AUTHENTICATED,
+    ACCESS_PUBLIC,
+    ACCESS_USER,
+    is_app_owner,
+    shared_projects_for_user,
+)
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
-from app.models.user import UserRole
+from app.models.app_share import APP_SHARE_SCOPES, AppShare, hash_share_token
+from app.models.audit_log import AuditLog, AuditEventType
+from app.models.user import User, UserRole
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/apps", tags=["apps"])
+
+#: Ein öffentlicher Link ist ein Loch in der Anmeldepflicht — er bekommt IMMER ein
+#: Ablaufdatum, und länger als das hier geht nicht.
+MAX_PUBLIC_SHARE_DAYS = 90
 
 
 async def _visible_agents(user, db: AsyncSession) -> dict[str, Agent]:
@@ -35,6 +51,33 @@ async def _visible_agents(user, db: AsyncSession) -> dict[str, Agent]:
             select(Agent).where(Agent.user_id == str(getattr(user, "id", "")))
         )).scalars().all()
     return {f"agent-{a.id[:8]}-": a for a in rows}
+
+
+async def _agent_for_project(project: str, db: AsyncSession) -> Agent:
+    """Resolve the owning agent from a compose project name (``agent-{id8}-…``).
+
+    Matching happens on the SAME prefix the project name was built from, so a
+    project can never be attributed to an agent that didn't produce it.
+    """
+    if not project.startswith("agent-"):
+        raise HTTPException(status_code=404, detail="App not found")
+    rows = (await db.execute(select(Agent))).scalars().all()
+    agent = next((a for a in rows if project.startswith(f"agent-{a.id[:8]}-")), None)
+    if not agent:
+        raise HTTPException(status_code=404, detail="App not found")
+    return agent
+
+
+async def _require_app_owner(project: str, user, db: AsyncSession) -> Agent:
+    """Only the owner of the app's agent (or admin/manager) may MANAGE shares.
+
+    Someone the app was shared with must never be able to re-share it, revoke a
+    share, or control the containers — freigeben darf nur, wem die App gehört.
+    """
+    agent = await _agent_for_project(project, db)
+    if not await is_app_owner(agent.id, user, db):
+        raise HTTPException(status_code=404, detail="App not found")
+    return agent
 
 
 def _first_port(container) -> str | None:
@@ -61,9 +104,11 @@ async def list_apps(
     from app.api.docker_apps import _project_name
 
     owned = await _visible_agents(user, db)
-    if not owned:
+    # Apps, die MIR freigegeben wurden (#467) — ich sehe sie, darf sie aber nur
+    # öffnen. Alle steuernden Endpunkte bleiben ownership-gated.
+    shared = await shared_projects_for_user(user, db)
+    if not owned and not shared:
         return {"apps": []}
-    id_to_agent = {a.id: a for a in owned.values()}
     apps: dict[str, dict] = {}
 
     # 1. Never-/previously-started compose projects discovered in each agent workspace.
@@ -102,7 +147,7 @@ async def list_apps(
             apps.setdefault(proj, {
                 "project": proj, "agent_id": agent.id, "agent_name": agent.name,
                 "name": name, "path": rel_path, "status": "not_started",
-                "containers": [], "url": None,
+                "containers": [], "url": None, "shared_with_me": None,
             })
 
     # 2. Actual containers (running/stopped) — taskforce apps + anything started.
@@ -113,15 +158,28 @@ async def list_apps(
     except Exception as e:  # noqa: BLE001
         logger.warning("[Apps] container list failed: %s", e)
         containers = []
+    # Agenten hinter FREMDEN, mir freigegebenen Projekten nachladen (nur diese —
+    # keine Vollabfrage, wenn nichts geteilt ist).
+    shared_agents: dict[str, Agent] = {}
+    if shared:
+        for _a in (await db.execute(select(Agent))).scalars().all():
+            pre = f"agent-{_a.id[:8]}-"
+            if any(p.startswith(pre) for p in shared):
+                shared_agents[pre] = _a
+
     for c in containers:
         proj = str(c.labels.get("com.docker.compose.project", ""))
         agent = next((a for pre, a in owned.items() if proj.startswith(pre)), None)
+        share_scope = None
+        if not agent and proj in shared:
+            agent = next((a for pre, a in shared_agents.items() if proj.startswith(pre)), None)
+            share_scope = shared[proj]
         if not agent:
             continue
         entry = apps.setdefault(proj, {
             "project": proj, "agent_id": agent.id, "agent_name": agent.name,
             "name": proj, "path": None, "status": "stopped",
-            "containers": [], "url": None,
+            "containers": [], "url": None, "shared_with_me": share_scope,
         })
         entry["containers"].append({
             "name": c.name, "status": c.status,
@@ -305,3 +363,236 @@ async def report_app(
             pass
 
     return {"ok": True, "task_id": task.id, "agent_id": agent.id, "agent_name": agent.name}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FREIGABEN (#467)
+#
+# Default deny: ohne Eintrag kommt nur der Besitzer an eine App. Verwalten darf
+# ausschließlich der Besitzer. Die Auswertung der Freigaben passiert NICHT hier,
+# sondern zentral in ``core/app_sharing`` — dieselbe Logik, die der Proxy nutzt.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class ShareCreate(BaseModel):
+    scope: str = ACCESS_USER
+    #: nur bei scope="user"
+    user_id: str | None = None
+    #: Pflicht bei scope="public", sonst optional (Tage ab jetzt)
+    expires_in_days: int | None = None
+
+
+def _share_dict(s: AppShare, name: str | None = None) -> dict:
+    """Token bewusst NICHT hier — der geht nur einmal beim Anlegen zurück."""
+    return {
+        "id": s.id, "project": s.project, "scope": s.scope,
+        "user_id": s.user_id, "user_name": name,
+        "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+        "expired": s.is_expired(),
+        "has_token": bool(s.token_hash),
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@router.get("/directory")
+async def app_share_directory(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Minimale Nutzerliste (id/name/email) für den Freigabe-Dialog. Ohne den
+    Aufrufer, ohne sensible Felder — analog zum Workflow-Freigabe-Picker."""
+    rows = (await db.execute(select(User.id, User.name, User.email).order_by(User.name))).all()
+    return {"users": [{"id": r[0], "name": r[1], "email": r[2]} for r in rows if r[0] != str(user.id)]}
+
+
+@router.delete("/shares/{share_id}")
+async def revoke_app_share(
+    share_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Freigabe zurückziehen. Wirkt sofort — ein öffentlicher Link ist danach tot."""
+    s = (await db.execute(select(AppShare).where(AppShare.id == share_id))).scalar_one_or_none()
+    if not s:
+        raise HTTPException(status_code=404, detail="Freigabe nicht gefunden")
+    agent = await _require_app_owner(s.project, user, db)
+    db.add(AuditLog(
+        agent_id=agent.id, event_type=AuditEventType.APP_SHARE_REVOKED,
+        command=s.project, user_id=str(user.id),
+        meta={"scope": s.scope, "grantee": s.user_id},   # nie der Token
+    ))
+    await db.delete(s)
+    await db.commit()
+    return {"deleted": share_id}
+
+
+@router.get("/{project}/shares")
+async def list_app_shares(
+    project: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alle Freigaben einer App — nur für den Besitzer sichtbar."""
+    await _require_app_owner(project, user, db)
+    rows = (await db.execute(select(AppShare).where(AppShare.project == project))).scalars().all()
+    names: dict[str, str] = {}
+    uids = [s.user_id for s in rows if s.user_id]
+    if uids:
+        for r in (await db.execute(select(User.id, User.name).where(User.id.in_(uids)))).all():
+            names[r[0]] = r[1]
+    return {"shares": [_share_dict(s, names.get(s.user_id or "")) for s in rows]}
+
+
+@router.post("/{project}/shares", status_code=201)
+async def create_app_share(
+    project: str,
+    body: ShareCreate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """App freigeben. Drei Stufen, aufsteigend nach Reichweite:
+
+    * ``user``          — eine namentlich benannte Person (Login nötig)
+    * ``authenticated`` — alle eingeloggten Plattform-Nutzer
+    * ``public``        — Link mit Token, OHNE Login; Ablaufdatum ist Pflicht
+
+    Der Token wird nur bei DIESEM Aufruf zurückgegeben und danach nie wieder
+    ausgeliefert — wer den Link verliert, erzeugt einen neuen.
+    """
+    agent = await _require_app_owner(project, user, db)
+
+    scope = (body.scope or "").strip().lower()
+    if scope not in APP_SHARE_SCOPES:
+        raise HTTPException(status_code=400, detail=f"scope muss einer von {APP_SHARE_SCOPES} sein")
+
+    expires_at = None
+    if scope == ACCESS_PUBLIC:
+        days = body.expires_in_days or 7
+        if days < 1 or days > MAX_PUBLIC_SHARE_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Öffentliche Links laufen nach 1–{MAX_PUBLIC_SHARE_DAYS} Tagen ab.",
+            )
+        expires_at = datetime.now(timezone.utc) + timedelta(days=days)
+    elif body.expires_in_days:
+        if body.expires_in_days < 1 or body.expires_in_days > 365:
+            raise HTTPException(status_code=400, detail="Ablauf muss zwischen 1 und 365 Tagen liegen.")
+        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+
+    token = None
+    if scope == ACCESS_USER:
+        target = (body.user_id or "").strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="user_id fehlt")
+        if not await db.scalar(select(User.id).where(User.id == target)):
+            raise HTTPException(status_code=404, detail="Nutzer nicht gefunden")
+        existing = (await db.execute(select(AppShare).where(
+            AppShare.project == project, AppShare.scope == ACCESS_USER,
+            AppShare.user_id == target,
+        ))).scalar_one_or_none()
+        if existing:
+            existing.expires_at = expires_at
+            await db.commit()
+            return _share_dict(existing)
+    elif scope == ACCESS_AUTHENTICATED:
+        existing = (await db.execute(select(AppShare).where(
+            AppShare.project == project, AppShare.scope == ACCESS_AUTHENTICATED,
+        ))).scalar_one_or_none()
+        if existing:
+            existing.expires_at = expires_at
+            await db.commit()
+            return _share_dict(existing)
+    else:
+        token = secrets.token_urlsafe(32)
+
+    s = AppShare(
+        id=f"aps_{uuid.uuid4().hex[:12]}",
+        project=project,
+        agent_id=agent.id,
+        scope=scope,
+        user_id=(body.user_id or None) if scope == ACCESS_USER else None,
+        token_hash=hash_share_token(token) if token else None,
+        expires_at=expires_at,
+        created_by=str(user.id),
+    )
+    db.add(s)
+    db.add(AuditLog(
+        agent_id=agent.id, event_type=AuditEventType.APP_SHARED,
+        command=project, user_id=str(user.id),
+        # Der Token gehört NIE ins Audit — er ist das ganze Geheimnis des Links.
+        meta={"scope": scope, "grantee": s.user_id,
+              "expires_at": expires_at.isoformat() if expires_at else None},
+    ))
+    await db.commit()
+    logger.info("[Apps] share created project=%s scope=%s by=%s", project, scope, user.id)
+
+    out = _share_dict(s)
+    if token:
+        out["token"] = token  # einmalig!
+    return out
+
+
+@router.get("/{project}")
+async def app_detail(
+    project: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Detailansicht einer App: Container, Ports, Öffnen-Link und — für den
+    Besitzer — die bestehenden Freigaben.
+
+    Sichtbar für Besitzer UND für alle, denen die App freigegeben wurde. Wer sie
+    nur freigegeben bekommen hat, sieht ``can_manage: false`` und keine
+    Freigabe-Liste (sonst könnte er sehen, wer sonst noch Zugriff hat).
+    """
+    agent = await _agent_for_project(project, db)
+    can_manage = await is_app_owner(agent.id, user, db)
+    if not can_manage and project not in await shared_projects_for_user(user, db):
+        raise HTTPException(status_code=404, detail="App not found")
+
+    try:
+        containers = docker.client.containers.list(
+            all=True, filters={"label": f"com.docker.compose.project={project}"}
+        )
+    except Exception:  # noqa: BLE001
+        containers = []
+
+    out_containers, url, open_container, open_port = [], None, None, None
+    for c in containers:
+        port = _first_port(c)
+        out_containers.append({
+            "name": c.name,
+            "service": c.labels.get("com.docker.compose.service", ""),
+            "status": c.status,
+            "image": (c.image.tags[0] if getattr(c.image, "tags", None) else ""),
+            "port": port,
+            "created": str(c.attrs.get("Created", ""))[:19],
+        })
+        if c.status == "running" and not url and port:
+            url = f"/api/v1/agents/{agent.id}/apps/proxy/{c.name}/{port}/"
+            open_container, open_port = c.name, port
+
+    shares: list[dict] = []
+    if can_manage:
+        rows = (await db.execute(select(AppShare).where(AppShare.project == project))).scalars().all()
+        names: dict[str, str] = {}
+        uids = [s.user_id for s in rows if s.user_id]
+        if uids:
+            for r in (await db.execute(select(User.id, User.name).where(User.id.in_(uids)))).all():
+                names[r[0]] = r[1]
+        shares = [_share_dict(s, names.get(s.user_id or "")) for s in rows]
+
+    running = sum(1 for c in out_containers if c["status"] == "running")
+    return {
+        "project": project,
+        "agent_id": agent.id,
+        "agent_name": agent.name,
+        "status": "running" if running and running == len(out_containers)
+                  else "partial" if running else ("stopped" if out_containers else "not_started"),
+        "containers": out_containers,
+        "running": running,
+        "total": len(out_containers),
+        "url": url,
+        "proxy_container": open_container,
+        "proxy_port": open_port,
+        "can_manage": can_manage,
+        "shares": shares,
+    }

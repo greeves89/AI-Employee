@@ -107,3 +107,6 @@ CLAUDE.md
 !/conf.d/site/
 /conf.d/site/*
 !/conf.d/site/.gitkeep
+
+# Electron-Build-Artefakte der Desktop-Bridge (1.6 GB, rein generiert)
+desktop/release/

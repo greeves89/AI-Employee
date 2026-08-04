@@ -2909,10 +2909,75 @@ export interface AppEntry {
   status: "running" | "stopped" | "not_started" | string;
   containers: AppContainer[];
   url: string | null;
+  /** Set when the app is NOT mine but shared with me — then only "open" is allowed. */
+  shared_with_me?: "user" | "authenticated" | null;
 }
 
 export async function listApps(): Promise<{ apps: AppEntry[] }> {
   return fetchJSON(`${getBase()}/apps`);
+}
+
+// --- App sharing (#467): default deny, only the owner may manage shares ---
+export type AppShareScope = "user" | "authenticated" | "public";
+
+export interface AppShare {
+  id: string;
+  project: string;
+  scope: AppShareScope;
+  user_id: string | null;
+  user_name: string | null;
+  expires_at: string | null;
+  expired: boolean;
+  has_token: boolean;
+  created_at: string | null;
+  /** Only ever present in the CREATE response — never listed again. */
+  token?: string;
+}
+
+export interface AppDetailContainer {
+  name: string; service: string; status: string; image: string;
+  port: string | null; created: string;
+}
+
+export interface AppDetail {
+  project: string;
+  agent_id: string;
+  agent_name: string;
+  status: string;
+  containers: AppDetailContainer[];
+  running: number;
+  total: number;
+  url: string | null;
+  proxy_container: string | null;
+  proxy_port: string | null;
+  can_manage: boolean;
+  shares: AppShare[];
+}
+
+export async function getAppDetail(project: string): Promise<AppDetail> {
+  return fetchJSON(`${getBase()}/apps/${encodeURIComponent(project)}`);
+}
+
+export async function listAppShares(project: string): Promise<{ shares: AppShare[] }> {
+  return fetchJSON(`${getBase()}/apps/${encodeURIComponent(project)}/shares`);
+}
+
+export async function createAppShare(
+  project: string,
+  body: { scope: AppShareScope; user_id?: string; expires_in_days?: number },
+): Promise<AppShare> {
+  return fetchJSON(`${getBase()}/apps/${encodeURIComponent(project)}/shares`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function revokeAppShare(shareId: string): Promise<{ deleted: string }> {
+  return fetchJSON(`${getBase()}/apps/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" });
+}
+
+export async function listAppShareDirectory(): Promise<{ users: { id: string; name: string; email: string }[] }> {
+  return fetchJSON(`${getBase()}/apps/directory`);
 }
 
 export async function stopApp(project: string): Promise<{ project: string; stopped: number }> {

@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.131.0] — 2026-08-04
+
+### Added
+- **Apps freigeben (#467).** Bisher kam an eine vom Agenten deployte App ausschließlich ihr Besitzer — alle anderen bekamen `Not authenticated`, auch wenn sie den Link hatten. Jetzt vergibt der Besitzer gezielt Zugriff, in drei Stufen:
+  - **Einzelne Person** — namentlich, Login nötig.
+  - **Alle eingeloggten Nutzer** — jeder mit Konto auf der Plattform.
+  - **Öffentlicher Link** — Token im Link, **ohne** Anmeldung, mit **Pflicht-Ablaufdatum** (1–90 Tage). Der Token wird nur einmal beim Anlegen angezeigt und danach nie wieder ausgeliefert; ein path-gebundenes HttpOnly-Cookie trägt ihn über die Unterressourcen der Seite, damit auch JS/CSS/Bilder laden.
+
+  **Default bleibt deny:** ohne passenden Eintrag ist Schluss. Eine Freigabe erlaubt ausschließlich das **Öffnen** — Starten, Stoppen, Neu bauen, Logs, Entfernen und Weiter-Freigeben bleiben ownership-gated. Freigegebene sehen auch nicht, wem die App sonst noch offensteht.
+- **Detailfenster auf `/apps`.** Klick auf eine App-Karte öffnet Eckdaten (Agent, Status, Workspace-Pfad, Compose-Projekt), alle Container mit Image/Port/Zustand — und für den Besitzer die Freigabe-Verwaltung samt Zurückziehen.
+- Namentlich bzw. an alle Eingeloggten freigegebene Apps erscheinen in der **Apps-Übersicht der Empfänger**, markiert als „für mich freigegeben" und ohne steuernde Schaltflächen. Öffentliche Links tauchen bewusst in keiner Liste auf — sie hängen am Token, nicht an einer Person.
+
+### Security
+- Die beiden SSRF-Gates des App-Proxys bleiben unverändert wirksam: eine Freigabe öffnet nur den **Zugriffsweg**, nie ein anderes **Ziel**. Ein gültiger Token für App A schließt App B nicht auf, und ein Container ohne passendes `com.docker.compose.project`-Label bleibt auch mit Token gesperrt (Plattform-Container wie Postgres/Redis sind damit unerreichbar).
+- **Der Link-Token erreicht die App auf keinem Weg.** Er ist das Geheimnis, das die App absichert — und die App ist agent-geschriebener Code, dem man nicht mehr geben darf als nötig. Drei Wege waren dicht zu machen:
+  - *Adresszeile:* beim ersten Aufruf wandert der Token in ein path-gebundenes HttpOnly-Cookie und die Seite wird ohne den Parameter neu ausgeliefert (303). Sonst bliebe er in `document.location` stehen und der Browser hängte ihn als `Referer` an jede Unterabfrage.
+  - *Weitergereichte Header:* `referer` fliegt jetzt zusammen mit `cookie` und `authorization` raus; die Antwort trägt zusätzlich `Referrer-Policy: no-referrer`.
+  - *Weitergereichte Query:* der Parameter wird **bedingungslos** aus dem, was an die App geht, entfernt — unabhängig von HTTP-Methode und davon, welche Freigabe-Stufe den Zugriff erlaubt hat. Er heißt deshalb `__aie_share` statt `t`, damit er nicht mit einem Parameter der App kollidiert. Wiederholte Query-Keys (`?a=1&a=2`) überstehen die Filterung unverändert.
+- **In der Datenbank steht nur der SHA-256 des Tokens**, nie der Token selbst — ein Leak oder altes Backup gibt damit keine funktionierenden Links her. Verglichen wird konstantzeitig (`hmac.compare_digest`).
+- **Fehlerantworten für Nicht-Besitzer sind ununterscheidbar.** „Container gibt es nicht", „falsches Projekt" und „nicht freigegeben" liefern dieselbe Antwort; sonst könnte, wer eine einzige Freigabe für einen Agenten besitzt, über die Statusunterschiede dessen übrige Apps durch Namensraten kartieren. Nur der Besitzer bekommt die genaue Ursache.
+- Vor-Gate im Proxy: existiert für den Agenten überhaupt keine gültige Freigabe, wird abgelehnt **bevor** Docker gefragt wird.
+- Neue `optional_auth`-Dependency liefert `None` statt 401 und ist ausschließlich am App-Proxy im Einsatz, der seine Autorisierung selbst durchführt. Der Setup-Modus-Platzhalter (vor der ersten Registrierung gibt `get_current_user` für einen Request *ohne* Token einen Admin heraus) zählt dort ausdrücklich als anonym — das Hochziehen der Plattform darf kein Nebeneingang in fremde Apps sein.
+- Freigeben und Zurückziehen landen im **Audit-Log** (`app_shared` / `app_share_revoked`) mit Reichweite, Empfänger und Ablauf — **ohne** den Token.
+- Bekannte Eigenschaft eines Links, der ohne Login trägt: er steht beim **allerersten** Aufruf einmal im Zugriffs-Log des Orchestrators, bevor die Umleitung greift. Wer dieses Log lesen kann, hat ohnehin Serverzugriff — in der Datenbank steht nur noch der Hash. Wer das nicht will, nutzt die Stufe „alle eingeloggten Nutzer".
+- 40 neue Tests decken die Zugriffsmatrix gegen echtes SQL ab (Besitzer/namentlich/alle-Eingeloggten/öffentlich × anonym/eingeloggt × gültig/abgelaufen × richtiger/falscher Token × eigenes/fremdes Projekt) plus Referer-/Cookie-Weitergabe, Token-Entfernung aus der URL und die Ununterscheidbarkeit der Absagen — Suite jetzt 678 Tests.
+
+### Docs
+- Benutzerhandbuch: neues Kapitel **32. Apps (Ergebnisse deiner Agenten öffnen & freigeben)** — Klick-für-Klick inkl. Freigabe-Stufen, Zurückziehen und Sicherheitshinweis zum öffentlichen Link.
+
+---
+
 ## [1.130.2] — 2026-08-04
 
 ### Fixed

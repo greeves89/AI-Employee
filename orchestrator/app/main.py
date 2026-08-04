@@ -938,6 +938,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure workflow tables: {e}")
 
+    # App-Freigaben (#467): wer darf eine Agenten-App öffnen. Ohne Zeile hier gilt
+    # weiterhin deny — nur der Besitzer kommt rein. Idempotent, wie oben ohne Alembic.
+    try:
+        from app.db.session import engine as _eng_as
+        from sqlalchemy import text as _txt_as
+        async with _eng_as.begin() as conn:
+            await conn.execute(_txt_as(
+                "CREATE TABLE IF NOT EXISTS app_shares ("
+                "id varchar PRIMARY KEY, project varchar NOT NULL, agent_id varchar NOT NULL,"
+                "scope varchar(20) NOT NULL DEFAULT 'user', user_id varchar, token_hash varchar,"
+                "expires_at timestamptz, created_by varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_as("CREATE INDEX IF NOT EXISTS ix_app_shares_project ON app_shares (project)"))
+            await conn.execute(_txt_as("CREATE INDEX IF NOT EXISTS ix_app_shares_user ON app_shares (user_id)"))
+            await conn.execute(_txt_as("CREATE INDEX IF NOT EXISTS ix_app_shares_agent ON app_shares (agent_id)"))
+            # Der Token-Hash muss eindeutig sein, sonst könnte eine Kollision auf die
+            # falsche App zeigen. (In der Tabelle steht NUR der Hash, nie der Token.)
+            await conn.execute(_txt_as("CREATE UNIQUE INDEX IF NOT EXISTS ux_app_shares_token ON app_shares (token_hash)"))
+        logger.info("app_shares table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure app_shares table: {e}")
+
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
     # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.

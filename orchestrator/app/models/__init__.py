@@ -41,8 +41,10 @@ from app.models.second_brain import SecondBrain
 from app.models.vault_chunk import VaultChunk
 from app.models.job_state import JobState
 from app.models.reflection_run import ReflectionRun
+from app.models.app_share import AppShare, APP_SHARE_SCOPES
 
 __all__ = [
+    "AppShare", "APP_SHARE_SCOPES",
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
     "TaskStep", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
     "AgentMemory", "AgentMemoryTag", "AgentMemoryLink", "Notification", "WebhookEvent", "McpServer",

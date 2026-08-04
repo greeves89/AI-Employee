@@ -63,6 +63,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 22. [Admin-Konsole](#22-admin-konsole)
 23. [Computer-Use Bridge (Desktop steuern)](#23-computer-use-bridge-desktop-steuern)
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
+32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -1238,6 +1239,102 @@ praktisch zum Ausprobieren, ohne bis 3 Uhr zu warten.
 
 ---
 
+## 32. Apps (Ergebnisse deiner Agenten öffnen & freigeben)
+
+Wenn ein Agent etwas Lauffähiges gebaut hat — eine kleine Web-App, ein Dashboard, einen
+Prototyp —, findest du das unter **Apps** in der linken Seitenleiste. Dort startest du es,
+schaust dir Logs an und **gibst es für andere frei**.
+
+![Apps-Übersicht](screenshots/f19-apps-uebersicht.png)
+
+### 32.1 Die App-Karte verstehen
+
+Jede Karte ist eine App. Oben rechts steht ihr Zustand:
+
+| Zustand | Bedeutung |
+|---|---|
+| **läuft** | Die App ist erreichbar — **Öffnen** funktioniert. |
+| **gestoppt** | Container sind da, laufen aber nicht. **Starten** klicken. |
+| **nicht gestartet** | Der Agent hat den Bauplan angelegt, die App lief noch nie. **Starten** baut sie zum ersten Mal. |
+| **für mich freigegeben** | Diese App gehört jemand anderem — du darfst sie **nur öffnen**. |
+
+Die Schaltflächen: **Öffnen**, **Starten**/**Stoppen**, **Freigeben**, **Neu bauen**
+(übernimmt Code-Änderungen), **Logs** und das Papierkorb-Symbol (Container endgültig
+entfernen).
+
+### 32.2 Details einer App ansehen
+
+**Klicke auf den oberen Bereich einer Karte** (Name/Agent). Es öffnet sich ein Fenster mit
+allen Eckdaten: zuständiger Agent, Status, Workspace-Pfad, Compose-Projektname sowie jeder
+einzelne Container mit Image, Port und Zustand.
+
+![App-Detailfenster](screenshots/f20-app-detail.png)
+
+### 32.3 Eine App freigeben — Schritt für Schritt
+
+> **Wichtig:** Ohne Freigabe kommt **nur du** an deine App. Ruft jemand anders den Link
+> auf, bekommt er `Not authenticated` bzw. eine Fehlermeldung. Genau das änderst du hier.
+
+1. Auf der Karte **Freigeben** klicken (oder im Detailfenster nach unten scrollen zum
+   Abschnitt **Freigaben**).
+2. Die **Reichweite** wählen — drei Schaltflächen:
+   - **Einzelne Person** — genau eine benannte Kollegin/ein Kollege. Sie/er muss
+     angemeldet sein. Danach die Person aus der Liste auswählen.
+   - **Alle eingeloggten Nutzer** — jeder mit einem Konto auf dieser Plattform.
+   - **Öffentlicher Link (ohne Login)** — ein Link, der **ohne Anmeldung** funktioniert.
+     Hier stellst du zusätzlich die **Gültigkeit in Tagen** ein (1–90).
+3. **Freigeben** klicken.
+
+![Freigabe-Dialog](screenshots/f21-app-freigeben.png)
+
+**Beim öffentlichen Link** erscheint danach einmalig der fertige Link mit Kopieren-Button.
+
+> **Diesen Link sofort kopieren — er wird nur ein einziges Mal angezeigt.** Danach lässt er
+> sich nicht mehr abrufen; wer ihn verliert, erzeugt einfach einen neuen (und zieht den
+> alten zurück).
+
+### 32.4 Was Freigegebene dürfen — und was nicht
+
+Wem du eine App freigibst, der darf sie **öffnen. Sonst nichts.** Starten, Stoppen, Neu
+bauen, Logs lesen, Container löschen und Weiter-Freigeben bleiben ausschließlich bei dir
+als Besitzer. Freigegebene sehen auch nicht, wem du die App sonst noch freigegeben hast.
+
+Bei **Einzelne Person** und **Alle eingeloggten Nutzer** taucht die App bei den anderen
+automatisch in deren **Apps**-Übersicht auf — markiert mit **„für mich freigegeben"**.
+Der öffentliche Link erscheint bewusst in **niemandes** Liste: er hängt am Link, nicht an
+einer Person.
+
+### 32.5 Eine Freigabe zurückziehen
+
+Detailfenster → Abschnitt **Freigaben** → beim Eintrag auf das **Papierkorb-Symbol**
+klicken. Das wirkt **sofort**: ein öffentlicher Link ist damit tot, ein freigegebener
+Nutzer sieht die App nicht mehr.
+
+### 32.6 Sicherheitshinweis zum öffentlichen Link
+
+Ein öffentlicher Link ist ein bewusstes Loch in der Anmeldepflicht — **jeder**, der ihn
+kennt, kommt an die App, auch von außerhalb eures Netzes. Deshalb:
+
+- Nur für **Demos und Prototypen**, nie für Apps mit echten oder personenbezogenen Daten.
+- Ein **Ablaufdatum ist Pflicht** (maximal 90 Tage) — der Link stirbt automatisch.
+- Nach der Demo: Freigabe zurückziehen (32.5).
+
+> **Der Browser des Empfängers muss Cookies für diese Seite zulassen.** Beim ersten
+> Aufruf legt der Link seinen Schlüssel in einem Cookie ab und verschwindet aus der
+> Adresszeile — so bekommt ihn die App selbst nie zu sehen. Sind Cookies blockiert,
+> erscheint nach dem ersten Klick eine Fehlermeldung; dann muss der Link erneut
+> aufgerufen werden, nachdem Cookies erlaubt wurden.
+
+### 32.7 Szenario: Demo für einen Kollegen
+
+1. Agent bitten, die App zu bauen → sie erscheint unter **Apps** als *nicht gestartet*.
+2. **Starten** klicken, warten bis **läuft** steht.
+3. **Freigeben** → **Einzelne Person** → Kollegen auswählen → **Freigeben**.
+4. Der Kollege sieht die App ab sofort in seiner eigenen **Apps**-Übersicht und klickt
+   dort auf **Öffnen** — ganz ohne Link-Verschicken.
+
+---
+
 ## A. Was kann ein Agent? (typische Einsätze)
 
 Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einfach im
@@ -1332,3 +1429,6 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Admin: AI-Accounts | `/admin` | `25-admin-ai-accounts.png` |
 | Admin: All Agents | `/admin` | `26-admin-all-agents.png` |
 | Chat | `/chat` | `20-chat.png` |
+| Apps: Übersicht | `/apps` | `f19-apps-uebersicht.png` |
+| Apps: Detailfenster | `/apps` | `f20-app-detail.png` |
+| Apps: Freigabe-Dialog | `/apps` | `f21-app-freigeben.png` |

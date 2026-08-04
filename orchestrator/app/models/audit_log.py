@@ -53,6 +53,9 @@ class AuditEventType(str, Enum):
     DLP_BLOCKED = "dlp_blocked"                   # outbound message blocked (e.g. leaked secret)
     DLP_MASKED = "dlp_masked"                     # outbound message sent with PII masked
     DLP_FLAGGED = "dlp_flagged"                   # outbound message flagged (log-only)
+    # App-Freigaben (#467) — wer eine Agenten-App für wen geöffnet hat
+    APP_SHARED = "app_shared"                     # Freigabe erteilt (Person/alle/öffentlich)
+    APP_SHARE_REVOKED = "app_share_revoked"       # Freigabe zurückgezogen
     # External MCP servers (#414) — operator-triggered diagnostics
     MCP_TOOL_CALLED = "mcp_tool_called"           # admin invoked a tool by hand (tools/call)
     MCP_TOOL_CALL_FAILED = "mcp_tool_call_failed" # manual tool invocation could not reach/run

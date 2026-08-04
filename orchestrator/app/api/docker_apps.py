@@ -15,16 +15,24 @@ import logging
 import re
 import shlex
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 import yaml
 from docker.errors import ContainerError, ImageNotFound, NotFound
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.app_sharing import (
+    ACCESS_OWNER,
+    ACCESS_PUBLIC,
+    agent_has_active_shares,
+    is_app_owner,
+    resolve_app_access,
+)
 from app.db.session import get_db
-from app.dependencies import get_docker_service, require_auth
+from app.dependencies import get_docker_service, optional_auth, require_auth
 from app.models.agent import Agent
 from app.services.docker_service import DockerService
 
@@ -682,6 +690,33 @@ _HOP_BY_HOP = {
     "content-encoding",
 }
 
+# Carries a public-link token across the app's sub-requests. Path-scoped to the one
+# app it was issued for, HttpOnly, and never forwarded upstream (see `_strip` below)
+# — the agent-authored app must not be able to read or replay it.
+_SHARE_COOKIE = "ai_app_share"
+_SHARE_COOKIE_MAX_AGE = 12 * 3600
+
+# Query parameter carrying a public-link token on the very first hit. Deliberately
+# NOT something short like `t`: this name is stripped before the request is proxied
+# onwards, so it must not collide with a parameter the app itself uses.
+_SHARE_QUERY = "__aie_share"
+
+
+def _set_share_cookie(response: Response, request: Request, container: str, port: str, token: str) -> None:
+    """Pin a public-link token to exactly ONE app's proxy path.
+
+    Path-scoped so it never travels to another app, HttpOnly so no script (the
+    app's own included) can read it, and never forwarded upstream.
+    """
+    idx = request.url.path.find("/proxy/")
+    cookie_path = request.url.path[:idx] + f"/proxy/{container}/{port}/" if idx >= 0 else "/"
+    response.set_cookie(
+        _SHARE_COOKIE, token,
+        max_age=_SHARE_COOKIE_MAX_AGE, path=cookie_path,
+        httponly=True, samesite="lax",
+        secure=(request.headers.get("x-forwarded-proto") or request.url.scheme) == "https",
+    )
+
 
 @router.api_route(
     "/proxy/{container}/{port}/{rest:path}",
@@ -693,7 +728,7 @@ async def proxy_app(
     port: str,
     rest: str,
     request: Request,
-    user=Depends(require_auth),
+    user=Depends(optional_auth),
     db: AsyncSession = Depends(get_db),
     docker: DockerService = Depends(get_docker_service),
 ):
@@ -701,12 +736,20 @@ async def proxy_app(
 
     Reachable at ``/agents/{id}/apps/proxy/{container}/{port}/…`` — served through the
     same Cloudflare+Caddy chain as the rest of ``/api/*`` (no exposed host port needed).
-    Two SSRF gates: (1) the container name must carry this agent's project prefix, and
-    (2) its compose ``project`` label (set server-side via ``-p``) must match too — so a
-    logged-in owner can only ever reach their OWN apps, never platform/other containers.
-    """
-    await _get_agent(agent_id, user, db)  # ownership + running-container check
 
+    WHERE it may point (the SSRF boundary) is decided by exactly ONE authoritative
+    check: the container's ``com.docker.compose.project`` label must start with this
+    agent's ``agent-{id8}-`` prefix. That label is set server-side by our own ``-p``,
+    not by agent-authored code, so it cannot be forged. It is deliberately NOT keyed
+    on the container's own NAME — apps may declare a fixed ``container_name`` that
+    carries no prefix, and those must still work. The name is only sanitised against
+    path traversal/injection before being used as an upstream host.
+
+    WHO may pass (#467): the owner always; beyond that only what an ``AppShare`` on
+    this exact compose project grants — named user, every logged-in user, or a public
+    link token. Default stays deny. A share widens the *access path* only; the label
+    gate above is unaffected by it, so sharing can never redirect to another target.
+    """
     prefix = f"agent-{agent_id[:8]}-"
     # Injection guard on the name used as the upstream host (no path/traversal).
     if "/" in container or ".." in container or not container:
@@ -714,7 +757,34 @@ async def proxy_app(
     if not port.isdigit() or not (1 <= int(port) <= 65535):
         raise HTTPException(status_code=400, detail="Invalid port")
 
-    # AUTHORITATIVE ownership check: the container must belong to a compose project we
+    # Public-link token on the first hit, then carried by a path-scoped cookie so the
+    # app's own sub-resources (JS/CSS/images) stay reachable without the query.
+    query_token = (request.query_params.get(_SHARE_QUERY) or "").strip()
+    share_token = query_token or (request.cookies.get(_SHARE_COOKIE) or "").strip()
+    # Everything EXCEPT our own token goes upstream. Unconditional — the app must
+    # never see the credential that gates it, no matter which method was used or
+    # which share scope happened to grant access. Kept as pairs, so an app relying
+    # on repeated keys (`?a=1&a=2`) still gets both.
+    fwd_params = [(k, v) for k, v in request.query_params.multi_items() if k != _SHARE_QUERY]
+
+    def _deny() -> HTTPException:
+        """ONE answer for "no such container", "wrong project" and "not shared".
+
+        Distinguishable statuses would let anyone holding a single share for this
+        agent map out its OTHER apps by guessing container names. Only the owner
+        gets the precise reason.
+        """
+        return HTTPException(
+            status_code=401 if user is None else 403,
+            detail="Not authenticated" if user is None else "Diese App ist nicht für dich freigegeben.",
+        )
+
+    is_owner = await is_app_owner(agent_id, user, db)
+    if not is_owner and not await agent_has_active_shares(agent_id, db):
+        # Nothing shared here at all — reject BEFORE touching Docker.
+        raise _deny()
+
+    # AUTHORITATIVE target check: the container must belong to a compose project we
     # started for THIS agent (the `com.docker.compose.project` label is set by our own
     # `-p agent-{id}-…`, not by agent-authored code, so it can't be forged). We key on
     # this label, NOT the container's own NAME — apps may set a fixed `container_name`
@@ -722,9 +792,32 @@ async def proxy_app(
     try:
         c = docker.client.containers.get(container)
     except Exception:
+        if not is_owner:
+            raise _deny()
         raise HTTPException(status_code=404, detail="App container not found")
-    if not str(c.labels.get("com.docker.compose.project", "")).startswith(prefix):
+    project = str(c.labels.get("com.docker.compose.project", ""))
+    if not project.startswith(prefix):
+        if not is_owner:
+            raise _deny()
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Now that the target is pinned to a concrete project, resolve the caller's right
+    # to open THAT project (owner short-circuits — no share lookup needed).
+    access = ACCESS_OWNER if is_owner else await resolve_app_access(
+        project, agent_id, user, share_token or None, db
+    )
+
+    # Public link, first hit: park the token in the path-scoped cookie and bounce to
+    # the SAME url without the token. Otherwise the secret stays in `document.location`
+    # and the browser hands it to the app in the `Referer` of every asset request —
+    # i.e. straight to the agent-authored code the token is supposed to gate.
+    # GET only: a 303 would rewrite any other method to GET. Everything else keeps
+    # the token in the query for this one request and gets the cookie on the way out.
+    if access == ACCESS_PUBLIC and query_token and request.method == "GET":
+        target_url = request.url.path + (f"?{urlencode(fwd_params)}" if fwd_params else "")
+        redirect = RedirectResponse(target_url, status_code=303)
+        _set_share_cookie(redirect, request, container, port, share_token)
+        return redirect
 
     # Route to the container's IP on the shared platform network, NOT its name:
     # compose-generated container names routinely exceed the 63-char DNS label limit
@@ -750,7 +843,12 @@ async def proxy_app(
     body = await request.body()
     # NEVER forward the platform auth credentials to the app — it runs agent-authored
     # code and could otherwise read the owner's session cookie / bearer token.
-    _strip = _HOP_BY_HOP | {"cookie", "authorization"}
+    # `referer` belongs in that list too: on a public link it would carry the share
+    # token of whatever page issued the sub-request, handing the app the very
+    # secret that gates it. The redirect above removes the token from the URL; this
+    # closes the case where a referer reaches us anyway (bookmark, manual entry, an
+    # older tab) so the token can never travel onwards.
+    _strip = _HOP_BY_HOP | {"cookie", "authorization", "referer"}
     fwd_headers = {
         k: v for k, v in request.headers.items() if k.lower() not in _strip
     }
@@ -758,7 +856,7 @@ async def proxy_app(
         async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             upstream = await client.request(
                 request.method, target,
-                params=dict(request.query_params),
+                params=fwd_params,
                 headers=fwd_headers, content=body,
             )
     except httpx.RequestError as e:
@@ -774,9 +872,17 @@ async def proxy_app(
     # platform cookies/localStorage/API), while its own scripts/forms still run.
     resp_headers["content-security-policy"] = "sandbox allow-scripts allow-forms allow-popups allow-modals;"
     resp_headers["x-content-type-options"] = "nosniff"
-    return Response(
+    # Belt and braces to the token-stripping redirect: even if a share token ends up
+    # in the URL, the browser must not attach it as `Referer` anywhere.
+    resp_headers["referrer-policy"] = "no-referrer"
+    response = Response(
         content=upstream.content,
         status_code=upstream.status_code,
         headers=resp_headers,
         media_type=upstream.headers.get("content-type"),
     )
+    # Non-GET first hits (a POST carrying the token) don't get the redirect above — set
+    # the cookie here so their follow-up requests stay authorised.
+    if access == ACCESS_PUBLIC and query_token:
+        _set_share_cookie(response, request, container, port, share_token)
+    return response
