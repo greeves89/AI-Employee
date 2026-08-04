@@ -247,20 +247,39 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
             out = await v._desktop("click", x="links", y="oben")
         self.assertIn("Zahlen", out)
 
-    async def test_screenshot_result_forbids_describing_unseen_content(self):
-        """Nova bekommt das Bild nicht — der Rueckgabetext darf nicht zum Erfinden
-        einladen (Review-Fund M2)."""
+    async def test_screenshot_is_described_by_the_vision_model(self):
+        """Nova Sonic hat keinen Bildkanal — das Bild geht durch ein bildfaehiges
+        Modell, und die Stimme bekommt dessen Beschreibung als Text."""
+        import app.services.screen_vision as sv
         v = self._voice()
         with unittest.mock.patch.object(
             cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
         ), unittest.mock.patch.object(
             cu, "dispatch_bridge_command",
             new=AsyncMock(return_value={"result": {"screenshot_b64": "abc"}}),
+        ), unittest.mock.patch.object(
+            sv, "describe_screenshot", new=AsyncMock(return_value="Excel ist offen."),
         ):
             out = await v._desktop("screenshot")
-        self.assertIn("SEHE das", out)
-        self.assertNotIn("Beschreibe kurz", out)
+        self.assertIn("Excel ist offen", out)
         v._emit.assert_awaited()
+
+    async def test_failing_vision_is_admitted_not_invented(self):
+        """Kann das Bild nicht ausgewertet werden, wird das gesagt — nicht geraten."""
+        import app.services.screen_vision as sv
+        v = self._voice()
+        with unittest.mock.patch.object(
+            cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
+        ), unittest.mock.patch.object(
+            cu, "dispatch_bridge_command",
+            new=AsyncMock(return_value={"result": {"screenshot_b64": "abc"}}),
+        ), unittest.mock.patch.object(
+            sv, "describe_screenshot",
+            new=AsyncMock(side_effect=sv.ScreenVisionError("Zugang fehlt")),
+        ):
+            out = await v._desktop("screenshot")
+        self.assertIn("nicht auswerten", out)
+        self.assertIn("erfinde nichts", out.lower())
 
 
 if __name__ == "__main__":

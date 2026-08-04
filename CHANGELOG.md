@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.136.0] — 2026-08-04
+
+### Added
+- **Der Sprach-Agent sieht jetzt wirklich, was auf dem Bildschirm ist.** Nova Sonic ist ein reines Sprache-zu-Sprache-Modell und hat **keinen Bildkanal** — ein Screenshot ging an den Browser des Nutzers, aber nie in den Kontext des Modells. Auf „was siehst du?" konnte der Agent deshalb nur passen. Das Bild läuft jetzt durch ein bildfähiges Modell, und die Stimme bekommt dessen Beschreibung als Text. Die Antwort ist auf drei kurze Sätze begrenzt, weil sie vorgelesen wird.
+  - Erkennt das bildfähige Modell im Wesentlichen nur den Schreibtischhintergrund, sagt es das ausdrücklich — unter macOS fehlt dann fast immer die Freigabe zur **Bildschirmaufnahme**, und genau so sah der Screenshot beim Test aus: Menüleiste da, Fensterinhalte leer.
+  - Scheitert die Auswertung, sagt der Agent das und rät nicht.
+
+### Fixed
+- **Der Agent schlug „Windows-Taschenrechner" auf einem Mac vor.** Die Bridge-Session kennt das Betriebssystem, der Sprach-Agent bekam es nur nie zu sehen. Jetzt fließt es in die Rückmeldung ein, sodass Fehlschläge mit den passenden App-Namen der jeweiligen Plattform beantwortet werden.
+
 ## [1.135.2] — 2026-08-04
 
 ### Security

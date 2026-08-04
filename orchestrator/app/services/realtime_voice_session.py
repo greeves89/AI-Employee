@@ -2172,6 +2172,16 @@ class RealtimeVoiceSession:
             return ("Es läuft keine Desktop-Bridge. Der Nutzer muss die Bridge-App auf "
                     "seinem Rechner starten — dann geht es sofort. Sag ihm genau das.")
         session_id, sess = found
+        # Ohne das schlaegt er auf einem Mac "Windows-Taschenrechner" vor.
+        plat = str(sess.get("platform") or "").strip()
+        os_note = ""
+        if plat:
+            plow = plat.lower()
+            if "darwin" in plow or "mac" in plow:
+                os_note = (" Der Nutzer ist auf macOS — dort heissen Apps z.B. 'Google Chrome', "
+                           "'Safari', 'Rechner', 'Microsoft Excel'. Schlage KEINE Windows-Namen vor.")
+            elif "win" in plow:
+                os_note = " Der Nutzer ist auf Windows — schlage keine macOS-Namen vor."
         if not sess.get("bridge_connected"):
             return ("Die Bridge-Session besteht, aber die App ist gerade nicht verbunden. "
                     "Der Nutzer soll die Bridge-App starten. Sag ihm genau das.")
@@ -2233,7 +2243,7 @@ class RealtimeVoiceSession:
         if isinstance(result, dict) and result.get("ok") is False:
             why = str(result.get("error") or "").strip()
             return (f"Das hat NICHT geklappt: {why or 'die Bridge meldet einen Fehler'}. "
-                    "Sag ihm genau das und behaupte auf keinen Fall, es sei geöffnet.")
+                    "Sag ihm genau das und behaupte auf keinen Fall, es sei geöffnet." + os_note)
         if act == "screenshot":
             b64 = result.get("screenshot_b64") or ""
             if not b64:
@@ -2242,9 +2252,18 @@ class RealtimeVoiceSession:
                 "kind": "image", "media_type": "image/png", "b64": b64,
                 "caption": "Bildschirm des Nutzers", "auto_open": True,
             }})
-            return ("Screenshot gemacht und dem Nutzer angezeigt. ACHTUNG: Ich selbst SEHE das "
-                    "Bild nicht. Sage nur, dass es jetzt auf dem Schirm ist, und frage, was er "
-                    "damit machen will — beschreibe auf KEINEN Fall Inhalte, die ich nicht kenne.")
+            # Nova Sonic hat keinen Bildkanal — das Bild durch ein bildfaehiges Modell
+            # schicken und dessen Beschreibung als Text zurueckgeben. Ohne das konnte der
+            # Agent auf „was siehst du?" nur passen.
+            from app.services.screen_vision import ScreenVisionError, describe_screenshot
+            try:
+                seen = await describe_screenshot(
+                    b64, question=text, platform=str(sess.get("platform") or ""),
+                )
+            except ScreenVisionError as e:
+                return (f"Screenshot gemacht und angezeigt, aber ich kann ihn nicht auswerten: {e} "
+                        "Sag ihm das und frage, was er sieht — erfinde nichts.")
+            return f"Auf dem Bildschirm des Nutzers ist zu sehen: {seen}"
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
         return "Erledigt."
