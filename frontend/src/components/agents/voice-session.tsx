@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
@@ -19,6 +18,16 @@ const NAV_ROUTES: Record<string, string> = {
   dashboard: "/", tasks: "/tasks", agents: "/agents", meeting_rooms: "/meeting-rooms",
   knowledge: "/knowledge", skills: "/skills", triggers: "/triggers", approvals: "/approvals",
   integrations: "/integrations", settings: "/settings", analytics: "/analytics",
+  apps: "/apps", audit: "/audit", health: "/health", schedules: "/schedules",
+};
+
+/** Anzeigename fürs Panel — der rohe Routenname stünde sonst als Überschrift da. */
+const NAV_LABELS: Record<string, string> = {
+  dashboard: "Dashboard", tasks: "Tasks", agents: "Agenten", meeting_rooms: "Meeting Rooms",
+  knowledge: "Knowledge Base", skills: "Skill Marketplace", triggers: "Triggers",
+  approvals: "Freigaben", integrations: "Integrationen", settings: "Einstellungen",
+  analytics: "Analytics", apps: "Apps", audit: "Audit-Log", health: "System-Health",
+  schedules: "Schedules",
 };
 
 type Turn = { role: "user" | "assistant"; text: string };
@@ -144,7 +153,9 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const [webModal, setWebModal] = useState<{ url: string; caption?: string } | null>(null);
   // Voice-driven UI overlay (e.g. the knowledge graph) shown on top of the cockpit.
   const [graphOverlay, setGraphOverlay] = useState<{ brainId: number | null; query?: string } | null>(null);
-  const router = useRouter();
+  // Eine App-Seite im Cockpit statt eines Seitenwechsels (#476) — sonst wird diese
+  // Komponente ausgehaengt und das Mikrofon stirbt mitten im Satz.
+  const [pageOverlay, setPageOverlay] = useState<{ path: string; label: string } | null>(null);
   // URLs whose auto-open we already attempted, and those the popup blocker swallowed.
   const autoOpenedRef = useRef<Set<string>>(new Set());
   const [blockedUrls, setBlockedUrls] = useState<Set<string>>(new Set());
@@ -362,7 +373,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const handleUiCommand = useCallback(async (action: string, target: string, query?: string) => {
     const a = (action || "").toLowerCase().trim();
     const t = (target || "").toLowerCase().trim();
-    if (a === "close") { setGraphOverlay(null); return; }
+    if (a === "close") { setGraphOverlay(null); setPageOverlay(null); return; }
     if (t === "knowledge_graph" || t === "graph" || t === "wissensgraph" || t === "knowledgegraph") {
       let brainId: number | null = null;
       // allSettled, not all: if the mounts call fails (403/404/network) we can
@@ -383,13 +394,16 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
       setGraphOverlay({ brainId, query: query?.trim() || undefined });
       return;
     }
-    // Navigate to an app page. `target` is LLM output (untrusted) → only allow a known
+    // Show an app page. `target` is LLM output (untrusted) → only allow a known
     // route, or a strictly-internal path: single leading slash + alnum first char, no
     // "//host" (open redirect), no backslash/colon/dots.
     const isSafeInternal = /^\/[a-zA-Z0-9][a-zA-Z0-9/_-]*$/.test(t);
     const path = NAV_ROUTES[t] || (isSafeInternal ? t : null);
-    if (path) router.push(path);
-  }, [agentId, router]);
+    // Show it INSIDE the cockpit, exactly like the knowledge graph — navigating away
+    // would unmount this component and cut the microphone mid-sentence. That was the
+    // whole bug: the voice assistant could open a page, and thereby silence itself.
+    if (path) setPageOverlay({ path, label: NAV_LABELS[t] || t });
+  }, [agentId]);
 
   const modeRef = useRef<Mode>("classic");
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -1378,6 +1392,41 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {pageOverlay && (
+              <div className="fixed inset-0 z-[60] flex flex-col bg-background/95 backdrop-blur-sm">
+                <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+                  <LayoutGrid className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">{pageOverlay.label}</span>
+                  <span className="hidden text-[11px] text-muted-foreground/50 sm:inline">
+                    — sprich einfach weiter („mach das wieder zu")
+                  </span>
+                  <a
+                    href={pageOverlay.path}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="In eigenem Tab öffnen"
+                    className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                  <button
+                    onClick={() => setPageOverlay(null)}
+                    className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
+                    aria-label="Schließen"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {/* Gleiche Herkunft → die Sitzung des Nutzers gilt auch hier. `embed=1`
+                    laesst die Seite ohne Sidebar rendern, damit nicht zwei Rahmen
+                    ineinanderstecken. Der Pfad ist oben gegen eine Allowlist geprueft. */}
+                <iframe
+                  src={`${pageOverlay.path}${pageOverlay.path.includes("?") ? "&" : "?"}embed=1`}
+                  title={pageOverlay.label}
+                  className="min-h-0 flex-1 border-0 bg-background"
+                />
               </div>
             )}
             {meetingOpen && (

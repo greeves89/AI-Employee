@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu } from "lucide-react";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -82,7 +82,27 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Authenticated - show full layout with sidebar
+  // Authenticated — full layout, unless the page is being embedded somewhere.
+  return (
+    <Suspense fallback={null}>
+      <ShellOrBare>{children}</ShellOrBare>
+    </Suspense>
+  );
+}
+
+/** `?embed=1` renders the page WITHOUT the app chrome (no sidebar, no hamburger).
+ *
+ *  Used when a page is shown inside another view — e.g. the voice cockpit, which
+ *  displays Analytics/Tasks/Knowledge in a panel instead of navigating away (that
+ *  would unmount the live session and kill the microphone). Authentication is
+ *  unaffected: everything above still had to pass, this only drops the frame.
+ *
+ *  Own component + Suspense because `useSearchParams` requires a boundary. */
+function ShellOrBare({ children }: { children: React.ReactNode }) {
+  const params = useSearchParams();
+  if (params.get("embed") === "1") {
+    return <div className="min-h-screen">{children}</div>;
+  }
   return (
     <SidebarProvider>
       <AppShell>{children}</AppShell>

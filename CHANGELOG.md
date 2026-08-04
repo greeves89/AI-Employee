@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.134.0] — 2026-08-04
+
+### Fixed
+- **Die Sprachsteuerung brachte sich selbst zum Schweigen (#476).** Ließ man den Agenten per Sprache eine Seite öffnen — „zeig mir Analytics" —, navigierte die App dorthin, die Sprachsitzung wurde ausgehängt und das Mikrofon war tot. Das Feature widersprach sich selbst: Die Navigation war eingebaut und zerstörte genau das, was sie steuerte. Seiten erscheinen jetzt **im Sprach-Cockpit selbst**, in demselben Panel, in dem der Wissensgraph schon lange angezeigt wird. Die Sitzung läuft weiter, man kann direkt weitersprechen („mach das wieder zu"). Neben Analytics & Co. sind jetzt auch Apps, Audit-Log, System-Health und Schedules ansprechbar, jeweils mit lesbarem Titel statt des rohen Routennamens.
+- Neuer Darstellungsmodus `?embed=1`: rendert eine Seite ohne App-Rahmen (keine Sidebar), damit im Panel nicht zwei Rahmen ineinanderstecken. Ändert nichts an der Anmeldung — die Seite verlangt weiterhin einen gültigen Login, es fällt nur die Umrandung weg. Der eingebettete Pfad wird weiterhin gegen die bestehende Allowlist geprüft, bevor er angezeigt wird.
+
 ## [1.133.0] — 2026-08-04
 
 ### Changed
