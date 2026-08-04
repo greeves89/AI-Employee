@@ -59,6 +59,13 @@ class RefreshAllOAuthServersTests(unittest.IsolatedAsyncioTestCase):
         sql = str(db.execute.await_args.args[0]).lower()
         assert "oauth_enabled" in sql
 
+    async def test_empty_server_list_returns_zero(self):
+        db = _session_returning([])
+        with patch.object(mor, "refresh_if_needed", new=AsyncMock()) as rin:
+            usable = await mor.refresh_all_oauth_servers(db)
+        assert usable == 0
+        rin.assert_not_awaited()
+
     async def test_one_failing_server_does_not_abort_the_sweep(self):
         servers = [_server(1, "a"), _server(2, "boom"), _server(3, "c")]
         db = _session_returning(servers)
