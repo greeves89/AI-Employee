@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.130.0] — 2026-08-04
+
+Nachbesserungs-Release aus dem Kundentest von v1.129.0 — inklusive zweier Punkte, die in v1.129.0 falsch gebaut waren.
+
+### Added
+- **Reasoning-Tiefe pro Nachricht, gesteuert vom Nutzer** (Standard / aus / kurz / mittel / gründlich) direkt neben der Chat-Eingabe — wie das Thinking-Level in ChatGPT, Claude Code oder Codex. Wirkt in **allen drei Harnesses**: `MAX_THINKING_TOKENS` (claude_code), `-c model_reasoning_effort` (codex_cli), `reasoning_effort` am Provider (custom_llm). Der Wert wird serverseitig gegen eine Whitelist geprüft, bevor er in CLI-Flags oder Request-Bodies landet.
+  - *Korrigiert v1.129.0:* dort saß die Einstellung nur im Anlege-Dialog für `custom_llm`+OpenAI, war nachträglich nicht änderbar und für claude_code/codex_cli technisch wirkungslos.
+- **Computer-Use-Sessions überleben Neustarts.** Metadaten liegen in Redis, die Bridge hängt sich beim Reconnect mit derselben ID wieder an. `POST /sessions` gibt standardmäßig die **bestehende** Session zurück statt jedes Mal eine neue ID (`?reuse=false` erzwingt eine neue) und bevorzugt dabei die mit aktiver Bridge. Timeout läuft ab **letzter Aktivität** (12 h) statt ab Erstellung (vorher 30 min ab `created_at` — das killte Sessions mitten in der Arbeit); Aktions-Limit 50 → 500 mit Reset bei jedem Bridge-Attach.
+- **`list_my_team`** als MCP-Tool für den Agenten (`GET /teams/mine`, live aufgelöste Namen/Rollen/Lead).
+
+### Fixed
+- **`/agents/{id}?tab=speech` landete trotzdem im Chat-Tab.** Der Deep-Link las `window.location` mit `[]`-Dependency — der App Router remountet bei reiner Query-Änderung nicht, der Effect lief bei clientseitiger Navigation also nie. Zusätzlich gegen die im aktuellen Modus *sichtbaren* Tabs validiert (sonst hätte der Fallback-Effect 8 von 15 Tabs sofort zurückgesetzt).
+- **Voice-Navigation im Second-Brain-Graph tat sichtbar nichts.** Der Fokus lief, bevor die Force-Simulation dem Knoten Koordinaten gegeben hatte (Kamera flog nach 0,0,0), und wurde danach von `zoomToFit` (600 ms) und dem Center-Orbit (1600 ms) überschrieben. Jetzt wartet die Kamerafahrt auf die fertige Positionierung und parkt solange beide Timer. Außerdem: Brain-Auflösung per `allSettled` (ein fehlschlagender Mounts-Call verwarf vorher die komplette Brain-Liste) und der `query`-Parameter steht jetzt explizit im System-Prompt.
+- **Lead-Agent sah neu zum Team hinzugefügte Mitglieder nicht.** Kein Cache-Problem: die CLAUDE.md schreibt jedem Lead `list_my_team` vor — **dieses Tool existierte im Tool-Server des Agenten gar nicht**, nur im eingehenden MCP-Server für externe Clients. Der Lead lief in „Unknown tool" und antwortete aus dem Gedächtnis bzw. aus dem beim Container-Start eingefrorenen `/shared/team.json`.
+- **Windows-Bridge, drei Ursachen:** (1) `save_config` hatte weder `try/except` noch `encoding` und lief in einem Daemon-Thread — schlug das Schreiben fehl (OneDrive-Profil, Rechte), starb der Thread lautlos und die Einstellungen waren nach dem Neustart weg; jetzt atomar, mit sichtbarer Fehlermeldung. (2) `_status` wurde **nie** auf „connected" gesetzt, weshalb das Statusfenster dauerhaft „Verbinde…" zeigte, auch bei intakter Verbindung — die Bridge meldet ihren Zustand jetzt zurück und beide Fenster fragen zusätzlich den Server. (3) Der „Verbinden"-Knopf rief `ensure_session` nicht auf (anders als macOS), tote Sessions wurden also endlos weiter angewählt. Dazu: `1008`-Closes (Session unbekannt, fremder Nutzer) landeten in derselben stillen Endlos-Reconnect-Schleife wie ein normaler Abbruch, obwohl ein Retry dort nie erfolgreich sein kann.
+- **Foundry-GPT-Agenten kippten still in den falschen Harness.** Beim Container-Neubau wurde der Modus aus dem `provider_type` des *Modell*-Eintrags abgeleitet statt aus dem Account — ein GPT-Deployment auf einem Azure-Account schaltete damit auf Codex-CLI, wodurch Endpoint und Key nicht mehr injiziert wurden und die AI-Account-Karte im UI verschwand (also nicht mehr reparierbar war).
+
+### Changed
+- Discovery-Meldung und Foundry-Block sagen jetzt ausdrücklich, dass nur Anthropic/OpenAI direkt erkannt werden und eigene Azure-Foundry-/Bedrock-/Vertex-Deployments unter **AI-Accounts** gehören. Vorher wirkte es wie ein Fehler, dass eine verbundene Foundry-Ressource keine GPT-Modelle zeigt.
+
+---
+
 ## [1.129.0] — 2026-08-03
 
 Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, Voice).
