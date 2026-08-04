@@ -375,12 +375,13 @@ class SchedulerService:
             router = TaskRouter(db, self.redis, lb, docker_service=self.docker)
 
             for schedule in schedules:
+                schedule_id = schedule.id
                 try:
                     await self._execute_schedule(db, router, schedule, now)
                     await db.commit()
                 except Exception as e:
                     await db.rollback()
-                    logger.warning("[Scheduler] Failed to execute schedule %s: %s", schedule.id, e)
+                    logger.warning("[Scheduler] Failed to execute schedule %s: %s", schedule_id, e)
 
     async def _start_due_workflows(self) -> None:
         """Start a run for every enabled workflow whose cron trigger just fired (#392)."""
