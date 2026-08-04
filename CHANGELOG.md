@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.134.1] — 2026-08-04
+
+### Fixed
+- **Computer-Use-Sessions ließen sich nicht löschen — sie kamen nach dem Neuladen wieder.** Seit die Sessions in Redis liegen (v1.130.0) räumte das Löschen nur den Prozess-Speicher; der Redis-Schlüssel blieb liegen, wurde beim nächsten Zugriff zurückgeholt und von der Übersicht ohnehin wieder eingescannt. Für den Nutzer war eine Session damit schlicht unlöschbar. Betraf drei Stellen: das ausdrückliche Löschen, das Aufräumen abgelaufener Sessions und den Timeout beim Kommando — alle drei räumen jetzt Speicher **und** Redis über einen gemeinsamen Weg. 5 neue Tests, darunter der eigentliche Fall (nach dem Löschen darf sie nicht zurückkommen) und Löschen bei ausgefallenem Redis.
+
 ## [1.134.0] — 2026-08-04
 
 ### Fixed

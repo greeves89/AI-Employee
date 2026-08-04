@@ -172,6 +172,24 @@ async def _persist_session(session_id: str) -> None:
         logger.debug("Could not persist computer-use session %s", session_id, exc_info=True)
 
 
+async def _forget_session(session_id: str) -> None:
+    """Session ENDGÜLTIG entfernen — aus dem Speicher UND aus Redis.
+
+    Nur `_sessions.pop()` reicht seit der Redis-Persistenz (v1.130.0) nicht mehr:
+    der Schlüssel überlebt, `_restore_session` holt die Session beim nächsten
+    Zugriff zurück, und die Liste scannt sie ohnehin wieder ein. Für den Nutzer
+    sah das so aus, als liesse sich eine Session nicht löschen — sie war nach
+    dem Neuladen einfach wieder da.
+    """
+    _sessions.pop(session_id, None)
+    if _redis is None or _redis.client is None:
+        return
+    try:
+        await _redis.client.delete(_SESSION_KEY + session_id)
+    except Exception:  # noqa: BLE001 — Löschen darf keinen Request scheitern lassen
+        logger.warning("Could not delete computer-use session %s from Redis", session_id, exc_info=True)
+
+
 async def _restore_session(session_id: str) -> dict | None:
     """Rehydrate a session from Redis into this process. Returns it, or None."""
     if _redis is None or _redis.client is None:
@@ -371,7 +389,7 @@ async def list_sessions(
         and time.time() - float(s.get("last_activity_at") or s.get("created_at") or 0) > SESSION_TIMEOUT_SECS
     ]
     for sid in expired:
-        _sessions.pop(sid, None)
+        await _forget_session(sid)
 
     user_sessions = [
         _session_view(sid, s)
@@ -400,7 +418,7 @@ async def delete_session(session_id: str, user=Depends(require_auth)):
             await ws.close()
         except Exception:
             pass
-    _sessions.pop(session_id, None)
+    await _forget_session(session_id)
     return {"ok": True}
 
 
@@ -521,8 +539,8 @@ async def send_command(
 
     # Session timeout
     if time.time() - float(session.get("last_activity_at") or session["created_at"]) > SESSION_TIMEOUT_SECS:
-        _sessions.pop(session_id, None)
-        raise HTTPException(status_code=410, detail="Session expired (30 min). Create a new session.")
+        await _forget_session(session_id)
+        raise HTTPException(status_code=410, detail="Session abgelaufen. Bitte eine neue Session anlegen.")
 
     # Action limit
     if session["action_count"] >= MAX_ACTIONS_PER_SESSION:

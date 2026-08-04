@@ -9,6 +9,7 @@ Standard werden soll, muss die Session bestehen bleiben".
 import json
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from app.api import computer_use as cu
@@ -23,6 +24,9 @@ class _FakeRedisClient:
 
     async def get(self, key):
         return self.store.get(key)
+
+    async def delete(self, key):
+        self.store.pop(key, None)
 
     async def scan_iter(self, match=None, count=None):
         for k in list(self.store):
@@ -152,3 +156,61 @@ class IdleTimeoutTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionDeletionTests(unittest.IsolatedAsyncioTestCase):
+    """Loeschen muss eine Session ENDGUELTIG entfernen.
+
+    Seit der Redis-Persistenz (v1.130.0) raeumte `delete_session` nur den
+    Prozess-Speicher. Der Redis-Schluessel blieb liegen, `_restore_session` holte
+    die Session beim naechsten Zugriff zurueck, und die Liste scannte sie ohnehin
+    wieder ein: fuer den Nutzer war eine Session schlicht nicht loeschbar — nach
+    dem Neuladen stand sie wieder da (Kundenmeldung 2026-08-04).
+    """
+
+    def setUp(self):
+        cu._sessions.clear()
+        self.redis = _install_fake_redis()
+
+    async def asyncTearDown(self):
+        cu._sessions.clear()
+
+    async def _make(self, sid="sess-1", user_id="u1"):
+        cu._sessions[sid] = _session(user_id=user_id)
+        await cu._persist_session(sid)
+        return sid
+
+    async def test_forget_removes_memory_and_redis(self):
+        sid = await self._make()
+        self.assertIn(cu._SESSION_KEY + sid, self.redis.store)
+        await cu._forget_session(sid)
+        self.assertNotIn(sid, cu._sessions)
+        self.assertNotIn(cu._SESSION_KEY + sid, self.redis.store)
+
+    async def test_deleted_session_does_not_come_back(self):
+        """Der eigentliche Fehler: nach dem Loeschen holte _get_session sie zurueck."""
+        sid = await self._make()
+        await cu._forget_session(sid)
+        self.assertIsNone(await cu._get_session(sid))
+
+    async def test_delete_endpoint_clears_redis(self):
+        sid = await self._make(user_id="u1")
+        user = SimpleNamespace(id="u1")
+        await cu.delete_session(sid, user=user)
+        self.assertNotIn(cu._SESSION_KEY + sid, self.redis.store)
+        self.assertIsNone(await cu._get_session(sid))
+
+    async def test_delete_leaves_other_sessions_alone(self):
+        keep = await self._make("sess-keep")
+        drop = await self._make("sess-drop")
+        await cu._forget_session(drop)
+        self.assertIn(cu._SESSION_KEY + keep, self.redis.store)
+        self.assertIsNotNone(await cu._get_session(keep))
+
+    async def test_forget_survives_a_dead_redis(self):
+        """Loeschen darf nicht scheitern, nur weil Redis gerade weg ist —
+        der Speicher muss trotzdem geraeumt werden."""
+        sid = await self._make()
+        cu._redis = None
+        await cu._forget_session(sid)
+        self.assertNotIn(sid, cu._sessions)
