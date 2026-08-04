@@ -151,6 +151,84 @@ async def test_refresh_tolerates_http_error(monkeypatch):
     assert called == []
 
 
+@pytest.mark.asyncio
+async def test_refresh_retries_on_next_tick_when_add_fails(monkeypatch):
+    """#501: a failed `claude mcp add` must NOT be recorded as applied — the next
+    poll tick must re-detect the unchanged rotation and retry, instead of leaving
+    the server de-registered until container restart."""
+    monkeypatch.setenv("CUSTOM_MCP_SERVERS", json.dumps({"srv": "https://x/mcp"}))
+    monkeypatch.setenv("CUSTOM_MCP_AUTH", json.dumps({"srv": "old-token"}))
+    monkeypatch.delenv("CUSTOM_MCP_HEADERS", raising=False)
+
+    added = []
+    # First add fails, second add succeeds.
+    add_results = iter([False, True])
+    monkeypatch.setattr(main, "_run_mcp_remove", lambda name: True)
+    monkeypatch.setattr(main, "_run_mcp_add", lambda args: added.append(args) or next(add_results))
+
+    payload = {"servers": {"srv": "https://x/mcp"}, "auth": {"srv": "new-token"}, "headers": {}}
+
+    import httpx as httpx_module
+    monkeypatch.setattr(
+        httpx_module,
+        "AsyncClient",
+        lambda *a, **kw: _FakeAsyncClient(_FakeResponse(200, payload), **kw),
+    )
+
+    # Allow exactly two fetch cycles, then cancel on the third sleep.
+    sleep_calls = {"n": 0}
+
+    async def fake_sleep(_seconds):
+        sleep_calls["n"] += 1
+        if sleep_calls["n"] > 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await main.refresh_mcp_credentials_loop("agent-1", register_via_cli=True, interval_seconds=0)
+
+    # Two add attempts: the failed one and the retry on the next tick.
+    assert len(added) == 2
+
+
+@pytest.mark.asyncio
+async def test_refresh_no_retry_after_successful_add(monkeypatch):
+    """A successful add must be recorded so the next tick sees no change and does
+    not needlessly re-register the server."""
+    monkeypatch.setenv("CUSTOM_MCP_SERVERS", json.dumps({"srv": "https://x/mcp"}))
+    monkeypatch.setenv("CUSTOM_MCP_AUTH", json.dumps({"srv": "old-token"}))
+    monkeypatch.delenv("CUSTOM_MCP_HEADERS", raising=False)
+
+    added = []
+    monkeypatch.setattr(main, "_run_mcp_remove", lambda name: True)
+    monkeypatch.setattr(main, "_run_mcp_add", lambda args: added.append(args) or True)
+
+    payload = {"servers": {"srv": "https://x/mcp"}, "auth": {"srv": "new-token"}, "headers": {}}
+
+    import httpx as httpx_module
+    monkeypatch.setattr(
+        httpx_module,
+        "AsyncClient",
+        lambda *a, **kw: _FakeAsyncClient(_FakeResponse(200, payload), **kw),
+    )
+
+    sleep_calls = {"n": 0}
+
+    async def fake_sleep(_seconds):
+        sleep_calls["n"] += 1
+        if sleep_calls["n"] > 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await main.refresh_mcp_credentials_loop("agent-1", register_via_cli=True, interval_seconds=0)
+
+    # Only one add: the second tick sees an unchanged token and skips.
+    assert len(added) == 1
+
+
 def test_run_mcp_remove_uses_scope_user(monkeypatch):
     calls = []
 

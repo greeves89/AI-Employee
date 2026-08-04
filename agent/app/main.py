@@ -367,6 +367,7 @@ async def refresh_mcp_credentials_loop(agent_id: str, register_via_cli: bool, in
         os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)
         os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)
 
+        failed_names: set[str] = set()
         if register_via_cli:
             for name in changed_names:
                 server_url = servers.get(name)
@@ -381,8 +382,24 @@ async def refresh_mcp_credentials_loop(agent_id: str, register_via_cli: bool, in
                     print(f"[Agent] Refreshed MCP credentials: {safe_name}")
                 else:
                     print(f"[Agent] WARN: Failed to refresh MCP credentials: {safe_name}")
+                    failed_names.add(name)
 
-        last_auth, last_headers = auth, headers
+        # Commit the freshly-applied credentials as the new baseline, but keep the
+        # OLD value for any server whose CLI re-registration failed so the next tick
+        # re-detects it as changed and retries — otherwise the server stays
+        # de-registered until container restart (#501).
+        new_last_auth = dict(auth)
+        new_last_headers = dict(headers)
+        for name in failed_names:
+            if name in last_auth:
+                new_last_auth[name] = last_auth[name]
+            else:
+                new_last_auth.pop(name, None)
+            if name in last_headers:
+                new_last_headers[name] = last_headers[name]
+            else:
+                new_last_headers.pop(name, None)
+        last_auth, last_headers = new_last_auth, new_last_headers
 
 
 def setup_github_credentials() -> None:
