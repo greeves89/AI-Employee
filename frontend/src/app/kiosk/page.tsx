@@ -20,7 +20,7 @@ import {
   ListTodo, CircleDot, Send, ArrowLeft, Wifi, WifiOff, LayoutDashboard, Users, Server,
   Settings as SettingsIcon, Coins, Hash, ShieldCheck, Boxes, Save, RefreshCw, Mic,
 } from "lucide-react";
-import { VoiceSessionModal } from "@/components/agents/voice-session";
+import { VoiceSessionProvider, useVoiceSession } from "@/components/agents/voice-session-provider";
 
 type AgentInfo = {
   id: string; name: string; state: string; model: string;
@@ -74,15 +74,23 @@ const RANK: Record<string, number> = { error: 5, working: 4, running: 3, idle: 1
 function rank(s: string): number { return RANK[s] ?? 2; }
 
 export default function KioskPage() {
+  return (
+    <VoiceSessionProvider>
+      <KioskContent />
+    </VoiceSessionProvider>
+  );
+}
+
+function KioskContent() {
   const [data, setData] = useState<Overview | null>(null);
   const [online, setOnline] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [chatAgent, setChatAgent] = useState<AgentInfo | null>(null);
-  const [voiceAgent, setVoiceAgent] = useState<AgentInfo | null>(null);
   const [idle, setIdle] = useState(false);
   const lastActivity = useRef<number>(Date.now());
+  const voiceSession = useVoiceSession();
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); setNow(new Date()); return () => clearInterval(t); }, []);
 
@@ -91,9 +99,9 @@ export default function KioskPage() {
     const evs = ["pointerdown", "keydown", "touchstart", "mousemove"];
     evs.forEach((e) => window.addEventListener(e, wake, { passive: true }));
     const idleMs = lsGet("kiosk_idle_ms", 90000);
-    const t = setInterval(() => { if (!chatAgent && !voiceAgent && Date.now() - lastActivity.current > idleMs) setIdle(true); }, 2000);
+    const t = setInterval(() => { if (!chatAgent && !voiceSession.activeSession && Date.now() - lastActivity.current > idleMs) setIdle(true); }, 2000);
     return () => { evs.forEach((e) => window.removeEventListener(e, wake)); clearInterval(t); };
-  }, [idle, chatAgent, voiceAgent]);
+  }, [idle, chatAgent, voiceSession.activeSession]);
 
   useEffect(() => {
     let alive = true;
@@ -128,18 +136,6 @@ export default function KioskPage() {
   return (
     <div className="kiosk-root h-screen w-screen overflow-hidden kiosk-bg text-slate-100 select-none flex flex-col">
       <KioskStyles />
-      {voiceAgent && (
-        <VoiceSessionModal
-          agentId={voiceAgent.id}
-          agentName={voiceAgent.name}
-          onClose={() => { lastActivity.current = Date.now(); setVoiceAgent(null); }}
-          getTicket={async () => {
-            const r = await fetch(`/api/v1/kiosk/ws-ticket/${voiceAgent.id}`, { method: "POST" });
-            if (!r.ok) throw new Error("ticket failed");
-            return (await r.json()).ticket as string;
-          }}
-        />
-      )}
       <header className="flex items-center justify-between px-4 h-12 border-b border-white/5 bg-gradient-to-r from-[#0a1020] to-[#0a0f1a] shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-500 grid place-items-center kiosk-glow"><Bot className="w-4 h-4 text-white" /></div>
@@ -157,7 +153,23 @@ export default function KioskPage() {
       <main className="flex-1 min-h-0 overflow-hidden p-3">
         {tab === "overview" && <OverviewView data={data} onOpenAgent={(id) => { setDetailId(id); setTab("agents"); }} />}
         {tab === "agents" && (detailId
-          ? <AgentDetailView id={detailId} onBack={() => setDetailId(null)} onChat={(a) => setChatAgent(a)} onVoice={(a) => setVoiceAgent(a)} />
+          ? <AgentDetailView
+              id={detailId}
+              onBack={() => setDetailId(null)}
+              onChat={(a) => setChatAgent(a)}
+              onVoice={(a) => {
+                lastActivity.current = Date.now();
+                voiceSession.startSession({
+                  agentId: a.id,
+                  agentName: a.name,
+                  getTicket: async () => {
+                    const r = await fetch(`/api/v1/kiosk/ws-ticket/${a.id}`, { method: "POST" });
+                    if (!r.ok) throw new Error("ticket failed");
+                    return (await r.json()).ticket as string;
+                  },
+                });
+              }}
+            />
           : <AgentsView data={data} onOpen={(id) => setDetailId(id)} />)}
         {tab === "tasks" && <TasksView data={data} />}
         {tab === "system" && <SystemView data={data} />}
