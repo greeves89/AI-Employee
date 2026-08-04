@@ -119,6 +119,23 @@ async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None =
         pass
 
 
+async def _auto_inject_skills_for_chat(agent_id: str, text: str, is_new_session: bool, session_id: str) -> None:
+    """Best-effort skill auto-injection for a new chat session.
+
+    Mirrors the task path (task_router.py): only fires once per new session and
+    never lets an injection failure break the chat turn (#468, PR #471). The
+    auto_inject_skills import stays local to avoid a circular import at module load.
+    """
+    if not (is_new_session and text):
+        return
+    try:
+        from app.services.skill_auto_injector import auto_inject_skills
+        async with async_session_factory() as skill_db:
+            await auto_inject_skills(skill_db, agent_id, text)
+    except Exception as e:
+        logger.warning(f"Skill auto-injection failed for chat session {session_id}: {e}")
+
+
 @router.websocket("/agents/{agent_id}/chat")
 async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None), client_id: str | None = Query(None)):
     """Bidirectional WebSocket for chatting with an agent.
@@ -709,13 +726,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # (task_router.py) did this, so a chat-only agent never picked up
             # path/role-matched skill assignments (#468). Once per session,
             # mirroring task_router.py's own best-effort try/except.
-            if is_new_session and text:
-                try:
-                    from app.services.skill_auto_injector import auto_inject_skills
-                    async with async_session_factory() as skill_db:
-                        await auto_inject_skills(skill_db, agent_id, text)
-                except Exception as e:
-                    logger.warning(f"Skill auto-injection failed for chat session {_session['id']}: {e}")
+            await _auto_inject_skills_for_chat(agent_id, text, is_new_session, _session["id"])
 
             # Generate message ID and push to agent's chat queue
             message_id = uuid.uuid4().hex[:12]
