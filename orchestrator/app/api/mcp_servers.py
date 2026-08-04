@@ -803,7 +803,18 @@ async def _oauth_fetch_json(url: str) -> dict:
     """SSRF-guarded GET of an OAuth discovery document (PRM / AS metadata)."""
     await _assert_mcp_url_allowed(url)
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(url, headers={"Accept": "application/json"}, follow_redirects=True)
+        # follow_redirects MUST stay off: the allowlist above is checked against
+        # the URL we were given, so a redirect would move the request to an
+        # unvalidated host AFTER the guard ran — the classic SSRF bypass
+        # (169.254.169.254, localhost, internal services). Same stance as the
+        # PRM probe below. A discovery document that redirects is rejected
+        # rather than silently followed.
+        resp = await client.get(url, headers={"Accept": "application/json"}, follow_redirects=False)
+    if resp.is_redirect:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Discovery document {url} redirected — refusing to follow (SSRF guard).",
+        )
     if resp.status_code != 200:
         raise HTTPException(status_code=400, detail=f"Discovery document {url} returned {resp.status_code}")
     try:
