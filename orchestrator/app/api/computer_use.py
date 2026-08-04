@@ -36,8 +36,13 @@ router = APIRouter(prefix="/computer-use", tags=["computer-use"])
 _sessions: dict[str, dict] = {}
 _redis: RedisService | None = None
 
-SESSION_TIMEOUT_SECS = 30 * 60
-MAX_ACTIONS_PER_SESSION = 50
+# Idle timeout, measured from the LAST ACTIVITY (not from creation). The old
+# create-based cap killed sessions that were actively in use after 30 minutes.
+SESSION_TIMEOUT_SECS = 12 * 3600
+# Safety cap against a runaway agent. Counted per session, but the counter is
+# reset whenever a bridge (re)attaches, so a long-lived session isn't slowly
+# starved into a 429 the way the old hard 50 did.
+MAX_ACTIONS_PER_SESSION = 500
 
 # Actions that visibly change the screen — after one of these completes, the
 # cached screenshot the human's Live-View tab polls is stale until the next
@@ -127,6 +132,127 @@ def init_computer_use(redis: RedisService) -> None:
     _redis = redis
 
 
+# ── Session persistence ───────────────────────────────────────────────────────
+#
+# Sessions used to live ONLY in this process dict, so every orchestrator restart
+# or deploy invalidated them: the bridge had to be given a brand-new session id
+# by hand each time. For Computer-Use to be a normal everyday feature the
+# session has to outlive the process.
+#
+# The live WebSocket object cannot be serialized, so only the METADATA goes to
+# Redis; the socket stays in memory and is re-attached when the bridge
+# reconnects with the same id (it retries by itself every 5s).
+
+_SESSION_KEY = "computer_use:session:"
+# Idle TTL. Refreshed on every write, so an actively used session never expires
+# — unlike the old hard 30min-from-creation cap, which killed live sessions
+# mid-work.
+_SESSION_TTL_SECS = 7 * 24 * 3600
+
+# Fields that make sense to restore; everything else is per-process runtime.
+_PERSISTED_FIELDS = (
+    "user_id", "created_at", "agent_id", "allowed_capabilities",
+    "action_count", "last_activity_at", "platform", "bridge_version",
+)
+
+
+async def _persist_session(session_id: str) -> None:
+    """Write session metadata to Redis (best-effort — never breaks a request)."""
+    session = _sessions.get(session_id)   # in-memory only: never re-enter _get_session
+    if not session or _redis is None or _redis.client is None:
+        return
+    try:
+        payload = {k: session.get(k) for k in _PERSISTED_FIELDS}
+        payload["allowed_capabilities"] = sorted(session.get("allowed_capabilities") or [])
+        await _redis.client.set(
+            _SESSION_KEY + session_id, json.dumps(payload), ex=_SESSION_TTL_SECS
+        )
+    except Exception:  # noqa: BLE001 — persistence is an optimization, not a gate
+        logger.debug("Could not persist computer-use session %s", session_id, exc_info=True)
+
+
+async def _restore_session(session_id: str) -> dict | None:
+    """Rehydrate a session from Redis into this process. Returns it, or None."""
+    if _redis is None or _redis.client is None:
+        return None
+    try:
+        raw = await _redis.client.get(_SESSION_KEY + session_id)
+    except Exception:  # noqa: BLE001
+        return None
+    if not raw:
+        return None
+    try:
+        stored = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    session = {
+        "user_id": stored.get("user_id"),
+        "created_at": stored.get("created_at") or time.time(),
+        "last_activity_at": stored.get("last_activity_at") or time.time(),
+        "bridge_connected": False,
+        "bridge_ws": None,
+        "action_count": int(stored.get("action_count") or 0),
+        "audit_log": [],          # audit is per-process, not restored
+        "pending_results": {},
+        "allowed_capabilities": set(stored.get("allowed_capabilities")
+                                    or DEFAULT_ALLOWED_CAPABILITIES),
+        "last_disconnected_at": None,
+        "bridge_last_seen_at": None,
+        "agent_id": stored.get("agent_id"),
+        "platform": stored.get("platform"),
+        "bridge_version": stored.get("bridge_version"),
+        "recording": False,
+        "recording_steps": [],
+        "capture_human": False,
+    }
+    _sessions[session_id] = session
+    logger.info("Restored computer-use session %s from Redis", session_id)
+    return session
+
+
+async def _get_session(session_id: str) -> dict | None:
+    """Look up a session, transparently restoring it after a restart."""
+    session = _sessions.get(session_id)
+    if session is not None:
+        return session
+    return await _restore_session(session_id)
+
+
+async def _touch_session(session_id: str) -> None:
+    """Mark activity and refresh the TTL — keeps a used session alive."""
+    session = _sessions.get(session_id)   # in-memory only: no restore needed here
+    if session is None:
+        return
+    session["last_activity_at"] = time.time()
+    await _persist_session(session_id)
+
+
+async def _find_user_session(user_id: str) -> tuple[str, dict] | None:
+    """The user's newest usable session, restoring from Redis if needed.
+
+    Prefers one with a live bridge, so reconnecting the tab never steals the
+    session the bridge is currently attached to.
+    """
+    candidates = [(sid, s) for sid, s in _sessions.items() if s.get("user_id") == user_id]
+    if not candidates and _redis is not None and _redis.client is not None:
+        try:
+            async for key in _redis.client.scan_iter(match=_SESSION_KEY + "*", count=100):
+                sid = (key.decode() if isinstance(key, bytes) else key).split(":")[-1]
+                restored = await _restore_session(sid)
+                if restored and restored.get("user_id") == user_id:
+                    candidates.append((sid, restored))
+        except Exception:  # noqa: BLE001 — fall through to "create a new one"
+            logger.debug("Session scan failed", exc_info=True)
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda kv: (bool(kv[1].get("bridge_connected")),
+                        float(kv[1].get("last_activity_at") or kv[1].get("created_at") or 0)),
+        reverse=True,
+    )
+    return candidates[0]
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _resolve_caller_user_id(caller, db: AsyncSession) -> str | None:
@@ -168,13 +294,31 @@ class SessionCreateResponse(BaseModel):
 
 
 @router.post("/sessions", response_model=SessionCreateResponse)
-async def create_session(user=Depends(require_auth)):
-    """Create a new bridge session. Returns session_id + WS URL for the bridge app."""
+async def create_session(user=Depends(require_auth), reuse: bool = True):
+    """Create a bridge session — or hand back the user's existing one.
+
+    ``reuse`` (default on) returns the caller's most recent live session instead
+    of minting a new id. Without it every visit to the Computer-Use tab produced
+    a fresh id and the bridge had to be reconfigured by hand each time; with it
+    the bridge keeps working across restarts and page reloads.
+    """
+    if reuse:
+        existing = await _find_user_session(str(user.id))
+        if existing:
+            sid, sess = existing
+            return {
+                "session_id": sid,
+                "status": "connected" if sess.get("bridge_connected") else "waiting_for_bridge",
+                "ws_url": f"/ws/computer-use/bridge?session_id={sid}",
+                "allowed_capabilities": sorted(sess.get("allowed_capabilities") or []),
+            }
+
     session_id = uuid.uuid4().hex[:12]
     allowed = set(DEFAULT_ALLOWED_CAPABILITIES)
     _sessions[session_id] = {
         "user_id": str(user.id),
         "created_at": time.time(),
+        "last_activity_at": time.time(),
         "bridge_connected": False,
         "bridge_ws": None,
         "action_count": 0,
@@ -191,6 +335,7 @@ async def create_session(user=Depends(require_auth)):
         "recording_steps": [],
         "capture_human": False,
     }
+    await _persist_session(session_id)
     logger.info(f"Created computer-use session {session_id} for user {user.id}")
     return {
         "session_id": session_id,
@@ -211,7 +356,11 @@ async def list_sessions(
         raise HTTPException(status_code=403, detail="Cannot resolve user for this agent")
 
     # Purge expired sessions for this user on read
-    expired = [sid for sid, s in _sessions.items() if time.time() - s["created_at"] > SESSION_TIMEOUT_SECS]
+    expired = [
+        sid for sid, s in _sessions.items()
+        if not s.get("bridge_connected")
+        and time.time() - float(s.get("last_activity_at") or s.get("created_at") or 0) > SESSION_TIMEOUT_SECS
+    ]
     for sid in expired:
         _sessions.pop(sid, None)
 
@@ -225,7 +374,7 @@ async def list_sessions(
 
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str, user=Depends(require_auth)):
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
     return _session_view(session_id, session)
@@ -233,7 +382,7 @@ async def get_session(session_id: str, user=Depends(require_auth)):
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, user=Depends(require_auth)):
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
     ws = session.get("bridge_ws")
@@ -257,7 +406,7 @@ async def update_capabilities(
     user=Depends(require_auth),
 ):
     """Update which capability groups are allowed for this session."""
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -285,7 +434,7 @@ async def assign_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """Assign (or unassign) an agent to this session. Only that agent may then send commands."""
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -318,7 +467,7 @@ async def list_capability_groups(_=Depends(require_auth)):
 
 @router.get("/sessions/{session_id}/audit")
 async def get_audit_log(session_id: str, user=Depends(require_auth)):
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
     return {
@@ -344,7 +493,7 @@ async def send_command(
     db: AsyncSession = Depends(get_db),
 ):
     """Relay a command to the bridge. Verifies caller owns (or belongs to the owner of) this session."""
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -362,7 +511,7 @@ async def send_command(
             raise HTTPException(status_code=403, detail="This session is assigned to a different agent")
 
     # Session timeout
-    if time.time() - session["created_at"] > SESSION_TIMEOUT_SECS:
+    if time.time() - float(session.get("last_activity_at") or session["created_at"]) > SESSION_TIMEOUT_SECS:
         _sessions.pop(session_id, None)
         raise HTTPException(status_code=410, detail="Session expired (30 min). Create a new session.")
 
@@ -408,6 +557,7 @@ async def send_command(
         await session["bridge_ws"].send_text(command_msg)
         result = await asyncio.wait_for(result_future, timeout=req.timeout)
         logger.info(f"[computer-use] session={session_id} action={req.action} #{session['action_count']}")
+        await _touch_session(session_id)
         if req.action in _SCREEN_CHANGING_ACTIONS:
             if session.get("recording"):
                 # Recording: wait for the screenshot so the step carries the
@@ -442,7 +592,7 @@ async def get_session_status(
     Stale check: if bridge_last_seen_at is >20s ago the bridge is considered
     gone even if bridge_connected is True (NAT/WiFi drop, no TCP FIN).
     """
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(user.id) != session["user_id"]:
@@ -478,7 +628,7 @@ async def get_screenshot(
     _refresh_screenshot_cache() keeps it fresh event-driven after every
     action so the human sees the post-action state immediately either way.
     """
-    session = _sessions.get(session_id)
+    session = await _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(user.id) != session["user_id"]:
@@ -695,7 +845,10 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
         await websocket.close(code=1008, reason="session_id required: create a session first via POST /computer-use/sessions")
         return
 
-    session = _sessions.get(session_id)
+    # Restores from Redis when this process didn't create the session (restart,
+    # deploy). Without this the bridge was told "create a new one" after every
+    # orchestrator restart and the user had to re-enter a fresh session id.
+    session = await _get_session(session_id)
     if not session:
         await websocket.close(code=1008, reason="Session not found — it may have expired. Create a new one.")
         return
@@ -713,6 +866,10 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
     session["bridge_connected"] = True
     session["bridge_ws"] = websocket
     session["bridge_last_seen_at"] = time.time()
+    # A fresh attach starts a fresh action budget — otherwise a session that
+    # stays alive for days would eventually hit the cap and 429 forever.
+    session["action_count"] = 0
+    await _touch_session(session_id)
     logger.info(f"Bridge connected for session {session_id} (user {user_id})")
 
     await websocket.send_text(json.dumps({
