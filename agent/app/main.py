@@ -53,6 +53,21 @@ def _run_mcp_add(args: list[str]) -> bool:
         return False
 
 
+def _run_mcp_remove(name: str) -> bool:
+    """Run `claude mcp remove` for a --scope user server. Returns True on success.
+
+    `claude mcp add` refuses to overwrite an existing server name ("already
+    exists"), so refreshing a server's credentials requires removing it first.
+    """
+    cmd = ["claude", "mcp", "remove", name, "--scope", "user"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"[Agent] claude mcp remove error: {e}")
+        return False
+
+
 def _load_custom_mcp_auth() -> dict:
     """Parse CUSTOM_MCP_AUTH ({server_name: bearer_token}) from the environment."""
     raw = os.environ.get("CUSTOM_MCP_AUTH", "")
@@ -303,6 +318,73 @@ def _write_mcp_json_fallback() -> None:
         json.dump(mcp_config, f, indent=2)
 
 
+async def refresh_mcp_credentials_loop(agent_id: str, register_via_cli: bool, interval_seconds: int = 300) -> None:
+    """Periodically re-fetch custom MCP credentials and apply anything that rotated.
+
+    CUSTOM_MCP_AUTH/CUSTOM_MCP_HEADERS are only ever set once, at container
+    creation. An OAuth access token lives roughly one to two hours, so a
+    long-running agent silently loses OAuth-protected MCP servers within its
+    first hour (#488). This mirrors the orchestrator's own periodic
+    refresh_all_oauth_servers sweep from the agent side: pull the current
+    credentials from the orchestrator, and for anything that changed, update
+    the in-process env (picked up by MCPHTTPClient — custom_llm mode reads
+    it fresh on every instantiation) and, in Claude Code mode, remove +
+    re-add the affected servers via the CLI (it caches headers in
+    ~/.claude.json at registration time and never rereads the environment).
+    """
+    import httpx
+
+    url = f"{settings.orchestrator_url}/api/v1/agents/{agent_id}/mcp-credentials"
+    request_headers = {"Authorization": f"Bearer {settings.agent_token}", "X-Agent-ID": agent_id}
+    last_auth = _load_custom_mcp_auth()
+    last_headers = _load_custom_mcp_headers()
+
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url, headers=request_headers)
+            if resp.status_code != 200:
+                print(f"[Agent] MCP credential refresh failed: HTTP {resp.status_code}")
+                continue
+            data = resp.json()
+        except Exception as e:
+            print(f"[Agent] MCP credential refresh error: {e}")
+            continue
+
+        servers = data.get("servers") or {}
+        auth = data.get("auth") or {}
+        headers = data.get("headers") or {}
+        changed_names = {
+            name for name in set(auth) | set(headers)
+            if auth.get(name) != last_auth.get(name) or headers.get(name) != last_headers.get(name)
+        }
+        if not changed_names:
+            continue
+
+        # Always refresh the in-process env — cheap, and covers custom_llm mode.
+        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)
+        os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)
+        os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)
+
+        if register_via_cli:
+            for name in changed_names:
+                server_url = servers.get(name)
+                if not server_url:
+                    continue
+                safe_name = _sanitize_mcp_name(name)
+                _run_mcp_remove(safe_name)
+                cmd_args = ["--transport", "http", safe_name, server_url]
+                for header in _auth_header_args(name, auth, headers):
+                    cmd_args += ["--header", header]
+                if _run_mcp_add(cmd_args):
+                    print(f"[Agent] Refreshed MCP credentials: {safe_name}")
+                else:
+                    print(f"[Agent] WARN: Failed to refresh MCP credentials: {safe_name}")
+
+        last_auth, last_headers = auth, headers
+
+
 def setup_github_credentials() -> None:
     """Configure git/gh authentication from an assigned GitHub token secret."""
     token = (
@@ -522,13 +604,21 @@ async def main() -> None:
     chat_consumer = ChatConsumer(agent_id)
     message_consumer = MessageConsumer(agent_id)
 
+    # Periodic MCP credential refresh (#488 Phase 2) — codex_cli manages its
+    # own MCP config and doesn't use CUSTOM_MCP_* at all, so it's excluded.
+    mcp_refresh_task = None
+    if mode != "codex_cli" and os.environ.get("CUSTOM_MCP_SERVERS"):
+        mcp_refresh_task = asyncio.create_task(
+            refresh_mcp_credentials_loop(agent_id, register_via_cli=(mode != "custom_llm"))
+        )
+
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig,
             lambda: asyncio.create_task(
-                shutdown(task_consumer, chat_consumer, message_consumer, health_runner)
+                shutdown(task_consumer, chat_consumer, message_consumer, health_runner, mcp_refresh_task)
             ),
         )
 
@@ -544,12 +634,14 @@ async def main() -> None:
     )
 
 
-async def shutdown(task_consumer: TaskConsumer, chat_consumer: ChatConsumer, message_consumer: MessageConsumer, health_runner) -> None:
+async def shutdown(task_consumer: TaskConsumer, chat_consumer: ChatConsumer, message_consumer: MessageConsumer, health_runner, mcp_refresh_task=None) -> None:
     print("[Agent] Shutting down gracefully...")
     await task_consumer.stop()
     await chat_consumer.stop()
     await message_consumer.stop()
     await health_runner.cleanup()
+    if mcp_refresh_task is not None:
+        mcp_refresh_task.cancel()
 
 
 if __name__ == "__main__":
