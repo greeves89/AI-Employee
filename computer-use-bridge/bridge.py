@@ -556,6 +556,7 @@ class Bridge:
         token: str,
         session_id: str | None = None,
         extra_headers: dict[str, str] | None = None,
+        on_state=None,
     ):
         self.ws_url = ws_url
         self.token = token
@@ -565,6 +566,8 @@ class Bridge:
         # Google IAP, oauth2-proxy, Authelia). See issue #374. Values are
         # credentials and are never logged — only the header names are.
         self.extra_headers: dict[str, str] = dict(extra_headers or {})
+        # Optional GUI callback: on_state("connected"|"reconnecting"|"rejected", detail)
+        self.on_state = on_state
         self.dispatcher: CommandDispatcher | None = None
         self._running = False
         # Human-capture events are produced on pynput's own threads, so they
@@ -650,6 +653,7 @@ class Bridge:
                 }
                 await ws.send(json.dumps(caps))
                 log.info(f"Connected. Waiting for commands... (platform: {platform.system()})")
+                self._emit_state("connected", "")
                 try:
                     self._ensure_dispatcher()
                 except Exception as e:
@@ -670,13 +674,34 @@ class Bridge:
                         self.dispatcher.input_recorder.stop()
 
             except websockets.ConnectionClosed as e:
-                log.warning(f"Connection closed: {e}. Reconnecting in 5s...")
+                # 1008 = the server REJECTED us (session expired/unknown, wrong
+                # user, another bridge already attached). Retrying that forever
+                # can never succeed, and silently doing so is what made an
+                # expired session look like a hanging connection / firewall
+                # problem. Report it so the UI can tell the user what to do.
+                reason = (getattr(e, "reason", "") or str(e)).strip()
+                if getattr(getattr(e, "rcvd", None), "code", None) == 1008:
+                    log.error(f"Rejected by server: {reason}")
+                    self._emit_state("rejected", reason)
+                else:
+                    log.warning(f"Connection closed: {e}. Reconnecting in 5s...")
+                    self._emit_state("reconnecting", reason)
                 await asyncio.sleep(5)
             except Exception as e:
                 log.error(f"Error: {e}. Reconnecting in 5s...")
+                self._emit_state("reconnecting", str(e).strip() or e.__class__.__name__)
                 await asyncio.sleep(5)
             finally:
                 self._running = False
+
+    def _emit_state(self, state: str, detail: str = "") -> None:
+        """Tell the GUI (if any) what the connection is doing. Never fatal."""
+        if not self.on_state:
+            return
+        try:
+            self.on_state(state, detail)
+        except Exception:  # noqa: BLE001 — a broken callback must not kill the bridge
+            log.debug("on_state callback failed", exc_info=True)
 
     async def _handle_message(self, ws, raw: str) -> None:
         try:
@@ -835,12 +860,19 @@ async def run(
     session_id: str,
     stop_event: threading.Event | None = None,
     extra_headers: dict[str, str] | None = None,
+    on_state=None,
 ) -> None:
-    """Async entry point for use as a library (e.g. from tray_app)."""
+    """Async entry point for use as a library (e.g. from tray_app).
+
+    ``on_state(state, detail)`` is called on connect/disconnect so a GUI can show
+    the real state. Without it the tray had no way to learn that the handshake
+    succeeded — connect() never returns while the bridge is up — and therefore
+    displayed "Verbinde…" forever, even on a perfectly healthy connection.
+    """
     ws_url = url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
     if extra_headers is None:
         extra_headers = collect_extra_headers(None)
-    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers)
+    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers, on_state=on_state)
     if stop_event:
         async def _watch_stop():
             while not stop_event.is_set():

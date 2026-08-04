@@ -85,7 +85,7 @@ DEFAULT_CAPABILITIES = {c["id"] for c in CAPABILITY_META if c["id"] in
 def load_config() -> dict:
     if CONFIG_FILE.exists():
         try:
-            cfg = json.loads(CONFIG_FILE.read_text())
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             if "allowed_capabilities" not in cfg:
                 cfg["allowed_capabilities"] = sorted(DEFAULT_CAPABILITIES)
             if "allowed_paths" not in cfg:
@@ -97,8 +97,52 @@ def load_config() -> dict:
             "allowed_capabilities": sorted(DEFAULT_CAPABILITIES), "allowed_paths": []}
 
 
-def save_config(cfg: dict) -> None:
-    CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
+def save_config(cfg: dict) -> str | None:
+    """Persist the config. Returns None on success, else an error message.
+
+    Must never raise: on Windows this is called from a daemon thread in the tray
+    menu handler, where an exception dies silently — the settings then "work"
+    until the next start and are gone afterwards (the reported symptom). Common
+    causes are a OneDrive-redirected %USERPROFILE%, roaming profiles or missing
+    write rights, so the error has to be surfaced to the user instead.
+    Written atomically so a crash mid-write can't leave a truncated file.
+    """
+    try:
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CONFIG_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        tmp.replace(CONFIG_FILE)
+        return None
+    except Exception as e:  # noqa: BLE001 — surfaced to the user, never fatal
+        msg = f"Einstellungen konnten nicht gespeichert werden ({CONFIG_FILE}): {e}"
+        try:
+            print(msg, file=sys.stderr)
+        except Exception:  # noqa: BLE001 — no console in a windowed build
+            pass
+        return msg
+
+
+def _notify(message: str, title: str = "AI-Employee Bridge") -> None:
+    """Show a message to the user. Falls back to stderr in headless builds.
+
+    The tray app is windowed (no console), so a silent failure is invisible —
+    anything the user must act on has to come up as a dialog.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        messagebox.showinfo(title, message)
+        root.destroy()
+        return
+    except Exception:  # noqa: BLE001 — no display / no tk available
+        pass
+    try:
+        print(f"{title}: {message}", file=sys.stderr)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def normalize_bridge_url(value: str):
@@ -315,8 +359,28 @@ def _run_bridge_thread(url, token, session_id):
             sys.path.insert(0, str(bridge_dir))
         import bridge as bridge_module
         _status = "connecting"
+
+        def _on_state(state: str, detail: str = "") -> None:
+            # bridge.run() never returns while the connection is up, so the tray
+            # can only learn the real state through this callback. Without it the
+            # status window sat on "Verbinde…" forever.
+            global _status
+            if state == "connected":
+                _status = "connected"
+            elif state == "rejected":
+                low = (detail or "").lower()
+                if "session" in low:
+                    _status = "error: session abgelaufen"
+                elif "unauthor" in low:
+                    _status = "error: neu anmelden"
+                else:
+                    _status = f"error: {detail or 'vom Server abgewiesen'}"
+            else:
+                _status = "connecting"
+
         asyncio.run(bridge_module.run(url=url, token=token,
-                                      session_id=session_id, stop_event=_bridge_stop))
+                                      session_id=session_id, stop_event=_bridge_stop,
+                                      on_state=_on_state))
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             _status = "error: neu anmelden"
@@ -1405,7 +1469,20 @@ def _show_status_tkinter(cfg):
 
     ctk = _ctk_setup()
     state = _status
-    if state == "connected":
+    # Ask the SERVER whether it actually sees this bridge, like the macOS window
+    # does. The local flag alone was the reason this dialog showed "Verbinde…"
+    # indefinitely; the server's view is the ground truth and also catches the
+    # case where the bridge is fine but the local state got stuck.
+    server_connected = False
+    try:
+        if cfg.get("url") and cfg.get("token") and cfg.get("session"):
+            server_connected = bool(
+                api_session_status(cfg["url"], cfg["token"], cfg["session"]).get("bridge_connected")
+            )
+    except Exception:  # noqa: BLE001 — offline/unreachable → fall back to local state
+        pass
+
+    if server_connected or state == "connected":
         dot, dot_col, state_text = "●", "#22c55e", "Verbunden"
     elif state == "connecting":
         dot, dot_col, state_text = "●", "#f59e0b", "Verbinde…"
@@ -1513,7 +1590,15 @@ def _show_status_plain_tkinter(cfg):
     root = tk.Tk(); root.title("Bridge Status"); root.geometry("380x220")
     f = ttk.Frame(root, padding=16); f.pack(fill="both", expand=True)
     state = _status
-    ttk.Label(f, text="● Verbunden" if state=="connected" else f"● {state}").pack(anchor="w")
+    server_connected = False
+    try:
+        if cfg.get("url") and cfg.get("token") and cfg.get("session"):
+            server_connected = bool(
+                api_session_status(cfg["url"], cfg["token"], cfg["session"]).get("bridge_connected")
+            )
+    except Exception:  # noqa: BLE001 — fall back to the local state
+        pass
+    ttk.Label(f, text="● Verbunden" if (server_connected or state == "connected") else f"● {state}").pack(anchor="w")
     ttk.Label(f, text=f"Version: Bridge v{BRIDGE_VERSION}").pack(anchor="w")
     ttk.Label(f, text=f"Server: {cfg.get('url','—')}").pack(anchor="w")
     ttk.Label(f, text=f"Session: {cfg.get('session','—')}").pack(anchor="w")
@@ -1667,16 +1752,43 @@ def run_tray(cfg: dict) -> None:
 
     def on_connect(icon, item):
         if not cfg.get("token"): on_settings(icon, item); return
-        try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)))
-        except: pass
-        threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
+
+        def _connect():
+            # Same path macOS already took: verify the stored session is still
+            # alive and mint a fresh one if not. Without this, Windows kept
+            # dialing a dead session id forever — the server closes with 1008
+            # and the reconnect loop retries silently, which looked like
+            # "hangs on Verbinde…" and forced a manual new session every time.
+            state = ensure_session(cfg)
+            if state == ENSURE_NEEDS_LOGIN:
+                _notify("Anmeldung abgelaufen — bitte in den Einstellungen neu anmelden.")
+                on_settings(icon, item)
+                return
+            if state == ENSURE_ERROR:
+                _notify("Server nicht erreichbar — Verbindung konnte nicht vorbereitet werden.")
+                return
+            try:
+                api_update_capabilities(cfg["url"], cfg["token"], cfg["session"],
+                                        cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+            except Exception:  # noqa: BLE001 — capabilities are best-effort
+                pass
+            start_bridge(cfg)
+
+        threading.Thread(target=_connect, daemon=True).start()
 
     def on_disconnect(icon, item): stop_bridge()
     def on_permissions(icon, item): threading.Thread(target=lambda: show_permissions_dialog(cfg), daemon=True).start()
     def on_settings(icon, item):
         def _s():
             u = show_setup_dialog(cfg)
-            if u: cfg.update(u); save_config(cfg)
+            if not u:
+                return
+            cfg.update(u)
+            err = save_config(cfg)
+            if err:
+                # Silently swallowing this is what made the settings "reset"
+                # after every restart — the user has to know they didn't stick.
+                _notify(err + "\n\nDie Einstellungen gelten nur bis zum Beenden der App.")
         threading.Thread(target=_s, daemon=True).start()
     def on_status(icon, item): threading.Thread(target=lambda: show_status_window(cfg), daemon=True).start()
     def on_open(icon, item):
