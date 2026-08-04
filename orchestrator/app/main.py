@@ -225,7 +225,7 @@ async def _refresh_mcp_oauth_tokens() -> None:
             async with async_session_factory() as db:
                 await refresh_all_oauth_servers(db)
         except Exception:
-            pass
+            logger.exception("MCP OAuth periodic sweep failed; will retry in 5 min")
         await asyncio.sleep(300)  # Check every 5 minutes
 
 

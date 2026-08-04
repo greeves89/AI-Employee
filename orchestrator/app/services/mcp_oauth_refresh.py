@@ -215,6 +215,7 @@ async def refresh_all_oauth_servers(db: AsyncSession) -> int:
                 "MCP OAuth sweep: refresh raised for server %s: %s",
                 getattr(server, "name", "?"), exc,
             )
+            await db.rollback()
     return usable
 
 
