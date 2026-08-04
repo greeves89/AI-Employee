@@ -487,6 +487,8 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
             result = await _asyncio.wait_for(result_future, timeout=args.get("timeout", 15.0))
             if action == "screenshot":
                 b64 = result.get("screenshot_b64", "")
+                if not b64:
+                    return _tool_result("Error: screenshot did not return image data", is_error=True)
                 return {"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]}
             return _tool_result(json.dumps(result, ensure_ascii=False))
         except _asyncio.TimeoutError:

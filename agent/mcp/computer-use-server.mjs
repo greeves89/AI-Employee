@@ -320,7 +320,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             ],
           };
         }
-        break;
+        return {
+          content: [{ type: "text", text: `Error: screenshot did not return image data: ${JSON.stringify(result)}` }],
+          isError: true,
+        };
 
       case "computer_ax_tree":
         result = await sendCommand("ax_tree", {

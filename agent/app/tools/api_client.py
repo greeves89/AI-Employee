@@ -5,12 +5,14 @@ with direct API calls for custom_llm agents.
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
 
 import httpx
 
+from app import multimodal
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -93,6 +95,72 @@ class OrchestratorAPIClient:
             status = a.get("state") or a.get("status", "unknown")
             lines.append(f"- {a.get('name', '?')} (id: {a.get('id')}, role: {a.get('role', 'none')}, status: {status})")
         return "\n".join(lines)
+
+    async def computer_use(self, params: dict) -> str:
+        """Control the user's desktop through the Computer-Use Bridge.
+
+        This mirrors the Claude-Code `desktop` MCP capability for custom-LLM/Codex
+        agents, using the same orchestrator endpoints and server-side authz.
+        """
+        action = str(params.get("action") or "").strip()
+        if not action:
+            return "Error: action is required"
+
+        if action == "list_sessions":
+            result = await self._request("GET", "/computer-use/sessions")
+            if isinstance(result, str):
+                return result
+            sessions = result.get("sessions", [])
+            if not sessions:
+                return (
+                    "No active bridge sessions. Ask the user to open the AI-Employee "
+                    "Computer-Use tab and start the Desktop Bridge app."
+                )
+            lines = [f"Found {len(sessions)} bridge session(s):"]
+            for s in sessions:
+                status = s.get("status") or "unknown"
+                caps = ", ".join(s.get("allowed_capabilities") or [])
+                assigned = s.get("agent_id") or "any"
+                lines.append(
+                    f"  session_id={s.get('session_id')} status={status} "
+                    f"platform={s.get('platform', 'unknown')} assigned_agent={assigned}"
+                )
+                if caps:
+                    lines.append(f"    capabilities: {caps}")
+            return "\n".join(lines)
+
+        session_id = str(params.get("session_id") or "").strip()
+        if not session_id:
+            return "Error: session_id is required. Call computer_use(action='list_sessions') first."
+
+        timeout = params.get("timeout", 15)
+        try:
+            timeout_value = max(1.0, min(float(timeout), 60.0))
+        except (TypeError, ValueError):
+            timeout_value = 15.0
+
+        result = await self._request(
+            "POST",
+            f"/computer-use/sessions/{session_id}/command",
+            json={
+                "action": action,
+                "params": params.get("params") or {},
+                "timeout": timeout_value,
+            },
+        )
+        if isinstance(result, str):
+            return result
+
+        payload = result.get("result", result)
+        if action == "screenshot" and isinstance(payload, dict):
+            if payload.get("screenshot_b64"):
+                return multimodal.IMAGE_SENTINEL + json.dumps({
+                    "media_type": "image/png",
+                    "data": payload["screenshot_b64"],
+                    "note": "Screenshot captured from the user's desktop.",
+                })
+            return "Error: screenshot did not return image data"
+        return json.dumps(payload, ensure_ascii=False)
 
     async def list_agent_messages(self, params: dict) -> str:
         """List recent inter-agent messages involving this agent."""

@@ -407,6 +407,54 @@ LOCAL_TOOLS.extend(get_skill_tool_definitions())
 # ── Orchestrator API Tools (replicate MCP server functionality) ──
 
 ORCHESTRATOR_TOOLS: list[dict] = [
+    # ── Computer-Use Desktop Bridge ──
+    {
+        "type": "function",
+        "function": {
+            "name": "computer_use",
+            "description": (
+                "Control the user's real desktop through the AI-Employee Desktop Bridge. "
+                "Use this when the user asks to open a URL or app on their computer, "
+                "navigate in their browser, click/type on their screen, or take a screenshot "
+                "of what they are seeing. Do not use bash, curl, web_search, or an agent-browser "
+                "skill for the user's own screen or internal/company URLs. First call "
+                "action='list_sessions'; then use the connected session_id for actions. If the "
+                "bridge or a capability is unavailable, report that error instead of switching "
+                "to a server-side browser."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": (
+                            "Action to perform. Special: 'list_sessions'. Desktop actions: "
+                            "'screenshot', 'mouse_click', 'mouse_move', 'mouse_scroll', "
+                            "'type', 'key', 'hotkey', 'open_app', 'close_app', "
+                            "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree'."
+                        ),
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Bridge session ID returned by action='list_sessions'. Required for all desktop actions.",
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": (
+                            "Action parameters. Examples: screenshot {scale: 0.5}; "
+                            "mouse_click {x: 100, y: 200, button: 'left'}; type {text: 'https://example.com'}; "
+                            "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}."
+                        ),
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": "Timeout in seconds for bridge actions (default 15, max enforced by server/client).",
+                    },
+                },
+                "required": ["action"],
+            },
+        },
+    },
     # ── Task Management (orchestrator-server.mjs) ──
     {
         "type": "function",
