@@ -104,6 +104,59 @@ async def list_teams(user=Depends(require_auth_or_agent), db: AsyncSession = Dep
     return {"teams": [_serialize(t) for t in rows]}
 
 
+@router.get("/mine")
+async def list_my_teams(user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    """The calling agent's own teams, each with a name-resolved roster.
+
+    Backs the `list_my_team` MCP tool. Every agent's CLAUDE.md tells leads to
+    call that tool before answering "who is on my team" — but the tool only
+    existed on the INBOUND MCP server (for n8n/Cursor), never in the agent's own
+    tool server. Leads therefore answered from memory or from the stale
+    /shared/team.json snapshot and never saw members added after their container
+    started. This endpoint is the live source that fixes it.
+
+    Must stay live (no cache): membership changes via POST /teams/{id}/members
+    write only to the DB and deliberately do not restart containers.
+    """
+    rows = (await db.execute(select(Team).where(Team.is_active == True))).scalars().all()  # noqa: E712
+    mine = [t for t in rows if await _is_team_member(t, user, db)]
+    if not mine:
+        return {"teams": []}
+
+    member_ids = sorted({mid for t in mine for mid in (t.member_agent_ids or [])})
+    name_by_id: dict[str, str] = {}
+    role_by_id: dict[str, str | None] = {}
+    if member_ids:
+        agents_res = await db.execute(select(Agent).where(Agent.id.in_(member_ids)))
+        for a in agents_res.scalars().all():
+            name_by_id[a.id] = a.name
+            role_by_id[a.id] = (a.config or {}).get("role")
+
+    caller_id = str(getattr(user, "id", ""))
+    return {
+        "teams": [
+            {
+                "team_id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "lead_agent_id": t.lead_agent_id,
+                "i_am_lead": t.lead_agent_id == caller_id,
+                "members": [
+                    {
+                        "id": mid,
+                        "name": name_by_id.get(mid, mid),
+                        "role": role_by_id.get(mid),
+                        "is_lead": mid == t.lead_agent_id,
+                        "is_me": mid == caller_id,
+                    }
+                    for mid in (t.member_agent_ids or [])
+                ],
+            }
+            for t in mine
+        ]
+    }
+
+
 @router.get("/{team_id}")
 async def get_team(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)

@@ -197,8 +197,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "list_team",
       description:
-        "List all agents in the team with their roles, capabilities, and current status. " +
-        "Use this to find the right agent to delegate tasks to or to send messages.",
+        "List the agents visible to you (your own team members plus other teams' leads) with " +
+        "their roles and current status. Use this to find someone to delegate to or message. " +
+        "For the exact roster of YOUR team — including who the lead is — use list_my_team.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "list_my_team",
+      description:
+        "List the team(s) YOU belong to, with the current roster (names, roles, who is lead). " +
+        "ALWAYS call this before answering anything about 'my team' or 'who works for me' — " +
+        "members can be added or removed at any time WITHOUT restarting you, so your memory " +
+        "and any team file in your workspace go stale. This is the live source.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -904,6 +917,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `${result.tasks.length} tasks:\n\n${lines.join("\n")}`,
           },
         ],
+      };
+    }
+
+    case "list_my_team": {
+      const result = await apiCall("/teams/mine");
+      const teams = result.teams || [];
+      if (teams.length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: "You are not part of any team. Use list_team to see the agents available in the system.",
+          }],
+        };
+      }
+      const blocks = teams.map((t) => {
+        const lines = (t.members || []).map((m) => {
+          const tags = [m.is_lead ? "LEAD" : null, m.is_me ? "you" : null].filter(Boolean).join(", ");
+          return `  - ${m.name} (id: ${m.id}${tags ? `, ${tags}` : ""}): ${m.role || "no role set"}`;
+        });
+        return `Team "${t.name}" [${t.team_id}]${t.i_am_lead ? " — you are the LEAD" : ""}\n${lines.join("\n")}`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text: wrapData("my-teams", blocks.join("\n\n")),
+        }],
       };
     }
 

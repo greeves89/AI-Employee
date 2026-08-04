@@ -281,11 +281,21 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
     if (a === "close") { setGraphOverlay(null); return; }
     if (t === "knowledge_graph" || t === "graph" || t === "wissensgraph" || t === "knowledgegraph") {
       let brainId: number | null = null;
-      try {
-        const [mountsResp, all] = await Promise.all([api.getAgentMounts(agentId), api.listSecondBrains()]);
-        const labels = (mountsResp.mounts || []).filter((l) => l.startsWith("brain-"));
+      // allSettled, not all: if the mounts call fails (403/404/network) we can
+      // still fall back to the first brain. With Promise.all a failing mounts
+      // call threw away a perfectly good brain list and showed "kein Second
+      // Brain gefunden".
+      const [mountsRes, brainsRes] = await Promise.allSettled([
+        api.getAgentMounts(agentId),
+        api.listSecondBrains(),
+      ]);
+      if (brainsRes.status === "fulfilled") {
+        const all = brainsRes.value;
+        const labels = mountsRes.status === "fulfilled"
+          ? (mountsRes.value.mounts || []).filter((l) => l.startsWith("brain-"))
+          : [];
         brainId = all.find((b) => labels.includes(b.label))?.id ?? all[0]?.id ?? null;
-      } catch { /* fall back to an empty graph */ }
+      }
       setGraphOverlay({ brainId, query: query?.trim() || undefined });
       return;
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
@@ -108,6 +108,7 @@ const tabGroups: TabGroup[] = [
 
 export default function AgentDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const agentId = params.id as string;
   const confirm = useConfirm();
   const toast = useToast();
@@ -143,15 +144,19 @@ export default function AgentDetailPage() {
     if (!exists && groupsForMode.length) setActiveSub(groupsForMode[0].subs[0].key);
   }, [groupsForMode, activeSub]);
 
-  // Deep-linking: /agents/{id}?tab=speech jumps straight into e.g. the voice
-  // tab (same pattern as /kiosk?tab=...). Handy for linking a user directly
-  // into an agent's Sprachchat instead of them clicking through the tabs.
+  // Deep-linking: /agents/{id}?tab=speech jumps straight into e.g. the voice tab.
+  // Reads via useSearchParams (NOT window.location + []): the App Router does not
+  // remount this page when only the query string changes, so a mount-only effect
+  // silently ignored every client-side navigation and left the user on "chat".
+  // Validated against groupsForMode, not the full tabGroups — otherwise the
+  // fallback effect above would immediately reset a tab that is hidden in the
+  // current mode.
+  const requestedTab = searchParams.get("tab");
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const requested = new URLSearchParams(window.location.search).get("tab") as SubKey | null;
-    const validKeys = tabGroups.flatMap((g) => g.subs.map((s) => s.key));
-    if (requested && validKeys.includes(requested)) setActiveSub(requested);
-  }, []);
+    if (!requestedTab) return;
+    const visible = groupsForMode.some((g) => g.subs.some((s) => s.key === requestedTab));
+    if (visible) setActiveSub(requestedTab as SubKey);
+  }, [requestedTab, groupsForMode]);
 
   useEffect(() => {
     const load = async () => {

@@ -264,6 +264,11 @@ export default function VaultGraph3D({
     }),
     [graph],
   );
+  // Same objects, reachable from inside timers/intervals without re-subscribing.
+  // react-force-graph writes x/y/z INTO these, so polling the ref is how we learn
+  // that the layout has positioned a node.
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   // Feed react-force-graph EMPTY data on mount, then the real data one frame later.
   // This forces the library to initialize its force-layout on the empty graph BEFORE
@@ -317,7 +322,13 @@ export default function VaultGraph3D({
         /* bloom is a nicety — graph renders fine without it */
       }
     })();
+    // Both timers below frame the WHOLE graph. When a voice/deep-link query wants
+    // a specific node in view, they would yank the camera back off it (zoomToFit at
+    // 600ms lands mid-flight of the 1200ms focus animation, the center-orbit at
+    // 1600ms then rotates around the graph centre). Skip them in that case — the
+    // query focus does its own framing.
     const t = setTimeout(() => {
+      if (queryFocusPendingRef.current) return;
       try {
         fgRef.current?.zoomToFit?.(800, 60);
       } catch {
@@ -328,6 +339,7 @@ export default function VaultGraph3D({
     // graph slowly turns on its own while you just look at it. Orbit target defaults
     // to the graph centre after zoomToFit; a slow speed keeps it calm, not dizzying.
     const spin = setTimeout(() => {
+      if (queryFocusPendingRef.current) return;
       try {
         const c = fgRef.current?.controls?.();
         if (c) { c.autoRotate = true; c.autoRotateSpeed = 0.35; }
@@ -400,7 +412,15 @@ export default function VaultGraph3D({
   // initialQuery (title > tags > path substring, case-insensitive) and focus
   // it exactly like a click would. Re-runs if the agent asks for a NEW query
   // in the same open graph (e.g. "such jetzt nach aehnlichen Themen").
+  //
+  // Timing matters: the force layout has no node coordinates yet when `graph`
+  // first lands (react-force-graph gets real data a frame later, and then needs
+  // to tick). Focusing right away flies the camera to (0,0,0) instead of the
+  // node. So we mark a focus as pending — which also parks the zoomToFit /
+  // center-orbit timers above — and wait for the node to actually have a
+  // position before moving the camera.
   const appliedQueryRef = useRef<string | null>(null);
+  const queryFocusPendingRef = useRef(false);
   useEffect(() => {
     const q = initialQuery?.trim().toLowerCase();
     if (!q || !graph || graph.nodes.length === 0) return;
@@ -410,8 +430,36 @@ export default function VaultGraph3D({
       graph.nodes.find((n) => n.name.toLowerCase().includes(q)) ??
       graph.nodes.find((n) => n.tags.some((t) => t.toLowerCase().includes(q))) ??
       graph.nodes.find((n) => n.path.toLowerCase().includes(q));
-    if (match) handleNodeClick(match);
-  }, [initialQuery, graph, handleNodeClick]);
+    if (!match) return;
+
+    queryFocusPendingRef.current = true;
+    // Open the detail panel immediately — that part needs no layout.
+    setSelected(match);
+    if (onNodeSelect) onNodeSelect(match);
+    else if (brainId != null) {
+      setDetail({ content: "", loading: true });
+      getBrainFile(brainId, match.path)
+        .then((r) => setDetail({ content: r.content, loading: false }))
+        .catch(() => setDetail({ content: "_Inhalt konnte nicht geladen werden._", loading: false }));
+    }
+
+    // Poll until the simulation gave this node a position, then fly to it.
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      const live = (dataRef.current.nodes as any[]).find((n) => n.id === match.id);
+      const positioned = live && (live.x || live.y || live.z);
+      if (positioned || tries > 40) {   // ~4s worst case, then give up gracefully
+        clearInterval(timer);
+        queryFocusPendingRef.current = false;
+        if (positioned) focusNode(live);
+      }
+    }, 100);
+    return () => {
+      clearInterval(timer);
+      queryFocusPendingRef.current = false;
+    };
+  }, [initialQuery, graph, focusNode, onNodeSelect, brainId]);
 
   const nodeThreeObject = useCallback((node: any) => {
     const sprite: any = new SpriteText(node.name);
