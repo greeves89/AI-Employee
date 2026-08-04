@@ -139,7 +139,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "brain_related",
-      description: "Get semantically related entries for a given node (via cosine similarity in pgvector). Use for discovery — 'what else is connected to this?'",
+      description: "Neighbors of a brain node: LINKED = explicit [[wikilinks]] (exactly the edges the knowledge graph draws — use this for 'what is this connected to?'), plus SIMILAR = semantically close entries for discovery. Returns both.",
       inputSchema: {
         type: "object",
         properties: {
@@ -257,14 +257,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "brain_related") {
       const params = new URLSearchParams({ limit: String(args.limit || 10) });
       const result = await apiCall(`/brain/agent/related/${args.id}?${params}`);
+      const linked = result.linked || [];
       const related = result.related || [];
-      let text = `[BRAIN RELATED — ${related.length} neighbors of entry ${result.entry_id}]\n\n`;
+      const ARROW = { outgoing: "→", incoming: "←", both: "↔" };
+
+      let text = `[BRAIN NEIGHBORS of entry ${result.entry_id}]\n\n`;
+
+      // Explicit links FIRST — these are the edges the knowledge graph draws, so this
+      // is what the user means by "what is this connected to?".
+      text += `LINKED (explicit [[wikilinks]] — the edges drawn in the graph) — ${linked.length}:\n`;
+      for (const l of linked) {
+        text += `- ${ARROW[l.direction] || "-"} **${l.title}** (id: ${l.id})`;
+        if (l.tags?.length) text += ` — ${l.tags.map((t) => `#${t}`).join(" ")}`;
+        text += "\n";
+      }
+      if (!linked.length) text += "(none — this note names no others and is named by none)\n";
+
+      text += `\nSIMILAR (semantic, not drawn as links) — ${related.length}:\n`;
       for (const r of related) {
         text += `- **${r.title}** (id: ${r.id}, sim: ${r.similarity})`;
         if (r.tags?.length) text += ` — ${r.tags.map((t) => `#${t}`).join(" ")}`;
         text += "\n";
       }
       if (!related.length) text += "(no semantic neighbors yet — embedding may be missing)\n";
+
+      text += "\nUse brain_get(id) to read any of them in full.\n";
       return { content: [{ type: "text", text }] };
     }
 

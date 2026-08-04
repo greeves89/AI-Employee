@@ -10,6 +10,8 @@ Agent-facing: GET  /brain/agent/search   search across user's full brain
               POST /brain/agent/contribute  add a node to the user's brain
 """
 
+import re
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,6 +106,45 @@ async def search_brain(
     return await _brain_search(q=q, user_id=user_id, limit=limit, db=db)
 
 
+#: Dieselbe Regel, mit der ``/brain/graph`` seine ``backlink``-Kanten zeichnet — bewusst
+#: geteilt, damit die gesprochene Antwort und das gezeichnete Bild nie auseinanderlaufen.
+_BACKLINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+
+async def _wikilink_neighbours(
+    entry: KnowledgeEntry,
+    only_user_id: str | None,
+    limit: int,
+    db: AsyncSession,
+) -> list[dict]:
+    """Explizit per ``[[wikilink]]`` verbundene Nachbarn — in BEIDE Richtungen.
+
+    ``only_user_id=None`` heisst Admin (alles sichtbar), sonst wird auf die Eintraege
+    dieses Nutzers eingeschraenkt. Titel-Treffer wie im Graphen; ein Eintrag, der in
+    beide Richtungen verweist, kommt einmal mit ``direction="both"``.
+    """
+    scope = select(KnowledgeEntry)
+    if only_user_id is not None:
+        scope = scope.where(KnowledgeEntry.user_id == only_user_id)
+    visible = (await db.execute(scope)).scalars().all()
+    by_title = {e.title: e for e in visible}
+
+    out: dict[int, dict] = {}
+    for title in _BACKLINK_RE.findall(entry.content or ""):          # ausgehend
+        tgt = by_title.get(title)
+        if tgt and tgt.id != entry.id:
+            out[tgt.id] = {**_entry_to_node(tgt), "direction": "outgoing"}
+    for e in visible:                                                # eingehend
+        if e.id == entry.id:
+            continue
+        if entry.title in _BACKLINK_RE.findall(e.content or ""):
+            if e.id in out:
+                out[e.id]["direction"] = "both"
+            else:
+                out[e.id] = {**_entry_to_node(e), "direction": "incoming"}
+    return list(out.values())[:limit]
+
+
 @router.get("/related/{entry_id}")
 async def get_related(
     entry_id: int,
@@ -113,6 +154,9 @@ async def get_related(
 ):
     """Second Brain neighbors of a knowledge entry — cross-system (#157).
 
+    ``linked``            explicit ``[[wikilink]]`` neighbours — the edges the graph
+                          actually DRAWS. Without these, asking "what is this connected
+                          to?" answered with something else than the picture showed (#477).
     ``related``           semantically related KNOWLEDGE entries (from brain_links).
     ``related_memories``  semantically related AGENT MEMORIES of the caller's own
                           agents — the bridge that joins the two silos into one brain.
@@ -175,7 +219,15 @@ async def get_related(
             for r in rel_mem if r[4] is not None and float(r[4]) >= threshold
         ]
 
-    return {"entry_id": entry_id, "related": result, "related_memories": related_memories}
+    only_own = None if (hasattr(user, "role") and user.role == UserRole.ADMIN) else str(user.id)
+    linked = await _wikilink_neighbours(entry, only_own, limit, db)
+
+    return {
+        "entry_id": entry_id,
+        "linked": linked,
+        "related": result,
+        "related_memories": related_memories,
+    }
 
 
 # ── Agent-facing ───────────────────────────────────────────────────────────────
@@ -366,7 +418,16 @@ async def agent_brain_related(
                 "similarity": round(float(lnk.similarity or 0), 4),
             })
 
-    return {"entry_id": entry_id, "related": related, "total": len(related)}
+    # Dieselben Kanten, die der Graph zeichnet — sonst nennt der Agent auf
+    # "womit haengt das zusammen?" andere Knoten, als der Nutzer vor sich sieht (#477).
+    linked = await _wikilink_neighbours(entry, user_id, limit, db)
+
+    return {
+        "entry_id": entry_id,
+        "linked": linked,
+        "related": related,
+        "total": len(related) + len(linked),
+    }
 
 
 @router.get("/agent/search")

@@ -33,7 +33,27 @@ shared across ALL agents of this user. It grows as agents contribute to it.
 - Call `brain_contribute` to add learnings, decisions, or research to the shared brain
 - Other agents will find this context automatically via semantic search
 
-Tools: `brain_search(q, include_memories=false)` | `brain_contribute(title, content, tags=[])`
+**When the user asks about a specific entry — search is NOT the answer.** `brain_search`
+returns snippets across the whole brain. Two follow-up questions come up constantly, and
+each has its own tool:
+
+| The user asks | Tool |
+|---|---|
+| "search / do we know anything about X?" | `brain_search(q)` |
+| "tell me more", "what does it say", "read it to me" — about ONE entry | `brain_get(id)` → full content |
+| "what is connected to this?", "what else belongs to it?", "show the links" | `brain_related(id)` → semantic neighbours |
+| "what is in the brain?", "list the entries" | `brain_list(limit, offset)` |
+
+The `id` comes from the preceding `brain_search`/`brain_list` — keep it, you will need it
+for the follow-up question. Answering "more about this node" out of a search snippet
+shortchanges the user: the full text is one call away.
+
+This matters especially **in the knowledge graph**: focusing a node is only the first half.
+"What is in it" is `brain_get`, "what does it connect to" is `brain_related` — the graph
+draws the edges, but only `brain_related` can name them out loud.
+
+Tools: `brain_search(q, include_memories=false)` | `brain_get(id)` | `brain_related(id, limit=10)` |
+`brain_list(limit, offset)` | `brain_contribute(title, content, tags=[])` | `brain_update` | `brain_delete`
 
 ## Daily Log System (MANDATORY — every agent, every day)
 

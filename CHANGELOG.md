@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.132.1] — 2026-08-04
+
+### Fixed
+- **„Womit hängt dieser Punkt zusammen?" nannte andere Knoten, als der Graph zeichnet (#477).** Der Wissensgraph zeichnet **zwei** Kantenarten: explizite `[[wikilinks]]` und semantische Ähnlichkeit. `brain_related` kannte aber nur die semantischen — auf die Frage nach den Verbindungen eines Knotens kam also eine Antwort, die nicht zum Bild passte. `/brain/related` und `/brain/agent/related` liefern jetzt zusätzlich `linked`: die tatsächlich gezeichneten Wikilink-Kanten, in **beide** Richtungen (`outgoing` / `incoming` / `both`). Beide Routen teilen sich dieselbe Auflösung wie `/brain/graph` beim Zeichnen — die gesprochene Antwort und die Grafik können nicht mehr auseinanderlaufen. 9 neue Tests (Richtungen, Selbstbezug, Platzhalter ohne Notiz, Mandantentrennung, Admin-Sicht).
+- **Der Agent kannte nur zwei seiner sieben Brain-Werkzeuge (#477).** In `claude-global.md` standen ausschließlich `brain_search` und `brain_contribute`. `brain_get` (voller Inhalt), `brain_related` (Verbindungen) und `brain_list` kamen nicht vor — deshalb beantwortete er „erzähl mir mehr über diesen Punkt" aus einem Suchtreffer-Ausschnitt statt aus dem Volltext, und Verbindungen gar nicht. Jetzt mit Zuordnungstabelle Frage → Werkzeug.
+
 ## [1.132.0] — 2026-08-04
 
 Erste Nachbesserungen aus dem Kundentest von v1.131.0 (Klinikum Braunschweig).
