@@ -41,6 +41,10 @@ WORKFLOW_EXPORT_FORMAT = "ai-employee-workflow"
 WORKFLOW_EXPORT_VERSION = 1
 
 
+def _cron_shape_valid(expr: str) -> bool:
+    return len(expr.split()) == 5
+
+
 def _validate_definition(defn: dict) -> None:
     if not isinstance(defn, dict):
         raise HTTPException(status_code=400, detail="definition must be an object")
@@ -62,6 +66,29 @@ def _validate_definition(defn: dict) -> None:
         for r in refs:
             if r is not None and r not in ids:
                 raise HTTPException(status_code=400, detail=f"step '{sid}' references unknown step '{r}'")
+
+
+def _validate_trigger(trigger: dict | None) -> None:
+    """Validate workflow trigger config before create/import persists it."""
+    if trigger is None:
+        return
+    if not isinstance(trigger, dict):
+        raise HTTPException(status_code=422, detail="trigger must be an object")
+    cron = trigger.get("cron")
+    if cron is None:
+        return
+    if not isinstance(cron, str) or not cron.strip():
+        raise HTTPException(status_code=422, detail="trigger.cron must be a non-empty string")
+    try:
+        from croniter import croniter
+        if not croniter.is_valid(cron):
+            raise ValueError
+    except ImportError:
+        if _cron_shape_valid(cron):
+            return
+        raise HTTPException(status_code=422, detail="trigger.cron must be a valid cron expression")
+    except Exception:
+        raise HTTPException(status_code=422, detail="trigger.cron must be a valid cron expression")
 
 
 def _is_admin(user) -> bool:
@@ -207,6 +234,7 @@ async def list_workflows(user=Depends(require_auth), db: AsyncSession = Depends(
 @router.post("", status_code=201)
 async def create_workflow(body: WorkflowUpsert, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_definition(body.definition)
+    _validate_trigger(body.trigger)
     await _assert_owns_folder(body.folder_id, user, db)
     wf = Workflow(
         id=f"wf_{uuid.uuid4().hex[:12]}", name=body.name, user_id=str(user.id),
@@ -243,6 +271,7 @@ async def import_workflow(body: WorkflowImport, user=Depends(require_auth), db: 
     if body.version is not None and body.version > WORKFLOW_EXPORT_VERSION:
         raise HTTPException(status_code=400, detail=f"Format-Version {body.version} wird nicht unterstützt")
     _validate_definition(body.definition)
+    _validate_trigger(body.trigger)
     await _assert_owns_folder(body.folder_id, user, db)
     name = (body.name or "").strip() or "Importierter Workflow"
     wf = Workflow(
@@ -392,6 +421,7 @@ async def export_workflow(workflow_id: str, user=Depends(require_auth), db: Asyn
 @router.put("/{workflow_id}")
 async def update_workflow(workflow_id: str, body: WorkflowUpsert, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_definition(body.definition)
+    _validate_trigger(body.trigger)
     wf = await _get_wf(workflow_id, user, db, edit=True)
     # Re-parenting into a folder is owner-only and only into a folder you own — an
     # editor must not move a shared workflow (could leak it via a shared folder).

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import HTTPException
 
 from app.api import workflows as wf_api
-from app.models.workflow import Workflow
+from app.models.workflow import Workflow, WorkflowFolder
 
 
 def _wf(name="Mein Workflow"):
@@ -31,6 +31,12 @@ def _db():
     return db
 
 
+def _db_result(value):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = value
+    return result
+
+
 _VALID_DEF = {"start": "s1", "steps": {"s1": {"type": "agent_task", "title": "A", "prompt": "x", "next": None}}}
 
 
@@ -46,6 +52,23 @@ class ExportTests(unittest.TestCase):
         # Owner/folder/run state must NOT leak into a shared snapshot.
         for leak in ("user_id", "folder_id", "id", "role"):
             self.assertNotIn(leak, d)
+
+
+class ExportAuthzTests(unittest.IsolatedAsyncioTestCase):
+    async def test_export_rejects_workflow_owned_by_another_user(self):
+        workflow = _wf()
+        workflow.user_id = "user-a"
+        workflow.folder_id = None
+        db = _db()
+        db.execute = AsyncMock(side_effect=[
+            _db_result(workflow),  # _get_wf: workflow lookup
+            _db_result(None),      # _access_role: no direct workflow share
+        ])
+
+        with self.assertRaises(HTTPException) as ctx:
+            await wf_api.export_workflow("wf_abc123", user=MagicMock(id="user-b"), db=db)
+
+        self.assertEqual(ctx.exception.status_code, 403)
 
 
 class ImportTests(unittest.IsolatedAsyncioTestCase):
@@ -92,6 +115,39 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
                 user=MagicMock(id="u"), db=_db(),
             )
         self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_import_rejects_foreign_folder_id(self):
+        folder = WorkflowFolder(id="wff_foreign", name="A Folder", user_id="user-a")
+        db = _db()
+        db.execute = AsyncMock(return_value=_db_result(folder))
+
+        with self.assertRaises(HTTPException) as ctx:
+            await wf_api.import_workflow(
+                wf_api.WorkflowImport(
+                    definition=_VALID_DEF,
+                    name="Geteilt",
+                    trigger={"cron": "0 7 * * 1"},
+                    folder_id="wff_foreign",
+                ),
+                user=MagicMock(id="user-b"),
+                db=db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_import_rejects_invalid_cron_trigger(self):
+        with self.assertRaises(HTTPException) as ctx:
+            await wf_api.import_workflow(
+                wf_api.WorkflowImport(
+                    definition=_VALID_DEF,
+                    name="Kaputter Trigger",
+                    trigger={"cron": "not a cron"},
+                ),
+                user=MagicMock(id="u"),
+                db=_db(),
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
 
 
 class RouteWiringTests(unittest.TestCase):
