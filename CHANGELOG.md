@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.137.0] — 2026-08-04
+
+### Changed
+- **Der Sprach-Agent sagt jetzt Bescheid, bevor er etwas tut, das dauert.** „Einen Moment, ich öffne das." · „Ich schau mal auf deinen Bildschirm." · „Moment, ich seh mir das Bild an." Bisher wurde es einfach still, und man saß sekundenlang vor einer Leitung ohne Ton.
+
+  Die Ursache stand im Prompt selbst: Die Regel gegen Laut-Denken verbot ausdrücklich „zu beschreiben, welches Tool du gleich nutzt". Sie war gegen „Okay, der Nutzer fragt… ich muss mal prüfen…" geschrieben und hat dabei auch den ganz normalen Wartehinweis miterschlagen. Jetzt sind beide Fälle sauber getrennt: **ansagen, WAS gleich passiert, ist erwünscht; erklären, WARUM oder WOMIT, bleibt verboten.** Mit Beispielsätzen, dem Hinweis auf Abwechslung, und der Vorgabe, nichts anzukündigen, was ohnehin sofort da ist.
+
+  Gilt für **beide Sprach-Engines** — AWS Nova Sonic und Azure Realtime bekommen denselben Prompt (der Kundenserver läuft auf Azure, der Pi auf AWS). Ein Test hält fest, dass der Prompt vor der Engine-Weiche gebaut wird und beide ihn bekommen.
+
 ## [1.136.1] — 2026-08-04
 
 ### Fixed
