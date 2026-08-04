@@ -31,6 +31,7 @@ async def ask_agent_via_chat(
     source: str = "realtime_voice",
     timeout: float = 90.0,
     chat_session_id: str | None = None,
+    images: list[dict] | None = None,
     on_event=None,
 ) -> str:
     """Send ``text`` to the agent and return its full text answer (or an error marker).
@@ -45,7 +46,7 @@ async def ask_agent_via_chat(
         "id": message_id,
         "text": text,
         "model": None,
-        "images": [],
+        "images": images or [],
         "source": source,
     }
     if chat_session_id:

@@ -138,6 +138,7 @@ class VoiceToolTests(unittest.IsolatedAsyncioTestCase):
         v = RealtimeVoiceSession.__new__(RealtimeVoiceSession)
         v.user_id = user_id
         v.agent_id = "agent-1"
+        v.redis = AsyncMock()
         v._emit = AsyncMock()
         return v
 
@@ -198,6 +199,7 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
         v = RealtimeVoiceSession.__new__(RealtimeVoiceSession)
         v.user_id = "u1"
         v.agent_id = agent_id
+        v.redis = AsyncMock()
         v._emit = AsyncMock()
         return v
 
@@ -247,10 +249,10 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
             out = await v._desktop("click", x="links", y="oben")
         self.assertIn("Zahlen", out)
 
-    async def test_screenshot_is_described_by_the_vision_model(self):
-        """Nova Sonic hat keinen Bildkanal — das Bild geht durch ein bildfaehiges
-        Modell, und die Stimme bekommt dessen Beschreibung als Text."""
-        import app.services.screen_vision as sv
+    async def test_screenshot_goes_to_the_bound_agent_with_the_image(self):
+        """Nova Sonic hat keinen Bildkanal — aber der Agent, an dem die Stimme
+        haengt, sieht Bilder mit seinem eigenen Zugang. Genau dorthin geht es."""
+        import app.services.realtime_voice_session as rvs
         v = self._voice()
         with unittest.mock.patch.object(
             cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
@@ -258,15 +260,17 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
             cu, "dispatch_bridge_command",
             new=AsyncMock(return_value={"result": {"screenshot_b64": "abc"}}),
         ), unittest.mock.patch.object(
-            sv, "describe_screenshot", new=AsyncMock(return_value="Excel ist offen."),
-        ):
+            rvs, "ask_agent_via_chat", new=AsyncMock(return_value="Excel ist offen."),
+        ) as ask:
             out = await v._desktop("screenshot")
         self.assertIn("Excel ist offen", out)
+        imgs = ask.await_args.kwargs["images"]
+        self.assertEqual(imgs, [{"media_type": "image/png", "data": "abc"}])
         v._emit.assert_awaited()
 
-    async def test_failing_vision_is_admitted_not_invented(self):
-        """Kann das Bild nicht ausgewertet werden, wird das gesagt — nicht geraten."""
-        import app.services.screen_vision as sv
+    async def test_failing_analysis_is_admitted_not_invented(self):
+        """Kommt keine Auswertung zurueck, wird das gesagt — nicht geraten."""
+        import app.services.realtime_voice_session as rvs
         v = self._voice()
         with unittest.mock.patch.object(
             cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
@@ -274,11 +278,10 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
             cu, "dispatch_bridge_command",
             new=AsyncMock(return_value={"result": {"screenshot_b64": "abc"}}),
         ), unittest.mock.patch.object(
-            sv, "describe_screenshot",
-            new=AsyncMock(side_effect=sv.ScreenVisionError("Zugang fehlt")),
+            rvs, "ask_agent_via_chat", new=AsyncMock(return_value="[Fehler: Timeout]"),
         ):
             out = await v._desktop("screenshot")
-        self.assertIn("nicht auswerten", out)
+        self.assertIn("nicht zurueck", out)
         self.assertIn("erfinde nichts", out.lower())
 
 
@@ -296,6 +299,7 @@ class BridgeResultHonestyTests(unittest.IsolatedAsyncioTestCase):
         from app.services.realtime_voice_session import RealtimeVoiceSession
         v = RealtimeVoiceSession.__new__(RealtimeVoiceSession)
         v.user_id, v.agent_id = "u1", "agent-1"
+        v.redis = AsyncMock()
         v._emit = AsyncMock()
         return v
 

@@ -2261,18 +2261,28 @@ class RealtimeVoiceSession:
                 "kind": "image", "media_type": "image/png", "b64": b64,
                 "caption": "Bildschirm des Nutzers", "auto_open": True,
             }})
-            # Nova Sonic hat keinen Bildkanal — das Bild durch ein bildfaehiges Modell
-            # schicken und dessen Beschreibung als Text zurueckgeben. Ohne das konnte der
-            # Agent auf „was siehst du?" nur passen.
-            from app.services.screen_vision import ScreenVisionError, describe_screenshot
-            try:
-                seen = await describe_screenshot(
-                    b64, question=text, platform=str(sess.get("platform") or ""),
-                )
-            except ScreenVisionError as e:
-                return (f"Screenshot gemacht und angezeigt, aber ich kann ihn nicht auswerten: {e} "
-                        "Sag ihm das und frage, was er sieht — erfinde nichts.")
-            return f"Auf dem Bildschirm des Nutzers ist zu sehen: {seen}"
+            # Nova Sonic hat keinen Bildkanal. Aber ICH haenge an einem echten Agenten,
+            # und DER sieht Bilder — mit dem Zugang, der fuer ihn ohnehin eingerichtet
+            # ist (OAuth-Claude, Bedrock, Azure). Also gebe ich ihm den Screenshot und
+            # nehme seine Antwort. Kein zweiter Modellzugang noetig.
+            frage = (text.strip() or "Was ist auf diesem Bildschirm zu sehen?")
+            plat_note = f" (Betriebssystem: {plat})" if plat else ""
+            answer = await ask_agent_via_chat(
+                self.redis, self.agent_id,
+                "Das ist ein Screenshot vom Bildschirm des Nutzers"
+                f"{plat_note}. Beantworte KNAPP, hoechstens drei kurze Saetze, weil deine "
+                "Antwort vorgelesen wird: " + frage +
+                "\nNenne die sichtbaren Fenster und worum es darin geht. Erfinde nichts. "
+                "Siehst du im Wesentlichen nur den Schreibtischhintergrund ohne "
+                "Fensterinhalte, sag das ausdruecklich — unter macOS fehlt dann meist die "
+                "Freigabe zur Bildschirmaufnahme.",
+                images=[{"media_type": "image/png", "data": b64}],
+                timeout=90.0,
+            )
+            if not answer or answer.startswith("[Fehler"):
+                return ("Screenshot gemacht und angezeigt, aber die Auswertung kam nicht "
+                        "zurueck. Sag ihm das und frage, was er sieht — erfinde nichts.")
+            return f"Auf dem Bildschirm des Nutzers ist zu sehen: {answer}"
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
         return "Erledigt."

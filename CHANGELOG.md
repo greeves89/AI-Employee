@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.137.1] — 2026-08-04
+
+### Changed
+- **Die Bildauswertung geht jetzt über den Agenten, an dem die Stimme ohnehin hängt** — statt über einen zweiten, eigens einzurichtenden Modellzugang. Der Screenshot wird als Bild an den gebundenen Agenten geschickt, der ihn mit **seinem** bestehenden Zugang ansieht (OAuth-Claude, Bedrock, Azure — was auch immer für ihn eingerichtet ist), und die Stimme liest dessen Antwort vor.
+
+  Der Weg aus v1.136.0 rief die Anthropic-API direkt auf und brauchte dafür einen eigenen Schlüssel. Auf Installationen ohne einen solchen — Pi und Kundenserver — blieb die Bilderkennung damit tot, obwohl der Agent daneben längst sehen konnte. Der Umweg ist ersatzlos entfallen (`screen_vision.py` gelöscht), und [#505](https://github.com/greeves89/AI-Employee/issues/505) erledigt sich damit.
+
+  Die Leitung dafür war schon da: Das Nachrichtenformat zum Agenten hat ein `images`-Feld, und die Agentenseite legt Bilder als Dateien im Workspace ab und reicht sie an die CLI weiter. Nur der Sprach-Layer hat nie welche mitgeschickt.
+
 ## [1.137.0] — 2026-08-04
 
 ### Changed
