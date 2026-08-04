@@ -1406,7 +1406,17 @@ class AgentManager:
 
         effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config, agent.model)
         if agent.ai_account_id:
-            mode = self._mode_for_ai_provider(effective_llm.get("provider_type") if effective_llm else None, mode)
+            # Derive the harness from the ACCOUNT's provider, not from the
+            # per-model entry. A GPT deployment on an Azure/Foundry account is
+            # naturally tagged provider_type "openai" on the model row — taking
+            # that literally flipped the agent to the Codex CLI harness, which
+            # silently dropped LLM_API_ENDPOINT/LLM_API_KEY (they only get
+            # injected on the custom_llm branch below) and then hid the
+            # AI-account card in the UI, so it couldn't be repaired either.
+            from app.models.ai_account import AIAccount as _AIAccount
+            _acc = await self.db.get(_AIAccount, agent.ai_account_id)
+            _account_provider = _acc.provider_type if _acc else None
+            mode = self._mode_for_ai_provider(_account_provider, mode)
             agent.mode = mode
             config["model_provider"] = self._model_provider_for_mode(mode, effective_llm)
 

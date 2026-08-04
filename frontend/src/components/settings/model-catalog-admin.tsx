@@ -43,7 +43,15 @@ export function ModelCatalogAdmin() {
         const parts: string[] = [];
         parts.push(`Anthropic: ${d.anthropic_queried ? `${d.anthropic_found} erkannt` : "kein API-Key"}`);
         parts.push(`OpenAI: ${d.openai_queried ? `${d.openai_found} erkannt` : "kein API-Key"}`);
-        setNote(`${parts.join(" · ")} — ${d.new_extras} neue Modelle. Neue Modelle sind zunächst deaktiviert.`);
+        // Say out loud what this can NOT find: only the public Anthropic/OpenAI
+        // model APIs are queried. Azure-Foundry/Bedrock/Vertex deployments have
+        // no such listing, so they never appear here — without this line it
+        // looks like a bug when a connected Foundry resource shows no models.
+        setNote(
+          `${parts.join(" · ")} — ${d.new_extras} neue Modelle. Neue Modelle sind zunächst deaktiviert. ` +
+          `Hinweis: Erkannt werden nur Anthropic/OpenAI direkt — eigene Azure-Foundry-, Bedrock- oder ` +
+          `Vertex-Deployments trägst du unter AI-Accounts ein.`
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Auto-Discovery fehlgeschlagen");

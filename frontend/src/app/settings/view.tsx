@@ -975,6 +975,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <p className="text-[10px] text-muted-foreground/40 pt-1">
                     Configure in Azure AI Foundry portal. Ensure Claude models are deployed in your resource.
+                    {" "}Eigene Deployments (z.&nbsp;B. GPT) werden hier <strong>nicht</strong> automatisch erkannt —
+                    lege sie unter <strong>AI-Accounts</strong> als Provider &bdquo;Azure OpenAI&ldquo; mit dem
+                    Deployment-Namen als Modell an.
                   </p>
                 </div>
               )}
