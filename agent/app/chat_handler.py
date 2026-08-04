@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 import logging
 import os
 import signal
@@ -192,6 +193,7 @@ class ChatHandler:
                 line = await proc.stderr.readline()
                 if not line:
                     break
+                self.log_publisher.last_activity_at = time.monotonic()   # auch das ist Leben
                 decoded = line.decode("utf-8", errors="replace").strip()
                 if decoded:
                     stderr_lines.append(decoded)
@@ -373,6 +375,13 @@ class ChatHandler:
         buffer = b""
         while True:
             chunk = await process.stdout.read(4096)
+            # Lebenszeichen auf der UNTERSTEN Ebene: jede Regung der CLI zaehlt, nicht
+            # erst ein veroeffentlichtes Chat-Ereignis. Laeuft die CLI minutenlang in
+            # einem einzigen langen Werkzeug (Build, Installation), kommt oben nichts
+            # an — der Stillstands-Wachhund hielt den Agenten dann faelschlich fuer
+            # haengend und brach nach 600s ab, mitten in echter Arbeit.
+            if chunk:
+                self.log_publisher.last_activity_at = time.monotonic()
             if not chunk:
                 if buffer.strip():
                     for line in buffer.decode("utf-8", errors="replace").splitlines():

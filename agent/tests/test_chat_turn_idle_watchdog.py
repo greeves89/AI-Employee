@@ -49,3 +49,38 @@ class IdleWatchdogTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeartbeatSourcesTests(unittest.TestCase):
+    """Das Lebenszeichen muss an der UNTERSTEN Ebene haengen, nicht nur an
+    veroeffentlichten Chat-Ereignissen.
+
+    Beobachtet am 2026-08-04: Der Stillstands-Wachhund brach nach 600s ab, obwohl
+    der Agent arbeitete — die CLI steckte in einem einzigen langen Werkzeug und
+    veroeffentlichte in der Zeit nichts. Jede Regung der CLI zaehlt jetzt.
+    """
+
+    def _src(self, path):
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "app" / path).read_text()
+
+    def test_claude_stdout_ticks(self):
+        s = self._src("chat_handler.py")
+        i = s.index("chunk = await process.stdout.read(4096)")
+        self.assertIn("last_activity_at", s[i:i + 1000],
+                      "stdout der Claude-CLI setzt die Stillstandsuhr nicht zurueck")
+
+    def test_claude_stderr_ticks(self):
+        s = self._src("chat_handler.py")
+        i = s.index("line = await proc.stderr.readline()")
+        self.assertIn("last_activity_at", s[i:i + 1000])
+
+    def test_codex_stdout_ticks(self):
+        s = self._src("codex_runner.py")
+        i = s.index("chunk = await process.stdout.read(4096)")
+        self.assertIn("last_activity_at", s[i:i + 1000],
+                      "Codex darf nicht faelschlich als haengend gelten")
+
+    def test_publisher_still_ticks_on_events(self):
+        s = self._src("log_publisher.py")
+        self.assertIn("last_activity_at = time.monotonic()", s)

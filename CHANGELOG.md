@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.139.1] — 2026-08-04
+
+### Fixed
+- **Der Stillstands-Wachhund aus v1.139.0 hat trotzdem abgebrochen** („Der Agent hat sich zwischendurch nicht mehr gemeldet"). Er hat richtig funktioniert, nur am falschen Signal gehorcht: Die Uhr wurde ausschließlich von **veröffentlichten Chat-Ereignissen** zurückgesetzt. Steckt die CLI minutenlang in einem einzigen langen Werkzeug — ein Build, eine Installation — kommt oben nichts an, und ein arbeitender Agent galt nach 600 Sekunden als hängend.
+
+  Das Lebenszeichen sitzt jetzt eine Ebene tiefer: **jede Regung der CLI zählt** — jeder Ausgabe-Block auf stdout, jede Zeile auf stderr, in beiden Laufzeiten (Claude Code und Codex). Damit gilt ein Agent nur noch dann als hängend, wenn sein Prozess wirklich nichts mehr von sich gibt.
+
 ## [1.139.0] — 2026-08-04
 
 ### Fixed

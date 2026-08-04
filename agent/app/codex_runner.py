@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import logging
 import os
 import signal
@@ -214,6 +215,8 @@ class CodexAgentRunner:
                 return
             while True:
                 line = await proc.stderr.readline()
+                if line:
+                    self.log_publisher.last_activity_at = time.monotonic()
                 if not line:
                     break
                 decoded = line.decode("utf-8", errors="replace").strip()
@@ -532,6 +535,9 @@ async def _stream_jsonl(process: asyncio.subprocess.Process) -> AsyncIterator[di
     buffer = b""
     while True:
         chunk = await process.stdout.read(4096)
+        if chunk:
+            # Lebenszeichen fuer den Stillstands-Wachhund (siehe chat_consumer).
+            self.log_publisher.last_activity_at = time.monotonic()
         if not chunk:
             if buffer.strip():
                 for line in buffer.decode("utf-8", errors="replace").splitlines():
