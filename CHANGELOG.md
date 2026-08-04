@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.132.3] — 2026-08-04
+
+### Fixed
+- **Codex- und Custom-LLM-Agenten bekamen beim Update NIE eine frische Anleitung.** `update_agent` — die Funktion hinter dem „Update"-Knopf — schrieb die Instruktionsdatei nur, wenn der Agent auf `claude_code` lief. Alle anderen behielten die Anleitung, mit der sie einst erstellt wurden: **jede** spätere Verbesserung ging still an ihnen vorbei, egal wie oft man aktualisierte. Aufgefallen beim Ausrollen von v1.132.2 auf dem Pi — dort laufen 7 von 9 Agenten auf Codex, deren `AGENT.md` war 16 284 Bytes alt, während die `CLAUDE.md` der Claude-Agenten bei aktuellen 20 276 Bytes stand. Jetzt wird pro Laufzeit die richtige Datei geschrieben (`CLAUDE.md` für Claude Code, `AGENT.md` für Codex/Custom-LLM), ohne Modus-Gate. 5 neue Tests.
+
+  Praktische Folge: Die Bridge- und Brain-Anleitungen aus v1.132.0–v1.132.2 greifen bei Codex-Agenten erst mit diesem Release.
+
 ## [1.132.2] — 2026-08-04
 
 ### Fixed

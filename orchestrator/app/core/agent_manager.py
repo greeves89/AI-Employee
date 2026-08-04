@@ -1533,18 +1533,22 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
 
-        # 5. Update workspace files (only CLAUDE.md for claude_code, knowledge preserved)
-        if mode == "claude_code":
-            try:
-                _agent_mounts = (agent.config or {}).get("mounts", [])
-                self.docker.write_file_in_container(
-                    container.id,
-                    "/workspace/CLAUDE.md",
-                    _render_claude_md(_agent_mounts, catalog),
-                )
-                logger.info(f"Updated CLAUDE.md for agent {agent_id} (knowledge.md preserved)")
-            except Exception as e:
-                logger.warning(f"Could not update CLAUDE.md: {e}")
+        # 5. Refresh the instructions file — for EVERY mode (knowledge.md preserved).
+        #    Claude Code reads /workspace/CLAUDE.md, Codex and Custom-LLM read
+        #    /workspace/AGENT.md. This used to run only for claude_code, so a Codex
+        #    agent kept the instructions it was born with: every later improvement to
+        #    DEFAULT_CLAUDE_MD silently passed it by, no matter how often it was updated.
+        _instructions_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+        try:
+            _agent_mounts = (agent.config or {}).get("mounts", [])
+            self.docker.write_file_in_container(
+                container.id,
+                _instructions_file,
+                _render_claude_md(_agent_mounts, catalog),
+            )
+            logger.info(f"Updated {_instructions_file} for agent {agent_id} (knowledge.md preserved)")
+        except Exception as e:
+            logger.warning(f"Could not update {_instructions_file}: {e}")
 
         # 6. Update team registry
         try:
