@@ -202,6 +202,17 @@ async def refresh_all_oauth_servers(db: AsyncSession) -> int:
     never raises, so this is cheap to run often. It commits per server (releasing
     the per-server advisory lock each time), which is safe alongside agent startup.
     Returns the number of servers holding a usable token after the sweep.
+
+    NOTE (residual worst-case window, see #493): the sweep runs on a 300s timer
+    (main._refresh_mcp_oauth_tokens) and ``is_expired`` treats a token as due
+    ``EXPIRY_SKEW_SECONDS`` (60s) before its real expiry. A token that crosses the
+    skew threshold just *after* a sweep is only refreshed on the next tick, so an
+    agent created in that gap can briefly see an expired token for up to
+    ``300 - 60 = ~240s`` (~4 min). This is intentional: it is far better than the
+    pre-#488 behaviour (stale for ~1h until container recreate). To fully close the
+    gap, raise ``EXPIRY_SKEW_SECONDS`` above the sweep interval (so a token is always
+    refreshed at least one tick before it can expire) rather than shortening the
+    timer.
     """
     result = await db.execute(select(McpServer).where(McpServer.oauth_enabled.is_(True)))
     servers = result.scalars().all()
