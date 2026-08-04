@@ -139,6 +139,7 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   // Agent machte ohne sie weiter.
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const lastApprovalIdRef = useRef<string | null>(null);
 
   const changeVolume = useCallback((v: number) => {
     setVolume(v);
@@ -260,13 +261,28 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   // im Text-Chat NICHT an einen "arbeitet gerade"-Zustand gekoppelt: im Sprachmodus
   // laeuft die Arbeit oft im Hintergrund weiter, waehrend der Nutzer schon wieder redet.
   useEffect(() => {
-    if (state === "error") return;
+    if (state === "connecting" || state === "error") {
+      setPendingApproval(null);
+      lastApprovalIdRef.current = null;
+      return;
+    }
     let stop = false;
     const poll = async () => {
       try {
         const r = await api.getPendingApprovals();
         if (stop) return;
-        setPendingApproval(r.approvals.find((a) => a.agent_id === agentId) || null);
+        const approval = r.approvals.find((a) => a.agent_id === agentId) || null;
+        setPendingApproval(approval);
+        if (approval && approval.approval_id !== lastApprovalIdRef.current) {
+          lastApprovalIdRef.current = approval.approval_id;
+          const label = approval.question || approval.tool || "Freigabe erforderlich";
+          const detail = approval.context || approval.reasoning || "";
+          setActivity((prev) => {
+            const next = [...prev, { kind: "approval", label, detail }];
+            return next.length > 40 ? next.slice(-40) : next;
+          });
+        }
+        if (!approval) lastApprovalIdRef.current = null;
       } catch { /* Netzwerkaussetzer ignorieren, naechster Tick versucht es erneut */ }
     };
     poll();
@@ -1237,6 +1253,8 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                                 ? "mb-1 text-foreground/90"
                                 : a.kind === "tool"
                                 ? "text-sky-400"
+                                : a.kind === "approval"
+                                ? "text-amber-300"
                                 : "text-muted-foreground"
                             }
                           >
@@ -1249,6 +1267,12 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                             {a.kind === "tool" && (
                               <>
                                 <span className="text-amber-400">[{a.label}]</span>
+                                {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
+                              </>
+                            )}
+                            {a.kind === "approval" && (
+                              <>
+                                <span className="text-amber-400">[Freigabe]</span> {a.label}
                                 {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                               </>
                             )}
@@ -1425,6 +1449,8 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                         ? "mb-1 text-foreground/90"
                         : a.kind === "tool"
                         ? "text-sky-400"
+                        : a.kind === "approval"
+                        ? "text-amber-300"
                         : "text-muted-foreground"
                     }
                   >
@@ -1437,6 +1463,12 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
                     {a.kind === "tool" && (
                       <>
                         <span className="text-amber-400">[{a.label}]</span>
+                        {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
+                      </>
+                    )}
+                    {a.kind === "approval" && (
+                      <>
+                        <span className="text-amber-400">[Freigabe]</span> {a.label}
                         {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                       </>
                     )}
