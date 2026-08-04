@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import decrypt_token, encrypt_token
@@ -186,6 +186,36 @@ async def refresh_if_needed(server: McpServer, db: AsyncSession) -> bool:
             logger.warning("Could not persist refreshed MCP token for server %s", server.name)
             return bool(server.auth_token_encrypted)
         return True
+
+
+async def refresh_all_oauth_servers(db: AsyncSession) -> int:
+    """Refresh every OAuth-enabled MCP server whose access token is (near) expired.
+
+    Intended for a periodic background sweep (#488). Before this, ``refresh_if_needed``
+    ran at exactly one moment — while building the environment for a new agent
+    container — so a stored access token expired within roughly an hour and every
+    agent lost the server until its container was recreated. Running this on a timer
+    keeps the persisted token valid so freshly created and restarted agents receive
+    a live token.
+
+    ``refresh_if_needed`` is a no-op for a server whose token is still valid and
+    never raises, so this is cheap to run often. It commits per server (releasing
+    the per-server advisory lock each time), which is safe alongside agent startup.
+    Returns the number of servers holding a usable token after the sweep.
+    """
+    result = await db.execute(select(McpServer).where(McpServer.oauth_enabled.is_(True)))
+    servers = result.scalars().all()
+    usable = 0
+    for server in servers:
+        try:
+            if await refresh_if_needed(server, db):
+                usable += 1
+        except Exception as exc:  # noqa: BLE001 — one bad server must not abort the sweep
+            logger.warning(
+                "MCP OAuth sweep: refresh raised for server %s: %s",
+                getattr(server, "name", "?"), exc,
+            )
+    return usable
 
 
 async def _release(db: AsyncSession) -> None:
