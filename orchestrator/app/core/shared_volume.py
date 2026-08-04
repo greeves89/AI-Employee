@@ -16,10 +16,13 @@ container recreation and platform updates.
 
 Mode ``3775`` (``rwxrwsr-t``) is deliberate — two bits beyond plain group write:
 
-* **sticky** — ``/shared`` holds root-owned platform credentials
-  (``.auth/token.json``, ``.codex/auth.json``). With the sticky bit an agent can
-  only remove or rename entries it *owns*, so it cannot swap the shared token
-  every other agent reads. This is the ``/tmp`` model.
+* **sticky** — ``/shared`` holds the credential *sub-directories* ``.auth`` and
+  ``.codex``. With the sticky bit an agent can only remove or rename entries it
+  *owns*, so it cannot delete or swap those directories. This is the ``/tmp``
+  model. Note this only guards ``/shared``'s *direct* entries — the credential
+  *files* nested inside (e.g. ``.codex/auth.json``) are protected separately by
+  making both the file and its parent directory root-owned and non-agent-writable
+  (see ``codex_auth_service._lock_agent_readonly`` / ``_secure_codex_dir``).
 * **setgid** — new subdirectories inherit the agent group, so two agents can
   genuinely collaborate inside the same folder instead of locking each other out.
 """
