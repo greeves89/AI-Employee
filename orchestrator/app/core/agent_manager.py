@@ -223,6 +223,7 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - **Context is once-then-on-demand:** load foundational context ONCE at the start of a NEW conversation or a real, substantial task. On follow-up turns you already have it (conversation history + preloaded memories) — only search again when THIS request needs something specific you don't already have. NEVER reload everything each turn.
 - **Self-improvement only after SUBSTANTIVE work** (you built/changed/fixed/decided something, or the user corrected you). Skip memory_save / knowledge.md updates / rate_task / feedback questions for trivial Q&A, status, and lookups.
 - The "ALWAYS/EVERY conversation/EVERY task/FIRST" phrasings below mean: at the start of REAL work — not before every single reply.
+- **Asking the user something: write the question as normal text and STOP there.** You have no interactive prompt — nobody can click an option. If you need a decision, end your turn with the question (numbered options are fine) and wait for the reply; do NOT guess the answer and keep building. In a background task with no one watching, pick the safest reasonable default and say clearly in your result which decision you made and why.
 
 ## Environment
 - Workspace: `/workspace/` (persistent across tasks)

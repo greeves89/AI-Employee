@@ -124,6 +124,14 @@ class ChatHandler:
             "--output-format", "stream-json",
             "--verbose",
             "--dangerously-skip-permissions",
+            # AskUserQuestion is a CLI-builtin that expects an interactive
+            # terminal. Headless (-p) there is nobody to answer, so it returns
+            # the stub "Answer questions?" — the agent treats that as a reply
+            # and carries on with its own guesses, while the user only sees raw
+            # JSON in the chat and cannot answer at all. Taking it away makes
+            # the agent ask in plain text, which the chat (incl. live steering)
+            # already handles properly.
+            "--disallowedTools", "AskUserQuestion",
             "--model", model,
         ])
 

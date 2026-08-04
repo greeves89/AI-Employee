@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.130.2] — 2026-08-04
+
+### Fixed
+- **Rückfragen des Agenten kamen nie beim Nutzer an — und der Agent riet einfach weiter.** `AskUserQuestion` ist ein eingebautes Tool der Claude-Code-CLI und erwartet ein interaktives Terminal. Headless (`-p`) gibt es niemanden, der antworten kann: die CLI liefert sofort den Platzhalter `"Answer questions?"` zurück, der Agent wertet das als Antwort und baut mit selbst erratenen Entscheidungen weiter — während im Chat nur rohes JSON steht, das man nicht beantworten kann. Das Tool ist jetzt in beiden CLI-Pfaden (Chat + Task) abgeschaltet; stattdessen weist die CLAUDE.md an, Rückfragen als **normalen Text** zu stellen und dort zu stoppen (im Hintergrund-Task: sichere Default-Annahme treffen und die getroffene Entscheidung im Ergebnis benennen). Der normale Chat-Weg inkl. Live-Steering greift damit wieder.
+
+---
+
 ## [1.130.1] — 2026-08-04
 
 ### Changed

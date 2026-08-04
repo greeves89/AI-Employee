@@ -63,6 +63,11 @@ class AgentRunner:
             "--output-format", "stream-json",
             "--verbose",
             "--dangerously-skip-permissions",
+            # See chat_handler: headless runs have no one to answer an
+            # interactive question, and the stub reply makes the agent invent
+            # the decision it meant to ask about. In a task there is nobody
+            # watching at all, so this matters even more here.
+            "--disallowedTools", "AskUserQuestion",
             "--max-turns", str(settings.max_turns),
             "--model", model,
         ]
