@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import time
 
 from app import context_compressor, model_registry, multimodal
@@ -48,6 +49,14 @@ CORE_TOOL_NAMES = {
     "skill_search", "skill_install", "skill_rate", "skill_propose", "rate_task",
 }
 MAX_ACTIVATED_TOOLS = 60  # core (~27) + search_tools + activated stays well under 128
+DESKTOP_MCP_ACTIVE_ENV = "AI_EMPLOYEE_DESKTOP_MCP_ACTIVE"
+
+
+def _core_tool_names() -> set[str]:
+    names = set(CORE_TOOL_NAMES)
+    if os.environ.get(DESKTOP_MCP_ACTIVE_ENV) == "1":
+        names.discard("computer_use")
+    return names
 
 # Integration tools that must ALWAYS be sent to the LLM — never hidden behind
 # search_tools and never evicted by the LRU. These are the most common M365 asks
@@ -269,10 +278,11 @@ class LLMChatHandler:
         # instead of searching (the "mal da / mal nicht" flakiness). Capped to
         # leave headroom for on-demand search_tools activations under the 128 limit.
         if not self._activated:
+            core_names = _core_tool_names()
             mcp_names = [
                 t["function"]["name"] for t in catalog
                 if str(t.get("function", {}).get("name", "")).startswith("mcp_")
-                and t["function"]["name"] not in CORE_TOOL_NAMES
+                and t["function"]["name"] not in core_names
             ]
             if mcp_names:
                 self._activated = mcp_names[: max(1, MAX_ACTIVATED_TOOLS - 15)]
@@ -287,13 +297,14 @@ class LLMChatHandler:
             return None
         catalog = await self._get_catalog()
         active = set(self._activated)
-        sent = [t for t in catalog if t["function"]["name"] in CORE_TOOL_NAMES]
+        core_names = _core_tool_names()
+        sent = [t for t in catalog if t["function"]["name"] in core_names]
         sent.append(SEARCH_TOOLS_DEF)
         sent_names = {t["function"]["name"] for t in sent}
         # Always-pinned integration tools (people/mail/search) — no discovery needed.
         for t in catalog:
             n = t["function"]["name"]
-            if n not in sent_names and n not in CORE_TOOL_NAMES and _is_pinned(n):
+            if n not in sent_names and n not in core_names and _is_pinned(n):
                 sent.append(t)
                 sent_names.add(n)
         # Everything the model activated via search_tools (minus what's already sent).
@@ -303,7 +314,7 @@ class LLMChatHandler:
 
     def _handle_search_tools(self, query: str) -> str:
         """Search the catalog and activate the best matches for the next turn."""
-        matches = _search_catalog(self._all_tools or [], query, CORE_TOOL_NAMES | {"search_tools"})
+        matches = _search_catalog(self._all_tools or [], query, _core_tool_names() | {"search_tools"})
         if not matches:
             return f"Keine passenden Tools für '{query}' gefunden. Versuch andere Stichwörter."
         lines = []

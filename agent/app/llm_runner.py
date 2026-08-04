@@ -29,7 +29,7 @@ from app.tools.mcp_client import MCPHTTPClient
 # Lazy tool loading (shared with the chat handler) — keeps the per-request tool
 # array under the 128-tool cap that OpenAI/Azure enforce.
 from app.llm_chat_handler import (
-    CORE_TOOL_NAMES, SEARCH_TOOLS_DEF, MAX_ACTIVATED_TOOLS, _search_catalog,
+    SEARCH_TOOLS_DEF, MAX_ACTIVATED_TOOLS, _core_tool_names, _search_catalog,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,10 +121,11 @@ class LLMRunner:
         # always callable instead of only via search_tools — same reliability fix as
         # the chat handler. Capped to leave headroom under the 128-tool limit.
         if not self._activated:
+            core_names = _core_tool_names()
             mcp_names = [
                 t["function"]["name"] for t in self._all_tools
                 if str(t.get("function", {}).get("name", "")).startswith("mcp_")
-                and t["function"]["name"] not in CORE_TOOL_NAMES
+                and t["function"]["name"] not in core_names
             ]
             if mcp_names:
                 self._activated = mcp_names[: max(1, MAX_ACTIVATED_TOOLS - 15)]
@@ -140,15 +141,16 @@ class LLMRunner:
             return None
         catalog = await self._get_catalog()
         active = set(self._activated)
-        sent = [t for t in catalog if t["function"]["name"] in CORE_TOOL_NAMES]
+        core_names = _core_tool_names()
+        sent = [t for t in catalog if t["function"]["name"] in core_names]
         sent.append(SEARCH_TOOLS_DEF)
         sent += [t for t in catalog
-                 if t["function"]["name"] in active and t["function"]["name"] not in CORE_TOOL_NAMES]
+                 if t["function"]["name"] in active and t["function"]["name"] not in core_names]
         return sent
 
     def _handle_search_tools(self, query: str) -> str:
         """Search the catalog and activate the best matches for the next turn."""
-        matches = _search_catalog(self._all_tools or [], query, CORE_TOOL_NAMES | {"search_tools"})
+        matches = _search_catalog(self._all_tools or [], query, _core_tool_names() | {"search_tools"})
         if not matches:
             return f"Keine passenden Tools für '{query}' gefunden. Versuch andere Stichwörter."
         lines = []

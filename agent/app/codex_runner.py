@@ -14,6 +14,7 @@ from typing import AsyncIterator
 
 from app.config import settings
 from app.log_publisher import LogPublisher
+from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
@@ -385,7 +386,9 @@ class CodexChatHandler:
 def _codex_env() -> dict[str, str]:
     env = os.environ.copy()
     codex_home = env.setdefault("CODEX_HOME", "/home/agent/.codex")
-    _ensure_codex_mcp_config(codex_home, env)
+    desktop_mcp_active = _ensure_codex_mcp_config(codex_home, env)
+    env[DESKTOP_MCP_ACTIVE_ENV] = "1" if desktop_mcp_active else "0"
+    os.environ[DESKTOP_MCP_ACTIVE_ENV] = env[DESKTOP_MCP_ACTIVE_ENV]
     return env
 
 
@@ -406,7 +409,7 @@ def _valid_http_url(url: str) -> bool:
         return False
 
 
-def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
+def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     """Write ~/.codex/config.toml with built-in + custom MCP servers.
 
     Called once per Codex invocation. Idempotent — overwrites the server
@@ -443,10 +446,14 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
         "",
     ]
 
+    desktop_mcp_active = False
+
     # Stdio built-in servers
     for name, script in builtin_servers.items():
         if not os.path.exists(script):
             continue
+        if name == "desktop":
+            desktop_mcp_active = True
         # Codex only exposes the env vars declared in this [env] block to the
         # MCP server — it does NOT inherit the agent container's environment.
         # The built-in servers authenticate to the orchestrator with the agent
@@ -507,6 +514,7 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> None:
     finally:
         os.close(fd)
     logger.debug("Written Codex MCP config to %s (%d built-in servers)", config_path, len(builtin_servers))
+    return desktop_mcp_active
 
 
 async def _publish(
