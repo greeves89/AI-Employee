@@ -741,7 +741,7 @@ class TelegramAgentBot:
 
             response_buffer = ""
             full_response = ""  # whole turn's text — for the voice-first reply
-            last_flush = asyncio.get_event_loop().time()
+            last_flush = asyncio.get_running_loop().time()
 
             # Detect agent mode: custom_llm streams slower → flush per sentence
             _is_local_llm = False
@@ -765,7 +765,7 @@ class TelegramAgentBot:
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True, timeout=0.5
                 )
-                now = asyncio.get_event_loop().time()
+                now = asyncio.get_running_loop().time()
 
                 if message and message["type"] == "message":
                     data = json.loads(message["data"])

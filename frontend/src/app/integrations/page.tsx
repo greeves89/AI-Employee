@@ -6,6 +6,7 @@ import {
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
   Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap,
+  ShieldCheck, LogIn, Play,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
-import type { McpServerInfo, McpTool } from "@/lib/api";
+import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry, McpToolCallResult } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 
 const PROVIDER_ICONS: Record<string, typeof Mail> = {
@@ -81,6 +82,152 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
     className: server.last_status === "auth_failed" ? "text-amber-400" : "text-red-400",
     title: MCP_HEALTH_ORCH_ONLY,
   };
+}
+
+// Agent-side view (#425 Phase 2): what each running agent's `claude mcp list`
+// reports for this server, rolled up across agents. Distinct from the
+// orchestrator discovery check above — an agent can fail a server (e.g. a 401
+// on its per-agent token) that the orchestrator reaches fine.
+function formatAgentHealth(
+  entry: McpAgentHealthEntry,
+): { label: string; className: string; ok: boolean } {
+  const total = entry.connected + entry.failed + entry.needs_auth + entry.unknown;
+  if (!entry.agent_status || total === 0) {
+    return { label: "Agent-Sicht: keine Daten", className: "text-muted-foreground/50", ok: false };
+  }
+  if (entry.agent_status === "connected") {
+    return {
+      label: `Agent-Sicht: verbunden (${entry.connected}/${total} Agents)`,
+      className: "text-emerald-400",
+      ok: true,
+    };
+  }
+  if (entry.agent_status === "needs_auth") {
+    return {
+      label: `Agent-Sicht: Authentifizierung nötig (${entry.needs_auth}/${total})`,
+      className: "text-amber-400",
+      ok: false,
+    };
+  }
+  if (entry.agent_status === "failed") {
+    return {
+      label: `Agent-Sicht: nicht erreichbar (${entry.failed}/${total})`,
+      className: "text-red-400",
+      ok: false,
+    };
+  }
+  return { label: "Agent-Sicht: unbekannt", className: "text-muted-foreground/60", ok: false };
+}
+
+// The signal #425 exists to surface: the orchestrator's own check says a server
+// is reachable, but the agents that actually call it disagree.
+function hasOrchAgentDisagreement(server: McpServerInfo, entry: McpAgentHealthEntry | undefined): boolean {
+  if (!entry || !entry.agent_status) return false;
+  return server.last_status === "ok" && (entry.agent_status === "failed" || entry.agent_status === "needs_auth");
+}
+
+// Admin diagnostic tool runner (#414): invoke a single MCP tool by hand from the
+// server's tool list and show the raw JSON-RPC response. The inputs are generated
+// from the tool's stored inputSchema; the call is audit-logged server-side.
+function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<McpToolCallResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const schema = (tool.inputSchema ?? {}) as {
+    properties?: Record<string, { type?: string; description?: string }>;
+    required?: string[];
+  };
+  const properties = schema.properties ?? {};
+  const required = new Set(schema.required ?? []);
+  const propNames = Object.keys(properties);
+
+  const run = async () => {
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const args: Record<string, unknown> = {};
+      for (const [key, raw] of Object.entries(values)) {
+        if (raw === "") continue;
+        const t = properties[key]?.type;
+        if (t === "number" || t === "integer") {
+          const n = Number(raw);
+          args[key] = Number.isNaN(n) ? raw : n;
+        } else if (t === "boolean") {
+          args[key] = raw === "true";
+        } else {
+          args[key] = raw;
+        }
+      }
+      setResult(await api.callMcpTool(serverId, tool.name, args));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Aufruf fehlgeschlagen");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
+      >
+        <Play className="h-3 w-3" /> {open ? "Schliessen" : "Tool testen"}
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-2 rounded-md bg-foreground/[0.02] border border-foreground/[0.04] p-2.5">
+          {propNames.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground/50">Keine Parameter.</p>
+          ) : (
+            propNames.map((key) => {
+              const prop = properties[key] || {};
+              return (
+                <div key={key} className="space-y-0.5">
+                  <label className="block text-[10px] font-mono text-muted-foreground/70">
+                    {key}
+                    {required.has(key) && <span className="text-red-400">*</span>}
+                    {prop.type && <span className="text-muted-foreground/40"> : {prop.type}</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={values[key] ?? ""}
+                    onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                    placeholder={prop.description || ""}
+                    className="w-full rounded-md bg-background border border-foreground/10 px-2 py-1 text-[11px] font-mono focus:outline-none focus:border-violet-400/40"
+                  />
+                </div>
+              );
+            })
+          )}
+          <button
+            onClick={run}
+            disabled={running}
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/15 text-violet-300 px-2.5 py-1 text-[11px] font-medium hover:bg-violet-500/25 disabled:opacity-50"
+          >
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+            Ausfuehren
+          </button>
+          {error && <p className="text-[10px] text-red-400">{error}</p>}
+          {result && (
+            <pre
+              className={cn(
+                "mt-1 max-h-56 overflow-auto rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap break-all",
+                result.is_error
+                  ? "border-red-500/30 bg-red-500/[0.06] text-red-300"
+                  : "border-emerald-500/20 bg-emerald-500/[0.04] text-foreground/80",
+              )}
+            >
+              {JSON.stringify(result.result, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function IntegrationsPage() {
@@ -277,6 +424,32 @@ export default function IntegrationsPage() {
                               Not configured — set OAUTH_{integration.provider.toUpperCase()}_CLIENT_ID in settings
                             </p>
                           )}
+                          {integration.auth_type === "oauth" && integration.scopes?.trim() && (() => {
+                            const scopeList = integration.scopes.split(/\s+/).filter(Boolean);
+                            return (
+                              <details className="mt-1.5 group">
+                                <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/60 hover:text-muted-foreground/90 select-none">
+                                  {integration.connected ? "Erteilte" : "Angeforderte"} Berechtigungen ({scopeList.length})
+                                  <span className="ml-1 text-muted-foreground/40 group-open:hidden">· anzeigen</span>
+                                </summary>
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {scopeList.map((s) => (
+                                    <span
+                                      key={s}
+                                      className="inline-block rounded bg-foreground/[0.05] border border-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/70"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))}
+                                </div>
+                                {!integration.connected && (
+                                  <p className="mt-1 text-[10px] text-muted-foreground/40">
+                                    Anpassbar via OAUTH_{integration.provider.toUpperCase()}_SCOPES.
+                                  </p>
+                                )}
+                              </details>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -419,6 +592,9 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [expandedServer, setExpandedServer] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [agentHealth, setAgentHealth] = useState<McpAgentHealth | null>(null);
+  const [checkingAgents, setCheckingAgents] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState<number | null>(null);
 
   const editingServer = editingId != null ? servers.find((s) => s.id === editingId) ?? null : null;
 
@@ -436,6 +612,51 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   useEffect(() => {
     loadServers();
   }, []);
+
+  // Surface the result of the OAuth browser round-trip (#426): the callback
+  // redirects back to /integrations?mcp_oauth=connected|error, then we clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("mcp_oauth");
+    if (!result) return;
+    const name = params.get("server");
+    if (result === "connected") {
+      onToast({ type: "success", message: `OAuth verbunden${name ? `: ${name}` : ""}` });
+      loadServers();
+    } else {
+      onToast({ type: "error", message: `OAuth fehlgeschlagen: ${params.get("detail") || "unbekannt"}` });
+    }
+    const url = new URL(window.location.href);
+    ["mcp_oauth", "server", "detail"].forEach((k) => url.searchParams.delete(k));
+    window.history.replaceState({}, "", url.toString());
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Discover OAuth config (once) then start the authorization_code flow, sending
+  // the browser to the authorization server. Returns via the callback → /integrations.
+  const handleOAuthConnect = async (server: McpServerInfo) => {
+    setOauthBusy(server.id);
+    try {
+      if (!server.oauth_enabled || !server.oauth_client_id) {
+        const disc = await api.discoverMcpOAuth(server.id);
+        if (disc.needs_client_id) {
+          const clientId = window.prompt(
+            "Dieser Authorization-Server bietet keine dynamische Registrierung. " +
+            "Bitte die vorab registrierte client_id eingeben:",
+          );
+          if (!clientId?.trim()) {
+            setOauthBusy(null);
+            return;
+          }
+          await api.discoverMcpOAuth(server.id, clientId.trim());
+        }
+      }
+      const { authorization_url } = await api.connectMcpOAuth(server.id);
+      window.location.href = authorization_url;
+    } catch (e) {
+      onToast({ type: "error", message: e instanceof Error ? e.message : "OAuth-Start fehlgeschlagen" });
+      setOauthBusy(null);
+    }
+  };
 
   const parseHeaderLines = (text: string): Record<string, string> => {
     const out: Record<string, string> = {};
@@ -586,6 +807,22 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     }
   };
 
+  const handleCheckAgents = async () => {
+    setCheckingAgents(true);
+    try {
+      const health = await api.getMcpAgentHealth();
+      setAgentHealth(health);
+      onToast({
+        type: "success",
+        message: `Agent-Sicht geprüft (${health.agents_checked}/${health.agents_total} Agents)`,
+      });
+    } catch (e) {
+      onToast({ type: "error", message: e instanceof Error ? e.message : "Agent-Prüfung fehlgeschlagen" });
+    } finally {
+      setCheckingAgents(false);
+    }
+  };
+
   const handleToggle = async (server: McpServerInfo) => {
     try {
       const updated = await api.updateMcpServer(server.id, { enabled: !server.enabled });
@@ -599,13 +836,24 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">MCP Servers</h2>
-        <button
-          onClick={() => (showForm ? closeForm() : openAdd())}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
-        >
-          <Plus className="h-3 w-3" />
-          MCP Server hinzufuegen
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCheckAgents}
+            disabled={checkingAgents}
+            title="Führt in jedem laufenden Agent-Container `claude mcp list` aus und zeigt, wie die Agents die Server sehen (unabhängig von der Orchestrator-Prüfung)."
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-foreground border border-foreground/[0.1] hover:bg-foreground/[0.06] disabled:opacity-50 transition-all"
+          >
+            {checkingAgents ? <Loader2 className="h-3 w-3 animate-spin" /> : <Users className="h-3 w-3" />}
+            Agent-Sicht prüfen
+          </button>
+          <button
+            onClick={() => (showForm ? closeForm() : openAdd())}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+          >
+            <Plus className="h-3 w-3" />
+            MCP Server hinzufuegen
+          </button>
+        </div>
       </div>
 
       {/* Add / edit form */}
@@ -759,6 +1007,9 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
             const isExpanded = expandedServer === server.id;
             const toolCount = server.tools?.length || 0;
             const health = formatMcpHealth(server);
+            const agentEntry = agentHealth?.servers[String(server.id)];
+            const agentView = agentEntry ? formatAgentHealth(agentEntry) : null;
+            const disagreement = hasOrchAgentDisagreement(server, agentEntry);
 
             return (
               <div
@@ -794,6 +1045,22 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                           Token
                         </span>
                       )}
+                      {server.oauth_enabled && (
+                        <span
+                          title={server.oauth_connected
+                            ? "OAuth verbunden — Access-Token wird serverseitig automatisch erneuert"
+                            : "OAuth konfiguriert, aber noch nicht verbunden — auf „Verbinden“ klicken"}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            server.oauth_connected
+                              ? "bg-emerald-500/10 text-emerald-400"
+                              : "bg-amber-500/10 text-amber-400"
+                          )}
+                        >
+                          <ShieldCheck className="h-2.5 w-2.5" />
+                          {server.oauth_connected ? "OAuth" : "OAuth offen"}
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
                         <Wrench className="h-2.5 w-2.5" />
                         {toolCount} Tool{toolCount !== 1 && "s"} entdeckt
@@ -807,6 +1074,21 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       {health.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
                       <span className="truncate">{health.label}</span>
                     </div>
+                    {agentView && (
+                      <div
+                        className={cn("mt-1 flex items-center gap-1.5 text-[11px]", agentView.className)}
+                        title="Ergebnis von `claude mcp list` in den laufenden Agent-Containern (Agent-Perspektive, #425)."
+                      >
+                        {agentView.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
+                        <span className="truncate">{agentView.label}</span>
+                      </div>
+                    )}
+                    {disagreement && (
+                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        <span className="truncate">Diskrepanz: Orchestrator erreichbar, Agents melden Probleme</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
@@ -822,6 +1104,25 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       title={server.enabled ? "Deaktivieren" : "Aktivieren"}
                     >
                       <Power className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleOAuthConnect(server)}
+                      disabled={oauthBusy === server.id}
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                        server.oauth_connected
+                          ? "text-emerald-400 hover:bg-emerald-500/15"
+                          : "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06]"
+                      )}
+                      title={server.oauth_connected
+                        ? "OAuth erneut verbinden (neuer Login)"
+                        : "Mit OAuth verbinden (Login im Browser)"}
+                    >
+                      {oauthBusy === server.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <LogIn className="h-3.5 w-3.5" />
+                      )}
                     </button>
                     <button
                       onClick={() => openEdit(server)}
@@ -870,11 +1171,12 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                             className="flex items-start gap-2.5 rounded-lg bg-foreground/[0.02] border border-foreground/[0.04] px-3 py-2"
                           >
                             <Wrench className="h-3.5 w-3.5 text-violet-400 shrink-0 mt-0.5" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <span className="text-[12px] font-medium font-mono text-foreground">{tool.name}</span>
                               {tool.description && (
                                 <p className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-2">{tool.description}</p>
                               )}
+                              <McpToolRunner serverId={server.id} tool={tool} />
                             </div>
                           </div>
                         ))}

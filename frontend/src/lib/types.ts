@@ -57,6 +57,9 @@ export interface AIAccount {
   extra: Record<string, unknown>;
   is_active: boolean;
   has_key: boolean;
+  last_checked_at: string | null;       // last model-discovery check (#435)
+  last_status: string | null;           // ok | auth_failed | unreachable | protocol_error | unsupported
+  last_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -95,6 +98,7 @@ export interface Agent {
   integrations: string[];
   permissions: string[];
   update_available: boolean;
+  image_outdated?: boolean;
   budget_usd: number | null;
   budget_exceeded_action: "haiku" | "stop";
   monthly_cost_usd: number;

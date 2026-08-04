@@ -172,6 +172,9 @@ class Settings(BaseSettings):
     # Anthropic OAuth (Claude Code public client — no secret needed)
     oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
+    # Public bridge endpoint base for deployments where the browser-facing app
+    # host differs from the hostname desktop bridges must use.
+    bridge_public_url: str = ""
 
     # Public, externally-reachable base URL of THIS platform (e.g. the Cloudflare
     # tunnel domain "https://agents.future-app.de"). Used to build absolute,

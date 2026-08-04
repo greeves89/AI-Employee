@@ -1171,6 +1171,12 @@ export interface McpServerInfo {
   last_checked_at: string | null;
   last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | null;
   last_error: string | null;
+  // Client-side OAuth (#426)
+  oauth_enabled?: boolean;
+  oauth_client_id?: string | null;
+  oauth_connected?: boolean;  // a refresh token is stored → the flow completed
+  oauth_scope?: string | null;
+  oauth_expires_at?: string | null;
 }
 
 export interface McpTool {
@@ -1198,6 +1204,32 @@ export async function addMcpServer(
 
 export async function refreshMcpServer(id: number): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers/${id}/refresh`, { method: "POST" });
+}
+
+export type AgentMcpStatus = "connected" | "failed" | "needs_auth" | "unknown";
+
+export interface McpAgentHealthEntry {
+  name: string;
+  connected: number;
+  failed: number;
+  needs_auth: number;
+  unknown: number;
+  agent_status: AgentMcpStatus | null;
+  agents: { agent_id: string; agent_name: string; status: AgentMcpStatus }[];
+}
+
+export interface McpAgentHealth {
+  agents_checked: number;
+  agents_total: number;
+  // Keyed by MCP server id (as a string).
+  servers: Record<string, McpAgentHealthEntry>;
+}
+
+// Agent-side MCP connection health (#425 Phase 2): what each running agent's
+// `claude mcp list` reports, independent of the orchestrator's own discovery
+// check. On-demand (admin-only) — each call runs live probes across all agents.
+export async function getMcpAgentHealth(): Promise<McpAgentHealth> {
+  return fetchJSON(`${getBase()}/mcp-servers/agent-health`);
 }
 
 export async function updateMcpServer(
@@ -1252,6 +1284,34 @@ export async function callMcpTool(
     method: "POST",
     body: JSON.stringify({ name, arguments: args }),
   });
+}
+
+// Client-side OAuth for OAuth-protected MCP servers (#426).
+export interface McpOAuthDiscovery {
+  oauth_enabled: boolean;
+  authorization_endpoint: string | null;
+  token_endpoint: string | null;
+  registration_endpoint: string | null;
+  scope: string | null;
+  resource: string | null;
+  client_id: string | null;
+  dynamically_registered: boolean;
+  needs_client_id: boolean;
+  redirect_uri: string;
+}
+
+// Admin: discover a server's OAuth config (RFC 9728 → RFC 8414) and register a
+// client via DCR when available. Pass a client_id for servers without DCR.
+export async function discoverMcpOAuth(id: number, clientId?: string): Promise<McpOAuthDiscovery> {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/oauth/discover`, {
+    method: "POST",
+    body: JSON.stringify(clientId ? { client_id: clientId } : {}),
+  });
+}
+
+// Admin: start authorization_code + PKCE — returns the URL to open in the browser.
+export async function connectMcpOAuth(id: number): Promise<{ authorization_url: string }> {
+  return fetchJSON(`${getBase()}/mcp-servers/${id}/oauth/connect`);
 }
 
 // Admin: User Management
@@ -1379,6 +1439,29 @@ export async function updateAIAccount(id: number, payload: Partial<AIAccountPayl
 
 export async function deleteAIAccount(id: number): Promise<{ ok: boolean; id: number }> {
   return fetchJSON(`${getBase()}/ai-accounts/${id}`, { method: "DELETE" });
+}
+
+// Discovered model list + connection state for an AI account (#435). status ∈
+// ok | auth_failed | unreachable | protocol_error | unsupported.
+export interface DiscoveredModels {
+  status: string;
+  models: { id: string; label: string }[];
+  error: string | null;
+}
+
+// Probe a provider's /v1/models (OpenAI-compatible, Anthropic, Google). Pass the
+// typed credentials to check an unsaved account, or an account_id to re-check a
+// saved one with its stored key (which also stamps that account's health state).
+export async function discoverAIAccountModels(payload: {
+  provider_type?: string;
+  api_endpoint?: string | null;
+  api_key?: string | null;
+  account_id?: number;
+}): Promise<DiscoveredModels> {
+  return fetchJSON(`${getBase()}/ai-accounts/discover-models`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 // ── Second Brains (department-shared knowledge vaults) ──
@@ -2668,6 +2751,8 @@ export interface ComputerUseSession {
   action_count: number;
   platform: string;
   bridge_version?: string | null;
+  bridge_host?: string | null;
+  bridge_public_url?: string | null;
   capabilities: string[];
   allowed_capabilities: string[];
   last_disconnected_at: number | null;

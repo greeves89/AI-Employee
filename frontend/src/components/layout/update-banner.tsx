@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ArrowUpCircle, X, GitCommit, Clock, Loader2, ChevronRight } from "lucide-react";
+import { ArrowUpCircle, X, GitCommit, Clock, Loader2, ChevronRight, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { getBase } from "@/lib/config";
@@ -21,9 +21,17 @@ interface Commit {
 
 const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
+// The frontend bundle version is baked in at build time (see Dockerfile
+// ARG APP_VERSION). Comparing it to the backend's live version lets us warn
+// when the served bundle is stale — e.g. update.sh rebuilt the backend but the
+// browser is still holding an old cached bundle, or the frontend image lagged.
+const BUNDLE_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "";
+const SEMVER = /^\d+\.\d+\.\d+/;
+
 export function UpdateBanner() {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [mismatchDismissed, setMismatchDismissed] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [changelogMd, setChangelogMd] = useState<string | null>(null);
@@ -77,6 +85,15 @@ export function UpdateBanner() {
   };
 
   const show = version?.update_available && !dismissed;
+
+  // Only warn when BOTH sides report real semvers that actually differ — never
+  // on "dev"/unset, so local builds don't nag.
+  const backendVersion = version?.current ?? "";
+  const versionMismatch =
+    SEMVER.test(BUNDLE_VERSION) &&
+    SEMVER.test(backendVersion) &&
+    BUNDLE_VERSION !== backendVersion;
+  const showMismatch = versionMismatch && !mismatchDismissed;
 
   function formatDate(dateStr: string) {
     if (!dateStr) return "";
@@ -134,6 +151,37 @@ export function UpdateBanner() {
                 setDismissed(true);
               }}
               className="shrink-0 rounded-lg p-1 text-blue-400/50 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showMismatch && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 cursor-pointer hover:bg-amber-500/15 transition-colors"
+            onClick={() => window.location.reload()}
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-medium text-amber-300">
+                Veraltete Oberfläche — neu laden
+              </p>
+              <p className="text-[10px] text-amber-400/70 truncate">
+                Frontend {BUNDLE_VERSION} · Backend {backendVersion}
+              </p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMismatchDismissed(true);
+              }}
+              className="shrink-0 rounded-lg p-1 text-amber-400/50 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
             >
               <X className="h-3 w-3" />
             </button>
@@ -237,7 +285,7 @@ export function UpdateBanner() {
               {/* Footer */}
               <div className="border-t border-foreground/[0.06] px-6 py-3 flex items-center justify-between">
                 <p className="text-[11px] text-muted-foreground/50">
-                  Update: <code className="font-mono text-[10px]">git pull && docker compose up -d --build</code>
+                  Update: <code className="font-mono text-[10px]">./scripts/update.sh</code>
                 </p>
                 <Dialog.Close className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors">
                   Verstanden

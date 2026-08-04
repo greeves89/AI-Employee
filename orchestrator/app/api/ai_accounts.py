@@ -4,16 +4,18 @@ Admins create/edit/delete accounts; any authenticated user may list them so
 they can attach one to an agent. API keys are Fernet-encrypted and never
 returned in responses.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.encryption import encrypt_token
+from app.core.encryption import decrypt_token, encrypt_token
 from app.db.session import get_db
+from app.services.ai_account_discovery import discover_models
 from app.dependencies import require_auth
 from app.models.ai_account import AIAccount
 from app.models.user import UserRole
@@ -82,6 +84,9 @@ class AIAccountResponse(BaseModel):
     extra: dict
     is_active: bool
     has_key: bool
+    last_checked_at: datetime | None
+    last_status: str | None
+    last_error: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -96,9 +101,43 @@ def _to_response(a: AIAccount) -> AIAccountResponse:
         extra=a.extra or {},
         is_active=a.is_active,
         has_key=bool(a.api_key_encrypted),
+        last_checked_at=a.last_checked_at,
+        last_status=a.last_status,
+        last_error=a.last_error,
         created_at=a.created_at,
         updated_at=a.updated_at,
     )
+
+
+class DiscoverModelsRequest(BaseModel):
+    # Either probe an unsaved account (all three fields), or re-check a saved one
+    # by id (missing fields fall back to the stored values / decrypted key).
+    provider_type: ProviderType | None = None
+    api_endpoint: str | None = None
+    api_key: str | None = None
+    account_id: int | None = None
+
+
+def _short_error(text: str | None) -> str | None:
+    if not text:
+        return None
+    compact = " ".join(str(text).split())
+    return compact[:252] + "..." if len(compact) > 255 else compact
+
+
+async def _fetch_provider_models(url: str, headers: dict, params: dict) -> tuple[int | None, dict | None]:
+    """SSRF-guarded GET used by the discovery service. Raises to signal a blocked
+    host (the service maps any exception to ``unreachable``, so no request leaks)."""
+    from app.api.mcp_servers import _assert_mcp_url_allowed
+
+    await _assert_mcp_url_allowed(url)  # 400 on private/invalid host; caught upstream
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
+        resp = await client.get(url, headers=headers, params=params)
+    try:
+        body = resp.json()
+    except Exception:
+        body = None
+    return resp.status_code, body
 
 
 @router.get("/", response_model=list[AIAccountResponse])
@@ -185,6 +224,50 @@ async def list_realtime_models(
                 "label": f"{m['label']} · {a.name}",
             })
     return {"models": out}
+
+
+@router.post("/discover-models")
+async def discover_ai_account_models(
+    body: DiscoverModelsRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Discover the models a provider actually exposes, and record connection health.
+
+    Mirrors ``POST /mcp-servers/probe``: validates a target before anything is
+    committed. Admin only. If ``account_id`` is given the stored key/endpoint are
+    used (no need to re-enter the key) and the account's health columns are
+    stamped with the result, so an unusable account becomes visible in the list.
+    """
+    _require_admin(user)
+
+    provider_type = body.provider_type
+    api_endpoint = body.api_endpoint
+    api_key = body.api_key
+    account: AIAccount | None = None
+
+    if body.account_id is not None:
+        account = await db.get(AIAccount, body.account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="AI account not found")
+        provider_type = provider_type or account.provider_type
+        if api_endpoint is None:
+            api_endpoint = account.api_endpoint
+        if not api_key and account.api_key_encrypted:
+            api_key = decrypt_token(account.api_key_encrypted)
+
+    if not provider_type:
+        raise HTTPException(status_code=400, detail="provider_type is required")
+
+    result = await discover_models(provider_type, api_endpoint, api_key, _fetch_provider_models)
+
+    if account is not None:
+        account.last_checked_at = datetime.now(timezone.utc)
+        account.last_status = result["status"]
+        account.last_error = _short_error(result.get("error"))
+        await db.commit()
+
+    return result
 
 
 @router.get("/{account_id}", response_model=AIAccountResponse)

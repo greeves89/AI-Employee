@@ -575,9 +575,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         has_pending = bool(_pending_message_ids) or bool(_streaming_responses)
         if not has_pending:
             return  # Nothing to wait for
-        deadline = asyncio.get_event_loop().time() + 120  # Wait up to 2 min
+        deadline = asyncio.get_running_loop().time() + 120  # Wait up to 2 min
         try:
-            while (_pending_message_ids or _streaming_responses) and asyncio.get_event_loop().time() < deadline:
+            while (_pending_message_ids or _streaming_responses) and asyncio.get_running_loop().time() < deadline:
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True, timeout=1.0
                 )

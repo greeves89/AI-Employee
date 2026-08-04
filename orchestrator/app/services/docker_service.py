@@ -276,6 +276,30 @@ class DockerService:
         except Exception:
             return None
 
+    def is_container_image_outdated(
+        self,
+        container_id: str,
+        image_name: str = "ai-employee-agent:latest",
+        current_image_id: str | None = None,
+    ) -> bool:
+        """True if the container runs an older image than the current image_name tag.
+
+        Agent containers are launched from ai-employee-agent:latest but are NOT
+        recreated when that tag is rebuilt (issue #433), so a running agent can
+        silently stay on a stale image. Compares the container's build image id
+        against the id the tag currently points to. Fail-closed to False when
+        either id is unknown, so an unresolvable state never shows a false alarm.
+
+        Pass current_image_id (from a single prior get_image_id call) when checking
+        many containers against the same tag, to avoid one images.get() per container
+        (issue #449).
+        """
+        current = current_image_id if current_image_id is not None else self.get_image_id(image_name)
+        running = self.get_container_image_id(container_id)
+        if current is None or running is None:
+            return False
+        return current != running
+
     def get_container_status(self, container_id: str) -> str:
         try:
             container = self.client.containers.get(container_id)

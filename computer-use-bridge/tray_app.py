@@ -1614,8 +1614,6 @@ def run_macos(cfg: dict) -> None:
     except ImportError:
         print("Install rumps: pip install rumps"); sys.exit(1)
 
-    _install_edit_menu()
-
     class BridgeApp(rumps.App):
         def __init__(self):
             super().__init__("AI Employee", quit_button=None)
@@ -1821,6 +1819,8 @@ def run_tray(cfg: dict) -> None:
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
+    if IS_MAC:
+        _install_edit_menu()
     cfg = load_config()
     if not cfg.get("url") or not cfg.get("token") or not cfg.get("session"):
         updated = show_setup_dialog(cfg)

@@ -139,6 +139,9 @@ services:
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
       # Public base URL (Cloudflare tunnel domain) → absolute, shareable app links.
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      # Bridge-facing base URL, when it differs from PUBLIC_APP_URL (e.g. an
+      # identity-aware-proxy bypass hostname dedicated to desktop bridges).
+      BRIDGE_PUBLIC_URL: ${BRIDGE_PUBLIC_URL:-}
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
       AGENT_IMAGE: ai-employee-agent:latest
@@ -249,6 +252,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: ai-employee-frontend
     ports:
       # Bind to loopback only — external access goes via reverse proxy.

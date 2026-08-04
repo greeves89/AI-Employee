@@ -573,11 +573,23 @@ async def list_agents(
             ))
         return AgentListResponse(agents=agent_responses, total=len(agent_responses))
 
+    # Resolve the ai-employee-agent:latest image id once for the whole list instead
+    # of once per agent (issue #449: N*2 -> 1+N Docker socket calls).
+    loop = asyncio.get_running_loop()
+    current_image_id = await loop.run_in_executor(
+        None, manager.docker.get_image_id, "ai-employee-agent:latest"
+    )
+
     # Run sequentially — AsyncSession does not support concurrent queries
     # on the same connection (asyncpg: "another operation is in progress").
     metrics_list = []
     for agent in agents:
-        metrics_list.append(await manager.get_agent_with_metrics(agent.id, include_stats=False))
+        metrics_list.append(await manager.get_agent_with_metrics(
+            agent.id,
+            include_stats=False,
+            image_id_resolved=True,
+            current_image_id=current_image_id,
+        ))
     agent_responses = [AgentResponse(**m) for m in metrics_list]
     return AgentListResponse(agents=agent_responses, total=len(agent_responses))
 

@@ -3,6 +3,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from functools import partial
 
 from docker.errors import APIError, NotFound
 from sqlalchemy import delete as sql_delete, select, update as sql_update
@@ -804,6 +805,18 @@ class AgentManager:
             except Exception as e:
                 logger.warning(f"MCP role filter failed for agent {agent_id}: {e}")
 
+        # OAuth-protected servers (#426): mint/refresh a fresh access token before
+        # handing it to the agent, so a short-lived token never arrives already
+        # expired. Best-effort — a refresh failure leaves the (possibly stale)
+        # token in place rather than blocking agent startup.
+        try:
+            from app.services.mcp_oauth_refresh import refresh_if_needed
+            for s in servers:
+                if getattr(s, "oauth_enabled", False):
+                    await refresh_if_needed(s, self.db)
+        except Exception as e:
+            logger.warning(f"MCP OAuth token refresh pass failed: {e}")
+
         mcp_map = {s.name: s.url for s in servers}
         # Bearer tokens passed alongside so the agent can authenticate per server.
         auth_map = {
@@ -1590,7 +1603,13 @@ class AgentManager:
         await self.db.delete(agent)
         await self.db.commit()
 
-    async def get_agent_with_metrics(self, agent_id: str, include_stats: bool = True) -> dict:
+    async def get_agent_with_metrics(
+        self,
+        agent_id: str,
+        include_stats: bool = True,
+        image_id_resolved: bool = False,
+        current_image_id: str | None = None,
+    ) -> dict:
         agent = await self._get_agent(agent_id)
 
         # Sync DB state with actual Docker container status (lightweight check).
@@ -1629,6 +1648,32 @@ class AgentManager:
         stored_version = config.get("agent_version")
         if stored_version != get_agent_version():
             update_available = True
+
+        # Check if the running container is on a stale agent image (issue #433):
+        # the ai-employee-agent:latest tag can be rebuilt without agents being
+        # recreated, so a live agent may silently serve two-day-old code.
+        # image_id_resolved lets a caller iterating many agents (the list endpoint)
+        # resolve the ai-employee-agent:latest image id once and pass it in here,
+        # instead of one images.get() call per agent (issue #449).
+        image_outdated = False
+        if agent.container_id and agent.state in (
+            AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
+        ):
+            loop = asyncio.get_running_loop()
+            try:
+                if image_id_resolved and current_image_id is None:
+                    image_outdated = False
+                else:
+                    image_outdated = await loop.run_in_executor(
+                        None,
+                        partial(
+                            self.docker.is_container_image_outdated,
+                            agent.container_id,
+                            current_image_id=current_image_id,
+                        ),
+                    )
+            except Exception:
+                image_outdated = False
 
         # Build safe LLM config for response (no API key!)
         llm_config_response = None
@@ -1705,6 +1750,7 @@ class AgentManager:
             "integrations": config.get("integrations", []),
             "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,
+            "image_outdated": image_outdated,
             "budget_usd": agent.budget_usd,
             "budget_exceeded_action": agent.budget_exceeded_action,
             "monthly_cost_usd": monthly_cost_usd,
@@ -1749,7 +1795,7 @@ class AgentManager:
 
         # Add Docker stats if running (run in thread pool to avoid blocking)
         if include_stats and agent.container_id and agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             try:
                 stats = await loop.run_in_executor(
                     None, self.docker.get_container_stats, agent.container_id

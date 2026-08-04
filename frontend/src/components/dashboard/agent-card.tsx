@@ -143,6 +143,15 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 {updating ? "Aktualisiere…" : "Update"}
               </div>
             )}
+            {!updating && !agent.update_available && agent.image_outdated && (
+              <div
+                title="Läuft auf einem veralteten Agent-Image. Auf dem Host ./scripts/update.sh ausführen und den Agent neu erstellen."
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20"
+              >
+                <ArrowUpCircle className="h-3 w-3" />
+                Image veraltet
+              </div>
+            )}
             {agent.budget_usd != null && agent.budget_usd > 0 && agent.monthly_cost_usd >= agent.budget_usd && (
               <div className={cn(
                 "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium",
