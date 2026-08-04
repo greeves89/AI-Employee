@@ -121,6 +121,63 @@ async def test_add_unreachable_does_not_probe_oauth(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_add_protocol_error_still_aborts(monkeypatch):
+    async def fake_discover(_url, _token, _headers):
+        raise mcp_servers.McpDiscoveryError("protocol_error", "HTTP 500 during initialize")
+
+    probed = {"called": False}
+
+    async def fake_advertises(_url):
+        probed["called"] = True
+        return True
+
+    monkeypatch.setattr(mcp_servers, "_discover_tools", fake_discover)
+    monkeypatch.setattr(mcp_servers, "_advertises_oauth", fake_advertises)
+
+    db = _FakeAddSession()
+    with pytest.raises(HTTPException) as exc:
+        await mcp_servers.add_mcp_server(_body(), user=SimpleNamespace(id="admin"), db=db)
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "HTTP 500 during initialize"
+    assert probed["called"] is False
+    assert _created_servers(db) == []
+
+
+@pytest.mark.asyncio
+async def test_add_successful_discovery_still_creates_enabled_server(monkeypatch):
+    tools = [{"name": "search", "description": "Search docs"}]
+
+    async def fake_discover(_url, _token, _headers):
+        return tools
+
+    monkeypatch.setattr(mcp_servers, "_discover_tools", fake_discover)
+
+    db = _FakeAddSession()
+    payload = await mcp_servers.add_mcp_server(_body(), user=SimpleNamespace(id="admin"), db=db)
+
+    assert payload["tools"] == tools
+    assert payload["enabled"] is True
+    assert payload["oauth_enabled"] is False
+    assert payload["last_status"] == "ok"
+    assert "needs_oauth" not in payload
+    assert len(db.added) == 1
+    assert db.commits == 1
+    created = db.added[0]
+    assert created.tools == tools
+    assert created.oauth_enabled is False
+    assert created.last_status == "ok"
+
+
+def test_add_mcp_server_route_returns_201_created():
+    route = next(
+        route for route in mcp_servers.router.routes
+        if getattr(route, "endpoint", None) is mcp_servers.add_mcp_server
+    )
+    assert route.status_code == 201
+
+
+@pytest.mark.asyncio
 async def test_advertises_oauth_detects_resource_metadata_challenge(monkeypatch):
     async def fake_probe(_url):
         return 'Bearer resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource"'

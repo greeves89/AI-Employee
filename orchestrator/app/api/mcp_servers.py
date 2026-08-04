@@ -12,7 +12,7 @@ from ipaddress import ip_address
 from urllib.parse import quote, urlparse, urlunparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
@@ -559,7 +559,7 @@ async def _advertises_oauth(url: str) -> bool:
     return bool(www_auth and oc.resource_metadata_url(www_auth))
 
 
-@router.post("")
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Register a new MCP server and discover its tools."""
     # Check for duplicate name
@@ -603,6 +603,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
 
     server = McpServer(
         name=body.name, url=body.url, tools=tools, enabled=True,
+        oauth_enabled=False,
         auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,
         headers_encrypted=encrypt_token(json_mod.dumps(body.headers)) if body.headers else None,
     )
