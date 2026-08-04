@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Send, RotateCcw, Bot, AlertTriangle, WifiOff, ListChecks,
   Paperclip, Loader2, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
-  Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose, Brain, Check,
+  Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose, Brain, Check, Wrench,
 } from "lucide-react";
+import { useWebSocket } from "@/hooks/use-websocket";
+import type { LogEvent } from "@/lib/types";
 import { ChatOverview } from "./chat-overview";
 import { SessionRail } from "./session-rail";
 import { MarkdownContent } from "@/components/ui/markdown-content";
@@ -93,6 +95,71 @@ interface SessionTab {
   isNew?: boolean;
   last_message_at?: string | null;
   message_count?: number;
+}
+
+/* ─── Live activity line (issue #469) ───────────────────────────────────
+ * While the agent works on a turn, the waiting indicator otherwise shows only
+ * three dots. This subscribes to the agent's live log channel (the same source
+ * the Activity/Terminal tab uses) and surfaces the most recent tool call —
+ * tool name, target and elapsed time — so a long turn no longer looks stuck.
+ * It is rendered ONLY while waiting, so the extra socket lives exactly as long
+ * as the indicator does and closes itself when the turn ends. */
+
+/** Extract a short, human-readable target from a tool's input arguments. */
+function describeToolTarget(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const d = input as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const isPath = Boolean(d.file_path || d.path || d.notebook_path);
+  let raw =
+    str(d.file_path) || str(d.path) || str(d.notebook_path) ||
+    str(d.pattern) || str(d.command) || str(d.query) ||
+    str(d.url) || str(d.description);
+  if (!raw) return "";
+  if (isPath && raw.includes("/")) {
+    raw = raw.split("/").filter(Boolean).slice(-2).join("/");
+  }
+  raw = raw.replace(/\s+/g, " ").trim();
+  return raw.length > 48 ? raw.slice(0, 47) + "…" : raw;
+}
+
+function LiveActivity({ agentId }: { agentId: string }) {
+  const { messages } = useWebSocket(`/ws/agents/${agentId}/logs`);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const latestToolCall = useMemo<LogEvent | null>(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].type === "tool_call") return messages[i];
+    }
+    return null;
+  }, [messages]);
+
+  if (!latestToolCall) return null;
+
+  const data = latestToolCall.data as Record<string, unknown>;
+  const tool = String(data.tool || "");
+  if (!tool) return null;
+  const target = describeToolTarget(data.input);
+  const startedAt = new Date(latestToolCall.timestamp).getTime();
+  const elapsed = Number.isFinite(startedAt)
+    ? Math.max(0, Math.floor((now - startedAt) / 1000))
+    : 0;
+
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 tabular-nums">
+      <Wrench className="h-3 w-3 shrink-0" />
+      <span className="font-medium text-muted-foreground/90">{tool}</span>
+      {target && (
+        <span className="truncate max-w-[220px]">· {target}</span>
+      )}
+      <span className="text-muted-foreground/50 shrink-0">· {elapsed}s</span>
+    </div>
+  );
 }
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
@@ -1319,42 +1386,48 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           <MessageRow key={`${msg.id}-${msg.role}`} message={msg} />
         ))}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
-          <div className="flex items-center gap-3 pl-1 py-2">
+          <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/20 shrink-0">
               <Bot className="h-3.5 w-3.5 text-violet-400" />
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {thinkingElapsed > 0 ? (
-                  <>Thinking... <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed}s</span></>
-                ) : (
-                  "Thinking..."
+            <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {thinkingElapsed > 0 ? (
+                    <>Thinking... <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed}s</span></>
+                  ) : (
+                    "Thinking..."
+                  )}
+                </span>
+                {thinkingElapsed > 30 && (
+                  <span className="text-[10px] text-muted-foreground/60 italic">Complex task — this may take a while</span>
                 )}
-              </span>
-              {thinkingElapsed > 30 && (
-                <span className="text-[10px] text-muted-foreground/60 italic">Complex task — this may take a while</span>
-              )}
+              </div>
+              <LiveActivity agentId={agentId} />
             </div>
           </div>
         )}
         {/* Live-resume: agent is working on this conversation (turn started elsewhere) */}
         {liveElsewhere && !isWaiting && !messages.some((m) => m.isStreaming) && (
-          <div className="flex items-center gap-3 pl-1 py-2">
+          <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 shrink-0">
               <Bot className="h-3.5 w-3.5 text-amber-400" />
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="text-xs text-muted-foreground">Agent arbeitet gerade an dieser Unterhaltung… die Antwort erscheint automatisch.</span>
               </div>
-              <span className="text-xs text-muted-foreground">Agent arbeitet gerade an dieser Unterhaltung… die Antwort erscheint automatisch.</span>
+              <LiveActivity agentId={agentId} />
             </div>
           </div>
         )}
