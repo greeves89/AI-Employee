@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.136.1] — 2026-08-04
+
+### Fixed
+- **Ergebnisse im Sprach-Cockpit ließen sich nicht wegklicken.** Suchtreffer und angezeigte Screenshots blieben bis zum Sitzungsende stehen und verdeckten alles, was danach kam. Jedes Ergebnis hat jetzt ein Schließen-Kreuz, der große Anzeigebereich ebenfalls, und ab zwei Einträgen gibt es „Alle Ergebnisse ausblenden".
+- **Die Bilderkennung sucht den Zugang jetzt auch in den Einstellungen**, nicht nur in der Umgebung — und sagt im Fehlerfall, wo man ihn hinterlegt, statt nur „fehlt".
+
+### Bekannt
+- Installationen, die **ausschließlich über Bedrock** laufen (wie der Pi und der Kundenserver), haben keinen Anthropic-Schlüssel. Dort fällt die Bilderkennung sauber aus — der Agent sagt es und rät nicht —, funktioniert aber nicht. Der Weg über Bedrock ist als [#505](https://github.com/greeves89/AI-Employee/issues/505) erfasst, inklusive der Stelle, an der die fertige SigV4-Signatur schon liegt. Sofortlösung bis dahin: einen Anthropic-Schlüssel unter „Einstellungen → Modelle" hinterlegen.
+
 ## [1.136.0] — 2026-08-04
 
 ### Added

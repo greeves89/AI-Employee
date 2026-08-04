@@ -1181,7 +1181,17 @@ export function VoiceSessionModal({
 
                 {/* THE STAGE — whatever the agent is showing right now, big */}
                 {stageItem && (
-                  <div className="w-full max-w-md rounded-xl border border-border bg-foreground/[0.02] p-3">
+                  <div className="relative w-full max-w-md rounded-xl border border-border bg-foreground/[0.02] p-3">
+                    {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
+                        verdeckt alles, was danach kommt. */}
+                    <button
+                      onClick={() => setMedia((prev) => prev.filter((m) => m !== stageItem))}
+                      title="Ausblenden"
+                      aria-label="Anzeige ausblenden"
+                      className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                     {stageItem.kind === "image" && stageItem.b64 ? (
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1366,7 +1376,18 @@ export function VoiceSessionModal({
                   {webResults.map((w, wi) => (
                     <div key={wi} className="rounded-lg border border-border bg-foreground/[0.03] p-2.5">
                       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                        <Search className="h-3 w-3 text-indigo-400" /> {w.query}
+                        <Search className="h-3 w-3 text-indigo-400" />
+                        <span className="min-w-0 flex-1 truncate">{w.query}</span>
+                        {/* Ergebnisse bleiben sonst bis zum Sitzungsende stehen und
+                            verdecken, was danach passiert. */}
+                        <button
+                          onClick={() => setWebResults((prev) => prev.filter((_, i) => i !== wi))}
+                          title="Ausblenden"
+                          aria-label="Suchergebnisse ausblenden"
+                          className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/[0.06] hover:text-foreground"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
                       </div>
                       <div className="space-y-1.5">
                         {w.results.map((r, ri) => (
@@ -1384,6 +1405,14 @@ export function VoiceSessionModal({
                       </div>
                     </div>
                   ))}
+                  {(webResults.length > 1 || media.length > 1) && (
+                    <button
+                      onClick={() => { setWebResults([]); setMedia([]); }}
+                      className="w-full rounded-lg border border-border/60 py-1.5 text-[11px] text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
+                    >
+                      Alle Ergebnisse ausblenden
+                    </button>
+                  )}
                   {tasks.length === 0 && activity.length === 0 && webResults.length === 0 && media.length === 0 && (
                     <p className="text-xs text-muted-foreground/50">
                       Hier erscheint live, was der Agent tut — und Web-Ergebnisse, wenn ich etwas nachschlage.

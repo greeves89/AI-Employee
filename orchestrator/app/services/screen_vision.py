@@ -48,6 +48,26 @@ def _prompt(question: str, platform: str = "") -> str:
     )
 
 
+async def _resolve_api_key() -> str:
+    """Anthropic-Schluessel aus Umgebung ODER den verschluesselten Einstellungen.
+
+    Dieselbe Reihenfolge wie in der Nachtschicht: `ANTHROPIC_API_KEY` gewinnt,
+    sonst der in „Einstellungen → Modelle" hinterlegte. Installationen, die nur
+    ueber Bedrock laufen (z.B. der Pi), haben keinen von beiden — dann sagt der
+    Aufrufer das ehrlich, statt ein Bild zu erfinden.
+    """
+    if settings.anthropic_api_key:
+        return settings.anthropic_api_key
+    try:
+        from app.db.session import async_session_factory
+        from app.services.settings_service import SettingsService
+        async with async_session_factory() as db:
+            return (await SettingsService(db).get("anthropic_api_key")) or ""
+    except Exception:  # noqa: BLE001 — fehlende Einstellung ist kein Fehlerfall
+        logger.debug("could not read anthropic_api_key from settings", exc_info=True)
+        return ""
+
+
 async def describe_screenshot(
     screenshot_b64: str,
     question: str = "",
@@ -57,10 +77,12 @@ async def describe_screenshot(
     """Beschreibt einen Screenshot in einem Satz oder dreien. Wirft bei Misserfolg."""
     if not screenshot_b64:
         raise ScreenVisionError("Kein Bild erhalten.")
-    api_key = settings.anthropic_api_key
+    api_key = await _resolve_api_key()
     if not api_key:
         raise ScreenVisionError(
-            "Für das Erkennen von Bildschirminhalten fehlt der Anthropic-Zugang."
+            "Für das Erkennen von Bildschirminhalten ist kein bildfähiges Modell "
+            "hinterlegt. Ein Anthropic-Schlüssel unter „Einstellungen → Modelle“ "
+            "schaltet es frei."
         )
 
     blocks = [
