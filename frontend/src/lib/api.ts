@@ -2830,8 +2830,17 @@ export async function listComputerUseSessions(): Promise<{ sessions: ComputerUse
   return fetchJSON(`${getBase()}/computer-use/sessions`);
 }
 
-export async function createComputerUseSession(): Promise<{ session_id: string; status: string; ws_url: string; allowed_capabilities: string[] }> {
-  return fetchJSON(`${getBase()}/computer-use/sessions`, { method: "POST" });
+/** Bridge-Session holen oder anlegen.
+ *
+ *  Ohne Argument wird eine bestehende Session WIEDERVERWENDET — beim Öffnen des
+ *  Tabs soll sich die ID nicht ändern, sonst müsste die Bridge jedes Mal neu
+ *  eingerichtet werden. `forceNew` ist der bewusste Klick auf „Neue Session":
+ *  der muss auch wirklich eine neue ID liefern. */
+export async function createComputerUseSession(
+  forceNew = false,
+): Promise<{ session_id: string; status: string; ws_url: string; allowed_capabilities: string[] }> {
+  const q = forceNew ? "?reuse=false" : "";
+  return fetchJSON(`${getBase()}/computer-use/sessions${q}`, { method: "POST" });
 }
 
 export async function deleteComputerUseSession(sessionId: string): Promise<void> {

@@ -229,10 +229,12 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
     loadBridgeVersion();
   }, []);
 
+  // Ausdruecklicher Klick auf „Neue Session" -> forceNew. Ohne das gab der Server
+  // die bestehende Session zurueck, und der Knopf tat sichtbar nichts.
   const handleCreate = async () => {
     setCreating(true);
     try {
-      await createComputerUseSession();
+      await createComputerUseSession(true);
       await refresh();
     } finally {
       setCreating(false);

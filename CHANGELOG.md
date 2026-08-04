@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.134.2] — 2026-08-04
+
+### Fixed
+- **„Neue Session" legte keine neue an.** Seit v1.130.0 gibt `POST /computer-use/sessions` standardmäßig die **bestehende** Session zurück — richtig so beim Öffnen des Tabs, denn sonst müsste die Bridge nach jedem Seitenaufruf neu eingerichtet werden. Der Knopf „+ Neue Session" ging aber denselben Weg und bekam damit immer dieselbe ID zurück: er tat sichtbar nichts. Ein ausdrücklicher Klick schickt jetzt `reuse=false` und liefert wirklich eine neue Session; die alte bleibt bestehen und kann daneben gelöscht werden (was seit v1.134.1 auch wirkt). 4 neue Tests zur Wiederverwendungs-Logik.
+
 ## [1.134.1] — 2026-08-04
 
 ### Fixed

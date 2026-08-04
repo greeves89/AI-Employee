@@ -214,3 +214,45 @@ class SessionDeletionTests(unittest.IsolatedAsyncioTestCase):
         cu._redis = None
         await cu._forget_session(sid)
         self.assertNotIn(sid, cu._sessions)
+
+
+class SessionReuseTests(unittest.IsolatedAsyncioTestCase):
+    """`reuse` entscheidet, ob POST /sessions die bestehende Session zurueckgibt.
+
+    Standard AN, damit sich die ID beim Oeffnen des Tabs nicht aendert (sonst muesste
+    die Bridge jedes Mal neu eingerichtet werden — die urspruengliche Kundenmeldung).
+    Der ausdrueckliche Klick auf „Neue Session" schickt `reuse=false` und muss dann
+    auch wirklich eine neue ID liefern; vorher gab der Server die alte zurueck und der
+    Knopf tat sichtbar nichts (Kundenmeldung 2026-08-04).
+    """
+
+    def setUp(self):
+        cu._sessions.clear()
+        self.redis = _install_fake_redis()
+        self.user = SimpleNamespace(id="u1")
+
+    async def asyncTearDown(self):
+        cu._sessions.clear()
+
+    async def test_default_hands_back_the_existing_session(self):
+        first = await cu.create_session(user=self.user)
+        second = await cu.create_session(user=self.user)
+        self.assertEqual(first["session_id"], second["session_id"])
+
+    async def test_reuse_false_mints_a_new_id(self):
+        first = await cu.create_session(user=self.user)
+        fresh = await cu.create_session(user=self.user, reuse=False)
+        self.assertNotEqual(first["session_id"], fresh["session_id"])
+
+    async def test_new_session_does_not_destroy_the_old_one(self):
+        """Die alte bleibt bestehen — sie wird bewusst geloescht, nicht ueberschrieben."""
+        first = await cu.create_session(user=self.user)
+        await cu.create_session(user=self.user, reuse=False)
+        self.assertIsNotNone(await cu._get_session(first["session_id"]))
+
+    async def test_reuse_does_not_cross_users(self):
+        await cu.create_session(user=self.user)
+        other = await cu.create_session(user=SimpleNamespace(id="u2"))
+        self.assertEqual(
+            (await cu._get_session(other["session_id"]))["user_id"], "u2",
+        )
