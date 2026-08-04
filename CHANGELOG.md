@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.137.2] — 2026-08-04
+
+### Fixed
+- **macOS fragte bei JEDEM Screenshot erneut nach der Bildschirmaufnahme-Freigabe** — auch wenn man sie längst erteilt hatte. Kein Berechtigungsproblem auf Nutzerseite, sondern ein Fehler: `pyautogui.screenshot()` startet auf macOS bei jedem Aufruf das Programm `screencapture` als **eigenen Prozess**. Die Freigabe hängt aber an der anfragenden Anwendung, und ein kurzlebiger Fremdprozess bekommt sie nicht zuverlässig zugeordnet — also fragt das System wieder.
+
+  Die Aufnahme läuft jetzt über Quartz **im Prozess der Bridge selbst**. Die einmal erteilte Freigabe gilt damit für die Bridge und wird nicht mehr abgefragt. `pyautogui` bleibt als Rückfall für Windows/Linux und für den Fall, dass Quartz fehlt. Neue Abhängigkeit `pyobjc-framework-Quartz`.
+
+  Lokal gegen einen echten Bildschirm geprüft: 3840×2486 aufgenommen, echter Inhalt, ohne Fremdprozess. Zeilenpolsterung und BGRA-Reihenfolge werden berücksichtigt — ohne beides verschert das Bild oder Rot und Blau sind vertauscht.
+
 ## [1.137.1] — 2026-08-04
 
 ### Changed

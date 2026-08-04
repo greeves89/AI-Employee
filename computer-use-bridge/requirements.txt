@@ -11,3 +11,7 @@ pystray>=0.19.0; sys_platform != "darwin"
 # macOS only (AXUIElement support):
 pyobjc-framework-ApplicationServices>=10.0; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+# Bildschirmaufnahme IM EIGENEN PROZESS — sonst startet pyautogui bei jedem
+# Screenshot `screencapture` als Fremdprozess, und macOS fragt jedes Mal neu
+# nach der Freigabe.
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"

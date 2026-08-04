@@ -93,12 +93,50 @@ def _check_deps() -> list[str]:
 
 # ── Screenshot ───────────────────────────────────────────────────────────────
 
+def _capture_macos_inprocess():
+    """Bildschirmaufnahme IM EIGENEN PROZESS via Quartz — oder None.
+
+    `pyautogui.screenshot()` startet auf macOS bei JEDEM Aufruf das Programm
+    `screencapture` als eigenen Prozess. Die Freigabe zur Bildschirmaufnahme haengt
+    aber an der anfragenden Anwendung: ein kurzlebiger, fremder Prozess bekommt sie
+    nicht zuverlaessig zugeordnet, und macOS fragt bei jeder Anfrage erneut — auch
+    wenn der Nutzer sie laengst erteilt hat (Meldung 2026-08-04).
+
+    Quartz nimmt innerhalb dieses Prozesses auf. Die Freigabe gilt dann fuer die
+    Bridge selbst: einmal erteilt, nie wieder gefragt.
+    """
+    try:
+        from PIL import Image
+        from Quartz import (  # type: ignore
+            CGDataProviderCopyData, CGDisplayCreateImage, CGImageGetBytesPerRow,
+            CGImageGetDataProvider, CGImageGetHeight, CGImageGetWidth, CGMainDisplayID,
+        )
+    except Exception:  # noqa: BLE001 — kein Quartz: Aufrufer nimmt den alten Weg
+        return None
+    try:
+        cg = CGDisplayCreateImage(CGMainDisplayID())
+        if cg is None:
+            return None
+        w, h = CGImageGetWidth(cg), CGImageGetHeight(cg)
+        raw = bytes(CGDataProviderCopyData(CGImageGetDataProvider(cg)))
+        # macOS liefert BGRA; die Zeilenlaenge ist gepolstert und MUSS mitgegeben
+        # werden, sonst verscheert das Bild.
+        return Image.frombuffer(
+            "RGBA", (w, h), raw, "raw", "BGRA", CGImageGetBytesPerRow(cg), 1
+        ).convert("RGB")
+    except Exception as e:  # noqa: BLE001
+        log.warning("Quartz screenshot failed, falling back to pyautogui: %s", e)
+        return None
+
+
 def take_screenshot(scale: float = 1.0) -> str:
     """Capture screen, return as base64 PNG. Downscale for Retina displays."""
-    import pyautogui
     from PIL import Image
 
-    img: Image.Image = pyautogui.screenshot()
+    img = _capture_macos_inprocess() if sys.platform == "darwin" else None
+    if img is None:
+        import pyautogui
+        img = pyautogui.screenshot()
 
     # Scale down large Retina screenshots (Claude hallucinates coordinates >1280px)
     max_width = 1280
