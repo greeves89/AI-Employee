@@ -25,6 +25,29 @@ type Turn = { role: "user" | "assistant"; text: string };
 type WebResult = { title: string; url: string; snippet: string };
 type WebResultSet = { query: string; results: WebResult[] };
 
+// #474: in voice mode, clicking the approve/deny buttons breaks the flow the
+// feature exists for — so a spoken decision must also work. Deliberately
+// requires an explicit approval word (the button's own label, or a small fixed
+// vocabulary) rather than a bare "ja"/"nein": those are far too common in normal
+// conversation and a stray one must not silently authorize a pending action.
+// Deny is checked first so an ambiguous "ja, aber lieber nicht" reads as a stop.
+function matchApprovalIntent(rawText: string, approval: ApprovalRequest): "approve" | "deny" | null {
+  const text = rawText.trim().toLowerCase();
+  if (!text) return null;
+  const denyWords = [
+    (approval.options?.[1] || "").toLowerCase(),
+    "ablehnen", "abgelehnt", "abbrechen", "verweiger", "nein nicht", "nein, nicht", "stopp", "stop", "lass es",
+  ].filter(Boolean);
+  if (denyWords.some((w) => text.includes(w))) return "deny";
+  const approveWords = [
+    (approval.options?.[0] || "").toLowerCase(),
+    "freigeben", "freigegeben", "genehmig", "bestätig", "erlaub", "einverstanden",
+    "ja mach", "ja, mach", "ja bitte", "ja, bitte", "ja los", "los geht",
+  ].filter(Boolean);
+  if (approveWords.some((w) => text.includes(w))) return "approve";
+  return null;
+}
+
 // Agent-supplied URLs are untrusted (LLM output): only http(s) may reach
 // href / iframe src / window.open — javascript:, data:, blob:, file: are dropped.
 function safeHttpUrl(raw: unknown): string | undefined {
@@ -300,6 +323,15 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
     } catch { /* bleibt stehen, damit der Nutzer es erneut versuchen kann */ }
     finally { setApprovalBusy(false); }
   }, [pendingApproval, approvalBusy]);
+
+  // handleServerEvent below intentionally has a stable ([]) dependency array — it
+  // must not tear down/recreate the websocket handler on every render — so it
+  // cannot close over pendingApproval/decideApproval directly. Mirror them into
+  // refs it reads live, to resolve a pending approval from spoken text (#474).
+  const pendingApprovalRef = useRef<ApprovalRequest | null>(null);
+  useEffect(() => { pendingApprovalRef.current = pendingApproval; }, [pendingApproval]);
+  const decideApprovalRef = useRef(decideApproval);
+  useEffect(() => { decideApprovalRef.current = decideApproval; }, [decideApproval]);
   const [dragOver, setDragOver] = useState(false);
 
   // Drop file(s) into the agent's workspace, then tell the live session so the agent
@@ -485,16 +517,25 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
         // Agent drives the app UI by voice: open/close an overlay, or navigate.
         handleUiCommand(String(data.action || ""), String(data.target || ""), data.query ? String(data.query) : undefined);
         break;
-      case "transcript":
+      case "transcript": {
         reconnectsRef.current = 0; // real conversation data → healthy session
-        setTranscript(String(data.text || ""));
+        const spokenText = String(data.text || "");
+        setTranscript(spokenText);
         if (modeRef.current === "classic") {
           setState("processing");
         } else {
           suppressAudioRef.current = false;  // new user turn -> allow the response audio
-          upsertTurn("user", String(data.text || ""));
+          upsertTurn("user", spokenText);
+        }
+        // #474: resolve a pending approval from what the user just said, since
+        // clicking is the wrong interaction in voice mode.
+        const approval = pendingApprovalRef.current;
+        if (approval) {
+          const intent = matchApprovalIntent(spokenText, approval);
+          if (intent) void decideApprovalRef.current(intent === "approve");
         }
         break;
+      }
       case "response":
         // Fires for MY OWN speech AND for delegation reports — must NOT flip a task to
         // "erledigt" here (that's delegate_done's job), else a task reads done while it
