@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.138.1] — 2026-08-04
+
+### Fixed
+- **Ein Screenshot ohne Aufnahme-Freigabe sah aus wie ein gültiger.** macOS meldet in dem Fall keinen Fehler, sondern liefert ein Bild mit Schreibtisch und Menüleiste — **ohne Fensterinhalte**. Das ist von einem echten Screenshot kaum zu unterscheiden und hat im Test sowohl den Nutzer als auch das auswertende Modell getäuscht: Der Agent sah die Menüleiste „Safari" plus ein Landschaftsfoto und beschrieb daraufhin überzeugt „ein Safari-Fenster mit einem Luftbild eines Weinbergs". Das Luftbild war der Schreibtischhintergrund.
+
+  Die Bridge fragt jetzt **vor** der Aufnahme, ob sie überhaupt darf, und liefert sonst einen klaren Fehler mit dem genauen Weg zur Einstellung, statt ein wertloses Bild. Der Rückfall auf `pyautogui` greift dabei ausdrücklich nicht — der zeigt dasselbe leere Bild.
+
 ## [1.138.0] — 2026-08-04
 
 ### Changed

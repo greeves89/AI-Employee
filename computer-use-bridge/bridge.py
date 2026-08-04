@@ -93,6 +93,10 @@ def _check_deps() -> list[str]:
 
 # ── Screenshot ───────────────────────────────────────────────────────────────
 
+class ScreenRecordingPermissionError(RuntimeError):
+    """Die Bildschirmaufnahme ist nicht freigegeben — ein Screenshot waere wertlos."""
+
+
 def _capture_macos_inprocess():
     """Bildschirmaufnahme IM EIGENEN PROZESS via Quartz — oder None.
 
@@ -113,6 +117,22 @@ def _capture_macos_inprocess():
         )
     except Exception:  # noqa: BLE001 — kein Quartz: Aufrufer nimmt den alten Weg
         return None
+    # macOS beantwortet direkt, ob DIESER Prozess aufnehmen darf. Ohne die Freigabe
+    # liefert CGDisplayCreateImage KEINEN Fehler, sondern ein Bild mit Schreibtisch
+    # und Menueleiste, aber OHNE Fensterinhalte. Das sieht auf den ersten Blick nach
+    # einem gueltigen Screenshot aus und hat schon Menschen wie Modelle getaeuscht
+    # ("ein Safari-Fenster mit einem Landschaftsfoto" — das war der Hintergrund).
+    # Deshalb hier hart abbrechen statt ein wertloses Bild zurueckzugeben.
+    try:
+        from Quartz import CGPreflightScreenCaptureAccess  # type: ignore
+        if not CGPreflightScreenCaptureAccess():
+            raise ScreenRecordingPermissionError(
+                "Der Bridge fehlt die Freigabe zur Bildschirmaufnahme. Systemeinstellungen "
+                "→ Datenschutz & Sicherheit → Bildschirmaufnahme: AI-Employee Bridge "
+                "aktivieren, danach die App komplett beenden und neu starten."
+            )
+    except ImportError:
+        pass
     try:
         cg = CGDisplayCreateImage(CGMainDisplayID())
         if cg is None:
@@ -124,6 +144,8 @@ def _capture_macos_inprocess():
         return Image.frombuffer(
             "RGBA", (w, h), raw, "raw", "BGRA", CGImageGetBytesPerRow(cg), 1
         ).convert("RGB")
+    except ScreenRecordingPermissionError:
+        raise                       # muss beim Nutzer ankommen, nicht im Rueckfall verschwinden
     except Exception as e:  # noqa: BLE001
         log.warning("Quartz screenshot failed, falling back to pyautogui: %s", e)
         return None
@@ -415,8 +437,13 @@ class CommandDispatcher:
                 return self.input_recorder.stop()
 
             elif action == "screenshot":
+                # Fehlende Freigabe ist KEIN Screenshot — lieber ein klarer Fehler als
+                # ein Bild, auf dem nur der Schreibtisch zu sehen ist.
                 scale = params.get("scale", 1.0)
-                return {"screenshot_b64": take_screenshot(scale)}
+                try:
+                    return {"screenshot_b64": take_screenshot(scale)}
+                except ScreenRecordingPermissionError as e:
+                    return {"ok": False, "error": str(e)}
 
             elif action == "ax_tree":
                 app = params.get("app")

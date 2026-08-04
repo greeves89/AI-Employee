@@ -59,3 +59,34 @@ class InProcessCaptureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MissingPermissionIsReportedTests(unittest.TestCase):
+    """Fehlende Bildschirmaufnahme darf kein „gueltiger" Screenshot sein.
+
+    Ohne die Freigabe liefert macOS KEINEN Fehler, sondern ein Bild mit Schreibtisch
+    und Menueleiste, aber ohne Fensterinhalte. Das sieht nach einem echten Screenshot
+    aus — im Test hat es sowohl den Nutzer als auch das auswertende Modell getaeuscht
+    ("ein Safari-Fenster mit einem Landschaftsfoto"; es war der Hintergrund).
+    """
+
+    def test_permission_is_checked_before_capturing(self):
+        code = _fn("_capture_macos_inprocess")
+        self.assertIn("CGPreflightScreenCaptureAccess", code)
+
+    def test_missing_permission_raises_instead_of_returning_an_image(self):
+        code = _fn("_capture_macos_inprocess")
+        self.assertIn("ScreenRecordingPermissionError", code)
+
+    def test_permission_error_is_not_swallowed_by_the_fallback(self):
+        """Der pyautogui-Rueckfall zeigt dasselbe leere Bild — er darf hier nicht greifen."""
+        code = _fn("_capture_macos_inprocess")
+        self.assertIn("except ScreenRecordingPermissionError:", code)
+        self.assertIn("raise", code)
+
+    def test_action_returns_a_readable_error(self):
+        self.assertIn('return {"ok": False, "error": str(e)}', _SRC)
+
+    def test_message_names_the_exact_remedy(self):
+        self.assertIn("Datenschutz & Sicherheit", _SRC)
+        self.assertIn("neu starten", _SRC)
