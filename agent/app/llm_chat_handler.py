@@ -339,6 +339,7 @@ class LLMChatHandler:
         text: str,
         model: str | None = None,
         images: list[dict] | None = None,
+        reasoning: str = "",
     ) -> dict:
         """Process a chat message with the custom LLM provider.
 
@@ -349,6 +350,13 @@ class LLMChatHandler:
         self.is_running = True
         start_time = time.time()
         provider = self._get_provider()
+        # The provider is cached across turns, so a per-message choice has to be
+        # written onto it each turn (and an explicit "off" has to clear the
+        # container default, not fall through to it).
+        if reasoning:
+            provider.reasoning_effort = "" if reasoning == "off" else reasoning
+        else:
+            provider.reasoning_effort = settings.llm_reasoning_effort
 
         # Build system message if this is the first message
         if not self._history:

@@ -349,8 +349,15 @@ class ChatConsumer:
     # Handler lifecycle                                                    #
     # ------------------------------------------------------------------ #
 
-    async def _get_or_create_handler(self, source_key: str) -> object:
-        """Return the handler for this channel, creating and restoring it if needed."""
+    async def _get_or_create_handler(self, source_key: str, model: str | None = None) -> object:
+        """Return the handler for this channel, creating and restoring it if needed.
+
+        ``model`` is the model this turn will actually run under. A persisted
+        --resume session created under a DIFFERENT model is not restored — resuming
+        a CLI session while forcing a different model can hang the turn (no timeout
+        short of the 600s watchdog catches it). We drop the stale pointer instead and
+        start a fresh session under the new model.
+        """
         if source_key in self._handlers:
             return self._handlers[source_key]
 
@@ -365,23 +372,40 @@ class ChatConsumer:
             from app.chat_handler import ChatHandler
             handler = ChatHandler(log_publisher)
 
-        # Restore persisted Claude session so --resume works after restarts
-        stored = await self.redis.get(f"agent:{self.agent_id}:claude_session:{source_key}")
+        # Restore persisted session so --resume works after restarts — unless the
+        # agent's model changed since it was saved.
+        key = f"agent:{self.agent_id}:claude_session:{source_key}"
+        stored = await self.redis.get(key)
         if stored and hasattr(handler, "session_id"):
-            handler.session_id = stored.decode() if isinstance(stored, bytes) else stored
-            logger.info("Restored Claude session %s for %s", handler.session_id, source_key)
+            stored = stored.decode() if isinstance(stored, bytes) else stored
+            session_id, stored_model = stored, None
+            try:
+                parsed = json.loads(stored)
+                if isinstance(parsed, dict):
+                    session_id, stored_model = parsed.get("session_id"), parsed.get("model")
+            except (TypeError, ValueError):
+                pass  # legacy bare-string value (pre-model-tracking) — no model to compare
+            if stored_model and stored_model != model:
+                logger.info(
+                    "Model changed for %s (%s -> %s) — dropping stale resume session %s",
+                    source_key, stored_model, model, session_id,
+                )
+                await self.redis.delete(key)
+            elif session_id:
+                handler.session_id = session_id
+                logger.info("Restored Claude session %s for %s", handler.session_id, source_key)
 
         self._handlers[source_key] = handler
         return handler
 
-    async def _persist_session(self, source_key: str, handler: object) -> None:
-        """Save the handler's Claude session ID to Redis."""
+    async def _persist_session(self, source_key: str, handler: object, model: str | None = None) -> None:
+        """Save the handler's session ID (+ the model it ran under) to Redis."""
         session_id = getattr(handler, "session_id", None)
         if session_id:
             await self.redis.setex(
                 f"agent:{self.agent_id}:claude_session:{source_key}",
                 self._CLAUDE_SESSION_TTL,
-                session_id,
+                json.dumps({"session_id": session_id, "model": model}),
             )
 
     async def _reset_handler(self, source_key: str) -> None:
@@ -617,14 +641,21 @@ class ChatConsumer:
         message_id = msg["id"]
         text = msg["text"]
         model = msg.get("model")
+        # The model this turn actually runs under (a per-message override, else the
+        # agent's configured default) — resolved once here so the same value gates
+        # session-resume AND gets persisted alongside the session id below.
+        effective_model = model or settings.default_model
         telegram_ctx = msg.get("telegram")
         source = msg.get("source", "telegram" if telegram_ctx else "webapp")
         chat_session_id = msg.get("chat_session_id")
         images = msg.get("images") or None
+        # Per-message reasoning level the user picked in the chat ("" = leave the
+        # harness at its default). Already whitelisted by the orchestrator.
+        reasoning = msg.get("reasoning") or ""
 
         # Route to the correct per-channel handler
         source_key = self._source_key(source, chat_session_id, telegram_ctx)
-        handler = await self._get_or_create_handler(source_key)
+        handler = await self._get_or_create_handler(source_key, effective_model)
 
         # Handle special commands
         if text.strip() == "/reset":
@@ -671,12 +702,13 @@ class ChatConsumer:
                     message_id=message_id,
                     text=text,
                     model=model,
+                    reasoning=reasoning,
                     **handle_kwargs,
                 ),
                 timeout=timeout,
             )
             # Persist Claude session ID so we can --resume after restart
-            await self._persist_session(source_key, handler)
+            await self._persist_session(source_key, handler, effective_model)
         except asyncio.TimeoutError:
             logger.error("Chat turn %s timed out after %ss — aborting", message_id, timeout)
             try:

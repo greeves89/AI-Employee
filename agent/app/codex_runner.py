@@ -191,6 +191,12 @@ class CodexAgentRunner:
             "--dangerously-bypass-approvals-and-sandbox",
             "-m", model,
         ]
+        # Per-message reasoning level chosen by the user in the chat. Passed as a
+        # CLI override (not the config TOML) so it applies to THIS turn only.
+        _reasoning = getattr(self, "_reasoning", "")
+        if _reasoning:
+            effort = "minimal" if _reasoning == "off" else _reasoning
+            common += ["-c", f'model_reasoning_effort="{effort}"']
         if resume:
             cmd = ["codex", "exec", "resume"] + common + ["--last", "-"]
         else:
@@ -321,7 +327,8 @@ class CodexChatHandler:
         # Live steering: set by the ChatConsumer (see steering.py).
         self.pending_drain = None
 
-    async def handle_message(self, message_id: str, text: str, model: str | None = None) -> dict:
+    async def handle_message(self, message_id: str, text: str, model: str | None = None,
+                             reasoning: str = "") -> dict:
         """Run a Codex chat turn with live steering.
 
         A message that arrives on this channel mid-turn interrupts the run (SIGINT,
@@ -329,6 +336,9 @@ class CodexChatHandler:
         session via `codex exec resume --last`. See steering.py.
         """
         from app.steering import run_turns_with_steering
+        # Held for this turn (incl. steering follow-ups); read when the CLI args
+        # are assembled.
+        self._reasoning = reasoning or ""
         self.is_running = True
         model = model or settings.default_model
         # ONE runner for the whole (possibly multi-fold) exchange so interrupt() hits

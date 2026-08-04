@@ -64,8 +64,13 @@ class ChatHandler:
             result = await self._execute_cli(message_id, text, model)
         return result
 
+    # Claude has no reasoning-effort flag; thinking depth is driven by the
+    # MAX_THINKING_TOKENS budget. Mapped from the user's per-message choice.
+    _THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999"}
+
     async def handle_message(
-        self, message_id: str, text: str, model: str | None = None
+        self, message_id: str, text: str, model: str | None = None,
+        reasoning: str = "",
     ) -> dict:
         """Send a chat message to Claude CLI and stream the response.
 
@@ -75,6 +80,9 @@ class ChatHandler:
         """
         from app.steering import run_turns_with_steering
         model = model or settings.default_model
+        # Held on the instance for this turn (incl. steering follow-ups) instead of
+        # threaded through _run_turn_with_retries' three call sites.
+        self._reasoning = reasoning or ""
         self.is_running = True
 
         async def _run_turn(t: str, _is_resume: bool) -> dict:
@@ -120,6 +128,11 @@ class ChatHandler:
         ])
 
         env = os.environ.copy()
+        reasoning = getattr(self, "_reasoning", "")
+        if reasoning == "off":
+            env.pop("MAX_THINKING_TOKENS", None)
+        elif reasoning in self._THINKING_BUDGET:
+            env["MAX_THINKING_TOKENS"] = self._THINKING_BUDGET[reasoning]
         if settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
         else:

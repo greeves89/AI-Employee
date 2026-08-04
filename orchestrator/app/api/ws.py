@@ -230,7 +230,13 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         input_tokens: int | None = None, output_tokens: int | None = None,
     ):
         """Persist a chat message to the database."""
-        session_id = _session["id"]
+        # Prefer the session this specific message_id was sent under (tracked in
+        # _mid_to_session) over the connection's "current" session — a tab can have
+        # several sessions in flight (switchSession, or overlapping turns under
+        # parallel_sessions>1), and _session["id"] is a single mutable slot that the
+        # LAST-sent message overwrites, so persisting by it alone can save an
+        # assistant reply to the wrong conversation's history.
+        session_id = _mid_to_session.get(message_id) or _session["id"]
         if not session_id:
             return  # Don't save without a valid session
         try:
@@ -713,6 +719,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 from app.core.model_catalog import is_model_allowed_for_mode
                 if not is_model_allowed_for_mode(agent_mode, override_model):
                     override_model = None
+            # Per-message reasoning level, chosen by the USER in the chat (like the
+            # thinking selector in ChatGPT/Claude Code). Whitelisted here so an
+            # arbitrary string can never reach a CLI flag or request body.
+            reasoning = str(msg.get("reasoning") or "").strip().lower()
+            if reasoning not in ("off", "low", "medium", "high"):
+                reasoning = ""
             chat_payload = json.dumps({
                 "id": message_id,
                 "text": text,
@@ -720,6 +732,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 "images": images,
                 "source": source,
                 "chat_session_id": _session["id"],
+                "reasoning": reasoning,
             })
 
             # Save user message to DB
@@ -727,7 +740,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             await _save_chat_message(
                 agent_id, message_id, "user",
                 content=db_content,
-                meta={"source": source},
+                meta={"source": source, **({"reasoning": reasoning} if reasoning else {})},
             )
 
             # Only send session event when a NEW session was created

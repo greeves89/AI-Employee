@@ -217,6 +217,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  // Per-message reasoning depth, picked by the user (like the thinking selector
+  // in ChatGPT/Claude Code). "" = leave the agent's harness at its default.
+  const [reasoning, setReasoning] = useState<"" | "off" | "low" | "medium" | "high">("");
   const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
   // Files attached via drag&drop or paperclip — uploaded on send, like pasted images.
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -267,6 +270,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const intentionalClose = useRef(false);
   const currentWsSessionId = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  // Stable per-tab id so the backend can keep this tab's socket separate from other
+  // tabs/windows chatting with the same agent — without it, opening a 2nd chat kicks the 1st.
+  const tabClientIdRef = useRef<string | undefined>(undefined);
+  if (tabClientIdRef.current === undefined) {
+    tabClientIdRef.current = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+  }
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -519,7 +530,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       return;
     }
 
-    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat?ticket=${ticket}`);
+    const ws = new WebSocket(`${getWsUrl()}/api/v1/ws/agents/${agentId}/chat?ticket=${ticket}&client_id=${tabClientIdRef.current}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -906,6 +917,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       images: imgs,
       session_id: activeSessionId || currentWsSessionId.current,
       source: "webapp",
+      reasoning,
     }));
     setInput("");
     setPendingImages([]);
@@ -1437,6 +1449,24 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           >
             <Mic className="h-4 w-4" />
           </button>
+          <select
+            value={reasoning}
+            onChange={(e) => setReasoning(e.target.value as typeof reasoning)}
+            disabled={!isConnected}
+            title="Wie gründlich soll der Agent nachdenken, bevor er antwortet?"
+            className={cn(
+              "h-10 shrink-0 rounded-xl border bg-background/80 px-2 text-xs outline-none transition-all disabled:opacity-40",
+              reasoning && reasoning !== "off"
+                ? "border-violet-500/40 text-violet-300"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <option value="">Denken: Standard</option>
+            <option value="off">Denken: aus</option>
+            <option value="low">Denken: kurz</option>
+            <option value="medium">Denken: mittel</option>
+            <option value="high">Denken: gründlich</option>
+          </select>
           <textarea
             ref={inputRef}
             value={input}
