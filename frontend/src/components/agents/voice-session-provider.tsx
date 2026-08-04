@@ -16,6 +16,7 @@ type VoiceSessionRequest = {
   agentName: string;
   getTicket?: () => Promise<string>;
   resumeSessionId?: string;
+  onEnd?: () => void;
 };
 
 type ActiveVoiceSession = VoiceSessionRequest & {
@@ -41,6 +42,9 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
 
   const startSession = useCallback((request: VoiceSessionRequest) => {
+    const sameSession = activeSession
+      && activeSession.agentId === request.agentId
+      && activeSession.resumeSessionId === request.resumeSessionId;
     setActiveSession((current) => {
       if (
         current
@@ -49,22 +53,23 @@ export function VoiceSessionProvider({ children }: { children: ReactNode }) {
       ) {
         return { ...current, ...request };
       }
-      setSnapshot(null);
       return {
         ...request,
         sessionKey: `${request.agentId}:${request.resumeSessionId ?? "new"}:${Date.now()}`,
       };
     });
+    if (!sameSession) setSnapshot(null);
     setExpanded(true);
-  }, []);
+  }, [activeSession]);
 
   const collapseSession = useCallback(() => setExpanded(false), []);
   const expandSession = useCallback(() => setExpanded(true), []);
   const endSession = useCallback(() => {
+    activeSession?.onEnd?.();
     setExpanded(false);
     setSnapshot(null);
     setActiveSession(null);
-  }, []);
+  }, [activeSession]);
   const isActiveForAgent = useCallback(
     (agentId: string) => activeSession?.agentId === agentId,
     [activeSession],

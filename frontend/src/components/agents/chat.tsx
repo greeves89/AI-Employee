@@ -1460,9 +1460,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                 agentId,
                 agentName: agentId,
                 resumeSessionId: activeSessionId ?? undefined,
+                // Surface the persisted voice conversation as a session tab once
+                // the call has actually ended and the backend has saved it.
+                onEnd: () => { void refreshSessions(); },
               });
-              // Surface a just-persisted voice conversation as a session tab without reload.
-              void refreshSessions();
             }}
             disabled={!isConnected}
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-all shrink-0"

@@ -79,11 +79,6 @@ type Mode = "classic" | "nova_sonic";
 export type VoiceSessionSnapshot = {
   state: VoiceState;
   mode: Mode;
-  transcript: string;
-  response: string;
-  statusMsg: string;
-  paused: boolean;
-  delegating: boolean;
 };
 
 /** ArrayBuffer → base64 without spreading a typed array (build-safe). */
@@ -202,8 +197,8 @@ export function VoiceSessionModal({
   const lastApprovalIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    onSnapshot?.({ state, mode, transcript, response, statusMsg, paused, delegating });
-  }, [state, mode, transcript, response, statusMsg, paused, delegating, onSnapshot]);
+    onSnapshot?.({ state, mode });
+  }, [state, mode, onSnapshot]);
 
   const changeVolume = useCallback((v: number) => {
     setVolume(v);
