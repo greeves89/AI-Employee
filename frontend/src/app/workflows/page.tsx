@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Workflow as WorkflowIcon, Plus, Loader2, Trash2, Folder, FolderPlus, Users2, Share2, X, Inbox,
+  Workflow as WorkflowIcon, Plus, Loader2, Trash2, Folder, FolderPlus, Users2, Share2, X, Inbox, Download, Upload,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,8 @@ export default function WorkflowsPage() {
   const [creating, setCreating] = useState(false);
   const [sel, setSel] = useState<string>("all"); // all | none | shared | <folderId>
   const [shareFor, setShareFor] = useState<api.Workflow | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -83,6 +85,36 @@ export default function WorkflowsPage() {
     } catch { toast.error("Verschieben fehlgeschlagen."); }
   };
 
+  const exportWorkflow = async (wf: api.Workflow) => {
+    try {
+      const snapshot = await api.exportWorkflow(wf.id);
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${wf.name.replace(/[^\w.-]+/g, "_") || "workflow"}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Export fehlgeschlagen."); }
+  };
+
+  const importWorkflowFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const snapshot = JSON.parse(await file.text());
+      const wf = await api.importWorkflow({
+        definition: snapshot.definition, name: snapshot.name, trigger: snapshot.trigger,
+        format: snapshot.format, version: snapshot.version,
+        folder_id: /^wff_/.test(sel) ? sel : null,
+      });
+      setWorkflows((ws) => [...ws, wf]);
+      toast.success(`„${wf.name}" importiert (deaktiviert).`);
+    } catch { toast.error("Import fehlgeschlagen — ungültige Datei."); } finally { setImporting(false); }
+  };
+
   const filtered = useMemo(() => workflows.filter((w) => {
     if (sel === "all") return true;
     if (sel === "none") return !w.folder_id && (w.role ?? "owner") === "owner";
@@ -98,9 +130,15 @@ export default function WorkflowsPage() {
         title="Workflows"
         subtitle="Mehrstufige Agenten-Abläufe visuell bauen, organisieren und teilen"
         actions={
-          <button onClick={createNew} disabled={creating} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Neuer Workflow
-          </button>
+          <div className="flex items-center gap-2">
+            <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={importWorkflowFile} />
+            <button onClick={() => importInputRef.current?.click()} disabled={importing} className="inline-flex items-center gap-2 rounded-xl border border-foreground/[0.1] px-4 py-2 text-sm font-medium hover:bg-foreground/[0.04] disabled:opacity-50 transition-colors">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Importieren
+            </button>
+            <button onClick={createNew} disabled={creating} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Neuer Workflow
+            </button>
+          </div>
         }
       />
 
@@ -152,6 +190,7 @@ export default function WorkflowsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
+                        <button onClick={() => exportWorkflow(wf)} title="Als Datei exportieren" className="text-muted-foreground/30 hover:text-primary"><Download className="h-4 w-4" /></button>
                         {isOwner && <button onClick={() => setShareFor(wf)} title="Teilen" className="text-muted-foreground/30 hover:text-primary"><Share2 className="h-4 w-4" /></button>}
                         {isOwner && <button onClick={() => removeWorkflow(wf)} title="Löschen" className="text-muted-foreground/30 hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
                       </div>

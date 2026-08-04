@@ -2713,6 +2713,21 @@ export async function getWorkflowRuns(id: string): Promise<{ runs: WorkflowRun[]
 export async function getWorkflowRun(runId: string): Promise<WorkflowRun> {
   return fetchJSON(`${getBase()}/workflows/runs/${runId}`);
 }
+// Import/export (#470) — portable snapshot for sharing a workflow as a file
+export interface WorkflowExportSnapshot {
+  format: string;
+  version: number;
+  name: string;
+  definition: WorkflowDefinition;
+  trigger: Record<string, unknown> | null;
+  exported_at: string;
+}
+export async function exportWorkflow(id: string): Promise<WorkflowExportSnapshot> {
+  return fetchJSON(`${getBase()}/workflows/${id}/export`);
+}
+export async function importWorkflow(body: { definition: WorkflowDefinition; name?: string | null; trigger?: Record<string, unknown> | null; folder_id?: string | null; format?: string; version?: number }): Promise<Workflow> {
+  return fetchJSON(`${getBase()}/workflows/import`, { method: "POST", body: JSON.stringify(body) });
+}
 
 // DLP egress filter admin (#388)
 export interface DlpSettings { enabled: boolean; classes: string[]; actions: string[] }
