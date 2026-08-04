@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.132.2] — 2026-08-04
+
+### Fixed
+- **Die Anleitungen aus v1.132.0/v1.132.1 erreichten 7 von 9 Agenten gar nicht.** Sie standen in `agent/claude-global.md` — das ist Claude Codes **eigene** Konfigurationsdatei (`~/.claude/CLAUDE.md`). Auf dem Pi laufen aber sieben von neun Agenten auf **Codex**, das diese Datei nie liest. Die modusübergreifende Anleitung ist `DEFAULT_CLAUDE_MD` (wird als `/workspace/CLAUDE.md` bzw. `/workspace/AGENT.md` in **jeden** Agenten geschrieben) — und dort kam `computer_*` **kein einziges Mal** vor, `brain_related` und `brain_list` ebenfalls nicht. Beide Abschnitte sind jetzt dort ergänzt: Desktop-Bridge mit Entscheidungstabelle und den zwei harten Regeln (bei Fehler melden statt umschwenken; keinen Bildschirm beschreiben, dessen Screenshot fehlschlug) sowie die Zuordnung Brain-Frage → Werkzeug inklusive `LINKED` vs. `SIMILAR`.
+
 ## [1.132.1] — 2026-08-04
 
 ### Fixed
