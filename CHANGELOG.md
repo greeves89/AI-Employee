@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.138.0] — 2026-08-04
+
+### Changed
+- **Die Bildauswertung blockiert das Gespräch nicht mehr.** Bisher wartete der Sprach-Agent bis zu 90 Sekunden auf den Agenten, der den Screenshot ansieht — und solange stand die Unterhaltung still. Im Sprachmodus ist eine Pause dieser Länge nicht auszuhalten. Jetzt kommt sofort ein kurzer Hinweis („ich schau gerade drauf"), die Auswertung läuft nebenher, und das Ergebnis wird eingespeist und vorgelesen, sobald es da ist **und** die Stimme gerade nicht spricht — dasselbe Muster, das schon für hochgeladene Dateien gilt. Der Agent bekommt ausdrücklich gesagt, in der Zwischenzeit **nichts** zu beschreiben, weil er den Inhalt noch nicht kennt.
+
 ## [1.137.2] — 2026-08-04
 
 ### Fixed

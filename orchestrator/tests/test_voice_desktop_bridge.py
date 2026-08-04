@@ -249,40 +249,67 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
             out = await v._desktop("click", x="links", y="oben")
         self.assertIn("Zahlen", out)
 
-    async def test_screenshot_goes_to_the_bound_agent_with_the_image(self):
-        """Nova Sonic hat keinen Bildkanal — aber der Agent, an dem die Stimme
-        haengt, sieht Bilder mit seinem eigenen Zugang. Genau dorthin geht es."""
+    async def test_screenshot_returns_at_once_and_analyses_in_parallel(self):
+        """Die Auswertung darf das Gespraech NICHT blockieren. Frueher wurde hier bis
+        zu 90s auf den Agenten gewartet — im Sprachmodus eine Ewigkeit."""
+        import asyncio
         import app.services.realtime_voice_session as rvs
         v = self._voice()
+        started = asyncio.Event()
+
+        async def _slow(*_a, **_kw):
+            started.set()
+            await asyncio.sleep(30)          # laenger als jeder Test warten wuerde
+            return "kommt nie an"
+
         with unittest.mock.patch.object(
             cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
         ), unittest.mock.patch.object(
             cu, "dispatch_bridge_command",
             new=AsyncMock(return_value={"result": {"screenshot_b64": "abc"}}),
-        ), unittest.mock.patch.object(
-            rvs, "ask_agent_via_chat", new=AsyncMock(return_value="Excel ist offen."),
-        ) as ask:
-            out = await v._desktop("screenshot")
-        self.assertIn("Excel ist offen", out)
-        imgs = ask.await_args.kwargs["images"]
-        self.assertEqual(imgs, [{"media_type": "image/png", "data": "abc"}])
+        ), unittest.mock.patch.object(rvs, "ask_agent_via_chat", new=_slow):
+            out = await asyncio.wait_for(v._desktop("screenshot"), timeout=2.0)
+            await asyncio.wait_for(started.wait(), timeout=2.0)   # laeuft wirklich an
+            for t in asyncio.all_tasks():
+                if t is not asyncio.current_task():
+                    t.cancel()
+
+        self.assertIn("draufschaust", out)
+        self.assertIn("beschreibe NICHTS", out)
         v._emit.assert_awaited()
+
+    async def test_analysis_result_is_spoken_when_it_arrives(self):
+        """Das Ergebnis wird eingespeist, sobald es da ist."""
+        import app.services.realtime_voice_session as rvs
+        v = self._voice()
+        v._closed = False
+        v._drop_audio = False
+        v._last_spoken = 0.0
+        v._nova = unittest.mock.MagicMock()
+        v._nova.inject_user_text = AsyncMock()
+        with unittest.mock.patch.object(
+            rvs, "ask_agent_via_chat", new=AsyncMock(return_value="Excel ist offen."),
+        ):
+            await v._analyse_screenshot_bg("abc", "was siehst du?", "darwin")
+        said = v._nova.inject_user_text.await_args[0][0]
+        self.assertIn("Excel ist offen", said)
 
     async def test_failing_analysis_is_admitted_not_invented(self):
         """Kommt keine Auswertung zurueck, wird das gesagt — nicht geraten."""
         import app.services.realtime_voice_session as rvs
         v = self._voice()
+        v._closed = False
+        v._drop_audio = False
+        v._last_spoken = 0.0
+        v._nova = unittest.mock.MagicMock()
+        v._nova.inject_user_text = AsyncMock()
         with unittest.mock.patch.object(
-            cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
-        ), unittest.mock.patch.object(
-            cu, "dispatch_bridge_command",
-            new=AsyncMock(return_value={"result": {"screenshot_b64": "abc"}}),
-        ), unittest.mock.patch.object(
             rvs, "ask_agent_via_chat", new=AsyncMock(return_value="[Fehler: Timeout]"),
         ):
-            out = await v._desktop("screenshot")
-        self.assertIn("nicht zurueck", out)
-        self.assertIn("erfinde nichts", out.lower())
+            await v._analyse_screenshot_bg("abc", "", "")
+        said = v._nova.inject_user_text.await_args[0][0]
+        self.assertIn("nicht zurueck", said)
+        self.assertIn("erfinde nichts", said.lower())
 
 
 if __name__ == "__main__":

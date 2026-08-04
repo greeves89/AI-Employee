@@ -1377,6 +1377,52 @@ class RealtimeVoiceSession:
             return
         asyncio.create_task(self._notify_files_bg(paths))
 
+    async def _analyse_screenshot_bg(self, b64: str, question: str, platform: str) -> None:
+        """Screenshot vom gebundenen Agenten auswerten lassen — nebenher.
+
+        Der Agent sieht Bilder mit seinem eigenen Zugang. Das dauert seine Zeit, und
+        solange darf das Gespraech nicht stehen. Sobald die Antwort da ist und die
+        Stimme gerade nicht spricht, wird sie eingespeist und vorgelesen.
+        """
+        plat_note = f" (Betriebssystem: {platform})" if platform else ""
+        frage = question or "Was ist auf diesem Bildschirm zu sehen?"
+        try:
+            answer = await ask_agent_via_chat(
+                self.redis, self.agent_id,
+                "Das ist ein Screenshot vom Bildschirm des Nutzers"
+                f"{plat_note}. Beantworte KNAPP, hoechstens drei kurze Saetze, weil deine "
+                "Antwort vorgelesen wird: " + frage +
+                "\nNenne die sichtbaren Fenster und worum es darin geht. Erfinde nichts.",
+                images=[{"media_type": "image/png", "data": b64}],
+                timeout=120.0,
+            )
+        except Exception:  # noqa: BLE001 — eine gescheiterte Auswertung darf nichts reissen
+            logger.warning("voice screenshot analysis failed agent=%s", self.agent_id, exc_info=True)
+            answer = ""
+
+        if self._closed or not self._nova:
+            return
+        # Warten, bis die Stimme still ist — sonst redet die Auswertung dazwischen.
+        deadline = time.monotonic() + 25.0
+        while not self._closed and self._nova:
+            if time.monotonic() - getattr(self, "_last_spoken", 0.0) > 1.2 and not self._drop_audio:
+                break
+            if time.monotonic() > deadline:
+                break
+            await asyncio.sleep(0.3)
+        if self._closed or not self._nova:
+            return
+        if not answer or answer.startswith("[Fehler"):
+            msg = ("Die Auswertung des Screenshots kam nicht zurueck. Sag das kurz und frage, "
+                   "was er sieht — erfinde nichts.")
+        else:
+            msg = ("Auswertung des Screenshots ist da: " + answer +
+                   "\nGib das jetzt knapp wieder, in einem oder zwei Saetzen.")
+        try:
+            await self._nova.inject_user_text(msg)
+        except Exception:  # noqa: BLE001
+            logger.debug("could not inject screenshot analysis", exc_info=True)
+
     async def _notify_files_bg(self, paths: list[str]) -> None:
         # Wait until Nova is idle (no spoken audio for a short gap and not mid barge-in
         # drop), so the notice is a fresh, SPOKEN turn. Bounded so it never hangs.
@@ -2265,24 +2311,14 @@ class RealtimeVoiceSession:
             # und DER sieht Bilder — mit dem Zugang, der fuer ihn ohnehin eingerichtet
             # ist (OAuth-Claude, Bedrock, Azure). Also gebe ich ihm den Screenshot und
             # nehme seine Antwort. Kein zweiter Modellzugang noetig.
-            frage = (text.strip() or "Was ist auf diesem Bildschirm zu sehen?")
-            plat_note = f" (Betriebssystem: {plat})" if plat else ""
-            answer = await ask_agent_via_chat(
-                self.redis, self.agent_id,
-                "Das ist ein Screenshot vom Bildschirm des Nutzers"
-                f"{plat_note}. Beantworte KNAPP, hoechstens drei kurze Saetze, weil deine "
-                "Antwort vorgelesen wird: " + frage +
-                "\nNenne die sichtbaren Fenster und worum es darin geht. Erfinde nichts. "
-                "Siehst du im Wesentlichen nur den Schreibtischhintergrund ohne "
-                "Fensterinhalte, sag das ausdruecklich — unter macOS fehlt dann meist die "
-                "Freigabe zur Bildschirmaufnahme.",
-                images=[{"media_type": "image/png", "data": b64}],
-                timeout=90.0,
-            )
-            if not answer or answer.startswith("[Fehler"):
-                return ("Screenshot gemacht und angezeigt, aber die Auswertung kam nicht "
-                        "zurueck. Sag ihm das und frage, was er sieht — erfinde nichts.")
-            return f"Auf dem Bildschirm des Nutzers ist zu sehen: {answer}"
+            # Die Auswertung laeuft NEBENHER. Frueher wurde hier bis zu 90s auf den
+            # Agenten gewartet — das Gespraech stand solange still, und im Sprachmodus
+            # ist eine Pause dieser Laenge nicht auszuhalten. Das Ergebnis wird
+            # eingespeist, sobald es da ist und die Stimme gerade nicht spricht.
+            asyncio.create_task(self._analyse_screenshot_bg(b64, text.strip(), plat))
+            return ("Screenshot gemacht und dem Nutzer angezeigt. Sag ihm in EINEM kurzen "
+                    "Satz, dass du gerade draufschaust — und beschreibe NICHTS, du kennst "
+                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst.")
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
         return "Erledigt."
