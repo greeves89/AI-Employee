@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.135.0] — 2026-08-04
+
+### Added
+- **Der Sprach-Agent kann den Rechner des Nutzers bedienen (#489).** Neues Werkzeug `desktop`: URL oder Programm auf seinem Gerät öffnen, Screenshot, klicken, tippen. Bisher hatte die Sprachsitzung **kein einziges** `computer_*`-Werkzeug und wimmelte interne Adressen ab („ruf es selbst im Browser auf") — die Anleitung aus #475 ging an die Agenten-Container, nicht an diese Laufzeit.
+
+### Changed
+- **Der Weg zur Bridge liegt jetzt in einer Funktion.** Der Kommando-Versand steckte im HTTP-Endpunkt; er ist als `dispatch_bridge_command` herausgelöst, und Endpunkt wie Sprachsitzung gehen hindurch. Damit gelten für die Stimme dieselben Schranken wie für jeden Agenten: Besitzprüfung, Zuordnung zu einem bestimmten Agenten, Sitzungs-Timeout, Aktions-Limit, serverseitige Freigabe der Fähigkeiten und Audit-Eintrag — nachvollziehbar als `voice:{agent_id}`.
+
+### Security
+- Beim Selbstprüfen geschlossen: Der Sprachweg reichte die **Agenten-Kennung nicht durch**. Da die Zuordnungsprüfung nur greift, wenn sie mitkommt, hätte ein Sprach-Agent eine Session bedienen können, die ausdrücklich einem anderen Agenten zugewiesen ist.
+- Aus dem Review: Eine nicht-numerische Koordinate ließ eine Ausnahme am Fehlerpfad vorbeifliegen — der Sprach-Turn bekam nie eine Antwort und blieb stehen. Und der Rückgabetext forderte das Modell auf, den Screenshot zu **beschreiben**, obwohl es das Bild gar nicht erhält (es geht nur an den Bildschirm des Nutzers) — eine Einladung zum Erfinden, jetzt ausdrücklich untersagt.
+- 18 Tests, die überwiegend prüfen, was **nicht** geht: fremder Nutzer, gesperrte Fähigkeit, unbekannte Aktion (fail-closed), Limit, abgelaufene Session, fehlende Bridge, fremder Agent, unbekannter Nutzer. Dazu: Ablehnungsgründe werden wörtlich durchgereicht statt in ein Ausweichmanöver übersetzt, und ein leerer Screenshot wird nicht beschrieben.
+
+### Bekannt, bewusst offen
+- Klick, Tastatur und App-Start sind in neuen Sessions **standardmäßig freigegeben** und laufen ohne Einzelbestätigung. Das galt vorher genauso, ist über die Stimme aber leichter auszulösen. Für den Klinikbetrieb wäre eine ausdrückliche Rückfrage vor Klick/Tippen zu erwägen.
+
 ## [1.134.3] — 2026-08-04
 
 ### Fixed

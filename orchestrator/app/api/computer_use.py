@@ -512,30 +512,45 @@ class CommandRequest(BaseModel):
     timeout: float = 10.0
 
 
-@router.post("/sessions/{session_id}/command")
-async def send_command(
+async def dispatch_bridge_command(
     session_id: str,
-    req: CommandRequest,
-    caller=Depends(require_auth_or_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    """Relay a command to the bridge. Verifies caller owns (or belongs to the owner of) this session."""
+    action: str,
+    params: dict[str, Any],
+    *,
+    caller_user_id: str,
+    caller_label: str,
+    caller_agent_id: str | None = None,
+    timeout: float = 10.0,
+) -> Any:
+    """Ein Kommando an die Bridge schicken — DER EINE WEG dorthin.
+
+    Sowohl der HTTP-Endpunkt als auch die Realtime-Sprachsitzung gehen hier durch,
+    damit die Schutzmechanismen nicht an zwei Stellen gepflegt werden müssen und
+    keine Aufruferart einen kürzeren Weg bekommt als die andere: Besitz, Zuordnung
+    zu einem bestimmten Agenten, Sitzungs-Timeout, Aktions-Limit, serverseitige
+    Capability-Prüfung und der Audit-Eintrag gelten für alle gleich.
+
+    ``caller_user_id`` ist bereits aufgelöst — wer hier hereinkommt, hat seine
+    Identität schon nachgewiesen. Fehler kommen als HTTPException, damit der
+    Endpunkt sie unverändert weiterreichen kann und der Sprach-Agent eine
+    verständliche Ansage daraus machen kann.
+    """
     session = await _get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Ownership check: resolve caller's user_id and compare to session owner
-    caller_user_id = await _resolve_caller_user_id(caller, db)
     if not caller_user_id:
-        raise HTTPException(status_code=403, detail="Cannot verify ownership — agent has no user_id")
+        raise HTTPException(status_code=403, detail="Cannot verify ownership — no user_id")
     if caller_user_id != session["user_id"]:
         raise HTTPException(status_code=403, detail="Access denied: this session belongs to a different user")
 
-    # Agent-level restriction: if session is assigned to a specific agent, enforce it
+    # Ist die Sitzung einem bestimmten Agenten zugeordnet, darf nur der sie bedienen.
     assigned_agent_id = session.get("agent_id")
-    if assigned_agent_id and is_agent_principal(caller):
-        if str(caller.id) != str(assigned_agent_id):
-            raise HTTPException(status_code=403, detail="This session is assigned to a different agent")
+    if assigned_agent_id and caller_agent_id and str(caller_agent_id) != str(assigned_agent_id):
+        raise HTTPException(status_code=403, detail="This session is assigned to a different agent")
+
+    req = SimpleNamespace(action=action, params=params or {}, timeout=timeout)
+    caller = SimpleNamespace(id=caller_label)
 
     # Session timeout
     if time.time() - float(session.get("last_activity_at") or session["created_at"]) > SESSION_TIMEOUT_SECS:
@@ -605,6 +620,24 @@ async def send_command(
     except Exception as e:
         session["pending_results"].pop(cmd_id, None)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sessions/{session_id}/command")
+async def send_command(
+    session_id: str,
+    req: CommandRequest,
+    caller=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Relay a command to the bridge. Verifies caller owns (or belongs to the owner of) this session."""
+    caller_user_id = await _resolve_caller_user_id(caller, db)
+    return await dispatch_bridge_command(
+        session_id, req.action, req.params,
+        caller_user_id=caller_user_id or "",
+        caller_label=str(getattr(caller, "id", "?")),
+        caller_agent_id=str(caller.id) if is_agent_principal(caller) else None,
+        timeout=req.timeout,
+    )
 
 
 # ── Session status (lightweight — lets UI distinguish "no screenshot yet" from "bridge gone") ──

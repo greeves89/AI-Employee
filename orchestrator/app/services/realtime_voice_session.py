@@ -545,6 +545,37 @@ SHOW_ON_SCREEN_TOOL = {
     }
 }
 
+DESKTOP_TOOL = {
+    "toolSpec": {
+        "name": "desktop",
+        "description": (
+            "Bedient den RECHNER DES NUTZERS über die Desktop-Bridge — sein echter "
+            "Bildschirm, seine Maus, seine Tastatur. Das ist der Weg für alles, was auf "
+            "SEINEM Gerät passieren soll, und der einzige Weg zu Adressen, die nur aus "
+            "seinem Netz erreichbar sind (Intranet, Ticketsystem, interne Tools).\n"
+            "action='open' — öffnet eine URL oder ein Programm bei ihm. target = URL "
+            "(https://…) oder Programmname ('Notepad', 'Safari').\n"
+            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist. "
+            "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
+            "action='click' — klickt bei x/y. action='type' — tippt text.\n"
+            "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
+            "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
+            "fehlgeschlagen ist."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "open | screenshot | click | type"},
+                "target": {"type": "string", "description": "URL oder Programmname (bei action='open')."},
+                "text": {"type": "string", "description": "Text (bei action='type')."},
+                "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
+                "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
+            },
+            "required": ["action"],
+        })},
+    }
+}
+
 CONTROL_UI_TOOL = {
     "toolSpec": {
         "name": "control_ui",
@@ -1013,16 +1044,17 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "nicht „ich wechsle die Seite“, sondern „ich zeige es dir“. Das ist die "
         "App-Oberfläche — für echte Klicks im Betriebssystem/Browser des Nutzers delegiere per "
         "ask_agent an den Agenten (Computer-Use).\n"
-        "INTERNE ADRESSEN SIND KEINE SACKGASSE (wichtig): Nennt der Nutzer eine Firmen-/Intranet-"
-        "Adresse (Ticketsystem, Wiki, interne Tools) und bittet dich, sie zu öffnen, dann sage "
-        "NIEMALS „das ist eine interne Adresse, die kann ich nicht öffnen“. Ich muss sie gar nicht "
-        "selbst erreichen — der BROWSER DES NUTZERS steht in genau diesem Netz. Öffne sie mit "
-        "show_on_screen kind='tab' (sein Browser, funktioniert immer) oder kind='web' (Fenster in "
-        "der App; klappt nur, wenn die Seite Einbetten erlaubt — viele interne Systeme verbieten "
-        "das, dann nimm 'tab'). Soll dort anschließend etwas GETAN werden (anmelden, Ticket "
-        "anlegen, Formular ausfüllen), delegiere per ask_agent an den Agenten mit Computer-Use — "
-        "der bedient den Rechner des Nutzers wirklich. „Ruf es selbst im Browser auf“ ist die "
-        "schlechteste Antwort: genau das sollte ich ihm abnehmen.\n"
+        "SEIN RECHNER — desktop (wichtig): Soll etwas auf dem GERÄT des Nutzers passieren, "
+        "nimm desktop. action='open' öffnet dort eine URL oder ein Programm, 'screenshot' "
+        "zeigt mir seinen Bildschirm, 'click'/'type' bedienen ihn. Vor Klicken/Tippen immer "
+        "erst einen Screenshot.\n"
+        "INTERNE ADRESSEN SIND KEINE SACKGASSE: Nennt der Nutzer eine Firmen-/Intranet-Adresse "
+        "(Ticketsystem, Wiki, interne Tools), sage NIEMALS „das ist eine interne Adresse, die "
+        "kann ich nicht öffnen“. Ich muss sie gar nicht selbst erreichen — SEIN Rechner steht "
+        "in diesem Netz. Erste Wahl: desktop action='open' (öffnet sie wirklich bei ihm). Geht "
+        "keine Bridge, sage genau das (Bridge-App starten) und biete show_on_screen kind='tab' "
+        "an. Für mehrschrittige Arbeit dort (anmelden, Ticket anlegen) delegiere per ask_agent. "
+        "„Ruf es selbst im Browser auf“ ist die schlechteste Antwort: genau das nehme ich ihm ab.\n"
         "IM GRAPHEN SUCHEN: Nennt der Nutzer beim Öffnen des Graphen ein THEMA ('öffne den Graphen "
         "und such mir den Eintrag zu Rechnungen'), gib dieses Thema IMMER als query mit — dann "
         "springt der Graph direkt auf den passenden Punkt statt leer aufzugehen. Auch bei jeder "
@@ -1152,7 +1184,7 @@ class RealtimeVoiceSession:
             REBUILD_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
-            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, RENAME_CONVERSATION_TOOL,
+            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
         engine = creds.get("engine") or "nova_sonic"
@@ -1489,6 +1521,15 @@ class RealtimeVoiceSession:
                 str(args.get("caption") or ""),
             ))
             return
+        if name == "desktop":
+            await self._respond(tool_use_id, await self._desktop(
+                str(args.get("action") or "").strip().lower(),
+                str(args.get("target") or ""),
+                str(args.get("text") or ""),
+                args.get("x"), args.get("y"),
+            ))
+            return
+
         if name == "control_ui":
             await self._respond(tool_use_id, await self._control_ui(
                 str(args.get("action") or ""), str(args.get("target") or ""),
@@ -2110,6 +2151,89 @@ class RealtimeVoiceSession:
             for i, r in enumerate(results, 1)
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
+
+    async def _desktop(self, action: str, target: str = "", text: str = "",
+                       x=None, y=None) -> str:
+        """Rechner des Nutzers über die Desktop-Bridge bedienen.
+
+        Geht bewusst durch `dispatch_bridge_command` — dieselbe Funktion, die auch der
+        HTTP-Endpunkt nutzt. Besitzprüfung, Sitzungs-Timeout, Aktions-Limit, die
+        serverseitige Capability-Freigabe und der Audit-Eintrag gelten hier genauso;
+        der Sprachweg bekommt keine Abkürzung.
+        """
+        from fastapi import HTTPException
+        from app.api.computer_use import _find_user_session, dispatch_bridge_command
+
+        if not self.user_id or self.user_id == "unknown":
+            return "Ich kann die Bridge gerade niemandem zuordnen."
+
+        found = await _find_user_session(str(self.user_id))
+        if not found:
+            return ("Es läuft keine Desktop-Bridge. Der Nutzer muss die Bridge-App auf "
+                    "seinem Rechner starten — dann geht es sofort. Sag ihm genau das.")
+        session_id, sess = found
+        if not sess.get("bridge_connected"):
+            return ("Die Bridge-Session besteht, aber die App ist gerade nicht verbunden. "
+                    "Der Nutzer soll die Bridge-App starten. Sag ihm genau das.")
+
+        # Sprachbefehl → Bridge-Aktion. Nur diese vier; alles Weitere gehört in eine
+        # richtige Aufgabe per ask_agent, nicht in ein Zuruf-Tool.
+        if action == "open":
+            if not target.strip():
+                return "Mir fehlt, was ich öffnen soll."
+            act, params = "open_app", {"name": target.strip()}
+        elif action == "screenshot":
+            act, params = "screenshot", {"scale": 0.5}
+        elif action == "click":
+            if x is None or y is None:
+                return "Für einen Klick brauche ich x und y — vorher einen Screenshot machen."
+            try:
+                act, params = "mouse_click", {"x": int(x), "y": int(y)}
+            except (TypeError, ValueError):
+                # Ohne das flog die ValueError am try/except unten vorbei, _respond wurde
+                # nie aufgerufen und der Sprach-Turn blieb stehen, bis Nova selbst abbrach.
+                return "x und y müssen Zahlen sein — mach erst einen Screenshot."
+        elif action == "type":
+            if not text:
+                return "Mir fehlt der Text, den ich tippen soll."
+            act, params = "type", {"text": text}
+        else:
+            return f"Die Aktion '{action}' kenne ich nicht."
+
+        try:
+            out = await dispatch_bridge_command(
+                session_id, act, params,
+                caller_user_id=str(self.user_id),
+                caller_label=f"voice:{self.agent_id}",
+                # Ist die Session einem bestimmten Agenten zugewiesen, muss das auch
+                # fuer den Sprachweg gelten — sonst waere die Stimme die Hintertuer.
+                caller_agent_id=str(self.agent_id),
+                timeout=20.0,
+            )
+        except HTTPException as e:
+            # Wortlaut durchreichen: „Capability gesperrt" oder „Bridge nicht verbunden"
+            # ist die Antwort, die der Nutzer hoeren muss — nicht ein Ausweichmanoever.
+            return f"Das ging nicht: {e.detail}"
+        except Exception:  # noqa: BLE001
+            logger.warning("voice desktop action failed agent=%s action=%s",
+                           self.agent_id, act, exc_info=True)
+            return "Der Rechner des Nutzers hat nicht reagiert."
+
+        result = (out or {}).get("result") or {}
+        if act == "screenshot":
+            b64 = result.get("screenshot_b64") or ""
+            if not b64:
+                return "Der Screenshot kam leer zurück — ich sehe seinen Bildschirm gerade nicht."
+            await self._emit({"type": "media", "data": {
+                "kind": "image", "media_type": "image/png", "b64": b64,
+                "caption": "Bildschirm des Nutzers", "auto_open": True,
+            }})
+            return ("Screenshot gemacht und dem Nutzer angezeigt. ACHTUNG: Ich selbst SEHE das "
+                    "Bild nicht. Sage nur, dass es jetzt auf dem Schirm ist, und frage, was er "
+                    "damit machen will — beschreibe auf KEINEN Fall Inhalte, die ich nicht kenne.")
+        if act == "open_app":
+            return f"'{target.strip()}' ist auf seinem Rechner geöffnet."
+        return "Erledigt."
 
     async def _control_ui(self, action: str, target: str, query: str = "") -> str:
         """Emit a UI command the Speech front-end acts on (open/close overlay or navigate).
