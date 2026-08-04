@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
 import * as api from "@/lib/api";
+import type { ApprovalRequest } from "@/lib/types";
 import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/api";
 
 // The knowledge-graph overlay (WebGL) is client-only and heavy → load on demand.
@@ -132,6 +133,12 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   // while recording (the live mic is muted so the agent neither listens nor speaks).
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [meetingMsg, setMeetingMsg] = useState<string | null>(null);
+  // Offene Freigabe dieses Agenten (#474). Der Agent ruft `request_approval` und
+  // wartet bis zu 10 Minuten auf eine Antwort — im Sprachchat gab es bisher keine
+  // Stelle, an der man sie geben konnte, also lief jede Freigabe ins Leere und der
+  // Agent machte ohne sie weiter.
+  const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
 
   const changeVolume = useCallback((v: number) => {
     setVolume(v);
@@ -248,6 +255,35 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+
+  // Solange die Sprachsitzung steht, auf Freigaben dieses Agenten horchen. Anders als
+  // im Text-Chat NICHT an einen "arbeitet gerade"-Zustand gekoppelt: im Sprachmodus
+  // laeuft die Arbeit oft im Hintergrund weiter, waehrend der Nutzer schon wieder redet.
+  useEffect(() => {
+    if (state === "error") return;
+    let stop = false;
+    const poll = async () => {
+      try {
+        const r = await api.getPendingApprovals();
+        if (stop) return;
+        setPendingApproval(r.approvals.find((a) => a.agent_id === agentId) || null);
+      } catch { /* Netzwerkaussetzer ignorieren, naechster Tick versucht es erneut */ }
+    };
+    poll();
+    const iv = setInterval(poll, 3000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [state, agentId]);
+
+  const decideApproval = useCallback(async (approve: boolean) => {
+    if (!pendingApproval || approvalBusy) return;
+    setApprovalBusy(true);
+    try {
+      if (approve) await api.approveCommand(pendingApproval.approval_id);
+      else await api.denyCommand(pendingApproval.approval_id, "Im Sprachchat abgelehnt");
+      setPendingApproval(null);
+    } catch { /* bleibt stehen, damit der Nutzer es erneut versuchen kann */ }
+    finally { setApprovalBusy(false); }
+  }, [pendingApproval, approvalBusy]);
   const [dragOver, setDragOver] = useState(false);
 
   // Drop file(s) into the agent's workspace, then tell the live session so the agent
@@ -880,6 +916,48 @@ export function VoiceSessionModal({ agentId, agentName, onClose, getTicket, resu
               </span>
             )}
           </div>
+
+          {/* Freigabe-Anfrage (#474) — ueber beiden Modi, damit sie im Sprachchat
+              nicht in der durchlaufenden Live-Aktivitaet untergeht. */}
+          {pendingApproval && (
+            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-amber-300">Der Agent braucht deine Freigabe</p>
+                  <p className="mt-1 text-sm text-foreground/90 break-words">
+                    {pendingApproval.question
+                      || pendingApproval.reasoning
+                      || pendingApproval.tool
+                      || "Freigabe erforderlich"}
+                  </p>
+                  {pendingApproval.context && (
+                    <p className="mt-1 text-xs text-muted-foreground break-words">{pendingApproval.context}</p>
+                  )}
+                  {pendingApproval.tool && pendingApproval.question && (
+                    <p className="mt-1 text-[11px] text-amber-400/70 font-mono">{pendingApproval.tool}</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => decideApproval(true)}
+                      disabled={approvalBusy}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50 transition-colors"
+                    >
+                      {approvalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      {pendingApproval.options?.[0] || "Freigeben"}
+                    </button>
+                    <button
+                      onClick={() => decideApproval(false)}
+                      disabled={approvalBusy}
+                      className="rounded-lg bg-red-500/15 px-3 py-1.5 text-sm font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+                    >
+                      {pendingApproval.options?.[1] || "Ablehnen"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {!isRealtime && <StatusPill state={state} realtime={isRealtime} />}
 

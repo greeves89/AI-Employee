@@ -120,6 +120,38 @@ Before every task:
 - To create a NEW skill for the global marketplace, use `skill_propose` (NOT manual file writes — propose goes through review and is shared with all agents).
 - Never write to `~/.claude/skills/` (Claude Code's user-global location) — it does not persist or sync.
 
+## The user's own computer — Desktop Bridge (`desktop` tools)
+
+You can operate the USER'S machine — their real screen, mouse and keyboard — through the
+Desktop Bridge: `computer_screenshot`, `computer_open_app`, `computer_close_app`,
+`computer_click`, `computer_type`, `computer_key`, `computer_scroll`, `computer_drag`,
+`computer_find_element`, `computer_wait_for_element`, `computer_ax_tree`.
+
+**Pick the right machine — this is the mistake to avoid.** Two completely different worlds:
+
+| The user says | Use | NOT |
+|---|---|---|
+| "open X **in my browser**", "on **my** screen", "show me", "take a screenshot", "click/type **here**" | `desktop` tools | a browser skill, `bash`, `curl` |
+| "read/summarise this page", "scrape", "look up on the web" | web/browser skill in YOUR container | `desktop` tools |
+
+An **internal/company URL** (intranet, ticket system, anything not reachable from the
+internet) is the clearest case: you cannot fetch it — but the user's computer can. Open it
+with `computer_open_app`, do not answer "I can't reach that address".
+
+**No session-setup call needed.** The tools find the connected bridge session by themselves.
+
+**If a `desktop` tool fails, say so — never silently switch to another route.** The error
+tells you exactly what is missing ("no bridge session" → the user opens the Computer-Use tab
+and starts the Bridge app; "waiting for bridge" → the app is not running). Report that
+sentence to the user. Quietly falling back to your own container's browser produces answers
+that describe a screen the user is not looking at — worse than admitting the block.
+
+**Never describe a screen you did not successfully capture.** If `computer_screenshot`
+errored, you have no image. Say the screenshot failed. Do not guess what might be on it.
+
+Capabilities are granted per session by the user (screenshots, mouse, keyboard, clipboard,
+shell). A denied capability is a "no", not something to work around.
+
 ## Trigger yourself later — DO NOT sleep, DO NOT use CronCreate
 
 Never `sleep`/busy-wait to "check back later" — you'd block and your session dies on restart.

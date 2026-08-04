@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.132.0] — 2026-08-04
+
+Erste Nachbesserungen aus dem Kundentest von v1.131.0 (Klinikum Braunschweig).
+
+### Fixed
+- **Freigaben kamen im Sprachchat nie beim Nutzer an — der Agent handelte ohne sie (#474).** Ruft der Agent `request_approval`, legt der Orchestrator die Anfrage an und der Agent wartet bis zu 10 Minuten auf Antwort. Der Text-Chat zeigt dafür ein Widget; die **Voice-Session hatte keins** — die Frage lief nur als Text durch die Live-Aktivität, war nicht beantwortbar, und nach dem Timeout machte der Agent weiter. Dasselbe Muster wie beim `AskUserQuestion`-Fehler in v1.130.2: eine Rückfrage, die nirgends ankommt, wird zur stillen Selbstermächtigung. Die Sprachsitzung zeigt jetzt dieselbe Freigabe-Karte mit Frage, Kontext und den Antwortmöglichkeiten aus `request_approval` — und pollt durchgehend, nicht nur während eines laufenden Turns (im Sprachmodus arbeitet der Agent oft weiter, während man schon wieder redet).
+- **Agent bediente den eigenen Container statt den Rechner des Nutzers (#475, Teilfix).** Die 16 Bridge-Werkzeuge sind registriert und finden ihre Session selbst — aber in `claude-global.md` (der Anleitung, die als `CLAUDE.md` im Agent-Image steckt) kam die Desktop-Bridge **kein einziges Mal** vor. Bei rund 128 verfügbaren Werkzeugen landete „öffne die URL in meinem Browser" folglich beim serverseitigen Browser-Skill. Neuer Abschnitt mit Entscheidungstabelle (fremder Rechner vs. eigener Container), interner URL als klarstem Fall, und zwei harten Regeln: bei Fehler **melden statt still umschwenken**, und **niemals einen Bildschirm beschreiben, dessen Screenshot fehlgeschlagen ist** — Letzteres erklärt die Halluzination im Kundentest.
+
+  *Noch offen an #475:* Codex- und Custom-LLM-Agenten haben die `computer_*`-Werkzeuge gar nicht (`agent/app/tools/definitions.py` enthält keine) — dort hilft die Anleitung nicht.
+
+### Deployment
+- `claude-global.md` steckt im Agent-Image: nach diesem Release **Image neu bauen und alle Agenten neu erstellen**, sonst greift die Anleitung nur bei neuen Containern. Bei Codex-Agenten gestaffelt (geteilter Refresh-Token).
+
 ## [1.131.0] — 2026-08-04
 
 ### Added
