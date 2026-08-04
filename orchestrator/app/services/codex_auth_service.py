@@ -48,11 +48,32 @@ def _agent_file_owner() -> tuple[int, int]:
         return DEFAULT_AGENT_UID, DEFAULT_AGENT_GID
 
 
-def _make_agent_readable(path: str) -> None:
-    """Let the non-root agent user read Codex auth without making it world-readable."""
-    uid, gid = _agent_file_owner()
-    os.chown(path, uid, gid)
-    os.chmod(path, 0o600)
+def _lock_agent_readonly(path: str) -> None:
+    """Make Codex auth readable but NOT writable by the agent user.
+
+    All agent containers run as the same uid (1000), so a file *owned* by that
+    uid is writable by every agent — a rogue agent could overwrite the shared
+    Codex refresh token in place (issue #510). We therefore keep the file
+    root-owned and only grant the agent *group* read access: root (the
+    orchestrator) writes it, agents read it, no agent can tamper with it.
+    """
+    _, gid = _agent_file_owner()
+    os.chown(path, 0, gid)  # root:agent — owned by root, not the agent uid
+    os.chmod(path, 0o640)  # root rw, agent group read-only, no world access
+
+
+def _secure_codex_dir(path: str) -> None:
+    """Root-own the shared Codex dir so agents cannot unlink/recreate auth.json.
+
+    The sticky bit on ``/shared`` only guards ``/shared``'s *direct* entries; the
+    credential file nested inside ``/shared/.codex`` is governed by this
+    directory's own permissions. Making the directory root-owned and
+    non-agent-writable stops a rogue agent from deleting the real auth.json and
+    dropping a forged one in its place.
+    """
+    _, gid = _agent_file_owner()
+    os.chown(path, 0, gid)  # root:agent
+    os.chmod(path, 0o750)  # root rwx, agent group traverse/read, no world access
 
 
 def _access_token_exp(parsed: dict) -> int | None:
@@ -90,10 +111,11 @@ class CodexAuthService:
                 auth_json = decrypt_token(integration.access_token_encrypted)
                 parsed = json.loads(auth_json)
                 os.makedirs(os.path.dirname(SHARED_CODEX_AUTH_PATH), exist_ok=True)
+                _secure_codex_dir(SHARED_CODEX_HOME)
                 tmp_path = SHARED_CODEX_AUTH_PATH + ".tmp"
                 with open(tmp_path, "w") as f:
                     json.dump(parsed, f)
-                _make_agent_readable(tmp_path)
+                _lock_agent_readonly(tmp_path)
                 os.replace(tmp_path, SHARED_CODEX_AUTH_PATH)
                 logger.info("Synced Codex auth.json to shared agent volume")
                 return True
@@ -133,6 +155,11 @@ class CodexAuthService:
             if not os.path.exists(SHARED_CODEX_AUTH_PATH):
                 return await self.sync_auth_json()
 
+            # Repair perms on already-provisioned installs whose auth.json was
+            # written before #510 (agent-owned, agent-writable). Idempotent.
+            _secure_codex_dir(SHARED_CODEX_HOME)
+            _lock_agent_readonly(SHARED_CODEX_AUTH_PATH)
+
             with open(SHARED_CODEX_AUTH_PATH) as f:
                 parsed = json.load(f)
             exp = _access_token_exp(parsed)
@@ -151,7 +178,7 @@ class CodexAuthService:
                 logger.warning("Central Codex refresh exec failed: %s", e)
                 return False
 
-            _make_agent_readable(SHARED_CODEX_AUTH_PATH)
+            _lock_agent_readonly(SHARED_CODEX_AUTH_PATH)
             if _file_hash(SHARED_CODEX_AUTH_PATH) != before:
                 await self._store_shared_to_db()
                 logger.info("Codex token centrally refreshed + re-stored to DB")
