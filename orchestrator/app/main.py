@@ -1511,6 +1511,19 @@ clean Markdown; you don't need to commit.
             await db.commit()
             if restarted:
                 logger.info(f"[Startup] Restarted {restarted} agent containers from previous session")
+
+            # Anleitung in JEDEN lebenden Container nachziehen. Sie liegt im Container,
+            # nicht im Repo — ohne das laesst ein reines `git pull` + Orchestrator-Neustart
+            # (der uebliche Deploy-Weg, auch beim Kunden) alle laufenden Agenten mit der
+            # alten Anleitung zurueck, und man muesste jeden einzeln von Hand aktualisieren.
+            from app.core.agent_manager import AgentManager as _AM
+            _mgr = _AM(db, app.state.docker, getattr(app.state, "redis", None))
+            refreshed = 0
+            for agent in previously_running:
+                if await _mgr.refresh_instructions(agent):
+                    refreshed += 1
+            if refreshed:
+                logger.info(f"[Startup] Refreshed instructions for {refreshed} agent(s)")
     except Exception as e:
         logger.warning(f"Agent startup recovery failed: {e}")
 

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.133.0] — 2026-08-04
+
+### Changed
+- **Ein `git pull` reicht jetzt, damit Agenten die neue Anleitung bekommen.** Die Anleitungsdatei liegt im Container, nicht im Repo — sie wurde bisher nur beim Neuerstellen geschrieben. Wer wie üblich `git pull` + Orchestrator-Neustart machte, ließ damit **alle laufenden Agenten mit der alten Anleitung zurück** und hätte jeden einzeln von Hand aktualisieren müssen. Das trifft jede Installation, die sich selbst aktualisiert, und war praktisch nicht erkennbar. Jetzt zieht der Orchestrator die Anleitung beim Start in jeden lebenden Container nach, und `start_agent` tut dasselbe beim Hochfahren eines gestoppten Agenten. Best effort — schlägt es fehl, läuft der Agent trotzdem, mit einer Warnung im Log.
+
 ## [1.132.4] — 2026-08-04
 
 ### Fixed

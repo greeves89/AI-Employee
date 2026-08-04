@@ -73,13 +73,15 @@ class TemplateContentTests(unittest.TestCase):
         for needle in ("computer_open_app", "computer_screenshot", "brain_related", "brain_get"):
             self.assertIn(needle, DEFAULT_CLAUDE_MD, f"{needle} fehlt in DEFAULT_CLAUDE_MD")
 
-    def test_recreate_path_writes_the_same_way(self):
-        """Es gibt zwei Wege, die einen Container neu bauen — beide muessen die
-        Anleitung gleich behandeln, sonst driftet wieder einer weg."""
+    def test_every_write_uses_the_shared_path_choice(self):
+        """Mehrere Stellen schreiben die Anleitung (update, restart, start). Keine
+        davon darf den Pfad wieder selbst zusammenbauen — sonst driftet einer weg,
+        und genau so ist der urspruengliche Fehler entstanden."""
         src = inspect.getsource(AgentManager)
-        self.assertEqual(
-            src.count("instructions_path(mode)"), 2,
-            "beide Recreate-Pfade muessen die gemeinsame Pfadwahl nutzen",
+        self.assertGreaterEqual(src.count("instructions_path("), 2)
+        self.assertNotIn(
+            '"/workspace/CLAUDE.md" if mode', src,
+            "Inline-Pfadwahl wieder eingebaut — gehoert in instructions_path()",
         )
 
 

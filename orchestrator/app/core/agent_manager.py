@@ -1408,10 +1408,37 @@ class AgentManager:
         except NotFound:
             logger.warning(f"Container {agent.container_id} not found for agent {agent_id} — recreating")
             return await self.update_agent(agent_id)
+        await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent started")
         return agent
+
+    async def refresh_instructions(self, agent: Agent) -> bool:
+        """Schreibt die aktuelle Anleitung in einen BESTEHENDEN Container.
+
+        Bisher passierte das nur beim Neuerstellen (Update/Restart). Wer nach einem
+        Deploy bloss `git pull` machte, liess seine laufenden Agenten mit der alten
+        Anleitung zurueck — die Datei liegt im Container, nicht im Repo. Genau die
+        Falle, in die sonst jede Installation tappt, die sich selbst aktualisiert.
+
+        Best effort: schlaegt es fehl, laeuft der Agent trotzdem weiter.
+        """
+        if not agent.container_id:
+            return False
+        try:
+            from app.core.mounts import get_effective_catalog
+            catalog = await get_effective_catalog(self.db)
+            mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
+            self.docker.write_file_in_container(
+                agent.container_id,
+                instructions_path(mode),
+                _render_claude_md((agent.config or {}).get("mounts", []), catalog),
+            )
+            return True
+        except Exception as e:  # noqa: BLE001 — Anleitung ist wichtig, aber nicht kritisch
+            logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")
+            return False
 
     async def update_agent(self, agent_id: str) -> Agent:
         """Recreate agent container with latest image, preserving all data (volumes)."""
