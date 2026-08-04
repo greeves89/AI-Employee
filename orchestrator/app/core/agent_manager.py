@@ -541,6 +541,18 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
     return "\n".join(lines)
 
 
+def instructions_path(mode: str | None) -> str:
+    """Wohin die Agenten-Anleitung geschrieben wird — EINE Quelle für alle Pfade.
+
+    Claude Code liest `/workspace/CLAUDE.md`. Codex und Custom-LLM lesen
+    `/workspace/AGENT.md` (modellneutraler Name — `CLAUDE.md` verwirrt bei
+    GPT/Gemini/Llama). Alles, was nicht ausdrücklich `claude_code` ist, bekommt
+    `AGENT.md`; ein unbekannter oder fehlender Modus fällt damit auf die sichere
+    Seite, statt gar keine Anleitung zu erhalten.
+    """
+    return "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+
+
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None) -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
@@ -1350,7 +1362,7 @@ class AgentManager:
             agent_mounts = config.get("mounts", [])
             fresh_claude_md = _render_claude_md(agent_mounts, catalog)
             mode = agent.mode or config.get("mode", "claude_code")
-            target_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+            target_file = instructions_path(mode)
             self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
             if mode != "claude_code":
@@ -1538,7 +1550,7 @@ class AgentManager:
         #    /workspace/AGENT.md. This used to run only for claude_code, so a Codex
         #    agent kept the instructions it was born with: every later improvement to
         #    DEFAULT_CLAUDE_MD silently passed it by, no matter how often it was updated.
-        _instructions_file = "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+        _instructions_file = instructions_path(mode)
         try:
             _agent_mounts = (agent.config or {}).get("mounts", [])
             self.docker.write_file_in_container(

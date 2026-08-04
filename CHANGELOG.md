@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.132.4] — 2026-08-04
+
+### Fixed
+- **Custom-LLM-Agenten waren beim Anleitungs-Fix aus v1.132.3 nur mitgemeint, nicht belegt.** Die Pfadwahl steckte als Inline-Ausdruck in zwei Funktionen; geprüft war sie nur für Claude Code und Codex. Beim Kunden laufen die Azure-Modelle als `custom_llm` — genau der ungetestete Zweig. Die Wahl liegt jetzt in `instructions_path(mode)`, einer Funktion, die beide Recreate-Pfade benutzen, mit Tests für alle drei Laufzeiten plus unbekannte Modi (die fallen auf `AGENT.md`, statt gar keine Anleitung zu bekommen — so ist der ursprüngliche Fehler entstanden). 10 Tests statt vorher 5 Quelltext-Prüfungen.
+
 ## [1.132.3] — 2026-08-04
 
 ### Fixed
