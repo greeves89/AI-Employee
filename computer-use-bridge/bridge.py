@@ -433,13 +433,22 @@ class CommandDispatcher:
                 url = str(params.get("url") or "").strip()
                 if not url.startswith(("http://", "https://")):
                     return {"ok": False, "error": "Nur http/https-Adressen."}
+                # Steuerzeichen und Leerraum haben in einer URL nichts zu suchen und
+                # sind das Vehikel fuer Zeilenumbruch-/Argument-Tricks.
+                if any(ch.isspace() or ord(ch) < 0x20 for ch in url):
+                    return {"ok": False, "error": "Adresse enthaelt unerlaubte Zeichen."}
                 import subprocess
-                if sys.platform == "darwin":
-                    cmd = ["open", url]
-                elif sys.platform.startswith("win"):
-                    cmd = ["cmd", "/c", "start", "", url]
-                else:
-                    cmd = ["xdg-open", url]
+                if sys.platform.startswith("win"):
+                    # NIEMALS ueber `cmd /c start`: cmd.exe parst die Argumente ERNEUT,
+                    # ein `&` in der URL wird damit zum Befehlstrenner — und `&` steht in
+                    # jeder zweiten Query. `os.startfile` geht direkt an die Shell-API,
+                    # ohne Kommandozeilen-Interpretation.
+                    try:
+                        os.startfile(url)  # noqa: S606 — Windows-only, keine Shell dazwischen
+                    except OSError as e:
+                        return {"ok": False, "url": url, "error": str(e)}
+                    return {"ok": True, "url": url}
+                cmd = ["open", url] if sys.platform == "darwin" else ["xdg-open", url]
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     return {"ok": False, "url": url,

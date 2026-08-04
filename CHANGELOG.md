@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.135.2] — 2026-08-04
+
+### Security
+- **Befehlseinschleusung im `open_url` aus v1.135.1 (Windows) — behoben, bevor die Version irgendwo im Einsatz war.** Adressen wurden dort über `cmd /c start "" <url>` geöffnet. `cmd.exe` zerlegt seine Argumente **erneut**, wodurch ein `&` in der URL zum Befehlstrenner wird — und `&` steht in jeder zweiten Query. `https://example.com/?a=1&calc.exe` hätte `calc.exe` gestartet. Brisant, weil die Adresse vom Sprachmodell kommt, das seinerseits durch Inhalte beeinflussbar ist, die es liest. Windows nutzt jetzt `os.startfile`, das direkt an die Shell-API geht, ganz ohne Kommandozeile; macOS und Linux waren nie betroffen (Listenform, keine Shell). Zusätzlich werden Leerraum und Steuerzeichen in der Adresse abgewiesen. 6 Regressionstests, die die Quelle prüfen — der Windows-Zweig ist auf dem Build-Rechner nicht ausführbar.
+
+  Gefunden vom automatischen Review der gepushten Commits, nicht von mir.
+
 ## [1.135.1] — 2026-08-04
 
 Drei Fehler aus dem ersten echten Sprach-Test der Desktop-Bridge — alle drei sorgten dafür, dass der Agent Erfolg meldete, wo keiner war.
