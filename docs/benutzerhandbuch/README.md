@@ -62,6 +62,13 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 21. [Benachrichtigungen](#21-benachrichtigungen)
 22. [Admin-Konsole](#22-admin-konsole)
 23. [Computer-Use Bridge (Desktop steuern)](#23-computer-use-bridge-desktop-steuern)
+24. [Skills herunterladen & installieren](#24-skills-herunterladen--installieren)
+25. [Agent-Symbol (Icon + Farbe) anpassen](#25-agent-symbol-icon--farbe-anpassen)
+26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
+27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
+28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
+29. [Hilfe & FAQ (im Menü)](#29-hilfe--faq-im-menü)
+30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 
