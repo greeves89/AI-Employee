@@ -1,6 +1,7 @@
 """Chat consumer - listens for chat messages and forwards them to ChatHandler."""
 
 import asyncio
+import time
 import json
 import logging
 import os
@@ -704,22 +705,42 @@ class ChatConsumer:
         if hasattr(handler, "pending_drain"):
             handler.pending_drain = lambda sk=source_key: self._drain_pending(sk)
 
-        timeout = _chat_turn_timeout()
-        try:
-            await asyncio.wait_for(
-                handler.handle_message(
-                    message_id=message_id,
-                    text=text,
-                    model=model,
-                    reasoning=reasoning,
-                    **handle_kwargs,
-                ),
-                timeout=timeout,
+        # Stillstands-Wachhund statt harter Gesamtdauer. Vorher wurde nach einer
+        # festen Zeit abgebrochen, egal ob der Agent noch arbeitete — bei einem
+        # groesseren Umbau ("bau die App um, mach sie mobiltauglich") schlug das
+        # mitten in die laufende Arbeit und warf alles weg. Jetzt zaehlt nur, ob
+        # ueberhaupt noch etwas passiert: jedes veroeffentlichte Ereignis setzt die
+        # Uhr zurueck. Ein wirklich haengender Turn faellt weiterhin raus.
+        idle_limit = _chat_turn_timeout()
+        turn = asyncio.ensure_future(
+            handler.handle_message(
+                message_id=message_id,
+                text=text,
+                model=model,
+                reasoning=reasoning,
+                **handle_kwargs,
             )
+        )
+        try:
+            while True:
+                try:
+                    await asyncio.wait_for(asyncio.shield(turn), timeout=15)
+                    break
+                except asyncio.TimeoutError:
+                    quiet = time.monotonic() - getattr(
+                        log_publisher, "last_activity_at", time.monotonic()
+                    )
+                    if quiet >= idle_limit:
+                        turn.cancel()
+                        raise
+                    continue
             # Persist Claude session ID so we can --resume after restart
             await self._persist_session(source_key, handler, effective_model)
         except asyncio.TimeoutError:
-            logger.error("Chat turn %s timed out after %ss — aborting", message_id, timeout)
+            logger.error(
+                "Chat turn %s aborted — no activity for %ss (agent appears stuck)",
+                message_id, idle_limit,
+            )
             try:
                 if hasattr(handler, "stop_current"):
                     await handler.stop_current()
@@ -727,7 +748,7 @@ class ChatConsumer:
                 pass
             await log_publisher.publish_chat(
                 message_id, "error",
-                {"message": "Die Antwort hat zu lange gedauert und "
+                {"message": "Der Agent hat sich zwischendurch nicht mehr gemeldet und "
                             "wurde abgebrochen. Bitte erneut versuchen."},
             )
             await log_publisher.publish_chat(message_id, "done", {"status": "timeout"})

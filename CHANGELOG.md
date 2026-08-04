@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.139.0] — 2026-08-04
+
+### Fixed
+- **Arbeitende Agenten wurden mitten in der Arbeit abgeschossen.** „Die Antwort hat zu lange gedauert und wurde abgebrochen" — nach zwölf erfolgreich gelaufenen Werkzeugen, beim Umbau einer App. Alles verworfen. Dasselbe passierte in Telegram.
+
+  Ursache war eine feste **Gesamtdauer** pro Chat-Antwort (Claude Code 600 s, Codex 1800 s), die nicht danach fragt, ob der Agent überhaupt noch arbeitet. Wer eine echte Aufgabe stellt — „bau das Design um, mach es mobiltauglich" — überschreitet zehn Minuten regelmäßig und verliert dann das gesamte Ergebnis.
+
+  Jetzt zählt der **Stillstand** statt der Dauer: Jedes veröffentlichte Ereignis — Werkzeugaufruf, Zwischenstand — setzt die Uhr zurück. Ein Agent, der sichtbar arbeitet, läuft weiter, egal wie lange. Ein wirklich hängender Turn fällt nach wie vor raus und blockiert die Warteschlange nicht.
+
+  Die Meldung war zudem irreführend und heißt jetzt, was tatsächlich passiert ist: „Der Agent hat sich zwischendurch nicht mehr gemeldet."
+
+### Deployment
+- Die Änderung steckt im Agent-Image: **Image neu bauen und alle Agenten neu erstellen**, sonst greift sie nur bei neuen Containern.
+
 ## [1.138.1] — 2026-08-04
 
 ### Fixed

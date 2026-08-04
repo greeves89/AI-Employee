@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
@@ -10,6 +11,7 @@ class LogPublisher:
     def __init__(self, redis: aioredis.Redis, agent_id: str):
         self.redis = redis
         self.agent_id = agent_id
+        self.last_activity_at = time.monotonic()
 
     async def publish(self, task_id: str, event_type: str, data: dict | str) -> None:
         message = json.dumps(
@@ -30,7 +32,14 @@ class LogPublisher:
         await self.redis.ltrim(history_key, -200, -1)
 
     async def publish_chat(self, message_id: str, event_type: str, data: dict | str) -> None:
-        """Publish chat events to a dedicated chat channel."""
+        """Publish chat events to a dedicated chat channel.
+
+        Nebenbei das LEBENSZEICHEN des laufenden Turns: jedes Ereignis — ein
+        Werkzeugaufruf, ein Zwischenstand — setzt die Stillstandsuhr zurueck. Der
+        Wachhund im ChatConsumer bricht nur ab, wenn wirklich nichts mehr kommt,
+        statt nach einer festen Gesamtdauer mitten in die Arbeit zu schneiden.
+        """
+        self.last_activity_at = time.monotonic()
         message = json.dumps(
             {
                 "agent_id": self.agent_id,
