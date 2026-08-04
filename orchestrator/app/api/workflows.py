@@ -6,6 +6,7 @@ Workflows can live in folders ("projects") and be shared with individual users
 """
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -33,6 +34,11 @@ def _get_task_router(
 
 _VALID_TYPES = {"agent_task", "condition", "wait"}
 _ROLES = {"viewer", "editor"}
+
+# Portable share format for export/import (#470). Bump the version only on a
+# breaking change to the envelope; the importer accepts any version <= current.
+WORKFLOW_EXPORT_FORMAT = "ai-employee-workflow"
+WORKFLOW_EXPORT_VERSION = 1
 
 
 def _validate_definition(defn: dict) -> None:
@@ -141,6 +147,20 @@ def _wf_dict(wf: Workflow, role: str = "owner") -> dict:
     }
 
 
+def _export_dict(wf: Workflow) -> dict:
+    """A self-contained, portable snapshot of a workflow — just the shareable
+    content (name + definition + trigger), stripped of owner/folder/share/run
+    state so it can be handed to another user and re-imported cleanly."""
+    return {
+        "format": WORKFLOW_EXPORT_FORMAT,
+        "version": WORKFLOW_EXPORT_VERSION,
+        "name": wf.name,
+        "definition": wf.definition,
+        "trigger": wf.trigger,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _run_dict(r: WorkflowRun) -> dict:
     return {
         "id": r.id, "workflow_id": r.workflow_id, "status": r.status,
@@ -191,6 +211,43 @@ async def create_workflow(body: WorkflowUpsert, user=Depends(require_auth), db: 
     wf = Workflow(
         id=f"wf_{uuid.uuid4().hex[:12]}", name=body.name, user_id=str(user.id),
         enabled=body.enabled, definition=body.definition, trigger=body.trigger, folder_id=body.folder_id,
+    )
+    db.add(wf)
+    await db.commit()
+    await db.refresh(wf)
+    return _wf_dict(wf, "owner")
+
+
+# ── import (static path — must precede the /{workflow_id} routes) ────────────
+
+class WorkflowImport(BaseModel):
+    definition: dict
+    name: str | None = None
+    trigger: dict | None = None
+    folder_id: str | None = None
+    # Envelope fields as produced by /export — optional so a bare definition also imports.
+    format: str | None = None
+    version: int | None = None
+
+
+@router.post("/import", status_code=201)
+async def import_workflow(body: WorkflowImport, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Create a new workflow owned by the caller from an exported snapshot.
+
+    The import is always created *disabled*: an imported workflow may carry a
+    cron trigger, and we must not silently start firing runs on the importer's
+    account. The user reviews it and enables it explicitly.
+    """
+    if body.format is not None and body.format != WORKFLOW_EXPORT_FORMAT:
+        raise HTTPException(status_code=400, detail=f"Unbekanntes Format '{body.format}'")
+    if body.version is not None and body.version > WORKFLOW_EXPORT_VERSION:
+        raise HTTPException(status_code=400, detail=f"Format-Version {body.version} wird nicht unterstützt")
+    _validate_definition(body.definition)
+    await _assert_owns_folder(body.folder_id, user, db)
+    name = (body.name or "").strip() or "Importierter Workflow"
+    wf = Workflow(
+        id=f"wf_{uuid.uuid4().hex[:12]}", name=name, user_id=str(user.id),
+        enabled=False, definition=body.definition, trigger=body.trigger, folder_id=body.folder_id,
     )
     db.add(wf)
     await db.commit()
@@ -322,6 +379,14 @@ async def get_run(run_id: str, user=Depends(require_auth), db: AsyncSession = De
 async def get_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     wf = await _get_wf(workflow_id, user, db)
     return _wf_dict(wf, await _access_role(wf, user, db) or "viewer")
+
+
+@router.get("/{workflow_id}/export")
+async def export_workflow(workflow_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Portable snapshot of a workflow for sharing. Any user who can view the
+    workflow may export it."""
+    wf = await _get_wf(workflow_id, user, db)
+    return _export_dict(wf)
 
 
 @router.put("/{workflow_id}")
