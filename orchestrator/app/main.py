@@ -788,6 +788,11 @@ async def lifespan(app: FastAPI):
     # Validate config on startup
     _validate_config()
 
+    # Repair /shared ownership/mode so agents (uid 1000) can write to it
+    # (Docker creates the volume root:root 0755 -> agents can only read).
+    from app.core.shared_volume import ensure_shared_volume_perms
+    ensure_shared_volume_perms()
+
     # Mirror WARNING+ logs (redacted) to /shared/platform-errors.log so agents can
     # read platform errors from the shared volume and help fix the platform.
     from app.core.platform_error_log import setup_platform_error_log
