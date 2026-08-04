@@ -512,9 +512,18 @@ class ChatConsumer:
         from app.runner_hooks import get_approval_rules_prefix
         rules_prefix = get_approval_rules_prefix()
         is_new = self._is_new_session(handler)
+        # custom_llm builds its own skills/marketplace context into the system
+        # prompt on the first message (see LLMChatHandler). The CLI-based chat
+        # handlers (claude_code / codex_cli) had NO such injection at all — the
+        # agent only saw a soft "use skill_search" hint and regularly skipped it
+        # (#468). Inject the same context CLI tasks already get, once per session.
+        skills_prefix = ""
+        if is_new and settings.agent_mode != "custom_llm":
+            from app.runner_hooks import get_marketplace_skill_suggestions, get_skills_context
+            skills_prefix = get_skills_context() + get_marketplace_skill_suggestions(text[:200])
         if telegram_ctx:
-            return rules_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
-        return rules_prefix + _build_channel_prompt(text, source, is_new)
+            return rules_prefix + skills_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
+        return rules_prefix + skills_prefix + _build_channel_prompt(text, source, is_new)
 
     def _save_images(self, message_id: str, images: list[dict]) -> list[str]:
         """Decode base64 images to workspace files (for the CLI handler).
