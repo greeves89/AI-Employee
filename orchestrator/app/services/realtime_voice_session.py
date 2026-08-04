@@ -187,6 +187,43 @@ SEARCH_BRAIN_TOOL = {
     }
 }
 
+READ_BRAIN_TOOL = {
+    "toolSpec": {
+        "name": "read_brain",
+        "description": (
+            "Read the FULL content of ONE specific note / node in my SECOND BRAIN / vault graph "
+            "and speak it. Use when the user opened or named a graph point and wants to know what "
+            "is IN it ('lies mir den Punkt vor', 'was steht in diesem Knoten', 'was steht da "
+            "drin', 'erzähl mir mehr zu diesem Punkt'). search_brain only returns short snippets — "
+            "this returns the whole note. Give the note title or path exactly as it is named. "
+            "If nothing matches, say so — do NOT invent."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"note": {"type": "string", "description": "Title or path of the vault note / graph node to read."}},
+            "required": ["note"],
+        })},
+    }
+}
+
+BRAIN_LINKS_TOOL = {
+    "toolSpec": {
+        "name": "brain_connections",
+        "description": (
+            "List the CONNECTIONS of ONE specific note / node in my SECOND BRAIN / vault graph — "
+            "which other notes it links to and which link back to it ([[wikilinks]] and relative "
+            ".md links = the edges drawn in the graph). Use when the user asks 'womit hängt dieser "
+            "Punkt zusammen', 'welche Verbindungen hat der Knoten', 'was ist damit verknüpft', "
+            "'zeig/nenn mir die Verbindungen'. Give the note title or path exactly as it is named."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"note": {"type": "string", "description": "Title or path of the vault note / graph node whose connections to list."}},
+            "required": ["note"],
+        })},
+    }
+}
+
 SKILL_SEARCH_TOOL = {
     "toolSpec": {
         "name": "skill_search",
@@ -946,6 +983,12 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "• Fragen nach dem zweiten Gehirn / Vault / Wiki / Firmen- oder Abteilungswissen ('steht "
         "was im Wiki zu…', 'schau ins zweite Gehirn', 'gibt es Doku/eine Anleitung zu…') → "
         "search_brain (sofort, durchsucht meine Vaults).\n"
+        "• Inhalt EINES bestimmten Punktes/Knotens aus dem Graphen ('lies mir den Punkt vor', "
+        "'was steht in diesem Knoten', 'erzähl mir mehr zu dem Punkt') → read_brain mit dem "
+        "Titel des Punktes (gibt den GANZEN Text, nicht nur einen Schnipsel wie search_brain).\n"
+        "• Verbindungen EINES Punktes ('womit hängt dieser Punkt zusammen', 'welche Verbindungen "
+        "hat der Knoten', 'was ist damit verknüpft') → brain_connections mit dem Titel — nennt, "
+        "worauf er verweist und was ihn erwähnt (die Kanten des Graphen).\n"
         "• Fragen nach verfügbaren Skills ('welche Skills gibt es für…', 'gibt es einen Skill "
         "für…') → skill_search (sofort).\n"
         "• Fragen nach Terminen/Kalender ('hab ich heute Termine', 'nächstes Meeting', 'was steht "
@@ -1186,7 +1229,8 @@ class RealtimeVoiceSession:
         _tools = [
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
-            SEARCH_BRAIN_TOOL, SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
+            SEARCH_BRAIN_TOOL, READ_BRAIN_TOOL, BRAIN_LINKS_TOOL,
+            SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
@@ -1599,6 +1643,12 @@ class RealtimeVoiceSession:
             return
         if name == "search_brain":
             await self._respond(tool_use_id, await self._search_brain(str(args.get("query") or "")))
+            return
+        if name == "read_brain":
+            await self._respond(tool_use_id, await self._read_brain(str(args.get("note") or "")))
+            return
+        if name == "brain_connections":
+            await self._respond(tool_use_id, await self._brain_connections(str(args.get("note") or "")))
             return
         if name == "skill_search":
             await self._respond(tool_use_id, await self._skill_search(str(args.get("query") or "")))
@@ -2623,6 +2673,140 @@ class RealtimeVoiceSession:
             snip = " ".join(h.get("snippets") or []).strip().replace(chr(10), " ")[:220]
             lines.append(f"{name}/{h.get('path') or ''}: {snip}")
         return f"Aus dem zweiten Gehirn zu „{q}“:\n" + "\n".join(lines)
+
+    async def _resolve_brain_note(self, note: str):
+        """Find the best-matching vault note across the agent's mounted brains by title
+        or path. Returns ``(brain_name, host_path, node, graph)`` or ``None``. Ranking:
+        exact title/stem/path match (0) beats a title/path substring (1) beats a stem
+        substring (2) — mirroring how Obsidian resolves a spoken note name."""
+        q = (note or "").strip()
+        if not q:
+            return None
+        from app.db.session import async_session_factory
+        from app.core import vault
+        from app.models.second_brain import SecondBrain
+        from app.models.agent import Agent
+        from sqlalchemy import select
+        ql = q.lower().replace("\\", "/")
+        qstem = ql.rsplit("/", 1)[-1]
+        if qstem.endswith(".md"):
+            qstem = qstem[:-3]
+        try:
+            async with async_session_factory() as db:
+                agent = await db.get(Agent, self.agent_id)
+                mounts = list((agent.config or {}).get("mounts", [])) if agent else []
+                if not mounts:
+                    return None
+                brains = (await db.execute(
+                    select(SecondBrain).where(
+                        SecondBrain.label.in_(mounts), SecondBrain.is_active.is_(True)
+                    )
+                )).scalars().all()
+        except Exception:  # noqa: BLE001
+            logger.warning("voice resolve_brain_note lookup failed agent=%s", self.agent_id, exc_info=True)
+            return None
+        if not brains:
+            return None
+        best = None  # (rank, brain_name, host_path, node, graph)
+        for b in brains:
+            try:
+                graph = await asyncio.to_thread(vault.build_graph, b.host_path)
+            except Exception:  # noqa: BLE001 — one vault failing must not kill resolution
+                logger.warning("voice build_graph failed label=%s", b.label, exc_info=True)
+                continue
+            for node in graph.get("nodes") or []:
+                name_l = str(node.get("name") or "").lower()
+                path_l = str(node.get("path") or "").lower().replace("\\", "/")
+                path_stem = path_l.rsplit("/", 1)[-1]
+                if path_stem.endswith(".md"):
+                    path_stem = path_stem[:-3]
+                if name_l == ql or path_stem == qstem or path_l == ql:
+                    rank = 0
+                elif ql and (ql in name_l or ql in path_l):
+                    rank = 1
+                elif qstem and (qstem in name_l or qstem in path_stem):
+                    rank = 2
+                else:
+                    continue
+                if best is None or rank < best[0]:
+                    best = (rank, b.name, b.host_path, node, graph)
+                    if rank == 0:
+                        break
+            if best and best[0] == 0:
+                break
+        if not best:
+            return None
+        _, brain_name, host_path, node, graph = best
+        return brain_name, host_path, node, graph
+
+    async def _read_brain(self, note: str) -> str:
+        """Read the FULL content of one Second-Brain note (a graph node) so it can be
+        spoken — search_brain only returns snippets. Resolves the note by title or path
+        across the agent's mounted vaults."""
+        q = (note or "").strip()
+        if not q:
+            return "Welchen Punkt aus dem zweiten Gehirn soll ich vorlesen?"
+        from app.core import vault
+        resolved = await self._resolve_brain_note(q)
+        if not resolved:
+            return (
+                f"Ich habe im zweiten Gehirn keinen Punkt „{q}“ gefunden. Nenn mir den "
+                "Titel genauer, oder ich suche mit search_brain danach."
+            )
+        brain_name, host_path, node, _graph = resolved
+        rel = str(node.get("path") or "")
+        try:
+            content = await asyncio.to_thread(vault.read_file, host_path, rel)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice read_brain failed label=%s rel=%s", brain_name, rel, exc_info=True)
+            return "Ich konnte den Inhalt des Punktes gerade nicht lesen."
+        text = (content or "").strip()
+        node_name = node.get("name") or rel
+        if not text:
+            return f"Der Punkt „{node_name}“ ist leer."
+        limit = 2000
+        truncated = len(text) > limit
+        body = text[:limit].rstrip()
+        tail = " … (gekürzt — der Punkt geht noch weiter)" if truncated else ""
+        return f"Inhalt von „{node_name}“ ({brain_name}):\n{body}{tail}"
+
+    async def _brain_connections(self, note: str) -> str:
+        """List the graph connections of one Second-Brain note — which notes it links
+        to ([[wikilinks]] / .md links) and which link back to it. Answers the customer's
+        'womit hängt dieser Punkt zusammen?' from the same edges the vault graph draws."""
+        q = (note or "").strip()
+        if not q:
+            return "Von welchem Punkt soll ich die Verbindungen auflisten?"
+        resolved = await self._resolve_brain_note(q)
+        if not resolved:
+            return (
+                f"Ich habe im zweiten Gehirn keinen Punkt „{q}“ gefunden, dessen "
+                "Verbindungen ich auflisten könnte."
+            )
+        brain_name, _host_path, node, graph = resolved
+        rel = str(node.get("path") or "")
+        node_name = node.get("name") or rel
+        name_by_rel = {
+            str(n.get("path")): str(n.get("name") or n.get("path"))
+            for n in (graph.get("nodes") or [])
+        }
+        outgoing: list[str] = []
+        incoming: list[str] = []
+        for e in graph.get("edges") or []:
+            if str(e.get("source")) == rel:
+                outgoing.append(name_by_rel.get(str(e.get("target")), str(e.get("target"))))
+            elif str(e.get("target")) == rel:
+                incoming.append(name_by_rel.get(str(e.get("source")), str(e.get("source"))))
+        outgoing = sorted(set(outgoing))
+        incoming = sorted(set(incoming))
+        if not outgoing and not incoming:
+            return f"„{node_name}“ hat im Graphen keine Verbindungen zu anderen Punkten."
+        parts = [f"Verbindungen von „{node_name}“ ({brain_name}):"]
+        if outgoing:
+            parts.append(f"verweist auf: {', '.join(outgoing)}")
+        if incoming:
+            parts.append(f"wird erwähnt von: {', '.join(incoming)}")
+        return "\n".join(parts)
 
     async def _skill_search(self, query: str, limit: int = 5) -> str:
         """Search the skill catalog directly (vector primary, ILIKE fallback) — the
