@@ -6,12 +6,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
+from app.models.task_step import TaskStep
 from app.services.redis_service import RedisService
 from app.services.skill_auto_injector import auto_inject_skills
 
@@ -750,6 +751,42 @@ class TaskRouter:
         result = await self.db.execute(select(Task).where(Task.id == task_id))
         return result.scalar_one_or_none()
 
+    async def _agent_claims_task(self, agent_id: str, task_id: str) -> bool:
+        """Nennt der Agent diese Aufgabe als eine seiner laufenden?
+
+        Ein Agent bearbeitet mehrere Aufgaben GLEICHZEITIG (``MAX_PARALLEL_TASKS``),
+        meldet als ``current_task`` aber nur die zuletzt gestartete. Wer nur danach
+        fragt, haelt alle uebrigen faelschlich fuer tot. Der Agent fuehrt daneben
+        ``active_sessions`` — die vollstaendige Liste — also fragen wir beides.
+        """
+        status = await self.redis.get_agent_status(agent_id)
+        if str(status.get("state") or "") != "working":
+            return False
+        if status.get("current_task") == task_id:
+            return True
+        raw = status.get("active_sessions") or "[]"
+        try:
+            sessions = json.loads(raw) if isinstance(raw, str) else list(raw)
+        except (ValueError, TypeError):
+            return False
+        return task_id in {str(s) for s in sessions}
+
+    async def _task_moved_recently(self, task_id: str, since: datetime) -> bool:
+        """Hat die Aufgabe SEIT ``since`` noch einen Schritt geschrieben?
+
+        Der eigentliche Lebensbeweis. Ob der Agent eine Aufgabe gerade beim Namen
+        nennt, ist Zufall der Meldereihenfolge; ob sie Schritte produziert, ist
+        Tatsache. Dieselbe Quelle speist die Task-Detailansicht.
+        """
+        last = (await self.db.execute(
+            select(func.max(TaskStep.timestamp)).where(TaskStep.task_id == task_id)
+        )).scalar_one_or_none()
+        if last is None:
+            return False
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return last > since
+
     async def recover_stale_tasks(self, stale_minutes: int = 10) -> int:
         """Recover tasks stuck as QUEUED/RUNNING after orchestrator restart.
 
@@ -778,8 +815,7 @@ class TaskRouter:
                     continue  # Task might still be waiting in queue
 
                 # Check if the agent is still alive
-                agent_status = await self.redis.get_agent_status(task.agent_id)
-                if agent_status.get("state") == "working" and agent_status.get("current_task") == task.id:
+                if await self._agent_claims_task(task.agent_id, task.id):
                     continue  # Agent is currently working on this task
 
             # Task is stuck - mark as failed with explanation
@@ -802,11 +838,15 @@ class TaskRouter:
         stale_running = list(result.scalars().all())
 
         for task in stale_running:
-            # Check if the agent is still working on it
-            if task.agent_id:
-                agent_status = await self.redis.get_agent_status(task.agent_id)
-                if agent_status.get("state") == "working" and agent_status.get("current_task") == task.id:
-                    continue  # Agent is still working
+            # Laeuft sie noch? ZWEI Wege, denn einer allein luegt bei paralleler
+            # Arbeit: Der Agent nennt nur EINE Aufgabe als current_task, obwohl bis
+            # zu MAX_PARALLEL_TASKS gleichzeitig laufen — alle uebrigen sahen fuer
+            # den Waechter aus wie „Agent antwortet nicht mehr" und wurden mitten
+            # in echter Arbeit als verschollen abgeraeumt.
+            if task.agent_id and await self._agent_claims_task(task.agent_id, task.id):
+                continue  # Agent nennt sie selbst
+            if await self._task_moved_recently(task.id, cutoff):
+                continue  # sie schreibt noch Schritte — sie lebt
 
             if await self._recover_task_completion_from_steps(task):
                 recovered += 1
