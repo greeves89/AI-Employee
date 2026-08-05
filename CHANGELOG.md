@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.142.2] — 2026-08-05
+
+### Fixed
+- **Eine Gespraechspause des Nutzers zaehlte als Stillstand des Agenten.** Wer nach zehn Minuten Ruhe wieder etwas schrieb, bekam nach 15 Sekunden „Der Agent hat sich zwischendurch nicht mehr gemeldet und wurde abgebrochen" — noch bevor der Agent ueberhaupt etwas tun konnte. Je laenger die Pause, desto sicherer der Abbruch.
+
+  `last_activity_at` lebt am LogPublisher ueber Turns hinweg und wurde beim Start eines neuen Turns nicht zurueckgesetzt. Die Uhr lief also seit der letzten Regung VOR der Pause. Sie beginnt jetzt beim Turn.
+
+  Der Wachhund soll einen haengenden Agenten fangen, nicht einen nachdenklichen Nutzer. 3 Tests halten beides fest — inklusive des Rechenwegs, der den Fehler erzeugte.
+
+### Deployment
+- Liegt im Agenten-Image: Image neu bauen **und jeden Agenten neu erstellen**.
+
 ## [1.142.1] — 2026-08-05
 
 ### Fixed

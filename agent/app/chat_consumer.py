@@ -712,6 +712,13 @@ class ChatConsumer:
         # ueberhaupt noch etwas passiert: jedes veroeffentlichte Ereignis setzt die
         # Uhr zurueck. Ein wirklich haengender Turn faellt weiterhin raus.
         idle_limit = _chat_turn_timeout()
+        # Die Uhr beginnt HIER — nicht irgendwann davor. `last_activity_at` lebt am
+        # LogPublisher ueber Turns hinweg; ohne dieses Zuruecksetzen zaehlte die
+        # Gespraechspause des Nutzers als Stillstand des Agenten. Wer zehn Minuten
+        # nichts schrieb und dann fragte, bekam seine Antwort nach 15 Sekunden mit
+        # „hat sich nicht mehr gemeldet" abgebrochen — noch bevor der Agent ueberhaupt
+        # etwas tun konnte.
+        log_publisher.last_activity_at = time.monotonic()
         turn = asyncio.ensure_future(
             handler.handle_message(
                 message_id=message_id,
