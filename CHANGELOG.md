@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.147.0] — 2026-08-05
+
+### Added
+- **Die Agenten-Netzansicht lässt sich zoomen** — Mausrad oder die Knöpfe oben rechts, ein Klick auf die Prozentzahl setzt zurück. Skaliert Abstände und Knoten gemeinsam, damit Linien, Team-Kreise und Beschriftungen exakt aufeinander ausgerichtet bleiben.
+
+### Fixed
+- **Team-Kreise überlappten sich, Beschriftungen lagen übereinander.** Der Radius eines Teams kam aus einer festen Zahl, unabhängig davon, wie viele Teams um den Mittelpunkt verteilt sind. Bei fünf Teams war der Kreis doppelt so gross wie der Platz zwischen zwei Mittelpunkten — „Projektmanagement" lag auf „Mein ReiseAgent", „MyResearcher" auf „CodeReview".
+
+  Jetzt bestimmt der **verfügbare Platz** die Grösse: Zwischen zwei benachbarten Team-Mittelpunkten liegt `2·r·sin(π/n)` — mehr als die Hälfte davon darf ein Kreis nicht beanspruchen. Zusätzlich sitzt der Team-Ring weiter aussen.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.146.0] — 2026-08-05
 
 ### Added

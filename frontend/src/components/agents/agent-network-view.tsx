@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, MessageSquare, Users, X, ArrowRight, Crown } from "lucide-react";
+import { Bot, MessageSquare, Users, X, ArrowRight, Crown, Plus, Minus } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -190,6 +190,12 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     return () => window.removeEventListener("resize", measure);
   }, []);
 
+  // Zoom: skaliert Abstaende UND Knoten gemeinsam, damit das Bild stimmig bleibt.
+  // Bewusst in der Layout-Rechnung statt per CSS-Transform — so bleiben Linien,
+  // Team-Kreise und Beschriftungen exakt aufeinander ausgerichtet.
+  const [zoom, setZoom] = useState(1);
+  const zoomBy = (d: number) => setZoom((z) => Math.min(1.8, Math.max(0.45, +(z + d).toFixed(2))));
+
   const cx = containerSize.w / 2;
   const cy = containerSize.h / 2;
   const radius = Math.min(cx, cy) - 90;
@@ -246,7 +252,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     }
     const G = groups.length;
     const bound = Math.min(cx, cy) - 50;
-    const clusterRing = G <= 1 ? 0 : bound * 0.52;
+    const clusterRing = G <= 1 ? 0 : bound * 0.66;
     groups.forEach((g, gi) => {
       const ang = (2 * Math.PI * gi) / G - Math.PI / 2;
       const gc = G <= 1
@@ -256,8 +262,13 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       // so nodes never stack on top of each other; ring grows with member count.
       const idxs = g.indices;
       const n = idxs.length;
-      const capR = G <= 1 ? bound * 0.7 : bound * 0.34;
-      const memR = n <= 1 ? 0 : Math.min(capR, Math.max(150, 52 * n));
+      // Der Platz bestimmt die Groesse, nicht eine feste Zahl: Zwischen zwei
+      // benachbarten Team-Mittelpunkten liegt 2*clusterRing*sin(pi/G) — mehr als die
+      // Haelfte davon darf ein Kreis nicht beanspruchen, sonst ueberlappen sie sich
+      // und die Beschriftungen liegen uebereinander (genau das war zu sehen).
+      const half = G <= 1 ? bound : clusterRing * Math.sin(Math.PI / G) * 0.88;
+      const capR = Math.max(60, Math.min(G <= 1 ? bound * 0.7 : bound * 0.34, half - 58));
+      const memR = n <= 1 ? 0 : Math.min(capR, Math.max(110, 46 * n));
       if (n === 1) {
         pos[idxs[0]] = { x: gc.x, y: gc.y };
       } else {
@@ -268,8 +279,19 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       }
       regions.push({ name: g.name, cx: gc.x, cy: gc.y, r: (memR || 60) + 55 });
     });
+    if (zoom !== 1) {
+      Object.keys(pos).forEach((k) => {
+        const q = pos[Number(k)];
+        pos[Number(k)] = { x: cx + (q.x - cx) * zoom, y: cy + (q.y - cy) * zoom };
+      });
+      regions.forEach((r) => {
+        r.cx = cx + (r.cx - cx) * zoom;
+        r.cy = cy + (r.cy - cy) * zoom;
+        r.r *= zoom;
+      });
+    }
     return { positions: pos, teamRegions: regions };
-  }, [agents, teams.length, groups, agentIndexMap, cx, cy]);
+  }, [agents, teams.length, groups, agentIndexMap, cx, cy, zoom]);
 
   // Map API connections to position indices
   const mappedConnections = useMemo(() => {
@@ -363,7 +385,24 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       id="network-container"
       className="relative w-full rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm overflow-hidden"
       style={{ minHeight: 620 }}
+      onWheel={(e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 0.1 : -0.1); }}
     >
+      {/* Zoom — Mausrad oder Knoepfe. Bei mehreren Teams lagen die Kreise sonst
+          uebereinander und die Beschriftungen waren nicht mehr lesbar. */}
+      <div className="absolute right-3 top-3 z-30 flex items-center gap-1 rounded-lg border border-foreground/10 bg-background/80 p-1 backdrop-blur">
+        <button onClick={() => zoomBy(-0.1)} title="Verkleinern"
+          className="grid h-7 w-7 place-items-center rounded text-muted-foreground/70 hover:bg-foreground/[0.08] hover:text-foreground">
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={() => setZoom(1)} title="Ansicht zuruecksetzen"
+          className="px-1.5 text-[10px] tabular-nums text-muted-foreground/60 hover:text-foreground">
+          {Math.round(zoom * 100)}%
+        </button>
+        <button onClick={() => zoomBy(0.1)} title="Vergroessern"
+          className="grid h-7 w-7 place-items-center rounded text-muted-foreground/70 hover:bg-foreground/[0.08] hover:text-foreground">
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
       {/* Background grid */}
       <div
         className="absolute inset-0 opacity-[0.03]"
@@ -544,7 +583,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         const colors = statusColor(agent.state);
         const isActive = ["idle", "running", "working"].includes(agent.state);
         const isHovered = hovered === i;
-        const nodeSize = 72;
+        const nodeSize = Math.round(72 * zoom);
 
         // Count connections for this agent
         const agentConnCount = mappedConnections.filter(
