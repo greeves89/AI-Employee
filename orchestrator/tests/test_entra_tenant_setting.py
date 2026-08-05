@@ -65,3 +65,83 @@ class EntraTenantSettingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MicrosoftScopeSelectionTests(unittest.TestCase):
+    """Die angeforderten Rechte müssen zur App-Registrierung passen.
+
+    Vorfall 2026-08-05: Nach dem Login kam „Genehmigung erforderlich" — der Server
+    forderte 17 Graph-Rechte an, in der Registrierung standen acht. Entra verlangt
+    dann eine Administrator-Genehmigung und der Login bleibt hängen. Der Admin muss
+    die Auswahl also an seine Registrierung anpassen können.
+    """
+
+    def test_required_scopes_are_never_droppable(self):
+        """Ohne openid/email/profile keine Anmeldung, ohne offline_access kein
+        Aktualisierungs-Token — die Verbindung bräche nach einer Stunde ab."""
+        from app.core.oauth_providers import MICROSOFT_REQUIRED_SCOPES
+        for s in ("openid", "email", "profile", "offline_access"):
+            self.assertIn(s, MICROSOFT_REQUIRED_SCOPES)
+
+    def test_empty_selection_means_everything(self):
+        """Bisheriges Verhalten bleibt, solange niemand etwas abwählt."""
+        from app.config import settings
+        from app.core.oauth_providers import (
+            MICROSOFT_OPTIONAL_SCOPES, MICROSOFT_REQUIRED_SCOPES, microsoft_scopes,
+        )
+        old = getattr(settings, "oauth_microsoft_scopes", "")
+        try:
+            settings.oauth_microsoft_scopes = ""
+            self.assertEqual(
+                set(microsoft_scopes()),
+                set(MICROSOFT_REQUIRED_SCOPES) | set(MICROSOFT_OPTIONAL_SCOPES),
+            )
+        finally:
+            settings.oauth_microsoft_scopes = old
+
+    def test_narrow_selection_is_honoured(self):
+        from app.config import settings
+        from app.core.oauth_providers import microsoft_scopes
+        old = getattr(settings, "oauth_microsoft_scopes", "")
+        try:
+            settings.oauth_microsoft_scopes = "Mail.ReadWrite,ChannelMessage.Send"
+            got = microsoft_scopes()
+            self.assertIn("Mail.ReadWrite", got)
+            self.assertIn("ChannelMessage.Send", got)
+            self.assertNotIn("Calendars.ReadWrite", got)
+            self.assertIn("offline_access", got)  # Pflicht bleibt
+        finally:
+            settings.oauth_microsoft_scopes = old
+
+    def test_unknown_scope_is_not_passed_through(self):
+        """Ein Tippfehler darf nicht als Recht an Entra gehen."""
+        from app.config import settings
+        from app.core.oauth_providers import microsoft_scopes
+        old = getattr(settings, "oauth_microsoft_scopes", "")
+        try:
+            settings.oauth_microsoft_scopes = "Mail.ReadWrite,Dir.ReadAll.Everything"
+            self.assertNotIn("Dir.ReadAll.Everything", microsoft_scopes())
+        finally:
+            settings.oauth_microsoft_scopes = old
+
+    def test_login_uses_the_selection(self):
+        """Der Anmelde-Weg nahm bisher die feste Liste — genau das war der Fehler."""
+        import inspect
+        from app.services import sso_service
+        src = inspect.getsource(sso_service)
+        self.assertIn("_scopes_for(provider)", src)
+        self.assertIn("microsoft_scopes", src)
+
+    def test_setting_is_writable_and_returned(self):
+        from app.schemas.settings import SettingsResponse, SettingsUpdate
+        from app.services.settings_service import ALLOWED_KEYS
+        self.assertIn("oauth_microsoft_scopes", ALLOWED_KEYS)
+        self.assertIn("oauth_microsoft_scopes", SettingsUpdate.model_fields)
+        self.assertIn("microsoft_optional_scopes", SettingsResponse.model_fields)
+        api = (ROOT / "orchestrator/app/api/settings.py").read_text()
+        self.assertIn('"oauth_microsoft_scopes": "oauth_microsoft_scopes"', api)
+
+    def test_ui_offers_the_picker(self):
+        text = UI.read_text()
+        self.assertIn("microsoft_optional_scopes", text)
+        self.assertIn("data.oauth_microsoft_scopes", text)

@@ -30,6 +30,32 @@ class OAuthProviderConfig:
     client_secret_setting: str = ""
 
 
+# Berechtigungen, die der Admin abwaehlen kann — der Rest ist Pflicht.
+# Ohne openid/email/profile gibt es keine Anmeldung, ohne offline_access kein
+# Aktualisierungs-Token (die Verbindung braeche nach einer Stunde ab).
+MICROSOFT_REQUIRED_SCOPES = ["openid", "email", "profile", "offline_access", "User.Read"]
+
+MICROSOFT_OPTIONAL_SCOPES = [
+    "Mail.ReadWrite", "Mail.Send", "Calendars.ReadWrite", "Files.ReadWrite",
+    "Chat.ReadWrite", "Chat.ReadBasic", "ChannelMessage.Read.All",
+    "ChannelMessage.Send", "Team.ReadBasic.All", "Tasks.ReadWrite",
+    "Contacts.ReadWrite", "People.Read",
+]
+
+
+def microsoft_scopes() -> list[str]:
+    """Angeforderte Graph-Berechtigungen — Pflichtteil plus das, was der Admin freigibt.
+
+    Eine App-Registrierung kann weniger koennen, als wir hier maximal anfordern
+    wuerden. Wird mehr verlangt als registriert ist, verlangt Entra eine
+    Administrator-Genehmigung, und die Anmeldung bleibt haengen. Deshalb ist die
+    Auswahl einstellbar; leer = alles (bisheriges Verhalten).
+    """
+    chosen = set(get_provider_scopes(PROVIDERS["microsoft"]))
+    # Pflicht bleibt Pflicht — auch wenn jemand sie abwaehlt oder die Liste leert.
+    return MICROSOFT_REQUIRED_SCOPES + [s for s in MICROSOFT_OPTIONAL_SCOPES if s in chosen]
+
+
 PROVIDERS: dict[str, OAuthProviderConfig] = {
     "google": OAuthProviderConfig(
         name="google",

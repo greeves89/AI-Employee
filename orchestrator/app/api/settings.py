@@ -6,6 +6,10 @@ from app.config import settings
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+from app.core.oauth_providers import (
+    MICROSOFT_OPTIONAL_SCOPES as _MS_OPTIONAL,
+    MICROSOFT_REQUIRED_SCOPES as _MS_REQUIRED,
+)
 from app.schemas.settings import SettingsResponse, SettingsUpdate, VoiceSettings
 from app.services.settings_service import SettingsService
 from app.services.voice_providers import get_active_voice_config
@@ -69,6 +73,9 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         has_google_oauth=bool(settings.oauth_google_client_id),
         has_microsoft_oauth=bool(settings.oauth_microsoft_client_id),
         oauth_microsoft_tenant_id=settings.oauth_microsoft_tenant_id or "common",
+        oauth_microsoft_scopes=settings.oauth_microsoft_scopes or "",
+        microsoft_required_scopes=_MS_REQUIRED,
+        microsoft_optional_scopes=_MS_OPTIONAL,
         has_apple_oauth=bool(settings.oauth_apple_client_id),
         msgraph_mcp_external_enabled=(await svc.get("msgraph_mcp_external_enabled") or "false").lower() in ("true", "1", "yes"),
         # Lifecycle
@@ -126,6 +133,7 @@ _FIELD_MAP: dict[str, str] = {
     # Ohne diesen Eintrag wird die Verzeichnis-ID still verworfen — dieselbe
     # Falle wie bei nova_sonic_voice: die erlaubten Schluessel stehen an zwei Stellen.
     "oauth_microsoft_tenant_id": "oauth_microsoft_tenant_id",
+    "oauth_microsoft_scopes": "oauth_microsoft_scopes",
     "oauth_microsoft_client_secret": "oauth_microsoft_client_secret",
     "oauth_apple_client_id": "oauth_apple_client_id",
     "oauth_apple_team_id": "oauth_apple_team_id",

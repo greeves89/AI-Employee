@@ -162,6 +162,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // Verzeichnis-ID (Mandant). Ohne sie laeuft die Anmeldung ueber /common, und das
   // lehnt Entra fuer Single-Tenant-Apps ab (AADSTS50194).
   const [microsoftTenantId, setMicrosoftTenantId] = useState("");
+  // Freigegebene Graph-Rechte. Eine App-Registrierung kann weniger koennen, als wir
+  // maximal anfordern — dann verlangt Entra eine Administrator-Genehmigung und die
+  // Anmeldung bleibt haengen. Hier abwaehlbar, damit beides zusammenpasst.
+  const [msScopes, setMsScopes] = useState<Set<string>>(new Set());
+  const [msScopesTouched, setMsScopesTouched] = useState(false);
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
   // On-prem Exchange (EWS) admin config
   const [exchangeServerUrl, setExchangeServerUrl] = useState("");
@@ -359,6 +364,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     }
   };
 
+
+  // Gespeicherte Auswahl uebernehmen. Leer bedeutet im Backend „alles" — hier ebenso,
+  // sonst saehe der Admin ein leeres Bild, waehrend real alles angefordert wird.
+  useEffect(() => {
+    if (!settings || msScopesTouched) return;
+    const stored = (settings.oauth_microsoft_scopes || "").trim();
+    const optional = settings.microsoft_optional_scopes || [];
+    setMsScopes(new Set(stored
+      ? stored.split(",").map((x) => x.trim()).filter((x) => optional.includes(x))
+      : optional));
+  }, [settings, msScopesTouched]);
+
   useEffect(() => {
     loadLicense();
   }, []);
@@ -481,6 +498,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       if (googleClientSecret) data.oauth_google_client_secret = googleClientSecret;
       if (microsoftClientId) data.oauth_microsoft_client_id = microsoftClientId;
       if (microsoftTenantId) data.oauth_microsoft_tenant_id = microsoftTenantId.trim();
+      if (msScopesTouched) data.oauth_microsoft_scopes = Array.from(msScopes).join(",");
       if (microsoftClientSecret) data.oauth_microsoft_client_secret = microsoftClientSecret;
       if (appleClientId) data.oauth_apple_client_id = appleClientId;
       if (appleTeamId) data.oauth_apple_team_id = appleTeamId;
@@ -1591,6 +1609,47 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       der App-Registrierung als „Verzeichnis-ID (Mandant)". Eine feste
                       Mandanten-ID heißt zugleich: nur Konten eurer Organisation dürfen sich
                       anmelden.
+                    </p>
+                  </div>
+
+                  {/* Freigegebene Graph-Rechte — muessen zur App-Registrierung passen,
+                      sonst verlangt Entra eine Administrator-Genehmigung. */}
+                  <div className="col-span-2">
+                    <div className="mb-1.5 text-xs font-medium text-muted-foreground/80">
+                      Angeforderte Berechtigungen
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(settings?.microsoft_required_scopes || []).map((sc) => (
+                        <span key={sc}
+                          className="rounded-md border border-foreground/10 bg-foreground/[0.06] px-2 py-1 font-mono text-[11px] text-muted-foreground/70"
+                          title="Pflicht — ohne diese Rechte funktioniert die Anmeldung nicht">
+                          {sc}
+                        </span>
+                      ))}
+                      {(settings?.microsoft_optional_scopes || []).map((sc) => {
+                        const on = msScopes.has(sc);
+                        return (
+                          <button key={sc} type="button"
+                            onClick={() => { setMsScopesTouched(true); setMsScopes((prev) => {
+                              const next = new Set(prev);
+                              next.has(sc) ? next.delete(sc) : next.add(sc);
+                              return next;
+                            }); }}
+                            className={`rounded-md border px-2 py-1 font-mono text-[11px] transition ${
+                              on ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                 : "border-foreground/10 text-muted-foreground/50 hover:text-foreground"}`}>
+                            {sc}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+                      Grau hinterlegt = Pflicht, ohne sie gibt es keine Anmeldung und kein
+                      Aktualisierungs-Token. Die übrigen nur aktivieren, wenn sie in der
+                      App-Registrierung unter „API-Berechtigungen" wirklich eingetragen sind —
+                      sonst verlangt Entra eine Administrator-Genehmigung und der Login bleibt
+                      hängen. Abgewählte Rechte bedeuten: die zugehörigen Funktionen (Mail,
+                      Kalender, Teams, Dateien) stehen den Agenten nicht zur Verfügung.
                     </p>
                   </div>
                 </div>

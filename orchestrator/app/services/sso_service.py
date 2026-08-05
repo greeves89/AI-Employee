@@ -34,6 +34,16 @@ SSO_STATE_TTL = 600  # 10 minutes
 _MS_MULTITENANT_AUTHORITIES = {"common", "organizations", "consumers"}
 
 
+
+def _scopes_for(provider) -> list[str]:
+    """Angeforderte Berechtigungen — bei Microsoft die vom Admin freigegebene Auswahl."""
+    from app.core.oauth_providers import PROVIDERS, get_provider_scopes, microsoft_scopes
+    if getattr(provider, "name", "") == "microsoft":
+        return microsoft_scopes()
+    integration = PROVIDERS.get(getattr(provider, "name", ""))
+    return get_provider_scopes(integration) if integration else list(provider.scopes)
+
+
 class SSOService:
     def __init__(self, db: AsyncSession, redis: RedisService):
         self.db = db
@@ -59,7 +69,9 @@ class SSOService:
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": " ".join(provider.scopes),
+            # Zur LAUFZEIT auflösen: Die Auswahl des Admins kann sich ändern,
+            # ohne dass der Prozess neu startet.
+            "scope": " ".join(_scopes_for(provider)),
             "state": state,
             **provider.auth_extra_params,
         }

@@ -56,6 +56,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "revoke_msgraph_on_logout",
     # OAuth non-secret fields
     "oauth_microsoft_tenant_id",
+    "oauth_microsoft_scopes",
     "oauth_apple_team_id",
     "oauth_apple_key_id",
     # License

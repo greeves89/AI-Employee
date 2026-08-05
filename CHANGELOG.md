@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.149.0] — 2026-08-05
+
+### Added
+- **Die angeforderten Microsoft-Berechtigungen sind in den Einstellungen anklickbar.** Nach dem Login kam „Genehmigung erforderlich": Der Server fordert 17 Graph-Rechte an, in der App-Registrierung standen acht. Entra verlangt dann eine Administrator-Genehmigung, und die Anmeldung bleibt hängen.
+
+  Jetzt lässt sich die Auswahl an die eigene Registrierung anpassen. Pflichtrechte (`openid`, `email`, `profile`, `offline_access`, `User.Read`) sind fest — ohne sie gibt es keine Anmeldung und kein Aktualisierungs-Token. Die übrigen zwölf sind einzeln abwählbar, mit dem Hinweis, dass abgewählte Rechte die zugehörigen Funktionen (Mail, Kalender, Teams, Dateien) für die Agenten abschalten.
+
+### Fixed
+- **Der Anmelde-Weg ignorierte die Berechtigungs-Einstellung.** `get_provider_scopes()` liest `oauth_microsoft_scopes` seit jeher — der Integrations-Weg nutzte das, der SSO-Login nahm dagegen die fest verdrahtete Liste. Beide gehen jetzt durch dieselbe Auflösung.
+- **Die Einstellung war überhaupt nicht setzbar:** Sie existierte in der Konfiguration, fehlte aber in der Erlaubnisliste, im Request-Schema, im Mapping des PATCH-Endpunkts und in der Rückgabe — dieselbe Vierfach-Lücke wie zuvor bei der Stimme und der Verzeichnis-ID.
+
+### Deployment
+- Orchestrator (Restart) + Frontend (Rebuild).
+
 ## [1.148.0] — 2026-08-05
 
 ### Added
