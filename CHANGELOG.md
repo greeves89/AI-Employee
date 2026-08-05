@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.147.1] — 2026-08-05
+
+### Fixed
+- **Die Netzansicht nutzte den Platz nicht.** Der Bereich hing auf 620 px Höhe fest, und die Teams wurden auf einem **Kreis** verteilt, dessen Radius sich nach der kleineren Seite richtete. Bei einem Container von 2907 × 618 px lag dadurch alles zusammengedrängt in der Mitte, während links und rechts hunderte Pixel leer blieben.
+
+  Der Bereich wächst jetzt mit dem Fenster, und die Teams sitzen auf einer **Ellipse** — jede Achse nutzt ihren eigenen Platz. Der Mindestabstand zweier Team-Kreise wird dabei aus dem tatsächlichen Abstand benachbarter Mittelpunkte berechnet (auf einer Ellipse ist der ungleich), nicht mehr aus einer Kreisformel.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.147.0] — 2026-08-05
 
 ### Added

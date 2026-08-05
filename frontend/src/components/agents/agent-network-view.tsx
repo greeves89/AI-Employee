@@ -251,13 +251,20 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       return { positions: pos, teamRegions: regions };
     }
     const G = groups.length;
-    const bound = Math.min(cx, cy) - 50;
-    const clusterRing = G <= 1 ? 0 : bound * 0.66;
+    // Der Container ist meist viel breiter als hoch. Ein Kreis auf Basis der
+    // KLEINEREN Seite quetscht alles in die Mitte und laesst links/rechts leer —
+    // deshalb eine Ellipse: jede Achse nutzt ihren eigenen Platz.
+    const boundX = Math.max(120, cx - 70);
+    const boundY = Math.max(100, cy - 60);
+    const bound = Math.min(boundX, boundY);
+    const ringX = G <= 1 ? 0 : boundX * 0.62;
+    const ringY = G <= 1 ? 0 : boundY * 0.62;
+    const clusterRing = Math.min(ringX, ringY);
     groups.forEach((g, gi) => {
       const ang = (2 * Math.PI * gi) / G - Math.PI / 2;
       const gc = G <= 1
         ? { x: cx, y: cy }
-        : { x: cx + clusterRing * Math.cos(ang), y: cy + clusterRing * Math.sin(ang) };
+        : { x: cx + ringX * Math.cos(ang), y: cy + ringY * Math.sin(ang) };
       // All team members evenly on a ring (lead is marked by the crown, not centered)
       // so nodes never stack on top of each other; ring grows with member count.
       const idxs = g.indices;
@@ -266,7 +273,11 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       // benachbarten Team-Mittelpunkten liegt 2*clusterRing*sin(pi/G) — mehr als die
       // Haelfte davon darf ein Kreis nicht beanspruchen, sonst ueberlappen sie sich
       // und die Beschriftungen liegen uebereinander (genau das war zu sehen).
-      const half = G <= 1 ? bound : clusterRing * Math.sin(Math.PI / G) * 0.88;
+      const step = (2 * Math.PI) / Math.max(G, 1);
+      const nb = { x: cx + ringX * Math.cos(ang + step), y: cy + ringY * Math.sin(ang + step) };
+      const half = G <= 1
+        ? bound
+        : Math.hypot(nb.x - gc.x, nb.y - gc.y) * 0.44;
       const capR = Math.max(60, Math.min(G <= 1 ? bound * 0.7 : bound * 0.34, half - 58));
       const memR = n <= 1 ? 0 : Math.min(capR, Math.max(110, 46 * n));
       if (n === 1) {
@@ -384,7 +395,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
     <div
       id="network-container"
       className="relative w-full rounded-xl border border-foreground/[0.06] bg-card/40 backdrop-blur-sm overflow-hidden"
-      style={{ minHeight: 620 }}
+      style={{ height: "calc(100vh - 260px)", minHeight: 620 }}
       onWheel={(e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 0.1 : -0.1); }}
     >
       {/* Zoom — Mausrad oder Knoepfe. Bei mehreren Teams lagen die Kreise sonst
