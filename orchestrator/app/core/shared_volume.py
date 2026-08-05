@@ -14,7 +14,8 @@ installations (a fix in ``setup.sh``'s ``docker volume create`` would only help
 new installs). The permissions live in the volume on disk, so they survive
 container recreation and platform updates.
 
-Mode ``3775`` (``rwxrwsr-t``) is deliberate — two bits beyond plain group write:
+Mode ``3770`` (``rwxrws--T``) is deliberate — two bits beyond plain group write,
+and no access at all for *others*:
 
 * **sticky** — ``/shared`` holds the credential *sub-directories* ``.auth`` and
   ``.codex``. With the sticky bit an agent can only remove or rename entries it
@@ -25,6 +26,13 @@ Mode ``3775`` (``rwxrwsr-t``) is deliberate — two bits beyond plain group writ
   (see ``codex_auth_service._lock_agent_readonly`` / ``_secure_codex_dir``).
 * **setgid** — new subdirectories inherit the agent group, so two agents can
   genuinely collaborate inside the same folder instead of locking each other out.
+
+The *others* bits are stripped (``0`` instead of ``5``): the only processes that
+touch ``/shared`` are the orchestrator (root, via the owner bits) and the agent
+containers (uid 1000 / gid ``AGENT_GID``, via the group bits). Nothing legitimate
+reads ``/shared`` as "other", so world-read/execute is unnecessary exposure of a
+directory that carries credential sub-dirs — dropping it keeps every real actor's
+full access while removing the surface CodeQL flags as world-readable.
 """
 
 from __future__ import annotations
@@ -36,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 SHARED_DIR = "/shared"
 AGENT_GID = 1000
-# rwxrwsr-t : owner=root, group=agent (writable), setgid + sticky
-SHARED_MODE = 0o3775
+# rwxrws--T : owner=root, group=agent (writable), setgid + sticky, no world access
+SHARED_MODE = 0o3770
 
 
 def ensure_shared_volume_perms(path: str = SHARED_DIR) -> bool:
