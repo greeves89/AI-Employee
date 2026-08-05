@@ -19,11 +19,19 @@ from app.core.shared_volume import (
 
 
 def test_mode_constant_is_setgid_sticky_group_writable():
-    # 3775 = rwxrwsr-t
-    assert SHARED_MODE == 0o3775
+    # 3770 = rwxrws--T
+    assert SHARED_MODE == 0o3770
     assert SHARED_MODE & stat.S_ISGID  # new subdirs inherit the agent group
     assert SHARED_MODE & stat.S_ISVTX  # sticky: agent can only remove its own entries
     assert SHARED_MODE & stat.S_IWGRP  # group (agent) may write
+
+
+def test_mode_grants_no_world_access():
+    # Only root (owner) and the agent group need /shared; "others" get nothing.
+    # World-read on a dir carrying credential sub-dirs is unnecessary exposure.
+    assert not SHARED_MODE & stat.S_IROTH  # no world read
+    assert not SHARED_MODE & stat.S_IWOTH  # no world write
+    assert not SHARED_MODE & stat.S_IXOTH  # no world execute
 
 
 def test_applies_owner_group_and_mode(tmp_path, monkeypatch):
@@ -43,7 +51,7 @@ def test_applies_owner_group_and_mode(tmp_path, monkeypatch):
     assert ensure_shared_volume_perms(str(target)) is True
     # owner root (uid 0), group = agent gid
     assert calls["chown"] == (str(target), 0, AGENT_GID)
-    assert calls["chmod"] == (str(target), 0o3775)
+    assert calls["chmod"] == (str(target), 0o3770)
 
 
 def test_creates_dir_when_missing(tmp_path, monkeypatch):

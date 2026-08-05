@@ -2577,13 +2577,20 @@ async def set_agent_telegram(
                 await tg_manager.start_bot(agent_id, agent.name, bot_token, auth_key)
                 bot_running = True
         except Exception as e:
-            # Token may be invalid - save config but report error. Redact so a
-            # provider error that echoes the token verbatim never leaks (#372).
+            # Token may be invalid - save config but report a generic error. The
+            # exception detail is logged server-side only; echoing it to the client
+            # would expose exception/stack internals (redact_logs still lets the
+            # message body through). Config is already committed above, so the admin
+            # can retry the token.
+            logger.warning(
+                "Telegram bot failed to start for agent %s: %s",
+                agent_id, redact_logs(str(e)),
+            )
             return {
                 "agent_id": agent_id,
                 "auth_key": auth_key,
                 "bot_running": False,
-                "error": redact_logs(str(e)),
+                "error": "Bot konnte nicht gestartet werden — bitte Bot-Token prüfen.",
             }
 
         return {
