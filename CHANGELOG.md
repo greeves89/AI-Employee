@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.141.0] — 2026-08-05
+
+### Fixed
+- **Eingeplante Aufgaben im Sprach-Gespraech blieben unsichtbar.** „Alles klar, ich hab die Aufgabe eingeplant" — und rechts in „Aufgaben & Aktivitaet" blieb es leer. Der Nutzer fragte dreimal nach, ob die Aufgabe ueberhaupt existiert. Sie existierte: `tmzdqpquz`, angelegt, geroutet, laufend.
+
+  Ursache: Arbeit entsteht im Gespraech auf **zwei** Wegen — sofort erledigen und einplanen. Nur der Sofort-Weg war ans Cockpit angeschlossen. Der Einplan-Weg legte die Aufgabe an, haengte den Rueckkanal an und schickte dem Frontend **nichts**. Vier Folgen aus derselben Wurzel:
+
+  - keine Karte im Panel, obwohl die Aufgabe lief
+  - die Fertigmeldung wurde verschluckt (sie schaltet nur eine *bestehende* Karte um)
+  - fertige Dateien blieben liegen — der Datei-Scan lief nur im Sofort-Weg, die PDF lag korrekt in `/workspace/transfer` und wurde nie gezeigt
+  - „guck mal in die Aufgabe rein" → **„ich hab noch keine Aufgabe delegiert"**, waehrend genau diese Aufgabe lief: die Uebersicht kannte den Einplan-Weg nicht
+
+  Beide Wege melden jetzt ueber **eine** Stelle an (`_register_task`). Die fertige Aufgabe blendet ihre Dateien ein und traegt ihr Ergebnis auf der Karte. Der Agent nennt auf Nachfrage den **echten** Stand — Status plus letzter Arbeitsschritt aus derselben Quelle, aus der die Task-Detailansicht ihre Live-Sicht speist. Und laeuft eine Fertigmeldung doch einmal ins Leere, legt das Panel die Karte selbst an, statt sie zu verschlucken.
+
+  9 Tests, darunter der, der das nachhaltig macht: das `delegate`-Ereignis darf nur an genau **einer** Stelle entstehen — damit ein spaeter gebauter dritter Weg nicht wieder stumm dasteht.
+
+### Deployment
+- Orchestrator + Frontend. **Kein Agenten-Image, keine Agenten-Recreates** — laufende Aufgaben bleiben unberuehrt.
+
 ## [1.140.0] — 2026-08-05
 
 ### Fixed

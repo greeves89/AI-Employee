@@ -164,7 +164,7 @@ export function VoiceSessionModal({
   const [activity, setActivity] = useState<{ kind: string; label: string; detail: string }[]>([]);
   // Each delegated task is its own card with its own status — several run in parallel,
   // so we track them individually instead of one shared "delegating" flag.
-  const [tasks, setTasks] = useState<{ id: string; instruction: string; done: boolean }[]>([]);
+  const [tasks, setTasks] = useState<{ id: string; instruction: string; done: boolean; result?: string }[]>([]);
   const delegating = tasks.some((t) => !t.done); // any task still running
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -641,17 +641,25 @@ export function VoiceSessionModal({
       case "delegate_done": {
         const taskId = String(data.task_id || "");
         const instruction = String(data.instruction || "");
+        const result = String(data.result || "");
         setTasks((prev) => {
           let flipped = false;
-          return prev.map((t) => {
+          const next = prev.map((t) => {
             if (flipped || t.done) return t;
             const match = taskId ? t.id === taskId : t.instruction === instruction;
             if (match) {
               flipped = true;
-              return { ...t, done: true };
+              return { ...t, done: true, result: result || t.result };
             }
             return t;
           });
+          // Kein Treffer? Dann hat ein Weg die Aufgabe nie angemeldet. Statt die
+          // Fertigmeldung zu verschlucken (so blieb das Panel leer, obwohl die
+          // Aufgabe lief und fertig wurde) zeigen wir sie als erledigte Karte.
+          if (!flipped && (instruction || taskId)) {
+            return [...next, { id: taskId, instruction, done: true, result }];
+          }
+          return next;
         });
         break;
       }
@@ -1316,6 +1324,11 @@ export function VoiceSessionModal({
                           {t.done ? "Erledigt" : "Läuft"}
                         </div>
                         <div className="text-foreground/90">{t.instruction}</div>
+                        {t.done && t.result && (
+                          <div className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground/80">
+                            {t.result}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

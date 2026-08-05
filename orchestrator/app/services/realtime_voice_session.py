@@ -1606,7 +1606,7 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._fast_activity())
             return
         if name == "get_delegated_tasks":
-            await self._respond(tool_use_id, self._delegated_tasks_summary())
+            await self._respond(tool_use_id, await self._delegated_tasks_summary())
             return
         if name == "web_search":
             await self._respond(
@@ -1960,13 +1960,54 @@ class RealtimeVoiceSession:
         self._task_seq += 1
         return str(self._task_seq)
 
-    def _delegated_tasks_summary(self) -> str:
-        """Text for the get_delegated_tasks tool: this call's delegations + status."""
-        if not self._delegations:
+    async def _planned_task_state(self, task_id: str) -> tuple[str, str]:
+        """Echter Stand einer eingeplanten Aufgabe: (Status, letzter Schritt).
+
+        Der Nutzer fragt im Gespraech „wie ist der aktuelle Stand?" — dafuer reicht
+        „laeuft" nicht. Wir lesen den Status und den zuletzt persistierten TaskStep,
+        dieselbe Quelle, aus der auch die Task-Detailansicht ihre Live-Sicht speist.
+        """
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.task import Task
+        from app.models.task_step import TaskStep
+        try:
+            async with async_session_factory() as db:
+                status = str((await db.execute(
+                    select(Task.status).where(Task.id == task_id)
+                )).scalar_one_or_none() or "")
+                step = (await db.execute(
+                    select(TaskStep.event_type, TaskStep.event_data)
+                    .where(TaskStep.task_id == task_id)
+                    .order_by(TaskStep.sequence.desc()).limit(1)
+                )).first()
+        except Exception:  # noqa: BLE001 — Stand ist Beiwerk, nie ein Gespraechsabbruch
+            logger.debug("voice planned state failed task=%s", task_id, exc_info=True)
+            return "", ""
+        if not step:
+            return status, ""
+        kind, edata = step[0], (step[1] or {})
+        if kind == "tool_call":
+            last = f"nutzt gerade {edata.get('tool') or 'ein Werkzeug'}"
+        else:
+            last = str(edata.get("text") or edata.get("message") or "").strip()[:160]
+        return status, last
+
+    async def _delegated_tasks_summary(self) -> str:
+        """Text for the get_delegated_tasks tool: this call's delegations + status.
+
+        Zaehlt BEIDE Wege: sofort erledigte (``_delegations``) UND eingeplante
+        (``_planned``). Vorher fehlten die eingeplanten hier — der Agent antwortete
+        auf „guck mal in die Aufgabe rein" mit „habe noch keine delegiert", waehrend
+        genau diese Aufgabe lief.
+        """
+        if not self._delegations and not self._planned:
             return "Ich habe in diesem Gespräch noch keine Aufgabe delegiert."
         running = [d for d in self._delegations if not d["done"]]
         done = len(self._delegations) - len(running)
-        lines = [f"Meine delegierten Aufgaben ({len(running)} laufen, {done} fertig):"]
+        total_running = len(running) + len(self._planned)
+        lines = [f"Meine Aufgaben ({total_running} laufen, {done} fertig):"]
         for d in self._delegations:
             if d["done"]:
                 extra = f" — {d['result']}" if d.get("result") else ""
@@ -1974,6 +2015,11 @@ class RealtimeVoiceSession:
             else:
                 extra = f" (gerade: {d['last']})" if d.get("last") else ""
                 lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{extra}")
+        for tid, title in self._planned.items():
+            status, last = await self._planned_task_state(tid)
+            extra = f" (gerade: {last})" if last else ""
+            state = f"EINGEPLANT/{status}" if status else "EINGEPLANT"
+            lines.append(f"[id {tid}] {state}, läuft im Hintergrund: {title}{extra}")
         lines.append("Für eine Korrektur an einer davon: refine_task (id optional = letzte laufende).")
         return " ".join(lines)
 
@@ -2021,9 +2067,7 @@ class RealtimeVoiceSession:
             self._delegations.append(rec)
         chat_session_id = rec["session"]
 
-        await self._emit({"type": "delegate", "data": {
-            "instruction": instruction, "task_id": rec["id"], "refine": refine,
-        }})
+        await self._register_task(rec["id"], instruction, refine=refine)
 
         async def _on_step(kind: str, edata: dict) -> None:
             try:
@@ -3542,14 +3586,35 @@ class RealtimeVoiceSession:
         if tid_full:
             # Watch for its completion so I can VOICE the result mid-call (the owner
             # also gets the standard task-done notification for the after-call case).
-            self._planned[tid_full] = t
-            if self._task_watcher is None or self._task_watcher.done():
-                self._task_watcher = asyncio.create_task(self._watch_planned_tasks())
+            await self._register_task(tid_full, t, watch=True)
         return (
             f"Eingeplant: „{t}“ (Aufgabe {tid_full[:8]}). Ich arbeite das eigenständig ab — auch "
             "nachdem wir aufgelegt haben, und melde mich, sobald es fertig ist. Sag dem Nutzer "
             "knapp in der ICH-Form, dass du das eingeplant hast und dich meldest. Lies die id NICHT vor."
         )
+
+    async def _register_task(
+        self, task_id: str, title: str, *, watch: bool = False, refine: bool = False
+    ) -> None:
+        """Die EINE Stelle, an der eine entstandene Aufgabe angemeldet wird.
+
+        Arbeit entsteht im Gespräch auf zwei Wegen — sofort erledigen (delegate) und
+        für später einplanen (plan_task). Beide melden hier an, damit keiner von
+        beiden wieder stumm bleibt: plan_task hatte die Karte nie ans Cockpit
+        geschickt, also blieb „Aufgaben & Aktivität" leer, obwohl die Aufgabe lief.
+
+        ``watch=True`` haengt zusaetzlich den Rueckkanal an: Wird die Aufgabe fertig,
+        waehrend wir noch telefonieren, spreche ich das Ergebnis aus. Der Sofort-Weg
+        braucht das nicht — der wartet selbst auf sein Ergebnis.
+        """
+        await self._emit({"type": "delegate", "data": {
+            "instruction": title, "task_id": task_id, "refine": refine,
+        }})
+        if not watch:
+            return
+        self._planned[task_id] = title
+        if self._task_watcher is None or self._task_watcher.done():
+            self._task_watcher = asyncio.create_task(self._watch_planned_tasks())
 
     async def _watch_planned_tasks(self) -> None:
         """Subscribe to task:completions and VOICE the result when one of THIS call's
@@ -3591,7 +3656,26 @@ class RealtimeVoiceSession:
         ok = str(data.get("status") or "").lower() == "completed"
         result = str(data.get("result") or data.get("text") or "").strip()
         err = str(data.get("error") or "").strip()
-        await self._emit({"type": "delegate_done", "data": {"instruction": title, "task_id": task_id}})
+        await self._emit({"type": "delegate_done", "data": {
+            "instruction": title, "task_id": task_id, "result": result[:600],
+        }})
+        # Deliverables sichtbar machen — genau wie beim Sofort-Weg. Ohne das legte der
+        # Agent die PDF brav in /workspace/transfer und niemand sah sie je. Er liefert
+        # sie fertig beschriftet in `presented_files` mit; der Ordner-Scan bleibt als
+        # Netz fuer Dateien, die er nur nebenbei geschrieben hat.
+        for f in (data.get("presented_files") or []):
+            path = str(f.get("path") or "")
+            if not path or path in self._shown_files:
+                continue
+            self._shown_files.add(path)
+            await self._emit({"type": "media", "data": {
+                "kind": "file",
+                "filename": f.get("filename") or path.split("/")[-1],
+                "media_type": f.get("media_type") or "application/octet-stream",
+                "caption": f.get("caption") or "",
+                "path": path,
+            }})
+        await self._surface_new_files()
         if ok:
             body = result[:600] if result else "erledigt."
             note = (
