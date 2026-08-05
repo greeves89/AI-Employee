@@ -1589,6 +1589,18 @@ class RealtimeVoiceSession:
             # Run delegation without blocking the receive loop.
             asyncio.create_task(self._handle_tool_use(data))
         elif kind == "error":
+            # Fehler der Engine (AWS/Azure) kamen bisher NUR im Browser an — im Log
+            # stand nichts. Bei „Model has timed out in processing the request" hiess
+            # das: nichts zum Nachsehen, jedes Mal Rätselraten. Jetzt mit Kontext:
+            # wie lange laeuft die Sitzung, was war die letzte Aktion, spricht sie noch.
+            logger.warning(
+                "voice engine error agent=%s session=%s stille=%.1fs bilder_gezeigt=%d "
+                "offene_tasks=%d: %s",
+                self.agent_id, self.session_id,
+                time.monotonic() - getattr(self, "_last_spoken", time.monotonic()),
+                len(getattr(self, "_shown_files", ())),
+                len(self._planned), data.get("message", ""),
+            )
             await self._emit({"type": "error", "data": {"message": data.get("message", "Realtime-Fehler")}})
         elif kind == "done":
             await self._emit({"type": "done", "data": {}})

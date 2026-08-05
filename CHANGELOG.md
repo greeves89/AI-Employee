@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.143.2] — 2026-08-05
+
+### Added
+- **Fehler der Sprach-Engine landen im Log.** „Model has timed out in processing the request" erschien nur im Browser — im Orchestrator-Log stand nichts, in der JS-Konsole auch nicht. Der Text stammt nicht aus unserem Code, sondern kommt von AWS Bedrock durchgereicht und wurde ungeprueft weitergereicht. Jetzt mit Kontext protokolliert: Stille seit der letzten Sprachausgabe, Zahl der eingeblendeten Bilder, offene Aufgaben. Beobachtete Spur: Der Abbruch trat bisher zweimal direkt nach einem Screenshot auf.
+
 ## [1.143.1] — 2026-08-05
 
 ### Changed
