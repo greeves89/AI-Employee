@@ -126,6 +126,10 @@ function describeToolTarget(input: unknown): string {
 function LiveActivity({ agentId }: { agentId: string }) {
   const { messages } = useWebSocket(`/ws/agents/${agentId}/logs`);
   const [now, setNow] = useState(() => Date.now());
+  // Der Kanal ist AGENTENWEIT: er fuehrt alles, was der Agent tut — geplante
+  // Aufgaben, andere Gespraeche, diesen Turn. Diese Zeile gehoert aber zu EINEM
+  // wartenden Turn, und der beginnt jetzt: alles Aeltere ist fremde Arbeit.
+  const turnStartedAt = useRef(Date.now()).current;
 
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
@@ -134,10 +138,20 @@ function LiveActivity({ agentId }: { agentId: string }) {
 
   const latestToolCall = useMemo<LogEvent | null>(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].type === "tool_call") return messages[i];
+      const m = messages[i];
+      if (m.type !== "tool_call") continue;
+      // Traegt eine task_id → gehoert zu einer geplanten Aufgabe, nicht zu diesem
+      // Gespraech. Ohne diesen Filter stand der OpenWebUI-Watcher im Chat des
+      // Nutzers, waehrend der ueber etwas voellig anderes sprach.
+      if (m.task_id) continue;
+      // Und: ein Aufruf von VOR diesem Turn ist laengst vorbei. Frueher wurde sein
+      // Alter munter weitergezaehlt — daher die „192s" an einem Turn, der 38s dauerte.
+      const ts = new Date(m.timestamp).getTime();
+      if (!Number.isFinite(ts) || ts < turnStartedAt) continue;
+      return m;
     }
     return null;
-  }, [messages]);
+  }, [messages, turnStartedAt]);
 
   if (!latestToolCall) return null;
 
