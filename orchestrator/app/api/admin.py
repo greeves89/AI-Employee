@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
@@ -95,7 +96,8 @@ async def restart_system_component(
         )
     name = targets[payload.target]
     actor = getattr(user, "email", None) or getattr(user, "id", "?")
-    logger.warning("[AdminSystem] restart '%s' (%s) requested by %s", payload.target, name, actor)
+    logger.warning("[AdminSystem] restart '%s' (%s) requested by %s",
+                   scrub_log(payload.target), name, scrub_log(actor))
 
     if payload.target == "orchestrator":
         # Self-restart: answer first, then restart detached so the HTTP response

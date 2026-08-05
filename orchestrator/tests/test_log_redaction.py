@@ -7,7 +7,7 @@ survives verbatim.
 
 import unittest
 
-from app.core.log_redaction import redact_logs
+from app.core.log_redaction import redact_logs, scrub_log
 
 
 class LogRedactionTests(unittest.TestCase):
@@ -55,6 +55,35 @@ class LogRedactionTests(unittest.TestCase):
 
     def test_empty_input(self):
         self.assertEqual(redact_logs(""), "")
+
+
+class ScrubLogTests(unittest.TestCase):
+    """CWE-117: user-controlled values must not be able to forge log records."""
+
+    def test_newlines_removed(self):
+        forged = "agent-1\nINFO fake admin login succeeded"
+        out = scrub_log(forged)
+        self.assertNotIn("\n", out)
+        self.assertEqual(out, "agent-1INFO fake admin login succeeded")
+
+    def test_carriage_return_removed(self):
+        out = scrub_log("sess\r\nDELETE /everything")
+        self.assertNotIn("\r", out)
+        self.assertNotIn("\n", out)
+
+    def test_other_control_chars_removed(self):
+        # NUL and an ANSI escape must not survive into a log line.
+        out = scrub_log("id\x00\x1b[31mred")
+        self.assertNotIn("\x00", out)
+        self.assertNotIn("\x1b", out)
+        self.assertEqual(out, "id[31mred")
+
+    def test_tab_and_plain_text_survive(self):
+        self.assertEqual(scrub_log("proj\tname-42"), "proj\tname-42")
+
+    def test_non_string_coerced(self):
+        self.assertEqual(scrub_log(1234), "1234")
+        self.assertEqual(scrub_log(None), "None")
 
 
 if __name__ == "__main__":

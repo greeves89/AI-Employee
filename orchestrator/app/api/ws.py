@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, Request
 
+from app.core.log_redaction import scrub_log
 from app.core.stream_manager import StreamManager
 from app.db.session import async_session_factory
 from app.dependencies import get_current_user_ws, require_auth
@@ -133,7 +134,7 @@ async def _auto_inject_skills_for_chat(agent_id: str, text: str, is_new_session:
         async with async_session_factory() as skill_db:
             await auto_inject_skills(skill_db, agent_id, text)
     except Exception as e:
-        logger.warning(f"Skill auto-injection failed for chat session {session_id}: {e}")
+        logger.warning(f"Skill auto-injection failed for chat session {scrub_log(session_id)}: {e}")
 
 
 @router.websocket("/agents/{agent_id}/chat")

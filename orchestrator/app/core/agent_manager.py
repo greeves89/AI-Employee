@@ -12,6 +12,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import get_agent_version, settings
 from app.core.encryption import decrypt_token
+from app.core.log_redaction import scrub_log
 from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
 from app.models.agent_secret import AgentSecretAssignment, AgentSecret
@@ -771,7 +772,7 @@ class AgentManager:
             # No connected Redis client (e.g. a freshly instantiated RedisService in
             # the lifecycle recreate path) — nothing to publish to. Debug, not warn,
             # so the periodic sweep does not spam the log.
-            logger.debug(f"Skip publish event for agent {agent_id}: no Redis client")
+            logger.debug(f"Skip publish event for agent {scrub_log(agent_id)}: no Redis client")
             return
         try:
             event = json.dumps({
@@ -802,7 +803,7 @@ class AgentManager:
         streams responses on — no new mechanism.
         """
         if self.redis.client is None:
-            logger.debug(f"Skip cancel open chats for agent {agent_id}: no Redis client")
+            logger.debug(f"Skip cancel open chats for agent {scrub_log(agent_id)}: no Redis client")
             return
         try:
             event = json.dumps({
@@ -852,7 +853,7 @@ class AgentManager:
                         allowed_set = set(allowed)
                         servers = [s for s in servers if s.id in allowed_set]
             except Exception as e:
-                logger.warning(f"MCP role filter failed for agent {agent_id}: {e}")
+                logger.warning(f"MCP role filter failed for agent {scrub_log(agent_id)}: {e}")
 
         # OAuth-protected servers (#426): mint/refresh a fresh access token before
         # handing it to the agent, so a short-lived token never arrives already
@@ -1065,7 +1066,7 @@ class AgentManager:
         try:
             self._apply_permissions(container.id, agent_permissions)
         except Exception as e:
-            logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
+            logger.warning(f"Could not apply permissions for agent {scrub_log(agent_id)}: {e}")
 
         # Initialize workspace files
         agent_mounts = []
@@ -1348,7 +1349,7 @@ class AgentManager:
         try:
             self._apply_permissions(container.id, agent_permissions)
         except Exception as e:
-            logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
+            logger.warning(f"Could not apply permissions for agent {scrub_log(agent_id)}: {e}")
 
         # 5. Update team registry
         try:
@@ -1570,7 +1571,7 @@ class AgentManager:
         try:
             self._apply_permissions(container.id, agent_permissions)
         except Exception as e:
-            logger.warning(f"Could not apply permissions for agent {agent_id}: {e}")
+            logger.warning(f"Could not apply permissions for agent {scrub_log(agent_id)}: {e}")
 
         # 5. Refresh the instructions file — for EVERY mode (knowledge.md preserved).
         #    Claude Code reads /workspace/CLAUDE.md, Codex and Custom-LLM read
@@ -1585,7 +1586,7 @@ class AgentManager:
                 _instructions_file,
                 _render_claude_md(_agent_mounts, catalog),
             )
-            logger.info(f"Updated {_instructions_file} for agent {agent_id} (knowledge.md preserved)")
+            logger.info(f"Updated {_instructions_file} for agent {scrub_log(agent_id)} (knowledge.md preserved)")
         except Exception as e:
             logger.warning(f"Could not update {_instructions_file}: {e}")
 

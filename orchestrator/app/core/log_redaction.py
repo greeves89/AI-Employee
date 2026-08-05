@@ -47,3 +47,23 @@ def redact_logs(text: str) -> str:
     for pattern, repl in _PATTERNS:
         out = pattern.sub(repl, out)
     return out
+
+
+# C0/C1 control chars *except* tab (\x09) — CR/LF are removed explicitly first
+# (that ``.replace`` is the barrier CodeQL recognises for log-injection), then
+# this drops NULs and terminal-escape bytes that could still corrupt a log line.
+_LOG_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def scrub_log(value: object) -> str:
+    """Return ``value`` as a single-line string safe to interpolate into a log
+    record.
+
+    User-controlled input (agent/session ids, paths, request fields) can carry
+    ``\\r``/``\\n`` and forge or split log entries (CWE-117 log injection). This
+    removes line breaks and other control characters so a logged value can never
+    start a new, attacker-shaped log record. Use it to wrap any request-derived
+    value before it reaches ``logger.*``.
+    """
+    text = str(value).replace("\r", "").replace("\n", "")
+    return _LOG_CONTROL_CHARS.sub("", text)
