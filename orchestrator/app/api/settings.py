@@ -194,6 +194,9 @@ async def update_settings(
         "voice_azure_speech_key", "voice_azure_speech_region",
         # Realtime front (platform default): "" clears back to the classic pipeline.
         "voice_interaction_model", "voice_interaction_account_id",
+        # Ohne diesen Eintrag wurde die gewaehlte Stimme still verworfen: Die
+        # erlaubten Schluessel stehen an ZWEI Stellen, und diese hier entscheidet.
+        "nova_sonic_voice",
     ]
     for field_name in _VOICE_FIELDS:
         value = getattr(data, field_name, None)

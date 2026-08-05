@@ -30,6 +30,22 @@ class NovaVoiceSettingTests(unittest.TestCase):
         from app.services.settings_service import ALLOWED_KEYS  # noqa: PLC0415
         self.assertIn("nova_sonic_voice", ALLOWED_KEYS)
 
+    def test_setting_survives_the_patch_path(self):
+        """Die eigentliche Falle: Die erlaubten Schluessel stehen an ZWEI Stellen.
+
+        `nova_sonic_voice` stand in ALLOWED_KEYS des Service, fehlte aber in
+        `_VOICE_FIELDS` des PATCH-Endpunkts — der Wert wurde still verworfen. Der
+        Nutzer waehlte „tiffany", bekam „Gespeichert." und hoerte weiter Matthew.
+        Zusaetzlich muss das Request-Schema das Feld kennen, sonst kommt es nicht an.
+        """
+        api = (pathlib.Path(__file__).resolve().parents[1] / "app/api/settings.py").read_text()
+        self.assertIn('"nova_sonic_voice"', api,
+                      "fehlt in _VOICE_FIELDS → PATCH verwirft den Wert still")
+
+        from app.schemas.settings import SettingsUpdate  # noqa: PLC0415
+        self.assertIn("nova_sonic_voice", SettingsUpdate.model_fields,
+                      "fehlt im Request-Schema → Wert erreicht den Endpunkt nie")
+
     def test_setting_is_returned_to_the_ui(self):
         """Genau das fehlte: Der Sprach-Layer las den Wert, die Oberflaeche sah ihn nie."""
         from app.schemas.settings import VoiceSettings  # noqa: PLC0415

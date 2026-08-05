@@ -221,3 +221,45 @@ class SelfInitiatedNoticeTests(unittest.TestCase):
     def test_other_self_initiated_notices_wait_too(self):
         for name in ("_notify_files_bg", "_analyse_screenshot_bg"):
             self.assertIn("_inject_when_quiet", _calls_in(name), f"{name} wartet nicht")
+
+
+class ShownFileRecallTests(unittest.TestCase):
+    """Was ich eingeblendet habe, muss ich auch selbst wiederfinden.
+
+    Zweimal am 2026-08-05: Die Karte mit der PDF lag sichtbar im Panel, und der
+    Agent antwortete „ist im Workspace nicht zu finden" — er suchte nur die oberste
+    Ebene ab und nahm den Namen buchstabengenau.
+    """
+
+    def _sess(self, *paths):
+        s = RealtimeVoiceSession.__new__(RealtimeVoiceSession)
+        s._shown_files = set(paths)
+        return s
+
+    def test_exact_name_is_found(self):
+        s = self._sess("/workspace/transfer/OpenWebUI-Watcher_Zusammenfassung.pdf")
+        self.assertTrue(s._recall_shown_file("OpenWebUI-Watcher_Zusammenfassung.pdf"))
+
+    def test_hyphen_versus_underscore(self):
+        """Der echte Fehlschlag: gesucht mit _, abgelegt mit -."""
+        s = self._sess("/workspace/transfer/OpenWebUI-Watcher_Zusammenfassung.pdf")
+        self.assertEqual(
+            s._recall_shown_file("OpenWebUI_Watcher_Zusammenfassung.pdf"),
+            "/workspace/transfer/OpenWebUI-Watcher_Zusammenfassung.pdf",
+        )
+
+    def test_umlaut_versus_transliteration(self):
+        """Der andere echte Fehlschlag: „Aktivitäts" gesucht, „Aktivitaets" abgelegt."""
+        s = self._sess("/workspace/transfer/Aktivitaetsbericht_2026-08-03_bis_05.pdf")
+        self.assertTrue(s._recall_shown_file("Aktivitätsbericht"))
+
+    def test_unrelated_query_finds_nothing(self):
+        s = self._sess("/workspace/transfer/bericht.pdf")
+        self.assertEqual(s._recall_shown_file("Angebot Meier"), "")
+
+    def test_search_asks_memory_first(self):
+        self.assertIn("_recall_shown_file", _calls_in("_search_files"))
+
+    def test_listing_tasks_registers_running_ones(self):
+        """Fragt der Nutzer nach Aufgaben, gehoeren die laufenden zurueck ins Panel."""
+        self.assertIn("_register_task", _calls_in("_fast_tasks"))

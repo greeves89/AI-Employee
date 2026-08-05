@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.144.2] — 2026-08-05
+
+### Fixed
+- **Die gewählte Stimme wurde still verworfen.** „tiffany" gewählt, „Gespeichert." bekommen — und weiter Matthew gehört. Die erlaubten Schlüssel stehen an **zwei** Stellen: `ALLOWED_KEYS` im Service (dort stand `nova_sonic_voice`) und `_VOICE_FIELDS` im PATCH-Endpunkt (dort fehlte er). Zusätzlich kannte das Request-Schema das Feld nicht, der Wert erreichte den Endpunkt also gar nicht. Beides ergänzt; ein Test prüft jetzt den **Speicherweg**, nicht nur die Erlaubnisliste.
+- **Der Agent findet Dateien wieder, die er selbst eingeblendet hat.** Die PDF lag sichtbar als Karte im Panel, und er antwortete „ist im Workspace nicht zu finden" — er durchsuchte nur die oberste Ebene und nahm den Namen buchstabengenau. Zweimal passiert: `-Watcher_` gegen `_Watcher_`, „Aktivitaets" gegen „Aktivitäts". Die Dateisuche fragt jetzt **zuerst das eigene Gedächtnis** (`_shown_files`) und vergleicht unscharf (Umlaute, Binde-/Unterstrich). Was auf dem Bildschirm steht, weiss er damit auch selbst.
+- **Fragt der Nutzer nach seinen Aufgaben, stehen die laufenden wieder im Cockpit.** Nach einem Sitzungswechsel war das Panel leer, obwohl er sie im Gespräch korrekt aufzählte. Anmeldung über dieselbe eine Stelle wie `plan_task`.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.144.1] — 2026-08-05
 
 ### Added

@@ -62,6 +62,7 @@ class SettingsUpdate(BaseModel):
     # Realtime voice front (Nova Sonic / AWS Bedrock / Azure) — platform default.
     voice_interaction_model: str | None = None      # "" = classic pipeline; else engine e.g. "nova_sonic"
     voice_interaction_account_id: str | None = None  # AI-account id providing the realtime creds
+    nova_sonic_voice: str | None = None              # voiceId des Echtzeit-Gespraechs
     # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
     exchange_server_url: str | None = None               # EWS host, e.g. "mail.klinikum-bs.de"
     exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"

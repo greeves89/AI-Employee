@@ -3114,11 +3114,49 @@ class RealtimeVoiceSession:
             parts.append(f"Dateien ({len(files)}): " + ", ".join(files[:15]))
         return f"In {where}:\n" + "\n".join(parts)
 
+    def _recall_shown_file(self, query: str) -> str:
+        """Pfad einer Datei, die ich in diesem Gespraech schon eingeblendet habe.
+
+        Was auf dem Bildschirm des Nutzers steht, muss ich auch selbst wissen. Vorher
+        waren das zwei getrennte Welten: `_shown_files` fuer die Anzeige, die Suche
+        fuer mich — und ich behauptete, eine Datei sei „nicht im Workspace", waehrend
+        ihre Karte sichtbar daneben lag.
+
+        Der Vergleich ist bewusst unscharf: Umlaute, Bindestrich und Unterstrich
+        gehen beim Diktieren verloren. Genau daran scheiterte es zweimal
+        („Aktivitaets" vs. „Aktivitäts", „-Watcher_" vs. „_Watcher_").
+        """
+        def norm(t: str) -> str:
+            t = t.lower()
+            for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+                t = t.replace(a, b)
+            return "".join(c for c in t if c.isalnum())
+
+        q = norm(query)
+        if len(q) < 3:
+            return ""
+        for path in sorted(getattr(self, "_shown_files", ()) or ()):
+            name = norm(str(path).rsplit("/", 1)[-1])
+            if q in name or name in q:
+                return str(path)
+        return ""
+
     async def _search_files(self, query: str) -> str:
         """Search the agent's workspace for a file/folder by name (direct, no round-trip)."""
         q = (query or "").strip()
         if not q:
             return "Wonach soll ich im Workspace suchen?"
+        # ZUERST das eigene Gedaechtnis: Was ich in diesem Gespraech eingeblendet habe,
+        # kenne ich mit vollem Pfad — danach muss ich nicht suchen. Vorher lief genau
+        # das schief: Die PDF lag sichtbar als Karte im Panel, und ich behauptete
+        # trotzdem, sie sei „nicht im Workspace zu finden" — weil ich nur die oberste
+        # Ebene absuchte und den Namen buchstabengenau nahm (Bindestrich vs. Unterstrich,
+        # „Aktivitaets" vs. „Aktivitäts").
+        hit = self._recall_shown_file(q)
+        if hit:
+            return (f"Die Datei liegt unter {hit} — die habe ich dir hier bereits "
+                    "eingeblendet. Sag dem Nutzer, wo sie liegt, und weise darauf hin, "
+                    "dass er sie rechts direkt öffnen kann.")
         if not self._container_id:
             return "Ich komme gerade nicht an meinen Workspace."
         from app.core.file_manager import FileManager
@@ -3911,6 +3949,12 @@ class RealtimeVoiceSession:
             if t.status == TaskStatus.FAILED and t.error:
                 line += f": {t.error[:100]}"
             lines.append(line)
+            # Fragt der Nutzer nach den Aufgaben, sollen die laufenden auch WIEDER
+            # im Cockpit stehen — nach einem Sitzungswechsel war das Panel leer,
+            # obwohl der Agent sie im Gespräch korrekt aufzählte. Über dieselbe
+            # EINE Anmeldestelle wie plan_task; das Frontend dedupliziert per id.
+            if t.status == TaskStatus.RUNNING and str(t.id) not in self._planned:
+                await self._register_task(str(t.id), t.title or "Aufgabe", watch=True)
         return f"Letzte {len(rows)} Aufgaben ({summary}):\n" + "\n".join(lines)
 
     async def _fast_settings(self) -> str:
