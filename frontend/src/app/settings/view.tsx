@@ -943,7 +943,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     <textarea
                       value={vertexCredentials}
                       onChange={(e) => setVertexCredentials(e.target.value)}
-                      placeholder='{"type": "service_account", ...}'
+                      placeholder='{ … GCP-Service-Account-JSON hier einfügen … }'
                       rows={3}
                       className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25 resize-none"
                     />
