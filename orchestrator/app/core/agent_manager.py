@@ -1713,9 +1713,9 @@ class AgentManager:
                 async with async_session_factory() as sync_session:
                     await sync_session.execute(
                         sa_text(
-                            f"UPDATE agents SET state = '{new_state.name}' "
-                            f"WHERE id = '{agent_id}'"
-                        )
+                            "UPDATE agents SET state = :state WHERE id = :aid"
+                        ),
+                        {"state": new_state.name, "aid": agent_id},
                     )
                     await sync_session.commit()
                 agent.state = new_state

@@ -48,7 +48,10 @@ class FeatureFlagService:
         # Deterministic bucket: hash(flag_name + user_id) % 100
         if not user_id:
             return False
-        bucket = int(hashlib.md5(f"{flag_name}:{user_id}".encode()).hexdigest(), 16) % 100
+        # Non-cryptographic: MD5 is only a fast deterministic bucketing function for
+        # gradual rollout. No security property depends on it — usedforsecurity=False
+        # documents that (and keeps this working under FIPS).
+        bucket = int(hashlib.md5(f"{flag_name}:{user_id}".encode(), usedforsecurity=False).hexdigest(), 16) % 100
         return bucket < rollout_pct
 
     async def set_flag(
