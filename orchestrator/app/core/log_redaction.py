@@ -52,7 +52,9 @@ def redact_logs(text: str) -> str:
 # C0/C1 control chars *except* tab (\x09) — CR/LF are removed explicitly first
 # (that ``.replace`` is the barrier CodeQL recognises for log-injection), then
 # this drops NULs and terminal-escape bytes that could still corrupt a log line.
-_LOG_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+# U+2028/U+2029 (LINE/PARAGRAPH SEPARATOR) are stripped too: some JSON/JS log
+# viewers treat them as line breaks, so they are a line-forging bypass candidate.
+_LOG_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f  ]")
 
 
 def scrub_log(value: object) -> str:

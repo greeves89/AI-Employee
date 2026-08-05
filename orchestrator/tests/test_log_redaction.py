@@ -78,6 +78,14 @@ class ScrubLogTests(unittest.TestCase):
         self.assertNotIn("\x1b", out)
         self.assertEqual(out, "id[31mred")
 
+    def test_unicode_line_separators_removed(self):
+        # U+2028/U+2029 are treated as line breaks by some JSON/JS log viewers
+        # and must not survive to forge a new log line.
+        out = scrub_log("sess DELETE /all")
+        self.assertNotIn(" ", out)
+        self.assertNotIn(" ", out)
+        self.assertEqual(out, "sessDELETE/all")
+
     def test_tab_and_plain_text_survive(self):
         self.assertEqual(scrub_log("proj\tname-42"), "proj\tname-42")
 
