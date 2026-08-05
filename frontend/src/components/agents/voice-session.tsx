@@ -143,6 +143,35 @@ interface Props {
   onSnapshot?: (snapshot: VoiceSessionSnapshot) => void;
 }
 
+
+/** URLs in gesprochenem Text anklickbar machen.
+ *
+ *  Der Agent nennt Adressen im Fliesstext („du kannst sie unter https://… aufrufen"),
+ *  bisher standen sie tot da — abtippen war die einzige Option. Bewusst hier an EINER
+ *  Stelle statt als Sonderfall fuer App-Links: gilt damit fuer jede Adresse, die er
+ *  jemals nennt. Satzzeichen am Ende gehoeren nicht zur Adresse. */
+function linkify(text: string) {
+  const parts = String(text ?? "").split(/(https?:\/\/[^\s<>"']+)/g);
+  return parts.map((part, i) => {
+    if (i % 2 === 0) return part;
+    const trailing = part.match(/[.,;:!?)\]]+$/)?.[0] ?? "";
+    const url = trailing ? part.slice(0, -trailing.length) : part;
+    return (
+      <span key={i}>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-primary/40 underline-offset-2 hover:decoration-primary break-all"
+        >
+          {url}
+        </a>
+        {trailing}
+      </span>
+    );
+  });
+}
+
 export function VoiceSessionModal({
   agentId,
   agentName,
@@ -1125,7 +1154,7 @@ export function VoiceSessionModal({
                               : "border border-primary/20 bg-primary/10 text-foreground"
                           }`}
                         >
-                          {t.text}
+                          {linkify(t.text)}
                         </div>
                       </div>
                     ))
@@ -1358,7 +1387,7 @@ export function VoiceSessionModal({
                         </div>
                         {t.done && t.result && open && (
                           <div className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground/80">
-                            {t.result}
+                            {linkify(t.result)}
                           </div>
                         )}
                       </div>
@@ -1674,7 +1703,7 @@ export function VoiceSessionModal({
               <div className="mb-1 text-[10px] uppercase tracking-wider text-primary/80">
                 {agentName} antwortet
               </div>
-              <p className="whitespace-pre-wrap text-sm">{response}</p>
+              <p className="whitespace-pre-wrap text-sm">{linkify(response)}</p>
             </div>
           )}
 

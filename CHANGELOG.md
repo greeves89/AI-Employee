@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.144.1] — 2026-08-05
+
+### Added
+- **Adressen im Sprach-Gespräch sind anklickbar.** Der Agent nennt Links im Fliesstext („du kannst sie unter https://… aufrufen") — bisher standen sie tot da und mussten abgetippt werden. Gilt jetzt für die Gesprächsblasen, das Ergebnis auf der Aufgabenkarte und die klassische Antwortanzeige. Bewusst an einer Stelle statt als Sonderfall für App-Links: damit greift es für jede Adresse, die er jemals nennt. Satzzeichen am Ende bleiben ausserhalb des Links.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.144.0] — 2026-08-05
 
 ### Added
