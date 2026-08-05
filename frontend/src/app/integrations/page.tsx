@@ -541,7 +541,7 @@ export default function IntegrationsPage() {
                               type={patVisible ? "text" : "password"}
                               value={patToken}
                               onChange={(e) => setPatToken(e.target.value)}
-                              placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                              placeholder="ghp_… (dein Personal Access Token)"
                               className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 pr-9 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                               onKeyDown={(e) => e.key === "Enter" && handleSavePat(integration.provider)}
                             />
