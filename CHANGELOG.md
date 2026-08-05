@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.142.3] — 2026-08-05
+
+### Fixed
+- **Fremde Arbeit stand im eigenen Chat.** Waehrend eines Gespraechs ueber SAP-Stammdaten erschien unter der eigenen Nachricht `Bash · python3 /workspace/scripts/openwebui_… · 192s` — ein geplanter Watcher-Task, der mit dem Gespraech nichts zu tun hatte. Die angezeigte Dauer passte zu nichts: der Turn dauerte 38 Sekunden, der Watcher-Lauf 20.
+
+  Die Live-Zeile (#469) abonniert den **agentenweiten** Log-Kanal — er fuehrt alles, was der Agent tut: geplante Aufgaben, andere Gespraeche, den eigenen Turn. Genommen wurde daraus schlicht der letzte Werkzeugaufruf, ohne zu pruefen, ob er ueberhaupt zu diesem Gespraech gehoert oder noch aktuell ist. Ein laengst beendeter Aufruf lief im Zaehler einfach weiter.
+
+  Jetzt zwei Filter: Aufrufe mit `task_id` gehoeren zu einer Aufgabe und bleiben draussen, und alles von VOR dem Beginn dieses Turns ebenfalls. Damit zeigt die Zeile nur noch, was dieser Turn gerade wirklich tut.
+
+  Relevant, weil auf dem Pi 8 Chats und 8 Aufgaben parallel laufen duerfen: je paralleler gearbeitet wird, desto mehr fremde Aufrufe landeten vorher im Bild.
+
+### Deployment
+- Frontend (Rebuild noetig). Kein Orchestrator-Restart, kein Agenten-Image.
+
 ## [1.142.2] — 2026-08-05
 
 ### Fixed
