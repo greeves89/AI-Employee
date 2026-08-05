@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.142.0] — 2026-08-05
+
+### Fixed
+- **Der Sprach-Agent versprach Aufgaben, statt sie anzulegen.** „Nimm das als Aufgabe mit" → „Ich erstelle dir gleich einen Plan dafuer und melde mich" — und es entstand nichts. Erst auf das Wort „delegiert" lief `plan_task`. Der Nutzer musste die Vokabel des Systems raten.
+
+  Zwei Ursachen. Die Auslöserliste kannte nur „plan das ein" und „kümmer dich drum" — natuerliche Formulierungen fehlten. Vor allem aber wusste der Sprach-Agent nicht, **dass er selbst nichts tun kann**: Er tritt als der Agent auf (so gewollt), aber niemand hatte ihm gesagt, dass die Arbeitskraft hinter ihm sitzt und ohne Werkzeugaufruf nichts geschieht. Deshalb hielt er eine Ankuendigung fuer eine Handlung. Er weiss das jetzt — nach aussen unveraendert die ICH-Form, nach innen: jede Zusage ueber etwas Handfestes braucht im selben Zug ein Werkzeug. Fragt der Nutzer nach, prueft er nach, statt zu raten.
+
+- **Fertigmeldungen gingen unter, wenn sie in eine laufende Sprachausgabe fielen.** „Aufgabe wurde waehrend einer Sprachausgabe fertig — Text wurde erstellt, aber nicht per Audio ausgegeben." Das Modell haengte die Meldung an den laufenden Satz an, statt sie zu sprechen.
+
+  Die Warteschleife „bis die Stimme ruht" lag zweimal kopiert im Modul — und ausgerechnet die Fertigmeldung nutzte keine davon. Sie liegt jetzt an **einer** Stelle, und alle Meldungen, die von selbst kommen (Aufgabe fertig, Bildauswertung, Datei eingetroffen, Termin-Hinweis, App-Fehler), gehen durch sie. Gemessen wird Stille statt eines geratenen Zustands; begrenzt, damit nie etwas haengen bleibt.
+
+  4 weitere Tests, darunter der, der die Kopie verhindert: selbst ausgeloeste Meldungen duerfen nicht am Warten vorbei eingespielt werden.
+
+### Deployment
+- Orchestrator (Code gemountet → Restart genuegt). Kein Frontend-Rebuild, kein Agenten-Image.
+
 ## [1.141.0] — 2026-08-05
 
 ### Fixed

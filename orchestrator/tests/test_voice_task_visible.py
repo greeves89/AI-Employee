@@ -89,6 +89,7 @@ class TaskResultVisibilityTests(unittest.TestCase):
         sess._shown_files = set()
         sess._emit = AsyncMock()
         sess._surface_new_files = AsyncMock()
+        sess._inject_when_quiet = AsyncMock()
         asyncio.run(sess._voice_task_done("tmzdqpquz", "PDF der letzten drei Tage", {
             "status": "completed",
             "result": "Fertig — die PDF wurde erstellt.",
@@ -115,6 +116,7 @@ class TaskResultVisibilityTests(unittest.TestCase):
         sess._shown_files = {"/workspace/transfer/bericht.pdf"}
         sess._emit = AsyncMock()
         sess._surface_new_files = AsyncMock()
+        sess._inject_when_quiet = AsyncMock()
         asyncio.run(sess._voice_task_done("t1", "Bericht", {
             "status": "completed",
             "presented_files": [{"path": "/workspace/transfer/bericht.pdf"}],
@@ -155,5 +157,67 @@ class TaskSelfKnowledgeTests(unittest.TestCase):
         self.assertIn("nutzt gerade Bash", summary)
 
 
+class TaskPromiseTests(unittest.TestCase):
+    """Zusagen ist nicht Erledigen.
+
+    Kundenmeldung 2026-08-05: „nimm das als Aufgabe mit" → „Ich erstelle dir gleich
+    einen Plan dafuer und melde mich" — und es entstand NICHTS. Erst auf das Wort
+    „delegiert" lief `plan_task`. Der Nutzer musste die Vokabel des Systems raten.
+    """
+
+    def setUp(self):
+        from app.services.realtime_voice_session import _system_prompt
+        self.p = _system_prompt("TestBot", "Rolle", "de")
+
+    def test_natural_phrasings_trigger_planning(self):
+        """Der Nutzer sagt es in SEINEN Worten, nicht in denen des Systems."""
+        for phrase in ("nimm das als Aufgabe mit", "setz dir die Aufgabe",
+                       "erstell dafür eine Aufgabe", "mach dir dazu einen Task"):
+            self.assertIn(phrase, self.p, f"Auslöser fehlt: {phrase}")
+
+    def test_announcing_without_acting_is_forbidden(self):
+        """Die eigentliche Regel — sonst sammelt man ewig Reizwoerter nach."""
+        self.assertIn("ZUSAGEN IST NICHT ERLEDIGEN", self.p)
+        self.assertIn("IM SELBEN ZUG", self.p)
+
+    def test_asking_back_checks_instead_of_guessing(self):
+        """„Hast du die Aufgabe erstellt?" darf nicht geraten werden."""
+        self.assertIn("get_delegated_tasks statt zu raten", self.p)
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class SelfInitiatedNoticeTests(unittest.TestCase):
+    """Meldungen, die von selbst kommen, muessen auch GESPROCHEN werden.
+
+    Kundenmeldung 2026-08-05: „Aufgabe wurde WÄHREND einer Sprachausgabe fertig...
+    Text wurde erstellt aber nicht per Audio ausgegeben." Die Fertigmeldung fiel in
+    eine laufende Ausgabe und wurde an den laufenden Satz angehaengt.
+    """
+
+    def test_finished_task_waits_for_a_quiet_moment(self):
+        self.assertIn("_inject_when_quiet", _calls_in("_voice_task_done"))
+
+    def test_waiting_is_the_single_place(self):
+        """Die Warteschleife lag zweimal kopiert im Modul und die Fertigmeldung
+        nutzte keine davon — genau wie beim delegate-Ereignis."""
+        src = inspect.getsource(RealtimeVoiceSession)
+        raw = [ln for ln in src.splitlines() if "inject_user_text" in ln]
+        # Erlaubt bleiben: die Begruessung (2x, da spricht noch niemand), die
+        # Fortschritts-Erzaehlung (eigene Taktung) und der eine Aufruf IN der Helferin.
+        self.assertLessEqual(
+            len(raw), 4,
+            "Selbst ausgeloeste Meldungen gehen ueber _inject_when_quiet, nicht direkt: "
+            f"{len(raw)} rohe Aufrufe",
+        )
+        self.assertIn("_last_spoken", _method_src("_inject_when_quiet"))
+
+    def test_waiting_is_bounded(self):
+        """Eine Zwischenmeldung darf nie ewig auf Stille warten."""
+        self.assertIn("deadline", _method_src("_inject_when_quiet"))
+
+    def test_other_self_initiated_notices_wait_too(self):
+        for name in ("_notify_files_bg", "_analyse_screenshot_bg"):
+            self.assertIn("_inject_when_quiet", _calls_in(name), f"{name} wartet nicht")
