@@ -18,6 +18,7 @@ import redis.asyncio as aioredis
 
 from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
+from app.proc_watchdog import ProcessIdleTimeout, communicate_with_idle_timeout
 
 logger = logging.getLogger(__name__)
 

@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.142.1] — 2026-08-05
+
+### Fixed
+- **Der Agent-zu-Agent-Pfad war seit v1.140.0 komplett tot** — und riss den Chat mit. Im Agenten-Log stand bei jeder Kollegen-Nachricht `Consumer error: name 'ProcessIdleTimeout' is not defined`.
+
+  Beim Einbau des Stillstands-Wachhunds in `message_consumer` wurden **weder der Wachhund noch seine Ausnahme importiert**. Der Aufruf warf NameError, und beim Auswerten der `except`-Klausel warf der zweite fehlende Name gleich hinterher.
+
+  Die Wirkung reichte bis in den Chat: Ein Agent fragte einen Kollegen, bekam nie eine Antwort, verstummte 600 Sekunden und wurde abgebrochen — „Der Agent hat sich zwischendurch nicht mehr gemeldet." Der Stillstands-Wachhund hatte dabei recht; die Ursache lag im fehlenden Import.
+
+  Die Tests von v1.140.0 pruefen `proc_watchdog.py` gegen echte Unterprozesse — nur den **Aufrufer** hat niemand angefasst. Diese Luecke ist geschlossen: ein Test findet benutzte, aber nirgends gebundene Namen in `message_consumer`, `chat_consumer` und `task_consumer`. Ohne den Import wird er rot, mit ihm gruen — verifiziert.
+
+### Deployment
+- Liegt im Agenten-Image: Image neu bauen **und jeden Agenten neu erstellen**. Codex-Agenten dabei staffeln (geteilte Token-Familie).
+
 ## [1.142.0] — 2026-08-05
 
 ### Fixed
