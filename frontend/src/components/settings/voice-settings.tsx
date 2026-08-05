@@ -22,6 +22,7 @@ type VoiceConfig = {
   azure_speech_region?: string;
   voice_interaction_model?: string;
   voice_interaction_account_id?: string;
+  nova_sonic_voice?: string;
 };
 
 const STT_LABELS: Record<string, string> = {
@@ -38,6 +39,31 @@ const LLM_LABELS: Record<string, string> = {
   "claude-haiku-4-5-20251001": "Claude Haiku 4.5 (schnell, empfohlen)",
   "claude-sonnet-4-6": "Claude Sonnet 4.6 (smarter, langsamer)",
 };
+
+
+/** Stimmen von Amazon Nova Sonic — Stand der AWS-Doku (available-voices).
+ *  matthew und tiffany sind polyglott und sprechen alle unterstuetzten Sprachen
+ *  inklusive Deutsch; die uebrigen sind auf ihre Sprache ausgelegt. Bewusst als
+ *  feste Liste: eine erfundene ID laesst die Sitzung beim Verbindungsaufbau
+ *  scheitern, und dieser Fehler taucht nirgends im Log auf. */
+const NOVA_VOICES = [
+  { id: "matthew", label: "Matthew — mehrsprachig (m), spricht Deutsch" },
+  { id: "tiffany", label: "Tiffany — mehrsprachig (w), spricht Deutsch" },
+  { id: "amy", label: "Amy — Englisch (w)" },
+  { id: "olivia", label: "Olivia — Englisch (w)" },
+  { id: "lennart", label: "Lennart" },
+  { id: "beatrice", label: "Beatrice" },
+  { id: "ambre", label: "Ambre" },
+  { id: "florian", label: "Florian" },
+  { id: "lupe", label: "Lupe" },
+  { id: "carlos", label: "Carlos" },
+  { id: "lorenzo", label: "Lorenzo" },
+  { id: "tina", label: "Tina" },
+  { id: "carolina", label: "Carolina" },
+  { id: "leo", label: "Leo" },
+  { id: "kiara", label: "Kiara" },
+  { id: "arjun", label: "Arjun" },
+];
 
 export function VoiceSettings() {
   const [cfg, setCfg] = useState<VoiceConfig | null>(null);
@@ -174,6 +200,29 @@ export function VoiceSettings() {
               )}
             </div>
           </div>
+
+          {/* ── Stimme des Echtzeit-Gesprächs ────────────────────── */}
+          {realtimeActive && (
+            <div className="rounded-lg border border-foreground/[0.06] p-4">
+              <Field label="Stimme (Nova Sonic)">
+                <select
+                  value={cfg.nova_sonic_voice || "matthew"}
+                  onChange={(e) => patch({ nova_sonic_voice: e.target.value })}
+                  disabled={saving}
+                  className="w-full rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm"
+                >
+                  {NOVA_VOICES.map((v) => (
+                    <option key={v.id} value={v.id}>{v.label}</option>
+                  ))}
+                </select>
+              </Field>
+              <div className="mt-1.5 text-[11px] text-muted-foreground/60">
+                Nur „matthew&ldquo; und „tiffany&ldquo; sind polyglott und sprechen auch Deutsch.
+                Die übrigen Stimmen sind auf ihre jeweilige Sprache ausgelegt. Die neue Stimme
+                gilt ab dem nächsten Gespräch.
+              </div>
+            </div>
+          )}
 
           {/* ── Classic pipeline (fallback, collapsible) ──────────── */}
           <div className="rounded-lg border border-foreground/[0.06]">

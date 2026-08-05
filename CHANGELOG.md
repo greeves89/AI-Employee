@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.144.0] — 2026-08-05
+
+### Added
+- **Die Stimme des Echtzeit-Gesprächs ist in den Einstellungen wählbar** (Kundenwunsch). Alle 16 Stimmen von Amazon Nova Sonic stehen zur Auswahl; **matthew** und **tiffany** sind polyglott und sprechen auch Deutsch — das ist in der Liste ausgewiesen, damit niemand versehentlich eine rein englische Stimme wählt.
+
+  Das Backend konnte das längst: `nova_sonic_voice` wurde beim Verbindungsaufbau gelesen (plus `interaction_voice` pro Agent). Nur gab die Settings-API den Wert nie zurück — die Oberfläche konnte ihn also weder anzeigen noch setzen. Ergänzt in Schema und Antwort, dazu das Auswahlfeld.
+
+  Die Stimmenliste ist bewusst fest hinterlegt und per Test an die AWS-Dokumentation gebunden: Eine erfundene Stimm-ID lässt die Sitzung erst beim Verbindungsaufbau scheitern — mit einem Fehler, der bis v1.143.2 nirgends im Log auftauchte.
+
+### Deployment
+- Orchestrator (Restart) + Frontend (Rebuild).
+
 ## [1.143.2] — 2026-08-05
 
 ### Added

@@ -258,6 +258,9 @@ async def get_voice_settings(
     # Realtime front (Nova Sonic / AWS Bedrock / Azure) platform default.
     interaction_model = (await svc.get("voice_interaction_model")) or ""
     interaction_account = (await svc.get("voice_interaction_account_id")) or ""
+    # Stimme des Echtzeit-Gesprächs — ohne diesen Wert konnte die Oberfläche die
+    # eingestellte Stimme nicht anzeigen, obwohl der Sprach-Layer sie längst las.
+    nova_voice = (await svc.get("nova_sonic_voice")) or "matthew"
     return VoiceSettings(
         stt_provider=cfg["stt_provider"],
         tts_provider=cfg["tts_provider"],
@@ -274,6 +277,7 @@ async def get_voice_settings(
         azure_speech_region=cfg.get("azure_speech_region", ""),
         voice_interaction_model=interaction_model,
         voice_interaction_account_id=interaction_account,
+        nova_sonic_voice=nova_voice,
     )
 
 

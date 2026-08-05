@@ -107,6 +107,8 @@ class VoiceSettings(BaseModel):
     # Realtime voice front (platform default): "" = classic pipeline, else engine.
     voice_interaction_model: str = ""
     voice_interaction_account_id: str = ""
+    # Stimme des Echtzeit-Gespraechs (Nova Sonic voiceId), Vorgabe "matthew".
+    nova_sonic_voice: str = "matthew"
 
 
 class SettingsResponse(BaseModel):
