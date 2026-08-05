@@ -2544,7 +2544,7 @@ async def set_agent_telegram(
     from sqlalchemy.orm.attributes import flag_modified
     from app.telegram.bot_manager import generate_auth_key
 
-    from app.core.log_redaction import redact_logs
+    from app.core.log_redaction import redact_logs, scrub_log
 
     bot_token = body.bot_token.strip()
     # Reject a malformed value (e.g. a pasted BotFather message) before it is
@@ -2584,7 +2584,7 @@ async def set_agent_telegram(
             # can retry the token.
             logger.warning(
                 "Telegram bot failed to start for agent %s: %s",
-                agent_id, redact_logs(str(e)),
+                scrub_log(agent_id), redact_logs(str(e)),
             )
             return {
                 "agent_id": agent_id,
