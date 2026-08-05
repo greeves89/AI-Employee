@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.145.0] — 2026-08-05
+
+### Added
+- **Laufende Aufgaben lassen sich aufklappen und zeigen ihre Live-Schritte** (Kundenwunsch: „Leider kann ich laufende Aufgaben nicht aufklappen, um Details zu lesen"). Die Karte zeigt die letzten Arbeitsschritte — welches Werkzeug gerade läuft, was zuletzt geschah — und lädt sie alle drei Sekunden nach, solange sie offen und die Aufgabe nicht fertig ist.
+
+  Die Daten lagen längst vor: dieselbe Quelle, aus der die Task-Detailansicht ihre Zeitreise speist. Im Sprach-Panel holte sie nur niemand ab, also stand dort „läuft" und sonst nichts.
+
+  Bewusst **dieselbe** Auf-/Zuklapp-Mechanik wie bei den fertigen Karten (v1.143.1), nicht eine zweite daneben. Nachladen passiert nur für aufgeklappte, noch laufende Aufgaben — zugeklappt oder fertig kostet es nichts, und das Ende der Aufgabe beendet es von selbst.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.144.2] — 2026-08-05
 
 ### Fixed

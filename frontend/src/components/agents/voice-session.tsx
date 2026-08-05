@@ -197,6 +197,10 @@ export function VoiceSessionModal({
   // Aufgeklappte Ergebnisse. Fertige Karten sind standardmaessig zu — ein Ergebnis
   // kann seitenlang sein und haette sonst das ganze Panel gefuellt.
   const [openTasks, setOpenTasks] = useState<Set<string>>(new Set());
+  // Schritte einer aufgeklappten LAUFENDEN Aufgabe. Sie liegen bereits in der
+  // Datenbank (dieselbe Quelle wie die Task-Detailansicht) — bisher holte sie im
+  // Sprach-Panel nur niemand ab, also stand dort „laeuft" und sonst nichts.
+  const [taskSteps, setTaskSteps] = useState<Record<string, string[]>>({});
   const delegating = tasks.some((t) => !t.done); // any task still running
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -555,6 +559,38 @@ export function VoiceSessionModal({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
+
+
+  // Nur fuer aufgeklappte, noch laufende Aufgaben nachladen — zugeklappt oder fertig
+  // kostet es nichts. Ende der Aufgabe beendet das Nachladen von selbst.
+  useEffect(() => {
+    const live = tasks.filter((t) => !t.done && t.id && openTasks.has(t.id));
+    if (live.length === 0) return;
+    let stop = false;
+    const pull = async () => {
+      for (const t of live) {
+        try {
+          const { steps } = await api.getTaskSteps(t.id);
+          if (stop) return;
+          const lines = steps
+            .map((st) => {
+              const d = (st.data || {}) as Record<string, unknown>;
+              if (st.type === "tool_call") return `nutzt ${String(d.tool || "ein Werkzeug")}`;
+              const txt = String(d.text || d.message || "").trim();
+              return txt ? txt.slice(0, 160) : "";
+            })
+            .filter(Boolean)
+            .slice(-8);
+          setTaskSteps((prev) => ({ ...prev, [t.id]: lines }));
+        } catch {
+          // Schritte sind Beiwerk — ein Fehler darf das Gespraech nie stoeren.
+        }
+      }
+    };
+    pull();
+    const iv = setInterval(pull, 3000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [tasks, openTasks]);
 
   // Auto-scroll the live activity log to the newest line.
   useEffect(() => {
@@ -1360,16 +1396,16 @@ export function VoiceSessionModal({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-1.5">
                           <button
-                            onClick={() => t.done && t.result && setOpenTasks((prev) => {
+                            onClick={() => (t.done ? t.result : t.id) && setOpenTasks((prev) => {
                               const next = new Set(prev);
                               next.has(key) ? next.delete(key) : next.add(key);
                               return next;
                             })}
-                            className={`min-w-0 flex-1 text-left ${t.done && t.result ? "cursor-pointer" : "cursor-default"}`}
+                            className={`min-w-0 flex-1 text-left ${(t.done ? t.result : t.id) ? "cursor-pointer" : "cursor-default"}`}
                           >
                             <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                               {t.done ? "Erledigt" : "Läuft"}
-                              {t.done && t.result && (
+                              {(t.done ? t.result : t.id) && (
                                 open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
                               )}
                             </div>
@@ -1385,6 +1421,16 @@ export function VoiceSessionModal({
                             </button>
                           )}
                         </div>
+                        {!t.done && open && (
+                          <div className="mt-1 space-y-0.5 font-mono text-[10px] leading-relaxed text-muted-foreground/70">
+                            {(taskSteps[t.id] || []).map((line, li) => (
+                              <div key={li} className="truncate">· {line}</div>
+                            ))}
+                            {!(taskSteps[t.id] || []).length && (
+                              <div className="opacity-60">Noch keine Schritte gemeldet…</div>
+                            )}
+                          </div>
+                        )}
                         {t.done && t.result && open && (
                           <div className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground/80">
                             {linkify(t.result)}
