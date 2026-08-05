@@ -165,6 +165,9 @@ export function VoiceSessionModal({
   // Each delegated task is its own card with its own status — several run in parallel,
   // so we track them individually instead of one shared "delegating" flag.
   const [tasks, setTasks] = useState<{ id: string; instruction: string; done: boolean; result?: string }[]>([]);
+  // Aufgeklappte Ergebnisse. Fertige Karten sind standardmaessig zu — ein Ergebnis
+  // kann seitenlang sein und haette sonst das ganze Panel gefuellt.
+  const [openTasks, setOpenTasks] = useState<Set<string>>(new Set());
   const delegating = tasks.some((t) => !t.done); // any task still running
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -1305,7 +1308,13 @@ export function VoiceSessionModal({
                     </div>
                   ))}
                   {/* One card per delegated task — each with its own live status. */}
-                  {tasks.map((t, ti) => (
+                  {tasks.map((t, ti) => {
+                    const key = t.id || t.instruction;
+                    // Ein Ergebnis kann seitenlang sein. Fertige Aufgaben zeigen daher
+                    // nur den Titel; der Text kommt auf Klick. Laufende bleiben offen —
+                    // dort steht ohnehin noch nichts, was Platz kostet.
+                    const open = openTasks.has(key);
+                    return (
                     <div
                       key={ti}
                       className={`flex items-start gap-2 rounded-lg border p-2.5 text-xs ${
@@ -1319,19 +1328,43 @@ export function VoiceSessionModal({
                       ) : (
                         <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-400" />
                       )}
-                      <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                          {t.done ? "Erledigt" : "Läuft"}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-1.5">
+                          <button
+                            onClick={() => t.done && t.result && setOpenTasks((prev) => {
+                              const next = new Set(prev);
+                              next.has(key) ? next.delete(key) : next.add(key);
+                              return next;
+                            })}
+                            className={`min-w-0 flex-1 text-left ${t.done && t.result ? "cursor-pointer" : "cursor-default"}`}
+                          >
+                            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                              {t.done ? "Erledigt" : "Läuft"}
+                              {t.done && t.result && (
+                                open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+                              )}
+                            </div>
+                            <div className="text-foreground/90">{t.instruction}</div>
+                          </button>
+                          {t.done && (
+                            <button
+                              onClick={() => setTasks((prev) => prev.filter((x) => (x.id || x.instruction) !== key))}
+                              className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.08]"
+                              title="Aufgabe ausblenden"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
-                        <div className="text-foreground/90">{t.instruction}</div>
-                        {t.done && t.result && (
+                        {t.done && t.result && open && (
                           <div className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground/80">
                             {t.result}
                           </div>
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   {activity.length > 0 && (
                     <div className="rounded-lg border border-border bg-black/40 p-2.5">
                       <button

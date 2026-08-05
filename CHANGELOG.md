@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.143.1] — 2026-08-05
+
+### Changed
+- **Erledigte Aufgaben im Sprach-Panel lassen sich zuklappen und ausblenden.** Ein Ergebnis kann seitenlang sein — die fertige Analyse einer Codebasis fuellte das ganze Panel. Fertige Karten zeigen jetzt nur noch den Titel; der Ergebnistext kommt auf Klick. Ein X blendet die Karte ganz aus. Laufende Aufgaben bleiben unveraendert offen.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.143.0] — 2026-08-05
 
 ### Fixed
