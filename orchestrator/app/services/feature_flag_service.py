@@ -48,7 +48,9 @@ class FeatureFlagService:
         # Deterministic bucket: hash(flag_name + user_id) % 100
         if not user_id:
             return False
-        bucket = int(hashlib.md5(f"{flag_name}:{user_id}".encode()).hexdigest(), 16) % 100
+        # Deterministic bucketing only — no security property depends on this hash.
+        # SHA-256 (over MD5) so static analysis doesn't flag it as weak hashing.
+        bucket = int(hashlib.sha256(f"{flag_name}:{user_id}".encode()).hexdigest(), 16) % 100
         return bucket < rollout_pct
 
     async def set_flag(

@@ -13,7 +13,7 @@ from app.models.knowledge import KnowledgeEntry
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 # Regex to extract [[backlinks]] from markdown content
-BACKLINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+BACKLINK_RE = re.compile(r"\[\[([^\]]++)\]\]")
 TAG_RE = re.compile(r"(?:^|\s)#([a-zA-Z0-9_-]+)", re.MULTILINE)
 
 
