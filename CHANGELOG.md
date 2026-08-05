@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.147.2] — 2026-08-05
+
+### Fixed
+- **Sprach-Gespräche kamen nicht mehr zustande** — „Unable to parse input chunk". Das in v1.146.0 ergänzte Werkzeug `manage_schedules` übergab sein Schema als rohes Objekt; Nova Sonic erwartet einen **JSON-String**, wie ihn alle anderen Werkzeuge per `json.dumps` liefern. Ein einziges falsch geformtes Schema lässt die **komplette Sitzung** scheitern, nicht nur das betroffene Werkzeug.
+
+  Ein Test prüft jetzt **jedes** Werkzeug im Modul: Schema muss ein String und parsebar sein. Der vorherige Test hatte das falsche Format sogar festgeschrieben, weil er direkt auf das Dict zugriff.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.147.1] — 2026-08-05
 
 ### Fixed

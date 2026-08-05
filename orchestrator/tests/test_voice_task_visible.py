@@ -14,6 +14,7 @@ Damit steht ein spaeter gebauter dritter Weg nicht wieder stumm da.
 import ast
 import asyncio
 import inspect
+import json
 import textwrap
 import unittest
 from unittest.mock import AsyncMock
@@ -325,8 +326,27 @@ class SchedulePauseTests(unittest.TestCase):
         from app.services.realtime_voice_session import MANAGE_SCHEDULES_TOOL
         spec = MANAGE_SCHEDULES_TOOL["toolSpec"]
         self.assertEqual(spec["name"], "manage_schedules")
-        actions = spec["inputSchema"]["json"]["properties"]["action"]["enum"]
+        schema = json.loads(spec["inputSchema"]["json"])
+        actions = schema["properties"]["action"]["enum"]
         self.assertEqual(set(actions), {"list", "pause", "resume"})
+
+    def test_every_tool_schema_is_a_json_string(self):
+        """Nova Sonic erwartet einen STRING. Ein rohes Dict laesst die ganze
+        Sitzung mit „Unable to parse input chunk" scheitern — nicht nur das
+        betroffene Werkzeug. Genau so war Voice am 2026-08-05 komplett tot."""
+        import app.services.realtime_voice_session as m
+        checked = 0
+        for name in dir(m):
+            if not name.endswith("_TOOL"):
+                continue
+            spec = getattr(m, name).get("toolSpec", {})
+            raw = spec.get("inputSchema", {}).get("json")
+            if raw is None:
+                continue
+            self.assertIsInstance(raw, str, f"{name}: Schema muss ein JSON-String sein")
+            json.loads(raw)  # muss parsebar sein
+            checked += 1
+        self.assertGreater(checked, 5, "zu wenige Werkzeuge geprueft")
 
     def test_the_prompt_routes_pausing_there(self):
         self.assertIn("manage_schedules", self.p)

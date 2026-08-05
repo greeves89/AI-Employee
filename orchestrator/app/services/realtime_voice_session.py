@@ -541,7 +541,10 @@ MANAGE_SCHEDULES_TOOL = {
             "beendet nur den GERADE laufenden Durchlauf, der Zeitplan startet danach "
             "wieder. Ohne Namen liste ich alle auf."
         ),
-        "inputSchema": {"json": {
+        # Nova Sonic erwartet das Schema als JSON-STRING, nicht als Objekt. Ein rohes
+        # Dict laesst die ganze Sitzung mit „Unable to parse input chunk" scheitern —
+        # nicht nur dieses Werkzeug. Deshalb wie alle anderen ueber json.dumps.
+        "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["list", "pause", "resume"],
@@ -550,7 +553,7 @@ MANAGE_SCHEDULES_TOOL = {
                          "description": "Teil des Zeitplan-Namens, z.B. 'Watcher' oder 'Morgen-Report'"},
             },
             "required": ["action"],
-        }},
+        })},
     }
 }
 
