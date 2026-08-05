@@ -263,3 +263,46 @@ class ShownFileRecallTests(unittest.TestCase):
     def test_listing_tasks_registers_running_ones(self):
         """Fragt der Nutzer nach Aufgaben, gehoeren die laufenden zurueck ins Panel."""
         self.assertIn("_register_task", _calls_in("_fast_tasks"))
+
+
+class EngineSafeTextTests(unittest.TestCase):
+    """Was an die Sprach-Engine geht, muss serialisierbar sein.
+
+    Vorfall 2026-08-05: Nach dem Vorlesen einer PDF beendete Nova Sonic den Stream
+    mit „Invalid event bytes". Die Laenge war begrenzt, der Zeicheninhalt nicht —
+    Steuerzeichen und kaputte Surrogate aus der Dokument-Extraktion brechen das
+    Protokoll, nicht das Modell.
+    """
+
+    def test_control_characters_are_removed(self):
+        out = RealtimeVoiceSession._engine_safe("Analyse\x00\x07 der\x1b Datei")
+        self.assertNotIn("\x00", out)
+        self.assertNotIn("\x07", out)
+        self.assertNotIn("\x1b", out)
+        self.assertIn("Analyse", out)
+
+    def test_newlines_and_tabs_survive(self):
+        """Absaetze sind Sinn, nicht Stoerung — sie muessen bleiben."""
+        out = RealtimeVoiceSession._engine_safe("Zeile eins\nZeile zwei\tEnde")
+        self.assertIn("\n", out)
+        self.assertIn("\t", out)
+
+    def test_broken_surrogates_do_not_raise(self):
+        """Aus PDF-Extraktion kommen halbe Surrogate — die zerlegen sonst den Stream."""
+        out = RealtimeVoiceSession._engine_safe("Text \ud800 mehr")
+        self.assertIn("Text", out)
+        out.encode("utf-8")  # muss ohne Fehler serialisierbar sein
+
+    def test_long_text_is_capped(self):
+        out = RealtimeVoiceSession._engine_safe("x" * 9000, limit=4000)
+        self.assertLessEqual(len(out), 4002)
+
+    def test_empty_stays_empty(self):
+        self.assertEqual(RealtimeVoiceSession._engine_safe(""), "")
+
+    def test_tool_results_go_through_it(self):
+        """Der Weg, auf dem der PDF-Text kam — sonst nuetzt der Filter nichts."""
+        self.assertIn("_engine_safe", _method_src("_respond"))
+
+    def test_injections_go_through_it_too(self):
+        self.assertIn("_engine_safe", _method_src("_inject_when_quiet"))

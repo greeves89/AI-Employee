@@ -1493,7 +1493,7 @@ class RealtimeVoiceSession:
         if self._closed or not self._nova:
             return False
         try:
-            await self._nova.inject_user_text(msg)
+            await self._nova.inject_user_text(self._engine_safe(msg))
             return True
         except Exception:  # noqa: BLE001 — eine Zwischenmeldung reisst nie das Gespraech
             logger.debug("inject failed agent=%s", self.agent_id, exc_info=True)
@@ -1606,9 +1606,37 @@ class RealtimeVoiceSession:
             await self._emit({"type": "done", "data": {}})
             await self._emit(None)  # end the outbound stream
 
+    @staticmethod
+    def _engine_safe(text: str, limit: int = 4000) -> str:
+        """Text so saeubern, dass die Sprach-Engine ihn sicher verdaut.
+
+        Nova Sonic quittierte den Stream mit „Invalid event bytes", nachdem Text aus
+        einer PDF eingespeist wurde. Die Laenge war begrenzt — der ZEICHENINHALT nicht:
+        Aus Dokumenten kommen Steuerzeichen, Ersatzzeichen und kaputte Surrogate, und
+        die brechen das Protokoll, nicht das Modell.
+
+        Die eine Stelle, durch die alles geht, was an die Engine gereicht wird —
+        Werkzeug-Ergebnisse wie Zwischenmeldungen. Danach ist es garantiert
+        serialisierbar.
+        """
+        if not text:
+            return ""
+        # Kaputte Surrogate entfernen (aus PDF-Extraktion), dann Steuerzeichen bis auf
+        # Zeilenumbruch und Tabulator — alles andere hat in einem Sprach-Event nichts
+        # verloren und kann den Stream zerlegen.
+        cleaned = str(text).encode("utf-8", "replace").decode("utf-8", "replace")
+        cleaned = "".join(
+            c for c in cleaned
+            if c in "\n\t" or (ord(c) >= 32 and ord(c) != 0x7F)
+        )
+        cleaned = cleaned.replace("\ufffd", "")
+        if len(cleaned) > limit:
+            cleaned = cleaned[:limit].rstrip() + " …"
+        return cleaned
+
     async def _respond(self, tool_use_id: str, text: str) -> None:
         if self._nova:
-            await self._nova.send_tool_result(tool_use_id, text)
+            await self._nova.send_tool_result(tool_use_id, self._engine_safe(text))
 
     async def _handle_tool_use(self, data: dict) -> None:
         tool_use_id = data.get("tool_use_id", "")

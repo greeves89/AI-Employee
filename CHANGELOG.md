@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.145.1] — 2026-08-05
+
+### Fixed
+- **„Invalid event bytes" nach dem Vorlesen einer PDF.** Der Sprach-Stream brach ab, sobald Text aus einem Dokument eingespeist wurde. Die Länge war längst begrenzt — der **Zeicheninhalt** nicht: Aus der Dokument-Extraktion kommen Steuerzeichen, Ersatzzeichen und halbe Surrogate, und die brechen das Protokoll, nicht das Modell.
+
+  Alles, was an die Engine geht, läuft jetzt durch **eine** Säuberung: kaputte UTF-8-Sequenzen weg, Steuerzeichen weg (Zeilenumbruch und Tabulator bleiben — Absätze sind Sinn), harte Längenbegrenzung. Genutzt von den Werkzeug-Ergebnissen wie von den Zwischenmeldungen, also von beiden Wegen, auf denen Text in die Sitzung gelangt.
+
+  7 Tests, darunter der Fall, der es ausgelöst hat: halbe Surrogate müssen ohne Fehler serialisierbar bleiben.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.145.0] — 2026-08-05
 
 ### Added
