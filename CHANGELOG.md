@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.143.0] — 2026-08-05
+
+### Fixed
+- **Parallel laufende Aufgaben wurden mitten in der Arbeit als verschollen abgeraeumt.** „Pitchdeck-Neugestaltung" endete als `Task lost - agent stopped responding`, waehrend der Agent daran arbeitete — sie lief parallel zum OpenWebUI-Watcher, und der ueberschrieb die Meldung.
+
+  Der Aufraeum-Waechter stammt aus der Zeit, als ein Agent EINE Aufgabe nach der anderen abarbeitete: Er hielt eine Aufgabe nur dann fuer lebendig, wenn der Agent genau sie als `current_task` nennt. Seit `MAX_PARALLEL_TASKS` (auf dem Pi: 8) laufen mehrere gleichzeitig, gemeldet wird aber nur die zuletzt gestartete. **Je paralleler gearbeitet wird, desto haeufiger trifft es: Bei acht Aufgaben ist eine sichtbar, sieben sind Kandidaten fuers Abraeumen.**
+
+  Jetzt zwei unabhaengige Lebensbeweise, und einer genuegt:
+  - Der Agent meldet die **vollstaendige** Liste seiner laufenden Aufgaben (`active_sessions`), nicht nur eine — beim Start wie beim Ende jeder einzelnen.
+  - Unabhaengig davon: schreibt die Aufgabe noch Schritte? Ob der Agent sie gerade beim Namen nennt, ist Zufall der Meldereihenfolge; ob sie TaskSteps produziert, ist Tatsache.
+
+  Erst wenn beides schweigt, gilt eine Aufgabe als tot. 12 Tests, darunter der gegen den Rueckfall: der rohe `current_task`-Vergleich darf nicht zurueckkehren.
+
+  Der TaskStep-Beweis wirkt sofort mit dem Orchestrator; die vollstaendige Melde-Liste kommt mit dem naechsten Agenten-Image dazu.
+
+### Deployment
+- Orchestrator (Restart genuegt) — behebt den Fehler bereits. Der Agenten-Teil (vollstaendige Melde-Liste) braucht Image-Rebuild + Neuerstellung, ist aber nur die zweite Absicherung.
+
 ## [1.142.3] — 2026-08-05
 
 ### Fixed

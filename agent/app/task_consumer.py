@@ -39,6 +39,10 @@ class TaskConsumer:
         self._sem: asyncio.Semaphore | None = None
         self._inflight: set[asyncio.Task] = set()      # dispatched task coroutines
         self._active_runners: set = set()              # runners currently executing (for stop())
+        # IDs ALLER gerade laufenden Aufgaben. `current_task` kann nur eine nennen —
+        # der Orchestrator hielt die uebrigen deshalb faelschlich fuer verschollen
+        # und raeumte sie mitten in der Arbeit ab.
+        self._active_task_ids: set[str] = set()
 
     def _make_runner(self):
         """Fresh runner instance per task — independent subprocess, no shared state."""
@@ -103,7 +107,11 @@ class TaskConsumer:
         self._active_runners.add(runner)
         # Any task working → agent shows "working"; when the last finishes we go idle.
         try:
-            await self._log_publisher.publish_status("working", task_id)
+            if task_id:
+                self._active_task_ids.add(task_id)
+            await self._log_publisher.publish_status(
+                "working", task_id, active_sessions=sorted(self._active_task_ids)
+            )
             await self.redis.publish(
                 "task:started",
                 json.dumps({"task_id": task_id, "agent_id": self.agent_id}),
@@ -158,12 +166,19 @@ class TaskConsumer:
                 pass  # best effort
         finally:
             self._active_runners.discard(runner)
+            self._active_task_ids.discard(task_id)
             # Only flip to idle when no other task is still running.
-            if not self._active_runners:
-                try:
+            try:
+                if not self._active_runners:
                     await self._log_publisher.publish_status("idle")
-                except Exception:
-                    pass
+                else:
+                    # Andere laufen weiter — die Liste muss stimmen, sonst gilt eine
+                    # noch arbeitende Aufgabe beim Orchestrator als verschollen.
+                    await self._log_publisher.publish_status(
+                        "working", "", active_sessions=sorted(self._active_task_ids)
+                    )
+            except Exception:  # noqa: BLE001
+                pass
             self._sem.release()
 
     async def stop(self) -> None:
