@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.140.0] — 2026-08-05
+
+### Fixed
+- **Agent-zu-Agent-Nachrichten wurden nach 5 Minuten hart abgebrochen** — dieselbe Krankheit wie im Chat, nur an einer Stelle, die gestern unangetastet blieb (`[Timeout - message processing took too long]` im Log). Fragt ein Agent einen Kollegen etwas, das laenger dauert, war die Antwort weg, egal ob dort gearbeitet wurde.
+
+  Die Regel liegt jetzt an **einer** Stelle (`proc_watchdog.py`) statt dreimal kopiert: Ein Unterprozess wird begleitet, jede Regung — stdout wie stderr — setzt die Uhr zurueck, abgebrochen wird nur, wer wirklich verstummt. Ein grosszuegiges Gesamtlimit bleibt als Notbremse gegen endlose Ausgabe. Der Chat-Pfad nutzt dieselbe Idee, der Nachrichten-Pfad jetzt dieselbe Implementierung.
+
+  6 Tests gegen echte Unterprozesse, darunter der Kernfall: lange laufend **aber redend** ueberlebt, stumm faellt.
+
+### Deployment
+- Liegt im Agenten-Image: Image neu bauen **und jeden Agenten neu erstellen**.
+
 ## [1.139.1] — 2026-08-04
 
 ### Fixed

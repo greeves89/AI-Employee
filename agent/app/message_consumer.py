@@ -22,6 +22,11 @@ from app.log_publisher import LogPublisher
 logger = logging.getLogger(__name__)
 
 
+# Stillstands-Grenze fuer eine Agent-zu-Agent-Anfrage: so lange darf NICHTS
+# mehr kommen. Die Notbremse fasst einen Prozess, der endlos Ausgabe erzeugt.
+_MESSAGE_IDLE_TIMEOUT = 300
+_MESSAGE_HARD_CAP = 3600
+
 class MessageConsumer:
     """Consumes inter-agent messages and auto-replies."""
 
@@ -176,8 +181,12 @@ class MessageConsumer:
                 cwd=settings.workspace_dir,
                 env=env,
             )
-            stdout, stderr = await asyncio.wait_for(
-                self._process.communicate(input=stdin_input), timeout=300
+            # Stillstand statt Gesamtdauer — dieselbe Regel wie im Chat-Pfad, aus
+            # derselben Stelle. Vorher: harte 300s, die einen arbeitenden Agenten
+            # mitten in einer Anfrage vom Kollegen abschossen.
+            stdout, stderr = await communicate_with_idle_timeout(
+                self._process, idle_limit=_MESSAGE_IDLE_TIMEOUT,
+                stdin_input=stdin_input, hard_cap=_MESSAGE_HARD_CAP,
             )
             self._process = None
 
@@ -218,11 +227,16 @@ class MessageConsumer:
 
             return "[No response]"
 
-        except asyncio.TimeoutError:
+        except (ProcessIdleTimeout, asyncio.TimeoutError) as e:
             if self._process:
-                self._process.kill()
+                try:
+                    self._process.kill()
+                except ProcessLookupError:
+                    pass
                 self._process = None
-            return "[Timeout - message processing took too long]"
+            logger.error("Agent message aborted: %s", e)
+            return ("[Abgebrochen — der Agent hat sich waehrend der Bearbeitung "
+                    "nicht mehr gemeldet]")
         except Exception as e:
             return f"[Error] {str(e)[:200]}"
 
