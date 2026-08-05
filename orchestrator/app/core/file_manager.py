@@ -2,6 +2,7 @@ import logging
 import os
 import shlex
 
+from app.core.log_redaction import scrub_log
 from app.services.docker_service import DockerService
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ class FileManager:
         self.docker.exec_in_container(container_id, ["mkdir", "-p", safe_path])
 
         self.docker.write_files_in_container(container_id, target_path, files)
-        logger.info(f"Uploaded {len(files)} files ({total_size} bytes) to {target_path}")
+        logger.info(f"Uploaded {len(files)} files ({total_size} bytes) to {scrub_log(target_path)}")
         return len(files)
 
     def search_files(

@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.log_redaction import scrub_log
 from app.dependencies import get_db, is_agent_principal, require_auth, require_auth_or_agent
 from app.services.redis_service import RedisService
 
@@ -169,7 +170,7 @@ async def _persist_session(session_id: str) -> None:
             _SESSION_KEY + session_id, json.dumps(payload), ex=_SESSION_TTL_SECS
         )
     except Exception:  # noqa: BLE001 — persistence is an optimization, not a gate
-        logger.debug("Could not persist computer-use session %s", session_id, exc_info=True)
+        logger.debug("Could not persist computer-use session %s", scrub_log(session_id), exc_info=True)
 
 
 async def _forget_session(session_id: str) -> None:
@@ -187,7 +188,7 @@ async def _forget_session(session_id: str) -> None:
     try:
         await _redis.client.delete(_SESSION_KEY + session_id)
     except Exception:  # noqa: BLE001 — Löschen darf keinen Request scheitern lassen
-        logger.warning("Could not delete computer-use session %s from Redis", session_id, exc_info=True)
+        logger.warning("Could not delete computer-use session %s from Redis", scrub_log(session_id), exc_info=True)
 
 
 async def _restore_session(session_id: str) -> dict | None:
@@ -225,7 +226,7 @@ async def _restore_session(session_id: str) -> dict | None:
         "capture_human": False,
     }
     _sessions[session_id] = session
-    logger.info("Restored computer-use session %s from Redis", session_id)
+    logger.info("Restored computer-use session %s from Redis", scrub_log(session_id))
     return session
 
 
@@ -598,7 +599,7 @@ async def dispatch_bridge_command(
     try:
         await session["bridge_ws"].send_text(command_msg)
         result = await asyncio.wait_for(result_future, timeout=req.timeout)
-        logger.info(f"[computer-use] session={session_id} action={req.action} #{session['action_count']}")
+        logger.info(f"[computer-use] session={scrub_log(session_id)} action={scrub_log(req.action)} #{session['action_count']}")
         await _touch_session(session_id)
         if req.action in _SCREEN_CHANGING_ACTIONS:
             if session.get("recording"):

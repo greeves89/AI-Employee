@@ -25,6 +25,7 @@ from app.core.app_sharing import (
     is_app_owner,
     shared_projects_for_user,
 )
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent import Agent
@@ -521,7 +522,8 @@ async def create_app_share(
               "expires_at": expires_at.isoformat() if expires_at else None},
     ))
     await db.commit()
-    logger.info("[Apps] share created project=%s scope=%s by=%s", project, scope, user.id)
+    logger.info("[Apps] share created project=%s scope=%s by=%s",
+                scrub_log(project), scrub_log(scope), user.id)
 
     out = _share_dict(s)
     if token:

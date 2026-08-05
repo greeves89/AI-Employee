@@ -31,6 +31,7 @@ from app.core.app_sharing import (
     is_app_owner,
     resolve_app_access,
 )
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, optional_auth, require_auth
 from app.models.agent import Agent
@@ -314,7 +315,7 @@ async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> 
             "find /workspace -maxdepth 3 -name 'docker-compose.yml' -o -name 'docker-compose.yaml' -o -name 'compose.yml' -o -name 'compose.yaml'",
         )
     except Exception as e:  # noqa: BLE001 — container not running / unreachable
-        logger.info("discover_apps: workspace not reachable for agent %s: %s", agent_id, e)
+        logger.info("discover_apps: workspace not reachable for agent %s: %s", scrub_log(agent_id), e)
         return {"apps": []}
 
     if exit_code != 0 or not stdout.strip():
@@ -455,12 +456,12 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
     )
 
     if exit_code != 0:
-        logger.error(f"Failed to start {project_name}: {output}")
+        logger.error(f"Failed to start {scrub_log(project_name)}: {output}")
         raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
     _connect_containers_to_network(docker, project_name)
     containers = _get_project_containers(docker, project_name)
-    logger.info(f"Docker app started: {project_name} ({len(containers)} containers)")
+    logger.info(f"Docker app started: {scrub_log(project_name)} ({len(containers)} containers)")
     return {"project": project_name, "status": "running", "containers": containers,
             "url": _app_public_url(agent_id, containers), "output": output}
 
@@ -473,12 +474,12 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
     workspace_volume = agent.volume_name or f"workspace-{agent_id}"
     compose_file = _resolve_compose_file(docker, agent, path, require=False)
 
-    logger.info(f"Stopping Docker app: {project_name}")
+    logger.info(f"Stopping Docker app: {scrub_log(project_name)}")
     exit_code, output = await asyncio.to_thread(
         _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
     )
     if exit_code != 0:
-        logger.warning(f"Compose down warning for {project_name}: {output}")
+        logger.warning(f"Compose down warning for {scrub_log(project_name)}: {output}")
     return {"project": project_name, "status": "stopped", "output": output}
 
 
