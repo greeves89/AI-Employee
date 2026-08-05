@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.148.0] — 2026-08-05
+
+### Added
+- **Die Verzeichnis-ID (Mandant) lässt sich in den Einstellungen eintragen.** Nach dem Anlegen einer App-Registrierung schlug der Login mit `AADSTS50194` fehl: Die App ist Single-Tenant, die Anmeldung lief aber über den `/common`-Endpunkt. Der Code konnte das längst — `apply_tenant()` setzt die ID in Anmelde- und Token-URL ein und wird vom SSO-Login aufgerufen. Es gab nur kein Feld dafür; in der Oberfläche standen ausschliesslich Client-ID und Secret.
+
+  Ergänzt an allen vier nötigen Stellen: Eingabefeld mit Erklärung (inkl. Fehlercode und Fundort im Azure-Portal), Request-Schema, Mapping im PATCH-Endpunkt und Rückgabe an die Oberfläche. Die letzten beiden waren dieselbe Doppel-Falle wie bei der Stimme — die erlaubten Schlüssel stehen an zwei Stellen, und ohne beide wird der Wert beim Speichern still verworfen.
+
+  Hinweis im Feld: Eine feste Mandanten-ID bedeutet zugleich, dass sich nur Konten der eigenen Organisation anmelden dürfen. Bei `/common` gilt die E-Mail-Adresse aus Graph nicht als verifiziert — sonst wäre eine Kontoübernahme per E-Mail-Abgleich über Mandantengrenzen möglich.
+
+### Deployment
+- Orchestrator (Restart) + Frontend (Rebuild).
+
 ## [1.147.2] — 2026-08-05
 
 ### Fixed

@@ -256,6 +256,7 @@ export interface Settings {
   // OAuth integrations
   has_google_oauth: boolean;
   has_microsoft_oauth: boolean;
+  oauth_microsoft_tenant_id?: string;
   has_apple_oauth: boolean;
   msgraph_mcp_external_enabled: boolean;
   // Security / Login

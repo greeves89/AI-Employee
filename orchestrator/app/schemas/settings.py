@@ -35,6 +35,7 @@ class SettingsUpdate(BaseModel):
     oauth_google_client_id: str | None = None
     oauth_google_client_secret: str | None = None
     oauth_microsoft_client_id: str | None = None
+    oauth_microsoft_tenant_id: str | None = None   # Verzeichnis-ID; ohne sie /common → AADSTS50194
     oauth_microsoft_client_secret: str | None = None
     oauth_apple_client_id: str | None = None
     oauth_apple_team_id: str | None = None
@@ -137,6 +138,7 @@ class SettingsResponse(BaseModel):
     # OAuth integrations
     has_google_oauth: bool = False
     has_microsoft_oauth: bool = False
+    oauth_microsoft_tenant_id: str = "common"
     has_apple_oauth: bool = False
     msgraph_mcp_external_enabled: bool = False
     # Lifecycle

@@ -159,6 +159,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [googleClientId, setGoogleClientId] = useState("");
   const [googleClientSecret, setGoogleClientSecret] = useState("");
   const [microsoftClientId, setMicrosoftClientId] = useState("");
+  // Verzeichnis-ID (Mandant). Ohne sie laeuft die Anmeldung ueber /common, und das
+  // lehnt Entra fuer Single-Tenant-Apps ab (AADSTS50194).
+  const [microsoftTenantId, setMicrosoftTenantId] = useState("");
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
   // On-prem Exchange (EWS) admin config
   const [exchangeServerUrl, setExchangeServerUrl] = useState("");
@@ -477,6 +480,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       if (googleClientId) data.oauth_google_client_id = googleClientId;
       if (googleClientSecret) data.oauth_google_client_secret = googleClientSecret;
       if (microsoftClientId) data.oauth_microsoft_client_id = microsoftClientId;
+      if (microsoftTenantId) data.oauth_microsoft_tenant_id = microsoftTenantId.trim();
       if (microsoftClientSecret) data.oauth_microsoft_client_secret = microsoftClientSecret;
       if (appleClientId) data.oauth_apple_client_id = appleClientId;
       if (appleTeamId) data.oauth_apple_team_id = appleTeamId;
@@ -1571,6 +1575,24 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     placeholder="Client secret value..."
                     mono
                   />
+                  <div className="col-span-2">
+                    <CredentialField
+                      label="Verzeichnis-ID (Mandant)"
+                      value={microsoftTenantId}
+                      onChange={setMicrosoftTenantId}
+                      placeholder={settings?.oauth_microsoft_tenant_id && settings.oauth_microsoft_tenant_id !== "common"
+                        ? settings.oauth_microsoft_tenant_id
+                        : "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx oder firma.de"}
+                      mono
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground/60">
+                      Pflicht bei einer Single-Tenant-App: ohne sie läuft die Anmeldung über
+                      „/common", und Entra lehnt das ab (AADSTS50194). Im Azure-Portal unter
+                      der App-Registrierung als „Verzeichnis-ID (Mandant)". Eine feste
+                      Mandanten-ID heißt zugleich: nur Konten eurer Organisation dürfen sich
+                      anmelden.
+                    </p>
+                  </div>
                 </div>
 
                 {settings?.has_microsoft_oauth && (
