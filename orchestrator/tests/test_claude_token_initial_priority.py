@@ -118,5 +118,53 @@ class TestClaudeTokenInitialPriority(unittest.TestCase):
         self.assertTrue(found, "_MIN_PLAUSIBLE_TOKEN_LEN constant must be defined")
 
 
+class TestNoTokenBytesLogged(unittest.TestCase):
+    """Regression guard for #513 (py/clear-text-logging-sensitive-data): the
+    token-loading functions must not log any part of the token itself — not a
+    ``token[-8:]`` suffix, not a captured ``old_suffix`` / ``token_suffix``.
+    Even 8 real characters of an OAuth token are secret material in logs.
+    """
+
+    _LOG_METHODS = {"info", "warning", "error", "debug", "critical", "exception"}
+    _FORBIDDEN_NAMES = {"old_suffix", "token_suffix"}
+
+    def _logger_call_args(self, fn: ast.AST):
+        for n in ast.walk(fn):
+            if (
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr in self._LOG_METHODS
+                and isinstance(n.func.value, ast.Name)
+                and n.func.value.id == "logger"
+            ):
+                for arg in n.args:
+                    yield arg
+
+    def _assert_no_token_bytes(self, fn_name: str):
+        fn = _find_func(_module(), fn_name)
+        for arg in self._logger_call_args(fn):
+            for sub in ast.walk(arg):
+                # token[...] slice anywhere inside a log argument
+                if isinstance(sub, ast.Subscript) and isinstance(sub.value, ast.Name):
+                    self.assertNotEqual(
+                        sub.value.id, "token",
+                        f"{fn_name}: logger call must not embed a token slice "
+                        "(clear-text-logging of secret) — issue #513",
+                    )
+                # a captured token suffix reused in the log message
+                if isinstance(sub, ast.Name):
+                    self.assertNotIn(
+                        sub.id, self._FORBIDDEN_NAMES,
+                        f"{fn_name}: logger call must not reference '{sub.id}' "
+                        "(derived token bytes) — issue #513",
+                    )
+
+    def test_refresh_access_token_logs_no_token_bytes(self):
+        self._assert_no_token_bytes("refresh_access_token")
+
+    def test_write_initial_token_logs_no_token_bytes(self):
+        self._assert_no_token_bytes("write_initial_token")
+
+
 if __name__ == "__main__":
     unittest.main()

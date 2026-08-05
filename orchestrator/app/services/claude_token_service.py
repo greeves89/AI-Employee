@@ -122,18 +122,12 @@ class ClaudeTokenService:
         token_suffix = token[-8:]
 
         if token_suffix != self._last_token_suffix:
-            old_suffix = (
-                settings.claude_code_oauth_token[-8:]
-                if settings.claude_code_oauth_token
-                else "n/a"
-            )
             settings.claude_code_oauth_token = token
             self._last_token_suffix = token_suffix
             self._write_shared_token(token)
-            logger.info(
-                f"Claude token updated from {source} "
-                f"(…{old_suffix} → …{token_suffix})"
-            )
+            # Never log any part of the token itself. This branch only runs on
+            # rotation, so the message alone already signals that it changed.
+            logger.info(f"Claude token updated from {source}")
 
         return True
 
@@ -173,7 +167,7 @@ class ClaudeTokenService:
             settings.claude_code_oauth_token = token
             self._last_token_suffix = token[-8:]
             self._write_shared_token(token)
-            logger.info(f"Loaded initial Claude token from {source} (…{token[-8:]})")
+            logger.info(f"Loaded initial Claude token from {source}")
 
     def _write_shared_token(self, access_token: str) -> None:
         """Write token to shared volume for agent containers.
