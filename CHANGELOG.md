@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.146.0] — 2026-08-05
+
+### Added
+- **Wiederkehrende Zeitpläne lassen sich per Sprache anhalten.** „Pausier den Watcher" wirkte bisher nicht: Im Gespräch gab es nur `cancel_task`, und das beendet den **gerade laufenden Durchlauf**, nicht den Zeitplan. Der Agent nahm es trotzdem und meldete „Der OpenWebUI-Watcher ist jetzt pausiert" — fünf Minuten später lief er wieder, und alle elf Zeitpläne standen unverändert auf aktiv.
+
+  Neues Werkzeug `manage_schedules`: auflisten, pausieren, wieder starten. Der Prompt leitet Pausier-Wünsche dorthin und benennt den Denkfehler ausdrücklich.
+
+### Changed
+- **Was der Agent nicht kann, sagt er.** Neue Grundregel: Fehlt für einen Wunsch das Werkzeug, sagt er genau das („das kann ich per Sprache nicht, im Chat schon") — statt ein anderes Werkzeug als Ersatz zu nehmen und Erfolg zu melden. Das war die Wurzel unter der Falschmeldung und deckt auch künftige Lücken ab, die wir heute noch nicht kennen.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.145.1] — 2026-08-05
 
 ### Fixed

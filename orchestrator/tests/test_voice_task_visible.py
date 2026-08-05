@@ -306,3 +306,42 @@ class EngineSafeTextTests(unittest.TestCase):
 
     def test_injections_go_through_it_too(self):
         self.assertIn("_engine_safe", _method_src("_inject_when_quiet"))
+
+
+class SchedulePauseTests(unittest.TestCase):
+    """Wiederkehrende Auftraege muss man per Sprache wirklich anhalten koennen.
+
+    Vorfall 2026-08-05: „du solltest ihn noch pausieren" → „Der OpenWebUI-Watcher
+    ist jetzt pausiert." Er war es nicht — alle 11 Zeitplaene standen weiter auf
+    enabled. Der Agent hatte `cancel_task` genommen (beendet nur den laufenden
+    Durchlauf) und Erfolg gemeldet, weil ihm das richtige Werkzeug fehlte.
+    """
+
+    def setUp(self):
+        from app.services.realtime_voice_session import _system_prompt
+        self.p = _system_prompt("TestBot", "Rolle", "de")
+
+    def test_the_tool_exists(self):
+        from app.services.realtime_voice_session import MANAGE_SCHEDULES_TOOL
+        spec = MANAGE_SCHEDULES_TOOL["toolSpec"]
+        self.assertEqual(spec["name"], "manage_schedules")
+        actions = spec["inputSchema"]["json"]["properties"]["action"]["enum"]
+        self.assertEqual(set(actions), {"list", "pause", "resume"})
+
+    def test_the_prompt_routes_pausing_there(self):
+        self.assertIn("manage_schedules", self.p)
+        self.assertIn("pausier", self.p.lower())
+
+    def test_the_prompt_warns_against_the_wrong_tool(self):
+        """Genau der Denkfehler, der zur Falschmeldung fuehrte."""
+        self.assertIn("GERADE laufenden Durchlauf", self.p)
+
+    def test_missing_capability_must_be_spoken(self):
+        """Die allgemeine Regel — sie deckt auch kuenftige Luecken ab."""
+        self.assertIn("WAS DU NICHT KANNST, SAGST DU", self.p)
+        self.assertIn("NIEMALS", self.p)
+
+    def test_handler_is_wired(self):
+        src = inspect.getsource(RealtimeVoiceSession._handle_tool_use)
+        self.assertIn("manage_schedules", src)
+        self.assertIn("_manage_schedules", src)

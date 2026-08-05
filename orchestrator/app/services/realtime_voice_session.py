@@ -531,6 +531,29 @@ VOICE_HELP_TOOL = {
     }
 }
 
+MANAGE_SCHEDULES_TOOL = {
+    "toolSpec": {
+        "name": "manage_schedules",
+        "description": (
+            "Meine wiederkehrenden Zeitplaene (z.B. 'alle 5 Minuten', 'taeglich 7 Uhr') "
+            "auflisten, pausieren oder wieder aktivieren. NUTZE DAS, wenn der Nutzer "
+            "einen wiederkehrenden Auftrag stoppen/pausieren/anhalten will — cancel_task "
+            "beendet nur den GERADE laufenden Durchlauf, der Zeitplan startet danach "
+            "wieder. Ohne Namen liste ich alle auf."
+        ),
+        "inputSchema": {"json": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "pause", "resume"],
+                           "description": "list = auflisten, pause = anhalten, resume = wieder starten"},
+                "name": {"type": "string",
+                         "description": "Teil des Zeitplan-Namens, z.B. 'Watcher' oder 'Morgen-Report'"},
+            },
+            "required": ["action"],
+        }},
+    }
+}
+
 PLAN_TASK_TOOL = {
     "toolSpec": {
         "name": "plan_task",
@@ -1075,6 +1098,14 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "hierüber, das mache ich direkt mit den Lese-Tools oben.\n"
         "• Nutzer will STOPPEN/ABBRECHEN ('stopp', 'brich ab', 'lass das', 'hör auf damit') → "
         "cancel_task (stoppt meine laufende Arbeit + bricht eingeplante Aufgaben ab). Kurz bestätigen.\n"
+        "• Nutzer will einen WIEDERKEHRENDEN Auftrag anhalten ('pausier den Watcher', 'stell den "
+        "täglichen Report ab', 'welche Zeitpläne hast du') → manage_schedules. ACHTUNG: cancel_task "
+        "beendet nur den GERADE laufenden Durchlauf — der Zeitplan startet danach wieder. Wer "
+        "'pausiert' sagt und nur cancel_task nutzt, belügt den Nutzer.\n"
+        "WAS DU NICHT KANNST, SAGST DU: Gibt es für einen Wunsch kein Werkzeug, sag genau das — "
+        "kurz und ohne Ausrede ('das kann ich per Sprache nicht, im Chat schon'). Nimm NIEMALS "
+        "ein anderes Werkzeug als Ersatz und melde dann Erfolg. Lieber ein ehrliches Nein als eine "
+        "Bestätigung, auf die sich niemand verlassen kann.\n"
         "• Nutzer fragt, was du kannst ('was kannst du', 'was kann ich sagen', 'wobei hilfst du') → "
         "voice_help (kurzer Überblick zum Aussprechen).\n"
         "Smalltalk, Begrüßungen und Rückfragen beantwortest du selbst ohne Tool.\n"
@@ -1251,7 +1282,7 @@ class RealtimeVoiceSession:
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
-            ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
+            ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
         ]
         sys_prompt = _system_prompt(agent_name, agent_role, language)
@@ -1661,6 +1692,10 @@ class RealtimeVoiceSession:
             return
         if name == "get_agent_activity":
             await self._respond(tool_use_id, await self._fast_activity())
+            return
+        if name == "manage_schedules":
+            await self._respond(tool_use_id, await self._manage_schedules(
+                str(args.get("action") or "list"), str(args.get("name") or "")))
             return
         if name == "get_delegated_tasks":
             await self._respond(tool_use_id, await self._delegated_tasks_summary())
@@ -3785,6 +3820,61 @@ class RealtimeVoiceSession:
         # haengt das Modell sie an den laufenden Satz an — sie steht dann im Text, wird
         # aber nie gesprochen. Genau so ging „Aufgabe zu Alison Brie ist fertig" unter.
         await self._inject_when_quiet(note)
+
+    async def _manage_schedules(self, action: str, name: str = "") -> str:
+        """Wiederkehrende Zeitplaene auflisten, pausieren, wieder starten.
+
+        Vorher gab es im Gespraech nur `cancel_task` — das beendet den GERADE
+        laufenden Durchlauf, nicht den Zeitplan. Der Agent nahm es trotzdem und
+        meldete „Der Watcher ist jetzt pausiert"; fuenf Minuten spaeter lief er
+        wieder. Jetzt gibt es das richtige Werkzeug, statt das falsche zu beugen.
+        """
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.schedule import Schedule
+        act = (action or "list").strip().lower()
+        needle = (name or "").strip().lower()
+        try:
+            async with async_session_factory() as db:
+                rows = (await db.execute(
+                    select(Schedule).where(Schedule.agent_id == self.agent_id)
+                )).scalars().all()
+                if not rows:
+                    return "Für mich sind keine wiederkehrenden Zeitpläne eingerichtet."
+
+                if act == "list":
+                    lines = [
+                        f"- {r.name} ({'aktiv' if r.enabled else 'pausiert'})"
+                        for r in rows
+                    ]
+                    return ("Meine Zeitpläne:\n" + "\n".join(lines) +
+                            "\nSag mir, welchen ich pausieren oder wieder starten soll.")
+
+                if not needle:
+                    return ("Welchen Zeitplan meinst du? Sag mir einen Teil des Namens — "
+                            "mit action=list zähle ich sie dir auf.")
+                hits = [r for r in rows if needle in (r.name or "").lower()]
+                if not hits:
+                    return (f"Einen Zeitplan mit \u201e{name}\u201c habe ich nicht. "
+                            "Frag mich mit action=list nach der Liste.")
+                if len(hits) > 1:
+                    return ("Das passt auf mehrere: " + ", ".join(h.name for h in hits) +
+                            ". Welchen genau meinst du?")
+
+                target = hits[0]
+                want = (act == "resume")
+                if target.enabled == want:
+                    return (f"\u201e{target.name}\u201c ist bereits "
+                            f"{'aktiv' if want else 'pausiert'} — da ändert sich nichts.")
+                target.enabled = want
+                await db.commit()
+                return (f"\u201e{target.name}\u201c ist jetzt "
+                        f"{'wieder aktiv' if want else 'pausiert'}. "
+                        "Bestätige das kurz in der ICH-Form.")
+        except Exception:  # noqa: BLE001
+            logger.warning("voice manage_schedules failed agent=%s", self.agent_id, exc_info=True)
+            return "An meine Zeitpläne komme ich gerade nicht ran."
 
     async def _cancel_task(self) -> str:
         """Stop ongoing work by voice: signal the agent to stop the current chat turn
