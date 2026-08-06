@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.6] — 2026-08-06
+
+### Fixed
+- **Ein Task, der vor Mitternacht begann und über den Tageswechsel hinaus lief (z. B. noch
+  aktiv), konnte im Tageskalender eines Agenten mit negativer Position über dem sichtbaren
+  Raster landen** — dadurch wirkte er kürzer, als er wirklich war, statt korrekt am
+  Tagesbeginn (00:00) zu starten. Start-/Endzeit werden jetzt auf den sichtbaren Tag
+  begrenzt, bevor Position und Höhe berechnet werden.
+
+### Changed
+- **Stunden-Zeilen im Tageskalender eines Agenten deutlich größer** (56px → 88px pro
+  Stunde), damit die tatsächliche Länge von Aufgaben klar erkennbar ist statt gestaucht.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.153.5] — 2026-08-06
 
 ### Fixed

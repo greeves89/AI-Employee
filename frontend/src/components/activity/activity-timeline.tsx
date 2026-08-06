@@ -16,7 +16,7 @@ const HOUR_MARKS = [0, 6, 12, 18, 24];
 const MIN_BAR_PX = 10;
 // Vertical (single-agent) view: pixel height of one hour row, and the
 // minimum height of a task block so a near-instant task still reads as a block.
-const HOUR_PX = 56;
+const HOUR_PX = 88;
 const MIN_BLOCK_PX = 22;
 // Vertical gap between two blocks that are back-to-back in time (e.g. a
 // schedule that fires every few minutes) — without it, adjacent short blocks
@@ -368,8 +368,18 @@ function DayAgenda({
           })}
 
           {laned.map((t) => {
-            const startedMs = new Date(t.started_at).getTime() - dayStart.getTime();
-            const endedMs = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - dayStart.getTime();
+            // Clamp to [0, DAY_MS]: a task that started yesterday (still running
+            // past midnight) would otherwise get a negative `top` and render
+            // partly or entirely above/below the visible grid — showing LESS of
+            // it than its true duration, not more. Clamping shows exactly the
+            // portion that falls on this calendar day, anchored correctly at
+            // 00:00/24:00 instead of drifting off-grid.
+            const startedMs = Math.min(
+              Math.max(new Date(t.started_at).getTime() - dayStart.getTime(), 0),
+              DAY_MS
+            );
+            const endedMsRaw = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - dayStart.getTime();
+            const endedMs = Math.min(Math.max(endedMsRaw, 0), DAY_MS);
             const top = (startedMs / DAY_MS) * 24 * HOUR_PX + BLOCK_GAP_PX / 2;
             const height = Math.max(
               ((endedMs - startedMs) / DAY_MS) * 24 * HOUR_PX - BLOCK_GAP_PX,
