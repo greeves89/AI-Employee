@@ -17,7 +17,11 @@ const MIN_BAR_PX = 10;
 // Vertical (single-agent) view: pixel height of one hour row, and the
 // minimum height of a task block so a near-instant task still reads as a block.
 const HOUR_PX = 56;
-const MIN_BLOCK_PX = 20;
+const MIN_BLOCK_PX = 22;
+// Vertical gap between two blocks that are back-to-back in time (e.g. a
+// schedule that fires every few minutes) — without it, adjacent short blocks
+// touch with zero seam and read as one solid wall instead of distinct runs.
+const BLOCK_GAP_PX = 3;
 
 const statusStyle: Record<string, string> = {
   running: "bg-blue-500/70 border-blue-400",
@@ -366,8 +370,11 @@ function DayAgenda({
           {laned.map((t) => {
             const startedMs = new Date(t.started_at).getTime() - dayStart.getTime();
             const endedMs = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - dayStart.getTime();
-            const top = (startedMs / DAY_MS) * 24 * HOUR_PX;
-            const height = Math.max(((endedMs - startedMs) / DAY_MS) * 24 * HOUR_PX, MIN_BLOCK_PX);
+            const top = (startedMs / DAY_MS) * 24 * HOUR_PX + BLOCK_GAP_PX / 2;
+            const height = Math.max(
+              ((endedMs - startedMs) / DAY_MS) * 24 * HOUR_PX - BLOCK_GAP_PX,
+              MIN_BLOCK_PX
+            );
             const laneWidthPct = 100 / t.laneCount;
             const costSuffix = t.cost_usd != null ? ` — ${formatCost(t.cost_usd)}` : "";
             const durationSuffix = t.duration_ms ? ` — ${formatDuration(t.duration_ms)}` : "";

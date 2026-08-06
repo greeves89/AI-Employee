@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.4] — 2026-08-06
+
+### Fixed
+- **Tageskalender eines Agenten wirkte bei häufig feuernden Zeitplänen wie eine massive
+  Wand.** Kurze, zeitlich direkt aufeinanderfolgende Aufgaben (z. B. ein stündlicher
+  Feedback-Monitor) hatten keinen Abstand zueinander und verschmolzen optisch zu einem
+  einzigen Block. Jetzt bekommt jeder Block einen kleinen Abstand nach oben und unten, so
+  dass auch dicht getaktete Zeitpläne als einzelne, unterscheidbare Läufe erkennbar bleiben.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.153.3] — 2026-08-06
 
 ### Fixed
