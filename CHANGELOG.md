@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.7] — 2026-08-06
+
+### Changed
+- **Die globale Activity-Übersicht (mehrere Agenten nebeneinander) bekam bisher nicht
+  dieselbe Lesbarkeits-Politur wie der neue Einzelagenten-Kalender.** Zeilen sind jetzt
+  höher (48px → 64px), Balken breiter (10px → 34px Mindestbreite) und zeigen Titel +
+  Startzeit direkt auf dem Balken statt nur beim Hovern — auch bei dicht getakteten
+  Zeitplänen bleiben einzelne Läufe als eigene, anklickbare Blöcke erkennbar statt als
+  Haarrisse.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.153.6] — 2026-08-06
 
 ### Fixed

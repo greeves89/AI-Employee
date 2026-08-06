@@ -11,9 +11,9 @@ import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar } fro
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MARKS = [0, 6, 12, 18, 24];
 // Every task bar in the horizontal (multi-agent) view is at least this wide,
-// regardless of duration — a task that lasted a few seconds would otherwise
-// render as a hairline nobody can see or reliably click.
-const MIN_BAR_PX = 10;
+// regardless of duration — wide enough to fit a truncated title inline, not
+// just a colored hairline that only means something on hover.
+const MIN_BAR_PX = 34;
 // Vertical (single-agent) view: pixel height of one hour row, and the
 // minimum height of a task block so a near-instant task still reads as a block.
 const HOUR_PX = 88;
@@ -211,13 +211,13 @@ function MultiAgentStrip({
           </div>
         ))}
       </div>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {agents.map((a) => (
           <div key={a.agent_id} className="flex items-center gap-3">
             <div className="w-44 shrink-0 truncate text-sm font-medium" title={a.name}>
               {a.name}
             </div>
-            <div className="relative h-12 flex-1 overflow-hidden rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]">
+            <div className="relative h-16 flex-1 overflow-hidden rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]">
               {HOUR_MARKS.slice(1, -1).map((h) => (
                 <div key={h} className="absolute bottom-0 top-0 w-px bg-foreground/[0.04]" style={{ left: `${(h / 24) * 100}%` }} />
               ))}
@@ -236,12 +236,14 @@ function MultiAgentStrip({
                     key={t.task_id}
                     onClick={() => router.push(`/tasks/${t.task_id}`)}
                     className={cn(
-                      "group absolute bottom-1 top-1 rounded-md border transition-opacity hover:z-10 hover:opacity-80",
+                      "group absolute bottom-1 top-1 overflow-hidden rounded-md border px-1.5 py-1 text-left transition-opacity hover:z-10 hover:opacity-80",
                       statusStyle[t.status] || "border-foreground/30 bg-foreground/20",
                       t.status === "running" && "animate-pulse"
                     )}
                     style={{ left: `${left}%`, width: `${width}%`, minWidth: `${MIN_BAR_PX}px` }}
                   >
+                    <div className="truncate text-[10px] font-medium leading-tight text-foreground">{t.title}</div>
+                    <div className="truncate text-[9px] leading-tight text-foreground/70">{fmtTime(t.started_at)}</div>
                     <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-foreground/10 bg-card px-2 py-1 text-left text-[11px] shadow-lg group-hover:block">
                       <div className="max-w-[280px] truncate font-medium text-foreground">{t.title}</div>
                       <div className="text-muted-foreground/70">{timeRange} · {t.status}{durationSuffix}{costSuffix}</div>
