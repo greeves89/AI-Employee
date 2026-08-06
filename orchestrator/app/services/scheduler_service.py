@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -903,3 +904,64 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
         except Exception as e:
             logger.warning("[Scheduler] Invalid cron expression '%s': %s — falling back to interval", schedule.cron_expression, e)
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
+
+
+# Generous cap on enumerated fire times per schedule per call — protects against
+# a pathological cron expression (e.g. "* * * * *" over a wide range) or a huge
+# requested range; a real day-timeline range never needs anywhere near this many.
+_MAX_OCCURRENCES = 1000
+
+
+def schedule_occurrences(schedule: "Schedule", range_start: datetime, range_end: datetime) -> list[datetime]:
+    """All fire times (UTC) of `schedule` within [range_start, range_end).
+
+    Purely mathematical from cron_expression/interval_seconds — independent of
+    whether the schedule actually fired (Task rows are the record of that; this
+    is "the plan"). Used to render planned-run markers on the activity
+    timeline, including for past days where the plan may differ from what
+    actually ran (schedule was paused/changed since).
+    """
+    if range_end <= range_start:
+        return []
+    occurrences: list[datetime] = []
+
+    if schedule.cron_expression and _CRONITER_AVAILABLE:
+        try:
+            tz_name = getattr(schedule, "timezone", None) or "UTC"
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz = timezone.utc
+            cron = croniter(schedule.cron_expression, range_start.astimezone(tz))
+            cron.get_prev(datetime)  # step back so a fire time exactly at range_start isn't missed
+            for _ in range(_MAX_OCCURRENCES):
+                nxt = cron.get_next(datetime).astimezone(timezone.utc)
+                if nxt >= range_end:
+                    break
+                if nxt >= range_start:
+                    occurrences.append(nxt)
+        except Exception as e:
+            logger.warning(
+                "[Scheduler] Invalid cron expression '%s' while listing occurrences: %s",
+                schedule.cron_expression, e,
+            )
+    elif schedule.interval_seconds and schedule.interval_seconds > 0 and schedule.next_run_at:
+        step_s = schedule.interval_seconds
+        anchor = schedule.next_run_at
+        if anchor.tzinfo is None:  # SQLite drops tzinfo on round-trip; Postgres never does
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        # Jump straight to the first candidate at-or-before range_start via
+        # integer arithmetic instead of stepping one interval at a time —
+        # range_start can be arbitrarily far from the anchor (e.g. a past day
+        # for a schedule created recently).
+        steps_to_start = math.floor((range_start - anchor).total_seconds() / step_s)
+        t = anchor + timedelta(seconds=steps_to_start * step_s)
+        while t < range_start:
+            t += timedelta(seconds=step_s)
+        for _ in range(_MAX_OCCURRENCES):
+            if t >= range_end:
+                break
+            occurrences.append(t)
+            t += timedelta(seconds=step_s)
+
+    return occurrences

@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -522,6 +522,18 @@ export async function getTasks(
   if (status) params.set("status", status);
   if (agentId) params.set("agent_id", agentId);
   return fetchJSON(`${getBase()}/tasks/?${params}`);
+}
+
+export async function getActivityTimeline(
+  start: Date,
+  end: Date,
+  agentId?: string
+): Promise<ActivityTimelineResponse> {
+  const params = new URLSearchParams();
+  params.set("start", start.toISOString());
+  params.set("end", end.toISOString());
+  if (agentId) params.set("agent_id", agentId);
+  return fetchJSON(`${getBase()}/activity/timeline?${params}`);
 }
 
 export async function getTask(id: string): Promise<Task> {
