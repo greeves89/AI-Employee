@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.150.0] — 2026-08-06
+
+### Changed
+- **Telegram-Antworten entstehen sichtbar, statt am Stück zu erscheinen.** Bisher sammelte der Bot drei Sekunden und schickte dann eine **neue** Nachricht — man wartete lange und bekam alles auf einmal, oft als Kette mehrerer Nachrichten. Jetzt wird **eine** Nachricht gesendet und laufend bearbeitet: Der Text wächst mit, wie man es aus anderen Chat-Bots kennt.
+
+  Die Textstücke lagen längst an — `chat_handler` veröffentlicht Deltas, nicht fertige Blöcke. Genutzt hat der Bot sie nur nicht.
+
+  Während ein Werkzeug läuft, hängt eine kursive Zeile unter dem Text („nutzt gerade Bash…"); sobald wieder Text kommt, verschwindet sie. Bearbeitungen sind auf eine pro 1,3 Sekunden begrenzt (Telegram drosselt sonst), und über 4000 Zeichen greift wieder die Stückelung, weil Telegram längere Nachrichten nicht bearbeiten kann.
+
+### Security
+- **Kein Live-Bild am DLP-Filter vorbei.** Der Egress-Filter prüft den **fertigen** Text; ein Zwischenstand würde ihn umgehen und ein Secret wäre sichtbar, bevor der Filter greift. Bei aktivem DLP wird deshalb nicht live bearbeitet, sondern erst am Schluss gesendet. Lässt sich der Filterstatus nicht lesen, gilt er als aktiv (fail-closed).
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.149.0] — 2026-08-05
 
 ### Added

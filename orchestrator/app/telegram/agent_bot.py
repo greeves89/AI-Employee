@@ -741,6 +741,10 @@ class TelegramAgentBot:
 
             response_buffer = ""
             full_response = ""  # whole turn's text — for the voice-first reply
+            live_status = ""    # kursive Arbeitszeile unter dem Text
+            if not hasattr(self, "_live"):
+                self._live: dict = {}
+            self._live.pop(chat_id, None)
             last_flush = asyncio.get_running_loop().time()
 
             # Detect agent mode: custom_llm streams slower → flush per sentence
@@ -781,17 +785,16 @@ class TelegramAgentBot:
                         _chunk = str(event_data.get("text", ""))
                         response_buffer += _chunk
                         full_response += _chunk
+                        live_status = ""  # es kommt wieder Text → Arbeitszeile weg
+                        await self._live_update(chat_id, full_response)
 
                     elif event_type == "tool_call":
-                        # Send whatever the agent wrote before the tool call
-                        # (e.g. "Moment, ich schaue nach..." — the agent decides the wording)
-                        if response_buffer.strip():
-                            try:
-                                await self._send_chunked(chat_id, response_buffer.strip())
-                            except Exception:
-                                pass
-                            response_buffer = ""
-                            last_flush = now
+                        # Frueher wurde hier abgeschickt und spaeter erneut — das ergab
+                        # eine Kette von Nachrichten. Jetzt bleibt alles in EINER, die
+                        # mitwaechst; das Werkzeug erscheint als Arbeitszeile darunter.
+                        _tool = str(event_data.get("tool") or "ein Werkzeug")
+                        live_status = f"nutzt gerade {_tool}…"
+                        await self._live_update(chat_id, full_response, status=live_status)
                         # Show typing indicator while tool runs
                         try:
                             await self.app.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -823,10 +826,11 @@ class TelegramAgentBot:
                                         full_response += _t
                                 except Exception:
                                     pass
-                        # Flush remaining buffer
-                        if response_buffer.strip():
-                            await self._send_chunked(chat_id, response_buffer.strip())
+                        # Live-Nachricht abschliessen: hier laeuft der DLP-Filter ueber
+                        # den FERTIGEN Text, und die Arbeitszeile verschwindet.
+                        await self._live_update(chat_id, full_response, final=True)
                         response_buffer = ""
+                        live_status = ""
                         last_flush = now
 
                         # Voice-first: if the user spoke, reply with voice too.
@@ -848,11 +852,13 @@ class TelegramAgentBot:
                         import re
                         # Check if buffer ends with a sentence (. ! ? followed by space/newline/end)
                         if re.search(r'[.!?]\s*$', response_buffer) or len(response_buffer.strip()) >= 500:
-                            await self._send_chunked(chat_id, response_buffer.strip())
+                            await self._live_update(chat_id, full_response, status=live_status)
                             response_buffer = ""
                             last_flush = now
                     elif len(response_buffer.strip()) >= MIN_CHUNK_SIZE:
-                        await self._send_chunked(chat_id, response_buffer.strip())
+                        # Cloud-Modelle: das Live-Update haelt die Nachricht schon aktuell;
+                        # hier nur die Uhr weiterstellen, damit nichts doppelt erscheint.
+                        await self._live_update(chat_id, full_response, status=live_status)
                         response_buffer = ""
                         last_flush = now
 
@@ -869,6 +875,105 @@ class TelegramAgentBot:
                 await redis.aclose()
             except Exception:
                 pass
+
+    async def _live_update(self, chat_id: int, text: str, *, status: str = "",
+                           final: bool = False) -> None:
+        """Eine Nachricht schreiben und dann FORTLAUFEND bearbeiten statt viele zu senden.
+
+        Vorher sammelte der Bot drei Sekunden lang und schickte dann eine neue
+        Nachricht — man wartete lange und bekam alles am Stueck. Jetzt steht die
+        Antwort sofort da und waechst mit, wie man es aus anderen Chat-Bots kennt.
+
+        `status` ist eine kursive Zeile („nutzt gerade Bash"), die nur waehrend der
+        Arbeit unter dem Text haengt und am Ende verschwindet.
+
+        SICHERHEIT: Zwischenstaende gehen NICHT durch den DLP-Filter — der prueft
+        den fertigen Text. Ist DLP aktiv, wird deshalb nicht live bearbeitet,
+        sondern erst am Schluss gesendet; sonst waere ein Secret sichtbar, bevor
+        der Filter greift.
+        """
+        state = self._live.setdefault(chat_id, {"id": None, "shown": "", "last": 0.0})
+        body = (text or "").strip()
+        shown = body + (f"\n\n_{status}_" if status and not final else "")
+
+        if final:
+            # Fertiger Text: DLP pruefen, dann die Live-Nachricht abschliessen.
+            self._live.pop(chat_id, None)
+            if not body:
+                if state["id"]:
+                    try:
+                        await self.app.bot.delete_message(chat_id, state["id"])
+                    except Exception:
+                        pass
+                return
+            if state["id"] and len(body) <= 4000:
+                checked = await self._dlp_text(body)
+                if checked is None:
+                    try:
+                        await self.app.bot.edit_message_text(
+                            chat_id=chat_id, message_id=state["id"],
+                            text="[Nachricht durch DLP-Filter blockiert — sie enthielt "
+                                 "sensible Daten und wurde nicht gesendet.]")
+                    except Exception:
+                        pass
+                    return
+                if checked != state["shown"]:
+                    try:
+                        await self.app.bot.edit_message_text(
+                            chat_id=chat_id, message_id=state["id"], text=checked)
+                    except Exception:
+                        pass
+                return
+            # Zu lang oder noch keine Live-Nachricht → normaler Weg (mit DLP + Stueckelung)
+            if state["id"]:
+                try:
+                    await self.app.bot.delete_message(chat_id, state["id"])
+                except Exception:
+                    pass
+            await self._send_chunked(chat_id, body)
+            return
+
+        if await self._dlp_active():
+            return  # kein Live-Bild, solange der Filter den fertigen Text pruefen muss
+        if not shown or shown == state["shown"] or len(shown) > 4000:
+            return
+        now = asyncio.get_running_loop().time()
+        if state["id"] and now - state["last"] < 1.3:
+            return  # Telegram drosselt haeufige Bearbeitungen
+        try:
+            if state["id"]:
+                await self.app.bot.edit_message_text(
+                    chat_id=chat_id, message_id=state["id"], text=shown)
+            else:
+                sent = await self.app.bot.send_message(chat_id=chat_id, text=shown)
+                state["id"] = sent.message_id
+            state["shown"] = shown
+            state["last"] = now
+        except Exception:
+            pass  # „message is not modified" u. a. — nie den Turn stoeren
+
+    async def _dlp_active(self) -> bool:
+        """Laeuft der Egress-Filter? Dann keine Zwischenstaende zeigen.
+
+        Er prueft den FERTIGEN Text; ein Live-Bild wuerde ihn umgehen und ein
+        Secret waere sichtbar, bevor der Filter greift. Bei Zweifel: kein Live-Bild.
+        """
+        try:
+            from app.db.session import async_session_factory
+            from app.services.settings_service import SettingsService
+            async with async_session_factory() as db:
+                return (await SettingsService(db).get("dlp_enabled")) in ("true", "1", True)
+        except Exception:
+            return True  # fail-closed: im Zweifel lieber kein Live-Bild
+
+    async def _dlp_text(self, text: str) -> "str | None":
+        """Gepruefter Text, oder None wenn der Filter blockt."""
+        try:
+            from app.core.dlp import evaluate_egress
+            verdict = await evaluate_egress(text, agent_id=self.agent_id, channel="telegram")
+            return None if verdict.blocked else verdict.output
+        except Exception:
+            return text  # fail-open
 
     async def _send_chunked(self, chat_id: int, text: str) -> None:
         """Send text in Telegram-safe chunks (max 4096 chars).
