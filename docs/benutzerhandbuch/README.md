@@ -71,6 +71,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
+33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -93,7 +94,8 @@ unten gut zu sehen). Sie ist in **Gruppen** organisiert:
 ![Seitenleiste & Dashboard](screenshots/01-dashboard.png)
 
 - **Übersicht** — **Dashboard** (Startseite), **Agents** (deine Agenten), **Onboarding**,
-  **Tasks** (Aufträge), **Analytics** (Auswertungen).
+  **Tasks** (Aufträge), **Activity** (Tageskalender aller Agenten, siehe Kap. 33),
+  **Analytics** (Auswertungen).
 - **Zusammenarbeit** — **Knowledge** (Wissensablage), **Meeting Rooms**
   (Multi-Agent-Zusammenarbeit).
 - **Automation** — **Skill Marketplace**, **Triggers** (ereignisbasiert),
@@ -339,6 +341,21 @@ Tab **Settings** mit drei Unter-Tabs: **Allgemein · Integrationen · Command Po
   Intervallen**, ob es Arbeit gibt, und erledigt sie. Das **Intervall** wählst du
   (*15 min / 30 min / 1h / 2h / 4h*). Darunter siehst du letzte/nächste Prüfung und die
   Erfolgsquote. *Aus* lassen, wenn der Agent nur auf direkte Anweisung reagieren soll.
+
+  Über **Prompt & Anweisungen** ausklappen findest du zwei weitere Felder: die
+  **zusätzlichen Anweisungen** (Freitext, wird bei jedem proaktiven Lauf an die
+  Basis-Regeln angehängt — z. B. „Prüfe bei jedem Lauf das IT-Operations Second Brain
+  auf neue Druckerprobleme") und die **Erreichbarkeit des Ansprechpartners**
+  (Start-/Endzeit plus Zeitzone):
+
+  ![Proactive Mode · Erreichbarkeit](screenshots/29-proactive-contact-hours.png)
+  *Abbildung 29: Zeitfenster, in dem sich der Agent bei Rückfragen melden darf*
+
+  Ohne dieses Zeitfenster weiß der Agent nicht, ob er gerade stören darf — er behandelt
+  dann jeden proaktiven Lauf vorsichtshalber als „außerhalb der Arbeitszeit" und erledigt
+  nur Dinge, die keine Rückfrage brauchen. Zusätzlich meldet sich ein proaktiver Agent bei
+  Leerlauf höchstens **einmal pro Halbtag** von sich aus (Meldebremse) — auch wenn mehrere
+  Agenten gleichzeitig nichts zu tun haben, bekommst du nicht neun Nachrichten auf einmal.
 
 - **Autonomie-Level** — wie eigenständig der Agent **handeln** darf:
   - **L1 — Nur lesen & suchen**: darf nur lesen/recherchieren, **keine** verändernden
@@ -1339,6 +1356,48 @@ kennt, kommt an die App, auch von außerhalb eures Netzes. Deshalb:
 3. **Freigeben** → **Einzelne Person** → Kollegen auswählen → **Freigeben**.
 4. Der Kollege sieht die App ab sofort in seiner eigenen **Apps**-Übersicht und klickt
    dort auf **Öffnen** — ganz ohne Link-Verschicken.
+
+---
+
+## 33. Activity — Tageskalender aller Agenten
+
+**Menüpunkt:** Seitenleiste → **Activity** (Gruppe „Übersicht", zwischen Tasks und
+Analytics).
+
+Während der Activity-**Tab** auf der Agent-Detailseite (Kap. 5.3) den Verlauf **eines**
+Agenten zeigt, gibt dir diese Seite den Überblick über **alle** Agenten gleichzeitig — als
+Tagesleiste, eine Zeile pro Agent, mit geplanten Terminen und tatsächlich gelaufenen
+Aufgaben nebeneinander.
+
+![Activity-Übersicht](screenshots/28-activity.png)
+*Abbildung 28: Eine Zeile pro Agent — Rauten markieren geplante Termine, Balken zeigen
+tatsächliche Aufgaben*
+
+Oben navigierst du mit den **Pfeilen** einen Tag vor bzw. zurück; die Datumsanzeige in der
+Mitte zeigt den aktuell angezeigten Tag. Ist der angezeigte Tag nicht *heute*, erscheint
+rechts zusätzlich ein **Heute**-Knopf, der dich direkt zurückspringen lässt. Die Ansicht
+funktioniert für **vergangene** genauso wie für **zukünftige** Tage — auch ein Zeitplan,
+der erst morgen zum ersten Mal feuert, erscheint schon heute korrekt vorausberechnet.
+
+Jede Zeile zeigt für den gewählten Tag:
+
+- **Rautenförmige Marken** — geplante Termine aus den Zeitplänen des Agenten (Kap. 12),
+  errechnet aus dem Cron-Ausdruck bzw. Intervall. Maus darüberhalten zeigt Name und
+  Uhrzeit des Zeitplans.
+- **Farbige Balken** — tatsächlich gelaufene Aufgaben, positioniert nach Start- und
+  Endzeit. Grün = erfolgreich abgeschlossen, Rot = fehlgeschlagen, Blau (pulsierend) =
+  läuft gerade noch, Grau = abgebrochen. Läuft eine Aufgabe noch, reicht der Balken bis
+  zum aktuellen Zeitpunkt und wächst live weiter.
+- **Lücken** — Zeitabschnitte ohne Balken sind sichtbarer Leerlauf. Ein Agent, der z. B.
+  alle 5 Minuten prüft, zeigt sich als durchgehender Streifen aus vielen kurzen Balken;
+  ein Agent, der nur zweimal täglich aktiv wird, zeigt entsprechend viel freie Fläche.
+
+**Balken anklicken** → öffnet die bestehende Aufgaben-Detailansicht mit vollständiger
+Zeitreise (Werkzeugaufrufe, Zwischenschritte, Ergebnis) — dieselbe Ansicht wie beim
+Anklicken einer Aufgabe unter **Tasks** (Kap. 6).
+
+Die Seite zeigt nur Agenten, die du auch sonst siehst (deine eigenen plus mit dir
+geteilte) — Administratoren sehen alle Agenten.
 
 ---
 
