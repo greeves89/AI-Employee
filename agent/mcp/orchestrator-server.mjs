@@ -444,6 +444,82 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "trigger_create",
+      description:
+        "Set yourself up to react to an EVENT instead of polling on a timer — fires a task for " +
+        "you when a matching webhook arrives (e.g. a GitHub PR, a Stripe payment, any inbound " +
+        "webhook your setup receives). Use this instead of create_schedule when the work is " +
+        "event-driven, not time-driven.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name for the trigger.",
+          },
+          prompt_template: {
+            type: "string",
+            description:
+              "The prompt to run when the trigger fires. Supports {{payload.field}} " +
+              "interpolation from the webhook payload.",
+          },
+          source_filter: {
+            type: "string",
+            description: "Only fire for webhooks from this source, e.g. 'github', 'stripe'. Omit to match any source.",
+          },
+          event_type_filter: {
+            type: "string",
+            description: "Only fire for this event type, e.g. 'pull_request', 'payment'. Omit to match any type.",
+          },
+          payload_conditions: {
+            type: "object",
+            description: "Field:value pairs that must match in the webhook payload, e.g. {\"action\": \"opened\"}. Omit for no extra conditions.",
+          },
+          priority: {
+            type: "number",
+            description: "Task priority when the trigger fires (default 5).",
+          },
+        },
+        required: ["name", "prompt_template"],
+      },
+    },
+    {
+      name: "trigger_list",
+      description: "List all your event triggers.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "trigger_toggle",
+      description: "Enable or disable one of your event triggers (does not delete it).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          trigger_id: {
+            type: "string",
+            description: "ID of the trigger to toggle.",
+          },
+        },
+        required: ["trigger_id"],
+      },
+    },
+    {
+      name: "trigger_delete",
+      description: "Delete one of your event triggers.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          trigger_id: {
+            type: "string",
+            description: "ID of the trigger to delete.",
+          },
+        },
+        required: ["trigger_id"],
+      },
+    },
+    {
       name: "list_todos",
       description:
         "List your TODO items. TODOs are persistent and visible to the user in the Todo tab. " +
@@ -1230,6 +1306,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Schedule ${schedule_id} ${action === "pause" ? "paused" : "resumed"}.`,
           },
         ],
+      };
+    }
+
+    case "trigger_create": {
+      const body = {
+        name: args.name,
+        prompt_template: args.prompt_template,
+        source_filter: args.source_filter,
+        event_type_filter: args.event_type_filter,
+        payload_conditions: args.payload_conditions,
+        priority: args.priority ?? 5,
+      };
+      const result = await apiCall("/event-triggers/for-agent", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Trigger created: "${result.name}" (id: ${result.id}).`,
+        }],
+      };
+    }
+
+    case "trigger_list": {
+      const result = await apiCall("/event-triggers/for-agent");
+      if (!result.triggers || result.triggers.length === 0) {
+        return {
+          content: [{ type: "text", text: "No event triggers found." }],
+        };
+      }
+      const lines = result.triggers.map((t) => {
+        const status = t.enabled ? "enabled" : "disabled";
+        const match = [
+          t.source_filter && `source=${t.source_filter}`,
+          t.event_type_filter && `event=${t.event_type_filter}`,
+        ].filter(Boolean).join(", ") || "any event";
+        return `[${status}] #${t.id}: ${t.name} (${match}, fired ${t.fire_count ?? 0}x)`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `${result.triggers.length} event triggers:\n\n${lines.join("\n")}`,
+        }],
+      };
+    }
+
+    case "trigger_toggle": {
+      const result = await apiCall(`/event-triggers/for-agent/${args.trigger_id}/toggle`, {
+        method: "PATCH",
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Trigger ${args.trigger_id} ${result.enabled ? "enabled" : "disabled"}.`,
+        }],
+      };
+    }
+
+    case "trigger_delete": {
+      await apiCall(`/event-triggers/for-agent/${args.trigger_id}`, { method: "DELETE" });
+      return {
+        content: [{ type: "text", text: `Trigger ${args.trigger_id} deleted.` }],
       };
     }
 

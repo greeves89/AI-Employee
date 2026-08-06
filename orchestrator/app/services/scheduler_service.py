@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -494,7 +495,11 @@ class SchedulerService:
         is_proactive = schedule.name.startswith("[Proactive]")
         if is_proactive:
             prompt = PROACTIVE_PROMPT
-            extra = await self._proactive_custom_instructions(db, schedule.agent_id)
+            proactive_config = await self._proactive_config(db, schedule.agent_id)
+            hours_note = _contact_hours_note(proactive_config)
+            if hours_note:
+                prompt = prompt + "\n\n" + hours_note
+            extra = (proactive_config.get("custom_instructions", "") or "").strip()
             if extra:
                 prompt = (
                     prompt
@@ -525,26 +530,24 @@ class SchedulerService:
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
 
-    async def _proactive_custom_instructions(
+    async def _proactive_config(
         self, db: AsyncSession, agent_id: str | None
-    ) -> str:
-        """Per-agent proactive additions from agent.config['proactive']['custom_instructions'].
-
-        Appended to the code-level PROACTIVE_PROMPT at fire time so the base stays
-        centralized in code (one source of truth) while each agent can carry its own
-        extra instructions as plain data.
+    ) -> dict:
+        """Per-agent proactive settings from agent.config['proactive'] (custom
+        instructions, contact hours). Read fresh at fire time so the base
+        PROACTIVE_PROMPT stays centralized in code (one source of truth) while
+        each agent carries its own additions as plain data.
         """
         if not agent_id:
-            return ""
+            return {}
         from sqlalchemy import select
         from app.models.agent import Agent
 
         result = await db.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         if not agent:
-            return ""
-        proactive = (agent.config or {}).get("proactive", {}) or {}
-        return (proactive.get("custom_instructions", "") or "").strip()
+            return {}
+        return (agent.config or {}).get("proactive", {}) or {}
 
     async def _tick_failure_watchdog(self) -> None:
         """Detect schedules that fired but whose task never reached a terminal
@@ -857,6 +860,28 @@ class SchedulerService:
         logger.info("[Scheduler] Started scheduled meeting %s: %s", room.id, room.name)
 
 
+def _contact_hours_note(proactive_config: dict) -> str:
+    """Render the agent's configured Ansprechpartner working hours as a prompt
+    block, or "" if none are set (PROACTIVE_PROMPT STEP 4 then treats every run
+    as off-hours by default).
+
+    Only formats the note — whether "now" falls inside the window is left to the
+    agent's own judgment at runtime; the orchestrator has no reliable way to know
+    which moment in the run the agent will act on a decision that needs sign-off.
+    """
+    hours = (proactive_config or {}).get("contact_hours") or {}
+    start = (hours.get("start") or "").strip()
+    end = (hours.get("end") or "").strip()
+    if not start or not end:
+        return ""
+    tz = (hours.get("timezone") or "UTC").strip() or "UTC"
+    return (
+        "## Ansprechpartner-Erreichbarkeit\n"
+        f"Erreichbar {start}–{end} ({tz}). Außerhalb dieses Fensters gilt STEP 4 "
+        "(Day/Night-Regel) als Off-Hours."
+    )
+
+
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
     """Return the next fire time (UTC) for a schedule.
 
@@ -879,3 +904,64 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
         except Exception as e:
             logger.warning("[Scheduler] Invalid cron expression '%s': %s — falling back to interval", schedule.cron_expression, e)
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
+
+
+# Generous cap on enumerated fire times per schedule per call — protects against
+# a pathological cron expression (e.g. "* * * * *" over a wide range) or a huge
+# requested range; a real day-timeline range never needs anywhere near this many.
+_MAX_OCCURRENCES = 1000
+
+
+def schedule_occurrences(schedule: "Schedule", range_start: datetime, range_end: datetime) -> list[datetime]:
+    """All fire times (UTC) of `schedule` within [range_start, range_end).
+
+    Purely mathematical from cron_expression/interval_seconds — independent of
+    whether the schedule actually fired (Task rows are the record of that; this
+    is "the plan"). Used to render planned-run markers on the activity
+    timeline, including for past days where the plan may differ from what
+    actually ran (schedule was paused/changed since).
+    """
+    if range_end <= range_start:
+        return []
+    occurrences: list[datetime] = []
+
+    if schedule.cron_expression and _CRONITER_AVAILABLE:
+        try:
+            tz_name = getattr(schedule, "timezone", None) or "UTC"
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz = timezone.utc
+            cron = croniter(schedule.cron_expression, range_start.astimezone(tz))
+            cron.get_prev(datetime)  # step back so a fire time exactly at range_start isn't missed
+            for _ in range(_MAX_OCCURRENCES):
+                nxt = cron.get_next(datetime).astimezone(timezone.utc)
+                if nxt >= range_end:
+                    break
+                if nxt >= range_start:
+                    occurrences.append(nxt)
+        except Exception as e:
+            logger.warning(
+                "[Scheduler] Invalid cron expression '%s' while listing occurrences: %s",
+                schedule.cron_expression, e,
+            )
+    elif schedule.interval_seconds and schedule.interval_seconds > 0 and schedule.next_run_at:
+        step_s = schedule.interval_seconds
+        anchor = schedule.next_run_at
+        if anchor.tzinfo is None:  # SQLite drops tzinfo on round-trip; Postgres never does
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        # Jump straight to the first candidate at-or-before range_start via
+        # integer arithmetic instead of stepping one interval at a time —
+        # range_start can be arbitrarily far from the anchor (e.g. a past day
+        # for a schedule created recently).
+        steps_to_start = math.floor((range_start - anchor).total_seconds() / step_s)
+        t = anchor + timedelta(seconds=steps_to_start * step_s)
+        while t < range_start:
+            t += timedelta(seconds=step_s)
+        for _ in range(_MAX_OCCURRENCES):
+            if t >= range_end:
+                break
+            occurrences.append(t)
+            t += timedelta(seconds=step_s)
+
+    return occurrences

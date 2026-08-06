@@ -377,11 +377,18 @@ export interface Notification {
   created_at: string;
 }
 
+export interface ProactiveContactHours {
+  start: string;    // "HH:MM"
+  end: string;      // "HH:MM"
+  timezone: string; // IANA name, e.g. "Europe/Berlin"
+}
+
 export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
   custom_instructions?: string;
+  contact_hours?: ProactiveContactHours;
 }
 
 export interface ProactiveResponse {
@@ -623,4 +630,33 @@ export interface MeetingRoom {
   message_count?: number;
   created_at: string | null;
   scheduled_for?: string | null;  // follow-up auto-start time (ISO) when set
+}
+
+export interface ActivityTaskBar {
+  task_id: string;
+  title: string;
+  status: TaskStatus;
+  started_at: string;
+  completed_at: string | null; // null = still running
+  duration_ms: number | null;
+  cost_usd: number | null;
+}
+
+export interface ActivityScheduleMark {
+  time: string;
+  schedule_id: string;
+  schedule_name: string;
+}
+
+export interface ActivityAgentTimeline {
+  agent_id: string;
+  name: string;
+  tasks: ActivityTaskBar[];
+  scheduled_marks: ActivityScheduleMark[];
+}
+
+export interface ActivityTimelineResponse {
+  start: string;
+  end: string;
+  agents: ActivityAgentTimeline[];
 }

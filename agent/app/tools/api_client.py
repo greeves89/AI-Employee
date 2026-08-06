@@ -290,6 +290,67 @@ class OrchestratorAPIClient:
             return result
         return f"Schedule {schedule_id} {action}d successfully"
 
+    # ── Event Trigger Management (orchestrator-server.mjs) ──
+
+    async def trigger_create(self, params: dict) -> str:
+        """Create an event trigger — fires a task when a matching webhook arrives."""
+        prompt_template = params.get("prompt_template", "")
+        if not prompt_template:
+            return "Error: prompt_template is required"
+        body = {
+            "name": params.get("name", "Agent Trigger"),
+            "prompt_template": prompt_template,
+            "source_filter": params.get("source_filter"),
+            "event_type_filter": params.get("event_type_filter"),
+            "payload_conditions": params.get("payload_conditions"),
+            "priority": params.get("priority", 5),
+        }
+        result = await self._request("POST", "/event-triggers/for-agent", json=body)
+        if isinstance(result, str):
+            return result
+        return f"Trigger created: {result.get('name')} (id: {result.get('id')})"
+
+    async def trigger_list(self, params: dict) -> str:
+        """List all event triggers for this agent."""
+        result = await self._request("GET", "/event-triggers/for-agent")
+        if isinstance(result, str):
+            return result
+        triggers = result.get("triggers", [])
+        if not triggers:
+            return "No event triggers found."
+        lines = []
+        for t in triggers:
+            state = "enabled" if t.get("enabled") else "disabled"
+            match = ", ".join(
+                f"{k}={v}" for k, v in (
+                    ("source", t.get("source_filter")),
+                    ("event", t.get("event_type_filter")),
+                ) if v
+            ) or "any event"
+            lines.append(f"- {t.get('name', '?')} ({state}, {match}, fired {t.get('fire_count', 0)}x, id: {t.get('id')})")
+        return "\n".join(lines)
+
+    async def trigger_toggle(self, params: dict) -> str:
+        """Enable or disable an event trigger."""
+        trigger_id = params.get("trigger_id", "")
+        if not trigger_id:
+            return "Error: trigger_id is required"
+        result = await self._request("PATCH", f"/event-triggers/for-agent/{trigger_id}/toggle")
+        if isinstance(result, str):
+            return result
+        state = "enabled" if result.get("enabled") else "disabled"
+        return f"Trigger {trigger_id} {state}"
+
+    async def trigger_delete(self, params: dict) -> str:
+        """Delete an event trigger."""
+        trigger_id = params.get("trigger_id", "")
+        if not trigger_id:
+            return "Error: trigger_id is required"
+        result = await self._request("DELETE", f"/event-triggers/for-agent/{trigger_id}")
+        if isinstance(result, str):
+            return result
+        return f"Trigger {trigger_id} deleted"
+
     # ── TODO Management (orchestrator-server.mjs) ──
 
     async def list_todos(self, params: dict) -> str:
@@ -475,11 +536,14 @@ class OrchestratorAPIClient:
             "priority": params.get("priority", "normal"),
             "meta": {
                 "target_channel": params.get("target_channel", "webapp"),
+                "is_checkin": bool(params.get("is_checkin", False)),
             },
         }
         result = await self._request("POST", "/notifications/", json=body)
         if isinstance(result, str):
             return result
+        if result.get("suppressed"):
+            return "Notification suppressed: you already sent a check-in within the last 12h."
         return f"Notification sent (priority: {result.get('priority', 'normal')})"
 
     async def request_approval(self, params: dict) -> str:

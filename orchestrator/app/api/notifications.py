@@ -4,11 +4,12 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_redis_service, require_auth, verify_agent_token
 from app.models.notification import Notification
@@ -17,6 +18,30 @@ from app.services.redis_service import RedisService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+# "Meldebremse" (PROACTIVE_PROMPT STEP 3): a proactive agent that runs out of planned
+# work may check in with the user at most once per half-day. The prompt asks agents to
+# self-throttle, but nine idle agents all messaging at once is exactly the failure mode
+# this exists to stop — so it's also enforced here as a backstop, keyed per agent.
+CHECKIN_COOLDOWN_SECONDS = 12 * 60 * 60
+
+
+async def _checkin_allowed(redis: RedisService, agent_id: str) -> bool:
+    """True if this agent may send another is_checkin notification right now.
+
+    Uses SET NX EX so only the first call within the window succeeds — fails open
+    (allows the notification) if Redis is unreachable, since a missed cooldown is
+    far cheaper than silently dropping a real user-facing notification.
+    """
+    if not redis.client:
+        return True
+    try:
+        acquired = await redis.client.set(
+            f"notify:checkin_cooldown:{agent_id}", "1", nx=True, ex=CHECKIN_COOLDOWN_SECONDS
+        )
+        return bool(acquired)
+    except Exception:
+        return True
 
 
 class NotificationCreate(BaseModel):
@@ -34,11 +59,29 @@ class NotificationCreate(BaseModel):
 @router.post("/", status_code=201)
 async def create_notification(
     body: NotificationCreate,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     redis: RedisService = Depends(get_redis_service),
     _auth: dict = Depends(verify_agent_token),
 ):
     """Create a notification (called by agents via internal API, requires auth)."""
+    # The authenticated caller's own id is authoritative, never the client-supplied
+    # body.agent_id — verify_agent_token only checks the token against WHATEVER
+    # agent_id it was given (header first, else this same body field), so an agent
+    # sending its own valid token alongside a different agent_id in the body would
+    # otherwise create/route notifications (and, with is_checkin, poison another
+    # agent's check-in cooldown) as that other agent. Every real caller already
+    # only ever sends its own id here, so overriding it is a no-op for legitimate
+    # use and closes the spoofing path.
+    body.agent_id = _auth["agent_id"]
+
+    is_checkin = bool((body.meta or {}).get("is_checkin"))
+    if is_checkin and body.priority not in ("high", "urgent"):
+        if not await _checkin_allowed(redis, body.agent_id):
+            logger.info("Check-in notification suppressed by cooldown for agent=%s", scrub_log(body.agent_id))
+            response.status_code = 200  # nothing was created — 201 would be misleading
+            return {"suppressed": True, "reason": "checkin_cooldown", "agent_id": body.agent_id}
+
     notif = Notification(
         agent_id=body.agent_id,
         type=body.type,

@@ -5,6 +5,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.0] — 2026-08-06
+
+### Added
+- **Neuer Menüpunkt „Activity" — Tageskalender aller Agenten.** Eine Zeile pro Agent mit
+  geplanten Terminen (aus den Zeitplänen, Cron/Interval vorausberechnet) als Rauten und
+  tatsächlich gelaufenen Aufgaben als farbige Balken. Datumsnavigation vor und zurück
+  funktioniert für vergangene und zukünftige Tage gleichermaßen. Klick auf einen Balken
+  führt in die bestehende Aufgaben-Zeitreise. Neuer Endpunkt `GET /activity/timeline`.
+- **Erreichbarkeit des Ansprechpartners** — neues Feld in den Proaktiv-Einstellungen
+  jedes Agenten (Start-/Endzeit + Zeitzone). Der Agent respektiert dieses Zeitfenster bei
+  der Entscheidung, ob er sich proaktiv melden darf.
+- **trigger_create/list/toggle/delete** — Agenten können sich jetzt selbst auf Ereignisse
+  (Webhooks) einrichten statt nur auf Zeitplänen zu pollen. Der Backend-Teil existierte
+  schon, es fehlte nur die Werkzeug-Schicht — jetzt in beiden Laufzeiten (Claude Code
+  MCP-Server + Codex/Custom-LLM) verdrahtet.
+- **Serverseitige Meldebremse**: `notify_user(is_checkin: true)` ist auf höchstens einmal
+  pro Halbtag pro Agent gedeckelt (Redis-gestützt), damit nicht mehrere proaktive Agenten
+  gleichzeitig bei Leerlauf Alarm schlagen.
+
+### Changed
+- **Proaktiv-Kern-Prompt umgebaut.** War bisher auf Entwicklerarbeit zugeschnitten
+  (GitHub-Issues, Git-Hygiene) und lief unverändert bei jedem Agenten, egal welche Rolle.
+  Neuer Kern: Lage sichten, Tag planen, priorisieren, bei Leerlauf vorschlagen statt
+  fragen, Tag/Nacht-Regel, Selbstorganisation. Der GitHub-Workflow ist in die
+  „Zusätzliche Anweisungen" der drei Entwickler-Agenten umgezogen.
+
+### Fixed
+- Ein während dieser Arbeit gefundener, vorbestehender Fehler: `notify_user` vertraute der
+  vom Client mitgeschickten `agent_id` statt der authentifizierten Identität — geschlossen,
+  bevor die neue Meldebremse ihn zu einer gezielten Sperre gegen einen anderen Agenten
+  hätte ausnutzbar machen können.
+
+### Deployment
+- Orchestrator (Restart) + Frontend (Rebuild). Agent-Container-Update nötig, damit die
+  neuen `trigger_*`-Werkzeuge und der neue Kern-Prompt bei laufenden Agenten ankommen.
+
 ## [1.152.2] — 2026-08-06
 
 ### Fixed
