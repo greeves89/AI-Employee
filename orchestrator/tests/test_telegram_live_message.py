@@ -175,3 +175,49 @@ class SpinnerAndDetailTests(unittest.TestCase):
     def test_spinner_keeps_turning_without_events(self):
         """Bei einem langen Bash kommt nichts herein — ohne Takt stünde er still."""
         self.assertIn("Spinner weiterdrehen", self.src)
+
+
+class FormattingTests(unittest.TestCase):
+    """Absätze, Fettung und Listen statt eines Textklumpens.
+
+    Kundenmeldung 2026-08-06: „dann soll der auch mit absatz und neue leere zeile
+    arbeiten" — der Agent schreibt Markdown, die Nachricht ging aber ohne
+    Formatierung raus, samt sichtbarer Sternchen.
+    """
+
+    def setUp(self):
+        src = BOT.read_text()
+        m = re.search(r"def _tg_format.*?return out\.strip\(\)\n", src, re.S)
+        ns: dict = {}
+        exec(m.group(0), ns)
+        self.f = ns["_tg_format"]
+        self.src = src
+
+    def test_bold_and_headings_become_tags(self):
+        self.assertIn("<b>Titel</b>", self.f("## Titel"))
+        self.assertIn("<b>drei</b>", self.f("Ich habe **drei** geprüft"))
+
+    def test_lists_get_bullets(self):
+        self.assertIn("• Bitcoin", self.f("- Bitcoin: 100"))
+
+    def test_code_is_preserved(self):
+        self.assertIn("<code>ls -la</code>", self.f("Der Befehl `ls -la` lief"))
+
+    def test_stray_symbols_do_not_break_it(self):
+        """Der Grund für HTML statt Markdown: ein loses * oder _ darf nichts anrichten."""
+        out = self.f("5 * 3 = 15 und a_b_c bleibt")
+        self.assertIn("5 * 3 = 15", out)
+        self.assertIn("a_b_c", out)
+
+    def test_html_is_escaped_first(self):
+        """Sonst könnte Agententext eigene Tags einschleusen."""
+        self.assertIn("&lt;script&gt;", self.f("<script>alert(1)</script>"))
+
+    def test_excess_blank_lines_are_normalised(self):
+        self.assertNotIn("\n\n\n", self.f("A\n\n\n\n\nB"))
+
+    def test_sending_falls_back_when_telegram_refuses(self):
+        """Lieber unformatiert als gar nicht — Formatierung ist Beiwerk."""
+        self.assertIn('parse_mode="HTML"', self.src)
+        block = _method(self.src, "_live_update")
+        self.assertIn("except Exception", block)

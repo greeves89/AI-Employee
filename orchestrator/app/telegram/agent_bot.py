@@ -47,6 +47,40 @@ def _strip_markdown(text: str) -> str:
 logger = logging.getLogger(__name__)
 
 
+def _tg_format(text: str) -> str:
+    """Agenten-Markdown in lesbares Telegram-HTML wandeln.
+
+    Der Agent schreibt Markdown (`**fett**`, `## Titel`, Listen). Die Nachricht ging
+    bisher ohne Formatierung raus — also stand alles als Klumpen da, samt Sternchen.
+
+    Bewusst HTML und nicht Markdown als Telegram-Modus: Bei Markdown zerlegt jedes
+    einzelne `*` oder `_` im Agententext die Nachricht. Hier wird ZUERST alles
+    escaped, danach werden nur die erkannten Auszeichnungen zu Tags — ein loses
+    Sonderzeichen kann nichts mehr anrichten.
+    """
+    import html as _html
+    import re as _re
+
+    out = _html.escape(text or "", quote=False)
+
+    # Codebloecke zuerst, damit darin nichts weiter ausgezeichnet wird.
+    out = _re.sub(r"```[a-zA-Z0-9_+-]*\n?(.*?)```", r"<pre>\1</pre>", out, flags=_re.S)
+    out = _re.sub(r"`([^`\n]+)`", r"<code>\1</code>", out)
+
+    # Ueberschriften: als fette Zeile mit Luft davor.
+    out = _re.sub(r"(?m)^\s{0,3}#{1,6}\s+(.+?)\s*$", r"\n<b>\1</b>", out)
+
+    out = _re.sub(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", r"<b>\1</b>", out, flags=_re.S)
+    out = _re.sub(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])", r"<i>\1</i>", out)
+
+    # Aufzaehlungen lesbar machen.
+    out = _re.sub(r"(?m)^\s*[-*]\s+", "\u2022 ", out)
+
+    # Luft schaffen: Absaetze trennen, aber nicht mehr als eine Leerzeile.
+    out = _re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
 
 
@@ -1018,9 +1052,14 @@ class TelegramAgentBot:
                 if checked != state["shown"]:
                     try:
                         await self.app.bot.edit_message_text(
-                            chat_id=chat_id, message_id=state["id"], text=checked)
+                            chat_id=chat_id, message_id=state["id"],
+                            text=_tg_format(checked), parse_mode="HTML")
                     except Exception:
-                        pass
+                        try:
+                            await self.app.bot.edit_message_text(
+                                chat_id=chat_id, message_id=state["id"], text=checked)
+                        except Exception:
+                            pass
                 return
             # Zu lang oder noch keine Live-Nachricht → normaler Weg (mit DLP + Stueckelung)
             if state["id"]:
@@ -1039,12 +1078,25 @@ class TelegramAgentBot:
         if state["id"] and now - state["last"] < 1.3:
             return  # Telegram drosselt haeufige Bearbeitungen
         try:
-            if state["id"]:
-                await self.app.bot.edit_message_text(
-                    chat_id=chat_id, message_id=state["id"], text=shown)
-            else:
-                sent = await self.app.bot.send_message(chat_id=chat_id, text=shown)
-                state["id"] = sent.message_id
+            pretty = _tg_format(shown)
+            try:
+                if state["id"]:
+                    await self.app.bot.edit_message_text(
+                        chat_id=chat_id, message_id=state["id"], text=pretty,
+                        parse_mode="HTML")
+                else:
+                    sent = await self.app.bot.send_message(
+                        chat_id=chat_id, text=pretty, parse_mode="HTML")
+                    state["id"] = sent.message_id
+            except Exception:
+                # Telegram lehnt das HTML ab (z.B. exotische Verschachtelung) →
+                # lieber unformatiert als gar nicht.
+                if state["id"]:
+                    await self.app.bot.edit_message_text(
+                        chat_id=chat_id, message_id=state["id"], text=shown)
+                else:
+                    sent = await self.app.bot.send_message(chat_id=chat_id, text=shown)
+                    state["id"] = sent.message_id
             state["shown"] = shown
             state["last"] = now
         except Exception as e:  # noqa: BLE001
@@ -1098,7 +1150,12 @@ class TelegramAgentBot:
             pass  # fail-open: never break message delivery on a DLP error
         for i in range(0, len(text), 4000):
             chunk = text[i : i + 4000]
-            await self.app.bot.send_message(chat_id=chat_id, text=chunk)
+            try:
+                await self.app.bot.send_message(
+                    chat_id=chat_id, text=_tg_format(chunk), parse_mode="HTML")
+            except Exception:
+                # Formatierung abgelehnt → lieber unformatiert als gar nicht.
+                await self.app.bot.send_message(chat_id=chat_id, text=chunk)
 
     async def _maybe_send_voice_reply(self, chat_id: int, msg_id: str, text: str) -> None:
         """Voice-first: if this message arrived as a voice/audio message, also

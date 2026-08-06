@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.152.1] — 2026-08-06
+
+### Fixed
+- **Telegram-Antworten kamen als Textklumpen.** Der Agent schreibt Markdown (`**fett**`, `## Titel`, Listen), die Nachricht ging aber ohne Formatierung raus — also standen die Sternchen sichtbar da und alles klebte zusammen.
+
+  Der Text wird jetzt aufbereitet: Überschriften und Fettung als Auszeichnung, Aufzählungen mit Punkten, Code gesetzt, überzählige Leerzeilen zu einer normalisiert.
+
+  Bewusst **HTML** als Telegram-Modus, nicht Markdown: Dort zerlegt jedes lose `*` oder `_` im Agententext die Nachricht. Hier wird zuerst alles escaped, erst danach werden erkannte Auszeichnungen zu Tags — `5 * 3 = 15` und `a_b_c` bleiben unversehrt, und Agententext kann keine eigenen Tags einschleusen. Lehnt Telegram das Ergebnis doch ab, geht die Nachricht unformatiert raus statt gar nicht.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.152.0] — 2026-08-06
 
 ### Changed
