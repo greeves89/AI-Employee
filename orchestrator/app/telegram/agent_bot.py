@@ -47,6 +47,44 @@ def _strip_markdown(text: str) -> str:
 logger = logging.getLogger(__name__)
 
 
+SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
+
+
+def _tool_detail(tool: str, raw_input) -> str:
+    """Was das Werkzeug KONKRET tut — „nutzt gerade Bash" allein sagt wenig.
+
+    Die Angaben liegen im Werkzeugaufruf bereits vor; der Bot hat sie nur nicht
+    gezeigt. Gerade bei Bash dauert es lange, und ohne den Befehl sitzt man davor
+    und weiss nicht, was passiert.
+    """
+    d = raw_input if isinstance(raw_input, dict) else {}
+    low = (tool or "").lower()
+
+    def _s(*keys):
+        for k in keys:
+            v = d.get(k)
+            if isinstance(v, str) and v.strip():
+                return " ".join(v.split())
+        return ""
+
+    if "bash" in low or "shell" in low:
+        val = _s("command", "cmd", "script")
+    elif "read" in low or "write" in low or "edit" in low:
+        val = _s("file_path", "path", "notebook_path")
+        if val:
+            val = "/".join([p for p in val.split("/") if p][-2:])
+    elif "search" in low or "grep" in low or "glob" in low:
+        val = _s("query", "pattern", "q")
+    elif "fetch" in low or "url" in low or "web" in low:
+        val = _s("url", "query", "q")
+    else:
+        val = _s("query", "title", "name", "prompt", "instruction", "command", "path")
+
+    if not val:
+        return ""
+    return val[:70].rstrip() + ("…" if len(val) > 70 else "")
+
+
 def _tool_label(raw: str) -> str:
     """Werkzeugnamen lesbar machen — im Chat stand „mcp__orchestrator__create_task"."""
     name = (raw or "").strip()
@@ -821,7 +859,8 @@ class TelegramAgentBot:
                         # eine Kette von Nachrichten. Jetzt bleibt alles in EINER, die
                         # mitwaechst; das Werkzeug erscheint als Arbeitszeile darunter.
                         _tool = _tool_label(str(event_data.get("tool") or "")) or "ein Werkzeug"
-                        live_status = f"nutzt gerade {_tool}…"
+                        _det = _tool_detail(str(event_data.get("tool") or ""), event_data.get("input"))
+                        live_status = f"{_tool}: {_det}" if _det else _tool
                         await self._live_update(chat_id, full_response, status=live_status)
                         # Show typing indicator while tool runs
                         try:
@@ -874,6 +913,11 @@ class TelegramAgentBot:
                             await self.app.bot.send_message(
                                 chat_id=chat_id, text=meta
                             )
+
+                # Spinner weiterdrehen, auch wenn gerade nichts hereinkommt — bei
+                # einem langen Bash-Lauf ist das die einzige Rueckmeldung.
+                if live_status:
+                    await self._live_update(chat_id, full_response, status=live_status)
 
                 # Periodic flush
                 if response_buffer.strip() and (now - last_flush) >= FLUSH_INTERVAL:
@@ -942,7 +986,13 @@ class TelegramAgentBot:
         # KEIN Markdown: Die Nachricht geht ohne parse_mode raus, sonst stuenden die
         # Unterstriche woertlich da — und mit parse_mode wuerde jedes Sonderzeichen im
         # Agententext die Nachricht zerlegen. Schlichte Trennzeile statt Auszeichnung.
-        shown = body + (f"\n\n··· {status}" if status and not final else "")
+        if status and not final:
+            # Der Spinner dreht sich mit jeder Bearbeitung — so sieht man, dass
+            # noch etwas laeuft, auch wenn der Text stillsteht.
+            state["tick"] = (state.get("tick", 0) + 1) % len(SPINNER)
+            shown = f"{body}\n\n{SPINNER[state['tick']]} {status}"
+        else:
+            shown = body
 
         if final:
             # Fertiger Text: DLP pruefen, dann die Live-Nachricht abschliessen.

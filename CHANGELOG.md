@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.152.0] — 2026-08-06
+
+### Changed
+- **Die Arbeitszeile in Telegram zeigt jetzt, was wirklich passiert** — mit Spinner und konkreter Angabe statt nur „nutzt gerade Bash".
+
+  Bei Bash steht der Befehl dabei, bei Datei-Werkzeugen der Pfad (auf die letzten zwei Ebenen gekürzt), bei Suchen die Anfrage. Diese Angaben lagen im Werkzeugaufruf längst vor — gezeigt hat sie nur niemand. Gerade bei langen Läufen saß man davor, ohne zu wissen, was der Agent tut.
+
+  Der Spinner dreht sich unabhängig davon weiter: Solange ein Werkzeug arbeitet, kommt kein Ereignis herein — ohne eigenen Takt stünde er still, ausgerechnet bei den langen Läufen, wo er gebraucht wird. Fehlt eine Angabe, bleibt die Zeile schlicht; es wird nichts erfunden.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.151.0] — 2026-08-06
 
 ### Changed

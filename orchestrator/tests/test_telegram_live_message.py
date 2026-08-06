@@ -128,3 +128,50 @@ class HandlerRobustnessTests(unittest.TestCase):
         self.assertIsNotNone(block)
         self.assertIn("try:", block.group(0))
         self.assertIn("except Exception", block.group(0))
+
+
+class SpinnerAndDetailTests(unittest.TestCase):
+    """Die Arbeitszeile soll zeigen, was WIRKLICH passiert — nicht nur „nutzt Bash".
+
+    Kundenwunsch 2026-08-06: „bei bash dauert das aktuell sehr lang, dass der
+    detaillierter reinschreibt was gerade passiert" — plus ein Spinner, damit
+    sichtbar bleibt, dass etwas läuft.
+    """
+
+    def setUp(self):
+        self.src = BOT.read_text()
+
+    def test_detail_comes_from_the_tool_input(self):
+        """Die Angaben lagen im Werkzeugaufruf längst vor."""
+        m = re.search(r"def _tool_detail.*?return val\[:70\].*?\n", self.src, re.S)
+        self.assertIsNotNone(m)
+        ns: dict = {}
+        exec(m.group(0), ns)
+        f = ns["_tool_detail"]
+        self.assertEqual(f("Bash", {"command": "python3 watcher.py"}), "python3 watcher.py")
+        self.assertEqual(f("Read", {"file_path": "/workspace/projects/sap/main.py"}), "sap/main.py")
+        self.assertEqual(f("mcp__memory__memory_search", {"query": "SAP MDG"}), "SAP MDG")
+
+    def test_missing_detail_is_not_faked(self):
+        """Ohne Angabe bleibt die Zeile schlicht — nichts erfinden."""
+        m = re.search(r"def _tool_detail.*?return val\[:70\].*?\n", self.src, re.S)
+        ns: dict = {}
+        exec(m.group(0), ns)
+        self.assertEqual(ns["_tool_detail"]("Bash", {}), "")
+        self.assertEqual(ns["_tool_detail"]("Bash", None), "")
+
+    def test_long_detail_is_shortened(self):
+        m = re.search(r"def _tool_detail.*?return val\[:70\].*?\n", self.src, re.S)
+        ns: dict = {}
+        exec(m.group(0), ns)
+        out = ns["_tool_detail"]("Bash", {"command": "x" * 200})
+        self.assertLessEqual(len(out), 71)
+        self.assertTrue(out.endswith("…"))
+
+    def test_spinner_advances_per_edit(self):
+        self.assertIn("SPINNER", self.src)
+        self.assertIn('state["tick"]', self.src)
+
+    def test_spinner_keeps_turning_without_events(self):
+        """Bei einem langen Bash kommt nichts herein — ohne Takt stünde er still."""
+        self.assertIn("Spinner weiterdrehen", self.src)
