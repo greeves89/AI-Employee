@@ -19,6 +19,8 @@ from urllib.parse import quote
 
 import httpx
 
+from app.core.log_redaction import scrub_log
+
 logger = logging.getLogger(__name__)
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -890,7 +892,7 @@ async def _graph(method: str, path: str, token: str, **kwargs) -> dict:
                     detail = str((body.get("error", {}) or {}).get("message", ""))[:300]
             except Exception:
                 detail = resp.text[:300]
-            logger.warning("Graph API %s on %s: %s", resp.status_code, path, detail)
+            logger.warning("Graph API %s on %s: %s", resp.status_code, scrub_log(path), scrub_log(detail))
             raise GraphError(resp.status_code, f"Microsoft Graph request failed (HTTP {resp.status_code}).")
         try:
             return resp.json()
@@ -993,7 +995,7 @@ async def _graph_bytes(method: str, path: str, token: str, content: bytes | None
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.request(method, f"{GRAPH_BASE}{path}", headers=headers, content=content)
         if resp.status_code >= 400:
-            logger.warning("Graph API %s on %s: %s", resp.status_code, path, resp.text[:200])
+            logger.warning("Graph API %s on %s: %s", resp.status_code, scrub_log(path), scrub_log(resp.text[:200]))
             raise RuntimeError(f"Microsoft Graph request failed (HTTP {resp.status_code}).")
         return resp
 
@@ -1056,7 +1058,7 @@ def _extract_document_text(raw: bytes, filename: str, content_type: str, max_cha
                     break
             return _clip("\n".join(parts)) or "Die Excel-Datei enthält keine Daten."
     except Exception as e:  # noqa: BLE001
-        logger.warning("document extraction failed for %s: %s", filename, e)
+        logger.warning("document extraction failed for %s: %s", scrub_log(filename), scrub_log(e))
         return f"Inhalt konnte nicht extrahiert werden ({type(e).__name__})."
     return None  # not a recognized document format → caller tries plain text
 
@@ -2005,7 +2007,7 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
                 content=json.dumps(body),
             )
         if resp.status_code not in (200, 202):
-            logger.warning("Graph copy %s on %s: %s", resp.status_code, rel, resp.text[:300])
+            logger.warning("Graph copy %s on %s: %s", resp.status_code, scrub_log(rel), scrub_log(resp.text[:300]))
             return f"Kopieren fehlgeschlagen (HTTP {resp.status_code})."
         src_name = str(args["path"]).rstrip("/").split("/")[-1]
         as_name = f" als '{args['new_name']}'" if args.get("new_name") else ""
@@ -2127,7 +2129,7 @@ async def handle_mcp_request(
         try:
             token = await resolve_token()
         except Exception as e:  # token refresh can fail on a Microsoft/network outage
-            logger.warning("MS Graph token resolution failed for [%s]: %s", tool_name, e)
+            logger.warning("MS Graph token resolution failed for [%s]: %s", scrub_log(tool_name), scrub_log(e))
             token = None
         if not token:
             return mcp_result(id_, tool_result(
@@ -2159,7 +2161,7 @@ async def handle_mcp_request(
         except RuntimeError as e:
             return mcp_result(id_, tool_result(str(e), is_error=True)), 200
         except Exception as e:
-            logger.error(f"MS Graph tool error [{tool_name}]: {e}", exc_info=True)
+            logger.error(f"MS Graph tool error [{scrub_log(tool_name)}]: {scrub_log(e)}", exc_info=True)
             return mcp_result(id_, tool_result(f"Error: {e}", is_error=True)), 200
 
     return mcp_error(id_, -32601, f"Method not found: {method}"), 404
