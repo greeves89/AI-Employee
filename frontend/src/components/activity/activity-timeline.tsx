@@ -327,7 +327,7 @@ function DayAgenda({
   return (
     <div
       ref={scrollRef}
-      className="max-h-[560px] overflow-y-auto rounded-lg border border-foreground/[0.06]"
+      className="max-h-[calc(100vh-260px)] min-h-[400px] overflow-y-auto rounded-lg border border-foreground/[0.06]"
     >
       <div className="relative flex" style={{ height: 24 * HOUR_PX }}>
         <div className="sticky left-0 w-14 shrink-0 border-r border-foreground/[0.06] bg-background">

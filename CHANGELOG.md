@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.3] — 2026-08-06
+
+### Fixed
+- **Tageskalender eines Agenten war unnötig kurz abgeschnitten** — feste Höhe von 560px
+  ließ auf größeren Bildschirmen viel ungenutzten Platz darunter. Nutzt jetzt die
+  verfügbare Bildschirmhöhe (bis zu ~100vh − 260px).
+- **„Kalender"-Unterreiter stand ganz rechts, hinter „Live" und „Verlauf"** — jetzt gleich
+  nach „Todos" einsortiert.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.153.2] — 2026-08-06
 
 ### Changed

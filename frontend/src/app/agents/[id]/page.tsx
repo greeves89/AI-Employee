@@ -86,9 +86,9 @@ const tabGroups: TabGroup[] = [
   ] },
   { key: "activity", label: "Activity", icon: Activity, subs: [
     { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
+    { key: "calendar", label: "Kalender", icon: CalendarDays, simpleVisible: true },
     { key: "terminal", label: "Live", icon: Activity, simpleVisible: false },
     { key: "history", label: "Verlauf", icon: History, simpleVisible: true },
-    { key: "calendar", label: "Kalender", icon: CalendarDays, simpleVisible: true },
   ] },
   { key: "workspace", label: "Workspace", icon: FolderOpen, subs: [
     { key: "files", label: "Files", icon: FolderOpen, simpleVisible: true },
