@@ -110,6 +110,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
               "Preferred delivery channel. Use the current chat channel unless the user asks otherwise.",
           },
+          is_checkin: {
+            type: "boolean",
+            description:
+              "Set true ONLY for a proactive 'nothing left to do, checking in with a suggestion' " +
+              "notification (PROACTIVE_PROMPT STEP 3). Server-enforced to at most once per 12h per " +
+              "agent — extra check-ins in the same window are silently dropped. Do NOT set this for " +
+              "real accomplishments, results, or actionable problems; those are never rate-limited.",
+          },
         },
         required: ["title"],
       },
@@ -212,9 +220,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           title: args.title,
           message: args.message || "",
           priority: args.priority || "normal",
-          meta: { target_channel: args.target_channel || "webapp" },
+          meta: {
+            target_channel: args.target_channel || "webapp",
+            is_checkin: !!args.is_checkin,
+          },
         }),
       });
+      if (result.suppressed) {
+        return {
+          content: [{
+            type: "text",
+            text: "Notification suppressed: you already sent a check-in within the last 12h.",
+          }],
+        };
+      }
       return {
         content: [
           {

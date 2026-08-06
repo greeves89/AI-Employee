@@ -494,7 +494,11 @@ class SchedulerService:
         is_proactive = schedule.name.startswith("[Proactive]")
         if is_proactive:
             prompt = PROACTIVE_PROMPT
-            extra = await self._proactive_custom_instructions(db, schedule.agent_id)
+            proactive_config = await self._proactive_config(db, schedule.agent_id)
+            hours_note = _contact_hours_note(proactive_config)
+            if hours_note:
+                prompt = prompt + "\n\n" + hours_note
+            extra = (proactive_config.get("custom_instructions", "") or "").strip()
             if extra:
                 prompt = (
                     prompt
@@ -525,26 +529,24 @@ class SchedulerService:
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
 
-    async def _proactive_custom_instructions(
+    async def _proactive_config(
         self, db: AsyncSession, agent_id: str | None
-    ) -> str:
-        """Per-agent proactive additions from agent.config['proactive']['custom_instructions'].
-
-        Appended to the code-level PROACTIVE_PROMPT at fire time so the base stays
-        centralized in code (one source of truth) while each agent can carry its own
-        extra instructions as plain data.
+    ) -> dict:
+        """Per-agent proactive settings from agent.config['proactive'] (custom
+        instructions, contact hours). Read fresh at fire time so the base
+        PROACTIVE_PROMPT stays centralized in code (one source of truth) while
+        each agent carries its own additions as plain data.
         """
         if not agent_id:
-            return ""
+            return {}
         from sqlalchemy import select
         from app.models.agent import Agent
 
         result = await db.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         if not agent:
-            return ""
-        proactive = (agent.config or {}).get("proactive", {}) or {}
-        return (proactive.get("custom_instructions", "") or "").strip()
+            return {}
+        return (agent.config or {}).get("proactive", {}) or {}
 
     async def _tick_failure_watchdog(self) -> None:
         """Detect schedules that fired but whose task never reached a terminal
@@ -855,6 +857,28 @@ class SchedulerService:
         task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
         _running_rooms[room.id] = task
         logger.info("[Scheduler] Started scheduled meeting %s: %s", room.id, room.name)
+
+
+def _contact_hours_note(proactive_config: dict) -> str:
+    """Render the agent's configured Ansprechpartner working hours as a prompt
+    block, or "" if none are set (PROACTIVE_PROMPT STEP 4 then treats every run
+    as off-hours by default).
+
+    Only formats the note — whether "now" falls inside the window is left to the
+    agent's own judgment at runtime; the orchestrator has no reliable way to know
+    which moment in the run the agent will act on a decision that needs sign-off.
+    """
+    hours = (proactive_config or {}).get("contact_hours") or {}
+    start = (hours.get("start") or "").strip()
+    end = (hours.get("end") or "").strip()
+    if not start or not end:
+        return ""
+    tz = (hours.get("timezone") or "UTC").strip() or "UTC"
+    return (
+        "## Ansprechpartner-Erreichbarkeit\n"
+        f"Erreichbar {start}–{end} ({tz}). Außerhalb dieses Fensters gilt STEP 4 "
+        "(Day/Night-Regel) als Off-Hours."
+    )
 
 
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:

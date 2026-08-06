@@ -50,7 +50,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "web_search", "web_fetch",
     "brain_search", "brain_get", "brain_list", "brain_related",
     "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
-    "list_team", "list_tasks", "list_todos", "list_schedules",
+    "list_team", "list_tasks", "list_todos", "list_schedules", "trigger_list",
     "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
     "send_message", "create_task",
 })
@@ -99,14 +99,14 @@ CONCURRENT_SAFE_TOOLS = frozenset({
     "git_status", "git_diff",
     "web_search", "web_fetch",
     "memory_search", "brain_search", "brain_get", "brain_list", "brain_related", "list_team",
-    "list_tasks", "list_todos", "list_schedules",
+    "list_tasks", "list_todos", "list_schedules", "trigger_list",
 })
 
 # Subset of concurrent-safe tools whose results are worth caching
 _CACHEABLE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
     "memory_search", "brain_search", "brain_list", "list_team",
-    "list_tasks", "list_todos", "list_schedules",
+    "list_tasks", "list_todos", "list_schedules", "trigger_list",
 })
 _CACHE_TTL_SECONDS = 120  # 2 minutes (tool result cache)
 _AUTONOMY_CACHE_TTL = 10  # 10s — fast enough for level changes to propagate

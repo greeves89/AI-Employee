@@ -650,6 +650,89 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
+    # ── Event Trigger Management (orchestrator-server.mjs) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_create",
+            "description": (
+                "Set yourself up to react to an EVENT instead of polling on a timer — fires "
+                "a task for you when a matching webhook arrives (e.g. a GitHub PR, a Stripe "
+                "payment, any inbound webhook your setup receives). Use this instead of "
+                "create_schedule when the work is event-driven, not time-driven."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name for the trigger"},
+                    "prompt_template": {
+                        "type": "string",
+                        "description": (
+                            "The prompt to run when the trigger fires. Supports "
+                            "{{payload.field}} interpolation from the webhook payload."
+                        ),
+                    },
+                    "source_filter": {
+                        "type": "string",
+                        "description": "Only fire for webhooks from this source, e.g. 'github', 'stripe'. Omit to match any source.",
+                    },
+                    "event_type_filter": {
+                        "type": "string",
+                        "description": "Only fire for this event type, e.g. 'pull_request', 'payment'. Omit to match any type.",
+                    },
+                    "payload_conditions": {
+                        "type": "object",
+                        "description": "Field:value pairs that must match in the webhook payload, e.g. {\"action\": \"opened\"}. Omit for no extra conditions.",
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "description": "Task priority when the trigger fires (default 5)",
+                    },
+                },
+                "required": ["name", "prompt_template"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_list",
+            "description": "List all your event triggers.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_toggle",
+            "description": "Enable or disable one of your event triggers (does not delete it).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "trigger_id": {"type": "string", "description": "The trigger ID to toggle"},
+                },
+                "required": ["trigger_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_delete",
+            "description": "Delete one of your event triggers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "trigger_id": {"type": "string", "description": "The trigger ID to delete"},
+                },
+                "required": ["trigger_id"],
+            },
+        },
+    },
     # ── TODO Management (orchestrator-server.mjs) ──
     {
         "type": "function",
@@ -925,6 +1008,17 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "description": "Preferred delivery channel for this user notification",
                         "enum": ["webapp", "ios", "telegram", "all"],
                         "default": "webapp",
+                    },
+                    "is_checkin": {
+                        "type": "boolean",
+                        "description": (
+                            "Set true ONLY for a proactive 'nothing left to do, checking in with "
+                            "a suggestion' notification (PROACTIVE_PROMPT STEP 3). Server-enforced "
+                            "to at most once per 12h per agent — extra check-ins in the same window "
+                            "are silently dropped. Do NOT set this for real accomplishments, "
+                            "results, or actionable problems; those are never rate-limited."
+                        ),
+                        "default": False,
                     },
                 },
                 "required": ["title", "message"],

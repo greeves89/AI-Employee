@@ -377,11 +377,18 @@ export interface Notification {
   created_at: string;
 }
 
+export interface ProactiveContactHours {
+  start: string;    // "HH:MM"
+  end: string;      // "HH:MM"
+  timezone: string; // IANA name, e.g. "Europe/Berlin"
+}
+
 export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
   custom_instructions?: string;
+  contact_hours?: ProactiveContactHours;
 }
 
 export interface ProactiveResponse {

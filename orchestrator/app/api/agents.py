@@ -2320,6 +2320,34 @@ async def update_agent_mounts(
 
 # --- Proactive Mode ---
 
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def _validated_contact_hours(start: str, end: str, tz_name: str) -> dict:
+    """Validate + normalize Ansprechpartner working hours, or {} if unset.
+
+    Both start and end are required together — a one-sided window can't be
+    evaluated by the agent. Raises HTTPException(422) on malformed input so a
+    typo surfaces immediately instead of silently producing a note the agent
+    can't act on.
+    """
+    start = (start or "").strip()
+    end = (end or "").strip()
+    tz_name = (tz_name or "UTC").strip() or "UTC"
+    if not start and not end:
+        return {}
+    if not start or not end:
+        raise HTTPException(status_code=422, detail="contact_hours_start and contact_hours_end must be set together")
+    if not _HHMM_RE.match(start) or not _HHMM_RE.match(end):
+        raise HTTPException(status_code=422, detail="contact_hours must be in HH:MM 24h format")
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(tz_name)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"Unknown timezone: {tz_name}")
+    return {"start": start, "end": end, "timezone": tz_name}
+
+
 class ProactiveUpdate(BaseModel):
     enabled: bool = True
     interval_seconds: int = 3600
@@ -2327,6 +2355,12 @@ class ProactiveUpdate(BaseModel):
     # Per-agent additions appended to the code base prompt at fire time.
     # None = leave unchanged (toggle/interval-only saves); "" = clear.
     custom_instructions: str | None = None
+    # Ansprechpartner working hours (PROACTIVE_PROMPT STEP 3/4) — lets the agent
+    # know when it may reach out vs. when it's off-hours. None = leave unchanged;
+    # "" (on any of the three) = clear.
+    contact_hours_start: str | None = None   # "HH:MM"
+    contact_hours_end: str | None = None     # "HH:MM"
+    contact_timezone: str | None = None      # IANA name, e.g. "Europe/Berlin"
 
 
 @router.get("/{agent_id}/proactive")
@@ -2402,6 +2436,13 @@ async def update_proactive_config(
             else existing_custom
         )
 
+        # Same preserve-unless-explicit pattern for contact hours.
+        existing_hours = (proactive or {}).get("contact_hours", {}) or {}
+        new_start = body.contact_hours_start if body.contact_hours_start is not None else existing_hours.get("start", "")
+        new_end = body.contact_hours_end if body.contact_hours_end is not None else existing_hours.get("end", "")
+        new_tz = body.contact_timezone if body.contact_timezone is not None else existing_hours.get("timezone", "")
+        new_hours = _validated_contact_hours(new_start, new_end, new_tz)
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
@@ -2434,6 +2475,7 @@ async def update_proactive_config(
             "schedule_id": schedule_id,
             "interval_seconds": body.interval_seconds,
             "custom_instructions": new_custom,
+            "contact_hours": new_hours,
         }
         config["proactive"] = proactive
         agent.config = config

@@ -1139,6 +1139,9 @@ export async function updateProactiveConfig(
     interval_seconds: number;
     prompt?: string;
     custom_instructions?: string;
+    contact_hours_start?: string;
+    contact_hours_end?: string;
+    contact_timezone?: string;
   },
 ): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {

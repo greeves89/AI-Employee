@@ -35,8 +35,12 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const [toggling, setToggling] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [customDraft, setCustomDraft] = useState("");
+  const [hoursStartDraft, setHoursStartDraft] = useState("");
+  const [hoursEndDraft, setHoursEndDraft] = useState("");
+  const [hoursTzDraft, setHoursTzDraft] = useState("");
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -59,20 +63,44 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
     setCustomDraft(savedCustom);
   }, [savedCustom]);
 
+  const savedHours = data?.proactive?.contact_hours;
+  const savedHoursStart = savedHours?.start ?? "";
+  const savedHoursEnd = savedHours?.end ?? "";
+  const savedHoursTz = savedHours?.timezone ?? "";
+  useEffect(() => {
+    setHoursStartDraft(savedHoursStart);
+    setHoursEndDraft(savedHoursEnd);
+    setHoursTzDraft(savedHoursTz);
+  }, [savedHoursStart, savedHoursEnd, savedHoursTz]);
+
+  const hoursDirty =
+    hoursStartDraft !== savedHoursStart ||
+    hoursEndDraft !== savedHoursEnd ||
+    hoursTzDraft !== savedHoursTz;
+  const draftDirty = customDraft !== savedCustom || hoursDirty;
+
   const handleSavePrompt = async () => {
     if (!data) return;
+    if (!!hoursStartDraft !== !!hoursEndDraft) {
+      setSaveError("Start- und Endzeit muessen zusammen gesetzt oder beide geleert werden.");
+      return;
+    }
     setSavingPrompt(true);
+    setSaveError("");
     try {
       await updateProactiveConfig(agentId, {
         enabled: data.proactive?.enabled ?? true,
         interval_seconds: data.proactive?.interval_seconds || 3600,
         custom_instructions: customDraft,
+        contact_hours_start: hoursStartDraft,
+        contact_hours_end: hoursEndDraft,
+        contact_timezone: hoursTzDraft,
       });
       await load();
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
     } catch {
-      // ignore
+      setSaveError("Speichern fehlgeschlagen — pruefe Uhrzeit-Format (HH:MM) und Zeitzone.");
     }
     setSavingPrompt(false);
   };
@@ -272,30 +300,64 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     placeholder="z.B. Pruefe bei jedem Lauf das IT-Operations Second Brain auf neue Druckerprobleme und ergaenze fehlende Loesungen als .md."
                     className="w-full resize-y rounded-lg border border-foreground/[0.08] bg-background/60 p-2 text-[11px] leading-relaxed text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
                   />
-                  <div className="mt-1.5 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-muted-foreground/40">
-                      Wird bei jedem proaktiven Lauf an den Basis-Prompt angehaengt.
-                    </span>
-                    <button
-                      onClick={handleSavePrompt}
-                      disabled={savingPrompt || customDraft === savedCustom}
-                      className={cn(
-                        "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
-                        customDraft !== savedCustom && !savingPrompt
-                          ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
-                          : "cursor-not-allowed bg-foreground/[0.04] text-muted-foreground/40"
-                      )}
-                    >
-                      {savingPrompt ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : savedFlash ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <Save className="h-3 w-3" />
-                      )}
-                      {savedFlash ? "Gespeichert" : "Speichern"}
-                    </button>
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    Wird bei jedem proaktiven Lauf an den Basis-Prompt angehaengt.
                   </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    Erreichbarkeit des Ansprechpartners
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="time"
+                      value={hoursStartDraft}
+                      onChange={(e) => setHoursStartDraft(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    <span className="text-[11px] text-muted-foreground/40">bis</span>
+                    <input
+                      type="time"
+                      value={hoursEndDraft}
+                      onChange={(e) => setHoursEndDraft(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={hoursTzDraft}
+                      onChange={(e) => setHoursTzDraft(e.target.value)}
+                      placeholder="Europe/Berlin"
+                      className="w-32 rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
+                    />
+                  </div>
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    Ausserhalb dieses Fensters meldet sich der Agent nur bei wirklich Dringendem
+                    (STEP 4 der Basis-Regeln). Leer lassen = jeder Lauf gilt als Off-Hours.
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-red-400/70">{saveError}</span>
+                  <button
+                    onClick={handleSavePrompt}
+                    disabled={savingPrompt || !draftDirty}
+                    className={cn(
+                      "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                      draftDirty && !savingPrompt
+                        ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                        : "cursor-not-allowed bg-foreground/[0.04] text-muted-foreground/40"
+                    )}
+                  >
+                    {savingPrompt ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : savedFlash ? (
+                      <Check className="h-3 w-3" />
+                    ) : (
+                      <Save className="h-3 w-3" />
+                    )}
+                    {savedFlash ? "Gespeichert" : "Speichern"}
+                  </button>
                 </div>
               </div>
             )}
