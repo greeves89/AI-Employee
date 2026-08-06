@@ -123,3 +123,35 @@ class ToolLabelTests(unittest.TestCase):
         """logging war importiert, ein logger aber nie angelegt — die Fehlerzeile
         im except-Block hätte einen NameError geworfen und den Turn zerlegt."""
         self.assertIn("logger = logging.getLogger(__name__)", BOT.read_text())
+
+
+class HandlerRobustnessTests(unittest.TestCase):
+    """Beiwerk darf die Zustellung niemals verhindern.
+
+    Vorfall 2026-08-06: `self._last_user_msg[chat_id] = …` stand im Eingangs-Handler,
+    das Feld wurde aber erst im Antwort-Lauscher angelegt — der läuft später. Beim
+    ersten Mal warf es AttributeError, der Handler brach ab, und die Nachricht
+    erreichte den Agenten nie. Der Nutzer bekam nur noch die Reaktion, keine Antwort.
+    """
+
+    def setUp(self):
+        self.src = BOT.read_text()
+
+    def test_state_is_created_in_the_constructor(self):
+        """Nicht per hasattr im Lauscher — der Handler läuft vorher."""
+        ctor = re.search(r"def __init__\(.*?(?=\n    async def |\n    def )", self.src, re.S)
+        self.assertIsNotNone(ctor)
+        self.assertIn("self._live: dict = {}", ctor.group(0))
+        self.assertIn("self._last_user_msg: dict = {}", ctor.group(0))
+
+    def test_no_late_hasattr_initialisation(self):
+        """Die späte Notlösung darf nicht zurückkehren."""
+        self.assertNotIn('hasattr(self, "_last_user_msg")', self.src)
+
+    def test_reaction_block_cannot_break_delivery(self):
+        """Reaktion und Buchführung stehen in einem eigenen try — sonst hängt die
+        Zustellung an einer Nebensächlichkeit."""
+        block = re.search(r"# Kurz reagieren.*?_start_listener", self.src, re.S)
+        self.assertIsNotNone(block)
+        self.assertIn("try:", block.group(0))
+        self.assertIn("except Exception", block.group(0))

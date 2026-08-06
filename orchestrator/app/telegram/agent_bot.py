@@ -70,6 +70,11 @@ class TelegramAgentBot:
         self.app: Application | None = None
         self._started = False
         self._response_listeners: dict[str, asyncio.Task] = {}
+        # Zustand der mitwachsenden Nachricht + welche Nutzer-Nachricht gerade
+        # bearbeitet wird. MUSS hier stehen: Der Eingangs-Handler nutzt beides,
+        # und der laeuft, bevor der Antwort-Lauscher je gestartet wurde.
+        self._live: dict = {}
+        self._last_user_msg: dict = {}
         self._telegram_send_listener: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -305,9 +310,14 @@ class TelegramAgentBot:
         )
 
         # Kurz reagieren, damit sichtbar ist: angekommen, ich arbeite dran.
-        # Wie ein Mensch, der im Chat erst mal ein Zeichen dranhaengt.
-        await self._react(chat_id, update.message.message_id, "\N{EYES}")
-        self._last_user_msg[chat_id] = update.message.message_id
+        # KOMPLETT abgesichert: Beiwerk darf die Zustellung nie verhindern. Genau das
+        # ist am 2026-08-06 passiert — ein fehlendes Attribut hier liess den Handler
+        # abbrechen, die Reaktion kam noch, die Nachricht erreichte den Agenten nie.
+        try:
+            self._last_user_msg[chat_id] = update.message.message_id
+            await self._react(chat_id, update.message.message_id, "\N{EYES}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Telegram] reaction/bookkeeping failed chat=%s: %s", chat_id, e)
 
         # Ensure response listener is running for the target agent
         self._start_listener(chat_id, target_agent_id)
@@ -763,10 +773,6 @@ class TelegramAgentBot:
             response_buffer = ""
             full_response = ""  # whole turn's text — for the voice-first reply
             live_status = ""    # kursive Arbeitszeile unter dem Text
-            if not hasattr(self, "_live"):
-                self._live: dict = {}
-            if not hasattr(self, "_last_user_msg"):
-                self._last_user_msg: dict = {}
             self._live.pop(chat_id, None)
             last_flush = asyncio.get_running_loop().time()
 

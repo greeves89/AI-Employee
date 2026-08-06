@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.150.2] — 2026-08-06
+
+### Fixed
+- **Telegram nahm Nachrichten an, beantwortete sie aber nicht mehr** (Regression aus v1.150.1). Der Nutzer bekam nur noch die Augen-Reaktion.
+
+  Die in v1.150.1 ergänzte Zeile `self._last_user_msg[chat_id] = …` steht im Eingangs-Handler, das Feld wurde aber erst im Antwort-Lauscher angelegt — und der läuft **später**. Beim ersten Mal warf es `AttributeError`, der Handler brach ab, und die Nachricht erreichte den Agenten nie. Im Log sichtbar als `inbound text` ohne folgendes `Saved response`.
+
+  Beide Zustandsfelder liegen jetzt im Konstruktor. Vor allem aber: Reaktion und Buchführung stehen in einem eigenen abgesicherten Block — **Beiwerk darf die Zustellung niemals verhindern**. 3 Tests halten das fest, inklusive des Verbots, die späte `hasattr`-Notlösung wieder einzuführen.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.150.1] — 2026-08-06
 
 ### Fixed
