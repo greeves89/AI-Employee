@@ -59,8 +59,8 @@ class LiveMessageTests(unittest.TestCase):
         self.assertIn("return True", _method(self.src, "_dlp_active"))
 
     def test_edits_are_rate_limited(self):
-        """Telegram drosselt häufige Bearbeitungen — sonst 429 und nichts kommt an."""
-        self.assertIn("1.3", _method(self.src, "_live_update"))
+        """Telegram drosselt Bearbeitungen — zu eng getaktet folgt eine Sperre (#528)."""
+        self.assertIn("5.0", _method(self.src, "_live_update"))
 
     def test_long_text_falls_back_to_chunking(self):
         """Über 4096 Zeichen kann Telegram nicht bearbeiten — dann der alte Weg."""
@@ -221,3 +221,37 @@ class FormattingTests(unittest.TestCase):
         self.assertIn('parse_mode="HTML"', self.src)
         block = _method(self.src, "_live_update")
         self.assertIn("except Exception", block)
+
+
+class FloodControlTests(unittest.TestCase):
+    """Issue #528: Nach einer Sperre wurde sofort weiter editiert.
+
+    Gemessen: 50+ Log-Zeilen in 25 Sekunden, der Retry-after-Zähler lief rückwärts
+    (56 → 55 → …) — Beweis für eine enge Schleife. Ursache: Bei einem Fehler wurde
+    der Zeitstempel nicht gesetzt, also griff die Drosselung nicht mehr.
+
+    Folgen laut Issue: veraltete Fortschrittsanzeige, zugemülltes Fehlerprotokoll,
+    und ein Eskalationsrisiko bis zur Sperrung des Bots.
+    """
+
+    def setUp(self):
+        self.block = _method(BOT.read_text(), "_live_update")
+
+    def test_clock_is_set_even_on_failure(self):
+        """Der Kern von #528 — ohne das feuert der nächste Durchlauf sofort erneut."""
+        idx_except = self.block.find("except Exception as e")
+        idx_clock = self.block.find('state["last"] = now', idx_except)
+        self.assertGreater(idx_clock, idx_except, "Uhr wird im Fehlerfall nicht gestellt")
+
+    def test_retry_after_is_honoured(self):
+        """Telegram nennt die Wartezeit — die muss gelesen und eingehalten werden."""
+        self.assertIn("retry after", self.block.lower())
+        self.assertIn("blocked_until", self.block)
+
+    def test_editing_is_paused_after_a_block(self):
+        self.assertIn('state.get("blocked_until"', self.block)
+
+    def test_throttle_is_wide_enough(self):
+        """1,3s ergaben bis zu 46 Bearbeitungen pro Minute in EINEM Chat."""
+        self.assertIn("5.0", self.block)
+        self.assertNotIn("< 1.3", self.block)

@@ -1075,8 +1075,14 @@ class TelegramAgentBot:
         if not shown or shown == state["shown"] or len(shown) > 4000:
             return
         now = asyncio.get_running_loop().time()
-        if state["id"] and now - state["last"] < 1.3:
-            return  # Telegram drosselt haeufige Bearbeitungen
+        # Telegram zaehlt Bearbeitungen wie Nachrichten und sperrt bei zu vielen
+        # ("Flood control exceeded"). 1,3s waren viel zu gierig — bei einem langen
+        # Werkzeuglauf ergab das ~46 Bearbeitungen pro Minute in EINEM Chat.
+        # 5s reichen optisch voellig und bleiben deutlich unter der Grenze.
+        if state["id"] and now - state["last"] < 5.0:
+            return
+        if now < state.get("blocked_until", 0.0):
+            return  # nach einer Sperre erst wieder rangehen, wenn sie abgelaufen ist
         try:
             pretty = _tg_format(shown)
             try:
@@ -1100,10 +1106,28 @@ class TelegramAgentBot:
             state["shown"] = shown
             state["last"] = now
         except Exception as e:  # noqa: BLE001
+            # ZUERST die Uhr stellen — sonst greift die Drosselung nach einem Fehler
+            # nicht mehr und der naechste Schleifendurchlauf versucht es sofort wieder.
+            # Genau daran hing #528: der Retry-after-Zaehler lief rueckwaerts
+            # (56 → 55 → …), weil im Sekundentakt weiter editiert wurde.
+            state["last"] = now
             # Nie den Turn stoeren — aber auch nicht schweigen: Ohne diese Zeile
             # sieht man nur, dass nichts passiert, und raet nach der Ursache.
             msg = str(e)
-            if "not modified" not in msg:
+            low = msg.lower()
+            if "flood" in low or "too many requests" in low or "retry after" in low:
+                # Gesperrt: fuer diesen Chat pausieren, statt weiter zu haemmern und
+                # die Sperre zu verlaengern. Die Antwort selbst kommt trotzdem an —
+                # sie geht am Ende ueber den normalen Weg raus.
+                wait = 60.0
+                import re as _re
+                m = _re.search(r"retry after (\d+)", low)
+                if m:
+                    wait = min(300.0, float(m.group(1)) + 2)
+                state["blocked_until"] = now + wait
+                logger.warning("[Telegram] flood control chat=%s — Live-Bild pausiert %.0fs",
+                               chat_id, wait)
+            elif "not modified" not in low:
                 logger.warning("[Telegram] live edit failed chat=%s: %s", chat_id, msg)
 
     async def _dlp_active(self) -> bool:

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.152.2] — 2026-08-06
+
+### Fixed
+- **Telegram-Sperre durch zu häufiges Bearbeiten** (#528). Der Live-Takt war mit 1,3 Sekunden viel zu gierig — bei einem langen Werkzeuglauf ergab das bis zu 46 Bearbeitungen pro Minute in **einem** Chat. Telegram zählt Bearbeitungen wie Nachrichten und sperrt dann („Flood control exceeded").
+
+  Schlimmer noch: Nach einem Fehler wurde der Zeitstempel **nicht** gesetzt, also griff die Drosselung nicht mehr und der nächste Schleifendurchlauf versuchte es sofort erneut. Im Protokoll sichtbar als 50+ Zeilen in 25 Sekunden mit rückwärts laufendem Zähler (56 → 55 → …).
+
+  Jetzt: 5 Sekunden Takt, die Uhr wird **auch im Fehlerfall** gestellt, und eine gemeldete Wartezeit wird gelesen und eingehalten — bis dahin ruht das Live-Bild für diesen Chat. Die Antwort selbst kommt unabhängig davon an.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.152.1] — 2026-08-06
 
 ### Fixed
