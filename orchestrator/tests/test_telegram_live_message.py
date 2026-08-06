@@ -73,33 +73,6 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class ReactionTests(unittest.TestCase):
-    """Reaktionen auf Nachrichten — Kundenwunsch 2026-08-06.
-
-    „Daumen hoch bei einer Nachricht, ein erschrecktes Gesicht" — der Bot soll
-    sichtbar reagieren, nicht nur Text schicken.
-    """
-
-    def setUp(self):
-        self.src = BOT.read_text()
-
-    def test_reaction_helper_exists(self):
-        self.assertIn("async def _react", self.src)
-        self.assertIn("set_message_reaction", self.src)
-
-    def test_arrival_is_acknowledged(self):
-        """Sofort sichtbar: angekommen, ich arbeite dran."""
-        self.assertIn("update.message.message_id, \"\\N{EYES}\"", self.src)
-
-    def test_success_and_failure_differ(self):
-        """Daumen hoch bei fertig, erschrockenes Gesicht bei Fehler."""
-        self.assertIn("THUMBS UP SIGN", self.src)
-        self.assertIn("FACE SCREAMING IN FEAR", self.src)
-
-    def test_reaction_failure_never_breaks_the_turn(self):
-        """Eine Reaktion ist Beiwerk — sie darf die Antwort nie verhindern."""
-        self.assertIn("eine reaktion ist beiwerk", _method(self.src, "_react").lower())
-
 
 class ToolLabelTests(unittest.TestCase):
     """Werkzeugnamen lesbar: im Chat stand „mcp__orchestrator__create_task"."""
@@ -151,7 +124,7 @@ class HandlerRobustnessTests(unittest.TestCase):
     def test_reaction_block_cannot_break_delivery(self):
         """Reaktion und Buchführung stehen in einem eigenen try — sonst hängt die
         Zustellung an einer Nebensächlichkeit."""
-        block = re.search(r"# Kurz reagieren.*?_start_listener", self.src, re.S)
+        block = re.search(r"# Merken, welche Nachricht.*?_start_listener", self.src, re.S)
         self.assertIsNotNone(block)
         self.assertIn("try:", block.group(0))
         self.assertIn("except Exception", block.group(0))

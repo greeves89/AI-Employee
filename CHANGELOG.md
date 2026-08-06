@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.151.0] — 2026-08-06
+
+### Changed
+- **Der Agent entscheidet selbst, ob er auf eine Nachricht reagiert** — statt fester Regeln. Die Automatik aus v1.150.1 (Augen bei jedem Eingang, Daumen bei jedem Ende) ist raus: Ein Zeichen bei *jeder* Nachricht wirkt mechanisch.
+
+  Neu ist ein Endpunkt `POST /telegram/react`, den der Agent nutzt, wenn es passt — ein Herz für etwas Nettes, ein erschrockenes Gesicht bei schlechten Nachrichten, ein Daumen zur Bestätigung. Der **Normalfall ist keine Reaktion**, und eine Reaktion ersetzt niemals eine Antwort; beides steht so in seiner Anleitung.
+
+  Telegram erlaubt nur eine feste Auswahl von 21 Zeichen — die Liste ist hinterlegt und wird geprüft, sonst scheiterte es erst zur Laufzeit. Ein leeres Zeichen entfernt eine gesetzte Reaktion.
+
+### Deployment
+- Orchestrator (Restart) + Agenten-Image (die Anleitung liegt im Agenten).
+
 ## [1.150.2] — 2026-08-06
 
 ### Fixed

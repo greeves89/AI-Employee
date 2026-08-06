@@ -309,15 +309,14 @@ class TelegramAgentBot:
             f"target={target_agent_id} message={update.message.message_id}"
         )
 
-        # Kurz reagieren, damit sichtbar ist: angekommen, ich arbeite dran.
-        # KOMPLETT abgesichert: Beiwerk darf die Zustellung nie verhindern. Genau das
-        # ist am 2026-08-06 passiert — ein fehlendes Attribut hier liess den Handler
-        # abbrechen, die Reaktion kam noch, die Nachricht erreichte den Agenten nie.
+        # Merken, welche Nachricht gerade bearbeitet wird — der Agent kann darauf
+        # reagieren, WENN er es fuer passend haelt. Keine Automatik: Ein Zeichen bei
+        # JEDER Nachricht wirkt mechanisch. Abgesichert, weil Beiwerk die Zustellung
+        # niemals verhindern darf (genau das ist am 2026-08-06 passiert).
         try:
             self._last_user_msg[chat_id] = update.message.message_id
-            await self._react(chat_id, update.message.message_id, "\N{EYES}")
         except Exception as e:  # noqa: BLE001
-            logger.warning("[Telegram] reaction/bookkeeping failed chat=%s: %s", chat_id, e)
+            logger.warning("[Telegram] bookkeeping failed chat=%s: %s", chat_id, e)
 
         # Ensure response listener is running for the target agent
         self._start_listener(chat_id, target_agent_id)
@@ -831,9 +830,7 @@ class TelegramAgentBot:
                             pass
 
                     elif event_type == "error":
-                        _um = self._last_user_msg.pop(chat_id, None)
-                        if _um:
-                            await self._react(chat_id, _um, "\N{FACE SCREAMING IN FEAR}")
+                        self._last_user_msg.pop(chat_id, None)
                         error_msg = str(event_data.get("message", "Unknown error"))
                         await self.app.bot.send_message(
                             chat_id=chat_id, text=f"❌ {error_msg}"
@@ -861,10 +858,7 @@ class TelegramAgentBot:
                         # Live-Nachricht abschliessen: hier laeuft der DLP-Filter ueber
                         # den FERTIGEN Text, und die Arbeitszeile verschwindet.
                         await self._live_update(chat_id, full_response, final=True)
-                        # Fertig — die Reaktion wechselt von „ich schaue" auf „erledigt".
-                        _um = self._last_user_msg.pop(chat_id, None)
-                        if _um:
-                            await self._react(chat_id, _um, "\N{THUMBS UP SIGN}")
+                        self._last_user_msg.pop(chat_id, None)
                         response_buffer = ""
                         live_status = ""
                         last_flush = now

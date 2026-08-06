@@ -798,3 +798,49 @@ async def get_description(
     desc = await _tg_request(token, "getMyDescription")
     short_desc = await _tg_request(token, "getMyShortDescription")
     return {"description": desc, "short_description": short_desc}
+
+# Telegram erlaubt NUR diese Zeichen als Reaktion; alles andere weist die API ab.
+# Bewusst als feste Liste: Ein erfundenes Zeichen scheitert erst zur Laufzeit.
+_ALLOWED_REACTIONS = {
+    "\N{THUMBS UP SIGN}", "\N{THUMBS DOWN SIGN}", "\N{HEAVY BLACK HEART}",
+    "\N{FIRE}", "\N{SMILING FACE WITH SMILING EYES AND THREE HEARTS}",
+    "\N{CLAPPING HANDS SIGN}", "\N{GRINNING FACE WITH SMILING EYES}",
+    "\N{THINKING FACE}", "\N{FACE SCREAMING IN FEAR}",
+    "\N{FACE WITH OPEN MOUTH}", "\N{CRYING FACE}", "\N{PARTY POPPER}",
+    "\N{HUNDRED POINTS SYMBOL}", "\N{PILE OF POO}", "\N{PERSON WITH FOLDED HANDS}",
+    "\N{OK HAND SIGN}", "\N{EYES}", "\N{ROCKET}", "\N{FLEXED BICEPS}",
+    "\N{FACE WITH TEARS OF JOY}", "\N{WRITING HAND}",
+}
+
+
+class ReactRequest(BaseModel):
+    chat_id: str
+    message_id: int
+    emoji: str = ""   # leer = Reaktion wieder entfernen
+
+
+@router.post("/react")
+async def react_to_message(
+    body: ReactRequest,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Auf eine Telegram-Nachricht reagieren — oder die Reaktion entfernen.
+
+    Der Agent entscheidet selbst, ob eine Reaktion passt. Bewusst KEINE Automatik:
+    Ein Zeichen bei jeder Nachricht wirkt mechanisch; der Normalfall ist keine.
+    """
+    token = await _get_bot_token(agent_auth["agent_id"], db)
+    emoji = (body.emoji or "").strip()
+    if emoji and emoji not in _ALLOWED_REACTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Telegram erlaubt dieses Zeichen nicht als Reaktion. "
+                    f"Moeglich sind: {' '.join(sorted(_ALLOWED_REACTIONS))}"),
+        )
+    reaction = [{"type": "emoji", "emoji": emoji}] if emoji else []
+    return await _tg_request(token, "setMessageReaction", {
+        "chat_id": body.chat_id,
+        "message_id": body.message_id,
+        "reaction": reaction,
+    })

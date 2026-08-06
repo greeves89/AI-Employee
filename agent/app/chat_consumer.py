@@ -58,6 +58,8 @@ def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) ->
     file_id = tg.get("file_id", "")
     callback_data = tg.get("callback_data", "")
     callback_query_id = tg.get("callback_query_id", "")
+    # Auf DIESE Nachricht kann der Agent reagieren (wenn er es fuer passend haelt).
+    msg_ref = tg.get("message_id", "") or 0
 
     orch_url = settings.orchestrator_url
     agent_id = settings.agent_id
@@ -155,6 +157,21 @@ RULES:
 - If unsure about context: READ /workspace/knowledge.md — it has your role, patterns, and learnings.
 
 ORCHESTRATOR TELEGRAM API (use these curl commands):
+
+REACTIONS (optional, use sparingly): You may react to the user's message with a
+single emoji — like a colleague would. Do this ONLY when it genuinely fits: a heart
+for something kind, a shocked face for bad news, a thumbs-up to acknowledge. The
+NORMAL case is NO reaction — do not react to every message, that feels mechanical.
+Never use a reaction INSTEAD of an answer.
+
+  curl -X POST {api_base}/react {auth} \\
+    -H 'Content-Type: application/json' \\
+    -d '{{"chat_id": "{chat_id}", "message_id": {msg_ref}, "emoji": "\U0001F44D"}}'
+
+Allowed emojis only (Telegram rejects others): thumbs up/down, heart, fire, party,
+100, clapping, grinning, thinking, screaming, open mouth, crying, poo, folded hands,
+ok hand, eyes, rocket, biceps, tears of joy, writing hand, smiling-with-hearts.
+Send an empty emoji to remove a reaction.
 
 IMPORTANT — File sending: ALWAYS use the multipart-upload endpoints below (no base64!).
 They support up to 50 MB and work for any file size.
