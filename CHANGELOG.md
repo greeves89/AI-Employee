@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.5] — 2026-08-06
+
+### Fixed
+- **KRITISCH: Jede Codex-Aufgabe (Chat wie proaktiv) schlug sofort mit
+  „NameError: name 'self' is not defined" fehl** — noch bevor ein Werkzeug lief oder das
+  Modell etwas ausgegeben hatte. Gefunden beim Untersuchen, warum der neue
+  Activity-Kalender bei einem Agenten nur durchgehend rote (fehlgeschlagene) Balken
+  zeigte: `_stream_jsonl()` in `codex_runner.py` ist eine Modul-Funktion (keine Methode),
+  enthielt aber `self.log_publisher...` — kopiert aus dem benachbarten `collect_stderr`,
+  das als Closure INNERHALB einer Methode `self` legitim erreichen kann. Jetzt bekommt
+  die Funktion den `log_publisher` explizit als Parameter übergeben.
+
+  Bestand seit einem früheren Commit („Lebenszeichen an die CLI-Ausgabe haengen"), nicht
+  durch die heutige Arbeit verursacht — aber dadurch gefunden, weil der Kalender genau
+  das zeigen soll: was tatsächlich passiert, nicht nur was geplant war. Der bestehende
+  Test dazu prüfte nur, ob der Text „last_activity_at" im Quellcode vorkommt (das hätte
+  den Fehler nie gefangen — der Text stand ja da, nur im falschen Scope). Neuer Test
+  führt die Funktion jetzt wirklich aus.
+
+### Deployment
+- Agent-Image (Rebuild) + alle Codex-Agenten neu erstellen (Update-Button je Agent).
+
 ## [1.153.4] — 2026-08-06
 
 ### Fixed

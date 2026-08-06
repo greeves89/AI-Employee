@@ -240,7 +240,7 @@ class CodexAgentRunner:
                 self._process.stdin.close()
             stderr_task = asyncio.create_task(collect_stderr(self._process))
 
-            async for event in _stream_jsonl(self._process):
+            async for event in _stream_jsonl(self._process, self.log_publisher):
                 text = _extract_text(event)
                 if text:
                     text_output.append(text)
@@ -529,7 +529,7 @@ async def _publish(
         await publisher.publish(target_id, event_type, payload)
 
 
-async def _stream_jsonl(process: asyncio.subprocess.Process) -> AsyncIterator[dict]:
+async def _stream_jsonl(process: asyncio.subprocess.Process, log_publisher: LogPublisher) -> AsyncIterator[dict]:
     if not process.stdout:
         return
     buffer = b""
@@ -537,7 +537,7 @@ async def _stream_jsonl(process: asyncio.subprocess.Process) -> AsyncIterator[di
         chunk = await process.stdout.read(4096)
         if chunk:
             # Lebenszeichen fuer den Stillstands-Wachhund (siehe chat_consumer).
-            self.log_publisher.last_activity_at = time.monotonic()
+            log_publisher.last_activity_at = time.monotonic()
         if not chunk:
             if buffer.strip():
                 for line in buffer.decode("utf-8", errors="replace").splitlines():
