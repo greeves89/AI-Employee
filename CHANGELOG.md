@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.150.1] — 2026-08-06
+
+### Fixed
+- **Die Arbeitszeile stand als Rohtext da.** Sie war als `_kursiv_` ausgezeichnet, die Nachricht geht aber ohne `parse_mode` raus — also erschienen die Unterstriche wörtlich. Jetzt eine schlichte Trennzeile ohne Auszeichnung; mit `parse_mode` würde jedes Sonderzeichen im Agententext die Nachricht zerlegen.
+- **Werkzeugnamen sind lesbar.** Im Chat stand `mcp__orchestrator__create_task` — jetzt „Orchestrator: create task".
+- **Ein fehlender Logger hätte den Antwortstrom zerlegt.** In `agent_bot.py` war `logging` importiert, aber nie ein `logger` angelegt. Die in v1.150.0 ergänzte Fehlerzeile im `except`-Block hätte deshalb einen `NameError` geworfen — ungefangen, weil sie selbst im Fehlerpfad steht.
+
+### Added
+- **Der Bot reagiert auf Nachrichten** (Kundenwunsch): Augen, sobald deine Nachricht angekommen ist und er zu arbeiten beginnt · Daumen hoch, wenn die Antwort steht · erschrockenes Gesicht bei einem Fehler. Eine fehlgeschlagene Reaktion bleibt folgenlos — sie ist Beiwerk und darf die Antwort nie verhindern.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.150.0] — 2026-08-06
 
 ### Changed

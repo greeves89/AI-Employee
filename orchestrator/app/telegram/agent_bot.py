@@ -43,6 +43,22 @@ def _strip_markdown(text: str) -> str:
     return t.strip()
 
 
+
+logger = logging.getLogger(__name__)
+
+
+def _tool_label(raw: str) -> str:
+    """Werkzeugnamen lesbar machen — im Chat stand „mcp__orchestrator__create_task"."""
+    name = (raw or "").strip()
+    if name.startswith("mcp__"):
+        parts = name.split("__")
+        server = parts[1].replace("_", " ").strip() if len(parts) > 1 else ""
+        tool = parts[-1].replace("_", " ").strip()
+        return f"{server.capitalize()}: {tool}" if server else tool
+    return name.replace("_", " ")
+
+
+
 class TelegramAgentBot:
     """A Telegram bot instance bound to a single AI Employee agent."""
 
@@ -287,6 +303,11 @@ class TelegramAgentBot:
             f"[Telegram] inbound text chat={chat_id} gateway={self.agent_id} "
             f"target={target_agent_id} message={update.message.message_id}"
         )
+
+        # Kurz reagieren, damit sichtbar ist: angekommen, ich arbeite dran.
+        # Wie ein Mensch, der im Chat erst mal ein Zeichen dranhaengt.
+        await self._react(chat_id, update.message.message_id, "\N{EYES}")
+        self._last_user_msg[chat_id] = update.message.message_id
 
         # Ensure response listener is running for the target agent
         self._start_listener(chat_id, target_agent_id)
@@ -744,6 +765,8 @@ class TelegramAgentBot:
             live_status = ""    # kursive Arbeitszeile unter dem Text
             if not hasattr(self, "_live"):
                 self._live: dict = {}
+            if not hasattr(self, "_last_user_msg"):
+                self._last_user_msg: dict = {}
             self._live.pop(chat_id, None)
             last_flush = asyncio.get_running_loop().time()
 
@@ -792,7 +815,7 @@ class TelegramAgentBot:
                         # Frueher wurde hier abgeschickt und spaeter erneut — das ergab
                         # eine Kette von Nachrichten. Jetzt bleibt alles in EINER, die
                         # mitwaechst; das Werkzeug erscheint als Arbeitszeile darunter.
-                        _tool = str(event_data.get("tool") or "ein Werkzeug")
+                        _tool = _tool_label(str(event_data.get("tool") or "")) or "ein Werkzeug"
                         live_status = f"nutzt gerade {_tool}…"
                         await self._live_update(chat_id, full_response, status=live_status)
                         # Show typing indicator while tool runs
@@ -802,6 +825,9 @@ class TelegramAgentBot:
                             pass
 
                     elif event_type == "error":
+                        _um = self._last_user_msg.pop(chat_id, None)
+                        if _um:
+                            await self._react(chat_id, _um, "\N{FACE SCREAMING IN FEAR}")
                         error_msg = str(event_data.get("message", "Unknown error"))
                         await self.app.bot.send_message(
                             chat_id=chat_id, text=f"❌ {error_msg}"
@@ -829,6 +855,10 @@ class TelegramAgentBot:
                         # Live-Nachricht abschliessen: hier laeuft der DLP-Filter ueber
                         # den FERTIGEN Text, und die Arbeitszeile verschwindet.
                         await self._live_update(chat_id, full_response, final=True)
+                        # Fertig — die Reaktion wechselt von „ich schaue" auf „erledigt".
+                        _um = self._last_user_msg.pop(chat_id, None)
+                        if _um:
+                            await self._react(chat_id, _um, "\N{THUMBS UP SIGN}")
                         response_buffer = ""
                         live_status = ""
                         last_flush = now
@@ -876,6 +906,21 @@ class TelegramAgentBot:
             except Exception:
                 pass
 
+    async def _react(self, chat_id: int, message_id: int, emoji: str) -> None:
+        """Auf die Nachricht des Nutzers reagieren — wie ein Mensch im Chat.
+
+        Telegram erlaubt nur eine feste Auswahl an Reaktions-Emojis; alles andere
+        weist die API ab. Deshalb hier bewusst nur geprüfte Zeichen.
+        """
+        try:
+            from telegram import ReactionTypeEmoji
+            await self.app.bot.set_message_reaction(
+                chat_id=chat_id, message_id=message_id,
+                reaction=[ReactionTypeEmoji(emoji=emoji)],
+            )
+        except Exception as e:  # noqa: BLE001 — eine Reaktion ist Beiwerk
+            logger.debug("[Telegram] reaction failed chat=%s: %s", chat_id, e)
+
     async def _live_update(self, chat_id: int, text: str, *, status: str = "",
                            final: bool = False) -> None:
         """Eine Nachricht schreiben und dann FORTLAUFEND bearbeiten statt viele zu senden.
@@ -894,7 +939,10 @@ class TelegramAgentBot:
         """
         state = self._live.setdefault(chat_id, {"id": None, "shown": "", "last": 0.0})
         body = (text or "").strip()
-        shown = body + (f"\n\n_{status}_" if status and not final else "")
+        # KEIN Markdown: Die Nachricht geht ohne parse_mode raus, sonst stuenden die
+        # Unterstriche woertlich da — und mit parse_mode wuerde jedes Sonderzeichen im
+        # Agententext die Nachricht zerlegen. Schlichte Trennzeile statt Auszeichnung.
+        shown = body + (f"\n\n··· {status}" if status and not final else "")
 
         if final:
             # Fertiger Text: DLP pruefen, dann die Live-Nachricht abschliessen.
@@ -949,8 +997,12 @@ class TelegramAgentBot:
                 state["id"] = sent.message_id
             state["shown"] = shown
             state["last"] = now
-        except Exception:
-            pass  # „message is not modified" u. a. — nie den Turn stoeren
+        except Exception as e:  # noqa: BLE001
+            # Nie den Turn stoeren — aber auch nicht schweigen: Ohne diese Zeile
+            # sieht man nur, dass nichts passiert, und raet nach der Ursache.
+            msg = str(e)
+            if "not modified" not in msg:
+                logger.warning("[Telegram] live edit failed chat=%s: %s", chat_id, msg)
 
     async def _dlp_active(self) -> bool:
         """Laeuft der Egress-Filter? Dann keine Zwischenstaende zeigen.

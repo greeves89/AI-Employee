@@ -71,3 +71,55 @@ class LiveMessageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReactionTests(unittest.TestCase):
+    """Reaktionen auf Nachrichten — Kundenwunsch 2026-08-06.
+
+    „Daumen hoch bei einer Nachricht, ein erschrecktes Gesicht" — der Bot soll
+    sichtbar reagieren, nicht nur Text schicken.
+    """
+
+    def setUp(self):
+        self.src = BOT.read_text()
+
+    def test_reaction_helper_exists(self):
+        self.assertIn("async def _react", self.src)
+        self.assertIn("set_message_reaction", self.src)
+
+    def test_arrival_is_acknowledged(self):
+        """Sofort sichtbar: angekommen, ich arbeite dran."""
+        self.assertIn("update.message.message_id, \"\\N{EYES}\"", self.src)
+
+    def test_success_and_failure_differ(self):
+        """Daumen hoch bei fertig, erschrockenes Gesicht bei Fehler."""
+        self.assertIn("THUMBS UP SIGN", self.src)
+        self.assertIn("FACE SCREAMING IN FEAR", self.src)
+
+    def test_reaction_failure_never_breaks_the_turn(self):
+        """Eine Reaktion ist Beiwerk — sie darf die Antwort nie verhindern."""
+        self.assertIn("eine reaktion ist beiwerk", _method(self.src, "_react").lower())
+
+
+class ToolLabelTests(unittest.TestCase):
+    """Werkzeugnamen lesbar: im Chat stand „mcp__orchestrator__create_task"."""
+
+    def test_mcp_names_are_humanised(self):
+        import re as _re
+        src = BOT.read_text()
+        m = _re.search(r'def _tool_label.*?return name\.replace\("_", " "\)', src, _re.S)
+        ns: dict = {}
+        exec(m.group(0), ns)
+        f = ns["_tool_label"]
+        self.assertEqual(f("mcp__orchestrator__create_task"), "Orchestrator: create task")
+        self.assertEqual(f("Bash"), "Bash")
+
+    def test_status_line_has_no_markdown(self):
+        """Die Nachricht geht ohne parse_mode raus — Unterstriche stünden wörtlich da."""
+        src = BOT.read_text()
+        self.assertNotIn('f"\\n\\n_{status}_"', src)
+
+    def test_logger_exists(self):
+        """logging war importiert, ein logger aber nie angelegt — die Fehlerzeile
+        im except-Block hätte einen NameError geworfen und den Turn zerlegt."""
+        self.assertIn("logger = logging.getLogger(__name__)", BOT.read_text())
