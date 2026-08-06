@@ -495,7 +495,7 @@ async def distribute_agent(
             await db.commit()
             created.append({"user_id": uid, "user_name": target_user.name, "agent_id": clone.id, "agent_name": clone.name})
         except Exception as e:  # noqa: BLE001
-            logger.exception(f"Failed to clone source {source.id} for user {uid}")
+            logger.exception(f"Failed to clone source {source.id} for user {scrub_log(uid)}")
             skipped.append({"user_id": uid, "user_name": target_user.name, "reason": f"error: {e}"})
 
     return {

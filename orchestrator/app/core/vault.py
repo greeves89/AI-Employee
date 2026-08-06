@@ -33,10 +33,19 @@ _HEADING_RE = re.compile(r"^\s{0,3}#\s+(.+?)\s*$", re.MULTILINE)
 MAX_GRAPH_NODES = 2000
 
 
+_SAFE_LOG_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
 def safe_log(value: object) -> str:
     """Strip CR/LF (and other control chars) from a user-controlled value before
-    it is written to a log line, preventing log-forging / log-injection."""
-    return re.sub(r"[\x00-\x1f\x7f]", " ", str(value))
+    it is written to a log line, preventing log-forging / log-injection.
+
+    Mirrors app.core.log_redaction.scrub_log(): explicit CR/LF removal first,
+    then a regex sweep for remaining control chars, for consistency between
+    the two sanitization helpers used across the codebase.
+    """
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    return _SAFE_LOG_CONTROL_CHARS.sub(" ", text)
 
 
 def resolve_path(host_path: str, rel_path: str) -> str:

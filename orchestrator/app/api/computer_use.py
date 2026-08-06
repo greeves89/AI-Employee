@@ -443,7 +443,7 @@ async def update_capabilities(
         raise HTTPException(status_code=422, detail=f"Unknown capability groups: {sorted(unknown)}")
 
     session["allowed_capabilities"] = set(req.allowed_capabilities)
-    logger.info(f"Session {session_id}: capabilities updated to {sorted(req.allowed_capabilities)}")
+    logger.info(f"Session {scrub_log(session_id)}: capabilities updated to {sorted(req.allowed_capabilities)}")
     return {
         "session_id": session_id,
         "allowed_capabilities": sorted(session["allowed_capabilities"]),
@@ -474,7 +474,7 @@ async def assign_agent(
             raise HTTPException(status_code=404, detail="Agent not found or not yours")
 
     session["agent_id"] = req.agent_id
-    logger.info(f"Session {session_id}: agent_id set to {req.agent_id}")
+    logger.info(f"Session {scrub_log(session_id)}: agent_id set to {req.agent_id}")
     return _session_view(session_id, session)
 
 
@@ -934,7 +934,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
     # stays alive for days would eventually hit the cap and 429 forever.
     session["action_count"] = 0
     await _touch_session(session_id)
-    logger.info(f"Bridge connected for session {session_id} (user {user_id})")
+    logger.info(f"Bridge connected for session {scrub_log(session_id)} (user {scrub_log(user_id)})")
 
     await websocket.send_text(json.dumps({
         "type": "session_info",
@@ -977,9 +977,9 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             elif msg_type == "hello":
                 logger.info(
                     "Bridge hello: caps=%s platform=%s version=%s",
-                    msg.get("capabilities"),
-                    msg.get("platform"),
-                    msg.get("bridge_version"),
+                    scrub_log(msg.get("capabilities")),
+                    scrub_log(msg.get("platform")),
+                    scrub_log(msg.get("bridge_version")),
                 )
                 session["capabilities"] = msg.get("capabilities", [])
                 session["platform"] = msg.get("platform", "unknown")
@@ -999,7 +999,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                 pass  # bridge_last_seen_at already updated above
 
     except WebSocketDisconnect:
-        logger.info(f"Bridge disconnected for session {session_id}")
+        logger.info(f"Bridge disconnected for session {scrub_log(session_id)}")
     finally:
         ping_task.cancel()
         session["bridge_connected"] = False

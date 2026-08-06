@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
+from app.core.log_redaction import scrub_log
 from app.core.oauth_providers import (
     PROVIDERS,
     apply_tenant,
@@ -116,7 +117,7 @@ class OAuthService:
             raise ValueError("OAuth state mismatch")
 
         if _is_per_user(provider_name) and user_id is None:
-            logger.warning("Per-user provider %s called without user_id in state", provider_name)
+            logger.warning("Per-user provider %s called without user_id in state", scrub_log(provider_name))
 
         provider = get_provider(provider_name)
         client_id = get_provider_client_id(provider)
@@ -166,8 +167,8 @@ class OAuthService:
                 logger.error(
                     "Token exchange failed (%s): %s | provider=%s",
                     token_response.status_code,
-                    token_response.text,
-                    provider_name,
+                    scrub_log(token_response.text),
+                    scrub_log(provider_name),
                 )
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
@@ -210,7 +211,7 @@ class OAuthService:
                             or userinfo.get("userPrincipalName")
                         )
             except Exception as e:
-                logger.warning("Could not fetch user info for %s: %s", provider_name, e)
+                logger.warning("Could not fetch user info for %s: %s", scrub_log(provider_name), scrub_log(e))
 
         provider_enum = OAuthProvider(provider_name)
         # Global providers (Anthropic, GitHub, …) store a single shared token
@@ -384,7 +385,7 @@ class OAuthService:
 
         await self.db.commit()
         await self.db.refresh(integration)
-        logger.info("Stored PAT for %s (account: %s, user: %s)", provider_name, account_label, user_id)
+        logger.info("Stored PAT for %s (account: %s, user: %s)", scrub_log(provider_name), scrub_log(account_label), scrub_log(user_id))
         return integration
 
     async def store_auth_json(
@@ -451,7 +452,7 @@ class OAuthService:
 
         await self.db.commit()
         await self.db.refresh(integration)
-        logger.info("Stored Codex auth.json (account: %s, user: %s)", account_label, user_id)
+        logger.info("Stored Codex auth.json (account: %s, user: %s)", scrub_log(account_label), scrub_log(user_id))
         return integration
 
     async def disconnect(self, provider_name: str, user_id: str | None = None) -> None:

@@ -20,6 +20,7 @@ from app.core.auth import (
     hash_password,
     verify_password,
 )
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.models.user import User, UserRole
 
@@ -355,7 +356,7 @@ async def sso_callback(
     try:
         user = await sso_service.handle_callback(provider, code, state)
     except ValueError as e:
-        logger.warning(f"SSO callback failed for {provider}: {e}")
+        logger.warning(f"SSO callback failed for {scrub_log(provider)}: {e}")
         return RedirectResponse(
             url=f"{frontend_url}/login?error={str(e)}&provider={provider}"
         )
@@ -372,7 +373,7 @@ async def sso_callback(
     redirect_resp.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)
     redirect_resp.set_cookie(COOKIE_REFRESH, refresh, max_age=604800, **COOKIE_OPTS)
 
-    logger.info(f"SSO login successful: {user.email} via {provider}")
+    logger.info(f"SSO login successful: {scrub_log(user.email)} via {scrub_log(provider)}")
     return redirect_resp
 
 

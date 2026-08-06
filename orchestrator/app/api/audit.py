@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth, verify_agent_token
 from app.models.audit_log import AuditLog, AuditEventType
@@ -91,7 +92,7 @@ async def create_audit_log(
     await db.refresh(entry)
 
     logger.info(
-        f"Audit: agent={agent_id} event={body.event_type} outcome={body.outcome} "
+        f"Audit: agent={scrub_log(agent_id)} event={body.event_type} outcome={scrub_log(body.outcome)} "
         f"cmd={body.command!r:.80}"
     )
 

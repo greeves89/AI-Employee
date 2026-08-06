@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_agent_access, require_auth, verify_agent_token
 from app.models.agent import Agent
@@ -130,7 +131,7 @@ async def request_approval(
     agent_id = agent_auth["agent_id"]
 
     if body.risk_level == "blocked":
-        logger.warning(f"Agent {agent_id} attempted blocked command: {body.tool}")
+        logger.warning(f"Agent {agent_id} attempted blocked command: {scrub_log(body.tool)}")
         raise HTTPException(status_code=403, detail="This command is forbidden and cannot be executed even with approval.")
 
     is_question = bool(body.question and not body.tool)
@@ -269,7 +270,10 @@ async def request_approval(
     db.add(audit_entry)
     await db.commit()
 
-    logger.info(f"Approval {approval.id} created for agent {agent_id} - {body.tool} (risk: {body.risk_level})")
+    logger.info(
+        f"Approval {approval.id} created for agent {agent_id} - "
+        f"{scrub_log(body.tool)} (risk: {scrub_log(body.risk_level)})"
+    )
 
     return {
         "approval_id": str(approval.id),
