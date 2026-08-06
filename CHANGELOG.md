@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.2] — 2026-08-06
+
+### Changed
+- **Der Kalender eines einzelnen Agenten ist jetzt eine echte vertikale Tagesansicht**
+  (Stunden von oben nach unten gestapelt, Aufgaben als Blöcke mit lesbarem Titel direkt
+  auf dem Block — wie ein gewöhnlicher Kalender-Tagesansicht) statt der horizontalen
+  24h-Leiste. Die horizontale Leiste (ein schmaler Streifen pro Agent) bleibt für den
+  globalen Menüpunkt „Activity" bestehen, wo mehrere Agenten nebeneinander verglichen
+  werden — dort ist sie das richtige Format, nur nicht für die Ansicht eines einzelnen
+  Agenten. Sich überschneidende Aufgaben werden nebeneinander in eigenen Spalten gelegt.
+  Beim Öffnen springt die Ansicht automatisch zur aktuellen Uhrzeit (heute) bzw. zur
+  ersten Aufgabe des Tages.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.153.1] — 2026-08-06
 
 ### Fixed

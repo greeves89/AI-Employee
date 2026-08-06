@@ -180,9 +180,62 @@ def mockup_proactive_hours() -> str:
     """
 
 
+def mockup_day_agenda() -> str:
+    hour_px = 44
+
+    def hour_row(h):
+        return (f'<div style="position:relative; height:{hour_px}px; border-top:1px solid {BORDER};">'
+                f'<span style="position:absolute; top:-7px; right:8px; font-size:10px; color:{MUTED_FG};">{h:02d}:00</span></div>')
+
+    gutter = "".join(hour_row(h) for h in range(7, 17))
+
+    def block(start_h, end_h, title, meta, color, lane=0, lanes=1, base_hour=7):
+        top = (start_h - base_hour) * hour_px
+        height = max((end_h - start_h) * hour_px, 18)
+        lane_w = 100 / lanes
+        show_meta = height >= 28
+        return (f'<div style="position:absolute; top:{top}px; height:{height}px; '
+                f'left:calc({lane*lane_w}% + 2px); width:calc({lane_w}% - 4px); '
+                f'border-radius:6px; border-left:2px solid {color}; background:{color}26; '
+                f'padding:3px 8px; overflow:hidden;">'
+                f'<div style="font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{title}</div>'
+                + (f'<div style="font-size:9px; color:{MUTED_FG}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{meta}</div>' if show_meta else "")
+                + '</div>')
+
+    blocks = (
+        block(7.1, 7.7, "Check GitHub issues for AI-Employee", "07:06–07:42 · completed", "#34d399")
+        + block(9.5, 10.6, "Fix flaky test in scheduler_service", "09:30–10:36 · failed", "#f87171", lane=0, lanes=2)
+        + block(9.7, 10.2, "Parallel: review PR #530", "09:42–10:12 · running", "#60a5fa", lane=1, lanes=2)
+        + block(13.0, 14.3, "Implement trigger_create MCP tool and tests", "13:00–14:18 · completed", "#34d399")
+    )
+    marks = "".join(
+        f'<div style="position:absolute; left:2px; top:{(h-7)*hour_px}px; width:7px; height:7px; '
+        f'transform:translateY(-50%) rotate(45deg); border:1px solid hsla(210,40%,98%,0.3); background:{BG};"></div>'
+        for h in (8, 12, 16)
+    )
+    now_line = (
+        f'<div style="position:absolute; left:0; right:0; top:{(11.5-7)*hour_px}px; display:flex; align-items:center; z-index:5;">'
+        f'<div style="width:7px; height:7px; border-radius:50%; background:{PRIMARY};"></div>'
+        f'<div style="flex:1; height:1px; background:{PRIMARY}; opacity:0.7;"></div></div>'
+    )
+
+    return f"""
+    <div class="main" style="padding:32px;">
+      <div style="max-width:520px;">
+        <div style="font-size:13px; font-weight:500; color:{MUTED_FG}; margin-bottom:12px;">Tageskalender</div>
+        <div style="max-height:{hour_px*10}px; overflow:hidden; border-radius:8px; border:1px solid {BORDER}; display:flex;">
+          <div style="width:52px; flex-shrink:0; border-right:1px solid {BORDER};">{gutter}</div>
+          <div style="position:relative; flex:1;">{blocks}{marks}{now_line}</div>
+        </div>
+      </div>
+    </div>
+    """
+
+
 MOCKUPS = {
     "28-activity": (lambda: sidebar("activity") + mockup_activity(), 1280, 620),
     "29-proactive-contact-hours": (lambda: sidebar("agents") + mockup_proactive_hours(), 1000, 480),
+    "30-day-agenda": (lambda: sidebar("agents") + mockup_day_agenda(), 900, 560),
 }
 
 

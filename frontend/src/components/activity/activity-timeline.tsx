@@ -1,19 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCost, formatDuration } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { ActivityAgentTimeline } from "@/lib/types";
+import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar } from "@/lib/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MARKS = [0, 6, 12, 18, 24];
-// Every task bar is at least this wide, regardless of duration — a task that
-// lasted a few seconds would otherwise render as a hairline nobody can see or
-// reliably click.
+// Every task bar in the horizontal (multi-agent) view is at least this wide,
+// regardless of duration — a task that lasted a few seconds would otherwise
+// render as a hairline nobody can see or reliably click.
 const MIN_BAR_PX = 10;
+// Vertical (single-agent) view: pixel height of one hour row, and the
+// minimum height of a task block so a near-instant task still reads as a block.
+const HOUR_PX = 56;
+const MIN_BLOCK_PX = 20;
 
 const statusStyle: Record<string, string> = {
   running: "bg-blue-500/70 border-blue-400",
@@ -22,6 +26,18 @@ const statusStyle: Record<string, string> = {
   cancelled: "bg-zinc-500/50 border-zinc-400",
   pending: "bg-amber-500/60 border-amber-400",
   queued: "bg-amber-500/60 border-amber-400",
+};
+
+// Softer fill for the vertical view's larger blocks — full-opacity status
+// colors across a tall block would be harsh; a left accent bar carries the
+// status instead (same idiom as most calendar UIs).
+const statusAccent: Record<string, string> = {
+  running: "border-l-blue-400 bg-blue-500/15",
+  completed: "border-l-emerald-400 bg-emerald-500/15",
+  failed: "border-l-red-400 bg-red-500/15",
+  cancelled: "border-l-zinc-400 bg-zinc-500/10",
+  pending: "border-l-amber-400 bg-amber-500/15",
+  queued: "border-l-amber-400 bg-amber-500/15",
 };
 
 function startOfDay(d: Date): Date {
@@ -58,14 +74,15 @@ function pct(ms: number): number {
 }
 
 interface ActivityTimelineProps {
-  /** Scope to a single agent (hides the agent-name column, filters the fetch). */
+  /** Scope to a single agent — switches to a vertical day-agenda layout
+   * (hours stacked top-to-bottom, like a normal calendar day view) instead
+   * of the horizontal one-row-per-agent comparison strip. */
   agentId?: string;
   /** Show the big page-level heading. Off when embedded in another page's own chrome. */
   showHeading?: boolean;
 }
 
 export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimelineProps) {
-  const router = useRouter();
   const [day, setDay] = useState<Date>(() => startOfDay(new Date()));
   const [agents, setAgents] = useState<ActivityAgentTimeline[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,9 +119,6 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
     }, 15000);
     return () => clearInterval(interval);
   }, [isToday, load]);
-
-  const nowPct = isToday ? pct(now.getTime() - dayStart.getTime()) : null;
-  const labelWidth = agentId ? 0 : 176; // 11rem, only reserved in multi-agent view
 
   return (
     <div className="space-y-6">
@@ -152,21 +166,6 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
         </div>
       </div>
 
-      {/* Hour scale, aligned with the timeline tracks below */}
-      <div
-        className="flex pr-1 text-[10px] text-muted-foreground/40"
-        style={{ paddingLeft: labelWidth ? `calc(${labelWidth}px + 0.75rem)` : 0 }}
-      >
-        {HOUR_MARKS.map((h, i) => (
-          <div
-            key={h}
-            className={cn("flex-1", i === HOUR_MARKS.length - 1 ? "text-right" : "text-left")}
-          >
-            {String(h).padStart(2, "0")}:00
-          </div>
-        ))}
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center py-24 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -175,78 +174,241 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
         <div className="rounded-2xl border border-foreground/[0.06] bg-card/50 py-16 text-center text-sm text-muted-foreground">
           No agents visible.
         </div>
+      ) : agentId ? (
+        <DayAgenda
+          agent={agents[0]}
+          dayStart={dayStart}
+          now={now}
+          isToday={isToday}
+        />
       ) : (
-        <div className="space-y-2">
-          {agents.map((a) => (
-            <div key={a.agent_id} className="flex items-center gap-3">
-              {!agentId && (
-                <div className="w-44 shrink-0 truncate text-sm font-medium" title={a.name}>
-                  {a.name}
-                </div>
+        <MultiAgentStrip agents={agents} dayStart={dayStart} now={now} isToday={isToday} />
+      )}
+    </div>
+  );
+}
+
+// ── Multi-agent comparison strip (global /activity page) ──────────────────
+// One horizontal 24h row per agent — good for spotting patterns ACROSS
+// agents at a glance, at the cost of cramming a busy day into one thin track.
+
+function MultiAgentStrip({
+  agents, dayStart, now, isToday,
+}: { agents: ActivityAgentTimeline[]; dayStart: Date; now: Date; isToday: boolean }) {
+  const router = useRouter();
+  const nowPct = isToday ? pct(now.getTime() - dayStart.getTime()) : null;
+
+  return (
+    <>
+      <div className="flex pl-[calc(11rem+0.75rem)] pr-1 text-[10px] text-muted-foreground/40">
+        {HOUR_MARKS.map((h, i) => (
+          <div key={h} className={cn("flex-1", i === HOUR_MARKS.length - 1 ? "text-right" : "text-left")}>
+            {String(h).padStart(2, "0")}:00
+          </div>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {agents.map((a) => (
+          <div key={a.agent_id} className="flex items-center gap-3">
+            <div className="w-44 shrink-0 truncate text-sm font-medium" title={a.name}>
+              {a.name}
+            </div>
+            <div className="relative h-12 flex-1 overflow-hidden rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]">
+              {HOUR_MARKS.slice(1, -1).map((h) => (
+                <div key={h} className="absolute bottom-0 top-0 w-px bg-foreground/[0.04]" style={{ left: `${(h / 24) * 100}%` }} />
+              ))}
+
+              {a.tasks.map((t) => {
+                const startedMs = new Date(t.started_at).getTime() - dayStart.getTime();
+                const endedMs = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - dayStart.getTime();
+                const left = pct(startedMs);
+                const width = Math.max(pct(endedMs) - left, 0.6);
+                const costSuffix = t.cost_usd != null ? ` — ${formatCost(t.cost_usd)}` : "";
+                const durationSuffix = t.duration_ms ? ` — ${formatDuration(t.duration_ms)}` : "";
+                const timeRange = t.completed_at ? `${fmtTime(t.started_at)}–${fmtTime(t.completed_at)}` : `${fmtTime(t.started_at)}–läuft`;
+                return (
+                  <button
+                    type="button"
+                    key={t.task_id}
+                    onClick={() => router.push(`/tasks/${t.task_id}`)}
+                    className={cn(
+                      "group absolute bottom-1 top-1 rounded-md border transition-opacity hover:z-10 hover:opacity-80",
+                      statusStyle[t.status] || "border-foreground/30 bg-foreground/20",
+                      t.status === "running" && "animate-pulse"
+                    )}
+                    style={{ left: `${left}%`, width: `${width}%`, minWidth: `${MIN_BAR_PX}px` }}
+                  >
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-foreground/10 bg-card px-2 py-1 text-left text-[11px] shadow-lg group-hover:block">
+                      <div className="max-w-[280px] truncate font-medium text-foreground">{t.title}</div>
+                      <div className="text-muted-foreground/70">{timeRange} · {t.status}{durationSuffix}{costSuffix}</div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {a.scheduled_marks.map((m, i) => (
+                <div
+                  key={`${m.schedule_id}-${i}`}
+                  title={`${m.schedule_name} — ${fmtTime(m.time)}`}
+                  className="absolute top-0 h-2 w-2 -translate-x-1/2 rotate-45 border border-foreground/30 bg-background"
+                  style={{ left: `${pct(new Date(m.time).getTime() - dayStart.getTime())}%` }}
+                />
+              ))}
+
+              {nowPct !== null && (
+                <div className="absolute bottom-0 top-0 w-px bg-primary/70" style={{ left: `${nowPct}%` }} />
               )}
-              <div className="relative h-12 flex-1 overflow-hidden rounded-lg border border-foreground/[0.06] bg-foreground/[0.02]">
-                {HOUR_MARKS.slice(1, -1).map((h) => (
-                  <div
-                    key={h}
-                    className="absolute bottom-0 top-0 w-px bg-foreground/[0.04]"
-                    style={{ left: `${(h / 24) * 100}%` }}
-                  />
-                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
 
-                {a.tasks.map((t) => {
-                  const startedMs = new Date(t.started_at).getTime() - dayStart.getTime();
-                  const endedMs =
-                    (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) -
-                    dayStart.getTime();
-                  const left = pct(startedMs);
-                  const width = Math.max(pct(endedMs) - left, 0.6);
-                  const costSuffix = t.cost_usd != null ? ` — ${formatCost(t.cost_usd)}` : "";
-                  const durationSuffix = t.duration_ms ? ` — ${formatDuration(t.duration_ms)}` : "";
-                  const timeRange = t.completed_at
-                    ? `${fmtTime(t.started_at)}–${fmtTime(t.completed_at)}`
-                    : `${fmtTime(t.started_at)}–läuft`;
-                  return (
-                    <button
-                      type="button"
-                      key={t.task_id}
-                      onClick={() => router.push(`/tasks/${t.task_id}`)}
-                      className={cn(
-                        "group absolute bottom-1 top-1 rounded-md border transition-opacity hover:z-10 hover:opacity-80",
-                        statusStyle[t.status] || "border-foreground/30 bg-foreground/20",
-                        t.status === "running" && "animate-pulse"
-                      )}
-                      style={{ left: `${left}%`, width: `${width}%`, minWidth: `${MIN_BAR_PX}px` }}
-                    >
-                      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-foreground/10 bg-card px-2 py-1 text-left text-[11px] shadow-lg group-hover:block">
-                        <div className="max-w-[280px] truncate font-medium text-foreground">{t.title}</div>
-                        <div className="text-muted-foreground/70">
-                          {timeRange} · {t.status}{durationSuffix}{costSuffix}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+// ── Single-agent day agenda (per-agent "Kalender" sub-tab) ────────────────
+// A normal vertical day view — hours stacked top-to-bottom, tasks as blocks
+// positioned by time with the title readable directly on the block.
 
-                {a.scheduled_marks.map((m, i) => (
-                  <div
-                    key={`${m.schedule_id}-${i}`}
-                    title={`${m.schedule_name} — ${fmtTime(m.time)}`}
-                    className="absolute top-0 h-2 w-2 -translate-x-1/2 rotate-45 border border-foreground/30 bg-background"
-                    style={{ left: `${pct(new Date(m.time).getTime() - dayStart.getTime())}%` }}
-                  />
-                ))}
+type LanedTask = ActivityTaskBar & { lane: number; laneCount: number };
 
-                {nowPct !== null && (
-                  <div
-                    className="absolute bottom-0 top-0 w-px bg-primary/70"
-                    style={{ left: `${nowPct}%` }}
-                  />
-                )}
-              </div>
+function layoutLanes(tasks: ActivityTaskBar[], now: Date): LanedTask[] {
+  const withTimes = tasks
+    .map((t) => ({
+      task: t,
+      start: new Date(t.started_at).getTime(),
+      end: (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  // Greedy interval scheduling: each task takes the first lane whose last
+  // task already ended before this one starts; otherwise open a new lane.
+  const laneEndTimes: number[] = [];
+  const placed = withTimes.map(({ task, start, end }) => {
+    let lane = laneEndTimes.findIndex((endTime) => endTime <= start);
+    if (lane === -1) {
+      lane = laneEndTimes.length;
+      laneEndTimes.push(end);
+    } else {
+      laneEndTimes[lane] = end;
+    }
+    return { task, lane };
+  });
+  const laneCount = Math.max(1, laneEndTimes.length);
+  return placed.map(({ task, lane }) => ({ ...task, lane, laneCount }));
+}
+
+function DayAgenda({
+  agent, dayStart, now, isToday,
+}: { agent: ActivityAgentTimeline; dayStart: Date; now: Date; isToday: boolean }) {
+  const router = useRouter();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const laned = useMemo(() => layoutLanes(agent.tasks, now), [agent.tasks, now]);
+  const nowOffsetPx = isToday ? ((now.getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX : null;
+
+  // Open the agenda scrolled to something useful instead of dumping the user
+  // at midnight: "now" for today, else the first hour that actually has
+  // something on it, else a plain business-hours default.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let targetHour = 7;
+    if (isToday) {
+      targetHour = now.getHours();
+    } else if (agent.tasks.length > 0) {
+      const earliest = agent.tasks.reduce(
+        (min, t) => Math.min(min, new Date(t.started_at).getHours()), 24
+      );
+      if (earliest < 24) targetHour = earliest;
+    }
+    el.scrollTop = Math.max(0, targetHour - 1) * HOUR_PX;
+  }, [agent.agent_id, dayStart, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div
+      ref={scrollRef}
+      className="max-h-[560px] overflow-y-auto rounded-lg border border-foreground/[0.06]"
+    >
+      <div className="relative flex" style={{ height: 24 * HOUR_PX }}>
+        <div className="sticky left-0 w-14 shrink-0 border-r border-foreground/[0.06] bg-background">
+          {Array.from({ length: 24 }).map((_, h) => (
+            <div
+              key={h}
+              className="relative text-right text-[11px] text-muted-foreground/50"
+              style={{ height: HOUR_PX }}
+            >
+              <span className="absolute -top-2 right-2">{String(h).padStart(2, "0")}:00</span>
             </div>
           ))}
         </div>
-      )}
+
+        <div className="relative flex-1">
+          {Array.from({ length: 24 }).map((_, h) => (
+            <div
+              key={h}
+              className="absolute inset-x-0 border-t border-foreground/[0.05]"
+              style={{ top: h * HOUR_PX }}
+            />
+          ))}
+
+          {agent.scheduled_marks.map((m: ActivityScheduleMark, i) => {
+            const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
+            return (
+              <div
+                key={`${m.schedule_id}-${i}`}
+                title={`${m.schedule_name} — ${fmtTime(m.time)}`}
+                className="absolute left-1 h-2 w-2 -translate-y-1/2 rotate-45 border border-foreground/30 bg-background"
+                style={{ top }}
+              />
+            );
+          })}
+
+          {laned.map((t) => {
+            const startedMs = new Date(t.started_at).getTime() - dayStart.getTime();
+            const endedMs = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - dayStart.getTime();
+            const top = (startedMs / DAY_MS) * 24 * HOUR_PX;
+            const height = Math.max(((endedMs - startedMs) / DAY_MS) * 24 * HOUR_PX, MIN_BLOCK_PX);
+            const laneWidthPct = 100 / t.laneCount;
+            const costSuffix = t.cost_usd != null ? ` — ${formatCost(t.cost_usd)}` : "";
+            const durationSuffix = t.duration_ms ? ` — ${formatDuration(t.duration_ms)}` : "";
+            const timeRange = t.completed_at
+              ? `${fmtTime(t.started_at)}–${fmtTime(t.completed_at)}`
+              : `${fmtTime(t.started_at)}–läuft`;
+            return (
+              <button
+                type="button"
+                key={t.task_id}
+                onClick={() => router.push(`/tasks/${t.task_id}`)}
+                className={cn(
+                  "absolute overflow-hidden rounded-md border-l-2 px-2 py-1 text-left transition-opacity hover:z-10 hover:opacity-80",
+                  statusAccent[t.status] || "border-l-foreground/30 bg-foreground/10",
+                  t.status === "running" && "animate-pulse"
+                )}
+                style={{
+                  top,
+                  height,
+                  left: `calc(${t.lane * laneWidthPct}% + 2px)`,
+                  width: `calc(${laneWidthPct}% - 4px)`,
+                }}
+              >
+                <div className="truncate text-[12px] font-medium text-foreground">{t.title}</div>
+                {height >= 32 && (
+                  <div className="truncate text-[10px] text-muted-foreground/70">
+                    {timeRange} · {t.status}{durationSuffix}{costSuffix}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+
+          {nowOffsetPx !== null && (
+            <div className="absolute inset-x-0 z-10 flex items-center" style={{ top: nowOffsetPx }}>
+              <div className="h-2 w-2 rounded-full bg-primary" />
+              <div className="h-px flex-1 bg-primary/70" />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

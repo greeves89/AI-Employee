@@ -318,10 +318,19 @@ bei größeren Aufgaben zu verfolgen.
 ### 5.3 Activity — was bisher geschah
 ![Agent · Activity](screenshots/f03-agent-activity.png)
 Tab **Activity** mit drei Unter-Reitern: **Todos**, **Live** und **Verlauf** (chronologischer
-Task-Verlauf). Ein vierter Unter-Reiter, **Kalender**, zeigt die Tagesleiste dieses einen
-Agenten — dieselbe Ansicht wie der globale Menüpunkt **Activity** (Kap. 33), nur auf diesen
-Agenten gefiltert. Praktisch, wenn du direkt aus dem Agenten heraus nachsehen willst, was er
-heute geplant hat und was tatsächlich gelaufen ist, ohne über die Seitenleiste zu wechseln.
+Task-Verlauf). Ein vierter Unter-Reiter, **Kalender**, zeigt den Tageskalender dieses einen
+Agenten — dieselben Daten wie der globale Menüpunkt **Activity** (Kap. 33), nur auf diesen
+Agenten gefiltert und als gewohnte **vertikale Tagesansicht** (Stunden von oben nach unten,
+Aufgaben als Blöcke mit Titel direkt sichtbar) statt als horizontale Leiste:
+
+![Agent · Kalender](screenshots/30-day-agenda.png)
+*Abbildung 30: Tageskalender eines einzelnen Agenten — sich überschneidende Aufgaben liegen
+nebeneinander, die blaue Linie markiert die aktuelle Uhrzeit*
+
+Praktisch, wenn du direkt aus dem Agenten heraus nachsehen willst, was er heute geplant hat
+und was tatsächlich gelaufen ist, ohne über die Seitenleiste zu wechseln. Beim Öffnen springt
+die Ansicht automatisch zur aktuellen Uhrzeit (bei „heute") bzw. zur ersten Aufgabe des Tages.
+Ein Block anklicken → öffnet die Aufgaben-Detailansicht mit voller Zeitreise.
 
 ### 5.4 Workspace — die Dateien des Agenten
 ![Agent · Workspace](screenshots/f04-agent-workspace.png)
@@ -1368,10 +1377,12 @@ kennt, kommt an die App, auch von außerhalb eures Netzes. Deshalb:
 **Menüpunkt:** Seitenleiste → **Activity** (Gruppe „Übersicht", zwischen Tasks und
 Analytics).
 
-Während der Activity-**Tab** auf der Agent-Detailseite (Kap. 5.3) den Verlauf **eines**
-Agenten zeigt, gibt dir diese Seite den Überblick über **alle** Agenten gleichzeitig — als
-Tagesleiste, eine Zeile pro Agent, mit geplanten Terminen und tatsächlich gelaufenen
-Aufgaben nebeneinander.
+Während der **Kalender**-Unterreiter im Activity-Tab der Agent-Detailseite (Kap. 5.3) den
+Tag **eines** Agenten als vertikale Tagesansicht zeigt, gibt dir diese Seite den Überblick
+über **alle** Agenten gleichzeitig — als Tagesleiste, eine horizontale Zeile pro Agent, mit
+geplanten Terminen und tatsächlich gelaufenen Aufgaben nebeneinander. Für den Vergleich
+zwischen Agenten eignet sich die horizontale Form besser; für den Tag eines einzelnen
+Agenten die vertikale.
 
 ![Activity-Übersicht](screenshots/28-activity.png)
 *Abbildung 28: Eine Zeile pro Agent — Rauten markieren geplante Termine, Balken zeigen
