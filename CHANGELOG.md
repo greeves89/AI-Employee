@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.153.1] — 2026-08-06
+
+### Fixed
+- **Task-Balken auf der Activity-Zeitleiste kaum sichtbar.** Kurze Aufgaben waren nur ein
+  Haarriss ohne erkennbare Grenzen. Jetzt: Mindestbreite von 10px unabhängig von der
+  tatsächlichen Dauer, dazu ein eigenes Hover-Tooltip (Titel, Zeitfenster, Status,
+  Dauer/Kosten) statt der schwer auffindbaren nativen Browser-Anzeige.
+
+### Added
+- **Kalender-Unterreiter im bestehenden Activity-Tab jedes Agenten.** Der neue globale
+  Menüpunkt „Activity" (v1.153.0) und der bestehende Activity-Tab auf der
+  Agenten-Detailseite (Verlauf eines einzelnen Agenten) heißen zufällig gleich, sind aber
+  unterschiedliche Ansichten — wer im Agenten-Tab nach dem neuen Tageskalender sucht, fand
+  dort nichts. Jetzt zeigt ein neuer Unterreiter „Kalender" dieselbe Tagesleiste, gefiltert
+  auf genau diesen Agenten.
+
+### Deployment
+- Frontend (Rebuild).
+
 ## [1.153.0] — 2026-08-06
 
 ### Added

@@ -317,7 +317,11 @@ bei größeren Aufgaben zu verfolgen.
 
 ### 5.3 Activity — was bisher geschah
 ![Agent · Activity](screenshots/f03-agent-activity.png)
-Tab **Activity**: chronologischer Verlauf seiner Aktivitäten und Tasks.
+Tab **Activity** mit drei Unter-Reitern: **Todos**, **Live** und **Verlauf** (chronologischer
+Task-Verlauf). Ein vierter Unter-Reiter, **Kalender**, zeigt die Tagesleiste dieses einen
+Agenten — dieselbe Ansicht wie der globale Menüpunkt **Activity** (Kap. 33), nur auf diesen
+Agenten gefiltert. Praktisch, wenn du direkt aus dem Agenten heraus nachsehen willst, was er
+heute geplant hat und was tatsächlich gelaufen ist, ohne über die Seitenleiste zu wechseln.
 
 ### 5.4 Workspace — die Dateien des Agenten
 ![Agent · Workspace](screenshots/f04-agent-workspace.png)
