@@ -5,6 +5,55 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.154.0] — 2026-08-07
+
+Der Weg vom Werkzeugkasten zum Mitarbeiter: Identität, Auftrag und ein sichtbarer Tagesplan —
+und zwar in JEDER Laufzeit. Dazu M365 nur noch lesend und der MCP-Login über Microsoft.
+
+### Added
+- **Verantwortungsbereiche pro Agent** — Daueraufträge mit Takt (täglich/wöchentlich/monatlich/
+  laufend), Priorität und Präzisierung. Ein Bereich ist bewusst kein Todo: er kehrt wieder und
+  wird nie „fertig". Der proaktive Lauf leitet daraus in STEP 1 die konkreten Aufgaben des Tages
+  ab, statt auf Arbeit zu warten, die jemand angelegt hat. Definition, Validierung und
+  Prompt-Darstellung liegen an einer Stelle (`app/core/responsibilities.py`).
+- **Sichtbarer Tagesplan** — neue Tabelle `agent_plan_items` plus Werkzeuge `plan_day` /
+  `get_day_plan`. Der Plan stand bisher nur in `/workspace/.agent_state.md` im Container und war
+  damit weder anzeigbar noch korrigierbar. Jetzt zeigt der Kalender die geplanten Blöcke
+  gestrichelt neben den erledigten Balken; ein Block lässt sich per Klick streichen, und der
+  nächste Lauf hält sich daran. Vorgenommenes ohne feste Uhrzeit steht darunter statt zu
+  verschwinden.
+- **Tagesplanung am Morgen als Klick** — feste Uhrzeit (optional nur werktags) neben dem
+  Intervall-Takt. Legt einen zweiten „[Proactive]"-Zeitplan an, damit der Basis-Prompt samt
+  Bereichen und Tagesplan greift; Abwählen entfernt ihn wieder.
+- **Microsoft-SSO als Anmeldeweg für den MS-Graph-MCP-Server** — `/oauth/authorize` schickt ohne
+  Sitzung direkt in die Entra-Anmeldung und kommt zur offenen Freigabe zurück. Wer in OpenWebUI
+  bereits mit Microsoft angemeldet ist, sieht keine Maske mehr. Zustimmung wird pro (User,
+  Client) 90 Tage gemerkt und fällt weg, sobald die Microsoft-Verbindung getrennt wird.
+- **Plattformweiter Nur-Lesen-Zwang für Microsoft** (Standard AN) — sperrt Schreib-Werkzeuge für
+  M365/Graph UND den on-prem-Exchange-Connector, unabhängig davon, was pro Agent eingestellt ist.
+
+### Fixed
+- **Agenten kannten ihren eigenen Namen nicht.** Die gemeinsame Anleitung enthielt weder Namen
+  noch Rolle, und der Custom-LLM-Weg las die Datei überhaupt nicht. Jetzt steht die Identität in
+  der einen gerenderten Vorlage (alle vier Schreibstellen geben Name + Rolle mit), und
+  `get_identity_context()` hängt sie im Custom-LLM-Weg an den Systemprompt.
+- **Codex hat die Anleitung nie gelesen.** Wir schrieben `/workspace/AGENT.md`, die Codex-CLI
+  liest per Konvention `AGENTS.md` — jede Verbesserung lief an Codex-Agenten vorbei.
+  `instructions_paths()` liefert jetzt pro Modus alle Dateien, die dieser Harness wirklich liest.
+- **Der Sprachweg vergaß alles zwischen zwei Anrufen.** Er schrieb nach jedem Zug Erinnerungen
+  weg, las sie aber nie zurück, und jeder Anruf begann eine neue Sitzung. Jetzt lädt er beim
+  Start das Gedächtnis (ohne Zugangsdaten) und fällt auf das letzte Gespräch zurück; dauerhafte
+  Wünsche wie „du heißt ab jetzt Luna" sichert er sofort per `save_memory`.
+- **Der Custom-LLM-Chat und der leichte Task-Zweig luden das Gedächtnis nicht** — die
+  Task-Laufzeit tat es längst. Beide Wege holen es jetzt ebenfalls.
+
+### Deployment
+- Orchestrator-Neustart (neue Tabelle wird beim Start angelegt), Frontend-Rebuild,
+  **Agent-Image neu bauen + Agenten erneuern** (Identität und Werkzeuge stecken im Agenten-Code;
+  Codex-Agenten einzeln nacheinander wegen der geteilten Token-Familie).
+
+---
+
 ## [1.153.7] — 2026-08-06
 
 ### Changed

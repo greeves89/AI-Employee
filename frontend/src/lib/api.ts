@@ -1180,6 +1180,8 @@ export async function updateProactiveConfig(
     contact_hours_end?: string;
     contact_timezone?: string;
     responsibilities?: Responsibility[];
+    morning_planning_time?: string;
+    morning_planning_weekdays_only?: boolean;
   },
 ): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {

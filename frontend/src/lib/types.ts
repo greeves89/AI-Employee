@@ -419,6 +419,7 @@ export interface ProactiveConfig {
   custom_instructions?: string;
   contact_hours?: ProactiveContactHours;
   responsibilities?: Responsibility[];
+  morning_planning?: { time?: string; weekdays_only?: boolean; schedule_id?: string | null };
 }
 
 export interface ProactiveResponse {

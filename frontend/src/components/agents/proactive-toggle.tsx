@@ -61,6 +61,8 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const [hoursEndDraft, setHoursEndDraft] = useState("");
   const [hoursTzDraft, setHoursTzDraft] = useState("");
   const [dutiesDraft, setDutiesDraft] = useState<Responsibility[]>([]);
+  const [morningDraft, setMorningDraft] = useState("");
+  const [weekdaysOnly, setWeekdaysOnly] = useState(true);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -114,12 +116,20 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const removeResponsibility = (idx: number) =>
     setDutiesDraft((prev) => prev.filter((_, i) => i !== idx));
 
+  const savedMorning = data?.proactive?.morning_planning?.time ?? "";
+  const savedWeekdays = data?.proactive?.morning_planning?.weekdays_only ?? true;
+  useEffect(() => {
+    setMorningDraft(savedMorning);
+    setWeekdaysOnly(savedWeekdays);
+  }, [savedMorning, savedWeekdays]);
+
   const hoursDirty =
     hoursStartDraft !== savedHoursStart ||
     hoursEndDraft !== savedHoursEnd ||
     hoursTzDraft !== savedHoursTz;
   const dutiesDirty = JSON.stringify(dutiesDraft) !== savedDuties;
-  const draftDirty = customDraft !== savedCustom || hoursDirty || dutiesDirty;
+  const morningDirty = morningDraft !== savedMorning || weekdaysOnly !== savedWeekdays;
+  const draftDirty = customDraft !== savedCustom || hoursDirty || dutiesDirty || morningDirty;
 
   const handleSavePrompt = async () => {
     if (!data) return;
@@ -144,6 +154,8 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
         contact_hours_end: hoursEndDraft,
         contact_timezone: hoursTzDraft,
         responsibilities: dutiesDraft.map((d) => ({ ...d, title: d.title.trim() })),
+        morning_planning_time: morningDraft,
+        morning_planning_weekdays_only: weekdaysOnly,
       });
       await load();
       setSavedFlash(true);
@@ -436,6 +448,43 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                   />
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
                     Wird bei jedem proaktiven Lauf an den Basis-Prompt angehaengt.
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    Tagesplanung am Morgen
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="time"
+                      value={morningDraft}
+                      onChange={(e) => setMorningDraft(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={weekdaysOnly}
+                        onChange={(e) => setWeekdaysOnly(e.target.checked)}
+                        className="h-3 w-3 rounded border-foreground/20 bg-background text-emerald-500 focus:ring-emerald-500/30"
+                      />
+                      nur werktags
+                    </label>
+                    {morningDraft && (
+                      <button
+                        type="button"
+                        onClick={() => setMorningDraft("")}
+                        className="text-[10px] text-muted-foreground/50 underline-offset-2 hover:underline"
+                      >
+                        abschalten
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    Zu dieser Uhrzeit plant der Agent seinen Tag aus den Verantwortungsbereichen
+                    und legt den Plan in den Kalender — zusaetzlich zum Takt oben. Leer = aus.
+                    Zeitzone kommt aus der Erreichbarkeit darunter.
                   </div>
                 </div>
 

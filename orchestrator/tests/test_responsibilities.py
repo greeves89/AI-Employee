@@ -114,3 +114,32 @@ class PromptWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MorningPlanningTests(unittest.TestCase):
+    """Der feste Planungstermin am Morgen — die Mechanik gab es, nur den Klick nicht."""
+
+    @staticmethod
+    def _src() -> str:
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "app/api/agents.py").read_text()
+
+    def test_creates_a_proactive_schedule_so_the_base_prompt_applies(self):
+        """Der Planungslauf muss '[Proactive]' heissen — sonst behandelt ihn der
+        Scheduler als gewoehnlichen Zeitplan und der Basis-Prompt (samt Bereichen
+        und Tagesplan) greift nicht."""
+        src = self._src()
+        self.assertIn('f"[Proactive] {agent.name} — Tagesplanung"', src)
+
+    def test_cron_respects_weekdays_only(self):
+        self.assertIn("'1-5' if weekdays_only else '*'", self._src())
+
+    def test_time_format_is_validated(self):
+        self.assertIn("Planungszeit muss HH:MM sein", self._src())
+
+    def test_disabling_removes_the_schedule(self):
+        """Abgewaehlt heisst weg — nicht 'liegt deaktiviert herum und feuert irgendwann'."""
+        self.assertIn("await db.delete(morning_schedule)", self._src())
+
+    def test_follows_the_proactive_switch(self):
+        self.assertIn("morning_schedule.enabled = body.enabled", self._src())
