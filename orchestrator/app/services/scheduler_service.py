@@ -598,6 +598,17 @@ class SchedulerService:
             metadata={"schedule_id": schedule.id},
         )
 
+        # Plan-Block: der Kalender soll zeigen, dass er LAEUFT — sonst steht dort ewig
+        # "geplant", obwohl die Arbeit schon vorbei ist.
+        if schedule.name.startswith("[Plan] "):
+            from app.models.agent_plan_item import AgentPlanItem
+            block = (await db.execute(
+                select(AgentPlanItem).where(AgentPlanItem.schedule_id == schedule.id)
+            )).scalar_one_or_none()
+            if block is not None:
+                block.status = "running"
+                block.task_id = task.id
+
         # Advance schedule. Einmal-Laeufe (kein Cron, Intervall 0) schalten sich danach
         # ab — sonst stuende next_run_at sofort wieder in der Vergangenheit und der Block
         # feuerte im 30-Sekunden-Takt weiter.
@@ -633,6 +644,26 @@ class SchedulerService:
 
         armed = 0
         async with resilient_session() as db:
+            # Zuerst nachziehen, was fertig ist — sonst haengt der Kalender auf "laeuft".
+            settled = 0
+            running = (await db.execute(
+                select(AgentPlanItem).where(AgentPlanItem.status == "running")
+            )).scalars().all()
+            for item in running:
+                if not item.task_id:
+                    item.status = "done"
+                    settled += 1
+                    continue
+                task = (await db.execute(
+                    select(Task).where(Task.id == item.task_id)
+                )).scalar_one_or_none()
+                state = str(getattr(getattr(task, "status", ""), "value", getattr(task, "status", ""))).lower()
+                if task is None or state in ("completed", "failed", "cancelled"):
+                    item.status = "done"
+                    settled += 1
+            if settled:
+                await db.commit()
+
             orphans = (await db.execute(
                 select(AgentPlanItem).where(
                     AgentPlanItem.status == "planned",

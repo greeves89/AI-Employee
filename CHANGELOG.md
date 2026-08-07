@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.160.0] — 2026-08-07
+
+### Fixed
+- **Der Kalender zeigte ewig „geplant"** — auch als der Block längst lief oder fertig war.
+  Es fehlte die Rückmeldung: Feuert der Zeitplan eines Blocks, wandert der Block jetzt auf
+  **läuft** und merkt sich seine Aufgabe; ist die Aufgabe terminal, steht er auf
+  **erledigt**. Ohne das war der Plan eine Momentaufnahme vom Morgen.
+
+### Added
+- **Plan-Blöcke sind anklickbar**, sobald sie gelaufen sind — der Klick führt zur Aufgabe
+  mit Ergebnis, Schritten und erzeugten Dateien. Laufende Blöcke pulsieren, erledigte
+  stehen durchgezogen statt gestrichelt.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.159.2] — 2026-08-07
 
 ### Fixed

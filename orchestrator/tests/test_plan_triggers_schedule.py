@@ -89,3 +89,32 @@ class SelfHealingTests(unittest.TestCase):
         angelegt und beim naechsten Blick wieder fort."""
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
         self.assertIn("await db.commit()", block)
+
+
+class StatusFeedbackTests(unittest.TestCase):
+    """Der Kalender zeigte ewig „geplant", auch als die Arbeit laengst lief.
+
+    Ohne Rueckmeldung ist der Plan eine Momentaufnahme vom Morgen — man sieht nicht, was
+    passiert ist. Genau danach hat der Nutzer gefragt: „wieso sind die noch immer da?"
+    """
+
+    def test_firing_marks_the_block_as_running(self):
+        self.assertIn('schedule.name.startswith("[Plan] ")', SCHED)
+        block = SCHED.split('schedule.name.startswith("[Plan] ")', 1)[1][:500]
+        self.assertIn('block.status = "running"', block)
+        self.assertIn("block.task_id = task.id", block)
+
+    def test_finished_tasks_settle_the_block(self):
+        block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
+        self.assertIn('AgentPlanItem.status == "running"', block)
+        self.assertIn('("completed", "failed", "cancelled")', block)
+        self.assertIn('item.status = "done"', block)
+
+    def test_calendar_shows_the_real_state(self):
+        tl = (Path(__file__).resolve().parents[2]
+              / "frontend/src/components/activity/activity-timeline.tsx").read_text()
+        self.assertIn("function statusLabel(", tl)
+        self.assertIn('"läuft"', tl)
+        self.assertIn('"erledigt"', tl)
+        # ... und ein gelaufener Block fuehrt zum Ergebnis.
+        self.assertIn("router.push(`/tasks/${item.task_id}`)", tl)

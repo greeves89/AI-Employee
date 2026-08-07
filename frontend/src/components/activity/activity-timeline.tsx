@@ -11,6 +11,15 @@ import { CalendarClock, X } from "lucide-react";
 
 // Tagesschluessel in LOKALER Zeit — toISOString() wuerde vor 02:00 MESZ auf den
 // Vortag zeigen und den Plan des falschen Tages laden.
+// Was im Block steht: „geplant" war frueher fest verdrahtet — auch dann noch, wenn
+// die Arbeit laengst lief oder fertig war.
+function statusLabel(status: string): string {
+  if (status === "running") return "läuft";
+  if (status === "done") return "erledigt";
+  if (status === "dropped") return "gestrichen";
+  return "geplant";
+}
+
 function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -411,9 +420,18 @@ function DayAgenda({
             return (
               <div
                 key={`plan-${item.id}`}
-                title={`Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""}`}
+                role={item.task_id ? "button" : undefined}
+                onClick={item.task_id ? () => router.push(`/tasks/${item.task_id}`) : undefined}
+                title={
+                  item.task_id
+                    ? `${statusLabel(item.status)}: ${item.title} — klicken für Ergebnis und Dateien`
+                    : `Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""}`
+                }
                 className={cn(
-                  "group absolute left-0 w-[26%] overflow-hidden rounded-md border border-dashed px-2 py-1",
+                  "group absolute left-0 w-[26%] overflow-hidden rounded-md border px-2 py-1",
+                  item.status === "done" ? "border-solid" : "border-dashed",
+                  item.task_id && "cursor-pointer hover:opacity-80",
+                  item.status === "running" && "animate-pulse",
                   dropped
                     ? "border-foreground/15 bg-foreground/[0.02] opacity-50"
                     : "border-sky-400/40 bg-sky-400/[0.07]",
@@ -430,7 +448,8 @@ function DayAgenda({
                 </div>
                 {height >= 30 && (
                   <div className="truncate text-[10px] text-muted-foreground/60">
-                    geplant · {item.estimated_minutes} Min
+                    {statusLabel(item.status)} · {item.estimated_minutes} Min
+                    {item.task_id && " · Ergebnis ansehen"}
                   </div>
                 )}
                 <button
