@@ -647,66 +647,10 @@ async def preload_critical_memories(
             agent_obj = await db.get(Agent, agent_id)
             if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
                 raise HTTPException(status_code=403, detail="Access denied")
-    # Critical memories (importance = 5) — ALWAYS preloaded, no limit compromise
-    critical_result = await db.execute(
-        select(AgentMemory)
-        .where(AgentMemory.agent_id == agent_id)
-        .where(AgentMemory.importance >= 5)
-        .order_by(AgentMemory.updated_at.desc())
-        .limit(50)
-    )
-    high_imp = list(critical_result.scalars().all())
-
-    # Important memories (importance = 4) — top 20 by recency
-    important_result = await db.execute(
-        select(AgentMemory)
-        .where(AgentMemory.agent_id == agent_id)
-        .where(AgentMemory.importance == 4)
-        .order_by(AgentMemory.updated_at.desc())
-        .limit(20)
-    )
-    high_imp.extend(important_result.scalars().all())
-
-    # All credentials/keys (always relevant)
-    creds_result = await db.execute(
-        select(AgentMemory)
-        .where(AgentMemory.agent_id == agent_id)
-        .where(AgentMemory.category.in_(["credentials", "api_key", "secret", "auth"]))
-        .order_by(AgentMemory.updated_at.desc())
-        .limit(30)
-    )
-    creds = list(creds_result.scalars().all())
-
-    # Recent learnings (last 15)
-    learnings_result = await db.execute(
-        select(AgentMemory)
-        .where(AgentMemory.agent_id == agent_id)
-        .where(AgentMemory.category == "learning")
-        .order_by(AgentMemory.updated_at.desc())
-        .limit(15)
-    )
-    learnings = list(learnings_result.scalars().all())
-
-    # Deduplicate by ID
-    seen_ids = set()
-    def _dedupe(items):
-        out = []
-        for m in items:
-            if m.id not in seen_ids:
-                seen_ids.add(m.id)
-                out.append({
-                    "key": m.key,
-                    "category": m.category,
-                    "content": m.content,
-                    "importance": m.importance,
-                })
-        return out
-
-    return {
-        "critical": _dedupe(high_imp),
-        "credentials": _dedupe(creds),
-        "recent_learnings": _dedupe(learnings),
-    }
+    # Selection + grouping live in app.core.memory_preload so the voice front uses
+    # exactly the same definition of "what this agent must always know".
+    from app.core.memory_preload import collect_preload
+    return await collect_preload(db, agent_id)
 
 
 @router.get("/agents/{agent_id}")

@@ -374,6 +374,8 @@ class LLMChatHandler:
         if not self._history:
             from app.runner_hooks import (
                 MULTIMODAL_CAPABILITY_NOTE,
+                get_identity_context,
+                get_memory_preload,
                 get_skills_context,
                 get_mounts_context,
                 get_marketplace_skill_suggestions,
@@ -382,6 +384,11 @@ class LLMChatHandler:
                 "You are a helpful AI coding assistant running in a Docker container. "
                 "Your workspace is at /workspace. Use the available tools to help the user."
             )
+            # WHO the agent is (name, role, its AGENT.md) and WHAT it already knows — the
+            # CLI runtimes read both from disk, this runtime has to be handed them. Without
+            # it the agent answers "ich habe keinen eigenen Namen" and forgets across
+            # sessions what the user told it, although it saved it.
+            system_prompt = system_prompt + get_identity_context() + get_memory_preload()
             system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
             system_prompt = system_prompt + (
                 "\n\n## Werkzeuge bei Bedarf nachladen\n"
