@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import require_auth
+from app.core.log_redaction import scrub_log
 from app.models.meeting_room import MeetingRoom
 from app.models.agent import Agent, AgentState
 
@@ -341,7 +342,7 @@ async def launch_deliverable(
             _yaml.safe_dump(spec, fh)
         compose_path = f"/shared/taskforce/{room_id}/{launch_name}"
     except Exception as e:  # noqa: BLE001 — fall back to the original file
-        logger.warning("[Taskforce %s] compose rewrite failed: %s", room_id, e)
+        logger.warning("[Taskforce %s] compose rewrite failed: %s", scrub_log(room_id), scrub_log(e))
         compose_path = f"/shared/taskforce/{room_id}/{compose_name}"
 
     def _run():
@@ -361,10 +362,10 @@ async def launch_deliverable(
         # Log the raw compose/docker stderr server-side ONLY — never echo it to the
         # client (may contain paths, image/registry details, env hints).
         err = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, (bytes, bytearray)) else str(e)
-        logger.warning("[Taskforce %s] launch failed: %s", room_id, err)
+        logger.warning("[Taskforce %s] launch failed: %s", scrub_log(room_id), scrub_log(err))
         raise HTTPException(status_code=500, detail="Start fehlgeschlagen — Build/Start-Fehler (Details im Server-Log).")
     except Exception as e:  # noqa: BLE001
-        logger.warning("[Taskforce %s] launch error: %s", room_id, e)
+        logger.warning("[Taskforce %s] launch error: %s", scrub_log(room_id), scrub_log(e))
         raise HTTPException(status_code=500, detail="Start fehlgeschlagen.")
 
     _connect_containers_to_network(docker, project)
@@ -723,10 +724,10 @@ async def _start_moderator_container(room_id: str, docker, redis_url_internal: s
             needs_sudo=False,
         )
         _moderator_containers[room_id] = container.id
-        logger.info(f"[Moderator] Container started for room {room_id}: {container.id[:12]}")
+        logger.info(f"[Moderator] Container started for room {scrub_log(room_id)}: {container.id[:12]}")
         return mod_id
     except Exception as e:
-        logger.warning(f"[Moderator] Failed to start container for room {room_id}: {e}")
+        logger.warning(f"[Moderator] Failed to start container for room {scrub_log(room_id)}: {scrub_log(e)}")
         return None
 
 
@@ -740,7 +741,7 @@ async def _stop_moderator_container(room_id: str, docker) -> None:
         try:
             c = docker.client.containers.get(ref)
             c.remove(force=True)
-            logger.info(f"[Moderator] Container removed for room {room_id}")
+            logger.info(f"[Moderator] Container removed for room {scrub_log(room_id)}")
         except Exception:
             pass
 
@@ -767,7 +768,7 @@ async def _moderator_request(room_id: str, mod_id: str, prompt: str, redis, time
         if result:
             return result if isinstance(result, str) else result.decode()
         await asyncio.sleep(5)
-    logger.warning(f"[Moderator] No response from container for room {room_id} within {timeout_rounds * 5}s")
+    logger.warning(f"[Moderator] No response from container for room {scrub_log(room_id)} within {timeout_rounds * 5}s")
     return None
 
 
@@ -1064,7 +1065,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                     break
 
                 if room.max_rounds > 0 and room.rounds_completed >= room.max_rounds:
-                    logger.info(f"Meeting room {room_id} completed after {room.rounds_completed} rounds")
+                    logger.info(f"Meeting room {scrub_log(room_id)} completed after {room.rounds_completed} rounds")
                     await _generate_todo_summary(room, redis, mod_agent_id=mod_agent_id, docker=docker)
                     room.state = "completed"
                     await db.commit()
@@ -1307,9 +1308,9 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                 await asyncio.sleep(2)
 
     except asyncio.CancelledError:
-        logger.info(f"Meeting room {room_id} cancelled")
+        logger.info(f"Meeting room {scrub_log(room_id)} cancelled")
     except Exception as e:
-        logger.error(f"Meeting room {room_id} error: {e}")
+        logger.error(f"Meeting room {scrub_log(room_id)} error: {scrub_log(e)}")
         async with async_session_factory() as db:
             room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
             if room:
@@ -1925,7 +1926,7 @@ async def dispatch_integration_task(room_id: str, redis, docker=None) -> bool:
         _json.dumps({"id": task_id, "prompt": prompt_text, "model": None, "priority": priority}),
     )
     await redis.client.publish(f"meeting:{room_id}:updates", _json.dumps(msg))
-    logger.info(f"[Meeting {room_id}] Integration task dispatched to coordinator {coordinator_id}")
+    logger.info(f"[Meeting {scrub_log(room_id)}] Integration task dispatched to coordinator {scrub_log(coordinator_id)}")
     return True
 
 

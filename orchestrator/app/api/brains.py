@@ -74,7 +74,7 @@ def _seed_file(path: str, content: str, mode: int = 0o666) -> None:
                 fh.write(content)
             os.chmod(path, mode)
         except OSError as e:
-            log.warning("Could not write %s: %s", path, e)
+            log.warning("Could not write %s: %s", vault.safe_log(path), vault.safe_log(e))
 
 
 def _require_admin(user) -> None:
@@ -108,7 +108,7 @@ def _provision_vault(host_path: str, name: str, standard: str = "freeform") -> N
     try:
         os.chmod(real, 0o777)
     except OSError as e:
-        log.warning("Could not chmod vault %s: %s", real, e)
+        log.warning("Could not chmod vault %s: %s", vault.safe_log(real), vault.safe_log(e))
     # Scaffold folders for the standard
     for folder in _FOLDERS.get(standard, []):
         d = os.path.join(real, folder)
@@ -130,7 +130,7 @@ def _provision_vault(host_path: str, name: str, standard: str = "freeform") -> N
             subprocess.run(["git", "add", "-A"], cwd=real, check=False, timeout=20)
             subprocess.run(["git", "commit", "-q", "-m", "init vault"], cwd=real, check=False, env=env, timeout=20)
         except (OSError, subprocess.SubprocessError) as e:
-            log.warning("git init for vault %s failed (history disabled): %s", real, e)
+            log.warning("git init for vault %s failed (history disabled): %s", vault.safe_log(real), vault.safe_log(e))
 
 
 async def _audit(db: AsyncSession, event: AuditEventType, brain: SecondBrain, user_id: str) -> None:
@@ -432,7 +432,7 @@ async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(req
     try:
         await vault_indexer.index_file(db, brain.label, brain.host_path, body.path)
     except Exception as e:
-        log.warning("reindex after write failed brain=%s path=%s: %s", brain.slug, vault.safe_log(body.path), e)
+        log.warning("reindex after write failed brain=%s path=%s: %s", brain.slug, vault.safe_log(body.path), vault.safe_log(e))
     return {"ok": True, "path": body.path}
 
 
@@ -454,7 +454,7 @@ async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth)
     try:
         await vault_indexer.remove_file(db, brain.label, path)
     except Exception as e:
-        log.warning("deindex after delete failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
+        log.warning("deindex after delete failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), vault.safe_log(e))
     return {"ok": True, "path": path}
 
 
