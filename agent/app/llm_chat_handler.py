@@ -45,7 +45,7 @@ CORE_TOOL_NAMES = {
     "list_todos", "complete_todo", "update_todos",
     # Der Tagesplan ist die Antwort auf "was hast du heute vor?" — er muss ohne
     # search_tools erreichbar sein, sonst plant der Agent still in seine Notizdatei.
-    "plan_day", "get_day_plan",
+    "plan_day", "get_day_plan", "complete_onboarding",
     # The standard task workflow MANDATES a skill check + rating on every task, so these
     # must always be loaded — otherwise the agent hits "tool not available" mid-workflow
     # (it cannot search_tools for a capability the workflow already required).

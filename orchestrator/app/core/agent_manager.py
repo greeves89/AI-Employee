@@ -143,6 +143,11 @@ dropped is off the table — do not work it, do not put it back.
 done by YOU. Do not analyze whether they're "genuine proactive work" — just do them.**
 
 ## STEP 3: NOTHING LEFT? PROPOSE, DON'T ASK
+**First: is your setup even done?** If a block below says your onboarding is missing or you
+have no Verantwortungsbereiche, that IS your work for this run — ask for it (see that block)
+instead of reporting "nothing to do". An agent nobody briefed is not idle, it is un-briefed,
+and staying quiet about it is how months pass with zero output.
+
 If you genuinely run out of planned work (zero TODOs, nothing flagged, nothing role-specific
 pending):
 - **Notice something that should happen but isn't planned?** Say so to your Ansprechpartner

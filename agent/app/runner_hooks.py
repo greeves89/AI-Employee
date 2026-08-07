@@ -381,7 +381,52 @@ def get_identity_context() -> str:
         parts.append(f"=== DEINE BETRIEBSANLEITUNG ({path}) ===\n{text}\n=== ENDE ANLEITUNG ===")
         break  # AGENT.md wins; CLAUDE.md is only the fallback name for the same file
 
+    # Einrichtungsstand gehoert zur Identitaet: wer nicht weiss, wofuer er da ist, muss
+    # danach fragen — in JEDER Laufzeit, nicht nur im proaktiven Lauf.
+    onboarding = get_onboarding_context().strip()
+    if onboarding:
+        parts.append(onboarding)
     return ("\n\n" + "\n\n".join(parts) + "\n") if parts else ""
+
+
+def get_onboarding_context() -> str:
+    """Einrichtungsstand dieses Agenten als Prompt-Block, oder "".
+
+    Der Orchestrator ist die Wahrheit (app.core.onboarding) — der Agent fragt sie bei
+    jedem Sitzungsstart ab, statt sich auf die Kopfzeile in knowledge.md zu verlassen,
+    die frueher mit der Datenbank auseinanderlief. Faellt der Aufruf aus, bleibt der
+    Block leer: lieber keine Ansage als eine falsche.
+    """
+    try:
+        url = f"{settings.orchestrator_url}/api/v1/agents/{settings.agent_id}/onboarding"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = _json.loads(response.read())
+    except Exception:
+        return ""
+
+    if data.get("onboarded") and data.get("has_responsibilities"):
+        return ""
+    if not data.get("onboarded"):
+        return (
+            "\n=== EINRICHTUNG STEHT AUS ===\n"
+            "Dir hat noch niemand gesagt, wofuer du da bist. Warte NICHT stumm ab und melde\n"
+            "nicht 'nichts zu tun'. Frag den Nutzer nach: (1) deiner Rolle, (2) den Aufgaben,\n"
+            "die du DAUERHAFT uebernimmst — samt Takt, (3) was du NICHT tun sollst.\n"
+            "Sobald du die Antworten hast, rufe `complete_onboarding` auf (jede Daueraufgabe\n"
+            "als eigenen Bereich). Danach planst du deinen Tag selbst.\n"
+            "=== ENDE ===\n"
+        )
+    return (
+        "\n=== KEINE DAUERAUFGABEN HINTERLEGT ===\n"
+        "Du bist eingerichtet, hast aber keine Verantwortungsbereiche — du kannst dir deshalb\n"
+        "keinen eigenen Tag bauen. Frag den Nutzer, welche wiederkehrenden Aufgaben du\n"
+        "uebernehmen sollst, mach dabei einen konkreten Vorschlag, und sichere die Antwort\n"
+        "mit `complete_onboarding`.\n=== ENDE ===\n"
+    )
 
 
 def get_memory_preload() -> str:
@@ -706,6 +751,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
     if lightweight:
         return (
             CHAT_STARTUP_PREFIX
+            + get_onboarding_context()
             + get_memory_preload()
             + get_skill_preload()
             + get_skills_context()
@@ -714,6 +760,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
         )
     return (
         TASK_STARTUP_PREFIX
+        + get_onboarding_context()
         + get_memory_preload()
         + get_user_feedback()
         + get_skill_preload()

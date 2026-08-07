@@ -580,6 +580,38 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "complete_onboarding",
+            "description": (
+                "Finish YOUR onboarding: record who you are and what you are permanently responsible for. Call this as soon as the user has answered what your role is and which recurring duties you take over — do NOT keep asking afterwards. Every duty you pass becomes a Verantwortungsbereich, and from the next proactive run you build your own day from them instead of waiting for someone to file a todo. At least one duty is required."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "description": "Your role in one sentence, e.g. 'Sekretariat der IT-Leitung'."},
+                    "responsibilities": {
+                        "type": "array",
+                        "description": "Every RECURRING duty the user named. At least one.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string", "description": "Short and concrete, e.g. 'Posteingang sichten'."},
+                                "rhythm": {"type": "string", "description": "daily | weekly | monthly | continuous"},
+                                "priority": {"type": "string", "description": "high | normal | low"},
+                                "notes": {"type": "string", "description": "How you know today's pass is done."},
+                            },
+                            "required": ["title"],
+                        },
+                    },
+                    "boundaries": {"type": "string", "description": "What you must NOT do."},
+                    "notes": {"type": "string", "description": "Other standing instructions from the user."},
+                },
+                "required": ["responsibilities"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "plan_day",
             "description": (
                 "Write down what you intend to do TODAY, so it becomes visible to the user "

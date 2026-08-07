@@ -217,6 +217,32 @@ class OrchestratorAPIClient:
             return result
         return f"Message sent to agent {target_id}"
 
+    # ── Einrichtung (onboarding.py) ──
+
+    async def complete_onboarding(self, params: dict) -> str:
+        """Finish onboarding: role, boundaries and the recurring duties."""
+        duties = params.get("responsibilities") or []
+        if not isinstance(duties, list) or not duties:
+            return ("Error: 'responsibilities' braucht mindestens eine Daueraufgabe — "
+                    "ohne sie waerst du zwar eingerichtet, haettest aber keinen Auftrag.")
+        body = {
+            "role": params.get("role", ""),
+            "boundaries": params.get("boundaries", ""),
+            "responsibilities": duties,
+            "notes": params.get("notes", ""),
+        }
+        result = await self._request(
+            "POST", f"/agents/{self.agent_id}/onboarding/complete", json=body
+        )
+        if isinstance(result, str):
+            return result
+        titles = [d.get("title", "") for d in (result.get("responsibilities") or [])]
+        return (
+            "Einrichtung abgeschlossen. Deine Verantwortungsbereiche: "
+            + ", ".join(t for t in titles if t)
+            + ". Ab dem naechsten proaktiven Lauf planst du deinen Tag daraus selbst."
+        )
+
     # ── Tagesplan (day_plan.py) ──
     # Der Plan lag frueher nur in /workspace/.agent_state.md und war damit fuer die
     # Oberflaeche unsichtbar. Diese beiden Werkzeuge gibt es in JEDER Laufzeit — hier

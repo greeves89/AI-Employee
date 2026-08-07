@@ -526,6 +526,17 @@ class SchedulerService:
             duties_note = responsibilities_note(proactive_config)
             if duties_note:
                 prompt = prompt + "\n\n" + duties_note
+            # Nicht eingerichtet? Dann NICHT still anhalten, sondern nachfragen —
+            # beim Kunden liefen Agenten monatelang leer, weil sie brav auf ein
+            # Einrichtungsgespraech warteten, das niemand mit ihnen fuehrte.
+            from app.core.onboarding import onboarding_note
+            from app.models.agent import Agent as _Agent
+            _agent = (await db.execute(
+                select(_Agent).where(_Agent.id == schedule.agent_id)
+            )).scalar_one_or_none() if schedule.agent_id else None
+            ob_note = onboarding_note(_agent)
+            if ob_note:
+                prompt = prompt + "\n" + ob_note
             extra = (proactive_config.get("custom_instructions", "") or "").strip()
             if extra:
                 prompt = (

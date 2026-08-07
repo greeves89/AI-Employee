@@ -321,6 +321,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "complete_onboarding",
+      description:
+        "Finish YOUR onboarding: record who you are and what you are permanently responsible " +
+        "for. Call this as soon as the user answered what your role is and which recurring " +
+        "duties you take over — do NOT keep asking afterwards. Every duty becomes a " +
+        "Verantwortungsbereich, and from the next proactive run you build your own day from " +
+        "them instead of waiting for a todo. At least one duty is required.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          role: { type: "string", description: "Your role in one sentence." },
+          responsibilities: {
+            type: "array",
+            description: "Every RECURRING duty the user named. At least one.",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short and concrete, e.g. 'Posteingang sichten'." },
+                rhythm: { type: "string", description: "daily | weekly | monthly | continuous" },
+                priority: { type: "string", description: "high | normal | low" },
+                notes: { type: "string", description: "How you know today's pass is done." },
+              },
+              required: ["title"],
+            },
+          },
+          boundaries: { type: "string", description: "What you must NOT do." },
+          notes: { type: "string", description: "Other standing instructions." },
+        },
+        required: ["responsibilities"],
+      },
+    },
+    {
       name: "plan_day",
       description:
         "Write down what you intend to do TODAY so it becomes VISIBLE to the user in the " +
@@ -1240,6 +1272,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             `Message sent to ${args.agent_id}, but no reply received within 45 seconds. ` +
             `The agent may be busy or offline. The reply will arrive in your message queue later.`,
         }],
+      };
+    }
+
+    case "complete_onboarding": {
+      const duties = Array.isArray(args.responsibilities) ? args.responsibilities : [];
+      if (duties.length === 0) {
+        throw new Error(
+          "Provide at least one recurring duty in 'responsibilities' — without one you would " +
+          "be onboarded but still have no assignment."
+        );
+      }
+      const result = await apiCall(`/agents/${AGENT_ID}/onboarding/complete`, {
+        method: "POST",
+        body: JSON.stringify({
+          role: args.role || "",
+          boundaries: args.boundaries || "",
+          responsibilities: duties,
+          notes: args.notes || "",
+        }),
+      });
+      const titles = (result.responsibilities || []).map((d) => d.title).filter(Boolean);
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              "Einrichtung abgeschlossen. Deine Verantwortungsbereiche: " +
+              titles.join(", ") +
+              ". Ab dem nächsten proaktiven Lauf planst du deinen Tag daraus selbst.",
+          },
+        ],
       };
     }
 

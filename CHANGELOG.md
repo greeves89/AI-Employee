@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.155.0] — 2026-08-07
+
+### Fixed
+- **Einrichtung („Onboarding") hatte zwei widersprüchliche Stände.** In der Datenbank
+  (`config['onboarding_complete']`) wurde beim Anlegen ein Wert gesetzt und **nie wieder
+  geändert**; parallel pflegte der Agent eine Kopfzeile in `/workspace/knowledge.md`. Beim
+  Kunden stand in der DB „fertig" und in der Datei „nicht fertig" — die Agenten hielten
+  darum jeden proaktiven Lauf an, während die Oberfläche sie als eingerichtet zeigte:
+  493 Läufe, 51 USD, kein einziges Arbeitsergebnis. Ab jetzt gilt die Datenbank, und sie
+  wird über ein echtes Werkzeug gesetzt.
+
+### Added
+- **Werkzeug `complete_onboarding`** in allen vier Laufzeiten (Claude Code über MCP, Codex
+  und Custom-LLM über `definitions.py`/`api_client.py`, Kern-Werkzeugsatz des Chats). Es
+  schreibt Rolle, Grenzen — und **jede genannte Daueraufgabe direkt als
+  Verantwortungsbereich**. Das Einrichtungsgespräch erzeugt damit die Struktur, aus der
+  sich der Agent anschließend seinen Tag baut. Mindestens eine Daueraufgabe ist Pflicht,
+  bestehende Bereiche werden ergänzt statt überschrieben.
+- **Der Einrichtungsstand steht in jedem Prompt** — im proaktiven Lauf, in Chat und Tasks
+  (über Identität bzw. das gemeinsame Kontext-Bündel) und im Sprachfront. Ein Agent ohne
+  Auftrag hält nicht mehr still an und meldet auch nicht „nichts zu tun", sondern **fragt
+  aktiv** nach Rolle, Daueraufgaben und Grenzen — im Takt der Meldebremse so lange, bis er
+  eine Antwort hat.
+- **Am Telefon** hört man dann nicht „wie kann ich helfen?", sondern „ich kann dir gern
+  helfen — sag mir zuerst, wofür du mich brauchst"; die Antwort wird sofort gesichert.
+
+### Deployment
+- Orchestrator-Neustart, **Agent-Image neu bauen + Agenten erneuern** (Werkzeug und
+  Statusabfrage stecken im Agenten-Code).
+
+---
+
 ## [1.154.1] — 2026-08-07
 
 ### Fixed

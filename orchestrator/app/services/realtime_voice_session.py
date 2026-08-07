@@ -1348,7 +1348,11 @@ class RealtimeVoiceSession:
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
         ]
-        sys_prompt = _system_prompt(agent_name, agent_role, language) + self._memory_context
+        # Einrichtungsstand: wer anruft, soll nicht 'wie kann ich helfen?' hoeren,
+        # wenn der Agent noch gar nicht weiss, wofuer er da ist.
+        from app.core.onboarding import onboarding_note
+        _ob_note = onboarding_note(agent, spoken=True)
+        sys_prompt = _system_prompt(agent_name, agent_role, language) + _ob_note + self._memory_context
         engine = creds.get("engine") or "nova_sonic"
 
         if engine == "azure_realtime":
