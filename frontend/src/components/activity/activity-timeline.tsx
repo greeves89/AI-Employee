@@ -366,9 +366,24 @@ function DayAgenda({
   const laned = useMemo(() => layoutLanes(ownTasks, now), [ownTasks, now]);
   // Mehrere Laeufe zur selben Minute lagen exakt uebereinander (morgen 3x um 04:00)
   // und ergaben einen unlesbaren Klumpen. Wer sich zeitlich beisst, kommt nebeneinander.
+  // Ein gelaufener Zeitplan erscheint sonst ZWEIMAL: als Band (die Vorhersage) und
+  // als Balken (der echte Lauf). Wo es den Lauf gibt, ist die Vorhersage ueberfluessig —
+  // Baender bleiben nur fuer das, was noch aussteht.
+  const pendingMarks = useMemo(() => {
+    const WINDOW_MS = 12 * 60_000;
+    return ownMarks.filter((m) => {
+      const t = new Date(m.time).getTime();
+      const name = m.schedule_name.slice(0, 30);
+      return !agent.tasks.some(
+        (task) =>
+          Math.abs(new Date(task.started_at).getTime() - t) <= WINDOW_MS &&
+          (task.title?.includes(name) ?? false),
+      );
+    });
+  }, [ownMarks, agent.tasks]);
   const markLanes = useMemo(() => {
     const GAP_MS = 20 * 60_000;
-    const sorted = [...ownMarks].sort((a, b) => a.time.localeCompare(b.time));
+    const sorted = [...pendingMarks].sort((a, b) => a.time.localeCompare(b.time));
     const laneEnds: number[] = [];
     return sorted.map((m) => {
       const t = new Date(m.time).getTime();
@@ -377,7 +392,7 @@ function DayAgenda({
       else laneEnds[lane] = t + GAP_MS;
       return { mark: m, lane };
     });
-  }, [ownMarks]);
+  }, [pendingMarks]);
   const markLaneCount = Math.min(Math.max(...markLanes.map((m) => m.lane + 1), 1), 3);
   const nowOffsetPx = isToday ? ((now.getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX : null;
 

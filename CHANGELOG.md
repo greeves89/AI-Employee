@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.161.3] — 2026-08-07
+
+### Fixed
+- **Jeder gelaufene Zeitplan stand zweimal im Tag**: als grünes Band rechts (die
+  Vorhersage aus dem Zeitplan) und als Balken in der Mitte (der tatsächliche Lauf). Bei 37
+  Vorhersagen und 31 Läufen an einem Tag war die rechte Spalte deshalb zugepflastert.
+  Bänder bleiben jetzt nur für das, was noch aussteht — sobald der Lauf existiert, zählt
+  der Balken.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.161.2] — 2026-08-07
 
 ### Fixed
