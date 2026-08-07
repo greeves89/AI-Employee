@@ -421,7 +421,7 @@ def _ensure_env_files(docker: DockerService, agent: Agent, path: str, compose_fi
                 if isinstance(_e, str) and ".." not in _e and not _e.startswith("/"):
                     env_targets.add(_e)
     except Exception as _e:  # noqa: BLE001 — best-effort; fall back to just .env
-        logger.debug("env_file scan failed for %s: %s", path, _e)
+        logger.debug("env_file scan failed for %s: %s", scrub_log(path), scrub_log(_e))
     for _rel in env_targets:
         full = f"/workspace/{path}/{_rel}"
         q = shlex.quote(full)
@@ -441,7 +441,7 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
 
     _ensure_env_files(docker, agent, path, compose_file)
 
-    logger.info(f"Starting Docker app: {project_name} (path={path}, agent={agent_id})")
+    logger.info(f"Starting Docker app: {scrub_log(project_name)} (path={scrub_log(path)}, agent={scrub_log(agent_id)})")
 
     # One-click: rewrite fixed host ports to auto-assigned free ones so a re-deploy
     # never fails on "port is already allocated".
@@ -492,7 +492,7 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
     workspace_volume = agent.volume_name or f"workspace-{agent_id}"
 
     docker.exec_in_container(agent.container_id, f"touch {shlex.quote(f'/workspace/{path}/.env')}")
-    logger.info(f"Rebuilding Docker app: {project_name}")
+    logger.info(f"Rebuilding Docker app: {scrub_log(project_name)}")
 
     compose_file = await asyncio.to_thread(
         _prepare_free_port_compose, docker, agent, path, compose_file
@@ -502,7 +502,7 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
         ["up", "-d", "--build", "--force-recreate"],
     )
     if exit_code != 0:
-        logger.error(f"Failed to rebuild {project_name}: {output}")
+        logger.error(f"Failed to rebuild {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")
 
     _connect_containers_to_network(docker, project_name)
@@ -664,7 +664,7 @@ async def restart_service(
         try:
             container = docker.client.containers.get(c["id"])
             container.restart(timeout=10)
-            logger.info(f"Restarted service {service} in {project_name}")
+            logger.info(f"Restarted service {scrub_log(service)} in {scrub_log(project_name)}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to restart {service}: {e}")
 

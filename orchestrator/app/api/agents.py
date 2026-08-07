@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_agent_version, settings
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
+from app.core.log_redaction import scrub_log
 from app.core.realtime_catalog import IMPLEMENTED_ENGINES
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, is_agent_principal, require_admin, require_auth, require_auth_or_agent, require_manager, verify_agent_token
@@ -1062,7 +1063,7 @@ async def rename_agent(
             role = (agent.config or {}).get("role") or "Unassigned"
             manager._update_team_registry(agent.container_id, agent_id, name, role)
     except Exception:  # noqa: BLE001 — registry sync is best-effort, never blocks rename
-        logger.warning("team registry name sync failed for agent=%s", agent_id, exc_info=True)
+        logger.warning("team registry name sync failed for agent=%s", scrub_log(agent_id), exc_info=True)
     return {"agent_id": agent_id, "name": name, "status": "updated"}
 
 
@@ -1160,7 +1161,9 @@ async def update_agent_ai_account(
         await manager.update_agent(agent_id)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"AI account set, but container recreate failed for {agent_id}: {e}")
+        logging.getLogger(__name__).warning(
+            f"AI account set, but container recreate failed for {scrub_log(agent_id)}: {scrub_log(e)}"
+        )
 
     return {"agent_id": agent_id, "ai_account_id": account.id, "status": "updated"}
 
@@ -1368,7 +1371,7 @@ async def remove_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     except Exception as e:
         import logging
-        logging.getLogger(__name__).exception(f"Failed to remove agent {agent_id}: {e}")
+        logging.getLogger(__name__).exception(f"Failed to remove agent {scrub_log(agent_id)}: {scrub_log(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to remove agent: {type(e).__name__}: {e}",
