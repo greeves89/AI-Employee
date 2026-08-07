@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.159.1] — 2026-08-07
+
+### Fixed
+- **Bereits geplante Blöcke liefen weiterhin nicht.** Der Auslöser entstand nur beim
+  Schreiben eines neuen Plans — was vorher im Kalender stand, hatte keinen und wäre nie
+  gestartet. Der Scheduler stellt jetzt bei jedem Takt sicher: **Block mit Uhrzeit ⇒
+  Zeitplan**, auch nachträglich. Eine verpasste Zeit wird nachgeholt statt still verfallen.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.159.0] — 2026-08-07
 
 ### Fixed

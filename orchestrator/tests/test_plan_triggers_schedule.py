@@ -60,3 +60,26 @@ class CardFlagTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SelfHealingTests(unittest.TestCase):
+    """Block mit Uhrzeit ⇒ Zeitplan. Als Invariante, nicht als einmalige Nachbesserung.
+
+    Der erste Anlauf legte den Zeitplan nur beim Schreiben an — Bloecke aus aelteren
+    Fassungen standen deshalb im Kalender und liefen nie. Genau das hat der Nutzer
+    gesehen: „wieso macht der dann nichts?".
+    """
+
+    def test_orphan_blocks_are_armed_on_every_tick(self):
+        self.assertIn("async def _arm_plan_blocks", SCHED)
+        self.assertIn("AgentPlanItem.schedule_id.is_(None)", SCHED)
+        self.assertIn("_arm_plan_blocks()", SCHED.split("async def _arm_plan_blocks", 1)[0])
+
+    def test_only_future_days_and_still_planned(self):
+        block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
+        self.assertIn('AgentPlanItem.status == "planned"', block)
+        self.assertIn("AgentPlanItem.plan_date >= _date.today()", block)
+
+    def test_a_missed_time_is_caught_up_not_dropped(self):
+        block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
+        self.assertIn("next_run_at=item.planned_start", block)

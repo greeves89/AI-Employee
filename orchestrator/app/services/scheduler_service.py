@@ -91,6 +91,15 @@ class SchedulerService:
                         "[Scheduler] DueSchedules DB unavailable (transient, "
                         "retrying next tick): %s", e,
                     )
+                # Tagesplan: jeder Block mit Uhrzeit MUSS einen Ausloeser haben.
+                try:
+                    armed = await self._arm_plan_blocks()
+                    if armed:
+                        logger.info("[Scheduler] %s Plan-Block/Bloecke scharf gestellt", armed)
+                except _TRANSIENT_DB_ERRORS as e:
+                    logger.warning("[Scheduler] Plan-Bloecke DB unavailable (transient): %s", e)
+                except Exception as e:
+                    logger.warning("[Scheduler] Plan-Bloecke scharf stellen fehlgeschlagen: %s", e)
                 # Stale-task watchdog: flag RUNNING tasks with no heartbeat >30min.
                 try:
                     await self._tick_stale_task_watchdog()
@@ -604,6 +613,58 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _arm_plan_blocks(self) -> int:
+        """Sicherstellen, dass jeder geplante Block mit Uhrzeit einen Ausloeser hat.
+
+        Der Block LEGT seinen Einmal-Zeitplan beim Planen selbst an. Aber Bloecke aus
+        aelteren Fassungen (und alles, was beim Schreiben schiefging) haetten keinen —
+        sie staenden im Kalender und wuerden nie laufen. Genau das ist passiert: der
+        Nutzer sah seinen Plan und fragte „wieso macht der nichts?".
+
+        Deshalb hier die Invariante statt einer einmaligen Nachbesserung: Block mit
+        Uhrzeit ⇒ Zeitplan. Vergangene Zeiten feuern sofort — nachholen ist richtig,
+        stillschweigend verfallen lassen waere es nicht.
+        """
+        import uuid as _uuid
+        from datetime import date as _date
+
+        from app.models.agent_plan_item import AgentPlanItem
+
+        armed = 0
+        async with resilient_session() as db:
+            orphans = (await db.execute(
+                select(AgentPlanItem).where(
+                    AgentPlanItem.status == "planned",
+                    AgentPlanItem.planned_start.isnot(None),
+                    AgentPlanItem.schedule_id.is_(None),
+                    AgentPlanItem.plan_date >= _date.today(),
+                )
+            )).scalars().all()
+            for item in orphans:
+                schedule_id = _uuid.uuid4().hex[:8]
+                db.add(Schedule(
+                    id=schedule_id,
+                    name=f"[Plan] {item.title[:60]}",
+                    prompt=(
+                        f"Das ist ein Block aus DEINEM eigenen Tagesplan "
+                        f"({item.planned_start:%H:%M}, ca. {item.estimated_minutes} Min, "
+                        f"Priorität {item.priority}):\n\n{item.title}\n"
+                        + (f"\nPräzisierung: {item.notes}\n" if item.notes else "")
+                        + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
+                        "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
+                        "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
+                        "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
+                    ),
+                    interval_seconds=0,
+                    priority=0 if item.priority == "high" else 1,
+                    agent_id=item.agent_id,
+                    enabled=True,
+                    next_run_at=item.planned_start,
+                ))
+                item.schedule_id = schedule_id
+                armed += 1
+        return armed
 
     async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:
         """Wie viele Aufgaben dieses Agenten haengen? Nutzt die Watchdog-Definition,
