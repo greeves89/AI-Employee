@@ -157,6 +157,27 @@ SAVE_MEMORY_TOOL = {
     }
 }
 
+WEB_PICTURE_SEARCH_TOOL = {
+    "toolSpec": {
+        "name": "web_picture_search",
+        "description": (
+            "Search the web for PICTURES and show them to the user right away. Use this "
+            "whenever someone asks to see something ('zeig mir Bilder von…', 'wie sieht … "
+            "aus'). Give the plain search term — I get real image addresses back and put "
+            "the best hits on screen. Never build an image address yourself; this is the "
+            "way to get one."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Suchbegriff, z. B. 'Titanic Ausstellung Potsdam'."},
+                "count": {"type": "integer", "description": "Wie viele Bilder (1-4, Standard 3)."},
+            },
+            "required": ["query"],
+        })},
+    }
+}
+
 PLAN_MY_DAY_TOOL = {
     "toolSpec": {
         "name": "plan_my_day",
@@ -663,6 +684,11 @@ SHOW_ON_SCREEN_TOOL = {
             "document the agent produced, a web page, or a link the user should take to "
             "their phone. kind='image' shows a picture (source = a file path in my "
             "workspace, e.g. /workspace/transfer/chart.png, or a public image URL). "
+            "NEVER invent or assemble an image URL from memory — a guessed path 404s and "
+            "the user sees nothing. Get it from a real result first: `web_search` for the "
+            "topic and take an image address from the hits, or ask the MediaWiki API for a "
+            "Commons file (commons.wikimedia.org/w/api.php?action=query&titles=File:NAME"
+            "&prop=imageinfo&iiprop=url&format=json) and use the returned url. "
             "kind='qr' shows a QR code for a link so the user can open it on their phone. "
             "kind='web' opens the page in a window inside the app (works for pages that "
             "allow embedding — my own HTML reports always do). kind='tab' opens the page "
@@ -1421,6 +1447,7 @@ class RealtimeVoiceSession:
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, PLAN_MY_DAY_TOOL,
+            WEB_PICTURE_SEARCH_TOOL,
             COMPLETE_ONBOARDING_TOOL,
             SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
@@ -1992,6 +2019,11 @@ class RealtimeVoiceSession:
             # Immer AUCH zeigen — der Plan ist eine Liste mit Uhrzeiten, die hoert niemand mit.
             await self._show_day_plan(str(args.get("date") or ""))
             await self._respond(tool_use_id, await self._get_day_plan(str(args.get("date") or "")))
+            return
+        if name == "web_picture_search":
+            await self._respond(tool_use_id, await self._web_picture_search(
+                str(args.get("query") or ""), int(args.get("count") or 3),
+            ))
             return
         if name == "plan_my_day":
             await self._respond(tool_use_id, await self._plan_my_day(
@@ -2781,10 +2813,18 @@ class RealtimeVoiceSession:
                 except ValueError as e:
                     return str(e)
                 except Exception:  # noqa: BLE001
-                    return "Bild konnte nicht geladen werden."
+                    return (
+                        "Das Bild war unter der Adresse nicht abrufbar - die URL stimmt "
+                        "vermutlich nicht. Such sie mit `web_search` (oder ueber die "
+                        "MediaWiki-API) und nimm die Adresse aus dem Treffer, statt sie "
+                        "selbst zu bilden."
+                    )
                 ctype = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
                 if not ctype.startswith("image/"):
-                    return "Das ist kein (anzeigbares) Bild."
+                    return (
+                        "Unter der Adresse liegt kein Bild, sondern eine Seite. Nimm die "
+                        "direkte Bild-Adresse aus einem Suchtreffer."
+                    )
                 b64 = base64.b64encode(content).decode("ascii")
             else:
                 # Workspace file → read it out of the agent's container. FileManager
@@ -3941,6 +3981,46 @@ class RealtimeVoiceSession:
             ],
         }})
         return True
+
+    async def _web_picture_search(self, query: str, count: int = 3) -> str:
+        """Bilder suchen UND zeigen — in einem Zug.
+
+        Vorher konnte er nur ein Bild anzeigen, dessen Adresse er schon kannte; also hat
+        er Adressen erfunden, die es nie gab. Jetzt: Begriff rein, echte Treffer raus,
+        die besten davon direkt auf den Schirm.
+        """
+        q = (query or "").strip()
+        if not q:
+            return "Wonach soll ich Bilder suchen?"
+        count = max(1, min(int(count or 3), 4))
+        from app.core.image_search import image_search
+
+        hits = await image_search(q, max_results=count + 3)
+        if not hits:
+            return f"Zu '{q}' habe ich keine Bilder gefunden — sag mir gern einen anderen Begriff."
+
+        shown = 0
+        for hit in hits:
+            if shown >= count:
+                break
+            try:
+                _final, headers, content = await _safe_get(hit["image_url"], timeout=10.0)
+            except Exception:  # noqa: BLE001 — ein toter Treffer, der naechste ist dran
+                continue
+            ctype = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
+            if not ctype.startswith("image/"):
+                continue
+            await self._emit({"type": "media", "data": {
+                "kind": "image", "media_type": ctype,
+                "b64": base64.b64encode(content).decode("ascii"),
+                "caption": hit["title"] or q,
+                "auto_open": shown == 0,
+            }})
+            shown += 1
+        if not shown:
+            return (f"Ich habe Treffer zu '{q}', aber keiner liess sich laden. "
+                    "Nenn mir einen anderen Begriff, dann versuche ich es nochmal.")
+        return f"{shown} Bild(er) zu '{q}' sind auf dem Schirm. Sag kurz, was du siehst oder brauchst."
 
     async def _plan_my_day(self, horizon: str = "today", focus: str = "") -> str:
         """Die Planung an den AGENTEN geben — der Sprachfront plant nicht selbst.

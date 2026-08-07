@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.162.0] — 2026-08-07
+
+### Added
+- **Bildersuche im Sprachmodus** (`web_picture_search`) — Begriff rein, echte Treffer
+  raus, die besten davon sofort auf dem Schirm. Schlüssellos über DuckDuckGo, nach
+  demselben Muster wie die vorhandene Websuche. Bilder werden serverseitig durch dasselbe
+  SSRF-Gate geholt wie bisher; tote Treffer werden übersprungen statt zu scheitern.
+
+### Fixed
+- **Der Agent erfand Bild-Adressen.** Er nannte Wikimedia-Links aus dem Gedächtnis, die es
+  nie gab (400/404), und meldete dann ein Problem beim Bildserver. Das Werkzeug sagt jetzt
+  ausdrücklich: Adressen nie selbst bilden, sondern aus einem Suchtreffer nehmen — und die
+  Fehlermeldungen sagen, was als Nächstes zu tun ist, statt nur „ging nicht".
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.161.4] — 2026-08-07
 
 ### Fixed
