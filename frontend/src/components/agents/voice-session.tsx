@@ -1498,7 +1498,8 @@ export function VoiceSessionModal({
                           <span className="truncate">{m.filename || "Datei"}</span>
                         </div>
                       )}
-                      {m.caption && (
+                      {/* Beim Tagesplan steht die Ueberschrift schon oben in der Karte. */}
+                      {m.caption && m.kind !== "plan" && (
                         <div className="mt-1 text-[11px] text-muted-foreground/70">{m.caption}</div>
                       )}
                     </div>

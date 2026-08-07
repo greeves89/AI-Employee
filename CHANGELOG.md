@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.160.4] — 2026-08-07
+
+### Fixed
+- Die Überschrift der Tagesplan-Karte stand doppelt (oben in der Karte und nochmal als
+  allgemeine Bildunterschrift darunter).
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.160.3] — 2026-08-07
 
 ### Fixed
