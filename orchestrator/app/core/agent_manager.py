@@ -650,7 +650,11 @@ def instructions_paths(mode: str | None) -> list[str]:
     oder fehlender Modus faellt auf `AGENT.md` zurueck statt auf gar keine Anleitung.
     """
     if mode == "claude_code":
-        return ["/workspace/CLAUDE.md"]
+        # AGENT.md kommt mit: Claude Code liest zwar nur CLAUDE.md, aber auf dem Pi lagen
+        # bei jedem Claude-Agenten uralte AGENT.md-Reste aus der Zeit, als sie fuer alle
+        # Modi geschrieben wurde. Wer sie ansieht (Nutzer, Werkzeug, spaeterer Umbau),
+        # liest sonst eine Anleitung von vor mehreren Fassungen.
+        return ["/workspace/CLAUDE.md", "/workspace/AGENT.md"]
     if mode in ("codex_cli", "codex"):
         return ["/workspace/AGENTS.md", "/workspace/AGENT.md"]
     return ["/workspace/AGENT.md"]
