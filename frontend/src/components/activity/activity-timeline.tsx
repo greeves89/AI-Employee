@@ -672,6 +672,9 @@ function DayAgenda({
                 type="button"
                 key={t.task_id}
                 onClick={() => router.push(`/tasks/${t.task_id}`)}
+                // Kurze Aufgaben sind nur einen Titel hoch — die zweite Zeile passt
+                // nicht hinein. Beim Ueberfahren steht trotzdem alles da.
+                title={`${cleanTitle(t.title)}\n${timeRange} · ${t.status}${durationSuffix}${costSuffix}`}
                 className={cn(
                   "absolute overflow-hidden rounded-md border-l-2 px-2 py-1 text-left transition-opacity hover:z-10 hover:opacity-80",
                   statusAccent[t.status] || "border-l-foreground/30 bg-foreground/10",

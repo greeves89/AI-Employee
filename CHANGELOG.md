@@ -19,6 +19,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   richten sich jetzt nach dem, was tatsächlich gezeichnet wird.
 - **„[Scheduled]" und „[Proactive]" stehen nicht mehr im Kasten** — die Präfixe kosteten
   ein Viertel der Zeile und sagen dem Leser nichts.
+- Kurze Aufgaben sind nur eine Zeile hoch; beim Überfahren stehen jetzt Titel, Zeitraum,
+  Status, Dauer und Kosten im Tooltip.
 
 ### Deployment
 - Frontend-Rebuild.
