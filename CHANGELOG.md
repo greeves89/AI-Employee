@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.161.1] — 2026-08-07
+
+### Fixed
+- **Geplante Läufe lagen exakt übereinander.** Ein voller Tag bringt bei einem aktiven
+  Agenten 35 Läufe, davon mehrere zur selben Minute (morgen dreimal um 04:00) — als Bänder
+  auf derselben Spur ergab das einen unlesbaren Klumpen. Was sich zeitlich beißt, steht
+  jetzt nebeneinander (bis zu drei Spalten, 20-Minuten-Fenster).
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.161.0] — 2026-08-07
 
 ### Fixed

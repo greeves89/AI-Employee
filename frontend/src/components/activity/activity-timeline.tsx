@@ -364,6 +364,21 @@ function DayAgenda({
     [agent.scheduled_marks],
   );
   const laned = useMemo(() => layoutLanes(ownTasks, now), [ownTasks, now]);
+  // Mehrere Laeufe zur selben Minute lagen exakt uebereinander (morgen 3x um 04:00)
+  // und ergaben einen unlesbaren Klumpen. Wer sich zeitlich beisst, kommt nebeneinander.
+  const markLanes = useMemo(() => {
+    const GAP_MS = 20 * 60_000;
+    const sorted = [...ownMarks].sort((a, b) => a.time.localeCompare(b.time));
+    const laneEnds: number[] = [];
+    return sorted.map((m) => {
+      const t = new Date(m.time).getTime();
+      let lane = laneEnds.findIndex((end) => end <= t);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(t + GAP_MS); }
+      else laneEnds[lane] = t + GAP_MS;
+      return { mark: m, lane };
+    });
+  }, [ownMarks]);
+  const markLaneCount = Math.min(Math.max(...markLanes.map((m) => m.lane + 1), 1), 3);
   const nowOffsetPx = isToday ? ((now.getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX : null;
 
   // Open the agenda scrolled to something useful instead of dumping the user
@@ -478,14 +493,16 @@ function DayAgenda({
           {/* Geplante Laeufe waren 8-Pixel-Rauten am linken Rand — praktisch unsichtbar
               und seit der Planspur auch noch verdeckt. Ein zukuenftiger Tag sah deshalb
               leer aus, obwohl 38 Laeufe anstanden. Jetzt schmale, beschriftete Baender. */}
-          {ownMarks.map((m: ActivityScheduleMark, i) => {
+          {markLanes.map(({ mark: m, lane }, i) => {
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
+            const col = Math.min(lane, markLaneCount - 1);
+            const w = 34 / markLaneCount;
             return (
               <div
                 key={`${m.schedule_id}-${i}`}
                 title={`${m.schedule_name} — ${fmtTime(m.time)}`}
-                className="absolute right-0 flex h-4 w-[34%] items-center gap-1 overflow-hidden rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 -translate-y-1/2"
-                style={{ top }}
+                className="absolute flex h-4 items-center gap-1 overflow-hidden rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 -translate-y-1/2"
+                style={{ top, right: `${col * w}%`, width: `calc(${w}% - 3px)` }}
               >
                 <span className="shrink-0 font-mono text-[9px] text-emerald-300/70">
                   {fmtTime(m.time)}
