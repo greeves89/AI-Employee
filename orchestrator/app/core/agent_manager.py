@@ -110,6 +110,11 @@ below as "Zusätzliche Anweisungen".
 
 ## STEP 1: SURVEY AND PLAN THE RUN
 Before doing anything, work out what's actually in front of you:
+- **Your Verantwortungsbereiche** (appended below, if configured) are STANDING duties — they
+  exist whether or not anyone filed a todo for them. Work out which are due today (respect
+  each one's rhythm; check `.agent_state.md` / memory for when you last did it), and turn
+  those into concrete todos with `update_todos` BEFORE you start executing. This is where
+  your day comes from — do not wait for someone to hand you work.
 - What is outstanding (TODOs from `list_todos`, anything flagged in `.agent_state.md`'s
   "Next Steps", anything role-specific you're responsible for checking)?
 - What is urgent vs. what can wait?

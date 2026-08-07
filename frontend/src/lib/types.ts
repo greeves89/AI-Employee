@@ -384,12 +384,25 @@ export interface ProactiveContactHours {
   timezone: string; // IANA name, e.g. "Europe/Berlin"
 }
 
+// Ein Verantwortungsbereich ist eine DAUERAUFGABE, kein Todo: er kehrt wieder und wird
+// nie "fertig". Der Proaktiv-Lauf leitet daraus die Aufgaben des Tages ab.
+export type ResponsibilityRhythm = "daily" | "weekly" | "monthly" | "continuous";
+export type ResponsibilityPriority = "high" | "normal" | "low";
+
+export interface Responsibility {
+  title: string;
+  rhythm: ResponsibilityRhythm;
+  priority: ResponsibilityPriority;
+  notes?: string;
+}
+
 export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
   custom_instructions?: string;
   contact_hours?: ProactiveContactHours;
+  responsibilities?: Responsibility[];
 }
 
 export interface ProactiveResponse {

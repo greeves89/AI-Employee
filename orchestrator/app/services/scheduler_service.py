@@ -499,6 +499,13 @@ class SchedulerService:
             hours_note = _contact_hours_note(proactive_config)
             if hours_note:
                 prompt = prompt + "\n\n" + hours_note
+            # WHAT this agent owns. Without it the run can only work off todos someone
+            # else filed — it plans nothing of its own and goes idle the moment the
+            # list is empty. STEP 1 derives the day plan from this block.
+            from app.core.responsibilities import responsibilities_note
+            duties_note = responsibilities_note(proactive_config)
+            if duties_note:
+                prompt = prompt + "\n\n" + duties_note
             extra = (proactive_config.get("custom_instructions", "") or "").strip()
             if extra:
                 prompt = (

@@ -2376,6 +2376,11 @@ class ProactiveUpdate(BaseModel):
     contact_hours_start: str | None = None   # "HH:MM"
     contact_hours_end: str | None = None     # "HH:MM"
     contact_timezone: str | None = None      # IANA name, e.g. "Europe/Berlin"
+    # Standing areas of responsibility — what this agent OWNS, independent of any todo
+    # somebody filed. The proactive run derives its day plan from these, which is what
+    # turns "waits for work" into "knows what its job is". None = leave unchanged;
+    # [] = clear. Each item: {title, rhythm, priority, notes}.
+    responsibilities: list[dict] | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -2458,6 +2463,14 @@ async def update_proactive_config(
         new_tz = body.contact_timezone if body.contact_timezone is not None else existing_hours.get("timezone", "")
         new_hours = _validated_contact_hours(new_start, new_end, new_tz)
 
+        # Same preserve-unless-explicit pattern for the areas of responsibility.
+        from app.core.responsibilities import validated_responsibilities
+        new_responsibilities = validated_responsibilities(
+            body.responsibilities
+            if body.responsibilities is not None
+            else (proactive or {}).get("responsibilities", [])
+        )
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
@@ -2491,6 +2504,7 @@ async def update_proactive_config(
             "interval_seconds": body.interval_seconds,
             "custom_instructions": new_custom,
             "contact_hours": new_hours,
+            "responsibilities": new_responsibilities,
         }
         config["proactive"] = proactive
         agent.config = config

@@ -9,12 +9,34 @@ import {
   Clock,
   FileText,
   Loader2,
+  Plus,
   Save,
+  Trash2,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProactiveConfig, updateProactiveConfig } from "@/lib/api";
-import type { ProactiveResponse } from "@/lib/types";
+import type {
+  ProactiveResponse,
+  Responsibility,
+  ResponsibilityPriority,
+  ResponsibilityRhythm,
+} from "@/lib/types";
+
+// Spiegelt die serverseitigen Grenzen (agents.py) — hier nur, damit die UI gar nicht
+// erst in ein 422 laeuft.
+const MAX_RESPONSIBILITIES = 20;
+const RHYTHMS: { value: ResponsibilityRhythm; label: string }[] = [
+  { value: "daily", label: "taeglich" },
+  { value: "weekly", label: "woechentlich" },
+  { value: "monthly", label: "monatlich" },
+  { value: "continuous", label: "laufend" },
+];
+const PRIORITIES: { value: ResponsibilityPriority; label: string }[] = [
+  { value: "high", label: "hoch" },
+  { value: "normal", label: "normal" },
+  { value: "low", label: "niedrig" },
+];
 
 const INTERVALS = [
   { label: "15 min", seconds: 900 },
@@ -38,6 +60,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const [hoursStartDraft, setHoursStartDraft] = useState("");
   const [hoursEndDraft, setHoursEndDraft] = useState("");
   const [hoursTzDraft, setHoursTzDraft] = useState("");
+  const [dutiesDraft, setDutiesDraft] = useState<Responsibility[]>([]);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -73,16 +96,41 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
     setHoursTzDraft(savedHoursTz);
   }, [savedHoursStart, savedHoursEnd, savedHoursTz]);
 
+  // Seed the duties draft from the server value, keyed on its serialized form so a
+  // toggle/interval reload never wipes half-typed entries.
+  const savedDuties = JSON.stringify(data?.proactive?.responsibilities ?? []);
+  useEffect(() => {
+    setDutiesDraft(JSON.parse(savedDuties) as Responsibility[]);
+  }, [savedDuties]);
+
+  const addResponsibility = () =>
+    setDutiesDraft((prev) =>
+      prev.length >= MAX_RESPONSIBILITIES
+        ? prev
+        : [...prev, { title: "", rhythm: "daily", priority: "normal", notes: "" }],
+    );
+  const patchResponsibility = (idx: number, patch: Partial<Responsibility>) =>
+    setDutiesDraft((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+  const removeResponsibility = (idx: number) =>
+    setDutiesDraft((prev) => prev.filter((_, i) => i !== idx));
+
   const hoursDirty =
     hoursStartDraft !== savedHoursStart ||
     hoursEndDraft !== savedHoursEnd ||
     hoursTzDraft !== savedHoursTz;
-  const draftDirty = customDraft !== savedCustom || hoursDirty;
+  const dutiesDirty = JSON.stringify(dutiesDraft) !== savedDuties;
+  const draftDirty = customDraft !== savedCustom || hoursDirty || dutiesDirty;
 
   const handleSavePrompt = async () => {
     if (!data) return;
     if (!!hoursStartDraft !== !!hoursEndDraft) {
       setSaveError("Start- und Endzeit muessen zusammen gesetzt oder beide geleert werden.");
+      return;
+    }
+    // Ein Bereich ohne Titel wuerde serverseitig 422 werfen — hier abfangen, damit die
+    // Meldung am Feld steht statt als generischer Speicherfehler.
+    if (dutiesDraft.some((d) => !d.title.trim())) {
+      setSaveError("Jeder Verantwortungsbereich braucht einen Titel.");
       return;
     }
     setSavingPrompt(true);
@@ -95,6 +143,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
         contact_hours_start: hoursStartDraft,
         contact_hours_end: hoursEndDraft,
         contact_timezone: hoursTzDraft,
+        responsibilities: dutiesDraft.map((d) => ({ ...d, title: d.title.trim() })),
       });
       await load();
       setSavedFlash(true);
@@ -289,6 +338,91 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     </pre>
                   </div>
                 )}
+                <div>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                      Verantwortungsbereiche
+                    </span>
+                    <button
+                      onClick={addResponsibility}
+                      disabled={dutiesDraft.length >= MAX_RESPONSIBILITIES}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.04]",
+                        dutiesDraft.length >= MAX_RESPONSIBILITIES && "opacity-40 cursor-not-allowed",
+                      )}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Bereich
+                    </button>
+                  </div>
+                  {dutiesDraft.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-foreground/[0.08] p-2.5 text-[10px] leading-relaxed text-muted-foreground/50">
+                      Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo
+                      angelegt hat — mit ihnen weiss er, wofuer er dauerhaft zustaendig ist,
+                      und baut sich daraus selbst den Tag.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {dutiesDraft.map((duty, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-foreground/[0.06] bg-background/60 p-2"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={duty.title}
+                              onChange={(e) => patchResponsibility(idx, { title: e.target.value })}
+                              placeholder="z.B. Posteingang sichten"
+                              className="min-w-0 flex-1 rounded-md border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
+                            />
+                            <select
+                              value={duty.rhythm}
+                              onChange={(e) =>
+                                patchResponsibility(idx, { rhythm: e.target.value as ResponsibilityRhythm })
+                              }
+                              className="rounded-md border border-foreground/[0.08] bg-background/60 px-1.5 py-1 text-[10px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                            >
+                              {RHYTHMS.map((r) => (
+                                <option key={r.value} value={r.value}>{r.label}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={duty.priority}
+                              onChange={(e) =>
+                                patchResponsibility(idx, { priority: e.target.value as ResponsibilityPriority })
+                              }
+                              className="rounded-md border border-foreground/[0.08] bg-background/60 px-1.5 py-1 text-[10px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                            >
+                              {PRIORITIES.map((p) => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => removeResponsibility(idx)}
+                              title="Bereich entfernen"
+                              className="shrink-0 rounded-md p-1 text-muted-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-red-400"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={duty.notes ?? ""}
+                            onChange={(e) => patchResponsibility(idx, { notes: e.target.value })}
+                            placeholder="Praezisierung (optional) — woran genau erkennt er, dass es erledigt ist?"
+                            className="mt-1.5 w-full rounded-md border border-foreground/[0.06] bg-background/40 px-2 py-1 text-[10px] text-muted-foreground placeholder:text-muted-foreground/25 focus:border-emerald-500/40 focus:outline-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    Dauerauftraege, keine Todos: der Lauf leitet daraus die Aufgaben des Tages ab
+                    (STEP 1). Ein Bereich wird nie „fertig" — abgehakt wird der heutige Durchgang.
+                  </div>
+                </div>
+
                 <div>
                   <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
                     Zusaetzliche Anweisungen fuer diesen Agenten
