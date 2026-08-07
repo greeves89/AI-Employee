@@ -217,6 +217,55 @@ class OrchestratorAPIClient:
             return result
         return f"Message sent to agent {target_id}"
 
+    # ── Tagesplan (day_plan.py) ──
+    # Der Plan lag frueher nur in /workspace/.agent_state.md und war damit fuer die
+    # Oberflaeche unsichtbar. Diese beiden Werkzeuge gibt es in JEDER Laufzeit — hier
+    # fuer Codex/Custom-LLM, als MCP-Werkzeug fuer Claude Code, und der Sprachfront
+    # liest denselben Endpunkt.
+
+    async def plan_day(self, params: dict) -> str:
+        """Write today's plan so it shows up in the user's agent calendar."""
+        items = params.get("items") or []
+        if not isinstance(items, list) or not items:
+            return "Error: 'items' must be a non-empty list of planned blocks"
+        body: dict = {"items": items}
+        if params.get("plan_date"):
+            body["plan_date"] = params["plan_date"]
+        result = await self._request("PUT", f"/agents/{self.agent_id}/day-plan", json=body)
+        if isinstance(result, str):
+            return result
+        written = result.get("items", [])
+        return (
+            f"Tagesplan für {result.get('plan_date')} gespeichert: {len(written)} Block/Blöcke. "
+            "Der Nutzer sieht ihn jetzt im Kalender und kann Blöcke verschieben oder streichen."
+        )
+
+    async def get_day_plan(self, params: dict) -> str:
+        """Read the day plan back — including the user's corrections."""
+        query = []
+        if params.get("date"):
+            query.append(f"date={params['date']}")
+        if params.get("days"):
+            query.append(f"days={int(params['days'])}")
+        suffix = ("?" + "&".join(query)) if query else ""
+        result = await self._request("GET", f"/agents/{self.agent_id}/day-plan{suffix}")
+        if isinstance(result, str):
+            return result
+        items = result.get("items", [])
+        if not items:
+            return "Für diesen Tag ist noch nichts geplant."
+        lines = []
+        for it in items:
+            when = (it.get("planned_start") or "")[11:16] or "--:--"
+            mark = {"done": "erledigt", "running": "läuft", "dropped": "GESTRICHEN"}.get(
+                it.get("status"), "geplant"
+            )
+            lines.append(
+                f"- [{mark}] {when} ({it.get('estimated_minutes')} Min) {it.get('title')}"
+                + (f" — {it['notes']}" if it.get("notes") else "")
+            )
+        return "Tagesplan:\n" + "\n".join(lines)
+
     # ── Schedule Management (orchestrator-server.mjs) ──
 
     async def create_schedule(self, params: dict) -> str:

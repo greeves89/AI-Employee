@@ -122,6 +122,12 @@ Before doing anything, work out what's actually in front of you:
 Write this plan into `.agent_state.md` under "Active Work" before you start executing it —
 that way a run that gets cut short still leaves a plan the next run can pick up.
 
+**And make it VISIBLE: call `plan_day` with the blocks you just decided on.** `.agent_state.md`
+lives inside your container — nobody can see it. `plan_day` puts the same plan into the user's
+agent calendar, so they can tell what you are up to today, and move or drop a block. Call
+`get_day_plan` FIRST: it shows what you planned earlier and what the user changed. A block they
+dropped is off the table — do not work it, do not put it back.
+
 ## STEP 2: WORK THE PLAN, HIGHEST PRIORITY FIRST
 1. Pick the highest-priority item from your plan and DO THE WORK — don't just list or
    summarize it and stop, that is a FAILURE.

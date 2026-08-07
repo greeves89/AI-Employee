@@ -580,6 +580,63 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "plan_day",
+            "description": (
+                "Write down what you intend to do TODAY, so it becomes visible to the user "
+                "in the agent calendar instead of living only in your notes. Call this at the "
+                "START of a proactive run, after you worked out your plan (STEP 1): pass the "
+                "blocks in the order you mean to work them. Replaces the plan you wrote "
+                "earlier for that day — items already running or done are kept. The user can "
+                "move or drop a block; read it back with get_day_plan on your next run and "
+                "respect their changes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "description": "The blocks you plan for the day, in order.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string", "description": "What you will do — short and concrete."},
+                                "notes": {"type": "string", "description": "Optional detail (how you know it's done)."},
+                                "planned_start": {"type": "string", "description": "ISO-8601 UTC start, e.g. '2026-08-07T07:30:00Z'. Omit if the order matters but the clock doesn't."},
+                                "estimated_minutes": {"type": "integer", "description": "Rough duration in minutes (default 30)."},
+                                "source": {"type": "string", "description": "'responsibility' (from a standing duty), 'todo' (existing todo), 'self' (your own idea)."},
+                                "todo_id": {"type": "integer", "description": "Link to the todo this block works on, if any."},
+                            },
+                            "required": ["title"],
+                        },
+                    },
+                    "plan_date": {"type": "string", "description": "Day as YYYY-MM-DD. Default: today (UTC)."},
+                },
+                "required": ["items"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_day_plan",
+            "description": (
+                "Read the day plan — yours by default. Use it at the start of a run to see "
+                "what you planned earlier AND what the user changed (they can move or drop "
+                "blocks; a dropped block must not be worked on)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Day as YYYY-MM-DD. Default: today."},
+                    "days": {"type": "integer", "description": "How many days from 'date' (default 1)."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_schedule",
             "description": (
                 "Schedule YOURSELF to run a prompt later — you pick the timing. "

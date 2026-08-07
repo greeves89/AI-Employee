@@ -1,4 +1,4 @@
-import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -394,6 +394,24 @@ export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph
   return fetchJSON(`${getBase()}/settings/msgraph-mcp-external`, {
     method: "PUT",
     body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function getDayPlan(
+  agentId: string,
+  date: string,
+  days = 1,
+): Promise<{ agent_id: string; from: string; to: string; items: DayPlanItem[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/day-plan?date=${date}&days=${days}`);
+}
+
+export async function patchDayPlanItem(
+  itemId: number,
+  patch: { status?: string; planned_start?: string; estimated_minutes?: number; title?: string },
+): Promise<DayPlanItem> {
+  return fetchJSON(`${getBase()}/day-plan/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 

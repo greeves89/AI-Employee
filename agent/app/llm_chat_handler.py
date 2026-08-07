@@ -43,6 +43,9 @@ CORE_TOOL_NAMES = {
     "request_approval", "notify_user", "send_message_and_wait",
     "memory_save", "memory_search", "brain_search", "secondbrain_search",
     "list_todos", "complete_todo", "update_todos",
+    # Der Tagesplan ist die Antwort auf "was hast du heute vor?" — er muss ohne
+    # search_tools erreichbar sein, sonst plant der Agent still in seine Notizdatei.
+    "plan_day", "get_day_plan",
     # The standard task workflow MANDATES a skill check + rating on every task, so these
     # must always be loaded — otherwise the agent hits "tool not available" mid-workflow
     # (it cannot search_tools for a capability the workflow already required).

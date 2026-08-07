@@ -6,7 +6,14 @@ import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCost, formatDuration } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar } from "@/lib/types";
+import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar, DayPlanItem } from "@/lib/types";
+import { CalendarClock, X } from "lucide-react";
+
+// Tagesschluessel in LOKALER Zeit — toISOString() wuerde vor 02:00 MESZ auf den
+// Vortag zeigen und den Plan des falschen Tages laden.
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MARKS = [0, 6, 12, 18, 24];
@@ -309,6 +316,33 @@ function DayAgenda({
 }: { agent: ActivityAgentTimeline; dayStart: Date; now: Date; isToday: boolean }) {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Was der Agent sich VORGENOMMEN hat — die Gegenprobe zu den Task-Balken, die nur
+  // zeigen, was schon gelaufen ist. Ohne das bleibt "was hat das Ding heute vor?"
+  // unbeantwortbar (der Plan lag bisher nur als Datei im Container).
+  const [plan, setPlan] = useState<DayPlanItem[]>([]);
+  const planDate = useMemo(() => localDateKey(dayStart), [dayStart]);
+  const loadPlan = useCallback(async () => {
+    try {
+      const res = await api.getDayPlan(agent.agent_id, planDate);
+      setPlan(res.items);
+    } catch {
+      setPlan([]);   // kein Plan ist ein gueltiger Zustand, kein Fehlerzustand
+    }
+  }, [agent.agent_id, planDate]);
+  useEffect(() => { loadPlan(); }, [loadPlan]);
+  const undatedPlan = useMemo(() => plan.filter((p) => !p.planned_start), [plan]);
+
+  const dropBlock = async (item: DayPlanItem) => {
+    // Streichen statt loeschen: der Tag bleibt nachvollziehbar, und der Agent sieht
+    // beim naechsten Lauf, dass dieser Block vom Tisch ist.
+    const next = item.status === "dropped" ? "planned" : "dropped";
+    try {
+      await api.patchDayPlanItem(item.id, { status: next });
+      await loadPlan();
+    } catch {
+      // stiller Fehlschlag: der naechste Load holt den echten Stand
+    }
+  };
   const laned = useMemo(() => layoutLanes(agent.tasks, now), [agent.tasks, now]);
   const nowOffsetPx = isToday ? ((now.getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX : null;
 
@@ -356,6 +390,60 @@ function DayAgenda({
               style={{ top: h * HOUR_PX }}
             />
           ))}
+
+          {/* Geplante Bloecke: gestrichelt und halbtransparent, damit auf einen Blick
+              klar ist, was VORHABEN ist und was tatsaechlich gelaufen ist. Sie liegen
+              in einer eigenen schmalen Spur links, damit sie die Task-Balken nicht
+              verdecken. */}
+          {plan.map((item) => {
+            const startMs = item.planned_start
+              ? new Date(item.planned_start).getTime() - dayStart.getTime()
+              : null;
+            const top = startMs === null
+              ? null
+              : (Math.min(Math.max(startMs, 0), DAY_MS) / DAY_MS) * 24 * HOUR_PX + BLOCK_GAP_PX / 2;
+            if (top === null) return null;   // ohne Zeit: unterhalb als Liste, s.u.
+            const height = Math.max(
+              ((item.estimated_minutes * 60_000) / DAY_MS) * 24 * HOUR_PX - BLOCK_GAP_PX,
+              MIN_BLOCK_PX
+            );
+            const dropped = item.status === "dropped";
+            return (
+              <div
+                key={`plan-${item.id}`}
+                title={`Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""}`}
+                className={cn(
+                  "group absolute left-0 w-[26%] overflow-hidden rounded-md border border-dashed px-2 py-1",
+                  dropped
+                    ? "border-foreground/15 bg-foreground/[0.02] opacity-50"
+                    : "border-sky-400/40 bg-sky-400/[0.07]",
+                  item.status === "done" && "border-emerald-400/40 bg-emerald-400/[0.07]"
+                )}
+                style={{ top, height }}
+              >
+                <div className={cn(
+                  "flex items-start gap-1 text-[11px] font-medium",
+                  dropped ? "text-muted-foreground/60 line-through" : "text-sky-200"
+                )}>
+                  <CalendarClock className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
+                  <span className="truncate">{item.title}</span>
+                </div>
+                {height >= 30 && (
+                  <div className="truncate text-[10px] text-muted-foreground/60">
+                    geplant · {item.estimated_minutes} Min
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => dropBlock(item)}
+                  title={dropped ? "Wieder einplanen" : "Streichen — der Agent lässt es dann liegen"}
+                  className="absolute right-1 top-1 hidden rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground group-hover:block"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
 
           {agent.scheduled_marks.map((m: ActivityScheduleMark, i) => {
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
@@ -406,8 +494,9 @@ function DayAgenda({
                 style={{
                   top,
                   height,
-                  left: `calc(${t.lane * laneWidthPct}% + 2px)`,
-                  width: `calc(${laneWidthPct}% - 4px)`,
+                  // Die Planspur belegt die linken 26 % — die Aufgaben teilen sich den Rest.
+                  left: `calc(28% + ${t.lane * laneWidthPct * 0.72}% + 2px)`,
+                  width: `calc(${laneWidthPct * 0.72}% - 4px)`,
                 }}
               >
                 <div className="truncate text-[12px] font-medium text-foreground">{t.title}</div>
@@ -428,6 +517,41 @@ function DayAgenda({
           )}
         </div>
       </div>
+
+      {/* Vorgenommenes OHNE feste Uhrzeit — es hat im Raster keinen Platz, darf aber
+          nicht verschwinden: sonst faellt genau das unter den Tisch, was der Agent
+          "heute noch" erledigen wollte. */}
+      {undatedPlan.length > 0 && (
+        <div className="border-t border-foreground/[0.06] px-3 py-2">
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+            <CalendarClock className="h-3 w-3" />
+            Heute vorgenommen, ohne feste Zeit
+          </div>
+          <div className="space-y-1">
+            {undatedPlan.map((item) => (
+              <div key={`undated-${item.id}`} className="group flex items-center gap-2 text-[11px]">
+                <span className={cn(
+                  "flex-1 truncate",
+                  item.status === "dropped" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
+                )}>
+                  {item.title}
+                </span>
+                <span className="shrink-0 text-[10px] text-muted-foreground/40">
+                  {item.estimated_minutes} Min
+                </span>
+                <button
+                  type="button"
+                  onClick={() => dropBlock(item)}
+                  title={item.status === "dropped" ? "Wieder einplanen" : "Streichen"}
+                  className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground group-hover:opacity-100"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

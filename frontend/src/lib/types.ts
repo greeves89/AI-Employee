@@ -396,6 +396,22 @@ export interface Responsibility {
   notes?: string;
 }
 
+// Ein Block im Tagesplan eines Agenten: was er sich VORGENOMMEN hat (im Gegensatz
+// zu den Task-Balken, die zeigen, was schon gelaufen ist).
+export interface DayPlanItem {
+  id: number;
+  agent_id: string;
+  plan_date: string;
+  title: string;
+  notes: string;
+  planned_start: string | null;
+  estimated_minutes: number;
+  source: "responsibility" | "todo" | "self" | "user";
+  status: "planned" | "running" | "done" | "dropped";
+  todo_id: number | null;
+  task_id: string | null;
+}
+
 export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;

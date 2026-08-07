@@ -157,6 +157,24 @@ SAVE_MEMORY_TOOL = {
     }
 }
 
+GET_DAY_PLAN_TOOL = {
+    "toolSpec": {
+        "name": "get_day_plan",
+        "description": (
+            "Read MY day plan — what I have planned for today (or another day), in order, "
+            "with times. Use for 'was hast du heute vor', 'wie sieht dein Tag aus', 'was "
+            "steht als Nächstes an'. Fast, direct read; a block the user dropped is marked "
+            "as GESTRICHEN and is off the table."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "Tag als YYYY-MM-DD. Standard: heute."},
+            },
+        })},
+    }
+}
+
 LIST_TODOS_TOOL = {
     "toolSpec": {
         "name": "list_todos",
@@ -1326,7 +1344,7 @@ class RealtimeVoiceSession:
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
-            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
+            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
         ]
@@ -1865,6 +1883,9 @@ class RealtimeVoiceSession:
             return
         if name == "list_todos":
             await self._respond(tool_use_id, await self._list_todos())
+            return
+        if name == "get_day_plan":
+            await self._respond(tool_use_id, await self._get_day_plan(str(args.get("date") or "")))
             return
         if name == "set_autonomy":
             await self._respond(tool_use_id, await self._set_autonomy(str(args.get("level") or "")))
@@ -3997,6 +4018,42 @@ class RealtimeVoiceSession:
             logger.warning("voice save_memory failed agent=%s", self.agent_id, exc_info=True)
             return "Das Merken hat gerade nicht geklappt."
         return f"Gemerkt: {k}."
+
+    async def _get_day_plan(self, day: str = "") -> str:
+        """Den Tagesplan direkt aus der DB lesen — dieselbe Quelle, die der Agent
+        ueber `plan_day` schreibt und die der Kalender anzeigt. Kein Umweg ueber den
+        Agenten-Container, damit die Antwort im Gespraech sofort kommt."""
+        from datetime import date as _date, datetime as _dt, timezone as _tz
+
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.agent_plan_item import AgentPlanItem
+
+        try:
+            target = _date.fromisoformat(day) if day else _dt.now(_tz.utc).date()
+        except ValueError:
+            return "Das Datum habe ich nicht verstanden — sag es mir als Jahr-Monat-Tag."
+        try:
+            async with async_session_factory() as db:
+                rows = (await db.execute(
+                    select(AgentPlanItem)
+                    .where(AgentPlanItem.agent_id == self.agent_id,
+                           AgentPlanItem.plan_date == target)
+                    .order_by(AgentPlanItem.planned_start, AgentPlanItem.id)
+                )).scalars().all()
+        except Exception:  # noqa: BLE001
+            logger.warning("voice get_day_plan failed agent=%s", self.agent_id, exc_info=True)
+            return "Meinen Tagesplan konnte ich gerade nicht laden."
+        if not rows:
+            return "Für den Tag habe ich noch nichts geplant."
+        marks = {"done": "erledigt", "running": "läuft gerade", "dropped": "gestrichen"}
+        lines = []
+        for r in rows:
+            when = r.planned_start.strftime("%H:%M") if r.planned_start else "ohne feste Zeit"
+            state = marks.get(r.status, "geplant")
+            lines.append(f"- {when}: {r.title} ({state}, ca. {r.estimated_minutes} Minuten)")
+        return "Mein Plan:\n" + "\n".join(lines)
 
     async def _list_todos(self) -> str:
         """List the agent's open to-dos directly from the DB (no agent round-trip)."""
