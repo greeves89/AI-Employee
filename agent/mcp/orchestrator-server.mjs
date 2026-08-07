@@ -321,6 +321,53 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "plan_day",
+      description:
+        "Write down what you intend to do TODAY so it becomes VISIBLE to the user in the " +
+        "agent calendar — instead of living only in your own notes. Call this at the START " +
+        "of a proactive run, right after you worked out your plan: pass the blocks in the " +
+        "order you mean to work them. Replaces the plan you wrote earlier for that day; " +
+        "blocks already running or done are kept. The user can move or drop a block — read " +
+        "it back with get_day_plan and respect their changes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            description: "The blocks you plan for the day, in the order you will work them.",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "What you will do — short and concrete." },
+                notes: { type: "string", description: "Optional detail (how you know it is done)." },
+                planned_start: { type: "string", description: "ISO-8601 UTC start, e.g. '2026-08-07T07:30:00Z'. Omit if only the order matters." },
+                estimated_minutes: { type: "number", description: "Rough duration in minutes (default 30)." },
+                source: { type: "string", description: "'responsibility' | 'todo' | 'self'" },
+                todo_id: { type: "number", description: "Link to the todo this block works on, if any." },
+              },
+              required: ["title"],
+            },
+          },
+          plan_date: { type: "string", description: "Day as YYYY-MM-DD. Default: today (UTC)." },
+        },
+        required: ["items"],
+      },
+    },
+    {
+      name: "get_day_plan",
+      description:
+        "Read your day plan back — including what the user changed. A block the user dropped " +
+        "must NOT be worked on. Use at the start of a run before planning anew.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Day as YYYY-MM-DD. Default: today." },
+          days: { type: "number", description: "How many days from 'date' (default 1)." },
+        },
+        required: [],
+      },
+    },
+    {
       name: "create_schedule",
       description:
         "Schedule YOURSELF to run a task later — you choose the timing. Use instead of sleeping/waiting. " +
@@ -1194,6 +1241,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             `The agent may be busy or offline. The reply will arrive in your message queue later.`,
         }],
       };
+    }
+
+    case "plan_day": {
+      const items = Array.isArray(args.items) ? args.items : [];
+      if (items.length === 0) throw new Error("Provide at least one planned block in 'items'.");
+      const body = { items };
+      if (args.plan_date) body.plan_date = args.plan_date;
+      const result = await apiCall(`/agents/${AGENT_ID}/day-plan`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      const written = (result.items || []).length;
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Tagesplan für ${result.plan_date} gespeichert: ${written} Block/Blöcke. ` +
+              "Der Nutzer sieht ihn jetzt im Kalender und kann Blöcke verschieben oder streichen.",
+          },
+        ],
+      };
+    }
+
+    case "get_day_plan": {
+      const params = new URLSearchParams();
+      if (args.date) params.set("date", args.date);
+      if (args.days) params.set("days", String(args.days));
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const result = await apiCall(`/agents/${AGENT_ID}/day-plan${qs}`);
+      const items = result.items || [];
+      if (items.length === 0) {
+        return { content: [{ type: "text", text: "Für diesen Tag ist noch nichts geplant." }] };
+      }
+      const marks = { done: "erledigt", running: "läuft", dropped: "GESTRICHEN" };
+      const lines = items.map((it) => {
+        const when = (it.planned_start || "").slice(11, 16) || "--:--";
+        const mark = marks[it.status] || "geplant";
+        return `- [${mark}] ${when} (${it.estimated_minutes} Min) ${it.title}` +
+          (it.notes ? ` — ${it.notes}` : "");
+      });
+      return { content: [{ type: "text", text: "Tagesplan:\n" + lines.join("\n") }] };
     }
 
     case "create_schedule": {

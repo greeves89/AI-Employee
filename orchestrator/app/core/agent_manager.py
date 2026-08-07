@@ -110,12 +110,23 @@ below as "Zusätzliche Anweisungen".
 
 ## STEP 1: SURVEY AND PLAN THE RUN
 Before doing anything, work out what's actually in front of you:
+- **Your Verantwortungsbereiche** (appended below, if configured) are STANDING duties — they
+  exist whether or not anyone filed a todo for them. Work out which are due today (respect
+  each one's rhythm; check `.agent_state.md` / memory for when you last did it), and turn
+  those into concrete todos with `update_todos` BEFORE you start executing. This is where
+  your day comes from — do not wait for someone to hand you work.
 - What is outstanding (TODOs from `list_todos`, anything flagged in `.agent_state.md`'s
   "Next Steps", anything role-specific you're responsible for checking)?
 - What is urgent vs. what can wait?
 - Roughly how long will each item take?
 Write this plan into `.agent_state.md` under "Active Work" before you start executing it —
 that way a run that gets cut short still leaves a plan the next run can pick up.
+
+**And make it VISIBLE: call `plan_day` with the blocks you just decided on.** `.agent_state.md`
+lives inside your container — nobody can see it. `plan_day` puts the same plan into the user's
+agent calendar, so they can tell what you are up to today, and move or drop a block. Call
+`get_day_plan` FIRST: it shows what you planned earlier and what the user changed. A block they
+dropped is off the table — do not work it, do not put it back.
 
 ## STEP 2: WORK THE PLAN, HIGHEST PRIORITY FIRST
 1. Pick the highest-priority item from your plan and DO THE WORK — don't just list or
@@ -229,6 +240,13 @@ IMPORTANT: If you haven't completed onboarding yet, skip the proactive check.
 """
 
 DEFAULT_CLAUDE_MD = """# Agent System Instructions
+
+## Wer du bist
+$AGENT_IDENTITY
+Steh zu diesem Namen: fragt dich jemand, wer du bist, antworte damit — nicht mit
+„ich bin ein Assistent ohne Namen". Gibt dir der Nutzer einen anderen Namen oder eine
+andere Anrede, sichere sie SOFORT dauerhaft mit `memory_save` (category: preference,
+importance: 5) und benutze sie ab dann in jedem Kanal (Chat, Sprache, Telegram).
 
 ## Communication (CRITICAL!)
 - **ALWAYS respond to the user** with a clear, helpful text message. Never end silently.
@@ -568,23 +586,54 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
     return "\n".join(lines)
 
 
-def instructions_path(mode: str | None) -> str:
+def instructions_paths(mode: str | None) -> list[str]:
     """Wohin die Agenten-Anleitung geschrieben wird — EINE Quelle für alle Pfade.
 
-    Claude Code liest `/workspace/CLAUDE.md`. Codex und Custom-LLM lesen
-    `/workspace/AGENT.md` (modellneutraler Name — `CLAUDE.md` verwirrt bei
-    GPT/Gemini/Llama). Alles, was nicht ausdrücklich `claude_code` ist, bekommt
-    `AGENT.md`; ein unbekannter oder fehlender Modus fällt damit auf die sichere
-    Seite, statt gar keine Anleitung zu erhalten.
+    Jeder Harness liest eine ANDERE Datei, und er liest ausschliesslich seine eigene:
+      * Claude Code  → `/workspace/CLAUDE.md`
+      * Codex CLI    → `/workspace/AGENTS.md` (Mehrzahl! Das ist die Konvention der
+        Codex-CLI. Wir haben jahrelang nur `AGENT.md` geschrieben — der Codex-Agent
+        hat die Anleitung damit nie gelesen, auch nicht die Bildschirm-Regeln.)
+      * Custom-LLM   → `/workspace/AGENT.md`, wird von `runner_hooks.get_identity_context()`
+        aktiv eingelesen und in den Systemprompt gehaengt.
+
+    Geschrieben wird immer auch `AGENT.md`: sie ist der modellneutrale Name, auf den sich
+    Werkzeuge und Prompts beziehen, und der Custom-LLM-Weg liest genau sie. Ein unbekannter
+    oder fehlender Modus faellt auf `AGENT.md` zurueck statt auf gar keine Anleitung.
     """
-    return "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+    if mode == "claude_code":
+        return ["/workspace/CLAUDE.md"]
+    if mode in ("codex_cli", "codex"):
+        return ["/workspace/AGENTS.md", "/workspace/AGENT.md"]
+    return ["/workspace/AGENT.md"]
+
+
+def instructions_path(mode: str | None) -> str:
+    """Der primaere Pfad (Rueckwaertskompatibilitaet) — siehe ``instructions_paths``."""
+    return instructions_paths(mode)[0]
+
+
+def _identity_line(name: str, role: str) -> str:
+    """The one sentence that tells an agent who it is.
+
+    Lives in the shared instruction file, so EVERY harness gets it from the same
+    place — Claude Code via CLAUDE.md, Codex via AGENTS.md, custom_llm because
+    runner_hooks.get_identity_context() inlines the file into its system prompt.
+    """
+    name = (name or "").strip()
+    role = (role or "").strip()
+    if not name and not role:
+        return "Du bist ein KI-Agent dieser Plattform."
+    who = f'Du bist „{name}"' if name else "Du bist ein KI-Agent dieser Plattform"
+    return f"{who} — {role}." if role else f"{who}."
 
 
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
-                      workspace_size_gb: float | None = None) -> str:
+                      workspace_size_gb: float | None = None,
+                      agent_name: str = "", agent_role: str = "") -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
-    its placeholders (workspace soft-quota + host-mounts section). Used by the
-    create / update / restart paths, so the substitution lives in exactly one spot.
+    its placeholders (identity, workspace soft-quota, host-mounts section). Used by
+    the create / update / restart paths, so the substitution lives in exactly one spot.
 
     ``workspace_size_gb`` defaults to the global setting; pass a per-agent value to
     honour an individual agent's quota override (``config["workspace_size_gb"]``).
@@ -592,6 +641,7 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     size = settings.agent_workspace_size_gb if workspace_size_gb is None else workspace_size_gb
     return (
         DEFAULT_CLAUDE_MD
+        .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
         .replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts, catalog))
     )
@@ -1096,32 +1146,22 @@ class AgentManager:
 
         # Initialize workspace files
         agent_mounts = []
-        claude_md = _render_claude_md(agent_mounts)
-        if mode == "claude_code":
-            # Claude Code: full CLAUDE.md + knowledge.md
-            try:
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/CLAUDE.md", claude_md
-                )
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
-                )
-                logger.info(f"Initialized CLAUDE.md + knowledge.md for agent {agent_id}")
-            except Exception as e:
-                logger.warning(f"Could not initialize agent files: {e}")
-        else:
-            # Custom LLM: write as AGENT.md (model-agnostic name — CLAUDE.md is
-            # Claude Code convention and confuses GPT/Gemini/Llama users).
-            try:
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/AGENT.md", claude_md
-                )
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
-                )
-                logger.info(f"Initialized AGENT.md + knowledge.md for custom_llm agent {agent_id}")
-            except Exception as e:
-                logger.warning(f"Could not initialize agent files: {e}")
+        claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "")
+        # Same instruction text for EVERY harness — only the file name differs, because
+        # each CLI reads its own (see instructions_paths). Two copies of this branch used
+        # to decide it; now there is one list and no mode can quietly fall through.
+        try:
+            for _path in instructions_paths(mode):
+                self.docker.write_file_in_container(container.id, _path, claude_md)
+            self.docker.write_file_in_container(
+                container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
+            )
+            logger.info(
+                "Initialized %s + knowledge.md for agent %s (mode=%s)",
+                ", ".join(instructions_paths(mode)), agent_id, mode,
+            )
+        except Exception as e:
+            logger.warning(f"Could not initialize agent files: {e}")
 
         # write_file_in_container writes as root; the agent runs as uid 1000 and MUST be
         # able to write its own /workspace/knowledge.md (otherwise "save results to
@@ -1387,10 +1427,12 @@ class AgentManager:
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
-            fresh_claude_md = _render_claude_md(agent_mounts, catalog)
+            fresh_claude_md = _render_claude_md(
+                agent_mounts, catalog, agent_name=agent.name, agent_role=role or ""
+            )
             mode = agent.mode or config.get("mode", "claude_code")
-            target_file = instructions_path(mode)
-            self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
+            for target_file in instructions_paths(mode):
+                self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
             if mode != "claude_code":
                 try:
@@ -1457,11 +1499,12 @@ class AgentManager:
             from app.core.mounts import get_effective_catalog
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
-            self.docker.write_file_in_container(
-                agent.container_id,
-                instructions_path(mode),
-                _render_claude_md((agent.config or {}).get("mounts", []), catalog),
+            rendered = _render_claude_md(
+                (agent.config or {}).get("mounts", []), catalog,
+                agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
             )
+            for path in instructions_paths(mode):
+                self.docker.write_file_in_container(agent.container_id, path, rendered)
             return True
         except Exception as e:  # noqa: BLE001 — Anleitung ist wichtig, aber nicht kritisch
             logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")
@@ -1604,17 +1647,21 @@ class AgentManager:
         #    /workspace/AGENT.md. This used to run only for claude_code, so a Codex
         #    agent kept the instructions it was born with: every later improvement to
         #    DEFAULT_CLAUDE_MD silently passed it by, no matter how often it was updated.
-        _instructions_file = instructions_path(mode)
+        _instructions_files = instructions_paths(mode)
         try:
             _agent_mounts = (agent.config or {}).get("mounts", [])
-            self.docker.write_file_in_container(
-                container.id,
-                _instructions_file,
-                _render_claude_md(_agent_mounts, catalog),
+            _rendered = _render_claude_md(
+                _agent_mounts, catalog,
+                agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
             )
-            logger.info(f"Updated {_instructions_file} for agent {scrub_log(agent_id)} (knowledge.md preserved)")
+            for _path in _instructions_files:
+                self.docker.write_file_in_container(container.id, _path, _rendered)
+            logger.info(
+                f"Updated {', '.join(_instructions_files)} for agent {scrub_log(agent_id)} "
+                "(knowledge.md preserved)"
+            )
         except Exception as e:
-            logger.warning(f"Could not update {_instructions_file}: {e}")
+            logger.warning(f"Could not update {', '.join(_instructions_files)}: {e}")
 
         # 6. Update team registry
         try:

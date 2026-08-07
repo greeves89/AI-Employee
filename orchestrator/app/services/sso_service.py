@@ -4,6 +4,7 @@ This is separate from OAuthService which handles external integrations.
 SSOService handles USER AUTHENTICATION via external identity providers.
 """
 
+import json
 import logging
 import secrets
 import uuid
@@ -51,17 +52,28 @@ class SSOService:
         # Cache for JWKS keys
         self._jwks_cache: dict[str, dict] = {}
 
-    async def generate_login_url(self, provider_name: str) -> str:
-        """Generate OIDC authorization URL for user login."""
+    async def generate_login_url(
+        self, provider_name: str, return_to: str | None = None
+    ) -> str:
+        """Generate OIDC authorization URL for user login.
+
+        ``return_to`` is an internal path the callback should land on instead of the
+        dashboard — used by the MCP authorization endpoint so an OpenWebUI user can
+        sign in with Microsoft and be handed straight back to the pending consent,
+        without ever seeing an AI-Employee login form. It travels INSIDE the
+        server-side state record (never as a query parameter the caller controls),
+        and the callback re-validates it before redirecting.
+        """
         provider = get_sso_provider(provider_name)
         client_id = get_sso_client_id(provider)
         if not client_id:
             raise ValueError(f"SSO not configured for {provider_name}")
 
-        # Generate and store CSRF state
+        # Generate and store CSRF state (+ the optional return target)
         state = secrets.token_urlsafe(32)
         state_key = f"sso:state:{state}"
-        await self.redis.client.setex(state_key, SSO_STATE_TTL, provider_name)
+        payload = json.dumps({"provider": provider_name, "return_to": return_to or ""})
+        await self.redis.client.setex(state_key, SSO_STATE_TTL, payload)
 
         redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider_name}/callback"
 
@@ -81,15 +93,27 @@ class SSOService:
 
     async def handle_callback(
         self, provider_name: str, code: str, state: str
-    ) -> User:
-        """Handle OIDC callback: verify state, exchange code, find/create user."""
+    ) -> tuple[User, str]:
+        """Handle OIDC callback: verify state, exchange code, find/create user.
+
+        Returns the user plus the ``return_to`` path stored with the state (empty
+        string when the login started from the normal login page).
+        """
         # Verify CSRF state
         state_key = f"sso:state:{state}"
-        stored_provider = await self.redis.client.get(state_key)
-        if not stored_provider:
+        stored = await self.redis.client.get(state_key)
+        if not stored:
             raise ValueError("Invalid or expired SSO state")
-        if isinstance(stored_provider, bytes):
-            stored_provider = stored_provider.decode()
+        if isinstance(stored, bytes):
+            stored = stored.decode()
+        # State records are JSON since the MCP login passthrough; tolerate the bare
+        # provider name so logins started before an update still complete.
+        try:
+            record = json.loads(stored)
+            stored_provider = record.get("provider", "")
+            return_to = str(record.get("return_to") or "")
+        except (ValueError, AttributeError):
+            stored_provider, return_to = stored, ""
         if stored_provider != provider_name:
             raise ValueError("SSO state mismatch")
         await self.redis.client.delete(state_key)
@@ -161,7 +185,7 @@ class SSOService:
                 logger.warning("Could not persist %s Graph tokens during login: %s",
                                provider_name, e)
 
-        return user
+        return user, return_to
 
     async def _exchange_code(
         self, provider: SSOProviderConfig, code: str

@@ -293,13 +293,34 @@ async def list_sso_providers():
     return {"providers": providers, "sso_only": sso_only}
 
 
+def safe_internal_path(path: str | None) -> str:
+    """Return ``path`` if it is a safe same-origin target, else "".
+
+    Only a single leading slash followed by a non-slash, non-backslash character is
+    accepted — that rejects "//evil.com" and "/\\evil.com" (protocol-relative open
+    redirects) as well as absolute URLs. Same rule the login page applies client-side.
+    """
+    p = (path or "").strip()
+    if not p or len(p) > 2000:
+        return ""
+    if not p.startswith("/") or p[1:2] in ("/", "\\"):
+        return ""
+    return p
+
+
 @router.get("/sso/{provider}/login")
 async def sso_login(
     provider: str,
     request: Request,
+    redirect: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Redirect user to SSO provider for authentication."""
+    """Redirect user to SSO provider for authentication.
+
+    ``redirect`` is an optional internal path to land on after a successful login
+    (instead of the dashboard). The MS-Graph MCP authorization endpoint uses it so an
+    OpenWebUI user authenticates with Microsoft alone — no AI-Employee login form.
+    """
     from app.core.sso_providers import get_sso_provider, is_sso_available
     from app.services.sso_service import SSOService
 
@@ -315,7 +336,9 @@ async def sso_login(
     sso_service = SSOService(db, redis)
 
     try:
-        auth_url = await sso_service.generate_login_url(provider)
+        auth_url = await sso_service.generate_login_url(
+            provider, return_to=safe_internal_path(redirect)
+        )
         return RedirectResponse(url=auth_url, status_code=302)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -353,7 +376,7 @@ async def sso_callback(
     sso_service = SSOService(db, redis)
 
     try:
-        user = await sso_service.handle_callback(provider, code, state)
+        user, return_to = await sso_service.handle_callback(provider, code, state)
     except ValueError as e:
         logger.warning(f"SSO callback failed for {provider}: {e}")
         return RedirectResponse(
@@ -365,8 +388,18 @@ async def sso_callback(
         logger.info(f"SSO login blocked (pending approval): {user.email}")
         return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
 
+    # Where to land: the stored return target (re-validated — it was checked when the
+    # login started, and nothing else may reach this), else the dashboard. API paths
+    # live on the orchestrator origin, everything else on the frontend (differs in dev).
+    target = safe_internal_path(return_to)
+    if target:
+        base = settings.oauth_redirect_base_url if target.startswith("/api/") else frontend_url
+        destination = f"{base.rstrip('/')}{target}"
+    else:
+        destination = f"{frontend_url}/dashboard"
+
     # Set auth cookies (same as normal login)
-    redirect_resp = RedirectResponse(url=f"{frontend_url}/dashboard", status_code=302)
+    redirect_resp = RedirectResponse(url=destination, status_code=302)
     access = create_access_token(user.id, user.role.value)
     refresh = create_refresh_token(user.id)
     redirect_resp.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)

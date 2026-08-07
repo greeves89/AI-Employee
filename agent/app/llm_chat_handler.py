@@ -43,6 +43,9 @@ CORE_TOOL_NAMES = {
     "request_approval", "notify_user", "send_message_and_wait",
     "memory_save", "memory_search", "brain_search", "secondbrain_search",
     "list_todos", "complete_todo", "update_todos",
+    # Der Tagesplan ist die Antwort auf "was hast du heute vor?" — er muss ohne
+    # search_tools erreichbar sein, sonst plant der Agent still in seine Notizdatei.
+    "plan_day", "get_day_plan",
     # The standard task workflow MANDATES a skill check + rating on every task, so these
     # must always be loaded — otherwise the agent hits "tool not available" mid-workflow
     # (it cannot search_tools for a capability the workflow already required).
@@ -374,6 +377,8 @@ class LLMChatHandler:
         if not self._history:
             from app.runner_hooks import (
                 MULTIMODAL_CAPABILITY_NOTE,
+                get_identity_context,
+                get_memory_preload,
                 get_skills_context,
                 get_mounts_context,
                 get_marketplace_skill_suggestions,
@@ -382,6 +387,11 @@ class LLMChatHandler:
                 "You are a helpful AI coding assistant running in a Docker container. "
                 "Your workspace is at /workspace. Use the available tools to help the user."
             )
+            # WHO the agent is (name, role, its AGENT.md) and WHAT it already knows — the
+            # CLI runtimes read both from disk, this runtime has to be handed them. Without
+            # it the agent answers "ich habe keinen eigenen Namen" and forgets across
+            # sessions what the user told it, although it saved it.
+            system_prompt = system_prompt + get_identity_context() + get_memory_preload()
             system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
             system_prompt = system_prompt + (
                 "\n\n## Werkzeuge bei Bedarf nachladen\n"

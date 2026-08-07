@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from app.services.settings_service import SettingsService
 from app.services.voice_providers import get_active_voice_config
 from app.services.voice_providers.tts_edge import EDGE_VOICES
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
@@ -78,6 +81,8 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         microsoft_optional_scopes=_MS_OPTIONAL,
         has_apple_oauth=bool(settings.oauth_apple_client_id),
         msgraph_mcp_external_enabled=(await svc.get("msgraph_mcp_external_enabled") or "false").lower() in ("true", "1", "yes"),
+        # Read-only is the default — an unset value means "on", not "off".
+        msgraph_read_only=(await svc.get("msgraph_read_only") or "true").lower() in ("true", "1", "yes"),
         # Lifecycle
         agent_idle_timeout_minutes=int(await svc.get("agent_idle_timeout_minutes") or "30"),
         # Improvement engine thresholds
@@ -494,3 +499,26 @@ async def set_msgraph_mcp_external(
     await db.commit()  # SettingsService.set() does not commit; persist explicitly
     settings.msgraph_mcp_external_enabled = enable  # live effect, no restart needed
     return {"msgraph_mcp_external_enabled": enable}
+
+
+@router.put("/msgraph-read-only")
+async def set_msgraph_read_only(
+    body: dict,
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: platform-wide read-only enforcement for ALL Microsoft access.
+
+    While enabled (the default), no agent can send mail, create events or change
+    files — neither via M365/Graph nor via the on-prem Exchange connector, whatever
+    the per-agent access mode says. Takes effect immediately for every following MCP
+    request; running agents additionally get a fresh tool list on their next restart.
+    """
+    enable = bool(body.get("read_only", True))
+    svc = SettingsService(db)
+    await svc.set("msgraph_read_only", "true" if enable else "false")
+    await db.commit()  # SettingsService.set() does not commit; persist explicitly
+    settings.msgraph_read_only = enable  # live effect, no restart needed
+    logger.info("Microsoft read-only enforcement %s by admin %s",
+                "ENABLED" if enable else "DISABLED", user.id)
+    return {"msgraph_read_only": enable}

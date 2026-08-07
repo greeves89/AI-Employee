@@ -2063,6 +2063,7 @@ async def get_agent_integrations(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
+        from app.core import ms_access
         return {
             "agent_id": agent_id,
             "integrations": config.get("integrations", []),
@@ -2070,6 +2071,9 @@ async def get_agent_integrations(
             # Was missing → the UI never saw the saved value and always fell back to
             # "read", so Exchange Read+Write looked like it reset itself after refresh.
             "exchange_access": (config or {}).get("exchange_access", "read"),
+            # Platform-wide read-only enforcement — the UI locks the write option and
+            # explains why, instead of offering a switch that silently does nothing.
+            "microsoft_read_only": ms_access.read_only_enabled(),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -2103,13 +2107,23 @@ async def update_agent_integrations(
                 )
         config["integrations"] = new_integrations
 
-        # Optional: Microsoft Graph read/write mode for this agent.
+        # Optional: Microsoft Graph / on-prem Exchange read/write mode for this agent.
+        # While the platform-wide read-only switch is on, "write" is refused outright
+        # instead of being stored as a setting that the MCP transports ignore anyway.
+        from app.core import ms_access
+        ms_read_only = ms_access.read_only_enabled()
+        if ms_read_only and "write" in (body.get("msgraph_access"), body.get("exchange_access")):
+            raise HTTPException(
+                status_code=422,
+                detail="Microsoft-Zugriff ist plattformweit auf Nur-Lesen gestellt. "
+                       "Ein Administrator muss den Schalter in den Einstellungen zuerst lösen.",
+            )
+
         old_msgraph_access = config.get("msgraph_access", "read")
         if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
             config["msgraph_access"] = body["msgraph_access"]
         msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
 
-        # Optional: on-prem Exchange read/write mode for this agent.
         old_exchange_access = config.get("exchange_access", "read")
         if "exchange_access" in body and body["exchange_access"] in ("read", "write"):
             config["exchange_access"] = body["exchange_access"]
@@ -2129,6 +2143,7 @@ async def update_agent_integrations(
             "integrations": config["integrations"],
             "msgraph_access": config.get("msgraph_access", "read"),
             "exchange_access": config.get("exchange_access", "read"),
+            "microsoft_read_only": ms_read_only,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -2361,6 +2376,17 @@ class ProactiveUpdate(BaseModel):
     contact_hours_start: str | None = None   # "HH:MM"
     contact_hours_end: str | None = None     # "HH:MM"
     contact_timezone: str | None = None      # IANA name, e.g. "Europe/Berlin"
+    # Standing areas of responsibility — what this agent OWNS, independent of any todo
+    # somebody filed. The proactive run derives its day plan from these, which is what
+    # turns "waits for work" into "knows what its job is". None = leave unchanged;
+    # [] = clear. Each item: {title, rhythm, priority, notes}.
+    responsibilities: list[dict] | None = None
+    # Morgendlicher Planungslauf: feste Uhrzeit statt blossem Intervall-Takt. Der
+    # Agent hat die Selbstplanung laengst im Prompt — hier bekommt sie einen festen
+    # Termin, damit der Tag EINMAL bewusst geplant wird statt bei jedem Tick neu.
+    # None = unveraendert, "" = aus, "HH:MM" = an.
+    morning_planning_time: str | None = None
+    morning_planning_weekdays_only: bool | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -2443,6 +2469,14 @@ async def update_proactive_config(
         new_tz = body.contact_timezone if body.contact_timezone is not None else existing_hours.get("timezone", "")
         new_hours = _validated_contact_hours(new_start, new_end, new_tz)
 
+        # Same preserve-unless-explicit pattern for the areas of responsibility.
+        from app.core.responsibilities import validated_responsibilities
+        new_responsibilities = validated_responsibilities(
+            body.responsibilities
+            if body.responsibilities is not None
+            else (proactive or {}).get("responsibilities", [])
+        )
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
@@ -2470,12 +2504,73 @@ async def update_proactive_config(
             )
             db.add(schedule)
 
+        # Morgendlicher Planungslauf — ein ZWEITER Zeitplan mit fester Uhrzeit neben
+        # dem Intervall-Takt. Er heisst ebenfalls "[Proactive] …", damit der Scheduler
+        # ihn wie jeden proaktiven Lauf behandelt (Basis-Prompt aus dem Code, inklusive
+        # Verantwortungsbereichen und Tagesplan) — kein Sonderweg, nur ein anderer Takt.
+        existing_morning = (proactive or {}).get("morning_planning", {}) or {}
+        morning_time = (
+            body.morning_planning_time
+            if body.morning_planning_time is not None
+            else existing_morning.get("time", "")
+        )
+        weekdays_only = (
+            body.morning_planning_weekdays_only
+            if body.morning_planning_weekdays_only is not None
+            else bool(existing_morning.get("weekdays_only", True))
+        )
+        morning_id = existing_morning.get("schedule_id")
+        morning_time = (morning_time or "").strip()
+        if morning_time and not _HHMM_RE.match(morning_time):
+            raise HTTPException(status_code=422, detail="Planungszeit muss HH:MM sein (24h)")
+
+        morning_schedule = None
+        if morning_id:
+            morning_schedule = (await db.execute(
+                select(Schedule).where(Schedule.id == morning_id)
+            )).scalar_one_or_none()
+
+        if morning_time:
+            hour, minute = morning_time.split(":")
+            cron = f"{int(minute)} {int(hour)} * * {'1-5' if weekdays_only else '*'}"
+            tz_name = (new_hours or {}).get("timezone") or "UTC"
+            if morning_schedule is None:
+                morning_id = uuid.uuid4().hex[:8]
+                morning_schedule = Schedule(
+                    id=morning_id,
+                    name=f"[Proactive] {agent.name} — Tagesplanung",
+                    prompt=PROACTIVE_PROMPT,
+                    interval_seconds=0,
+                    priority=0,
+                    agent_id=agent_id,
+                    enabled=body.enabled,
+                    next_run_at=now,
+                )
+                db.add(morning_schedule)
+            morning_schedule.cron_expression = cron
+            morning_schedule.interval_seconds = 0
+            morning_schedule.timezone = tz_name
+            # Der Planungslauf haengt am Proaktiv-Schalter: ist Proaktiv aus, plant
+            # auch morgens niemand.
+            morning_schedule.enabled = body.enabled
+            from app.services.scheduler_service import _calc_next_run
+            morning_schedule.next_run_at = _calc_next_run(morning_schedule, now)
+        elif morning_schedule is not None:
+            # Abgewaehlt → Zeitplan entfernen statt still deaktiviert liegen zu lassen.
+            await db.delete(morning_schedule)
+            morning_id = None
+
         proactive = {
             "enabled": body.enabled,
             "schedule_id": schedule_id,
             "interval_seconds": body.interval_seconds,
             "custom_instructions": new_custom,
             "contact_hours": new_hours,
+            "responsibilities": new_responsibilities,
+            "morning_planning": (
+                {"time": morning_time, "weekdays_only": weekdays_only, "schedule_id": morning_id}
+                if morning_time else {}
+            ),
         }
         config["proactive"] = proactive
         agent.config = config

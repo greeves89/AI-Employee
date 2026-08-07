@@ -262,6 +262,7 @@ export interface Settings {
   microsoft_optional_scopes?: string[];
   has_apple_oauth: boolean;
   msgraph_mcp_external_enabled: boolean;
+  msgraph_read_only: boolean;
   // Security / Login
   sso_only_login?: boolean;
   require_user_approval?: boolean;
@@ -383,12 +384,42 @@ export interface ProactiveContactHours {
   timezone: string; // IANA name, e.g. "Europe/Berlin"
 }
 
+// Ein Verantwortungsbereich ist eine DAUERAUFGABE, kein Todo: er kehrt wieder und wird
+// nie "fertig". Der Proaktiv-Lauf leitet daraus die Aufgaben des Tages ab.
+export type ResponsibilityRhythm = "daily" | "weekly" | "monthly" | "continuous";
+export type ResponsibilityPriority = "high" | "normal" | "low";
+
+export interface Responsibility {
+  title: string;
+  rhythm: ResponsibilityRhythm;
+  priority: ResponsibilityPriority;
+  notes?: string;
+}
+
+// Ein Block im Tagesplan eines Agenten: was er sich VORGENOMMEN hat (im Gegensatz
+// zu den Task-Balken, die zeigen, was schon gelaufen ist).
+export interface DayPlanItem {
+  id: number;
+  agent_id: string;
+  plan_date: string;
+  title: string;
+  notes: string;
+  planned_start: string | null;
+  estimated_minutes: number;
+  source: "responsibility" | "todo" | "self" | "user";
+  status: "planned" | "running" | "done" | "dropped";
+  todo_id: number | null;
+  task_id: string | null;
+}
+
 export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
   custom_instructions?: string;
   contact_hours?: ProactiveContactHours;
+  responsibilities?: Responsibility[];
+  morning_planning?: { time?: string; weekdays_only?: boolean; schedule_id?: string | null };
 }
 
 export interface ProactiveResponse {
