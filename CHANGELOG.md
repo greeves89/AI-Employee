@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.165.1] — 2026-08-07
+
+### Fixed
+- **Im Tageskalender eines Agenten waren die Aufgaben-Kästen unlesbar schmal.** Der Plan
+  bekam 26 % der Breite, die geplanten Läufe 34 % — für die Aufgaben blieben 36 %, geteilt
+  durch die Zahl gleichzeitiger Läufe. Bei dreien war der Titel nach zwölf Zeichen zu Ende
+  („[Scheduled] SAP M…"). Jetzt: Plan 22 %, Aufgaben 44 %, geplante Läufe 32 %, höchstens
+  vier Spuren nebeneinander.
+- **Zwei Aufgaben lagen übereinander im selben Kasten.** Die Spuren wurden aus den rohen
+  Zeiten berechnet: eine Aufgabe, die in Sekunden durch ist, ist zeitlich ein Strich, wird
+  aber mit einer Mindesthöhe gezeichnet — die nächste rutschte darunter. Die Spuren
+  richten sich jetzt nach dem, was tatsächlich gezeichnet wird.
+- **„[Scheduled]" und „[Proactive]" stehen nicht mehr im Kasten** — die Präfixe kosteten
+  ein Viertel der Zeile und sagen dem Leser nichts.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.165.0] — 2026-08-07
 
 ### Added

@@ -43,6 +43,23 @@ const BLOCK_GAP_PX = 3;
 // das ein 16-Pixel-Band mit abgeschnittener Mini-Schrift — im selben Kalender
 // standen daneben lesbare Karten, und der Unterschied sprang sofort ins Auge.
 const MARK_CARD_PX = 34;
+// Die drei Spuren des Tages, in Prozent der Breite — an EINER Stelle, damit sie sich
+// nicht gegenseitig ueberlappen koennen. Der Plan war 26 % breit, die Aufgaben 36 %:
+// bei drei gleichzeitigen Laeufen blieben pro Aufgabe 12 % und der Titel war nach
+// zwoelf Zeichen zu Ende („[Scheduled] SAP M…").
+const PLAN_COL_PCT = 22;
+const TASK_COL_PCT = 44;
+const MARK_COL_PCT = 32;
+// Mehr als vier nebeneinander liest niemand mehr.
+const MAX_TASK_LANES = 4;
+
+/** Was im Kasten stehen soll: die Systempraefixe kosten nur Platz. */
+function cleanTitle(title: string): string {
+  return (title || "")
+    .replace(/^\[Scheduled\]\s*/, "")
+    .replace(/^\[(Proactive|Rhythmus|Plan)\]\s*/, "")
+    .trim();
+}
 
 const statusStyle: Record<string, string> = {
   running: "bg-blue-500/70 border-blue-400",
@@ -299,30 +316,41 @@ function MultiAgentStrip({
 
 type LanedTask = ActivityTaskBar & { lane: number; laneCount: number };
 
-function layoutLanes(tasks: ActivityTaskBar[], now: Date): LanedTask[] {
-  const withTimes = tasks
-    .map((t) => ({
-      task: t,
-      start: new Date(t.started_at).getTime(),
-      end: (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()),
-    }))
-    .sort((a, b) => a.start - b.start);
+function layoutLanes(tasks: ActivityTaskBar[], now: Date, dayStart: Date): LanedTask[] {
+  // Spuren werden auf der GEZEICHNETEN Geometrie berechnet, nicht auf den rohen
+  // Zeiten. Eine Aufgabe, die in Sekunden durch ist, waere sonst ein Strich von
+  // null Höhe — bekaeme aber MIN_BLOCK_PX gezeichnet und ueberdeckte die naechste.
+  // Genau das war zu sehen: zwei Titel lagen uebereinander im selben Kasten.
+  const base = dayStart.getTime();
+  const withGeometry = tasks
+    .map((t) => {
+      const startMs = Math.min(Math.max(new Date(t.started_at).getTime() - base, 0), DAY_MS);
+      const endRaw = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - base;
+      const endMs = Math.min(Math.max(endRaw, 0), DAY_MS);
+      const top = (startMs / DAY_MS) * 24 * HOUR_PX;
+      const height = Math.max(((endMs - startMs) / DAY_MS) * 24 * HOUR_PX, MIN_BLOCK_PX);
+      return { task: t, top, bottom: top + height + BLOCK_GAP_PX };
+    })
+    .sort((a, b) => a.top - b.top);
 
-  // Greedy interval scheduling: each task takes the first lane whose last
-  // task already ended before this one starts; otherwise open a new lane.
-  const laneEndTimes: number[] = [];
-  const placed = withTimes.map(({ task, start, end }) => {
-    let lane = laneEndTimes.findIndex((endTime) => endTime <= start);
+  // Greedy: jede Aufgabe nimmt die erste Spur, deren letzter Kasten oberhalb endet.
+  const laneBottoms: number[] = [];
+  const placed = withGeometry.map(({ task, top, bottom }) => {
+    let lane = laneBottoms.findIndex((b) => b <= top);
     if (lane === -1) {
-      lane = laneEndTimes.length;
-      laneEndTimes.push(end);
+      lane = laneBottoms.length;
+      laneBottoms.push(bottom);
     } else {
-      laneEndTimes[lane] = end;
+      laneBottoms[lane] = bottom;
     }
     return { task, lane };
   });
-  const laneCount = Math.max(1, laneEndTimes.length);
-  return placed.map(({ task, lane }) => ({ ...task, lane, laneCount }));
+  // Mehr als vier Spuren machen jeden Kasten unlesbar schmal; darueber hinaus
+  // teilen sich die Aufgaben eine Spur und liegen beim Ueberfahren vorn.
+  const laneCount = Math.min(Math.max(1, laneBottoms.length), MAX_TASK_LANES);
+  return placed.map(({ task, lane }) => ({
+    ...task, lane: Math.min(lane, laneCount - 1), laneCount,
+  }));
 }
 
 function DayAgenda({
@@ -431,7 +459,7 @@ function DayAgenda({
     () => agent.scheduled_marks.filter((m) => !m.schedule_name?.startsWith("[Plan]")),
     [agent.scheduled_marks],
   );
-  const laned = useMemo(() => layoutLanes(ownTasks, now), [ownTasks, now]);
+  const laned = useMemo(() => layoutLanes(ownTasks, now, dayStart), [ownTasks, now, dayStart]);
   // Mehrere Laeufe zur selben Minute lagen exakt uebereinander (morgen 3x um 04:00)
   // und ergaben einen unlesbaren Klumpen. Wer sich zeitlich beisst, kommt nebeneinander.
   // Ein gelaufener Zeitplan erscheint sonst ZWEIMAL: als Band (die Vorhersage) und
@@ -541,7 +569,7 @@ function DayAgenda({
                     : `Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""} — klicken zum Bearbeiten`
                 }
                 className={cn(
-                  "group absolute left-0 w-[26%] cursor-pointer overflow-hidden rounded-md border px-2 py-1 hover:opacity-80",
+                  "group absolute left-0 cursor-pointer overflow-hidden rounded-md border px-2 py-1 hover:opacity-80",
                   item.status === "done" ? "border-solid" : "border-dashed",
                   item.status === "running" && "animate-pulse",
                   dropped
@@ -549,7 +577,7 @@ function DayAgenda({
                     : "border-sky-400/40 bg-sky-400/[0.07]",
                   item.status === "done" && "border-emerald-400/40 bg-emerald-400/[0.07]"
                 )}
-                style={{ top, height }}
+                style={{ top, height, width: `${PLAN_COL_PCT}%` }}
               >
                 <div className={cn(
                   "flex items-start gap-1 text-[11px] font-medium",
@@ -585,8 +613,8 @@ function DayAgenda({
           {markLanes.map(({ mark: m, lane }, i) => {
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
             const col = Math.min(lane, markLaneCount - 1);
-            const w = 34 / markLaneCount;
-            const label = m.schedule_name.replace(/^\[(Proactive|Rhythmus)\]\s*/, "");
+            const w = MARK_COL_PCT / markLaneCount;
+            const label = cleanTitle(m.schedule_name);
             return (
               <div
                 key={`${m.schedule_id}-${i}`}
@@ -654,11 +682,11 @@ function DayAgenda({
                   height,
                   // Drei Spuren: links der Plan (26 %), Mitte die Aufgaben, rechts die
                   // geplanten Laeufe (34 %). Vorher lagen sie uebereinander.
-                  left: `calc(28% + ${t.lane * laneWidthPct * 0.36}% + 2px)`,
-                  width: `calc(${laneWidthPct * 0.36}% - 4px)`,
+                  left: `calc(${PLAN_COL_PCT + 2}% + ${t.lane * laneWidthPct * (TASK_COL_PCT / 100)}% + 2px)`,
+                  width: `calc(${laneWidthPct * (TASK_COL_PCT / 100)}% - 4px)`,
                 }}
               >
-                <div className="truncate text-[12px] font-medium text-foreground">{t.title}</div>
+                <div className="truncate text-[12px] font-medium text-foreground">{cleanTitle(t.title)}</div>
                 {height >= 32 && (
                   <div className="truncate text-[10px] text-muted-foreground/70">
                     {timeRange} · {t.status}{durationSuffix}{costSuffix}
