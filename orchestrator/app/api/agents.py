@@ -553,6 +553,7 @@ async def list_agents(
                 mode=agent.mode or "claude_code",
                 role=config.get("role", ""),
                 onboarding_complete=config.get("onboarding_complete", False),
+                has_responsibilities=bool((config.get("proactive") or {}).get("responsibilities")),
                 integrations=config.get("integrations", []),
                 permissions=config.get("permissions", DEFAULT_PERMISSIONS),
                 update_available=config.get("agent_version") != current_agent_version,

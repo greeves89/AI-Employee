@@ -526,14 +526,26 @@ class SchedulerService:
             duties_note = responsibilities_note(proactive_config)
             if duties_note:
                 prompt = prompt + "\n\n" + duties_note
-            # Nicht eingerichtet? Dann NICHT still anhalten, sondern nachfragen —
-            # beim Kunden liefen Agenten monatelang leer, weil sie brav auf ein
-            # Einrichtungsgespraech warteten, das niemand mit ihnen fuehrte.
-            from app.core.onboarding import onboarding_note
+            # Ohne Auftrag kann der Lauf NICHTS zustande bringen: kein Einrichtungsstand,
+            # keine Verantwortungsbereiche → keine Arbeit, aus der sich ein Tag bauen liesse.
+            # Frueher lief er trotzdem, kostete Modell-Zeit und meldete brav "nichts zu tun"
+            # (beim Kunden 493 Laeufe, 51 USD, null Ergebnis). Jetzt wird der Lauf gar nicht
+            # erst gestartet — stattdessen bekommt der Besitzer EINE Benachrichtigung, und
+            # die Agentenkachel traegt ein Ausrufezeichen.
+            from app.core.onboarding import is_onboarded, has_duties, onboarding_note
             from app.models.agent import Agent as _Agent
             _agent = (await db.execute(
                 select(_Agent).where(_Agent.id == schedule.agent_id)
             )).scalar_one_or_none() if schedule.agent_id else None
+            if _agent is not None and not (is_onboarded(_agent) and has_duties(_agent)):
+                await self._nudge_missing_assignment(db, _agent)
+                schedule.next_run_at = _calc_next_run(schedule, now)
+                logger.info(
+                    "[Scheduler] %s uebersprungen — Agent %s hat keinen Auftrag "
+                    "(eingerichtet=%s, Bereiche=%s)",
+                    schedule.name, _agent.id, is_onboarded(_agent), has_duties(_agent),
+                )
+                return
             ob_note = onboarding_note(_agent)
             if ob_note:
                 prompt = prompt + "\n" + ob_note
@@ -567,6 +579,45 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _nudge_missing_assignment(self, db: AsyncSession, agent) -> None:
+        """EINE Benachrichtigung an den Besitzer, wenn ein Agent ohne Auftrag dasteht.
+
+        Gedrosselt auf einmal pro 12 Stunden (gleicher Takt wie die Meldebremse des
+        Agenten) — sonst bekommt der Nutzer bei stuendlichem Zeitplan 24 Hinweise am Tag
+        und schaltet den Agenten ab, statt ihn einzurichten.
+        """
+        from app.models.notification import Notification
+
+        key = f"onboarding_nudge:{agent.id}"
+        try:
+            if await self.redis.client.exists(key):
+                return
+            await self.redis.client.setex(key, 12 * 3600, "1")
+        except Exception:  # noqa: BLE001 — ohne Redis lieber einmal zu viel als gar nicht
+            logger.debug("[Scheduler] Nudge-Drossel nicht verfuegbar", exc_info=True)
+
+        from app.core.onboarding import is_onboarded
+        fehlt = (
+            "Er weiss noch nicht, wofuer er da ist."
+            if not is_onboarded(agent)
+            else "Ihm fehlen die Verantwortungsbereiche — er hat also keine wiederkehrenden Aufgaben."
+        )
+        db.add(Notification(
+            agent_id=agent.id,
+            type="warning",
+            title=f"{agent.name} wartet auf seinen Auftrag",
+            message=(
+                f"{fehlt} Der proaktive Lauf wurde deshalb uebersprungen — ohne Auftrag "
+                f"kann er nichts tun. Sag ihm im Chat, welche Rolle er hat und welche "
+                f"Aufgaben er dauerhaft uebernimmt, oder trage die Bereiche direkt in "
+                f"seinen Einstellungen ein."
+            )[:240],
+            priority="normal",
+            action_url=f"/agents/{agent.id}?tab=settings",
+            meta={"reason": "missing_assignment"},
+        ))
+        logger.info("[Scheduler] Hinweis an Besitzer: %s hat keinen Auftrag", agent.id)
 
     async def _proactive_config(
         self, db: AsyncSession, agent_id: str | None

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, AlertTriangle, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -92,10 +92,23 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                     {agent.model.split("-").slice(0, 2).join("-")}
                   </span>
                 )}
-                {agent.onboarding_complete ? (
-                  <span title="Onboarded" className="shrink-0"><UserCheck className="h-3 w-3 text-emerald-400" /></span>
+                {/* Ohne Auftrag kann der Agent nichts tun: der proaktive Lauf wird dann
+                    uebersprungen. Das muss man an der Kachel sehen, nicht erst im Log. */}
+                {!agent.onboarding_complete ? (
+                  <span title="Nicht eingerichtet — er weiß noch nicht, wofür er da ist" className="shrink-0">
+                    <UserCog className="h-3 w-3 text-amber-400 animate-pulse" />
+                  </span>
+                ) : agent.has_responsibilities === false ? (
+                  <span
+                    title="Kein Auftrag — es fehlen Verantwortungsbereiche. Proaktive Läufe werden übersprungen."
+                    className="shrink-0"
+                  >
+                    <AlertTriangle className="h-3 w-3 text-amber-400 animate-pulse" />
+                  </span>
                 ) : (
-                  <span title="Needs onboarding" className="shrink-0"><UserCog className="h-3 w-3 text-amber-400 animate-pulse" /></span>
+                  <span title="Eingerichtet & beauftragt" className="shrink-0">
+                    <UserCheck className="h-3 w-3 text-emerald-400" />
+                  </span>
                 )}
               </div>
             </div>

@@ -157,6 +157,41 @@ SAVE_MEMORY_TOOL = {
     }
 }
 
+COMPLETE_ONBOARDING_TOOL = {
+    "toolSpec": {
+        "name": "complete_onboarding",
+        "description": (
+            "Record what I am here for — call this AS SOON AS the user told me my role and "
+            "which recurring duties I take over. Every duty becomes one of my "
+            "Verantwortungsbereiche; from then on I plan my own day from them instead of "
+            "waiting for orders. At least one duty is required. Do not keep asking after a "
+            "successful call — confirm in ONE short sentence what I now take care of."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "role": {"type": "string", "description": "Meine Rolle in einem Satz."},
+                "responsibilities": {
+                    "type": "array",
+                    "description": "Jede genannte Daueraufgabe. Mindestens eine.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Kurz und konkret."},
+                            "rhythm": {"type": "string", "description": "daily | weekly | monthly | continuous"},
+                            "priority": {"type": "string", "description": "high | normal | low"},
+                            "notes": {"type": "string", "description": "Woran ich merke, dass es erledigt ist."},
+                        },
+                        "required": ["title"],
+                    },
+                },
+                "boundaries": {"type": "string", "description": "Was ich NICHT tun soll."},
+            },
+            "required": ["responsibilities"],
+        })},
+    }
+}
+
 GET_DAY_PLAN_TOOL = {
     "toolSpec": {
         "name": "get_day_plan",
@@ -1344,7 +1379,8 @@ class RealtimeVoiceSession:
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
-            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
+            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, COMPLETE_ONBOARDING_TOOL,
+            SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
         ]
@@ -1890,6 +1926,9 @@ class RealtimeVoiceSession:
             return
         if name == "get_day_plan":
             await self._respond(tool_use_id, await self._get_day_plan(str(args.get("date") or "")))
+            return
+        if name == "complete_onboarding":
+            await self._respond(tool_use_id, await self._complete_onboarding(args))
             return
         if name == "set_autonomy":
             await self._respond(tool_use_id, await self._set_autonomy(str(args.get("level") or "")))
@@ -4022,6 +4061,54 @@ class RealtimeVoiceSession:
             logger.warning("voice save_memory failed agent=%s", self.agent_id, exc_info=True)
             return "Das Merken hat gerade nicht geklappt."
         return f"Gemerkt: {k}."
+
+    async def _complete_onboarding(self, args: dict) -> str:
+        """Einrichtung im GESPRAECH abschliessen — direkt in der DB, ohne Umweg ueber
+        den Agenten-Container. Sonst koennte der Sprachweg zwar nach dem Auftrag fragen,
+        die Antwort aber nicht sichern; genau diese Luecke gibt es hier nicht mehr."""
+        from fastapi import HTTPException
+        from sqlalchemy import select as _select
+        from sqlalchemy.orm.attributes import flag_modified
+
+        from app.core.onboarding import apply_completion
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent
+
+        duties = args.get("responsibilities")
+        if isinstance(duties, dict):
+            duties = [duties]
+        if not isinstance(duties, list) or not duties:
+            return ("Ich brauche mindestens eine wiederkehrende Aufgabe — sonst weiss ich "
+                    "zwar, wer ich bin, aber nicht, was ich tun soll.")
+        try:
+            async with async_session_factory() as db:
+                agent = (await db.execute(
+                    _select(Agent).where(Agent.id == self.agent_id)
+                )).scalar_one_or_none()
+                if agent is None:
+                    return "Ich konnte mich selbst nicht laden — bitte gleich nochmal."
+                agent.config = apply_completion(
+                    agent,
+                    role=str(args.get("role") or ""),
+                    boundaries=str(args.get("boundaries") or ""),
+                    responsibilities=duties,
+                )
+                flag_modified(agent, "config")
+                await db.commit()
+                titles = [
+                    d.get("title", "")
+                    for d in (agent.config.get("proactive") or {}).get("responsibilities", [])
+                ]
+        except HTTPException as e:  # Validierung aus validated_responsibilities
+            return f"Das habe ich nicht uebernommen: {getattr(e, 'detail', e)}"
+        except Exception:  # noqa: BLE001
+            logger.warning("voice complete_onboarding failed agent=%s", self.agent_id, exc_info=True)
+            return "Das Speichern hat gerade nicht geklappt — sag es mir gleich nochmal."
+        return (
+            "Eingerichtet. Ich kuemmere mich ab jetzt um: "
+            + ", ".join(t for t in titles if t)
+            + ". Ab dem naechsten Lauf plane ich meinen Tag daraus selbst."
+        )
 
     async def _get_day_plan(self, day: str = "") -> str:
         """Den Tagesplan direkt aus der DB lesen — dieselbe Quelle, die der Agent

@@ -144,5 +144,72 @@ class HarnessParityTests(unittest.TestCase):
         self.assertIn("onboarding", step3.lower())
 
 
+
+class NoAssignmentTests(unittest.TestCase):
+    """Ohne Auftrag darf der proaktive Lauf gar nicht erst starten.
+
+    Er koennte nichts zustande bringen — frueher lief er trotzdem, kostete Modell-Zeit
+    und meldete 'nichts zu tun'. Statt eines Laufs bekommt der Besitzer einen Hinweis,
+    und die Agentenkachel ein Ausrufezeichen.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sched = (ORCH / "app/services/scheduler_service.py").read_text()
+
+    def test_run_is_skipped_when_briefing_is_missing(self):
+        self.assertIn("not (is_onboarded(_agent) and has_duties(_agent))", self.sched)
+        skip = self.sched.split("not (is_onboarded(_agent) and has_duties(_agent))", 1)[1][:600]
+        self.assertIn("_nudge_missing_assignment", skip)
+        self.assertIn("schedule.next_run_at = _calc_next_run(schedule, now)", skip)
+        self.assertIn("return", skip)
+
+    def test_owner_gets_a_notification(self):
+        self.assertIn("async def _nudge_missing_assignment", self.sched)
+        nudge = self.sched.split("async def _nudge_missing_assignment", 1)[1].split("async def _proactive_config", 1)[0]
+        self.assertIn("Notification(", nudge)
+        self.assertIn("wartet auf seinen Auftrag", nudge)
+        self.assertIn("action_url", nudge)
+
+    def test_notification_is_throttled(self):
+        """Bei stuendlichem Zeitplan waeren es sonst 24 Hinweise am Tag."""
+        nudge = self.sched.split("async def _nudge_missing_assignment", 1)[1].split("async def _proactive_config", 1)[0]
+        self.assertIn("onboarding_nudge:", nudge)
+        self.assertIn("12 * 3600", nudge)
+
+    def test_agent_card_shows_the_mark(self):
+        card = (REPO / "frontend/src/components/dashboard/agent-card.tsx").read_text()
+        self.assertIn("has_responsibilities === false", card)
+        self.assertIn("AlertTriangle", card)
+
+    def test_api_delivers_the_flag(self):
+        self.assertIn("has_responsibilities", (ORCH / "app/schemas/agent.py").read_text())
+        self.assertIn("has_responsibilities=bool(", (ORCH / "app/api/agents.py").read_text())
+
+
+class VoiceOnboardingTests(unittest.TestCase):
+    """Der Sprachweg muss nicht nur fragen, sondern die Antwort auch sichern koennen."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.voice = (ORCH / "app/services/realtime_voice_session.py").read_text()
+
+    def test_tool_exists_and_is_offered(self):
+        self.assertIn('"name": "complete_onboarding"', self.voice)
+        tool_list = self.voice.split("_tools = [", 1)[1].split("]", 1)[0]
+        self.assertIn("COMPLETE_ONBOARDING_TOOL", tool_list)
+
+    def test_handler_writes_to_the_database(self):
+        self.assertIn('if name == "complete_onboarding":', self.voice)
+        handler = self.voice.split("async def _complete_onboarding", 1)[1].split("async def _get_day_plan", 1)[0]
+        self.assertIn("apply_completion(", handler)
+        self.assertIn("flag_modified", handler)
+        self.assertIn("await db.commit()", handler)
+
+    def test_handler_refuses_without_a_duty(self):
+        handler = self.voice.split("async def _complete_onboarding", 1)[1].split("async def _get_day_plan", 1)[0]
+        self.assertIn("mindestens eine wiederkehrende Aufgabe", handler)
+
+
 if __name__ == "__main__":
     unittest.main()

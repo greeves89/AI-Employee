@@ -95,6 +95,7 @@ export interface Agent {
   ai_account_provider: string | null;
   role: string | null;
   onboarding_complete: boolean;
+  has_responsibilities?: boolean;
   integrations: string[];
   permissions: string[];
   update_available: boolean;

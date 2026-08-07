@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.156.0] — 2026-08-07
+
+### Changed
+- **Ein proaktiver Lauf ohne Auftrag startet gar nicht mehr.** Fehlt die Einrichtung oder
+  fehlen die Verantwortungsbereiche, kann der Lauf nichts zustande bringen — bisher lief er
+  trotzdem, kostete Modell-Zeit und meldete brav „nichts zu tun" (beim Kunden 493 Läufe,
+  51 USD, null Ergebnis). Jetzt wird er übersprungen und stattdessen **der Besitzer
+  benachrichtigt** („<Agent> wartet auf seinen Auftrag", mit Link in die Einstellungen),
+  gedrosselt auf einmal pro 12 Stunden.
+
+### Added
+- **Ausrufezeichen auf der Agentenkachel**, wenn der Agent keinen Auftrag hat — man sieht es
+  in der Übersicht statt erst im Log. Drei Zustände: nicht eingerichtet (Zahnrad),
+  eingerichtet aber ohne Verantwortungsbereiche (Warndreieck), fertig (grüner Haken).
+- **Einrichtung per Sprache** — der Sprachfront konnte bisher nach dem Auftrag fragen, die
+  Antwort aber nicht sichern. Er hat jetzt `complete_onboarding` als eigenes Werkzeug und
+  schreibt Rolle, Grenzen und Daueraufgaben direkt weg: „Eingerichtet. Ich kümmere mich ab
+  jetzt um …".
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild, Agent-Image + Agenten erneuern.
+
+---
+
 ## [1.155.0] — 2026-08-07
 
 ### Fixed
