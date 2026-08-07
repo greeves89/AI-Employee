@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { formatCost, formatDuration } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar, DayPlanItem } from "@/lib/types";
-import { CalendarClock, Repeat, X } from "lucide-react";
+import { CalendarClock, Repeat, RotateCw, X } from "lucide-react";
 
 // Tagesschluessel in LOKALER Zeit — toISOString() wuerde vor 02:00 MESZ auf den
 // Vortag zeigen und den Plan des falschen Tages laden.
@@ -674,7 +674,7 @@ function DayAgenda({
                 onClick={() => router.push(`/tasks/${t.task_id}`)}
                 // Kurze Aufgaben sind nur einen Titel hoch — die zweite Zeile passt
                 // nicht hinein. Beim Ueberfahren steht trotzdem alles da.
-                title={`${cleanTitle(t.title)}\n${timeRange} · ${t.status}${durationSuffix}${costSuffix}`}
+                title={`${cleanTitle(t.title)}${t.resumed ? " (fortgesetzt)" : ""}\n${timeRange} · ${t.status}${durationSuffix}${costSuffix}`}
                 className={cn(
                   "absolute overflow-hidden rounded-md border-l-2 px-2 py-1 text-left transition-opacity hover:z-10 hover:opacity-80",
                   statusAccent[t.status] || "border-l-foreground/30 bg-foreground/10",
@@ -689,10 +689,16 @@ function DayAgenda({
                   width: `calc(${laneWidthPct * (TASK_COL_PCT / 100)}% - 4px)`,
                 }}
               >
-                <div className="truncate text-[12px] font-medium text-foreground">{cleanTitle(t.title)}</div>
+                <div className="flex items-center gap-1 truncate text-[12px] font-medium text-foreground">
+                  {/* Wurde der Lauf unterbrochen (z.B. Neustart) und fortgesetzt, steht
+                      derselbe Titel zweimal im Tag. Ohne diesen Hinweis sieht das nach
+                      doppelter Arbeit aus — es ist EIN Auftrag in zwei Abschnitten. */}
+                  {t.resumed && <RotateCw className="h-3 w-3 shrink-0 opacity-60" />}
+                  <span className="truncate">{cleanTitle(t.title)}</span>
+                </div>
                 {height >= 32 && (
                   <div className="truncate text-[10px] text-muted-foreground/70">
-                    {timeRange} · {t.status}{durationSuffix}{costSuffix}
+                    {t.resumed ? "fortgesetzt · " : ""}{timeRange} · {t.status}{durationSuffix}{costSuffix}
                   </div>
                 )}
               </button>

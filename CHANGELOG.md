@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.165.2] — 2026-08-07
+
+### Fixed
+- **Zweimal derselbe Titel im Tageskalender sah nach doppelter Arbeit aus.** Es war eine
+  FORTSETZUNG: wird ein Lauf unterbrochen (z. B. Orchestrator-Neustart mitten in der
+  Arbeit), nimmt die Plattform ihn als neue Aufgabe wieder auf. Der zweite Kasten trägt
+  jetzt ein Wiederholungs-Symbol und „fortgesetzt" — ein Auftrag in zwei Abschnitten,
+  nicht zwei Aufträge.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.165.1] — 2026-08-07
 
 ### Fixed

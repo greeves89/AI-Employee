@@ -677,6 +677,8 @@ export interface ActivityTaskBar {
   completed_at: string | null; // null = still running
   duration_ms: number | null;
   cost_usd: number | null;
+  /** Fortsetzung eines unterbrochenen Laufs — kein zweiter Auftrag. */
+  resumed?: boolean;
 }
 
 export interface ActivityScheduleMark {

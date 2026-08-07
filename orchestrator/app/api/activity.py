@@ -145,6 +145,10 @@ async def get_activity_timeline(
                 "completed_at": _to_iso(t.completed_at),
                 "duration_ms": t.duration_ms,
                 "cost_usd": t.cost_usd,
+                # Fortsetzung eines unterbrochenen Laufs (z.B. Orchestrator-Neustart
+                # mitten in der Arbeit). Ohne diesen Hinweis stehen im Kalender zwei
+                # Kaesten mit demselben Titel und es sieht aus wie doppelte Arbeit.
+                "resumed": bool((t.metadata_ or {}).get("resumed_from_task")),
             }
             for t in sorted(tasks_by_agent.get(a.id, []), key=lambda t: t.started_at)
         ]
