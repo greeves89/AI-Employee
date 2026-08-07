@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.161.0] — 2026-08-07
+
+### Fixed
+- **Zukünftige Tage sahen im Kalender leer aus**, obwohl dort Läufe anstanden — für den
+  kommenden Montag rechnete der Server 38 geplante Läufe aus, die Ansicht zeigte sie aber
+  als 8-Pixel-Rauten am linken Rand, seit der Planspur zusätzlich verdeckt. Jetzt schmale,
+  beschriftete Bänder mit Uhrzeit auf einer eigenen Spur rechts. Der Tag hat damit drei
+  Spuren: Plan links, erledigte Aufgaben in der Mitte, geplante Läufe rechts.
+- **Die Tagesplanung war auf „nur werktags" vorbelegt** — am Wochenende plante der Agent
+  deshalb still gar nichts. Neue Voreinstellung: jeden Tag; „nur werktags" bleibt als
+  Häkchen für den, der es will.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.160.5] — 2026-08-07
 
 ### Fixed

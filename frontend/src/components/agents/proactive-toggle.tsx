@@ -63,7 +63,9 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const [hoursTzDraft, setHoursTzDraft] = useState("");
   const [dutiesDraft, setDutiesDraft] = useState<Responsibility[]>([]);
   const [morningDraft, setMorningDraft] = useState("");
-  const [weekdaysOnly, setWeekdaysOnly] = useState(true);
+  // Ein Agent hat kein Wochenende, solange niemand eines einstellt — vorher war
+  // 'nur werktags' vorbelegt, und der Sonntag fiel still aus.
+  const [weekdaysOnly, setWeekdaysOnly] = useState(false);
   const [deputyDraft, setDeputyDraft] = useState("");
   const [dutyStart, setDutyStart] = useState("");
   const [dutyEnd, setDutyEnd] = useState("");
@@ -148,7 +150,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   }, [savedDeputy, savedDutyStart, savedDutyEnd, savedDutyWeek, savedAbsFrom, savedAbsTo]);
 
   const savedMorning = data?.proactive?.morning_planning?.time ?? "";
-  const savedWeekdays = data?.proactive?.morning_planning?.weekdays_only ?? true;
+  const savedWeekdays = data?.proactive?.morning_planning?.weekdays_only ?? false;
   useEffect(() => {
     setMorningDraft(savedMorning);
     setWeekdaysOnly(savedWeekdays);

@@ -475,15 +475,25 @@ function DayAgenda({
             );
           })}
 
+          {/* Geplante Laeufe waren 8-Pixel-Rauten am linken Rand — praktisch unsichtbar
+              und seit der Planspur auch noch verdeckt. Ein zukuenftiger Tag sah deshalb
+              leer aus, obwohl 38 Laeufe anstanden. Jetzt schmale, beschriftete Baender. */}
           {ownMarks.map((m: ActivityScheduleMark, i) => {
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
             return (
               <div
                 key={`${m.schedule_id}-${i}`}
                 title={`${m.schedule_name} — ${fmtTime(m.time)}`}
-                className="absolute left-1 h-2 w-2 -translate-y-1/2 rotate-45 border border-foreground/30 bg-background"
+                className="absolute right-0 flex h-4 w-[34%] items-center gap-1 overflow-hidden rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 -translate-y-1/2"
                 style={{ top }}
-              />
+              >
+                <span className="shrink-0 font-mono text-[9px] text-emerald-300/70">
+                  {fmtTime(m.time)}
+                </span>
+                <span className="truncate text-[10px] text-emerald-100/70">
+                  {m.schedule_name.replace(/^\[Proactive\]\s*/, "")}
+                </span>
+              </div>
             );
           })}
 
@@ -524,9 +534,10 @@ function DayAgenda({
                 style={{
                   top,
                   height,
-                  // Die Planspur belegt die linken 26 % — die Aufgaben teilen sich den Rest.
-                  left: `calc(28% + ${t.lane * laneWidthPct * 0.72}% + 2px)`,
-                  width: `calc(${laneWidthPct * 0.72}% - 4px)`,
+                  // Drei Spuren: links der Plan (26 %), Mitte die Aufgaben, rechts die
+                  // geplanten Laeufe (34 %). Vorher lagen sie uebereinander.
+                  left: `calc(28% + ${t.lane * laneWidthPct * 0.36}% + 2px)`,
+                  width: `calc(${laneWidthPct * 0.36}% - 4px)`,
                 }}
               >
                 <div className="truncate text-[12px] font-medium text-foreground">{t.title}</div>

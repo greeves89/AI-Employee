@@ -2534,7 +2534,7 @@ async def update_proactive_config(
         weekdays_only = (
             body.morning_planning_weekdays_only
             if body.morning_planning_weekdays_only is not None
-            else bool(existing_morning.get("weekdays_only", True))
+            else bool(existing_morning.get("weekdays_only", False))
         )
         morning_id = existing_morning.get("schedule_id")
         morning_time = (morning_time or "").strip()
