@@ -758,9 +758,13 @@ class Bridge:
                     "type": "hello",
                     "platform": platform.system(),
                     "bridge_version": BRIDGE_VERSION,
-                    "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
-                                     "open_app", "open_url", "close_app", "get_clipboard", "set_clipboard", "find_element",
-                                     "wait_for_element", "start_input_capture", "stop_input_capture"],
+                    # Nur melden, was diese Plattform WIRKLICH kann: der
+                    # Bedienungshilfen-Baum ist macOS-only, und ein Agent, der sich
+                    # auf eine falsche Zusage verlaesst, verspricht dem Nutzer etwas.
+                    "capabilities": ["screenshot", "click", "type", "key", "scroll", "move", "drag",
+                                     "open_app", "open_url", "close_app", "get_clipboard",
+                                     "set_clipboard", "start_input_capture", "stop_input_capture"]
+                                    + (["ax_tree", "find_element", "wait_for_element"] if IS_MAC else []),
                     "ax_tree_available": IS_MAC,
                 }
                 await ws.send(json.dumps(caps))

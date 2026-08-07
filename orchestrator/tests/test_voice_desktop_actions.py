@@ -42,3 +42,17 @@ class WordingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WindowsFallbackTests(unittest.TestCase):
+    """Unter Windows gibt es keinen Bedienungshilfen-Baum — das darf kein „geht gar
+    nicht" werden. Klicken, Tippen und Tastenkombinationen gehen dort sehr wohl."""
+
+    def test_ax_error_is_translated_into_a_workable_answer(self):
+        self.assertIn("only available on macOS", VOICE)
+        hint = VOICE.split("only available on macOS", 1)[1][:400]
+        self.assertIn("Screenshot", hint)
+        self.assertIn("Tastenkombinationen gehen hier genauso", hint)
+
+    def test_bridge_reports_capabilities_per_platform(self):
+        self.assertIn('if IS_MAC else []', BRIDGE)

@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.164.1] — 2026-08-07
+
+### Fixed
+- **Unter Windows versprach die Bridge Fähigkeiten, die sie dort nicht hat.** Der
+  Bedienungshilfen-Baum (`ax_tree`, `find_element`, `wait_for_element`) ist macOS-only,
+  wurde aber plattformunabhängig gemeldet. Die Bridge meldet jetzt nur noch, was die
+  jeweilige Plattform wirklich kann.
+- **Und der Sprachweg macht daraus kein „geht gar nicht":** Kommt der macOS-Fehler zurück,
+  sagt er, dass er Elemente hier nicht selbst suchen kann, macht einen Screenshot und
+  bittet um die Stelle — Klicken, Tippen und Tastenkombinationen funktionieren unter
+  Windows genauso.
+
+### Deployment
+- Orchestrator-Neustart. Die Bridge-App muss NICHT neu installiert werden; die
+  plattformehrliche Fähigkeitsmeldung wirkt beim nächsten Bridge-Update.
+
+---
+
 ## [1.164.0] — 2026-08-07
 
 ### Fixed

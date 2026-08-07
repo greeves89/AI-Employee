@@ -2758,6 +2758,16 @@ class RealtimeVoiceSession:
         # behauptete, obwohl die Bridge „Chrome not found" zurückgegeben hatte.
         if isinstance(result, dict) and result.get("ok") is False:
             why = str(result.get("error") or "").strip()
+            # Der Bedienungshilfen-Baum gibt es nur auf macOS. Unter Windows meldet die
+            # Bridge das als Fehler — daraus darf kein "geht gar nicht" werden, denn
+            # Klicken, Tippen und Tastenkombinationen gehen dort sehr wohl.
+            if "only available on macOS" in why or "AXUIElement" in why:
+                return (
+                    "Auf diesem Rechner kann ich Elemente nicht selbst suchen — den "
+                    "Bedienungshilfen-Baum gibt es nur auf macOS. Ich mache einen "
+                    "Screenshot, dann sag mir kurz, wo ich klicken soll; Klicken, Tippen "
+                    "und Tastenkombinationen gehen hier genauso."
+                )
             return (f"Das hat NICHT geklappt: {why or 'die Bridge meldet einen Fehler'}. "
                     "Sag ihm genau das und behaupte auf keinen Fall, es sei geöffnet." + os_note)
         if act == "screenshot":
