@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.157.1] — 2026-08-07
+
+### Fixed
+- **Die neuen Einstellungen waren unsichtbar.** Verantwortungsbereiche, Vertretung,
+  Dienstzeit und Abwesenheit lagen hinter einem zugeklappten Aufklapper namens
+  „Prompt & Anweisungen" — ausgerechnet die Einstellung, die entscheidet, OB ein Agent
+  arbeitet. Der Aufklapper heißt jetzt **„Auftrag, Vertretung & Zeiten"**, zeigt zugeklappt
+  den Zustand („kein Auftrag · keine Vertretung · rund um die Uhr"), färbt sich bei
+  fehlendem Auftrag amber und **öffnet sich dann von selbst**.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.157.0] — 2026-08-07
 
 Vom Werkzeug zum Mitarbeiter, zweite Hälfte: Ausfall, Vertretung, Eskalation, eigene

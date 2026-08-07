@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  AlertTriangle,
   Clock,
   FileText,
   Loader2,
@@ -234,6 +235,21 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
     }
   };
 
+  // Was in der Kopfzeile steht, wenn zu: der Zustand, nicht der Name eines Feldes.
+  const dutyCount = (data?.proactive?.responsibilities ?? []).length;
+  const deputyName = agents.find((a) => a.id === (data?.deputy_agent_id ?? ""))?.name;
+  const needsSetup = dutyCount === 0;
+  const summary = [
+    dutyCount > 0 ? `${dutyCount} Bereich${dutyCount === 1 ? "" : "e"}` : "kein Auftrag",
+    deputyName ? `Vertretung: ${deputyName}` : "keine Vertretung",
+    data?.working_hours?.start ? `${data.working_hours.start}–${data.working_hours.end}` : "rund um die Uhr",
+  ].join(" · ");
+
+  // Fehlt der Auftrag, ist Zuklappen die falsche Voreinstellung.
+  useEffect(() => {
+    if (needsSetup) setExpanded(true);
+  }, [needsSetup]);
+
   if (loading) return null;
 
   const enabled = data?.proactive?.enabled ?? false;
@@ -362,20 +378,33 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
             </div>
           )}
 
-          {/* Prompt: base (read-only) + per-agent additions */}
+          {/* Auftrag, Vertretung, Zeiten + Prompt. Frueher hiess der Aufklapper
+              "Prompt & Anweisungen" und war immer zu — ausgerechnet die Einstellung, die
+              entscheidet, OB der Agent arbeitet, war damit unsichtbar. */}
           <div className="pt-2 mt-1 border-t border-foreground/[0.04]">
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+              className={cn(
+                "flex w-full items-center gap-1.5 text-[11px] transition-colors",
+                needsSetup
+                  ? "text-amber-400 hover:text-amber-300"
+                  : "text-muted-foreground/60 hover:text-foreground",
+              )}
             >
               {expanded ? (
                 <ChevronDown className="h-3 w-3" />
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              <FileText className="h-3 w-3" />
-              Prompt &amp; Anweisungen
+              {needsSetup ? <AlertTriangle className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+              Auftrag, Vertretung &amp; Zeiten
+              <span className="ml-auto text-[10px] text-muted-foreground/40">{summary}</span>
             </button>
+            {needsSetup && !expanded && (
+              <p className="mt-1 text-[10px] text-amber-400/70">
+                Ohne Verantwortungsbereiche wird jeder proaktive Lauf übersprungen — aufklappen und eintragen.
+              </p>
+            )}
 
             {expanded && (
               <div className="mt-2 space-y-2.5">
