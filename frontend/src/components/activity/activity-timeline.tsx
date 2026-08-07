@@ -352,7 +352,18 @@ function DayAgenda({
       // stiller Fehlschlag: der naechste Load holt den echten Stand
     }
   };
-  const laned = useMemo(() => layoutLanes(agent.tasks, now), [agent.tasks, now]);
+  // Ein Plan-Block laeuft ueber einen Zeitplan — der taucht sonst NOCH EINMAL als
+  // Balken und als Rautenmarke auf. Der Block links ist die Wahrheit; alles mit
+  // '[Plan]' wird hier ausgeblendet, sonst steht dieselbe Sache dreifach im Tag.
+  const ownTasks = useMemo(
+    () => agent.tasks.filter((t) => !t.title?.includes("[Plan]")),
+    [agent.tasks],
+  );
+  const ownMarks = useMemo(
+    () => agent.scheduled_marks.filter((m) => !m.schedule_name?.startsWith("[Plan]")),
+    [agent.scheduled_marks],
+  );
+  const laned = useMemo(() => layoutLanes(ownTasks, now), [ownTasks, now]);
   const nowOffsetPx = isToday ? ((now.getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX : null;
 
   // Open the agenda scrolled to something useful instead of dumping the user
@@ -364,8 +375,8 @@ function DayAgenda({
     let targetHour = 7;
     if (isToday) {
       targetHour = now.getHours();
-    } else if (agent.tasks.length > 0) {
-      const earliest = agent.tasks.reduce(
+    } else if (ownTasks.length > 0) {
+      const earliest = ownTasks.reduce(
         (min, t) => Math.min(min, new Date(t.started_at).getHours()), 24
       );
       if (earliest < 24) targetHour = earliest;
@@ -464,7 +475,7 @@ function DayAgenda({
             );
           })}
 
-          {agent.scheduled_marks.map((m: ActivityScheduleMark, i) => {
+          {ownMarks.map((m: ActivityScheduleMark, i) => {
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
             return (
               <div

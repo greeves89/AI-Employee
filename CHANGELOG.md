@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.160.2] — 2026-08-07
+
+### Fixed
+- **Jeder Plan-Block stand dreifach im Kalender**: als Block links, als Aufgabenbalken
+  rechts und als Zeitplan-Marke — seit die Blöcke über echte Zeitpläne laufen. Der Block
+  ist die Wahrheit; alles mit `[Plan]` wird daneben ausgeblendet. Klick auf den Block
+  führt weiterhin zur Aufgabe.
+- **Verpasste Blöcke starteten alle gleichzeitig.** Wurden fünf Blöcke nachträglich scharf
+  gestellt und lagen ihre Zeiten in der Vergangenheit, feuerten sie im selben Takt — auf
+  dem Pi brachte das die Claude-CLI zum Absturz (`exit -6`). Nachgeholt wird jetzt
+  gestaffelt, drei Minuten Abstand je Block.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.160.1] — 2026-08-07
 
 ### Fixed

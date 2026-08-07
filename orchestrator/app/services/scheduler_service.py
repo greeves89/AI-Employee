@@ -710,7 +710,14 @@ class SchedulerService:
                     priority=0 if item.priority == "high" else 1,
                     agent_id=item.agent_id,
                     enabled=True,
-                    next_run_at=item.planned_start,
+                    # Verpasste Zeiten werden nachgeholt — aber GESTAFFELT. Fuenf
+                    # Bloecke, deren Zeit vorbei ist, wuerden sonst gleichzeitig
+                    # feuern; auf einem Pi bringt das die CLI zum Absturz (exit -6).
+                    next_run_at=max(
+                        item.planned_start,
+                        datetime.now(timezone.utc) + timedelta(minutes=3 * armed),
+                    ) if item.planned_start < datetime.now(timezone.utc)
+                    else item.planned_start,
                 ))
                 item.schedule_id = schedule_id
                 armed += 1

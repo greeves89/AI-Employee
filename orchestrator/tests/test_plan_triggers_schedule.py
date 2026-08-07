@@ -81,8 +81,11 @@ class SelfHealingTests(unittest.TestCase):
         self.assertIn("AgentPlanItem.plan_date >= _date.today()", block)
 
     def test_a_missed_time_is_caught_up_not_dropped(self):
+        """Nachholen statt still verfallen lassen — die verpasste Zeit bleibt der
+        Bezugspunkt, nur der Start wird gestaffelt (siehe test_..._staggered)."""
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
-        self.assertIn("next_run_at=item.planned_start", block)
+        self.assertIn("item.planned_start", block)
+        self.assertNotIn("continue  # verfallen", block)
 
     def test_arming_is_committed(self):
         """Ohne Commit faellt beim Verlassen der Sitzung alles weg — die Zeitplaene waren
@@ -125,3 +128,9 @@ class StatusFeedbackTests(unittest.TestCase):
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
         self.assertIn("Schedule.total_runs > 0", block)
         self.assertIn('AgentPlanItem.status == "planned"', block)
+
+    def test_missed_blocks_are_caught_up_staggered(self):
+        """Fuenf verpasste Bloecke gleichzeitig zu starten hat auf dem Pi die CLI
+        abstuerzen lassen (exit -6) — nachholen ja, aber nacheinander."""
+        block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
+        self.assertIn("timedelta(minutes=3 * armed)", block)
