@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.157.2] — 2026-08-07
+
+### Fixed
+- **Im Sprach-Transkript stand mitten im Satz ein einsames „n"** („n1. Backlog-Priorisierung
+  n - OAuth Re-Auth 500"). Der Text erreichte die Engine mit literalen `\n`-Folgen statt
+  echter Umbrüche — sprechen lässt sich ein Backslash nicht, er fiel weg, das „n" blieb.
+  Die eine Stelle, durch die aller Text zur Engine geht, wandelt literale `\n`, `\r\n`
+  und `\t` jetzt in echte Zeichen um.
+
+### Added
+- **Das Sprach-Overlay lässt sich vergrößern.** Ziehgriff unten rechts, Größe bleibt
+  gemerkt; Doppelklick auf die Kopfzeile schaltet Vollbild um. Vorher war das Fenster
+  fest, und lange Zusammenfassungen scrollten in einer schmalen Spalte, während der halbe
+  Bildschirm leer blieb.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.157.1] — 2026-08-07
 
 ### Fixed

@@ -1042,6 +1042,56 @@ export function VoiceSessionModal({
   // The newest visual the agent pushed — it gets the big stage under the orb.
   // Files stay in the right-hand activity pane (they're downloads, not visuals).
   const stageItem = media.find((m) => m.kind === "image" || m.kind === "web");
+  // Groesse des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
+  // Vorher war das Fenster fest (max-w-6xl) — bei langen Zusammenfassungen scrollte
+  // man in einer schmalen Spalte, obwohl der Bildschirm leer daneben lag.
+  const SIZE_KEY = "voice-overlay-size";
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [maximized, setMaximized] = useState(false);
+  const dragRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SIZE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { w: number; h: number };
+        if (parsed?.w > 320 && parsed?.h > 240) setSize(parsed);
+      }
+    } catch { /* kaputter Eintrag → Standardgroesse */ }
+  }, []);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const box = (e.currentTarget as HTMLElement).parentElement?.getBoundingClientRect();
+    dragRef.current = {
+      x: e.clientX, y: e.clientY,
+      w: size?.w ?? box?.width ?? 1100,
+      h: size?.h ?? box?.height ?? 700,
+    };
+    const onMove = (ev: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      // Untergrenze, damit man das Fenster nicht unbedienbar klein zieht; Obergrenze
+      // ist der sichtbare Bereich.
+      setSize({
+        w: Math.min(Math.max(d.w + (ev.clientX - d.x), 420), window.innerWidth - 32),
+        h: Math.min(Math.max(d.h + (ev.clientY - d.y), 320), window.innerHeight - 32),
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      dragRef.current = null;
+      setSize((cur) => {
+        if (cur) { try { localStorage.setItem(SIZE_KEY, JSON.stringify(cur)); } catch { /* egal */ } }
+        return cur;
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const paneMedia = media.filter((m) => m.kind !== "image" && m.kind !== "web");
   const paneHeight = embedded
     ? "min-h-[50vh] lg:min-h-[68vh] lg:max-h-[74vh]"
@@ -1057,10 +1107,35 @@ export function VoiceSessionModal({
         className={embedded
           ? "relative flex h-full w-full flex-col rounded-2xl border border-border bg-card"
           : `relative flex w-full flex-col overflow-y-auto border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
-              isRealtime ? "max-w-6xl" : "max-w-lg"
+              maximized ? "sm:max-w-none" : isRealtime ? "max-w-6xl" : "max-w-lg"
             }`}
+        style={
+          embedded
+            ? undefined
+            : maximized
+            ? { width: "calc(100vw - 2rem)", height: "calc(100vh - 2rem)", maxHeight: "none" }
+            : size
+            ? { width: size.w, height: size.h, maxWidth: "none", maxHeight: "none" }
+            : undefined
+        }
+        onDoubleClick={embedded ? undefined : (e) => {
+          // Doppelklick auf die Kopfzeile (nicht auf Inhalte) schaltet Vollbild um.
+          if ((e.target as HTMLElement).closest("[data-voice-header]")) setMaximized((v) => !v);
+        }}
         onClick={embedded ? undefined : (e) => e.stopPropagation()}
       >
+        {!embedded && (
+          <div
+            onMouseDown={startResize}
+            title="Ziehen zum Vergrössern — Doppelklick auf die Kopfzeile für Vollbild"
+            className="absolute bottom-0 right-0 z-20 hidden h-5 w-5 cursor-nwse-resize items-end justify-end p-1 text-muted-foreground/40 hover:text-foreground sm:flex"
+          >
+            <svg viewBox="0 0 10 10" className="h-3 w-3 fill-current">
+              <path d="M9 1v8H1z" opacity=".35" />
+              <path d="M9 5v4H5z" />
+            </svg>
+          </div>
+        )}
         {!embedded && (
           <button
             onClick={onClose}
@@ -1072,7 +1147,7 @@ export function VoiceSessionModal({
         )}
 
         <div className={embedded ? "flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 lg:p-8" : "p-4 sm:p-6"}>
-          <div className="mb-4 flex items-center gap-2 pr-8">
+          <div data-voice-header className="mb-4 flex items-center gap-2 pr-8 select-none">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold truncate">
                 {isRealtime ? "Live-Gespräch" : "Live-Session"}: {agentName}

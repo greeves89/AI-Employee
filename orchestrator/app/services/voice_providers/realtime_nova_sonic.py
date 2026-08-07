@@ -57,6 +57,14 @@ def _clean_text(s: Any) -> str:
         s = str(s)
     # Force valid UTF-8 (drops lone surrogates / undecodable bytes).
     s = s.encode("utf-8", "replace").decode("utf-8", "replace")
+    # Literale Escape-Folgen zu echten Zeichen machen. Kommt Text irgendwo als
+    # JSON-Zeichenkette an (Werkzeug-Ergebnis, Gedaechtnis-Eintrag, Datei-Auszug),
+    # steht dort BACKSLASH+n statt eines Umbruchs. Die Engine kann einen Backslash
+    # nicht sprechen — sie laesst ihn weg, und im Transkript steht ueberall ein
+    # einsames "n" mitten im Satz ("n1. Backlog n - OAuth"). Ein echter Umbruch ist
+    # das, was gemeint war; ein wirklich gemeintes "\n" kommt in gesprochenem Text
+    # praktisch nicht vor.
+    s = s.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\t", "\t")
     # Drop NUL + other C0/C1 control chars except tab/newline/carriage-return.
     return "".join(
         ch for ch in s if ch in "\t\n\r" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
