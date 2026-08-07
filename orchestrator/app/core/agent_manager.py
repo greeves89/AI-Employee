@@ -641,6 +641,12 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
     return "\n".join(lines)
 
 
+def agent_timezone(config: dict | None) -> str:
+    """Die Zeitzone DIESES Agenten — dieselbe Reihenfolge wie ueberall sonst."""
+    from app.core.plan_rhythm import timezone_name
+    return timezone_name(config)
+
+
 def instructions_paths(mode: str | None) -> list[str]:
     """Wohin die Agenten-Anleitung geschrieben wird — EINE Quelle für alle Pfade.
 
@@ -1148,6 +1154,10 @@ class AgentManager:
             "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
             "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": autonomy_level.lower(),
+            # Der Container tickt in SEINER Zeitzone. Ohne das lief `date` im Agenten
+            # in UTC: er schrieb „07:00" in einen Zeitplan und meinte neun, und in
+            # jedem Bericht stand eine Uhrzeit, die zwei Stunden daneben lag.
+            "TZ": agent_timezone(config),
         }
 
         if mode == "custom_llm" and effective_llm:
@@ -1401,6 +1411,7 @@ class AgentManager:
             "REDIS_URL": settings.redis_url_internal,
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
             # global default; applies to both tasks and chats. Beyond it, work
@@ -1611,6 +1622,7 @@ class AgentManager:
             "REDIS_URL": settings.redis_url_internal,
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
             # global default; applies to both tasks and chats. Beyond it, work

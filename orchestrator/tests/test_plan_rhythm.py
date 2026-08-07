@@ -268,3 +268,22 @@ class ScheduleTimezoneTests(unittest.TestCase):
     def test_agents_are_told_not_to_build_their_own_planner(self):
         mgr = (ORCH / "app/core/agent_manager.py").read_text()
         self.assertIn("KEINEN eigenen Morgen- oder Abendplaner", mgr)
+
+
+class ContainerTimezoneTests(unittest.TestCase):
+    """Die Container liefen in UTC, waehrend der Host lokal tickte.
+
+    In den Logs stand 21:31, im Haus war es 23:31 — und der Agent, der in seiner
+    Shell `date` aufrief, bekam eine Uhrzeit, die zwei Stunden daneben lag. Gerechnet
+    wird ohnehin zeitzonenbewusst; das hier macht die Anzeige ehrlich.
+    """
+
+    def test_orchestrator_gets_a_timezone(self):
+        compose = (REPO / "docker-compose.yml").read_text()
+        self.assertIn("TZ: ${TZ:-Europe/Berlin}", compose)
+
+    def test_every_agent_container_ticks_in_its_own_zone(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("def agent_timezone(", mgr)
+        # Alle drei Stellen, an denen ein Agent-Container gebaut wird.
+        self.assertEqual(mgr.count('"TZ": agent_timezone(config)'), 3)

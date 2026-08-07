@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.1] — 2026-08-07
+
+### Fixed
+- **Die Container liefen in UTC, während der Host längst lokal tickte.** In den Logs stand
+  21:31, im Haus war es 23:31 — und ein Agent, der in seiner Shell `date` aufrief, bekam
+  eine Uhrzeit zwei Stunden daneben. Der Orchestrator bekommt jetzt `TZ` (Standard
+  `Europe/Berlin`, über `.env` änderbar), jeder Agent-Container **seine eigene** Zone
+  (Erreichbarkeit → Dienstzeit → UTC). Gerechnet wurde ohnehin zeitzonenbewusst; das
+  macht die Anzeige ehrlich.
+
+### Deployment
+- `docker compose up -d orchestrator`, Agenten neu erstellen.
+
+---
+
 ## [1.166.0] — 2026-08-07
 
 ### Fixed
