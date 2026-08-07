@@ -421,11 +421,14 @@ export interface ProactiveConfig {
   contact_hours?: ProactiveContactHours;
   responsibilities?: Responsibility[];
   morning_planning?: { time?: string; weekdays_only?: boolean; schedule_id?: string | null };
+  contact_absence?: { from?: string; to?: string };
 }
 
 export interface ProactiveResponse {
   agent_id: string;
   proactive: ProactiveConfig;
+  deputy_agent_id?: string;
+  working_hours?: { start?: string; end?: string; timezone?: string; weekdays_only?: boolean };
   schedule: {
     enabled: boolean;
     interval_seconds: number;

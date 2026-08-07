@@ -33,6 +33,7 @@ class TemplateCreate(BaseModel):
     mcp_server_ids: list[int] = []
     skill_ids: list[int] = []
     knowledge_template: str = ""
+    responsibilities: list[dict] = []
     claude_md: str = ""
 
 
@@ -48,6 +49,7 @@ class TemplateUpdate(BaseModel):
     mcp_server_ids: list[int] | None = None
     skill_ids: list[int] | None = None
     knowledge_template: str | None = None
+    responsibilities: list[dict] | None = None
     claude_md: str | None = None
 
 
@@ -72,6 +74,7 @@ def _template_to_dict(t: AgentTemplate) -> dict:
         "mcp_server_ids": t.mcp_server_ids or [],
         "skill_ids": t.skill_ids or [],
         "knowledge_template": t.knowledge_template,
+        "responsibilities": list(getattr(t, "responsibilities", None) or []),
         "claude_md": t.claude_md or "",
         "is_builtin": t.is_builtin,
         "is_published": t.is_published,
@@ -159,6 +162,7 @@ async def create_template(
         mcp_server_ids=body.mcp_server_ids,
         skill_ids=body.skill_ids,
         knowledge_template=body.knowledge_template,
+        responsibilities=body.responsibilities or [],
         claude_md=body.claude_md,
         is_builtin=False,
         is_published=False,
@@ -355,6 +359,29 @@ async def create_agent_from_template(
                 await db.commit()
             except Exception as e:
                 logger.warning(f"Failed to write knowledge template: {e}")
+
+        # Daueraufgaben der Vorlage uebernehmen — sonst startet jeder neue Agent ohne
+        # Auftrag und muss einzeln gebrieft werden (V5). Ueber dieselbe Validierung wie
+        # die Handeingabe, damit eine kaputte Vorlage nicht still Muell hinterlegt.
+        template_duties = list(getattr(template, "responsibilities", None) or [])
+        if template_duties:
+            from app.core.responsibilities import validated_responsibilities
+            from sqlalchemy.orm.attributes import flag_modified
+            try:
+                duties = validated_responsibilities(template_duties)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Vorlage %s hat unbrauchbare Verantwortungsbereiche: %s", template.name, e)
+                duties = []
+            if duties:
+                cfg = dict(agent.config or {})
+                proactive = dict(cfg.get("proactive") or {})
+                proactive["responsibilities"] = duties
+                cfg["proactive"] = proactive
+                cfg["onboarding_complete"] = True   # Auftrag steht: er kann sofort planen
+                agent.config = cfg
+                flag_modified(agent, "config")
+                await db.commit()
+                logger.info("Vorlage %s: %d Verantwortungsbereich(e) uebernommen", template.name, len(duties))
 
         # Store template origin on agent
         from app.models.agent import Agent

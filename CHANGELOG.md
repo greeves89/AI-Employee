@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.157.0] — 2026-08-07
+
+Vom Werkzeug zum Mitarbeiter, zweite Hälfte: Ausfall, Vertretung, Eskalation, eigene
+Dienstzeit, Priorisierung, Abwesenheit, Einarbeitung und die Frage, ob er besser wird.
+Fünf dieser Punkte hingen an demselben fehlenden Begriff — deshalb gibt es EINEN
+Dienstzustand und EINE Eskalationskette statt fünf Insellösungen.
+
+### Added
+- **Dienstzustand eines Agenten** (`core/agent_duty.py`) — abgeleitet aus vorhandenen
+  Signalen (Zustand, Warteschlange, Watchdog): `ok · overloaded · blocked · down ·
+  off_duty`. Der Scheduler entscheidet danach, ob ein Lauf überhaupt startet, und der
+  Agent bekommt seine eigene Lage in den Prompt.
+- **Vertretung bei Ausfall** — Vertreter pro Agent wählbar, sonst Team-Lead. Hängt oder
+  scheitert ein Agent, wandern seine offenen Todos mit Herkunftsvermerk zum Vertreter
+  und du bekommst eine Meldung. Ein Vertreter, der selbst nicht läuft, wird übersprungen;
+  ist niemand da, ist die Meldung entsprechend deutlich.
+- **Eskalation bei Schweigen** — bleiben zwei Rückfragen länger als zwölf Stunden
+  ungelesen, geht es an den Team-Lead, sonst an die Administration.
+- **Eigene Dienstzeit des Agenten** (bisher gab es nur die Erreichbarkeit des Menschen) —
+  außerhalb läuft kein proaktiver Lauf. Überlast (volle Warteschlange) sagt er selbst an,
+  statt still weiterzustapeln.
+- **Abwesenheit des Ansprechpartners** — im Urlaubsfenster stellt der Agent keine
+  Rückfragen, sondern sammelt sie und legt sie gebündelt vor.
+- **Priorisierung** — Blöcke im Tagesplan erben die Priorität ihres Verantwortungsbereichs
+  und werden danach sortiert; dazu eine Konfliktregel im Prompt.
+- **Vorlagen bringen Verantwortungsbereiche mit** — ein Agent aus einer Vorlage startet
+  mit Auftrag statt bei null.
+- **Entwicklungs-Kennzahl** `GET /analytics/agents/{id}/development` — Fehlerquote im
+  Vergleich zweier Zeiträume, Bewertungstrend, Plan-Treue (geplant vs. erledigt) und der
+  Probezeit-Stand nach sieben Tagen.
+- **Bildschirm-Regeln in der gemeinsamen Anleitung** — am Nutzerbildschirm ausschließlich
+  `computer_*`, Elemente über den Bedienungshilfen-Baum, nach jedem Klick nachsehen.
+
+### Fixed
+- **Am Telefon sagte der Agent erst auf Nachfrage, dass ihm sein Auftrag fehlt.** Die
+  Begrüßung wird getrennt vom Systemprompt gebaut und übertönte den Hinweis — jetzt steht
+  er im ersten Satz.
+
+### Deployment
+- Orchestrator-Neustart (neue Spalten werden beim Start ergänzt), Frontend-Rebuild,
+  Agent-Image + Agenten erneuern.
+
+---
+
 ## [1.156.0] — 2026-08-07
 
 ### Changed

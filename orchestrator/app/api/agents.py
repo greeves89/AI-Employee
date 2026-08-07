@@ -2388,6 +2388,15 @@ class ProactiveUpdate(BaseModel):
     # None = unveraendert, "" = aus, "HH:MM" = an.
     morning_planning_time: str | None = None
     morning_planning_weekdays_only: bool | None = None
+    # Vertretung bei Ausfall: wer uebernimmt die offenen Todos. Leer = Team-Lead.
+    deputy_agent_id: str | None = None
+    # Dienstzeit DES AGENTEN (nicht die Erreichbarkeit des Menschen).
+    duty_start: str | None = None            # "HH:MM"
+    duty_end: str | None = None              # "HH:MM"
+    duty_weekdays_only: bool | None = None
+    # Abwesenheit des Ansprechpartners (Urlaub) — Rueckfragen werden dann gesammelt.
+    absence_from: str | None = None          # "YYYY-MM-DD"
+    absence_to: str | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -2425,6 +2434,10 @@ async def get_proactive_config(
         return {
             "agent_id": agent_id,
             "proactive": proactive,
+            # Vertretung und eigene Dienstzeit haengen am Agenten, nicht am Proaktiv-Block —
+            # die Oberflaeche zeigt sie aber im selben Panel.
+            "deputy_agent_id": config.get("deputy_agent_id", ""),
+            "working_hours": config.get("working_hours") or {},
             "schedule": schedule_stats,
             "base_prompt": PROACTIVE_PROMPT,
         }
@@ -2561,6 +2574,49 @@ async def update_proactive_config(
             await db.delete(morning_schedule)
             morning_id = None
 
+        # Vertretung, eigene Dienstzeit und Abwesenheit — gleiches
+        # preserve-unless-explicit-Muster wie bei Erreichbarkeit und Bereichen.
+        if body.deputy_agent_id is not None:
+            deputy = body.deputy_agent_id.strip()
+            if deputy and deputy == agent_id:
+                raise HTTPException(status_code=422, detail="Ein Agent kann nicht sein eigener Vertreter sein")
+            if deputy:
+                exists = (await db.execute(select(Agent.id).where(Agent.id == deputy))).scalar_one_or_none()
+                if not exists:
+                    raise HTTPException(status_code=422, detail="Vertreter-Agent existiert nicht")
+            config["deputy_agent_id"] = deputy
+
+        existing_duty = config.get("working_hours") or {}
+        d_start = body.duty_start if body.duty_start is not None else existing_duty.get("start", "")
+        d_end = body.duty_end if body.duty_end is not None else existing_duty.get("end", "")
+        d_week = (body.duty_weekdays_only if body.duty_weekdays_only is not None
+                  else bool(existing_duty.get("weekdays_only", False)))
+        d_start, d_end = (d_start or "").strip(), (d_end or "").strip()
+        if bool(d_start) != bool(d_end):
+            raise HTTPException(status_code=422, detail="Dienstzeit: Start und Ende zusammen setzen oder beide leeren")
+        if d_start and (not _HHMM_RE.match(d_start) or not _HHMM_RE.match(d_end)):
+            raise HTTPException(status_code=422, detail="Dienstzeit muss HH:MM sein (24h)")
+        config["working_hours"] = (
+            {"start": d_start, "end": d_end,
+             "timezone": (new_hours or {}).get("timezone") or "UTC",
+             "weekdays_only": d_week}
+            if d_start else {}
+        )
+
+        existing_absence = (proactive or {}).get("contact_absence") or {}
+        a_from = body.absence_from if body.absence_from is not None else existing_absence.get("from", "")
+        a_to = body.absence_to if body.absence_to is not None else existing_absence.get("to", "")
+        a_from, a_to = (a_from or "").strip(), (a_to or "").strip()
+        if bool(a_from) != bool(a_to):
+            raise HTTPException(status_code=422, detail="Abwesenheit: Von und Bis zusammen setzen oder beide leeren")
+        if a_from:
+            from datetime import date as _date
+            try:
+                if _date.fromisoformat(a_to) < _date.fromisoformat(a_from):
+                    raise HTTPException(status_code=422, detail="Abwesenheit: Bis liegt vor Von")
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Abwesenheit: Datum muss YYYY-MM-DD sein")
+
         proactive = {
             "enabled": body.enabled,
             "schedule_id": schedule_id,
@@ -2568,6 +2624,7 @@ async def update_proactive_config(
             "custom_instructions": new_custom,
             "contact_hours": new_hours,
             "responsibilities": new_responsibilities,
+            "contact_absence": ({"from": a_from, "to": a_to} if a_from else {}),
             "morning_planning": (
                 {"time": morning_time, "weekdays_only": weekdays_only, "schedule_id": morning_id}
                 if morning_time else {}

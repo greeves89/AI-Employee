@@ -974,6 +974,15 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_plan_items_agent_date "
                 "ON agent_plan_items (agent_id, plan_date)"
             ))
+            # Vorlagen bringen Daueraufgaben mit (V5).
+            await conn.execute(_txt(
+                "ALTER TABLE agent_templates ADD COLUMN IF NOT EXISTS "
+                "responsibilities json DEFAULT '[]'::json"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS "
+                "priority varchar(10) NOT NULL DEFAULT 'normal'"
+            ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_folders_user ON workflow_folders (user_id)"))
         logger.info("workflow tables ensured")
     except Exception as e:
