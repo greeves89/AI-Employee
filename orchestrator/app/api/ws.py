@@ -935,7 +935,7 @@ async def ws_agent_voice(
         async with async_session_factory() as db:
             await session.init(db)
     except Exception as e:  # noqa: BLE001
-        logger.exception("voice session init failed agent=%s model=%s", agent_id, interaction_model)
+        logger.exception("voice session init failed agent=%s model=%s", scrub_log(agent_id), scrub_log(interaction_model))
         try:
             await websocket.send_text(json.dumps({
                 "type": "error",
@@ -954,7 +954,7 @@ async def ws_agent_voice(
                 except (WebSocketDisconnect, RuntimeError):
                     break
         except Exception:
-            logger.warning("voice outbound pump stopped agent=%s", agent_id, exc_info=True)
+            logger.warning("voice outbound pump stopped agent=%s", scrub_log(agent_id), exc_info=True)
 
     def _log_voice_turn_done(task: asyncio.Task) -> None:
         try:
@@ -1000,20 +1000,20 @@ async def ws_agent_voice(
                         session.push_audio_chunk(chunk)
                         logger.debug(
                             "voice ws chunk agent=%s session=%s bytes=%d",
-                            agent_id,
+                            scrub_log(agent_id),
                             session.session_id,
                             len(chunk),
                         )
                     except Exception:
-                        logger.warning("voice ws invalid audio chunk agent=%s", agent_id, exc_info=True)
+                        logger.warning("voice ws invalid audio chunk agent=%s", scrub_log(agent_id), exc_info=True)
             elif mtype == "commit":
                 lang = mdata.get("language")
                 # Process turn in background so we keep accepting interrupts
                 logger.debug(
                     "voice ws commit agent=%s session=%s language=%s",
-                    agent_id,
+                    scrub_log(agent_id),
                     session.session_id,
-                    lang,
+                    scrub_log(lang),
                 )
                 task = asyncio.create_task(session.commit_turn(language=lang))
                 task.add_done_callback(_log_voice_turn_done)

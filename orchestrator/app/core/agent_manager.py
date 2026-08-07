@@ -887,7 +887,7 @@ class AgentManager:
             await self.redis.client.rpush(history_key, event)
             await self.redis.client.ltrim(history_key, -200, -1)
         except Exception as e:
-            logger.warning(f"Could not publish event for agent {agent_id}: {e}")
+            logger.warning(f"Could not publish event for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
     async def _cancel_open_chats(self, agent_id: str, reason: str) -> None:
         """Broadcast a terminal ``cancelled`` event to any open chat streams for this
@@ -913,7 +913,7 @@ class AgentManager:
             })
             await self.redis.client.publish(f"agent:{agent_id}:chat:response", event)
         except Exception as e:  # noqa: BLE001 — best effort, never block the restart
-            logger.warning(f"Could not cancel open chats for agent {agent_id}: {e}")
+            logger.warning(f"Could not cancel open chats for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
     async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
@@ -1279,7 +1279,7 @@ class AgentManager:
                 "chmod 0440 /etc/sudoers.d/agent-permissions",
                 user="root",
             )
-            logger.info(f"Applied permissions {permissions} to container {container_id[:12]}")
+            logger.info(f"Applied permissions {scrub_log(permissions)} to container {scrub_log(container_id[:12])}")
         else:
             # No permissions - remove any existing sudoers file
             self.docker.exec_in_container(
@@ -1462,7 +1462,7 @@ class AgentManager:
                 except Exception:
                     pass
         except Exception as e:
-            logger.warning(f"Could not refresh instructions file for agent {agent_id}: {e}")
+            logger.warning(f"Could not refresh instructions file for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
         # 6. Update DB
         agent.container_id = container.id
@@ -1470,7 +1470,7 @@ class AgentManager:
         await self.db.commit()
         await self.db.refresh(agent)
 
-        logger.info(f"Agent {agent_id} restarted with fresh config")
+        logger.info(f"Agent {scrub_log(agent_id)} restarted with fresh config")
         await self._publish_event(agent_id, "system", "Agent restarted successfully with updated config")
         return agent
 
@@ -1481,7 +1481,7 @@ class AgentManager:
             try:
                 self.docker.stop_container(agent.container_id)
             except (NotFound, APIError) as e:
-                logger.warning(f"Container {agent.container_id} not found when stopping agent {agent_id}: {e}")
+                logger.warning(f"Container {scrub_log(agent.container_id)} not found when stopping agent {scrub_log(agent_id)}: {scrub_log(e)}")
         agent.state = AgentState.STOPPED
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent stopped")
@@ -1492,12 +1492,12 @@ class AgentManager:
         agent = await self._get_agent(agent_id)
         if not agent.container_id:
             # No container exists — recreate it (keeps volumes/data)
-            logger.info(f"Agent {agent_id} has no container — recreating via update_agent")
+            logger.info(f"Agent {scrub_log(agent_id)} has no container — recreating via update_agent")
             return await self.update_agent(agent_id)
         try:
             self.docker.start_container(agent.container_id)
         except NotFound:
-            logger.warning(f"Container {agent.container_id} not found for agent {agent_id} — recreating")
+            logger.warning(f"Container {scrub_log(agent.container_id)} not found for agent {scrub_log(agent_id)} — recreating")
             return await self.update_agent(agent_id)
         await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
@@ -1700,7 +1700,7 @@ class AgentManager:
         await self.db.commit()
         await self.db.refresh(agent)
 
-        logger.info(f"Agent {agent_id} updated to new image version")
+        logger.info(f"Agent {scrub_log(agent_id)} updated to new image version")
         return agent
 
     async def update_llm_config(self, agent_id: str, updates: dict) -> dict:
@@ -1753,7 +1753,7 @@ class AgentManager:
             try:
                 self.docker.remove_container(agent.container_id)
             except (NotFound, APIError) as e:
-                logger.warning(f"Container {agent.container_id} already gone for agent {agent_id}: {e}")
+                logger.warning(f"Container {scrub_log(agent.container_id)} already gone for agent {scrub_log(agent_id)}: {scrub_log(e)}")
         if remove_data and agent.volume_name:
             self.docker.remove_volume(agent.volume_name)
             config = agent.config or {}
@@ -1815,7 +1815,7 @@ class AgentManager:
                     )
                     await sync_session.commit()
                 agent.state = new_state
-                logger.info(f"Agent {agent_id} container status={container_status}, state→{new_state.name}")
+                logger.info(f"Agent {scrub_log(agent_id)} container status={scrub_log(container_status)}, state→{new_state.name}")
 
         config = agent.config or {}
 
