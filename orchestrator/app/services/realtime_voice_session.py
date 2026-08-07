@@ -157,6 +157,26 @@ SAVE_MEMORY_TOOL = {
     }
 }
 
+PLAN_MY_DAY_TOOL = {
+    "toolSpec": {
+        "name": "plan_my_day",
+        "description": (
+            "Trigger MY OWN day/week planning as a real task — use this whenever the user "
+            "asks me to plan my day or week, or to 'do the planning now'. I do NOT write the "
+            "plan here in the call: I hand it to myself as a task, work it off with my own "
+            "tools and put the result into the calendar. Say ONE short sentence that I am on "
+            "it — never claim the plan exists before this tool returned."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "horizon": {"type": "string", "description": "'today' | 'tomorrow' | 'week' — Standard: today."},
+                "focus": {"type": "string", "description": "Optionaler Schwerpunkt, den der Nutzer genannt hat."},
+            },
+        })},
+    }
+}
+
 COMPLETE_ONBOARDING_TOOL = {
     "toolSpec": {
         "name": "complete_onboarding",
@@ -1044,6 +1064,13 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "ERGEBNIS. Der Unterschied: ansagen WAS gleich passiert ist gut, erklären WARUM "
         "oder WOMIT ist es nicht. Variiere die Formulierung, wiederhole nicht immer "
         "denselben Satz, und hänge keine Ansage an etwas, das sofort da ist.\n"
+        "NICHTS ANKÜNDIGEN, WAS DU NICHT IM SELBEN ZUG TUST: Sätze wie „ich richte das "
+        "jetzt ein“ oder „lass mich das machen“ sind NUR erlaubt, wenn du im selben Zug "
+        "das passende Werkzeug aufrufst. Soll etwas geplant, gebaut, geschrieben oder "
+        "geändert werden, gibst du es als Aufgabe ab (`plan_my_day` für deine eigene "
+        "Tages- oder Wochenplanung, `ask_agent`/`plan_task` für alles andere) — und sagst "
+        "erst DANACH, dass es läuft. Behaupte NIE, etwas sei eingetragen oder erledigt, "
+        "bevor ein Werkzeug das bestätigt hat.\n"
         "WAS DIR GESAGT WIRD, BEHÄLTST DU: Nennt dich der Nutzer anders („du heißt ab jetzt "
         "Luna“), sagt er dir, wie er angesprochen werden will, nennt er eine Gewohnheit, eine "
         "Zuständigkeit oder eine Entscheidung, die über dieses Gespräch hinaus gilt — dann "
@@ -1380,7 +1407,8 @@ class RealtimeVoiceSession:
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
-            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, COMPLETE_ONBOARDING_TOOL,
+            SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, PLAN_MY_DAY_TOOL,
+            COMPLETE_ONBOARDING_TOOL,
             SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
@@ -1948,6 +1976,11 @@ class RealtimeVoiceSession:
             return
         if name == "get_day_plan":
             await self._respond(tool_use_id, await self._get_day_plan(str(args.get("date") or "")))
+            return
+        if name == "plan_my_day":
+            await self._respond(tool_use_id, await self._plan_my_day(
+                str(args.get("horizon") or "today"), str(args.get("focus") or ""),
+            ))
             return
         if name == "complete_onboarding":
             await self._respond(tool_use_id, await self._complete_onboarding(args))
@@ -3822,6 +3855,32 @@ class RealtimeVoiceSession:
         if not n:
             return f"Der Neustart von „{rel}“ hat gerade nicht geklappt."
         return f"Ich habe {n} Container der App „{rel}“ neu gestartet. Bestätige das kurz in der ICH-Form."
+
+    async def _plan_my_day(self, horizon: str = "today", focus: str = "") -> str:
+        """Die Planung an den AGENTEN geben — der Sprachfront plant nicht selbst.
+
+        Vorher fehlte dieser Weg: auf „mach die Tagesplanung fertig" sagte der Agent
+        „ich richte das ein" und nichts geschah, weil die Stimme kein Werkzeug dafuer
+        hatte und die Arbeit auch nicht abgab. Jetzt entsteht eine echte Aufgabe — sie
+        taucht im Aufgaben-Panel auf, laeuft mit den Werkzeugen des Agenten und legt den
+        Plan ueber `plan_day` in den Kalender.
+        """
+        horizon = (horizon or "today").strip().lower()
+        wann = {"tomorrow": "für MORGEN", "week": "für die kommende WOCHE"}.get(horizon, "für HEUTE")
+        schwerpunkt = f" Schwerpunkt laut Nutzer: {focus.strip()}." if focus.strip() else ""
+        instruction = (
+            f"Plane deinen Arbeitstag {wann}.{schwerpunkt}\n\n"
+            "1. Lies mit `get_day_plan`, was schon geplant ist und was der Nutzer gestrichen hat.\n"
+            "2. Leite aus deinen Verantwortungsbereichen ab, was heute faellig ist (Takt beachten), "
+            "und ziehe offene Todos hinzu (`list_todos`).\n"
+            "3. Schreibe den Plan mit `plan_day` weg — Bloecke in Arbeitsreihenfolge, mit "
+            "geschaetzter Dauer und der Prioritaet des jeweiligen Bereichs.\n"
+            "4. Melde in zwei Saetzen, was du dir vorgenommen hast."
+        )
+        title = {"tomorrow": "Tagesplanung für morgen", "week": "Wochenplanung"}.get(
+            horizon, "Tagesplanung für heute"
+        )
+        return await self._plan_task(instruction, title)
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
         """Schedule real work as a persistent Task on this agent's board (the same

@@ -28,9 +28,12 @@ class ApiContractTests(unittest.TestCase):
     def test_replacing_a_plan_keeps_what_already_happened(self):
         """Neuplanung darf nur Geplantes/Gestrichenes ersetzen — niemals die Geschichte.
 
-        Sonst loescht der 14-Uhr-Lauf, was der 7-Uhr-Lauf am Morgen erledigt hat.
+        Sonst loescht der 14-Uhr-Lauf, was der 7-Uhr-Lauf am Morgen erledigt hat. Die
+        Regel liegt in ``core/day_plan_store``, damit API und Sprachweg dieselbe benutzen.
         """
-        self.assertIn('AgentPlanItem.status.in_(("planned", "dropped"))', self.src)
+        store = (ORCH / "app/core/day_plan_store.py").read_text()
+        self.assertIn('AgentPlanItem.status.in_(("planned", "dropped"))', store)
+        self.assertIn("from app.core.day_plan_store import replace_plan", self.src)
 
     def test_agent_can_only_touch_its_own_plan(self):
         self.assertIn("Agent can only touch its own day plan", self.src)
@@ -107,6 +110,37 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("dropBlock", tl)
         # Bloecke ohne Uhrzeit duerfen nicht verschwinden.
         self.assertIn("undatedPlan", tl)
+
+
+class VoiceTriggersTheAgentTests(unittest.TestCase):
+    """Die Stimme plant NICHT selbst — sie gibt die Planung an den Agenten.
+
+    Im Gespraech sagte der Agent „ich richte das jetzt ein" und es geschah nichts: der
+    Sprachfront konnte den Plan lesen, aber weder schreiben noch die Arbeit abgeben.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.voice = (ORCH / "app/services/realtime_voice_session.py").read_text()
+
+    def test_tool_exists_and_is_offered(self):
+        self.assertIn('"name": "plan_my_day"', self.voice)
+        tool_list = self.voice.split("_tools = [", 1)[1].split("]", 1)[0]
+        self.assertIn("PLAN_MY_DAY_TOOL", tool_list)
+
+    def test_it_dispatches_a_real_task(self):
+        handler = self.voice.split("async def _plan_my_day", 1)[1].split("async def _plan_task", 1)[0]
+        self.assertIn("self._plan_task(", handler)
+        # ... und schreibt NICHT selbst in die Plan-Tabelle.
+        self.assertNotIn("AgentPlanItem", handler)
+
+    def test_instruction_tells_the_agent_to_use_its_own_tools(self):
+        handler = self.voice.split("async def _plan_my_day", 1)[1].split("async def _plan_task", 1)[0]
+        for tool in ("get_day_plan", "list_todos", "plan_day"):
+            self.assertIn(tool, handler)
+
+    def test_prompt_forbids_announcing_without_doing(self):
+        self.assertIn("NICHTS ANKÜNDIGEN, WAS DU NICHT IM SELBEN ZUG TUST", self.voice)
 
 
 if __name__ == "__main__":

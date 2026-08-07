@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.158.0] — 2026-08-07
+
+### Fixed
+- **„Ich richte das jetzt ein" — und nichts geschah.** Fragte man den Agenten im Gespräch,
+  seine Tages- oder Wochenplanung zu machen, kündigte er es an und lieferte nichts: der
+  Sprachfront konnte den Plan zwar **lesen**, aber weder schreiben noch die Arbeit abgeben.
+  Neues Werkzeug `plan_my_day` — die Stimme plant **nicht selbst**, sondern stößt den
+  Agenten als echte Aufgabe an. Die taucht im Aufgaben-Panel auf, läuft mit seinen eigenen
+  Werkzeugen und landet über `plan_day` im Kalender.
+- **Regel gegen Ankündigen ohne Ausführen** im Sprach-Prompt: Sätze wie „ich richte das
+  ein" sind nur erlaubt, wenn im selben Zug das Werkzeug läuft; „eingetragen" oder
+  „erledigt" erst, wenn ein Werkzeug es bestätigt hat.
+
+### Changed
+- Die Schreibregeln des Tagesplans liegen jetzt in `core/day_plan_store` — API und
+  Agentenweg benutzen dieselbe Definition, statt sie zu doppeln.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.157.3] — 2026-08-07
 
 ### Fixed

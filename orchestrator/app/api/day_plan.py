@@ -114,29 +114,13 @@ async def replace_day_plan(
 
     plan_date = body.plan_date or datetime.now(timezone.utc).date()
 
-    await db.execute(
-        delete(AgentPlanItem).where(
-            AgentPlanItem.agent_id == agent_id,
-            AgentPlanItem.plan_date == plan_date,
-            AgentPlanItem.status.in_(("planned", "dropped")),
+    from app.core.day_plan_store import replace_plan
+    try:
+        created = await replace_plan(
+            db, agent_id, [i.model_dump() for i in body.items], plan_date
         )
-    )
-    created = []
-    for item in body.items:
-        source = item.source if item.source in VALID_SOURCES else "self"
-        row = AgentPlanItem(
-            agent_id=agent_id,
-            plan_date=plan_date,
-            title=item.title.strip(),
-            notes=(item.notes or "").strip()[:2000],
-            planned_start=item.planned_start,
-            estimated_minutes=item.estimated_minutes,
-            source=source,
-            priority=item.priority if item.priority in _PRIORITY_RANK else "normal",
-            todo_id=item.todo_id,
-        )
-        db.add(row)
-        created.append(row)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     await db.commit()
     for row in created:
         await db.refresh(row)
