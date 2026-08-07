@@ -455,6 +455,26 @@ class SchedulerService:
         now: datetime,
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
+        # A STOPPED agent must not be driven. Without this check the schedule fired on
+        # anyway and every run died immediately — at the customer two agents piled up
+        # 337 failed runs over four weeks, one per hour, and nobody noticed. A stopped
+        # agent is off duty; the schedule keeps its rhythm and resumes when it starts.
+        if schedule.agent_id:
+            from app.models.agent import Agent, AgentState
+            agent_row = (await db.execute(
+                select(Agent.state).where(Agent.id == schedule.agent_id)
+            )).scalar_one_or_none()
+            if agent_row is not None and agent_row not in (
+                AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
+            ):
+                schedule.next_run_at = _calc_next_run(schedule, now)
+                logger.info(
+                    "[Scheduler] %s skipped — agent %s is %s (not running)",
+                    schedule.name, schedule.agent_id,
+                    getattr(agent_row, "value", agent_row),
+                )
+                return
+
         # Skip proactive schedules if the agent is busy with a TASK (not chat)
         is_cron = bool(schedule.cron_expression and _CRONITER_AVAILABLE)
         if schedule.name.startswith("[Proactive]") and schedule.agent_id:

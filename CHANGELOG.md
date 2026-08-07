@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.154.1] — 2026-08-07
+
+### Fixed
+- **Gestoppte Agenten wurden weiter proaktiv angesteuert.** Der Zeitplan feuerte stündlich
+  weiter, obwohl niemand da war, der ihn ausführen konnte — beim Kunden hatten zwei
+  gestoppte Agenten so über vier Wochen **337 fehlgeschlagene Läufe** angesammelt, ohne dass
+  es jemandem auffiel. Der Scheduler prüft den Agentenzustand jetzt VOR dem Auslösen,
+  überspringt alles außer RUNNING/IDLE/WORKING, rückt den Zeitplan regulär weiter (kein
+  Nachhol-Schwall beim Start) und protokolliert die Auslassung.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.154.0] — 2026-08-07
 
 Der Weg vom Werkzeugkasten zum Mitarbeiter: Identität, Auftrag und ein sichtbarer Tagesplan —
