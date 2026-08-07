@@ -958,7 +958,19 @@ async def _safe_get(url: str, *, timeout: float, max_bytes: int = _MAX_FETCH_BYT
         pinned = urlunparse((p.scheme, netloc, p.path or "/", p.params, p.query, ""))
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             req = client.build_request(
-                "GET", pinned, headers={"Host": host},
+                "GET", pinned,
+                headers={
+                    "Host": host,
+                    # Ohne User-Agent lehnen viele Server ab — Wikimedia antwortet mit
+                    # "Please set a user-agent and respect our robot policy" als
+                    # text/plain, und im Sprachmodus hiess es dann "Bild konnte nicht
+                    # geladen werden". Wir sagen ehrlich, wer wir sind.
+                    "User-Agent": (
+                        "AI-Employee/1.0 (self-hosted agent platform; "
+                        "+https://github.com/greeves89/AI-Employee)"
+                    ),
+                    "Accept": "image/*,text/html;q=0.9,*/*;q=0.8",
+                },
                 extensions={"sni_hostname": host},
             )
             resp = await client.send(req, stream=True)

@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.161.4] — 2026-08-07
+
+### Fixed
+- **Im Sprachmodus liessen sich keine Bilder anzeigen** („Bild konnte nicht geladen
+  werden"). Die Ursache lag nicht beim Bildserver, sondern bei uns: unsere Abrufe gingen
+  **ohne User-Agent** raus. Wikimedia und viele andere antworten darauf mit einem
+  text/plain-Hinweis auf ihre Robot-Policy statt mit dem Bild — der Inhaltstyp passte
+  dann nicht, und der Agent meldete ein technisches Problem. Abrufe nennen jetzt Namen
+  und Kontaktadresse und fragen ausdrücklich nach Bildern. Die SSRF-Absicherung
+  (IP-Pinning, Host-Header, Byte-Grenze) bleibt unverändert.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.161.3] — 2026-08-07
 
 ### Fixed
