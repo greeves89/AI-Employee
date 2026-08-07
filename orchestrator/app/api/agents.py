@@ -1161,7 +1161,7 @@ async def update_agent_ai_account(
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(
-            f"AI account set, but container recreate failed for {scrub_log(agent_id)}: {e}"
+            f"AI account set, but container recreate failed for {scrub_log(agent_id)}: {scrub_log(e)}"
         )
 
     return {"agent_id": agent_id, "ai_account_id": account.id, "status": "updated"}
@@ -1370,7 +1370,7 @@ async def remove_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     except Exception as e:
         import logging
-        logging.getLogger(__name__).exception(f"Failed to remove agent {scrub_log(agent_id)}: {e}")
+        logging.getLogger(__name__).exception(f"Failed to remove agent {scrub_log(agent_id)}: {scrub_log(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to remove agent: {type(e).__name__}: {e}",
