@@ -40,7 +40,7 @@ class PlanItemIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     notes: str = ""
     planned_start: datetime | None = None
-    estimated_minutes: int = Field(default=30, ge=1, le=1440)
+    estimated_minutes: int = Field(default=30, ge=1, le=1440)   # wird auf mind. 15 angehoben
     source: str = "self"
     priority: str = "normal"   # high | normal | low — vom Bereich oder vom Todo geerbt
     todo_id: int | None = None

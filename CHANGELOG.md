@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.161.2] — 2026-08-07
+
+### Fixed
+- **Im Hellmodus stand im Kalender nichts.** Die neuen Plan-Blöcke und die Bänder der
+  geplanten Läufe hatten helle Schrift — auf dunklem Grund lesbar, auf hellem unsichtbar.
+  Beide Modi sind jetzt bedient.
+- **Blöcke waren zu kurz geplant.** Der Agent schätzte in Zehn-Minuten-Scheiben; im
+  Kalender wurden daraus unlesbare Striche, und der erste Überzug macht den Rest des Tages
+  wertlos. Jeder Block hat jetzt **mindestens 15 Minuten** — auch als Vorgabe, wenn der
+  Agent gar keine Dauer mitgibt. Dazu die Ansage im Prompt: lieber ein ehrlicher
+  45-Minuten-Block als drei optimistische Zehner.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.161.1] — 2026-08-07
 
 ### Fixed

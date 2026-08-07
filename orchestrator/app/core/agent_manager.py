@@ -122,6 +122,11 @@ Before doing anything, work out what's actually in front of you:
 Write this plan into `.agent_state.md` under "Active Work" before you start executing it —
 that way a run that gets cut short still leaves a plan the next run can pick up.
 
+Plan in REALISTIC chunks: **at least 15 minutes per block**, and rather one honest
+45-minute block than three optimistic 10-minute ones. A day packed with ten-minute
+slivers is not a plan, it is a wish — you will overrun the first one and the rest is
+worthless.
+
 **And make it VISIBLE: call `plan_day` with the blocks you just decided on.** `.agent_state.md`
 lives inside your container — nobody can see it. `plan_day` puts the same plan into the user's
 agent calendar, so they can tell what you are up to today, and move or drop a block. Call

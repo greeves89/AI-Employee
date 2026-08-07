@@ -1439,12 +1439,12 @@ export function VoiceSessionModal({
                                 key={ii}
                                 className={`flex items-start gap-2 rounded-md border-l-2 px-2 py-1 text-[11px] ${
                                   it.status === "done"
-                                    ? "border-l-emerald-400/60 bg-emerald-400/[0.06] text-muted-foreground"
+                                    ? "border-l-emerald-500/60 bg-emerald-500/[0.10] text-muted-foreground dark:border-l-emerald-400/60 dark:bg-emerald-400/[0.06]"
                                     : it.status === "running"
-                                    ? "border-l-sky-400 bg-sky-400/[0.08] text-foreground"
+                                    ? "border-l-sky-500 bg-sky-500/[0.10] text-foreground dark:border-l-sky-400 dark:bg-sky-400/[0.08]"
                                     : it.status === "dropped"
                                     ? "border-l-foreground/20 bg-foreground/[0.02] text-muted-foreground/50 line-through"
-                                    : "border-l-sky-400/40 bg-sky-400/[0.04] text-foreground/90"
+                                    : "border-l-sky-500/40 bg-sky-500/[0.06] text-foreground/90 dark:border-l-sky-400/40 dark:bg-sky-400/[0.04]"
                                 }`}
                               >
                                 <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">

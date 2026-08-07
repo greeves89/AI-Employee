@@ -171,3 +171,28 @@ class VoicePlanCardTests(unittest.TestCase):
 
     def test_planning_shows_the_result_by_itself(self):
         self.assertIn("_show_plan_when_ready", self.voice)
+
+
+class MinimumBlockLengthTests(unittest.TestCase):
+    """Jeder Block hat ein sichtbares Ende — mindestens eine Viertelstunde.
+
+    Der Agent schaetzte in Zehn-Minuten-Scheiben; im Kalender wurden daraus Striche, die
+    man nicht lesen kann, und der erste Ueberzug macht den Rest des Tages wertlos. Ohne
+    Angabe gilt dieselbe Viertelstunde statt eines Blocks ohne Dauer.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.store = (ORCH / "app/core/day_plan_store.py").read_text()
+
+    def test_floor_is_fifteen_minutes(self):
+        self.assertIn("MIN_BLOCK_MINUTES = 15", self.store)
+        self.assertIn("max(minutes, MIN_BLOCK_MINUTES)", self.store)
+
+    def test_missing_duration_falls_back_to_the_floor(self):
+        self.assertIn('int(item.get("estimated_minutes") or MIN_BLOCK_MINUTES)', self.store)
+        self.assertIn("minutes = MIN_BLOCK_MINUTES", self.store)
+
+    def test_prompt_tells_the_agent_before_he_plans(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("at least 15 minutes per block", mgr)

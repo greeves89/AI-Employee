@@ -467,7 +467,7 @@ function DayAgenda({
               >
                 <div className={cn(
                   "flex items-start gap-1 text-[11px] font-medium",
-                  dropped ? "text-muted-foreground/60 line-through" : "text-sky-200"
+                  dropped ? "text-muted-foreground/60 line-through" : "text-sky-700 dark:text-sky-200"
                 )}>
                   <CalendarClock className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
                   <span className="truncate">{item.title}</span>
@@ -501,13 +501,13 @@ function DayAgenda({
               <div
                 key={`${m.schedule_id}-${i}`}
                 title={`${m.schedule_name} — ${fmtTime(m.time)}`}
-                className="absolute flex h-4 items-center gap-1 overflow-hidden rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 -translate-y-1/2"
+                className="absolute flex h-4 items-center gap-1 overflow-hidden rounded border border-emerald-500/30 bg-emerald-500/[0.12] px-1.5 -translate-y-1/2 dark:border-emerald-400/25 dark:bg-emerald-400/[0.07]"
                 style={{ top, right: `${col * w}%`, width: `calc(${w}% - 3px)` }}
               >
-                <span className="shrink-0 font-mono text-[9px] text-emerald-300/70">
+                <span className="shrink-0 font-mono text-[9px] text-emerald-700 dark:text-emerald-300/70">
                   {fmtTime(m.time)}
                 </span>
-                <span className="truncate text-[10px] text-emerald-100/70">
+                <span className="truncate text-[10px] text-emerald-800 dark:text-emerald-100/70">
                   {m.schedule_name.replace(/^\[Proactive\]\s*/, "")}
                 </span>
               </div>
