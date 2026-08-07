@@ -664,6 +664,10 @@ class SchedulerService:
                 ))
                 item.schedule_id = schedule_id
                 armed += 1
+            if armed:
+                # Ohne das faellt beim Verlassen der Sitzung alles weg: die Zeitplaene
+                # waren angelegt und beim naechsten Blick wieder verschwunden.
+                await db.commit()
         return armed
 
     async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:

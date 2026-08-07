@@ -83,3 +83,9 @@ class SelfHealingTests(unittest.TestCase):
     def test_a_missed_time_is_caught_up_not_dropped(self):
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
         self.assertIn("next_run_at=item.planned_start", block)
+
+    def test_arming_is_committed(self):
+        """Ohne Commit faellt beim Verlassen der Sitzung alles weg — die Zeitplaene waren
+        angelegt und beim naechsten Blick wieder fort."""
+        block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
+        self.assertIn("await db.commit()", block)

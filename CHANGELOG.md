@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.159.2] — 2026-08-07
+
+### Fixed
+- **Die Auslöser für vorhandene Plan-Blöcke wurden angelegt und fielen sofort wieder weg** —
+  die Selbstheilung schrieb sie in die Sitzung, ohne zu committen. Der Kalender zeigte
+  weiter „geplant", und nichts startete.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.159.1] — 2026-08-07
 
 ### Fixed
