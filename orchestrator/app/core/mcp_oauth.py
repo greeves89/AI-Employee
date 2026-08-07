@@ -43,8 +43,11 @@ MAX_CLIENTS = 500                  # ceiling on DCR-registered clients (abuse gu
 TOKEN_USE = "mcp_msgraph"          # custom claim so these tokens can't be confused
                                    # with the platform's own session JWTs
 
+GRANT_TTL_SECONDS = 60 * 60 * 24 * 90   # remembered consent per (user, client): 90d
+
 _CODE_PREFIX = "mcp_oauth:code:"
 _REFRESH_PREFIX = "mcp_oauth:refresh:"
+_GRANT_PREFIX = "mcp_oauth:grant:"
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +209,43 @@ async def consume_refresh(redis, tok: str) -> dict | None:
         return None
     await redis.client.delete(key)  # rotation: old token is invalidated
     return json.loads(raw)
+
+
+# ---------------------------------------------------------------------------
+# Remembered consent (per user + client)
+# ---------------------------------------------------------------------------
+# A user consents to a client ONCE; for 90 days after that, re-authorizations run
+# silently. Without this, every expired token means another consent click even
+# though nothing about the grant changed. The consent is still a real decision —
+# it is only skipped for the exact (user, client) pair that already made it, and
+# every other check (session, client, redirect_uri, PKCE) runs unchanged.
+
+def _grant_key(user_id: str, client_id: str) -> str:
+    return f"{_GRANT_PREFIX}{user_id}:{client_id}"
+
+
+async def remember_grant(redis, user_id: str, client_id: str) -> None:
+    await redis.client.setex(_grant_key(user_id, client_id), GRANT_TTL_SECONDS, "1")
+
+
+async def has_grant(redis, user_id: str, client_id: str) -> bool:
+    try:
+        return bool(await redis.client.exists(_grant_key(user_id, client_id)))
+    except Exception:
+        return False  # Redis hiccup → ask for consent again, never auto-approve blind
+
+
+async def forget_grants(redis, user_id: str) -> int:
+    """Drop every remembered consent of a user — called when their Microsoft
+    connection is revoked, so the next client has to ask again."""
+    removed = 0
+    try:
+        async for key in redis.client.scan_iter(match=f"{_GRANT_PREFIX}{user_id}:*"):
+            await redis.client.delete(key)
+            removed += 1
+    except Exception:
+        pass
+    return removed
 
 
 # ---------------------------------------------------------------------------

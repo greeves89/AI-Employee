@@ -397,6 +397,13 @@ export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph
   });
 }
 
+export async function setMsgraphReadOnly(read_only: boolean): Promise<{ msgraph_read_only: boolean }> {
+  return fetchJSON(`${getBase()}/settings/msgraph-read-only`, {
+    method: "PUT",
+    body: JSON.stringify({ read_only }),
+  });
+}
+
 export async function setAgentIdleStop(agentId: string, idle_stop_minutes: number): Promise<{ agent_id: string; idle_stop_minutes: number | null }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/idle-stop`, {
     method: "PATCH",
@@ -928,7 +935,7 @@ export async function disconnectIntegration(provider: string): Promise<void> {
   await fetchJSON(`${getBase()}/integrations/${provider}`, { method: "DELETE" });
 }
 
-export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string }> {
+export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string; microsoft_read_only?: boolean }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/integrations`);
 }
 

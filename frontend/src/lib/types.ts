@@ -262,6 +262,7 @@ export interface Settings {
   microsoft_optional_scopes?: string[];
   has_apple_oauth: boolean;
   msgraph_mcp_external_enabled: boolean;
+  msgraph_read_only: boolean;
   // Security / Login
   sso_only_login?: boolean;
   require_user_approval?: boolean;

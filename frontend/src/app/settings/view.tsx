@@ -218,6 +218,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setMsgraphExtSaving(false);
     }
   };
+  const [msgraphRoSaving, setMsgraphRoSaving] = useState(false);
+  const toggleMsgraphReadOnly = async (readOnly: boolean) => {
+    setMsgraphRoSaving(true);
+    try {
+      await api.setMsgraphReadOnly(readOnly);
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte Nur-Lesen nicht ändern");
+    } finally {
+      setMsgraphRoSaving(false);
+    }
+  };
   const [ssoOnlySaving, setSsoOnlySaving] = useState(false);
   const toggleSsoOnly = async (enabled: boolean) => {
     setSsoOnlySaving(true);
@@ -1661,6 +1673,44 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   </div>
                 )}
 
+                {/* Admin: platform-wide read-only enforcement for M365 + on-prem Exchange */}
+                <div className="px-5 pb-4 pt-3 border-t border-foreground/[0.04]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                        <Lock className="h-3.5 w-3.5 text-amber-400" />
+                        Microsoft nur lesend
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                        Gilt für M365/Graph <span className="text-muted-foreground/40">und</span> den on-prem-Exchange-Connector: kein Agent kann Mail senden, Termine anlegen oder Dateien ändern — unabhängig davon, was pro Agent eingestellt ist.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toggleMsgraphReadOnly(!settings?.msgraph_read_only)}
+                      disabled={msgraphRoSaving}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                        settings?.msgraph_read_only ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                        msgraphRoSaving && "opacity-40 cursor-not-allowed",
+                      )}
+                    >
+                      {msgraphRoSaving ? (
+                        <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                      ) : (
+                        <span className={cn(
+                          "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                          settings?.msgraph_read_only ? "translate-x-6" : "translate-x-1",
+                        )} />
+                      )}
+                    </button>
+                  </div>
+                  {!settings?.msgraph_read_only && (
+                    <p className="mt-1.5 text-[10px] text-amber-400/70">
+                      Schreibzugriff ist freigegeben. Agenten mit &quot;Read + Write&quot; können in echten Postfächern senden und ändern.
+                    </p>
+                  )}
+                </div>
+
                 {/* Admin: expose the MS Graph MCP server to external LLMs (OpenWebUI) */}
                 <div className="px-5 pb-4 pt-3 border-t border-foreground/[0.04]">
                   <div className="flex items-center justify-between gap-3">
@@ -1670,7 +1720,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                         MCP-Server extern exponieren (OpenWebUI)
                       </div>
                       <p className="mt-0.5 text-[10px] text-muted-foreground/60">
-                        Stellt den MS-Graph-MCP-Server externen LLM-Clients per OAuth 2.1 bereit. Jeder User loggt sich ein und nutzt sein eigenes M365.
+                        Stellt den MS-Graph-MCP-Server externen LLM-Clients per OAuth 2.1 bereit. Angemeldet wird mit dem Microsoft-Konto — keine zusätzliche AI-Employee-Anmeldung. Jeder User nutzt sein eigenes M365, immer nur lesend.
                       </p>
                     </div>
                     <button
@@ -1713,7 +1763,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                         </button>
                       </div>
                       <p className="text-[10px] text-muted-foreground/50">
-                        Login &amp; Client-Registrierung (DCR) laufen automatisch über OAuth. Token sind pro User — kein geteilter Zugriff.
+                        Login &amp; Client-Registrierung (DCR) laufen automatisch über OAuth: Der User wird direkt zur Microsoft-Anmeldung geschickt und landet zurück im Chat. Wer in OpenWebUI bereits mit Microsoft angemeldet ist, sieht gar keine Maske. Token sind pro User — kein geteilter Zugriff.
                       </p>
                     </div>
                   )}

@@ -2063,6 +2063,7 @@ async def get_agent_integrations(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
+        from app.core import ms_access
         return {
             "agent_id": agent_id,
             "integrations": config.get("integrations", []),
@@ -2070,6 +2071,9 @@ async def get_agent_integrations(
             # Was missing → the UI never saw the saved value and always fell back to
             # "read", so Exchange Read+Write looked like it reset itself after refresh.
             "exchange_access": (config or {}).get("exchange_access", "read"),
+            # Platform-wide read-only enforcement — the UI locks the write option and
+            # explains why, instead of offering a switch that silently does nothing.
+            "microsoft_read_only": ms_access.read_only_enabled(),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -2103,13 +2107,23 @@ async def update_agent_integrations(
                 )
         config["integrations"] = new_integrations
 
-        # Optional: Microsoft Graph read/write mode for this agent.
+        # Optional: Microsoft Graph / on-prem Exchange read/write mode for this agent.
+        # While the platform-wide read-only switch is on, "write" is refused outright
+        # instead of being stored as a setting that the MCP transports ignore anyway.
+        from app.core import ms_access
+        ms_read_only = ms_access.read_only_enabled()
+        if ms_read_only and "write" in (body.get("msgraph_access"), body.get("exchange_access")):
+            raise HTTPException(
+                status_code=422,
+                detail="Microsoft-Zugriff ist plattformweit auf Nur-Lesen gestellt. "
+                       "Ein Administrator muss den Schalter in den Einstellungen zuerst lösen.",
+            )
+
         old_msgraph_access = config.get("msgraph_access", "read")
         if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
             config["msgraph_access"] = body["msgraph_access"]
         msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
 
-        # Optional: on-prem Exchange read/write mode for this agent.
         old_exchange_access = config.get("exchange_access", "read")
         if "exchange_access" in body and body["exchange_access"] in ("read", "write"):
             config["exchange_access"] = body["exchange_access"]
@@ -2129,6 +2143,7 @@ async def update_agent_integrations(
             "integrations": config["integrations"],
             "msgraph_access": config.get("msgraph_access", "read"),
             "exchange_access": config.get("exchange_access", "read"),
+            "microsoft_read_only": ms_read_only,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
