@@ -15,7 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getProactiveConfig, updateProactiveConfig } from "@/lib/api";
+import { getAgents, getProactiveConfig, updateProactiveConfig } from "@/lib/api";
 import type {
   ProactiveResponse,
   Responsibility,
@@ -63,6 +63,13 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const [dutiesDraft, setDutiesDraft] = useState<Responsibility[]>([]);
   const [morningDraft, setMorningDraft] = useState("");
   const [weekdaysOnly, setWeekdaysOnly] = useState(true);
+  const [deputyDraft, setDeputyDraft] = useState("");
+  const [dutyStart, setDutyStart] = useState("");
+  const [dutyEnd, setDutyEnd] = useState("");
+  const [dutyWeekdays, setDutyWeekdays] = useState(false);
+  const [absFrom, setAbsFrom] = useState("");
+  const [absTo, setAbsTo] = useState("");
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -116,6 +123,29 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const removeResponsibility = (idx: number) =>
     setDutiesDraft((prev) => prev.filter((_, i) => i !== idx));
 
+  // Vertreter-Auswahl braucht die anderen Agenten des Nutzers — dieselbe Liste, die
+  // auch die Uebersicht zeigt (Sichtbarkeit steuert der Server).
+  useEffect(() => {
+    getAgents()
+      .then((res) => setAgents(res.agents.map((a) => ({ id: a.id, name: a.name }))))
+      .catch(() => {});
+  }, []);
+
+  const savedDeputy = data?.deputy_agent_id ?? "";
+  const savedDutyStart = data?.working_hours?.start ?? "";
+  const savedDutyEnd = data?.working_hours?.end ?? "";
+  const savedDutyWeek = data?.working_hours?.weekdays_only ?? false;
+  const savedAbsFrom = data?.proactive?.contact_absence?.from ?? "";
+  const savedAbsTo = data?.proactive?.contact_absence?.to ?? "";
+  useEffect(() => {
+    setDeputyDraft(savedDeputy);
+    setDutyStart(savedDutyStart);
+    setDutyEnd(savedDutyEnd);
+    setDutyWeekdays(savedDutyWeek);
+    setAbsFrom(savedAbsFrom);
+    setAbsTo(savedAbsTo);
+  }, [savedDeputy, savedDutyStart, savedDutyEnd, savedDutyWeek, savedAbsFrom, savedAbsTo]);
+
   const savedMorning = data?.proactive?.morning_planning?.time ?? "";
   const savedWeekdays = data?.proactive?.morning_planning?.weekdays_only ?? true;
   useEffect(() => {
@@ -129,7 +159,10 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
     hoursTzDraft !== savedHoursTz;
   const dutiesDirty = JSON.stringify(dutiesDraft) !== savedDuties;
   const morningDirty = morningDraft !== savedMorning || weekdaysOnly !== savedWeekdays;
-  const draftDirty = customDraft !== savedCustom || hoursDirty || dutiesDirty || morningDirty;
+  const dutyDirty =
+    deputyDraft !== savedDeputy || dutyStart !== savedDutyStart || dutyEnd !== savedDutyEnd ||
+    dutyWeekdays !== savedDutyWeek || absFrom !== savedAbsFrom || absTo !== savedAbsTo;
+  const draftDirty = customDraft !== savedCustom || hoursDirty || dutiesDirty || morningDirty || dutyDirty;
 
   const handleSavePrompt = async () => {
     if (!data) return;
@@ -156,6 +189,12 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
         responsibilities: dutiesDraft.map((d) => ({ ...d, title: d.title.trim() })),
         morning_planning_time: morningDraft,
         morning_planning_weekdays_only: weekdaysOnly,
+        deputy_agent_id: deputyDraft,
+        duty_start: dutyStart,
+        duty_end: dutyEnd,
+        duty_weekdays_only: dutyWeekdays,
+        absence_from: absFrom,
+        absence_to: absTo,
       });
       await load();
       setSavedFlash(true);
@@ -448,6 +487,95 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                   />
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
                     Wird bei jedem proaktiven Lauf an den Basis-Prompt angehaengt.
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    Vertretung bei Ausfall
+                  </div>
+                  <select
+                    value={deputyDraft}
+                    onChange={(e) => setDeputyDraft(e.target.value)}
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                  >
+                    <option value="">— kein Vertreter (dann uebernimmt der Team-Lead) —</option>
+                    {agents.filter((a) => a.id !== agentId).map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    Haengt oder scheitert dieser Agent, gehen seine offenen Todos an den
+                    Vertreter — und du bekommst eine Meldung. Ohne Vertreter und ohne
+                    Team-Lead bleibt die Arbeit liegen.
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    Dienstzeit des Agenten
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="time"
+                      value={dutyStart}
+                      onChange={(e) => setDutyStart(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    <span className="text-[11px] text-muted-foreground/40">bis</span>
+                    <input
+                      type="time"
+                      value={dutyEnd}
+                      onChange={(e) => setDutyEnd(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={dutyWeekdays}
+                        onChange={(e) => setDutyWeekdays(e.target.checked)}
+                        className="h-3 w-3 rounded border-foreground/20 bg-background text-emerald-500 focus:ring-emerald-500/30"
+                      />
+                      nur werktags
+                    </label>
+                  </div>
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    Seine EIGENE Arbeitszeit (nicht deine). Ausserhalb laeuft kein proaktiver
+                    Lauf. Leer = rund um die Uhr. Zeitzone kommt aus der Erreichbarkeit unten.
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    Abwesenheit des Ansprechpartners
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={absFrom}
+                      onChange={(e) => setAbsFrom(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    <span className="text-[11px] text-muted-foreground/40">bis</span>
+                    <input
+                      type="date"
+                      value={absTo}
+                      onChange={(e) => setAbsTo(e.target.value)}
+                      className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                    />
+                    {(absFrom || absTo) && (
+                      <button
+                        type="button"
+                        onClick={() => { setAbsFrom(""); setAbsTo(""); }}
+                        className="text-[10px] text-muted-foreground/50 underline-offset-2 hover:underline"
+                      >
+                        loeschen
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                    In diesem Zeitraum stellt der Agent keine Rueckfragen, sondern sammelt sie
+                    und legt sie dir gebuendelt vor, wenn du zurueck bist.
                   </div>
                 </div>
 

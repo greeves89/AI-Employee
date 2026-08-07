@@ -375,6 +375,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 planned_start: { type: "string", description: "ISO-8601 UTC start, e.g. '2026-08-07T07:30:00Z'. Omit if only the order matters." },
                 estimated_minutes: { type: "number", description: "Rough duration in minutes (default 30)." },
                 source: { type: "string", description: "'responsibility' | 'todo' | 'self'" },
+                priority: { type: "string", description: "high | normal | low — inherit from the responsibility or todo." },
                 todo_id: { type: "number", description: "Link to the todo this block works on, if any." },
               },
               required: ["title"],

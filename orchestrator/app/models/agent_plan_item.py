@@ -34,6 +34,8 @@ class AgentPlanItem(Base):
     # Woher der Eintrag stammt: "responsibility" (Dauerauftrag), "todo" (offene Arbeit),
     # "self" (der Agent hat es selbst vorgeschlagen), "user" (du hast es reingelegt).
     source: Mapped[str] = mapped_column(String(20), default="self")
+    # Vom Verantwortungsbereich bzw. Todo geerbt — steuert die Reihenfolge im Plan.
+    priority: Mapped[str] = mapped_column(String(10), default="normal")
     # planned | running | done | dropped — "dropped" heisst: gestrichen (vom Nutzer oder
     # vom Agenten verworfen), bleibt aber sichtbar, damit man den Tag nachvollziehen kann.
     status: Mapped[str] = mapped_column(String(20), default="planned", index=True)

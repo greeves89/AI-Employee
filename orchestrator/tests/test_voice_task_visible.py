@@ -206,10 +206,11 @@ class SelfInitiatedNoticeTests(unittest.TestCase):
         nutzte keine davon — genau wie beim delegate-Ereignis."""
         src = inspect.getsource(RealtimeVoiceSession)
         raw = [ln for ln in src.splitlines() if "inject_user_text" in ln]
-        # Erlaubt bleiben: die Begruessung (2x, da spricht noch niemand), die
-        # Fortschritts-Erzaehlung (eigene Taktung) und der eine Aufruf IN der Helferin.
+        # Erlaubt bleiben: die Begruessung (3 Varianten — ohne Auftrag, Fortsetzung,
+        # normal; da spricht noch niemand), die Fortschritts-Erzaehlung (eigene
+        # Taktung) und der eine Aufruf IN der Helferin.
         self.assertLessEqual(
-            len(raw), 4,
+            len(raw), 5,
             "Selbst ausgeloeste Meldungen gehen ueber _inject_when_quiet, nicht direkt: "
             f"{len(raw)} rohe Aufrufe",
         )

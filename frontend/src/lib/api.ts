@@ -1182,6 +1182,12 @@ export async function updateProactiveConfig(
     responsibilities?: Responsibility[];
     morning_planning_time?: string;
     morning_planning_weekdays_only?: boolean;
+    deputy_agent_id?: string;
+    duty_start?: string;
+    duty_end?: string;
+    duty_weekdays_only?: boolean;
+    absence_from?: string;
+    absence_to?: string;
   },
 ): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {

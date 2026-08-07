@@ -31,12 +31,18 @@ VALID_SOURCES = ("responsibility", "todo", "self", "user")
 VALID_STATUS = ("planned", "running", "done", "dropped")
 
 
+# Reihenfolge bei gleicher (oder fehlender) Uhrzeit: hoch vor normal vor niedrig.
+# Ohne das erbte der Plan keine der bestehenden Prioritaeten und war reine Chronologie.
+_PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
+
+
 class PlanItemIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     notes: str = ""
     planned_start: datetime | None = None
     estimated_minutes: int = Field(default=30, ge=1, le=1440)
     source: str = "self"
+    priority: str = "normal"   # high | normal | low — vom Bereich oder vom Todo geerbt
     todo_id: int | None = None
 
 
@@ -63,6 +69,7 @@ def _to_response(item: AgentPlanItem) -> dict:
         "planned_start": item.planned_start.isoformat() if item.planned_start else None,
         "estimated_minutes": item.estimated_minutes,
         "source": item.source,
+        "priority": item.priority,
         "status": item.status,
         "todo_id": item.todo_id,
         "task_id": item.task_id,
@@ -125,6 +132,7 @@ async def replace_day_plan(
             planned_start=item.planned_start,
             estimated_minutes=item.estimated_minutes,
             source=source,
+            priority=item.priority if item.priority in _PRIORITY_RANK else "normal",
             todo_id=item.todo_id,
         )
         db.add(row)
@@ -156,6 +164,18 @@ async def get_day_plan(
                AgentPlanItem.plan_date <= end)
         .order_by(AgentPlanItem.plan_date, AgentPlanItem.planned_start, AgentPlanItem.id)
     )).scalars().all()
+    # Ohne feste Uhrzeit entscheidet die Prioritaet — sonst haengt die Reihenfolge am
+    # Zufall der Eingabe, und 'hoch' landet hinter 'niedrig'.
+    rows = sorted(
+        rows,
+        key=lambda r: (
+            r.plan_date,
+            0 if r.planned_start else 1,
+            r.planned_start or datetime.min.replace(tzinfo=timezone.utc),
+            _PRIORITY_RANK.get(r.priority, 1),
+            r.id,
+        ),
+    )
     return {
         "agent_id": agent_id,
         "from": start.isoformat(),

@@ -460,20 +460,33 @@ class SchedulerService:
         # 337 failed runs over four weeks, one per hour, and nobody noticed. A stopped
         # agent is off duty; the schedule keeps its rhythm and resumes when it starts.
         if schedule.agent_id:
-            from app.models.agent import Agent, AgentState
-            agent_row = (await db.execute(
-                select(Agent.state).where(Agent.id == schedule.agent_id)
+            from app.core import agent_duty
+            from app.models.agent import Agent
+            from app.services import duty_service
+
+            duty_agent = (await db.execute(
+                select(Agent).where(Agent.id == schedule.agent_id)
             )).scalar_one_or_none()
-            if agent_row is not None and agent_row not in (
-                AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING
-            ):
-                schedule.next_run_at = _calc_next_run(schedule, now)
-                logger.info(
-                    "[Scheduler] %s skipped — agent %s is %s (not running)",
-                    schedule.name, schedule.agent_id,
-                    getattr(agent_row, "value", agent_row),
+            if duty_agent is not None:
+                queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
+                stale = await self._stale_task_count(db, schedule.agent_id, now)
+                duty = agent_duty.assess(
+                    duty_agent, queue_depth=queue_depth, stale_tasks=stale,
+                    now=now, schedule_active=schedule.enabled,
                 )
-                return
+                if duty["state"] != agent_duty.OK:
+                    # Ausfall/Blockade: die Arbeit muss jemand anders uebernehmen,
+                    # sonst bleibt sie liegen und niemand merkt es.
+                    if agent_duty.needs_handover(duty):
+                        await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
+                    schedule.next_run_at = _calc_next_run(schedule, now)
+                    logger.info(
+                        "[Scheduler] %s uebersprungen — Agent %s: %s (%s)",
+                        schedule.name, schedule.agent_id, duty["state"], duty["reason"],
+                    )
+                    return
+                # Arbeitsfaehig — aber schweigt sein Ansprechpartner seit Tagen?
+                await duty_service.escalate_silence(db, self.redis, duty_agent)
 
         # Skip proactive schedules if the agent is busy with a TASK (not chat)
         is_cron = bool(schedule.cron_expression and _CRONITER_AVAILABLE)
@@ -549,6 +562,12 @@ class SchedulerService:
             ob_note = onboarding_note(_agent)
             if ob_note:
                 prompt = prompt + "\n" + ob_note
+            # Seine eigene Lage (Dienstzeit, Ueberlast, abwesender Ansprechpartner)
+            # gehoert IHM in den Prompt — nicht nur in unsere Logs.
+            if duty_agent is not None:
+                d_note = agent_duty.duty_note(duty_agent, duty, now=now)
+                if d_note:
+                    prompt = prompt + "\n" + d_note
             extra = (proactive_config.get("custom_instructions", "") or "").strip()
             if extra:
                 prompt = (
@@ -579,6 +598,16 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:
+        """Wie viele Aufgaben dieses Agenten haengen? Nutzt die Watchdog-Definition,
+        damit 'haengt' ueberall dasselbe heisst."""
+        try:
+            stale = await find_stale_tasks(db, now)
+            return sum(1 for t in stale if t.agent_id == agent_id)
+        except Exception:  # noqa: BLE001 — im Zweifel nicht blockieren
+            logger.debug("[Scheduler] Stale-Zaehlung fehlgeschlagen", exc_info=True)
+            return 0
 
     async def _nudge_missing_assignment(self, db: AsyncSession, agent) -> None:
         """EINE Benachrichtigung an den Besitzer, wenn ein Agent ohne Auftrag dasteht.

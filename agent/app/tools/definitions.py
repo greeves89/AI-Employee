@@ -636,6 +636,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                                 "planned_start": {"type": "string", "description": "ISO-8601 UTC start, e.g. '2026-08-07T07:30:00Z'. Omit if the order matters but the clock doesn't."},
                                 "estimated_minutes": {"type": "integer", "description": "Rough duration in minutes (default 30)."},
                                 "source": {"type": "string", "description": "'responsibility' (from a standing duty), 'todo' (existing todo), 'self' (your own idea)."},
+                                "priority": {"type": "string", "description": "high | normal | low — inherit it from the responsibility or todo this block works on."},
                                 "todo_id": {"type": "integer", "description": "Link to the todo this block works on, if any."},
                             },
                             "required": ["title"],
