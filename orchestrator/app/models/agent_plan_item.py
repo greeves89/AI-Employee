@@ -43,6 +43,8 @@ class AgentPlanItem(Base):
     # Verknuepfungen in die bestehende Welt, beide optional.
     todo_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Der Einmal-Zeitplan, der diesen Block zur geplanten Zeit ausloest.
+    schedule_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

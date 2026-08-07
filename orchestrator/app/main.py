@@ -983,6 +983,9 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS "
                 "priority varchar(10) NOT NULL DEFAULT 'normal'"
             ))
+            await conn.execute(_txt(
+                "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS schedule_id varchar"
+            ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_folders_user ON workflow_folders (user_id)"))
         logger.info("workflow tables ensured")
     except Exception as e:

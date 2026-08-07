@@ -589,10 +589,16 @@ class SchedulerService:
             metadata={"schedule_id": schedule.id},
         )
 
-        # Advance schedule
+        # Advance schedule. Einmal-Laeufe (kein Cron, Intervall 0) schalten sich danach
+        # ab — sonst stuende next_run_at sofort wieder in der Vergangenheit und der Block
+        # feuerte im 30-Sekunden-Takt weiter.
         schedule.last_run_at = now
         schedule.total_runs += 1
-        schedule.next_run_at = _calc_next_run(schedule, now)
+        if not schedule.cron_expression and schedule.interval_seconds == 0:
+            schedule.enabled = False
+            schedule.next_run_at = now
+        else:
+            schedule.next_run_at = _calc_next_run(schedule, now)
 
         logger.info(
             "[Scheduler] %s triggered task %s, next run at %s",

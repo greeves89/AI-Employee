@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.159.0] — 2026-08-07
+
+### Fixed
+- **Der Tagesplan stand im Kalender — und nichts passierte.** Ein Block war reine Anzeige:
+  der Agent nahm sich 16:05 etwas vor, und um 16:05 geschah nichts. Jeder Block mit
+  Uhrzeit legt jetzt einen **Einmal-Zeitplan** an und läuft damit über genau die
+  Maschinerie, die Zeitpläne seit jeher ausführt — kein zweiter Auslöser daneben. Blöcke
+  ohne Uhrzeit bleiben Notizen für den nächsten proaktiven Lauf; wird umgeplant,
+  verschwinden die Zeitpläne der gestrichenen Blöcke mit.
+- **Einmal-Läufe feuerten im 30-Sekunden-Takt weiter.** Nach dem Auslösen stand
+  `next_run_at` sofort wieder in der Vergangenheit (Intervall 0). Sie schalten sich jetzt
+  ab — die Regel galt bisher nur für Meeting-Zeitpläne.
+- **Die Agentenkachel meldete „kein Auftrag", obwohl elf Verantwortungsbereiche
+  hinterlegt waren.** Die Liste baut ihre Felder aus dem Metrik-Wörterbuch, nicht aus dem
+  Antwortmodell — dort fehlte das Feld.
+
+### Deployment
+- Orchestrator-Neustart (neue Spalte wird beim Start ergänzt).
+
+---
+
 ## [1.158.0] — 2026-08-07
 
 ### Fixed

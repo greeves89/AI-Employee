@@ -1975,6 +1975,8 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._list_todos())
             return
         if name == "get_day_plan":
+            # Immer AUCH zeigen — der Plan ist eine Liste mit Uhrzeiten, die hoert niemand mit.
+            await self._show_day_plan(str(args.get("date") or ""))
             await self._respond(tool_use_id, await self._get_day_plan(str(args.get("date") or "")))
             return
         if name == "plan_my_day":
@@ -3856,6 +3858,56 @@ class RealtimeVoiceSession:
             return f"Der Neustart von „{rel}“ hat gerade nicht geklappt."
         return f"Ich habe {n} Container der App „{rel}“ neu gestartet. Bestätige das kurz in der ICH-Form."
 
+    async def _show_day_plan(self, day: str = "") -> bool:
+        """Den Tagesplan als Karte in die rechte Spalte legen.
+
+        Vorlesen, was in einem Kalender steht, ist die schlechteste Form der Uebergabe:
+        fuenf Bloecke mit Uhrzeiten merkt sich niemand. Sehen schlaegt hoeren — deshalb
+        derselbe Medien-Kanal, ueber den auch Bilder und Screenshots laufen.
+        Gibt True zurueck, wenn es etwas zu zeigen gab.
+        """
+        from datetime import date as _date, datetime as _dt, timezone as _tz
+
+        from sqlalchemy import select as _select
+
+        from app.db.session import async_session_factory
+        from app.models.agent_plan_item import AgentPlanItem
+
+        try:
+            target = _date.fromisoformat(day) if day else _dt.now(_tz.utc).date()
+        except ValueError:
+            target = _dt.now(_tz.utc).date()
+        try:
+            async with async_session_factory() as db:
+                rows = (await db.execute(
+                    _select(AgentPlanItem)
+                    .where(AgentPlanItem.agent_id == self.agent_id,
+                           AgentPlanItem.plan_date == target)
+                    .order_by(AgentPlanItem.planned_start, AgentPlanItem.id)
+                )).scalars().all()
+        except Exception:  # noqa: BLE001
+            logger.warning("voice show_day_plan failed agent=%s", self.agent_id, exc_info=True)
+            return False
+        if not rows:
+            return False
+        await self._emit({"type": "media", "data": {
+            "kind": "plan",
+            "caption": f"Tagesplan {target.strftime('%d.%m.%Y')}",
+            "auto_open": True,
+            "items": [
+                {
+                    "title": r.title,
+                    "time": r.planned_start.strftime("%H:%M") if r.planned_start else "",
+                    "minutes": r.estimated_minutes,
+                    "priority": r.priority,
+                    "status": r.status,
+                    "notes": (r.notes or "")[:160],
+                }
+                for r in rows
+            ],
+        }})
+        return True
+
     async def _plan_my_day(self, horizon: str = "today", focus: str = "") -> str:
         """Die Planung an den AGENTEN geben — der Sprachfront plant nicht selbst.
 
@@ -3880,7 +3932,22 @@ class RealtimeVoiceSession:
         title = {"tomorrow": "Tagesplanung für morgen", "week": "Wochenplanung"}.get(
             horizon, "Tagesplanung für heute"
         )
-        return await self._plan_task(instruction, title)
+        answer = await self._plan_task(instruction, title)
+        # Sobald die Aufgabe durch ist, liegt der Plan in der Datenbank — dann zeigen
+        # statt vorlesen. Nebenlaeufig, damit das Gespraech nicht wartet.
+        asyncio.create_task(self._show_plan_when_ready(horizon))
+        return answer
+
+    async def _show_plan_when_ready(self, horizon: str, tries: int = 20) -> None:
+        """Auf den fertigen Plan warten und ihn dann einblenden (max. ~2 Minuten)."""
+        from datetime import date as _date, datetime as _dt, timedelta as _td, timezone as _tz
+        target = _dt.now(_tz.utc).date() + (_td(days=1) if horizon == "tomorrow" else _td(0))
+        for _ in range(tries):
+            await asyncio.sleep(6)
+            if self._closed:
+                return
+            if await self._show_day_plan(target.isoformat()):
+                return
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
         """Schedule real work as a persistent Task on this agent's board (the same

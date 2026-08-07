@@ -1923,6 +1923,10 @@ class AgentManager:
             "llm_config": llm_config_response,
             "role": config.get("role", ""),
             "onboarding_complete": config.get("onboarding_complete", False),
+            # Fehlte hier: die Liste baut ihre Felder aus DIESEM Wörterbuch, nicht aus
+            # dem Antwort-Modell — die Kachel meldete deshalb "kein Auftrag", obwohl
+            # elf Verantwortungsbereiche hinterlegt waren.
+            "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
             "integrations": config.get("integrations", []),
             "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,

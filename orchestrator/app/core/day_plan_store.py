@@ -13,10 +13,13 @@ Damit die zwei Wege nicht auseinanderlaufen, liegen die Regeln hier:
 
 from datetime import date as date_cls, datetime, timezone
 
-from sqlalchemy import delete
+import uuid
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_plan_item import AgentPlanItem
+from app.models.schedule import Schedule
 
 MAX_PLAN_ITEMS = 40
 VALID_SOURCES = ("responsibility", "todo", "self", "user")
@@ -45,6 +48,17 @@ async def replace_plan(
     if len(items) > MAX_PLAN_ITEMS:
         raise ValueError(f"Höchstens {MAX_PLAN_ITEMS} Blöcke pro Tag")
 
+    # Alte Bloecke UND ihre Zeitplaene weg — sonst feuert ein gestrichener Block weiter.
+    doomed = (await db.execute(
+        select(AgentPlanItem).where(
+            AgentPlanItem.agent_id == agent_id,
+            AgentPlanItem.plan_date == plan_date,
+            AgentPlanItem.status.in_(("planned", "dropped")),
+        )
+    )).scalars().all()
+    stale_ids = [d.schedule_id for d in doomed if d.schedule_id]
+    if stale_ids:
+        await db.execute(delete(Schedule).where(Schedule.id.in_(stale_ids)))
     await db.execute(
         delete(AgentPlanItem).where(
             AgentPlanItem.agent_id == agent_id,
@@ -76,5 +90,35 @@ async def replace_plan(
         )
         db.add(row)
         created.append(row)
+    await db.flush()
+
+    # Jeder Block mit Uhrzeit bekommt einen EINMAL-Zeitplan. Damit laeuft er ueber
+    # genau die Maschinerie, die Zeitplaene seit jeher ausfuehrt — kein zweiter
+    # Ausloeser, keine Sonderbehandlung. Ohne Uhrzeit bleibt der Block eine Notiz,
+    # die der naechste proaktive Lauf aufgreift.
+    for row in created:
+        if not row.planned_start:
+            continue
+        schedule_id = uuid.uuid4().hex[:8]
+        db.add(Schedule(
+            id=schedule_id,
+            name=f"[Plan] {row.title[:60]}",
+            prompt=(
+                f"Das ist ein Block aus DEINEM eigenen Tagesplan "
+                f"({row.planned_start:%H:%M}, ca. {row.estimated_minutes} Min, "
+                f"Priorität {row.priority}):\n\n{row.title}\n"
+                + (f"\nPräzisierung: {row.notes}\n" if row.notes else "")
+                + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
+                "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
+                "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
+                "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
+            ),
+            interval_seconds=0,          # Einmal-Lauf: schaltet sich nach dem Feuern ab
+            priority=0 if row.priority == "high" else 1,
+            agent_id=agent_id,
+            enabled=True,
+            next_run_at=row.planned_start,
+        ))
+        row.schedule_id = schedule_id
     await db.flush()
     return created

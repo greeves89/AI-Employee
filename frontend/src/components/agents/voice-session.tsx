@@ -205,7 +205,9 @@ export function VoiceSessionModal({
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
-  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string; url?: string; embeddable?: boolean; auto_open?: boolean }[]>([]);
+  const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string; url?: string; embeddable?: boolean; auto_open?: boolean;
+    // kind="plan": der Tagesplan als Karte — sehen schlaegt hoeren.
+    items?: { title: string; time?: string; minutes?: number; priority?: string; status?: string; notes?: string }[] }[]>([]);
   // Page the agent asked to show inside the app (iframe modal).
   const [webModal, setWebModal] = useState<{ url: string; caption?: string } | null>(null);
   // Voice-driven UI overlay (e.g. the knowledge graph) shown on top of the cockpit.
@@ -660,6 +662,9 @@ export function VoiceSessionModal({
               b64: data.b64 ? String(data.b64) : undefined,
               filename: String(data.filename || ""),
               caption: String(data.caption || ""),
+              items: Array.isArray((data as { items?: unknown }).items)
+                ? ((data as { items: { title: string; time?: string; minutes?: number; priority?: string; status?: string; notes?: string }[] }).items)
+                : undefined,
               path: data.path ? String(data.path) : undefined,
               url: safeHttpUrl(data.url),
               embeddable: Boolean(data.embeddable),
