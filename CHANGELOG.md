@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.157.3] — 2026-08-07
+
+### Fixed
+- **Das vergrößerte Sprach-Overlay ließ seinen Inhalt oben kleben.** Die drei Spalten
+  (Gespräch · Präsenz · Aufgaben) hingen an festen Bildschirmprozenten — zog man das
+  Fenster größer, wuchs nur der Rahmen und darunter blieb eine leere Fläche. Sobald eine
+  eigene Größe gesetzt ist, füllen Inhalt und Spalten das Fenster; gescrollt wird in den
+  Spalten, nicht im Rahmen.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.157.2] — 2026-08-07
 
 ### Fixed

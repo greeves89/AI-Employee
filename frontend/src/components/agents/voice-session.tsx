@@ -1092,9 +1092,15 @@ export function VoiceSessionModal({
     window.addEventListener("mouseup", onUp);
   };
 
+  // Sobald der Nutzer die Groesse selbst gesetzt hat, duerfen die Spalten NICHT mehr
+  // an Bildschirmprozenten haengen — sonst waechst der Rahmen und der Inhalt bleibt
+  // oben kleben, mit einer leeren Flaeche darunter.
+  const sized = !embedded && (maximized || !!size);
   const paneMedia = media.filter((m) => m.kind !== "image" && m.kind !== "web");
   const paneHeight = embedded
     ? "min-h-[50vh] lg:min-h-[68vh] lg:max-h-[74vh]"
+    : sized
+    ? "h-full min-h-0"
     : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
   return (
     <div
@@ -1106,7 +1112,7 @@ export function VoiceSessionModal({
       <div
         className={embedded
           ? "relative flex h-full w-full flex-col rounded-2xl border border-border bg-card"
-          : `relative flex w-full flex-col overflow-y-auto border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
+          : `relative flex w-full flex-col ${sized ? "overflow-hidden" : "overflow-y-auto"} border-border bg-card shadow-2xl h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:border ${
               maximized ? "sm:max-w-none" : isRealtime ? "max-w-6xl" : "max-w-lg"
             }`}
         style={
@@ -1146,7 +1152,9 @@ export function VoiceSessionModal({
           </button>
         )}
 
-        <div className={embedded ? "flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 lg:p-8" : "p-4 sm:p-6"}>
+        <div className={embedded
+          ? "flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6 lg:p-8"
+          : sized ? "flex min-h-0 flex-1 flex-col p-4 sm:p-6" : "p-4 sm:p-6"}>
           <div data-voice-header className="mb-4 flex items-center gap-2 pr-8 select-none">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold truncate">
@@ -1212,7 +1220,7 @@ export function VoiceSessionModal({
           {isRealtime ? (
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
             <>
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch">
+            <div className={`mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
               {/* LEFT — conversation transcript, doubles as the file drop zone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
