@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
@@ -1419,7 +1419,50 @@ export function VoiceSessionModal({
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
                   {paneMedia.map((m, mi) => (
                     <div key={mi} className="rounded-lg border border-border bg-foreground/[0.03] p-2">
-                      {m.path ? (
+                      {m.kind === "plan" && m.items ? (
+                        /* Der Tagesplan als Karte. Ohne eigene Darstellung landete er in
+                           der Datei-Zeile und der Nutzer sah nur „Datei" — kein Kalender. */
+                        <div>
+                          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+                            <CalendarClock className="h-3.5 w-3.5 text-sky-400" />
+                            {m.caption || "Tagesplan"}
+                          </div>
+                          <div className="space-y-1">
+                            {m.items.map((it, ii) => (
+                              <div
+                                key={ii}
+                                className={`flex items-start gap-2 rounded-md border-l-2 px-2 py-1 text-[11px] ${
+                                  it.status === "done"
+                                    ? "border-l-emerald-400/60 bg-emerald-400/[0.06] text-muted-foreground"
+                                    : it.status === "running"
+                                    ? "border-l-sky-400 bg-sky-400/[0.08] text-foreground"
+                                    : it.status === "dropped"
+                                    ? "border-l-foreground/20 bg-foreground/[0.02] text-muted-foreground/50 line-through"
+                                    : "border-l-sky-400/40 bg-sky-400/[0.04] text-foreground/90"
+                                }`}
+                              >
+                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                                  {it.time || "--:--"}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate">{it.title}</span>
+                                  <span className="text-[10px] text-muted-foreground/50">
+                                    {it.status === "done"
+                                      ? "erledigt"
+                                      : it.status === "running"
+                                      ? "läuft"
+                                      : it.status === "dropped"
+                                      ? "gestrichen"
+                                      : "geplant"}
+                                    {it.minutes ? ` · ${it.minutes} Min` : ""}
+                                    {it.priority === "high" ? " · hohe Priorität" : ""}
+                                  </span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : m.path ? (
                         <button
                           onClick={async () => {
                             try {

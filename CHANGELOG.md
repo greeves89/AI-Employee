@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.160.3] — 2026-08-07
+
+### Fixed
+- **„Kein Kalender."** Der Tagesplan wurde als Karte ins Gesprächsfenster geschickt, aber
+  nie gezeichnet — er landete in der Datei-Zeile, und der Nutzer sah nur „Datei". Jetzt
+  steht er als echte Liste da: Uhrzeit, Titel, Dauer, Zustand (geplant/läuft/erledigt/
+  gestrichen), hohe Priorität hervorgehoben.
+- **Der Plan wurde in UTC vorgelesen.** Der Agent sagte „15:20", im Kalender stand 17:20.
+  Maßgeblich ist jetzt die konfigurierte Zeitzone (Erreichbarkeit, sonst Dienstzeit).
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.160.2] — 2026-08-07
 
 ### Fixed

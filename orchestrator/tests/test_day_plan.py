@@ -145,3 +145,29 @@ class VoiceTriggersTheAgentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoicePlanCardTests(unittest.TestCase):
+    """Der Plan wird GEZEIGT, nicht nur vorgelesen — und in der richtigen Zeit."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.voice = (ORCH / "app/services/realtime_voice_session.py").read_text()
+        cls.ui = (REPO / "frontend/src/components/agents/voice-session.tsx").read_text()
+
+    def test_plan_is_pushed_as_a_card(self):
+        self.assertIn('"kind": "plan"', self.voice)
+        self.assertIn("async def _show_day_plan", self.voice)
+
+    def test_card_is_actually_rendered(self):
+        """Ohne eigene Darstellung landete die Karte in der Datei-Zeile — der Nutzer
+        sah nur „Datei" und fragte zu Recht: kein Kalender."""
+        self.assertIn('m.kind === "plan" && m.items', self.ui)
+
+    def test_times_are_shown_in_the_configured_zone(self):
+        """Vorgelesen wurde 15:20, im Kalender stand 17:20 — der Plan lief in UTC."""
+        self.assertIn("def _local_tz(", self.voice)
+        self.assertIn("astimezone(self._local_tz())", self.voice)
+
+    def test_planning_shows_the_result_by_itself(self):
+        self.assertIn("_show_plan_when_ready", self.voice)

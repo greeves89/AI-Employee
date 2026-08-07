@@ -1289,6 +1289,7 @@ class RealtimeVoiceSession:
     _resume_summary: str = ""  # prior conversation context when continuing a session
     _resumed_from_earlier_call: bool = False  # summary came from an EARLIER call, not this session
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
+    _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
     _memory_context: str = ""  # facts this agent stored earlier (name, preferences, decisions)
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
@@ -1421,6 +1422,7 @@ class RealtimeVoiceSession:
         # der Agent sagte erst auf Nachfrage, dass ihm der Auftrag fehlt. Er muss es von
         # sich aus im ERSTEN Satz sagen.
         self._needs_briefing = bool(_ob_note)
+        self._agent_config = cfg
         sys_prompt = _system_prompt(agent_name, agent_role, language) + _ob_note + self._memory_context
         engine = creds.get("engine") or "nova_sonic"
 
@@ -3858,6 +3860,25 @@ class RealtimeVoiceSession:
             return f"Der Neustart von „{rel}“ hat gerade nicht geklappt."
         return f"Ich habe {n} Container der App „{rel}“ neu gestartet. Bestätige das kurz in der ICH-Form."
 
+    def _local_tz(self):
+        """Zeitzone, in der dieser Agent denkt.
+
+        Der Plan wurde in UTC vorgelesen und angezeigt: der Nutzer hoerte „15:20", im
+        Kalender stand 17:20. Massgeblich ist, was am Agenten konfiguriert ist —
+        Erreichbarkeit des Ansprechpartners, sonst seine Dienstzeit, sonst UTC.
+        """
+        from zoneinfo import ZoneInfo
+        cfg = getattr(self, "_agent_config", None) or {}
+        name = (
+            ((cfg.get("proactive") or {}).get("contact_hours") or {}).get("timezone")
+            or (cfg.get("working_hours") or {}).get("timezone")
+            or "UTC"
+        )
+        try:
+            return ZoneInfo(name)
+        except Exception:  # noqa: BLE001
+            return ZoneInfo("UTC")
+
     async def _show_day_plan(self, day: str = "") -> bool:
         """Den Tagesplan als Karte in die rechte Spalte legen.
 
@@ -3897,7 +3918,8 @@ class RealtimeVoiceSession:
             "items": [
                 {
                     "title": r.title,
-                    "time": r.planned_start.strftime("%H:%M") if r.planned_start else "",
+                    "time": r.planned_start.astimezone(self._local_tz()).strftime("%H:%M")
+                            if r.planned_start else "",
                     "minutes": r.estimated_minutes,
                     "priority": r.priority,
                     "status": r.status,
@@ -4289,7 +4311,8 @@ class RealtimeVoiceSession:
         marks = {"done": "erledigt", "running": "läuft gerade", "dropped": "gestrichen"}
         lines = []
         for r in rows:
-            when = r.planned_start.strftime("%H:%M") if r.planned_start else "ohne feste Zeit"
+            when = (r.planned_start.astimezone(self._local_tz()).strftime("%H:%M")
+                    if r.planned_start else "ohne feste Zeit")
             state = marks.get(r.status, "geplant")
             lines.append(f"- {when}: {r.title} ({state}, ca. {r.estimated_minutes} Minuten)")
         return "Mein Plan:\n" + "\n".join(lines)
