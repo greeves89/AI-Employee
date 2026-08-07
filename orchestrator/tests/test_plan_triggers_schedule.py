@@ -118,3 +118,10 @@ class StatusFeedbackTests(unittest.TestCase):
         self.assertIn('"erledigt"', tl)
         # ... und ein gelaufener Block fuehrt zum Ergebnis.
         self.assertIn("router.push(`/tasks/${item.task_id}`)", tl)
+
+    def test_blocks_that_already_fired_are_caught_up(self):
+        """Bloecke, deren Zeitplan vor dieser Rueckmeldung gefeuert hat, stuenden sonst
+        fuer immer auf „geplant" — obwohl die Arbeit gelaufen ist."""
+        block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
+        self.assertIn("Schedule.total_runs > 0", block)
+        self.assertIn('AgentPlanItem.status == "planned"', block)

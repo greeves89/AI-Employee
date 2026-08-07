@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.160.1] — 2026-08-07
+
+### Fixed
+- **Blöcke, deren Zeitplan schon gefeuert hatte, blieben auf „geplant"** — die
+  Rückmeldung griff nur für Läufe ab jetzt. Der Scheduler erkennt sie nachträglich an
+  ihrem gelaufenen Zeitplan, hängt die zugehörige Aufgabe an und setzt den Zustand.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.160.0] — 2026-08-07
 
 ### Fixed

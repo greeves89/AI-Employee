@@ -661,6 +661,25 @@ class SchedulerService:
                 if task is None or state in ("completed", "failed", "cancelled"):
                     item.status = "done"
                     settled += 1
+            # Und die Bloecke, deren Zeitplan schon gefeuert hat, ohne dass sie es
+            # mitbekommen haben (Laeufe von vor dieser Rueckmeldung). Ohne das stuenden
+            # sie fuer immer auf "geplant", obwohl die Arbeit gelaufen ist.
+            missed = (await db.execute(
+                select(AgentPlanItem, Schedule)
+                .join(Schedule, Schedule.id == AgentPlanItem.schedule_id)
+                .where(AgentPlanItem.status == "planned", Schedule.total_runs > 0)
+            )).all()
+            for item, sched in missed:
+                task = (await db.execute(
+                    select(Task)
+                    .where(Task.agent_id == item.agent_id,
+                           Task.title.like(f"%{sched.name[:40]}%"))
+                    .order_by(Task.created_at.desc()).limit(1)
+                )).scalar_one_or_none()
+                state = str(getattr(getattr(task, "status", ""), "value", getattr(task, "status", ""))).lower()
+                item.task_id = getattr(task, "id", None)
+                item.status = "running" if state in ("pending", "queued", "running") else "done"
+                settled += 1
             if settled:
                 await db.commit()
 
