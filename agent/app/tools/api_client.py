@@ -217,6 +217,81 @@ class OrchestratorAPIClient:
             return result
         return f"Message sent to agent {target_id}"
 
+    # ── Einrichtung (onboarding.py) ──
+
+    async def complete_onboarding(self, params: dict) -> str:
+        """Finish onboarding: role, boundaries and the recurring duties."""
+        duties = params.get("responsibilities") or []
+        if not isinstance(duties, list) or not duties:
+            return ("Error: 'responsibilities' braucht mindestens eine Daueraufgabe — "
+                    "ohne sie waerst du zwar eingerichtet, haettest aber keinen Auftrag.")
+        body = {
+            "role": params.get("role", ""),
+            "boundaries": params.get("boundaries", ""),
+            "responsibilities": duties,
+            "notes": params.get("notes", ""),
+        }
+        result = await self._request(
+            "POST", f"/agents/{self.agent_id}/onboarding/complete", json=body
+        )
+        if isinstance(result, str):
+            return result
+        titles = [d.get("title", "") for d in (result.get("responsibilities") or [])]
+        return (
+            "Einrichtung abgeschlossen. Deine Verantwortungsbereiche: "
+            + ", ".join(t for t in titles if t)
+            + ". Ab dem naechsten proaktiven Lauf planst du deinen Tag daraus selbst."
+        )
+
+    # ── Tagesplan (day_plan.py) ──
+    # Der Plan lag frueher nur in /workspace/.agent_state.md und war damit fuer die
+    # Oberflaeche unsichtbar. Diese beiden Werkzeuge gibt es in JEDER Laufzeit — hier
+    # fuer Codex/Custom-LLM, als MCP-Werkzeug fuer Claude Code, und der Sprachfront
+    # liest denselben Endpunkt.
+
+    async def plan_day(self, params: dict) -> str:
+        """Write today's plan so it shows up in the user's agent calendar."""
+        items = params.get("items") or []
+        if not isinstance(items, list) or not items:
+            return "Error: 'items' must be a non-empty list of planned blocks"
+        body: dict = {"items": items}
+        if params.get("plan_date"):
+            body["plan_date"] = params["plan_date"]
+        result = await self._request("PUT", f"/agents/{self.agent_id}/day-plan", json=body)
+        if isinstance(result, str):
+            return result
+        written = result.get("items", [])
+        return (
+            f"Tagesplan für {result.get('plan_date')} gespeichert: {len(written)} Block/Blöcke. "
+            "Der Nutzer sieht ihn jetzt im Kalender und kann Blöcke verschieben oder streichen."
+        )
+
+    async def get_day_plan(self, params: dict) -> str:
+        """Read the day plan back — including the user's corrections."""
+        query = []
+        if params.get("date"):
+            query.append(f"date={params['date']}")
+        if params.get("days"):
+            query.append(f"days={int(params['days'])}")
+        suffix = ("?" + "&".join(query)) if query else ""
+        result = await self._request("GET", f"/agents/{self.agent_id}/day-plan{suffix}")
+        if isinstance(result, str):
+            return result
+        items = result.get("items", [])
+        if not items:
+            return "Für diesen Tag ist noch nichts geplant."
+        lines = []
+        for it in items:
+            when = (it.get("planned_start") or "")[11:16] or "--:--"
+            mark = {"done": "erledigt", "running": "läuft", "dropped": "GESTRICHEN"}.get(
+                it.get("status"), "geplant"
+            )
+            lines.append(
+                f"- [{mark}] {when} ({it.get('estimated_minutes')} Min) {it.get('title')}"
+                + (f" — {it['notes']}" if it.get("notes") else "")
+            )
+        return "Tagesplan:\n" + "\n".join(lines)
+
     # ── Schedule Management (orchestrator-server.mjs) ──
 
     async def create_schedule(self, params: dict) -> str:
@@ -289,6 +364,67 @@ class OrchestratorAPIClient:
         if isinstance(result, str):
             return result
         return f"Schedule {schedule_id} {action}d successfully"
+
+    # ── Event Trigger Management (orchestrator-server.mjs) ──
+
+    async def trigger_create(self, params: dict) -> str:
+        """Create an event trigger — fires a task when a matching webhook arrives."""
+        prompt_template = params.get("prompt_template", "")
+        if not prompt_template:
+            return "Error: prompt_template is required"
+        body = {
+            "name": params.get("name", "Agent Trigger"),
+            "prompt_template": prompt_template,
+            "source_filter": params.get("source_filter"),
+            "event_type_filter": params.get("event_type_filter"),
+            "payload_conditions": params.get("payload_conditions"),
+            "priority": params.get("priority", 5),
+        }
+        result = await self._request("POST", "/event-triggers/for-agent", json=body)
+        if isinstance(result, str):
+            return result
+        return f"Trigger created: {result.get('name')} (id: {result.get('id')})"
+
+    async def trigger_list(self, params: dict) -> str:
+        """List all event triggers for this agent."""
+        result = await self._request("GET", "/event-triggers/for-agent")
+        if isinstance(result, str):
+            return result
+        triggers = result.get("triggers", [])
+        if not triggers:
+            return "No event triggers found."
+        lines = []
+        for t in triggers:
+            state = "enabled" if t.get("enabled") else "disabled"
+            match = ", ".join(
+                f"{k}={v}" for k, v in (
+                    ("source", t.get("source_filter")),
+                    ("event", t.get("event_type_filter")),
+                ) if v
+            ) or "any event"
+            lines.append(f"- {t.get('name', '?')} ({state}, {match}, fired {t.get('fire_count', 0)}x, id: {t.get('id')})")
+        return "\n".join(lines)
+
+    async def trigger_toggle(self, params: dict) -> str:
+        """Enable or disable an event trigger."""
+        trigger_id = params.get("trigger_id", "")
+        if not trigger_id:
+            return "Error: trigger_id is required"
+        result = await self._request("PATCH", f"/event-triggers/for-agent/{trigger_id}/toggle")
+        if isinstance(result, str):
+            return result
+        state = "enabled" if result.get("enabled") else "disabled"
+        return f"Trigger {trigger_id} {state}"
+
+    async def trigger_delete(self, params: dict) -> str:
+        """Delete an event trigger."""
+        trigger_id = params.get("trigger_id", "")
+        if not trigger_id:
+            return "Error: trigger_id is required"
+        result = await self._request("DELETE", f"/event-triggers/for-agent/{trigger_id}")
+        if isinstance(result, str):
+            return result
+        return f"Trigger {trigger_id} deleted"
 
     # ── TODO Management (orchestrator-server.mjs) ──
 
@@ -475,11 +611,14 @@ class OrchestratorAPIClient:
             "priority": params.get("priority", "normal"),
             "meta": {
                 "target_channel": params.get("target_channel", "webapp"),
+                "is_checkin": bool(params.get("is_checkin", False)),
             },
         }
         result = await self._request("POST", "/notifications/", json=body)
         if isinstance(result, str):
             return result
+        if result.get("suppressed"):
+            return "Notification suppressed: you already sent a check-in within the last 12h."
         return f"Notification sent (priority: {result.get('priority', 'normal')})"
 
     async def request_approval(self, params: dict) -> str:

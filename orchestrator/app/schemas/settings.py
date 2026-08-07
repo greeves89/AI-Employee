@@ -145,6 +145,8 @@ class SettingsResponse(BaseModel):
     microsoft_optional_scopes: list[str] = []
     has_apple_oauth: bool = False
     msgraph_mcp_external_enabled: bool = False
+    # Platform-wide read-only enforcement for M365/Graph + on-prem Exchange
+    msgraph_read_only: bool = True
     # Lifecycle
     agent_idle_timeout_minutes: int = 30
     # Improvement engine thresholds

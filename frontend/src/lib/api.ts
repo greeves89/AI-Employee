@@ -1,4 +1,4 @@
-import type { AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, ProactiveResponse, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -397,6 +397,31 @@ export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph
   });
 }
 
+export async function getDayPlan(
+  agentId: string,
+  date: string,
+  days = 1,
+): Promise<{ agent_id: string; from: string; to: string; items: DayPlanItem[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/day-plan?date=${date}&days=${days}`);
+}
+
+export async function patchDayPlanItem(
+  itemId: number,
+  patch: { status?: string; planned_start?: string; estimated_minutes?: number; title?: string },
+): Promise<DayPlanItem> {
+  return fetchJSON(`${getBase()}/day-plan/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function setMsgraphReadOnly(read_only: boolean): Promise<{ msgraph_read_only: boolean }> {
+  return fetchJSON(`${getBase()}/settings/msgraph-read-only`, {
+    method: "PUT",
+    body: JSON.stringify({ read_only }),
+  });
+}
+
 export async function setAgentIdleStop(agentId: string, idle_stop_minutes: number): Promise<{ agent_id: string; idle_stop_minutes: number | null }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/idle-stop`, {
     method: "PATCH",
@@ -522,6 +547,18 @@ export async function getTasks(
   if (status) params.set("status", status);
   if (agentId) params.set("agent_id", agentId);
   return fetchJSON(`${getBase()}/tasks/?${params}`);
+}
+
+export async function getActivityTimeline(
+  start: Date,
+  end: Date,
+  agentId?: string
+): Promise<ActivityTimelineResponse> {
+  const params = new URLSearchParams();
+  params.set("start", start.toISOString());
+  params.set("end", end.toISOString());
+  if (agentId) params.set("agent_id", agentId);
+  return fetchJSON(`${getBase()}/activity/timeline?${params}`);
 }
 
 export async function getTask(id: string): Promise<Task> {
@@ -916,7 +953,7 @@ export async function disconnectIntegration(provider: string): Promise<void> {
   await fetchJSON(`${getBase()}/integrations/${provider}`, { method: "DELETE" });
 }
 
-export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string }> {
+export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string; microsoft_read_only?: boolean }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/integrations`);
 }
 
@@ -1139,6 +1176,18 @@ export async function updateProactiveConfig(
     interval_seconds: number;
     prompt?: string;
     custom_instructions?: string;
+    contact_hours_start?: string;
+    contact_hours_end?: string;
+    contact_timezone?: string;
+    responsibilities?: Responsibility[];
+    morning_planning_time?: string;
+    morning_planning_weekdays_only?: boolean;
+    deputy_agent_id?: string;
+    duty_start?: string;
+    duty_end?: string;
+    duty_weekdays_only?: boolean;
+    absence_from?: string;
+    absence_to?: string;
   },
 ): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/proactive`, {

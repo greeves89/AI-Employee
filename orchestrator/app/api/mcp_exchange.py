@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import ms_access
 from app.core.encryption import decrypt_token
 from app.core.exchange_mcp import handle_mcp_request, mcp_error
 from app.db.session import async_session_factory
@@ -123,11 +124,12 @@ async def mcp_exchange_endpoint(agent_id: str, request: Request):
         async with async_session_factory() as db:
             return await _resolve_context(agent_id, db)
 
-    # Read-only by default; write mode unlocks send/create/update/delete tools.
+    # Read-only by default; write mode unlocks send/create/update/delete tools. The
+    # platform-wide read-only switch overrides the agent's setting — same rule as for
+    # M365/Graph, see app.core.ms_access.
     async with async_session_factory() as db:
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
-    access = (agent.config or {}).get("exchange_access", "read") if agent else "read"
-    write_enabled = access in ("write", "read_write", "rw")
+    may_write = ms_access.write_enabled(agent.config if agent else None, "exchange_access")
 
-    resp, status = await handle_mcp_request(body, resolve_context, write_enabled=write_enabled)
+    resp, status = await handle_mcp_request(body, resolve_context, write_enabled=may_write)
     return JSONResponse(resp, status_code=status)

@@ -466,6 +466,17 @@ class OAuthService:
             await self.db.delete(integration)
             await self.db.commit()
 
+        # Cutting the Microsoft connection also drops the remembered MCP consents of
+        # that user — otherwise an external client (OpenWebUI) would silently be
+        # re-authorized after the user deliberately disconnected. Best effort: a
+        # missing Redis must never turn a disconnect into an error.
+        if provider_name == "microsoft" and user_id and self.redis:
+            try:
+                from app.core.mcp_oauth import forget_grants
+                await forget_grants(self.redis, user_id)
+            except Exception as e:
+                logger.warning("Could not clear MCP consents for user %s: %s", user_id, e)
+
     async def list_integrations(
         self, user_id: str | None = None, include_shared: bool = True
     ) -> list[dict]:

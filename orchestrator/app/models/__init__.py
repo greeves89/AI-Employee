@@ -14,6 +14,7 @@ from app.models.user import User, UserRole
 from app.models.agent_template import AgentTemplate
 from app.models.platform_settings import PlatformSettings
 from app.models.agent_access import AgentAccess
+from app.models.agent_plan_item import AgentPlanItem
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.models.feedback import Feedback, FeedbackStatus, FeedbackCategory
 from app.models.command_approval import CommandApproval, ApprovalStatus
@@ -49,6 +50,7 @@ __all__ = [
     "TaskStep", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
     "AgentMemory", "AgentMemoryTag", "AgentMemoryLink", "Notification", "WebhookEvent", "McpServer",
     "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
+    "AgentPlanItem",
     "AgentTodo", "TodoStatus",
     "Feedback", "FeedbackStatus", "FeedbackCategory",
     "CommandApproval", "ApprovalStatus", "CommandPolicy",

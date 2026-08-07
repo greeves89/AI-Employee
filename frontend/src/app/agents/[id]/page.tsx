@@ -13,9 +13,10 @@ import {
   Settings, Package, ShieldOff, ShieldAlert, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
-  Layers, AudioLines, ArrowUpRight,
+  Layers, AudioLines, ArrowUpRight, CalendarDays,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
+import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import {
   FilePreview, FilePreviewEmpty,
@@ -68,7 +69,7 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
 // Sub-tabs are grouped under 6 top-level groups. Each group renders a
 // secondary "sub-reiter" bar when it has more than one entry.
 type SubKey =
-  | "chat" | "speech" | "todos" | "terminal" | "history"
+  | "chat" | "speech" | "todos" | "terminal" | "history" | "calendar"
   | "files" | "apps" | "computer-use"
   | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
@@ -85,6 +86,7 @@ const tabGroups: TabGroup[] = [
   ] },
   { key: "activity", label: "Activity", icon: Activity, subs: [
     { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
+    { key: "calendar", label: "Kalender", icon: CalendarDays, simpleVisible: true },
     { key: "terminal", label: "Live", icon: Activity, simpleVisible: false },
     { key: "history", label: "Verlauf", icon: History, simpleVisible: true },
   ] },
@@ -474,6 +476,7 @@ export default function AgentDetailPage() {
           {activeSub === "files" && <FileBrowser agentId={agentId} diskUsageMb={diskUsageMb} diskLimitMb={diskLimitMb} diskPercent={diskPercent} />}
           {activeSub === "apps" && <DockerAppsTab agentId={agentId} />}
           {activeSub === "history" && <TaskHistory tasks={tasks} />}
+          {activeSub === "calendar" && <ActivityTimeline agentId={agentId} showHeading={false} />}
           {activeSub === "knowledge" && <KnowledgePanel agentId={agentId} />}
           {activeSub === "secondbrain" && <AgentSecondBrains agentId={agentId} />}
           {activeSub === "memory" && <MemoryTab agentId={agentId} />}

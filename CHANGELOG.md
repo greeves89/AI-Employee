@@ -5,6 +5,445 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.159.2] — 2026-08-07
+
+### Fixed
+- **Die Auslöser für vorhandene Plan-Blöcke wurden angelegt und fielen sofort wieder weg** —
+  die Selbstheilung schrieb sie in die Sitzung, ohne zu committen. Der Kalender zeigte
+  weiter „geplant", und nichts startete.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.159.1] — 2026-08-07
+
+### Fixed
+- **Bereits geplante Blöcke liefen weiterhin nicht.** Der Auslöser entstand nur beim
+  Schreiben eines neuen Plans — was vorher im Kalender stand, hatte keinen und wäre nie
+  gestartet. Der Scheduler stellt jetzt bei jedem Takt sicher: **Block mit Uhrzeit ⇒
+  Zeitplan**, auch nachträglich. Eine verpasste Zeit wird nachgeholt statt still verfallen.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.159.0] — 2026-08-07
+
+### Fixed
+- **Der Tagesplan stand im Kalender — und nichts passierte.** Ein Block war reine Anzeige:
+  der Agent nahm sich 16:05 etwas vor, und um 16:05 geschah nichts. Jeder Block mit
+  Uhrzeit legt jetzt einen **Einmal-Zeitplan** an und läuft damit über genau die
+  Maschinerie, die Zeitpläne seit jeher ausführt — kein zweiter Auslöser daneben. Blöcke
+  ohne Uhrzeit bleiben Notizen für den nächsten proaktiven Lauf; wird umgeplant,
+  verschwinden die Zeitpläne der gestrichenen Blöcke mit.
+- **Einmal-Läufe feuerten im 30-Sekunden-Takt weiter.** Nach dem Auslösen stand
+  `next_run_at` sofort wieder in der Vergangenheit (Intervall 0). Sie schalten sich jetzt
+  ab — die Regel galt bisher nur für Meeting-Zeitpläne.
+- **Die Agentenkachel meldete „kein Auftrag", obwohl elf Verantwortungsbereiche
+  hinterlegt waren.** Die Liste baut ihre Felder aus dem Metrik-Wörterbuch, nicht aus dem
+  Antwortmodell — dort fehlte das Feld.
+
+### Deployment
+- Orchestrator-Neustart (neue Spalte wird beim Start ergänzt).
+
+---
+
+## [1.158.0] — 2026-08-07
+
+### Fixed
+- **„Ich richte das jetzt ein" — und nichts geschah.** Fragte man den Agenten im Gespräch,
+  seine Tages- oder Wochenplanung zu machen, kündigte er es an und lieferte nichts: der
+  Sprachfront konnte den Plan zwar **lesen**, aber weder schreiben noch die Arbeit abgeben.
+  Neues Werkzeug `plan_my_day` — die Stimme plant **nicht selbst**, sondern stößt den
+  Agenten als echte Aufgabe an. Die taucht im Aufgaben-Panel auf, läuft mit seinen eigenen
+  Werkzeugen und landet über `plan_day` im Kalender.
+- **Regel gegen Ankündigen ohne Ausführen** im Sprach-Prompt: Sätze wie „ich richte das
+  ein" sind nur erlaubt, wenn im selben Zug das Werkzeug läuft; „eingetragen" oder
+  „erledigt" erst, wenn ein Werkzeug es bestätigt hat.
+
+### Changed
+- Die Schreibregeln des Tagesplans liegen jetzt in `core/day_plan_store` — API und
+  Agentenweg benutzen dieselbe Definition, statt sie zu doppeln.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.157.3] — 2026-08-07
+
+### Fixed
+- **Das vergrößerte Sprach-Overlay ließ seinen Inhalt oben kleben.** Die drei Spalten
+  (Gespräch · Präsenz · Aufgaben) hingen an festen Bildschirmprozenten — zog man das
+  Fenster größer, wuchs nur der Rahmen und darunter blieb eine leere Fläche. Sobald eine
+  eigene Größe gesetzt ist, füllen Inhalt und Spalten das Fenster; gescrollt wird in den
+  Spalten, nicht im Rahmen.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.157.2] — 2026-08-07
+
+### Fixed
+- **Im Sprach-Transkript stand mitten im Satz ein einsames „n"** („n1. Backlog-Priorisierung
+  n - OAuth Re-Auth 500"). Der Text erreichte die Engine mit literalen `\n`-Folgen statt
+  echter Umbrüche — sprechen lässt sich ein Backslash nicht, er fiel weg, das „n" blieb.
+  Die eine Stelle, durch die aller Text zur Engine geht, wandelt literale `\n`, `\r\n`
+  und `\t` jetzt in echte Zeichen um.
+
+### Added
+- **Das Sprach-Overlay lässt sich vergrößern.** Ziehgriff unten rechts, Größe bleibt
+  gemerkt; Doppelklick auf die Kopfzeile schaltet Vollbild um. Vorher war das Fenster
+  fest, und lange Zusammenfassungen scrollten in einer schmalen Spalte, während der halbe
+  Bildschirm leer blieb.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
+## [1.157.1] — 2026-08-07
+
+### Fixed
+- **Die neuen Einstellungen waren unsichtbar.** Verantwortungsbereiche, Vertretung,
+  Dienstzeit und Abwesenheit lagen hinter einem zugeklappten Aufklapper namens
+  „Prompt & Anweisungen" — ausgerechnet die Einstellung, die entscheidet, OB ein Agent
+  arbeitet. Der Aufklapper heißt jetzt **„Auftrag, Vertretung & Zeiten"**, zeigt zugeklappt
+  den Zustand („kein Auftrag · keine Vertretung · rund um die Uhr"), färbt sich bei
+  fehlendem Auftrag amber und **öffnet sich dann von selbst**.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.157.0] — 2026-08-07
+
+Vom Werkzeug zum Mitarbeiter, zweite Hälfte: Ausfall, Vertretung, Eskalation, eigene
+Dienstzeit, Priorisierung, Abwesenheit, Einarbeitung und die Frage, ob er besser wird.
+Fünf dieser Punkte hingen an demselben fehlenden Begriff — deshalb gibt es EINEN
+Dienstzustand und EINE Eskalationskette statt fünf Insellösungen.
+
+### Added
+- **Dienstzustand eines Agenten** (`core/agent_duty.py`) — abgeleitet aus vorhandenen
+  Signalen (Zustand, Warteschlange, Watchdog): `ok · overloaded · blocked · down ·
+  off_duty`. Der Scheduler entscheidet danach, ob ein Lauf überhaupt startet, und der
+  Agent bekommt seine eigene Lage in den Prompt.
+- **Vertretung bei Ausfall** — Vertreter pro Agent wählbar, sonst Team-Lead. Hängt oder
+  scheitert ein Agent, wandern seine offenen Todos mit Herkunftsvermerk zum Vertreter
+  und du bekommst eine Meldung. Ein Vertreter, der selbst nicht läuft, wird übersprungen;
+  ist niemand da, ist die Meldung entsprechend deutlich.
+- **Eskalation bei Schweigen** — bleiben zwei Rückfragen länger als zwölf Stunden
+  ungelesen, geht es an den Team-Lead, sonst an die Administration.
+- **Eigene Dienstzeit des Agenten** (bisher gab es nur die Erreichbarkeit des Menschen) —
+  außerhalb läuft kein proaktiver Lauf. Überlast (volle Warteschlange) sagt er selbst an,
+  statt still weiterzustapeln.
+- **Abwesenheit des Ansprechpartners** — im Urlaubsfenster stellt der Agent keine
+  Rückfragen, sondern sammelt sie und legt sie gebündelt vor.
+- **Priorisierung** — Blöcke im Tagesplan erben die Priorität ihres Verantwortungsbereichs
+  und werden danach sortiert; dazu eine Konfliktregel im Prompt.
+- **Vorlagen bringen Verantwortungsbereiche mit** — ein Agent aus einer Vorlage startet
+  mit Auftrag statt bei null.
+- **Entwicklungs-Kennzahl** `GET /analytics/agents/{id}/development` — Fehlerquote im
+  Vergleich zweier Zeiträume, Bewertungstrend, Plan-Treue (geplant vs. erledigt) und der
+  Probezeit-Stand nach sieben Tagen.
+- **Bildschirm-Regeln in der gemeinsamen Anleitung** — am Nutzerbildschirm ausschließlich
+  `computer_*`, Elemente über den Bedienungshilfen-Baum, nach jedem Klick nachsehen.
+
+### Fixed
+- **Am Telefon sagte der Agent erst auf Nachfrage, dass ihm sein Auftrag fehlt.** Die
+  Begrüßung wird getrennt vom Systemprompt gebaut und übertönte den Hinweis — jetzt steht
+  er im ersten Satz.
+
+### Deployment
+- Orchestrator-Neustart (neue Spalten werden beim Start ergänzt), Frontend-Rebuild,
+  Agent-Image + Agenten erneuern.
+
+---
+
+## [1.156.0] — 2026-08-07
+
+### Changed
+- **Ein proaktiver Lauf ohne Auftrag startet gar nicht mehr.** Fehlt die Einrichtung oder
+  fehlen die Verantwortungsbereiche, kann der Lauf nichts zustande bringen — bisher lief er
+  trotzdem, kostete Modell-Zeit und meldete brav „nichts zu tun" (beim Kunden 493 Läufe,
+  51 USD, null Ergebnis). Jetzt wird er übersprungen und stattdessen **der Besitzer
+  benachrichtigt** („<Agent> wartet auf seinen Auftrag", mit Link in die Einstellungen),
+  gedrosselt auf einmal pro 12 Stunden.
+
+### Added
+- **Ausrufezeichen auf der Agentenkachel**, wenn der Agent keinen Auftrag hat — man sieht es
+  in der Übersicht statt erst im Log. Drei Zustände: nicht eingerichtet (Zahnrad),
+  eingerichtet aber ohne Verantwortungsbereiche (Warndreieck), fertig (grüner Haken).
+- **Einrichtung per Sprache** — der Sprachfront konnte bisher nach dem Auftrag fragen, die
+  Antwort aber nicht sichern. Er hat jetzt `complete_onboarding` als eigenes Werkzeug und
+  schreibt Rolle, Grenzen und Daueraufgaben direkt weg: „Eingerichtet. Ich kümmere mich ab
+  jetzt um …".
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild, Agent-Image + Agenten erneuern.
+
+---
+
+## [1.155.0] — 2026-08-07
+
+### Fixed
+- **Einrichtung („Onboarding") hatte zwei widersprüchliche Stände.** In der Datenbank
+  (`config['onboarding_complete']`) wurde beim Anlegen ein Wert gesetzt und **nie wieder
+  geändert**; parallel pflegte der Agent eine Kopfzeile in `/workspace/knowledge.md`. Beim
+  Kunden stand in der DB „fertig" und in der Datei „nicht fertig" — die Agenten hielten
+  darum jeden proaktiven Lauf an, während die Oberfläche sie als eingerichtet zeigte:
+  493 Läufe, 51 USD, kein einziges Arbeitsergebnis. Ab jetzt gilt die Datenbank, und sie
+  wird über ein echtes Werkzeug gesetzt.
+
+### Added
+- **Werkzeug `complete_onboarding`** in allen vier Laufzeiten (Claude Code über MCP, Codex
+  und Custom-LLM über `definitions.py`/`api_client.py`, Kern-Werkzeugsatz des Chats). Es
+  schreibt Rolle, Grenzen — und **jede genannte Daueraufgabe direkt als
+  Verantwortungsbereich**. Das Einrichtungsgespräch erzeugt damit die Struktur, aus der
+  sich der Agent anschließend seinen Tag baut. Mindestens eine Daueraufgabe ist Pflicht,
+  bestehende Bereiche werden ergänzt statt überschrieben.
+- **Der Einrichtungsstand steht in jedem Prompt** — im proaktiven Lauf, in Chat und Tasks
+  (über Identität bzw. das gemeinsame Kontext-Bündel) und im Sprachfront. Ein Agent ohne
+  Auftrag hält nicht mehr still an und meldet auch nicht „nichts zu tun", sondern **fragt
+  aktiv** nach Rolle, Daueraufgaben und Grenzen — im Takt der Meldebremse so lange, bis er
+  eine Antwort hat.
+- **Am Telefon** hört man dann nicht „wie kann ich helfen?", sondern „ich kann dir gern
+  helfen — sag mir zuerst, wofür du mich brauchst"; die Antwort wird sofort gesichert.
+
+### Deployment
+- Orchestrator-Neustart, **Agent-Image neu bauen + Agenten erneuern** (Werkzeug und
+  Statusabfrage stecken im Agenten-Code).
+
+---
+
+## [1.154.1] — 2026-08-07
+
+### Fixed
+- **Gestoppte Agenten wurden weiter proaktiv angesteuert.** Der Zeitplan feuerte stündlich
+  weiter, obwohl niemand da war, der ihn ausführen konnte — beim Kunden hatten zwei
+  gestoppte Agenten so über vier Wochen **337 fehlgeschlagene Läufe** angesammelt, ohne dass
+  es jemandem auffiel. Der Scheduler prüft den Agentenzustand jetzt VOR dem Auslösen,
+  überspringt alles außer RUNNING/IDLE/WORKING, rückt den Zeitplan regulär weiter (kein
+  Nachhol-Schwall beim Start) und protokolliert die Auslassung.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.154.0] — 2026-08-07
+
+Der Weg vom Werkzeugkasten zum Mitarbeiter: Identität, Auftrag und ein sichtbarer Tagesplan —
+und zwar in JEDER Laufzeit. Dazu M365 nur noch lesend und der MCP-Login über Microsoft.
+
+### Added
+- **Verantwortungsbereiche pro Agent** — Daueraufträge mit Takt (täglich/wöchentlich/monatlich/
+  laufend), Priorität und Präzisierung. Ein Bereich ist bewusst kein Todo: er kehrt wieder und
+  wird nie „fertig". Der proaktive Lauf leitet daraus in STEP 1 die konkreten Aufgaben des Tages
+  ab, statt auf Arbeit zu warten, die jemand angelegt hat. Definition, Validierung und
+  Prompt-Darstellung liegen an einer Stelle (`app/core/responsibilities.py`).
+- **Sichtbarer Tagesplan** — neue Tabelle `agent_plan_items` plus Werkzeuge `plan_day` /
+  `get_day_plan`. Der Plan stand bisher nur in `/workspace/.agent_state.md` im Container und war
+  damit weder anzeigbar noch korrigierbar. Jetzt zeigt der Kalender die geplanten Blöcke
+  gestrichelt neben den erledigten Balken; ein Block lässt sich per Klick streichen, und der
+  nächste Lauf hält sich daran. Vorgenommenes ohne feste Uhrzeit steht darunter statt zu
+  verschwinden.
+- **Tagesplanung am Morgen als Klick** — feste Uhrzeit (optional nur werktags) neben dem
+  Intervall-Takt. Legt einen zweiten „[Proactive]"-Zeitplan an, damit der Basis-Prompt samt
+  Bereichen und Tagesplan greift; Abwählen entfernt ihn wieder.
+- **Microsoft-SSO als Anmeldeweg für den MS-Graph-MCP-Server** — `/oauth/authorize` schickt ohne
+  Sitzung direkt in die Entra-Anmeldung und kommt zur offenen Freigabe zurück. Wer in OpenWebUI
+  bereits mit Microsoft angemeldet ist, sieht keine Maske mehr. Zustimmung wird pro (User,
+  Client) 90 Tage gemerkt und fällt weg, sobald die Microsoft-Verbindung getrennt wird.
+- **Plattformweiter Nur-Lesen-Zwang für Microsoft** (Standard AN) — sperrt Schreib-Werkzeuge für
+  M365/Graph UND den on-prem-Exchange-Connector, unabhängig davon, was pro Agent eingestellt ist.
+
+### Fixed
+- **Agenten kannten ihren eigenen Namen nicht.** Die gemeinsame Anleitung enthielt weder Namen
+  noch Rolle, und der Custom-LLM-Weg las die Datei überhaupt nicht. Jetzt steht die Identität in
+  der einen gerenderten Vorlage (alle vier Schreibstellen geben Name + Rolle mit), und
+  `get_identity_context()` hängt sie im Custom-LLM-Weg an den Systemprompt.
+- **Codex hat die Anleitung nie gelesen.** Wir schrieben `/workspace/AGENT.md`, die Codex-CLI
+  liest per Konvention `AGENTS.md` — jede Verbesserung lief an Codex-Agenten vorbei.
+  `instructions_paths()` liefert jetzt pro Modus alle Dateien, die dieser Harness wirklich liest.
+- **Der Sprachweg vergaß alles zwischen zwei Anrufen.** Er schrieb nach jedem Zug Erinnerungen
+  weg, las sie aber nie zurück, und jeder Anruf begann eine neue Sitzung. Jetzt lädt er beim
+  Start das Gedächtnis (ohne Zugangsdaten) und fällt auf das letzte Gespräch zurück; dauerhafte
+  Wünsche wie „du heißt ab jetzt Luna" sichert er sofort per `save_memory`.
+- **Der Custom-LLM-Chat und der leichte Task-Zweig luden das Gedächtnis nicht** — die
+  Task-Laufzeit tat es längst. Beide Wege holen es jetzt ebenfalls.
+
+### Deployment
+- Orchestrator-Neustart (neue Tabelle wird beim Start angelegt), Frontend-Rebuild,
+  **Agent-Image neu bauen + Agenten erneuern** (Identität und Werkzeuge stecken im Agenten-Code;
+  Codex-Agenten einzeln nacheinander wegen der geteilten Token-Familie).
+
+---
+
+## [1.153.7] — 2026-08-06
+
+### Changed
+- **Die globale Activity-Übersicht (mehrere Agenten nebeneinander) bekam bisher nicht
+  dieselbe Lesbarkeits-Politur wie der neue Einzelagenten-Kalender.** Zeilen sind jetzt
+  höher (48px → 64px), Balken breiter (10px → 34px Mindestbreite) und zeigen Titel +
+  Startzeit direkt auf dem Balken statt nur beim Hovern — auch bei dicht getakteten
+  Zeitplänen bleiben einzelne Läufe als eigene, anklickbare Blöcke erkennbar statt als
+  Haarrisse.
+
+### Deployment
+- Frontend (Rebuild).
+
+## [1.153.6] — 2026-08-06
+
+### Fixed
+- **Ein Task, der vor Mitternacht begann und über den Tageswechsel hinaus lief (z. B. noch
+  aktiv), konnte im Tageskalender eines Agenten mit negativer Position über dem sichtbaren
+  Raster landen** — dadurch wirkte er kürzer, als er wirklich war, statt korrekt am
+  Tagesbeginn (00:00) zu starten. Start-/Endzeit werden jetzt auf den sichtbaren Tag
+  begrenzt, bevor Position und Höhe berechnet werden.
+
+### Changed
+- **Stunden-Zeilen im Tageskalender eines Agenten deutlich größer** (56px → 88px pro
+  Stunde), damit die tatsächliche Länge von Aufgaben klar erkennbar ist statt gestaucht.
+
+### Deployment
+- Frontend (Rebuild).
+
+## [1.153.5] — 2026-08-06
+
+### Fixed
+- **KRITISCH: Jede Codex-Aufgabe (Chat wie proaktiv) schlug sofort mit
+  „NameError: name 'self' is not defined" fehl** — noch bevor ein Werkzeug lief oder das
+  Modell etwas ausgegeben hatte. Gefunden beim Untersuchen, warum der neue
+  Activity-Kalender bei einem Agenten nur durchgehend rote (fehlgeschlagene) Balken
+  zeigte: `_stream_jsonl()` in `codex_runner.py` ist eine Modul-Funktion (keine Methode),
+  enthielt aber `self.log_publisher...` — kopiert aus dem benachbarten `collect_stderr`,
+  das als Closure INNERHALB einer Methode `self` legitim erreichen kann. Jetzt bekommt
+  die Funktion den `log_publisher` explizit als Parameter übergeben.
+
+  Bestand seit einem früheren Commit („Lebenszeichen an die CLI-Ausgabe haengen"), nicht
+  durch die heutige Arbeit verursacht — aber dadurch gefunden, weil der Kalender genau
+  das zeigen soll: was tatsächlich passiert, nicht nur was geplant war. Der bestehende
+  Test dazu prüfte nur, ob der Text „last_activity_at" im Quellcode vorkommt (das hätte
+  den Fehler nie gefangen — der Text stand ja da, nur im falschen Scope). Neuer Test
+  führt die Funktion jetzt wirklich aus.
+
+### Deployment
+- Agent-Image (Rebuild) + alle Codex-Agenten neu erstellen (Update-Button je Agent).
+
+## [1.153.4] — 2026-08-06
+
+### Fixed
+- **Tageskalender eines Agenten wirkte bei häufig feuernden Zeitplänen wie eine massive
+  Wand.** Kurze, zeitlich direkt aufeinanderfolgende Aufgaben (z. B. ein stündlicher
+  Feedback-Monitor) hatten keinen Abstand zueinander und verschmolzen optisch zu einem
+  einzigen Block. Jetzt bekommt jeder Block einen kleinen Abstand nach oben und unten, so
+  dass auch dicht getaktete Zeitpläne als einzelne, unterscheidbare Läufe erkennbar bleiben.
+
+### Deployment
+- Frontend (Rebuild).
+
+## [1.153.3] — 2026-08-06
+
+### Fixed
+- **Tageskalender eines Agenten war unnötig kurz abgeschnitten** — feste Höhe von 560px
+  ließ auf größeren Bildschirmen viel ungenutzten Platz darunter. Nutzt jetzt die
+  verfügbare Bildschirmhöhe (bis zu ~100vh − 260px).
+- **„Kalender"-Unterreiter stand ganz rechts, hinter „Live" und „Verlauf"** — jetzt gleich
+  nach „Todos" einsortiert.
+
+### Deployment
+- Frontend (Rebuild).
+
+## [1.153.2] — 2026-08-06
+
+### Changed
+- **Der Kalender eines einzelnen Agenten ist jetzt eine echte vertikale Tagesansicht**
+  (Stunden von oben nach unten gestapelt, Aufgaben als Blöcke mit lesbarem Titel direkt
+  auf dem Block — wie ein gewöhnlicher Kalender-Tagesansicht) statt der horizontalen
+  24h-Leiste. Die horizontale Leiste (ein schmaler Streifen pro Agent) bleibt für den
+  globalen Menüpunkt „Activity" bestehen, wo mehrere Agenten nebeneinander verglichen
+  werden — dort ist sie das richtige Format, nur nicht für die Ansicht eines einzelnen
+  Agenten. Sich überschneidende Aufgaben werden nebeneinander in eigenen Spalten gelegt.
+  Beim Öffnen springt die Ansicht automatisch zur aktuellen Uhrzeit (heute) bzw. zur
+  ersten Aufgabe des Tages.
+
+### Deployment
+- Frontend (Rebuild).
+
+## [1.153.1] — 2026-08-06
+
+### Fixed
+- **Task-Balken auf der Activity-Zeitleiste kaum sichtbar.** Kurze Aufgaben waren nur ein
+  Haarriss ohne erkennbare Grenzen. Jetzt: Mindestbreite von 10px unabhängig von der
+  tatsächlichen Dauer, dazu ein eigenes Hover-Tooltip (Titel, Zeitfenster, Status,
+  Dauer/Kosten) statt der schwer auffindbaren nativen Browser-Anzeige.
+
+### Added
+- **Kalender-Unterreiter im bestehenden Activity-Tab jedes Agenten.** Der neue globale
+  Menüpunkt „Activity" (v1.153.0) und der bestehende Activity-Tab auf der
+  Agenten-Detailseite (Verlauf eines einzelnen Agenten) heißen zufällig gleich, sind aber
+  unterschiedliche Ansichten — wer im Agenten-Tab nach dem neuen Tageskalender sucht, fand
+  dort nichts. Jetzt zeigt ein neuer Unterreiter „Kalender" dieselbe Tagesleiste, gefiltert
+  auf genau diesen Agenten.
+
+### Deployment
+- Frontend (Rebuild).
+
+## [1.153.0] — 2026-08-06
+
+### Added
+- **Neuer Menüpunkt „Activity" — Tageskalender aller Agenten.** Eine Zeile pro Agent mit
+  geplanten Terminen (aus den Zeitplänen, Cron/Interval vorausberechnet) als Rauten und
+  tatsächlich gelaufenen Aufgaben als farbige Balken. Datumsnavigation vor und zurück
+  funktioniert für vergangene und zukünftige Tage gleichermaßen. Klick auf einen Balken
+  führt in die bestehende Aufgaben-Zeitreise. Neuer Endpunkt `GET /activity/timeline`.
+- **Erreichbarkeit des Ansprechpartners** — neues Feld in den Proaktiv-Einstellungen
+  jedes Agenten (Start-/Endzeit + Zeitzone). Der Agent respektiert dieses Zeitfenster bei
+  der Entscheidung, ob er sich proaktiv melden darf.
+- **trigger_create/list/toggle/delete** — Agenten können sich jetzt selbst auf Ereignisse
+  (Webhooks) einrichten statt nur auf Zeitplänen zu pollen. Der Backend-Teil existierte
+  schon, es fehlte nur die Werkzeug-Schicht — jetzt in beiden Laufzeiten (Claude Code
+  MCP-Server + Codex/Custom-LLM) verdrahtet.
+- **Serverseitige Meldebremse**: `notify_user(is_checkin: true)` ist auf höchstens einmal
+  pro Halbtag pro Agent gedeckelt (Redis-gestützt), damit nicht mehrere proaktive Agenten
+  gleichzeitig bei Leerlauf Alarm schlagen.
+
+### Changed
+- **Proaktiv-Kern-Prompt umgebaut.** War bisher auf Entwicklerarbeit zugeschnitten
+  (GitHub-Issues, Git-Hygiene) und lief unverändert bei jedem Agenten, egal welche Rolle.
+  Neuer Kern: Lage sichten, Tag planen, priorisieren, bei Leerlauf vorschlagen statt
+  fragen, Tag/Nacht-Regel, Selbstorganisation. Der GitHub-Workflow ist in die
+  „Zusätzliche Anweisungen" der drei Entwickler-Agenten umgezogen.
+
+### Fixed
+- Ein während dieser Arbeit gefundener, vorbestehender Fehler: `notify_user` vertraute der
+  vom Client mitgeschickten `agent_id` statt der authentifizierten Identität — geschlossen,
+  bevor die neue Meldebremse ihn zu einer gezielten Sperre gegen einen anderen Agenten
+  hätte ausnutzbar machen können.
+
+### Deployment
+- Orchestrator (Restart) + Frontend (Rebuild). Agent-Container-Update nötig, damit die
+  neuen `trigger_*`-Werkzeuge und der neue Kern-Prompt bei laufenden Agenten ankommen.
+
+## [1.152.2] — 2026-08-06
+
+### Fixed
+- **Telegram-Sperre durch zu häufiges Bearbeiten** (#528). Der Live-Takt war mit 1,3 Sekunden viel zu gierig — bei einem langen Werkzeuglauf ergab das bis zu 46 Bearbeitungen pro Minute in **einem** Chat. Telegram zählt Bearbeitungen wie Nachrichten und sperrt dann („Flood control exceeded").
+
+  Schlimmer noch: Nach einem Fehler wurde der Zeitstempel **nicht** gesetzt, also griff die Drosselung nicht mehr und der nächste Schleifendurchlauf versuchte es sofort erneut. Im Protokoll sichtbar als 50+ Zeilen in 25 Sekunden mit rückwärts laufendem Zähler (56 → 55 → …).
+
+  Jetzt: 5 Sekunden Takt, die Uhr wird **auch im Fehlerfall** gestellt, und eine gemeldete Wartezeit wird gelesen und eingehalten — bis dahin ruht das Live-Bild für diesen Chat. Die Antwort selbst kommt unabhängig davon an.
+
+### Deployment
+- Orchestrator (Restart).
+
 ## [1.152.1] — 2026-08-06
 
 ### Fixed

@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import {
+  Activity,
   LayoutDashboard,
   Cpu,
   ListTodo,
@@ -70,6 +71,7 @@ const navGroups: NavGroup[] = [
       // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)
       // { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
       { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
+      { href: "/activity", label: "Activity", icon: Activity, simpleVisible: true },
       { href: "/analytics", label: "Analytics", icon: BarChart3, simpleVisible: true },
     ],
   },

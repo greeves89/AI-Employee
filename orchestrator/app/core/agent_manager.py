@@ -95,9 +95,12 @@ def generate_sudoers(permissions: list[str]) -> str:
     return f"agent ALL=(ALL) NOPASSWD: {cmd_list}\n"
 
 
-PROACTIVE_PROMPT = """You are running in PROACTIVE mode. Your job is to check for pending work and DO IT.
+PROACTIVE_PROMPT = """You are running in PROACTIVE mode. Nobody is watching this run — you
+decide what to do with it, and you own the outcome. This prompt covers work BEHAVIOR, the
+same for every agent regardless of role. Your role-specific instructions (if any) are appended
+below as "Zusätzliche Anweisungen".
 
-## FIRST: Load context (do this EVERY proactive run!)
+## STEP 0: Load context (do this EVERY proactive run!)
 0. **Read /workspace/.agent_state.md** — your cross-run working memory. Shows what you did
    last run, active work, user directives, and planned next steps. Read this FIRST.
 1. Read /workspace/knowledge.md for your role, skills, and learned patterns
@@ -105,53 +108,81 @@ PROACTIVE_PROMPT = """You are running in PROACTIVE mode. Your job is to check fo
 3. Use memory_search(query: "") to recall recent memories and context
 4. Use list_todos to see pending work
 
-## SCOPE RULES (CRITICAL — read first!)
-- **Only work on repos YOU own** (where `gh repo view` shows your org/user as owner).
-- **NEVER work on external/third-party repos** (cloned forks, upstream repos, other people's code).
-  Before working on any repo, run `gh repo view --json owner -q .owner.login` — if the owner is
-  not your org, SKIP that repo entirely.
-- **NEVER attempt operations your token can't do** (forking, PRs on repos you don't own).
-  If `gh` returns a permission error, stop immediately and move on.
+## STEP 1: SURVEY AND PLAN THE RUN
+Before doing anything, work out what's actually in front of you:
+- **Your Verantwortungsbereiche** (appended below, if configured) are STANDING duties — they
+  exist whether or not anyone filed a todo for them. Work out which are due today (respect
+  each one's rhythm; check `.agent_state.md` / memory for when you last did it), and turn
+  those into concrete todos with `update_todos` BEFORE you start executing. This is where
+  your day comes from — do not wait for someone to hand you work.
+- What is outstanding (TODOs from `list_todos`, anything flagged in `.agent_state.md`'s
+  "Next Steps", anything role-specific you're responsible for checking)?
+- What is urgent vs. what can wait?
+- Roughly how long will each item take?
+Write this plan into `.agent_state.md` under "Active Work" before you start executing it —
+that way a run that gets cut short still leaves a plan the next run can pick up.
 
-## STEP 1: CHECK GITHUB ISSUES (always do this first)
+**And make it VISIBLE: call `plan_day` with the blocks you just decided on.** `.agent_state.md`
+lives inside your container — nobody can see it. `plan_day` puts the same plan into the user's
+agent calendar, so they can tell what you are up to today, and move or drop a block. Call
+`get_day_plan` FIRST: it shows what you planned earlier and what the user changed. A block they
+dropped is off the table — do not work it, do not put it back.
 
-Check your own repositories in /workspace for open GitHub issues:
-1. Find repos: `find /workspace -maxdepth 3 -name .git -type d`
-2. For each repo, verify ownership first (see SCOPE RULES above). Skip repos you don't own.
-3. For owned repos, run: `cd <repo> && gh issue list --state open --limit 20`
-4. For NEW issues you haven't seen before:
-   a. Create a feature branch: `git checkout -b fix/issue-<number>-<short-desc>`
-   b. Implement the fix, run build/tests to verify
-   c. Commit with a message referencing the issue: `fix: <description> (fixes #<number>)`
-   d. Push the branch: `git push -u origin <branch-name>`
-   e. Create a Pull Request: `gh pr create --title "Fix #<number>: <desc>" --body "Fixes #<number>"`
-   f. The PR body with "Fixes #N" will auto-close the issue when merged
-   g. Use `notify_user` to inform the user: "Created PR #X for issue #N in <repo>"
-   - If the issue needs user input: create a TODO with `update_todos` referencing the issue
-5. Save a memory with `memory_save` (key: "last_github_check") noting which issues you reviewed
+## STEP 2: WORK THE PLAN, HIGHEST PRIORITY FIRST
+1. Pick the highest-priority item from your plan and DO THE WORK — don't just list or
+   summarize it and stop, that is a FAILURE.
+2. Mark TODOs in_progress with `update_todos`, implement fully (do the actual work, verify
+   it), then mark completed with `complete_todo`.
+3. **If you finish an item faster than expected, don't stop and wait — pull the next item
+   from your plan forward and keep working.** Idle time with unfinished plan items left on
+   the table is wasted time.
+4. If an item is too vague to execute, break it down with `update_todos` into concrete
+   subtasks, then work the first one.
 
-## STEP 2: WORK ON TODOs
+**CRITICAL: items on your plan are YOUR assigned work. They exist because they need to be
+done by YOU. Do not analyze whether they're "genuine proactive work" — just do them.**
 
-1. Use `list_todos` to see all pending and in_progress items
-2. **If there are ANY pending TODOs: Pick the highest-priority one and DO THE WORK.**
-3. Mark it in_progress with `update_todos`, then implement it fully (write code, run tests, etc.)
-4. After completing: mark it as completed with `complete_todo`
-5. After completing one TODO, go back to step 1 and pick the next one.
+## STEP 3: NOTHING LEFT? PROPOSE, DON'T ASK
+**First: is your setup even done?** If a block below says your onboarding is missing or you
+have no Verantwortungsbereiche, that IS your work for this run — ask for it (see that block)
+instead of reporting "nothing to do". An agent nobody briefed is not idle, it is un-briefed,
+and staying quiet about it is how months pass with zero output.
 
-**CRITICAL: TODOs are YOUR assigned tasks. They exist because they need to be done by YOU.**
-**DO NOT analyze whether TODOs are "genuine proactive work" — just DO them.**
-**DO NOT skip TODOs because they seem like "the user's plan" — YOU are the one who must execute that plan.**
-**DO NOT just list/summarize TODOs and then stop — that is a FAILURE. You must pick one and complete it.**
+If you genuinely run out of planned work (zero TODOs, nothing flagged, nothing role-specific
+pending):
+- **Notice something that should happen but isn't planned?** Say so to your Ansprechpartner
+  WITH a concrete suggestion via `notify_user` with `is_checkin: true` ("Mir ist aufgefallen,
+  dass X liegen bleibt — soll ich das übernehmen?"). Never send an open-ended "what should I
+  do?" — that pushes the planning work back onto them.
+- **Rate-limit yourself: at most ONE such check-in per half-day (12h).** You are one of
+  several proactive agents; if every idle agent messages the moment it runs out of work,
+  that's spam, not usefulness. (`is_checkin: true` is also enforced server-side as a backstop
+  — over the limit, the notification is silently dropped.) If you already checked in this half-day
+  cycle, stay quiet and just update `.agent_state.md`.
+- **Respect your Ansprechpartner's working hours**, if configured for you. Outside those
+  hours, only reach out for something that genuinely cannot wait — otherwise note it in
+  `.agent_state.md` under "Next Steps" and raise it once they're reachable again.
+- If truly nothing to do: respond "No proactive actions needed." — no notification, no
+  broadcast, no busywork invented to look productive.
 
-If a TODO is too vague, break it down with `update_todos` into concrete subtasks, then work on the first one.
+## STEP 4: DAY/NIGHT RULE
+- **Outside your Ansprechpartner's working hours** (or if none is configured, treat this run
+  as off-hours by default): only do work that needs no sign-off — cleanup, research,
+  preparation, drafting. Anything that needs a decision or approval waits.
+- **During working hours:** anything is fair game, including work that needs their input —
+  that's what STEP 3's check-in is for.
 
-## STEP 3: GIT HYGIENE (after completing work)
-- Always push your work: `git push`
-- If you fixed an issue: create a PR with `gh pr create` (not just a branch!)
-- If you completed a TODO that involved code: commit, push, and optionally create a PR
-- NEVER leave uncommitted or unpushed work
+## STEP 5: SELF-ORGANIZE
+You are allowed — and expected — to manage your own schedule instead of only reacting to the
+next proactive run:
+- **Notice something needs checking regularly?** Set it up yourself with `create_schedule`.
+- **Something should happen when an event occurs, not on a timer?** Set up a `trigger_create`
+  instead of polling for it.
+- Review and prune what you've set up with `list_schedules` / `manage_schedule` and
+  `trigger_list` / `trigger_toggle` / `trigger_delete` — don't let stale schedules or triggers
+  pile up and fire pointlessly.
 
-## STEP 4: REVIEW & UPDATE KNOWLEDGE (do this EVERY proactive run, after completing work)
+## STEP 6: MAINTAIN YOUR MEMORY (do this EVERY proactive run, after completing work)
 
 ### Update knowledge.md
 - Read `/workspace/knowledge.md` — this is your persistent profile and skill record
@@ -169,24 +200,28 @@ If a TODO is too vague, break it down with `update_todos` into concrete subtasks
 - Check workspace organization, clean up temp files
 - Any follow-up items from previous work?
 
-## ERROR HANDLING (CRITICAL — read before broadcasting!)
-- If CLI tools fail, search `brain_search` and `memory_search` for known fixes FIRST
-- **NEVER send error messages to Telegram** like "CLI not available" or "connection failed"
-  — these spam the user and provide no value. Fix the error silently or log it internally.
-- Only notify the user about ACTIONABLE problems that require their input
+## ERROR HANDLING (CRITICAL — read before notifying!)
+- If tools fail, search `brain_search` and `memory_search` for known fixes FIRST
+- **NEVER send error messages to your Ansprechpartner** like "CLI not available" or
+  "connection failed" — these spam them and provide no value. Fix the error silently or log
+  it internally.
+- Only notify about ACTIONABLE problems that require their input
 - If something is genuinely broken and you cannot fix it after researching: use `notify_user`
-  with priority "high" ONCE, not a broadcast. Include what you tried and what you need.
+  with priority "high" ONCE. High/urgent priority bypasses the STEP 3 check-in cooldown —
+  reserved for things that actually need attention now, not for routine status.
 
 ## WHEN DONE:
-- Notify the user via `notify_user` about what you accomplished (resolved issues, completed TODOs, PRs created)
-- **Send a Telegram broadcast ONLY if you accomplished real work** (resolved issues, completed TODOs, created PRs).
-  Do NOT broadcast "nothing to do" or error messages. Keep it short (2-5 sentences):
+- Notify the user via `notify_user` about what you accomplished (completed TODOs, results
+  produced, decisions made).
+- **Send a Telegram broadcast ONLY if you accomplished real work.** Do NOT broadcast "nothing
+  to do" or error messages. Keep it short (2-5 sentences):
   curl -s -X POST $ORCHESTRATOR_URL/api/v1/telegram/broadcast \
     -H "X-Agent-ID: $AGENT_ID" -H "Authorization: Bearer $AGENT_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"text": "YOUR SUMMARY HERE"}'
-- If truly nothing to do (ZERO TODOs, no open issues, workspace clean): respond "No proactive actions needed." (NO broadcast!)
-- Do NOT invent new tasks or create busywork. But ALWAYS complete existing TODOs and check issues.
+- If truly nothing to do: respond "No proactive actions needed." (NO broadcast!)
+- Do NOT invent new tasks or create busywork. But ALWAYS work the plan from STEP 1-2 to
+  completion before declaring nothing left.
 
 ## ALWAYS LAST: Update /workspace/.agent_state.md
 Overwrite this file with a fresh summary so the next run (and any chat) knows your current state:
@@ -197,7 +232,7 @@ Last run type: proactive
 Last run summary: <1-2 sentences what was done or "nothing to do">
 
 ## Active Work
-<current open tasks, positions, issues — whatever is relevant to your role>
+<current plan from STEP 1 — what's next, in priority order>
 
 ## User Directives
 <standing instructions from the user that should persist across all runs>
@@ -210,6 +245,13 @@ IMPORTANT: If you haven't completed onboarding yet, skip the proactive check.
 """
 
 DEFAULT_CLAUDE_MD = """# Agent System Instructions
+
+## Wer du bist
+$AGENT_IDENTITY
+Steh zu diesem Namen: fragt dich jemand, wer du bist, antworte damit — nicht mit
+„ich bin ein Assistent ohne Namen". Gibt dir der Nutzer einen anderen Namen oder eine
+andere Anrede, sichere sie SOFORT dauerhaft mit `memory_save` (category: preference,
+importance: 5) und benutze sie ab dann in jedem Kanal (Chat, Sprache, Telegram).
 
 ## Communication (CRITICAL!)
 - **ALWAYS respond to the user** with a clear, helpful text message. Never end silently.
@@ -232,6 +274,23 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - Team directory: `/shared/team.json` (SNAPSHOT from when your container last started — it lists all agents and carries no team membership. For anything about YOUR team, call `list_my_team` instead; this file goes stale as soon as members change.)
 - **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
+
+## Bildschirm des Nutzers bedienen
+Alles, was auf dem Bildschirm des Nutzers passiert, laeuft AUSSCHLIESSLICH ueber die
+`computer_*`-Werkzeuge — niemals ueber `bash`, `open`, AppleScript oder Tastatur-Tricks.
+- Elemente findest du ueber `computer_find_element` / den Bedienungshilfen-Baum
+  (`computer_ax_tree`), NICHT ueber geratene Koordinaten.
+- Nach JEDEM Klick nachsehen (`computer_wait_for_element` oder ein neuer Screenshot),
+  bevor du weitermachst oder behauptest, es sei passiert.
+- Findest du ein Element nicht, sag das — statt blind an eine Stelle zu klicken.
+
+## Zwei Dinge gleichzeitig dringend?
+Reihenfolge, wenn mehreres draengt:
+1. Was dein Ansprechpartner ausdruecklich fuer heute verlangt hat.
+2. Verantwortungsbereich mit Prioritaet **hoch** vor **normal** vor **niedrig**.
+3. Bei gleicher Prioritaet: was blockiert andere / hat eine Frist.
+4. Bleibt es unklar, entscheide NICHT still — nimm die kleinere Sache mit und frag zur
+   groesseren nach, mit deinem Vorschlag dazu.
 
 ## Self-diagnosis
 - To see YOUR OWN recent container logs (e.g. after a failed task/tool call), use the `read_logs` tool. A team lead can also pass a team member's agent id. Use it to find the real error (401, stack trace, missing env) and fix it.
@@ -290,6 +349,10 @@ I have persistent long-term memory that survives across ALL conversations and ta
 - **create_schedule** - Create a recurring task schedule; use cron_expression for exact wall-clock times and interval_seconds for relative intervals
 - **list_schedules** - List all recurring schedules
 - **manage_schedule** - Pause, resume, or delete a schedule
+- **trigger_create** - Set up an event trigger (fires a task when a matching webhook arrives) instead of polling on a timer
+- **trigger_list** - List your event triggers
+- **trigger_toggle** - Enable or disable an event trigger
+- **trigger_delete** - Delete an event trigger
 
 ### TODO Tools (mcp-orchestrator) - VISIBLE IN WEB UI!
 **⚠️ NEVER use the built-in TodoWrite tool - it is NOT visible to the user!**
@@ -402,10 +465,13 @@ screenshot failed instead of guessing what might be on it.
 ## Proactive Mode
 I periodically wake up (via schedule) to check if there is work to do on my own.
 The proactive prompt gives detailed instructions each time. Key principles:
-- Only work on repos I own (check with `gh repo view --json owner`)
-- Always push code and create PRs (never leave work only local)
-- Always close issues via PR with "Fixes #N"
-- Notify user about completed work via `notify_user`
+- Survey what's outstanding and plan the run before acting; work the plan, highest priority first
+- Finish something early? Pull the next planned item forward instead of stopping
+- Nothing planned left? Propose a concrete next step to my Ansprechpartner via `notify_user`
+  (`is_checkin: true`) instead of asking open-ended — and only once per half-day
+- Respect my Ansprechpartner's configured working hours; outside them, only do work that needs
+  no sign-off
+- Set up my own `create_schedule` / `trigger_create` when I notice recurring or event-driven work
 - Execute genuine work only (no busywork!)
 
 ## TODO Management (CRITICAL - NEVER USE TodoWrite!)
@@ -542,23 +608,54 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
     return "\n".join(lines)
 
 
-def instructions_path(mode: str | None) -> str:
+def instructions_paths(mode: str | None) -> list[str]:
     """Wohin die Agenten-Anleitung geschrieben wird — EINE Quelle für alle Pfade.
 
-    Claude Code liest `/workspace/CLAUDE.md`. Codex und Custom-LLM lesen
-    `/workspace/AGENT.md` (modellneutraler Name — `CLAUDE.md` verwirrt bei
-    GPT/Gemini/Llama). Alles, was nicht ausdrücklich `claude_code` ist, bekommt
-    `AGENT.md`; ein unbekannter oder fehlender Modus fällt damit auf die sichere
-    Seite, statt gar keine Anleitung zu erhalten.
+    Jeder Harness liest eine ANDERE Datei, und er liest ausschliesslich seine eigene:
+      * Claude Code  → `/workspace/CLAUDE.md`
+      * Codex CLI    → `/workspace/AGENTS.md` (Mehrzahl! Das ist die Konvention der
+        Codex-CLI. Wir haben jahrelang nur `AGENT.md` geschrieben — der Codex-Agent
+        hat die Anleitung damit nie gelesen, auch nicht die Bildschirm-Regeln.)
+      * Custom-LLM   → `/workspace/AGENT.md`, wird von `runner_hooks.get_identity_context()`
+        aktiv eingelesen und in den Systemprompt gehaengt.
+
+    Geschrieben wird immer auch `AGENT.md`: sie ist der modellneutrale Name, auf den sich
+    Werkzeuge und Prompts beziehen, und der Custom-LLM-Weg liest genau sie. Ein unbekannter
+    oder fehlender Modus faellt auf `AGENT.md` zurueck statt auf gar keine Anleitung.
     """
-    return "/workspace/CLAUDE.md" if mode == "claude_code" else "/workspace/AGENT.md"
+    if mode == "claude_code":
+        return ["/workspace/CLAUDE.md"]
+    if mode in ("codex_cli", "codex"):
+        return ["/workspace/AGENTS.md", "/workspace/AGENT.md"]
+    return ["/workspace/AGENT.md"]
+
+
+def instructions_path(mode: str | None) -> str:
+    """Der primaere Pfad (Rueckwaertskompatibilitaet) — siehe ``instructions_paths``."""
+    return instructions_paths(mode)[0]
+
+
+def _identity_line(name: str, role: str) -> str:
+    """The one sentence that tells an agent who it is.
+
+    Lives in the shared instruction file, so EVERY harness gets it from the same
+    place — Claude Code via CLAUDE.md, Codex via AGENTS.md, custom_llm because
+    runner_hooks.get_identity_context() inlines the file into its system prompt.
+    """
+    name = (name or "").strip()
+    role = (role or "").strip()
+    if not name and not role:
+        return "Du bist ein KI-Agent dieser Plattform."
+    who = f'Du bist „{name}"' if name else "Du bist ein KI-Agent dieser Plattform"
+    return f"{who} — {role}." if role else f"{who}."
 
 
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
-                      workspace_size_gb: float | None = None) -> str:
+                      workspace_size_gb: float | None = None,
+                      agent_name: str = "", agent_role: str = "") -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
-    its placeholders (workspace soft-quota + host-mounts section). Used by the
-    create / update / restart paths, so the substitution lives in exactly one spot.
+    its placeholders (identity, workspace soft-quota, host-mounts section). Used by
+    the create / update / restart paths, so the substitution lives in exactly one spot.
 
     ``workspace_size_gb`` defaults to the global setting; pass a per-agent value to
     honour an individual agent's quota override (``config["workspace_size_gb"]``).
@@ -566,6 +663,7 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     size = settings.agent_workspace_size_gb if workspace_size_gb is None else workspace_size_gb
     return (
         DEFAULT_CLAUDE_MD
+        .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
         .replace("$MOUNTS_SECTION", _build_mounts_section(agent_mounts, catalog))
     )
@@ -789,7 +887,7 @@ class AgentManager:
             await self.redis.client.rpush(history_key, event)
             await self.redis.client.ltrim(history_key, -200, -1)
         except Exception as e:
-            logger.warning(f"Could not publish event for agent {agent_id}: {e}")
+            logger.warning(f"Could not publish event for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
     async def _cancel_open_chats(self, agent_id: str, reason: str) -> None:
         """Broadcast a terminal ``cancelled`` event to any open chat streams for this
@@ -815,7 +913,7 @@ class AgentManager:
             })
             await self.redis.client.publish(f"agent:{agent_id}:chat:response", event)
         except Exception as e:  # noqa: BLE001 — best effort, never block the restart
-            logger.warning(f"Could not cancel open chats for agent {agent_id}: {e}")
+            logger.warning(f"Could not cancel open chats for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
     async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
@@ -1070,32 +1168,22 @@ class AgentManager:
 
         # Initialize workspace files
         agent_mounts = []
-        claude_md = _render_claude_md(agent_mounts)
-        if mode == "claude_code":
-            # Claude Code: full CLAUDE.md + knowledge.md
-            try:
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/CLAUDE.md", claude_md
-                )
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
-                )
-                logger.info(f"Initialized CLAUDE.md + knowledge.md for agent {agent_id}")
-            except Exception as e:
-                logger.warning(f"Could not initialize agent files: {e}")
-        else:
-            # Custom LLM: write as AGENT.md (model-agnostic name — CLAUDE.md is
-            # Claude Code convention and confuses GPT/Gemini/Llama users).
-            try:
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/AGENT.md", claude_md
-                )
-                self.docker.write_file_in_container(
-                    container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
-                )
-                logger.info(f"Initialized AGENT.md + knowledge.md for custom_llm agent {agent_id}")
-            except Exception as e:
-                logger.warning(f"Could not initialize agent files: {e}")
+        claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "")
+        # Same instruction text for EVERY harness — only the file name differs, because
+        # each CLI reads its own (see instructions_paths). Two copies of this branch used
+        # to decide it; now there is one list and no mode can quietly fall through.
+        try:
+            for _path in instructions_paths(mode):
+                self.docker.write_file_in_container(container.id, _path, claude_md)
+            self.docker.write_file_in_container(
+                container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
+            )
+            logger.info(
+                "Initialized %s + knowledge.md for agent %s (mode=%s)",
+                ", ".join(instructions_paths(mode)), agent_id, mode,
+            )
+        except Exception as e:
+            logger.warning(f"Could not initialize agent files: {e}")
 
         # write_file_in_container writes as root; the agent runs as uid 1000 and MUST be
         # able to write its own /workspace/knowledge.md (otherwise "save results to
@@ -1191,7 +1279,7 @@ class AgentManager:
                 "chmod 0440 /etc/sudoers.d/agent-permissions",
                 user="root",
             )
-            logger.info(f"Applied permissions {permissions} to container {container_id[:12]}")
+            logger.info(f"Applied permissions {scrub_log(permissions)} to container {scrub_log(container_id[:12])}")
         else:
             # No permissions - remove any existing sudoers file
             self.docker.exec_in_container(
@@ -1361,10 +1449,12 @@ class AgentManager:
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
-            fresh_claude_md = _render_claude_md(agent_mounts, catalog)
+            fresh_claude_md = _render_claude_md(
+                agent_mounts, catalog, agent_name=agent.name, agent_role=role or ""
+            )
             mode = agent.mode or config.get("mode", "claude_code")
-            target_file = instructions_path(mode)
-            self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
+            for target_file in instructions_paths(mode):
+                self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
             if mode != "claude_code":
                 try:
@@ -1372,7 +1462,7 @@ class AgentManager:
                 except Exception:
                     pass
         except Exception as e:
-            logger.warning(f"Could not refresh instructions file for agent {agent_id}: {e}")
+            logger.warning(f"Could not refresh instructions file for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
         # 6. Update DB
         agent.container_id = container.id
@@ -1380,7 +1470,7 @@ class AgentManager:
         await self.db.commit()
         await self.db.refresh(agent)
 
-        logger.info(f"Agent {agent_id} restarted with fresh config")
+        logger.info(f"Agent {scrub_log(agent_id)} restarted with fresh config")
         await self._publish_event(agent_id, "system", "Agent restarted successfully with updated config")
         return agent
 
@@ -1391,7 +1481,7 @@ class AgentManager:
             try:
                 self.docker.stop_container(agent.container_id)
             except (NotFound, APIError) as e:
-                logger.warning(f"Container {agent.container_id} not found when stopping agent {agent_id}: {e}")
+                logger.warning(f"Container {scrub_log(agent.container_id)} not found when stopping agent {scrub_log(agent_id)}: {scrub_log(e)}")
         agent.state = AgentState.STOPPED
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent stopped")
@@ -1402,12 +1492,12 @@ class AgentManager:
         agent = await self._get_agent(agent_id)
         if not agent.container_id:
             # No container exists — recreate it (keeps volumes/data)
-            logger.info(f"Agent {agent_id} has no container — recreating via update_agent")
+            logger.info(f"Agent {scrub_log(agent_id)} has no container — recreating via update_agent")
             return await self.update_agent(agent_id)
         try:
             self.docker.start_container(agent.container_id)
         except NotFound:
-            logger.warning(f"Container {agent.container_id} not found for agent {agent_id} — recreating")
+            logger.warning(f"Container {scrub_log(agent.container_id)} not found for agent {scrub_log(agent_id)} — recreating")
             return await self.update_agent(agent_id)
         await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
@@ -1431,11 +1521,12 @@ class AgentManager:
             from app.core.mounts import get_effective_catalog
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
-            self.docker.write_file_in_container(
-                agent.container_id,
-                instructions_path(mode),
-                _render_claude_md((agent.config or {}).get("mounts", []), catalog),
+            rendered = _render_claude_md(
+                (agent.config or {}).get("mounts", []), catalog,
+                agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
             )
+            for path in instructions_paths(mode):
+                self.docker.write_file_in_container(agent.container_id, path, rendered)
             return True
         except Exception as e:  # noqa: BLE001 — Anleitung ist wichtig, aber nicht kritisch
             logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")
@@ -1578,17 +1669,21 @@ class AgentManager:
         #    /workspace/AGENT.md. This used to run only for claude_code, so a Codex
         #    agent kept the instructions it was born with: every later improvement to
         #    DEFAULT_CLAUDE_MD silently passed it by, no matter how often it was updated.
-        _instructions_file = instructions_path(mode)
+        _instructions_files = instructions_paths(mode)
         try:
             _agent_mounts = (agent.config or {}).get("mounts", [])
-            self.docker.write_file_in_container(
-                container.id,
-                _instructions_file,
-                _render_claude_md(_agent_mounts, catalog),
+            _rendered = _render_claude_md(
+                _agent_mounts, catalog,
+                agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
             )
-            logger.info(f"Updated {_instructions_file} for agent {scrub_log(agent_id)} (knowledge.md preserved)")
+            for _path in _instructions_files:
+                self.docker.write_file_in_container(container.id, _path, _rendered)
+            logger.info(
+                f"Updated {', '.join(_instructions_files)} for agent {scrub_log(agent_id)} "
+                "(knowledge.md preserved)"
+            )
         except Exception as e:
-            logger.warning(f"Could not update {_instructions_file}: {e}")
+            logger.warning(f"Could not update {', '.join(_instructions_files)}: {e}")
 
         # 6. Update team registry
         try:
@@ -1605,7 +1700,7 @@ class AgentManager:
         await self.db.commit()
         await self.db.refresh(agent)
 
-        logger.info(f"Agent {agent_id} updated to new image version")
+        logger.info(f"Agent {scrub_log(agent_id)} updated to new image version")
         return agent
 
     async def update_llm_config(self, agent_id: str, updates: dict) -> dict:
@@ -1658,7 +1753,7 @@ class AgentManager:
             try:
                 self.docker.remove_container(agent.container_id)
             except (NotFound, APIError) as e:
-                logger.warning(f"Container {agent.container_id} already gone for agent {agent_id}: {e}")
+                logger.warning(f"Container {scrub_log(agent.container_id)} already gone for agent {scrub_log(agent_id)}: {scrub_log(e)}")
         if remove_data and agent.volume_name:
             self.docker.remove_volume(agent.volume_name)
             config = agent.config or {}
@@ -1720,7 +1815,7 @@ class AgentManager:
                     )
                     await sync_session.commit()
                 agent.state = new_state
-                logger.info(f"Agent {agent_id} container status={container_status}, state→{new_state.name}")
+                logger.info(f"Agent {scrub_log(agent_id)} container status={scrub_log(container_status)}, state→{new_state.name}")
 
         config = agent.config or {}
 
@@ -1828,6 +1923,10 @@ class AgentManager:
             "llm_config": llm_config_response,
             "role": config.get("role", ""),
             "onboarding_complete": config.get("onboarding_complete", False),
+            # Fehlte hier: die Liste baut ihre Felder aus DIESEM Wörterbuch, nicht aus
+            # dem Antwort-Modell — die Kachel meldete deshalb "kein Auftrag", obwohl
+            # elf Verantwortungsbereiche hinterlegt waren.
+            "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
             "integrations": config.get("integrations", []),
             "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
             "update_available": update_available,

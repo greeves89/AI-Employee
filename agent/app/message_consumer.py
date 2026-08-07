@@ -117,6 +117,10 @@ class MessageConsumer:
             system = settings.llm_system_prompt or (
                 "You are an AI agent collaborating with other agents. Reply concisely to the message."
             )
+            # A colleague asking "who are you / what do you cover" must not get
+            # "I am a helpful assistant" — same identity source as chat and tasks.
+            from app.runner_hooks import get_identity_context
+            system = system + get_identity_context()
             messages = [
                 ChatMessage(role="system", content=system),
                 ChatMessage(role="user", content=prompt),

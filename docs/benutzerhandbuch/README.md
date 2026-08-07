@@ -1,8 +1,8 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.88.0
-**Stand:** 30. Juni 2026
+**Version:** 1.154.0
+**Stand:** 7. August 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** skbs-s-kichat.klinikum-bs.de
 
@@ -71,6 +71,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
+33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -93,7 +94,8 @@ unten gut zu sehen). Sie ist in **Gruppen** organisiert:
 ![Seitenleiste & Dashboard](screenshots/01-dashboard.png)
 
 - **Übersicht** — **Dashboard** (Startseite), **Agents** (deine Agenten), **Onboarding**,
-  **Tasks** (Aufträge), **Analytics** (Auswertungen).
+  **Tasks** (Aufträge), **Activity** (Tageskalender aller Agenten, siehe Kap. 33),
+  **Analytics** (Auswertungen).
 - **Zusammenarbeit** — **Knowledge** (Wissensablage), **Meeting Rooms**
   (Multi-Agent-Zusammenarbeit).
 - **Automation** — **Skill Marketplace**, **Triggers** (ereignisbasiert),
@@ -315,7 +317,38 @@ bei größeren Aufgaben zu verfolgen.
 
 ### 5.3 Activity — was bisher geschah
 ![Agent · Activity](screenshots/f03-agent-activity.png)
-Tab **Activity**: chronologischer Verlauf seiner Aktivitäten und Tasks.
+Tab **Activity** mit drei Unter-Reitern: **Todos**, **Live** und **Verlauf** (chronologischer
+Task-Verlauf). Ein vierter Unter-Reiter, **Kalender**, zeigt den Tageskalender dieses einen
+Agenten — dieselben Daten wie der globale Menüpunkt **Activity** (Kap. 33), nur auf diesen
+Agenten gefiltert und als gewohnte **vertikale Tagesansicht** (Stunden von oben nach unten,
+Aufgaben als Blöcke mit Titel direkt sichtbar) statt als horizontale Leiste:
+
+![Agent · Kalender](screenshots/30-day-agenda.png)
+*Abbildung 30: Tageskalender eines einzelnen Agenten — sich überschneidende Aufgaben liegen
+nebeneinander, die blaue Linie markiert die aktuelle Uhrzeit*
+
+Praktisch, wenn du direkt aus dem Agenten heraus nachsehen willst, was er heute geplant hat
+und was tatsächlich gelaufen ist, ohne über die Seitenleiste zu wechseln. Beim Öffnen springt
+die Ansicht automatisch zur aktuellen Uhrzeit (bei „heute") bzw. zur ersten Aufgabe des Tages.
+Ein Block anklicken → öffnet die Aufgaben-Detailansicht mit voller Zeitreise.
+
+**Der Tagesplan — was der Agent VORHAT** *(seit 1.154.0)*
+
+In derselben Ansicht siehst du links eine schmale Spur mit **gestrichelten Blöcken**. Das
+ist der Plan, den der Agent sich selbst gemacht hat; die vollen Balken rechts daneben sind,
+was tatsächlich gelaufen ist. So beantwortet der Kalender endlich beide Fragen: *was hat er
+gemacht* — und *was hat er heute noch vor*.
+
+![Agent · Tagesplan im Kalender](screenshots/32-tagesplan.png)
+*Abbildung 32: Geplante Blöcke (gestrichelt, links) neben den erledigten Aufgaben*
+
+- **Einen Block streichen:** mit der Maus über den gestrichelten Block fahren → oben rechts
+  erscheint ein **✕** → anklicken. Der Block wird durchgestrichen dargestellt, und der Agent
+  lässt ihn beim nächsten Lauf liegen. Nochmal klicken = wieder einplanen.
+- **Ohne feste Uhrzeit:** Was der Agent für heute vorhat, aber nicht auf eine Uhrzeit gelegt
+  hat, steht als Liste **unterhalb** des Kalenders — es verschwindet nicht.
+- Der Plan entsteht automatisch, wenn der Agent im proaktiven Modus läuft (siehe 5.6). Ohne
+  Proactive Mode und ohne Verantwortungsbereiche bleibt die Spur leer — das ist kein Fehler.
 
 ### 5.4 Workspace — die Dateien des Agenten
 ![Agent · Workspace](screenshots/f04-agent-workspace.png)
@@ -339,6 +372,54 @@ Tab **Settings** mit drei Unter-Tabs: **Allgemein · Integrationen · Command Po
   Intervallen**, ob es Arbeit gibt, und erledigt sie. Das **Intervall** wählst du
   (*15 min / 30 min / 1h / 2h / 4h*). Darunter siehst du letzte/nächste Prüfung und die
   Erfolgsquote. *Aus* lassen, wenn der Agent nur auf direkte Anweisung reagieren soll.
+
+  Über **Prompt & Anweisungen** ausklappen findest du zwei weitere Felder: die
+  **zusätzlichen Anweisungen** (Freitext, wird bei jedem proaktiven Lauf an die
+  Basis-Regeln angehängt — z. B. „Prüfe bei jedem Lauf das IT-Operations Second Brain
+  auf neue Druckerprobleme") und die **Erreichbarkeit des Ansprechpartners**
+  (Start-/Endzeit plus Zeitzone):
+
+  ![Proactive Mode · Erreichbarkeit](screenshots/29-proactive-contact-hours.png)
+  *Abbildung 29: Zeitfenster, in dem sich der Agent bei Rückfragen melden darf*
+
+  Ohne dieses Zeitfenster weiß der Agent nicht, ob er gerade stören darf — er behandelt
+  dann jeden proaktiven Lauf vorsichtshalber als „außerhalb der Arbeitszeit" und erledigt
+  nur Dinge, die keine Rückfrage brauchen. Zusätzlich meldet sich ein proaktiver Agent bei
+  Leerlauf höchstens **einmal pro Halbtag** von sich aus (Meldebremse) — auch wenn mehrere
+  Agenten gleichzeitig nichts zu tun haben, bekommst du nicht neun Nachrichten auf einmal.
+
+- **Verantwortungsbereiche** *(seit 1.154.0)* — wofür dieser Agent **dauerhaft** zuständig
+  ist. Das ist der Unterschied zwischen einem Agenten, der auf Aufträge wartet, und einem,
+  der seinen Job kennt: Aus den Bereichen baut er sich jeden Tag selbst die Aufgabenliste.
+
+  ![Proaktiv · Verantwortungsbereiche](screenshots/31-verantwortungsbereiche.png)
+  *Abbildung 31: Daueraufträge mit Takt und Priorität*
+
+  So legst du einen Bereich an:
+  1. Agent öffnen → **Settings → Allgemein**.
+  2. Bei **Proactive Mode** auf **Prompt & Anweisungen** klicken (klappt den Bereich auf).
+  3. Oben rechts bei *Verantwortungsbereiche* auf **+ Bereich** klicken.
+  4. **Titel** eintragen — kurz und konkret, z. B. „Posteingang sichten".
+  5. **Takt** wählen: *täglich · wöchentlich · monatlich · laufend*.
+  6. **Priorität** wählen: *hoch · normal · niedrig*.
+  7. Optional die **Präzisierung** ausfüllen (das schmale Feld darunter): woran der Agent
+     erkennt, dass der heutige Durchgang erledigt ist.
+  8. Unten auf **Speichern** klicken.
+
+  Ein Bereich wird **nie „fertig"** — abgehakt wird immer nur der heutige Durchgang.
+  Deshalb geht dem Agenten die Arbeit nicht mehr aus, sobald die Todo-Liste leer ist.
+  Maximal 20 Bereiche pro Agent; ohne Titel lässt sich nicht speichern.
+
+- **Tagesplanung am Morgen** *(seit 1.154.0)* — ein fester Termin, zu dem der Agent
+  **einmal bewusst** seinen Tag plant, zusätzlich zum Intervall oben.
+  1. Im selben aufgeklappten Bereich zum Feld **Tagesplanung am Morgen** gehen.
+  2. Uhrzeit eintragen (z. B. **07:00**).
+  3. Haken **nur werktags** setzen oder entfernen.
+  4. **Speichern**.
+
+  Der Agent plant dann zu dieser Uhrzeit aus seinen Verantwortungsbereichen den Tag und
+  legt das Ergebnis in den Kalender (siehe 5.3). Feld leeren = wieder abschalten.
+  Die Zeitzone kommt aus der **Erreichbarkeit** darunter.
 
 - **Autonomie-Level** — wie eigenständig der Agent **handeln** darf:
   - **L1 — Nur lesen & suchen**: darf nur lesen/recherchieren, **keine** verändernden
@@ -830,6 +911,32 @@ Seitenleiste → **Settings**.
 
 > Plattform-weite Einstellungen (Modelle, Accounts, Rollen, Budgets, Schlüssel) liegen
 > **nicht** hier, sondern in der **Admin-Konsole** (Kap. 22).
+
+### 20.1 Microsoft nur lesend (nur Administratoren) *(seit 1.154.0)*
+
+Damit kein Agent versehentlich Mail versendet, Termine anlegt oder Dateien ändert, lässt
+sich der Microsoft-Zugriff **plattformweit auf Nur-Lesen** stellen. Der Schalter steht
+standardmäßig **an** und gilt für **Microsoft 365 (Graph) und den on-prem-Exchange-Connector
+gleichermaßen** — unabhängig davon, was bei einem einzelnen Agenten eingestellt ist.
+
+![Einstellungen · Microsoft nur lesend](screenshots/33-microsoft-nur-lesend.png)
+*Abbildung 33: Der plattformweite Nur-Lesen-Schalter*
+
+So findest du ihn:
+1. Seitenleiste → **Admin-Konsole**.
+2. Reiter **Integrationen** wählen.
+3. Zum Abschnitt **Microsoft 365** scrollen.
+4. Dort der Schalter **Microsoft nur lesend** — grün = aktiv (nur lesen).
+
+Solange er aktiv ist, sieht der Agent die Schreib-Werkzeuge gar nicht erst, und bei einem
+Agenten steht die Auswahl **Read + Write** gesperrt (mit Schloss-Symbol) unter
+**Settings → Integrationen**. Erst wenn ein Administrator den Schalter löst, lässt sich
+Schreibzugriff pro Agent freigeben.
+
+> **Hinweis:** Der externe MCP-Zugang für OpenWebUI ist **immer** nur lesend — unabhängig
+> von diesem Schalter. Und die Anmeldung dorthin läuft seit 1.154.0 über das
+> **Microsoft-Konto**: wer in OpenWebUI bereits mit Microsoft angemeldet ist, wird
+> durchgereicht und sieht keine zusätzliche AI-Employee-Anmeldemaske mehr.
 
 ---
 
@@ -1339,6 +1446,50 @@ kennt, kommt an die App, auch von außerhalb eures Netzes. Deshalb:
 3. **Freigeben** → **Einzelne Person** → Kollegen auswählen → **Freigeben**.
 4. Der Kollege sieht die App ab sofort in seiner eigenen **Apps**-Übersicht und klickt
    dort auf **Öffnen** — ganz ohne Link-Verschicken.
+
+---
+
+## 33. Activity — Tageskalender aller Agenten
+
+**Menüpunkt:** Seitenleiste → **Activity** (Gruppe „Übersicht", zwischen Tasks und
+Analytics).
+
+Während der **Kalender**-Unterreiter im Activity-Tab der Agent-Detailseite (Kap. 5.3) den
+Tag **eines** Agenten als vertikale Tagesansicht zeigt, gibt dir diese Seite den Überblick
+über **alle** Agenten gleichzeitig — als Tagesleiste, eine horizontale Zeile pro Agent, mit
+geplanten Terminen und tatsächlich gelaufenen Aufgaben nebeneinander. Für den Vergleich
+zwischen Agenten eignet sich die horizontale Form besser; für den Tag eines einzelnen
+Agenten die vertikale.
+
+![Activity-Übersicht](screenshots/28-activity.png)
+*Abbildung 28: Eine Zeile pro Agent — Rauten markieren geplante Termine, Balken zeigen
+tatsächliche Aufgaben*
+
+Oben navigierst du mit den **Pfeilen** einen Tag vor bzw. zurück; die Datumsanzeige in der
+Mitte zeigt den aktuell angezeigten Tag. Ist der angezeigte Tag nicht *heute*, erscheint
+rechts zusätzlich ein **Heute**-Knopf, der dich direkt zurückspringen lässt. Die Ansicht
+funktioniert für **vergangene** genauso wie für **zukünftige** Tage — auch ein Zeitplan,
+der erst morgen zum ersten Mal feuert, erscheint schon heute korrekt vorausberechnet.
+
+Jede Zeile zeigt für den gewählten Tag:
+
+- **Rautenförmige Marken** — geplante Termine aus den Zeitplänen des Agenten (Kap. 12),
+  errechnet aus dem Cron-Ausdruck bzw. Intervall. Maus darüberhalten zeigt Name und
+  Uhrzeit des Zeitplans.
+- **Farbige Balken** — tatsächlich gelaufene Aufgaben, positioniert nach Start- und
+  Endzeit. Grün = erfolgreich abgeschlossen, Rot = fehlgeschlagen, Blau (pulsierend) =
+  läuft gerade noch, Grau = abgebrochen. Läuft eine Aufgabe noch, reicht der Balken bis
+  zum aktuellen Zeitpunkt und wächst live weiter.
+- **Lücken** — Zeitabschnitte ohne Balken sind sichtbarer Leerlauf. Ein Agent, der z. B.
+  alle 5 Minuten prüft, zeigt sich als durchgehender Streifen aus vielen kurzen Balken;
+  ein Agent, der nur zweimal täglich aktiv wird, zeigt entsprechend viel freie Fläche.
+
+**Balken anklicken** → öffnet die bestehende Aufgaben-Detailansicht mit vollständiger
+Zeitreise (Werkzeugaufrufe, Zwischenschritte, Ergebnis) — dieselbe Ansicht wie beim
+Anklicken einer Aufgabe unter **Tasks** (Kap. 6).
+
+Die Seite zeigt nur Agenten, die du auch sonst siehst (deine eigenen plus mit dir
+geteilte) — Administratoren sehen alle Agenten.
 
 ---
 

@@ -321,6 +321,86 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "complete_onboarding",
+      description:
+        "Finish YOUR onboarding: record who you are and what you are permanently responsible " +
+        "for. Call this as soon as the user answered what your role is and which recurring " +
+        "duties you take over — do NOT keep asking afterwards. Every duty becomes a " +
+        "Verantwortungsbereich, and from the next proactive run you build your own day from " +
+        "them instead of waiting for a todo. At least one duty is required.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          role: { type: "string", description: "Your role in one sentence." },
+          responsibilities: {
+            type: "array",
+            description: "Every RECURRING duty the user named. At least one.",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short and concrete, e.g. 'Posteingang sichten'." },
+                rhythm: { type: "string", description: "daily | weekly | monthly | continuous" },
+                priority: { type: "string", description: "high | normal | low" },
+                notes: { type: "string", description: "How you know today's pass is done." },
+              },
+              required: ["title"],
+            },
+          },
+          boundaries: { type: "string", description: "What you must NOT do." },
+          notes: { type: "string", description: "Other standing instructions." },
+        },
+        required: ["responsibilities"],
+      },
+    },
+    {
+      name: "plan_day",
+      description:
+        "Write down what you intend to do TODAY so it becomes VISIBLE to the user in the " +
+        "agent calendar — instead of living only in your own notes. Call this at the START " +
+        "of a proactive run, right after you worked out your plan: pass the blocks in the " +
+        "order you mean to work them. Replaces the plan you wrote earlier for that day; " +
+        "blocks already running or done are kept. The user can move or drop a block — read " +
+        "it back with get_day_plan and respect their changes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            description: "The blocks you plan for the day, in the order you will work them.",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "What you will do — short and concrete." },
+                notes: { type: "string", description: "Optional detail (how you know it is done)." },
+                planned_start: { type: "string", description: "ISO-8601 UTC start, e.g. '2026-08-07T07:30:00Z'. Omit if only the order matters." },
+                estimated_minutes: { type: "number", description: "Rough duration in minutes (default 30)." },
+                source: { type: "string", description: "'responsibility' | 'todo' | 'self'" },
+                priority: { type: "string", description: "high | normal | low — inherit from the responsibility or todo." },
+                todo_id: { type: "number", description: "Link to the todo this block works on, if any." },
+              },
+              required: ["title"],
+            },
+          },
+          plan_date: { type: "string", description: "Day as YYYY-MM-DD. Default: today (UTC)." },
+        },
+        required: ["items"],
+      },
+    },
+    {
+      name: "get_day_plan",
+      description:
+        "Read your day plan back — including what the user changed. A block the user dropped " +
+        "must NOT be worked on. Use at the start of a run before planning anew.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Day as YYYY-MM-DD. Default: today." },
+          days: { type: "number", description: "How many days from 'date' (default 1)." },
+        },
+        required: [],
+      },
+    },
+    {
       name: "create_schedule",
       description:
         "Schedule YOURSELF to run a task later — you choose the timing. Use instead of sleeping/waiting. " +
@@ -441,6 +521,82 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
         },
         required: ["schedule_id", "action"],
+      },
+    },
+    {
+      name: "trigger_create",
+      description:
+        "Set yourself up to react to an EVENT instead of polling on a timer — fires a task for " +
+        "you when a matching webhook arrives (e.g. a GitHub PR, a Stripe payment, any inbound " +
+        "webhook your setup receives). Use this instead of create_schedule when the work is " +
+        "event-driven, not time-driven.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Name for the trigger.",
+          },
+          prompt_template: {
+            type: "string",
+            description:
+              "The prompt to run when the trigger fires. Supports {{payload.field}} " +
+              "interpolation from the webhook payload.",
+          },
+          source_filter: {
+            type: "string",
+            description: "Only fire for webhooks from this source, e.g. 'github', 'stripe'. Omit to match any source.",
+          },
+          event_type_filter: {
+            type: "string",
+            description: "Only fire for this event type, e.g. 'pull_request', 'payment'. Omit to match any type.",
+          },
+          payload_conditions: {
+            type: "object",
+            description: "Field:value pairs that must match in the webhook payload, e.g. {\"action\": \"opened\"}. Omit for no extra conditions.",
+          },
+          priority: {
+            type: "number",
+            description: "Task priority when the trigger fires (default 5).",
+          },
+        },
+        required: ["name", "prompt_template"],
+      },
+    },
+    {
+      name: "trigger_list",
+      description: "List all your event triggers.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "trigger_toggle",
+      description: "Enable or disable one of your event triggers (does not delete it).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          trigger_id: {
+            type: "string",
+            description: "ID of the trigger to toggle.",
+          },
+        },
+        required: ["trigger_id"],
+      },
+    },
+    {
+      name: "trigger_delete",
+      description: "Delete one of your event triggers.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          trigger_id: {
+            type: "string",
+            description: "ID of the trigger to delete.",
+          },
+        },
+        required: ["trigger_id"],
       },
     },
     {
@@ -1120,6 +1276,79 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    case "complete_onboarding": {
+      const duties = Array.isArray(args.responsibilities) ? args.responsibilities : [];
+      if (duties.length === 0) {
+        throw new Error(
+          "Provide at least one recurring duty in 'responsibilities' — without one you would " +
+          "be onboarded but still have no assignment."
+        );
+      }
+      const result = await apiCall(`/agents/${AGENT_ID}/onboarding/complete`, {
+        method: "POST",
+        body: JSON.stringify({
+          role: args.role || "",
+          boundaries: args.boundaries || "",
+          responsibilities: duties,
+          notes: args.notes || "",
+        }),
+      });
+      const titles = (result.responsibilities || []).map((d) => d.title).filter(Boolean);
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              "Einrichtung abgeschlossen. Deine Verantwortungsbereiche: " +
+              titles.join(", ") +
+              ". Ab dem nächsten proaktiven Lauf planst du deinen Tag daraus selbst.",
+          },
+        ],
+      };
+    }
+
+    case "plan_day": {
+      const items = Array.isArray(args.items) ? args.items : [];
+      if (items.length === 0) throw new Error("Provide at least one planned block in 'items'.");
+      const body = { items };
+      if (args.plan_date) body.plan_date = args.plan_date;
+      const result = await apiCall(`/agents/${AGENT_ID}/day-plan`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      const written = (result.items || []).length;
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Tagesplan für ${result.plan_date} gespeichert: ${written} Block/Blöcke. ` +
+              "Der Nutzer sieht ihn jetzt im Kalender und kann Blöcke verschieben oder streichen.",
+          },
+        ],
+      };
+    }
+
+    case "get_day_plan": {
+      const params = new URLSearchParams();
+      if (args.date) params.set("date", args.date);
+      if (args.days) params.set("days", String(args.days));
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const result = await apiCall(`/agents/${AGENT_ID}/day-plan${qs}`);
+      const items = result.items || [];
+      if (items.length === 0) {
+        return { content: [{ type: "text", text: "Für diesen Tag ist noch nichts geplant." }] };
+      }
+      const marks = { done: "erledigt", running: "läuft", dropped: "GESTRICHEN" };
+      const lines = items.map((it) => {
+        const when = (it.planned_start || "").slice(11, 16) || "--:--";
+        const mark = marks[it.status] || "geplant";
+        return `- [${mark}] ${when} (${it.estimated_minutes} Min) ${it.title}` +
+          (it.notes ? ` — ${it.notes}` : "");
+      });
+      return { content: [{ type: "text", text: "Tagesplan:\n" + lines.join("\n") }] };
+    }
+
     case "create_schedule": {
       if (!args.run_in_seconds && !args.interval_seconds && !args.cron_expression) {
         throw new Error("Provide run_in_seconds (one-shot), interval_seconds, or cron_expression.");
@@ -1230,6 +1459,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Schedule ${schedule_id} ${action === "pause" ? "paused" : "resumed"}.`,
           },
         ],
+      };
+    }
+
+    case "trigger_create": {
+      const body = {
+        name: args.name,
+        prompt_template: args.prompt_template,
+        source_filter: args.source_filter,
+        event_type_filter: args.event_type_filter,
+        payload_conditions: args.payload_conditions,
+        priority: args.priority ?? 5,
+      };
+      const result = await apiCall("/event-triggers/for-agent", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Trigger created: "${result.name}" (id: ${result.id}).`,
+        }],
+      };
+    }
+
+    case "trigger_list": {
+      const result = await apiCall("/event-triggers/for-agent");
+      if (!result.triggers || result.triggers.length === 0) {
+        return {
+          content: [{ type: "text", text: "No event triggers found." }],
+        };
+      }
+      const lines = result.triggers.map((t) => {
+        const status = t.enabled ? "enabled" : "disabled";
+        const match = [
+          t.source_filter && `source=${t.source_filter}`,
+          t.event_type_filter && `event=${t.event_type_filter}`,
+        ].filter(Boolean).join(", ") || "any event";
+        return `[${status}] #${t.id}: ${t.name} (${match}, fired ${t.fire_count ?? 0}x)`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `${result.triggers.length} event triggers:\n\n${lines.join("\n")}`,
+        }],
+      };
+    }
+
+    case "trigger_toggle": {
+      const result = await apiCall(`/event-triggers/for-agent/${args.trigger_id}/toggle`, {
+        method: "PATCH",
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Trigger ${args.trigger_id} ${result.enabled ? "enabled" : "disabled"}.`,
+        }],
+      };
+    }
+
+    case "trigger_delete": {
+      await apiCall(`/event-triggers/for-agent/${args.trigger_id}`, { method: "DELETE" });
+      return {
+        content: [{ type: "text", text: `Trigger ${args.trigger_id} deleted.` }],
       };
     }
 

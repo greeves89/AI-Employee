@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
+from app.core.log_redaction import scrub_log
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.models.task_step import TaskStep
@@ -278,7 +279,7 @@ class TaskRouter:
                 return task
 
         if not await self._agent_exists(agent_id):
-            logger.warning("Cannot route task %s to missing agent %s", task_id, agent_id)
+            logger.warning("Cannot route task %s to missing agent %s", scrub_log(task_id), scrub_log(agent_id))
             task = Task(
                 id=task_id,
                 title=title,
@@ -347,7 +348,7 @@ class TaskRouter:
                 from app.services.user_lifecycle import wake_agent
                 await wake_agent(self.db, self.docker, agent_id)
             except Exception as e:
-                logger.warning(f"Could not wake agent {agent_id} before task: {e}")
+                logger.warning(f"Could not wake agent {scrub_log(agent_id)} before task: {scrub_log(e)}")
 
         # Push to agent's Redis queue
         task_payload = json.dumps(
@@ -390,7 +391,7 @@ class TaskRouter:
                 await self.redis.client.rpush(history_key, event)
                 await self.redis.client.ltrim(history_key, -200, -1)
         except Exception as e:
-            logger.warning(f"Could not publish activity for agent {agent_id}: {e}")
+            logger.warning(f"Could not publish activity for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
     async def handle_task_start(self, data: dict) -> None:
         """Update task status to RUNNING when agent picks it up."""
@@ -472,7 +473,7 @@ class TaskRouter:
                     except (json.JSONDecodeError, TypeError):
                         pass
         except Exception as e:
-            logger.warning(f"Could not remove task {task_id} from Redis queue: {e}")
+            logger.warning(f"Could not remove task {scrub_log(task_id)} from Redis queue: {scrub_log(e)}")
 
     async def handle_task_completion(self, data: dict) -> None:
         task_id = data["task_id"]
@@ -1061,7 +1062,7 @@ class TaskRouter:
                     self.docker.stop_container(agent.container_id)
                 except Exception as e:
                     logger.warning(
-                        f"Could not stop over-budget agent {agent_id}: {e}"
+                        f"Could not stop over-budget agent {scrub_log(agent_id)}: {scrub_log(e)}"
                     )
             await self.db.commit()
             raise ValueError(
@@ -1071,7 +1072,7 @@ class TaskRouter:
 
         # Default action: downgrade to the cheap fallback model.
         logger.info(
-            f"[Budget] {reason} → agent {agent_id} downgraded to {BUDGET_FALLBACK_MODEL}"
+            f"[Budget] {scrub_log(reason)} → agent {scrub_log(agent_id)} downgraded to {BUDGET_FALLBACK_MODEL}"
         )
         return BUDGET_FALLBACK_MODEL
 
@@ -1107,11 +1108,11 @@ class TaskRouter:
             if coerced != model:
                 logger.info(
                     "[ModelCoerce] task model %s incompatible with agent %s (mode=%s) → %s",
-                    model, agent_id, mode, coerced,
+                    scrub_log(model), scrub_log(agent_id), scrub_log(mode), scrub_log(coerced),
                 )
             return coerced
         except Exception as e:
-            logger.warning(f"Model coercion skipped for agent {agent_id}: {e}")
+            logger.warning(f"Model coercion skipped for agent {scrub_log(agent_id)}: {scrub_log(e)}")
             return model
 
     async def _check_budget_thresholds(self, agent_id: str) -> None:

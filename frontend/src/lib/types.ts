@@ -95,6 +95,7 @@ export interface Agent {
   ai_account_provider: string | null;
   role: string | null;
   onboarding_complete: boolean;
+  has_responsibilities?: boolean;
   integrations: string[];
   permissions: string[];
   update_available: boolean;
@@ -262,6 +263,7 @@ export interface Settings {
   microsoft_optional_scopes?: string[];
   has_apple_oauth: boolean;
   msgraph_mcp_external_enabled: boolean;
+  msgraph_read_only: boolean;
   // Security / Login
   sso_only_login?: boolean;
   require_user_approval?: boolean;
@@ -377,16 +379,56 @@ export interface Notification {
   created_at: string;
 }
 
+export interface ProactiveContactHours {
+  start: string;    // "HH:MM"
+  end: string;      // "HH:MM"
+  timezone: string; // IANA name, e.g. "Europe/Berlin"
+}
+
+// Ein Verantwortungsbereich ist eine DAUERAUFGABE, kein Todo: er kehrt wieder und wird
+// nie "fertig". Der Proaktiv-Lauf leitet daraus die Aufgaben des Tages ab.
+export type ResponsibilityRhythm = "daily" | "weekly" | "monthly" | "continuous";
+export type ResponsibilityPriority = "high" | "normal" | "low";
+
+export interface Responsibility {
+  title: string;
+  rhythm: ResponsibilityRhythm;
+  priority: ResponsibilityPriority;
+  notes?: string;
+}
+
+// Ein Block im Tagesplan eines Agenten: was er sich VORGENOMMEN hat (im Gegensatz
+// zu den Task-Balken, die zeigen, was schon gelaufen ist).
+export interface DayPlanItem {
+  id: number;
+  agent_id: string;
+  plan_date: string;
+  title: string;
+  notes: string;
+  planned_start: string | null;
+  estimated_minutes: number;
+  source: "responsibility" | "todo" | "self" | "user";
+  status: "planned" | "running" | "done" | "dropped";
+  todo_id: number | null;
+  task_id: string | null;
+}
+
 export interface ProactiveConfig {
   enabled: boolean;
   schedule_id: string | null;
   interval_seconds: number;
   custom_instructions?: string;
+  contact_hours?: ProactiveContactHours;
+  responsibilities?: Responsibility[];
+  morning_planning?: { time?: string; weekdays_only?: boolean; schedule_id?: string | null };
+  contact_absence?: { from?: string; to?: string };
 }
 
 export interface ProactiveResponse {
   agent_id: string;
   proactive: ProactiveConfig;
+  deputy_agent_id?: string;
+  working_hours?: { start?: string; end?: string; timezone?: string; weekdays_only?: boolean };
   schedule: {
     enabled: boolean;
     interval_seconds: number;
@@ -623,4 +665,33 @@ export interface MeetingRoom {
   message_count?: number;
   created_at: string | null;
   scheduled_for?: string | null;  // follow-up auto-start time (ISO) when set
+}
+
+export interface ActivityTaskBar {
+  task_id: string;
+  title: string;
+  status: TaskStatus;
+  started_at: string;
+  completed_at: string | null; // null = still running
+  duration_ms: number | null;
+  cost_usd: number | null;
+}
+
+export interface ActivityScheduleMark {
+  time: string;
+  schedule_id: string;
+  schedule_name: string;
+}
+
+export interface ActivityAgentTimeline {
+  agent_id: string;
+  name: string;
+  tasks: ActivityTaskBar[];
+  scheduled_marks: ActivityScheduleMark[];
+}
+
+export interface ActivityTimelineResponse {
+  start: string;
+  end: string;
+  agents: ActivityAgentTimeline[];
 }

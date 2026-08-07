@@ -15,6 +15,8 @@ import re
 import time
 from collections import defaultdict
 
+from app.core.log_redaction import scrub_log
+
 logger = logging.getLogger(__name__)
 
 # Patterns that indicate prompt injection attempts
@@ -128,7 +130,7 @@ def check_webhook_payload(payload: dict, source: str) -> SecurityVerdict:
     is_suspicious, matched = detect_injection(payload_str)
     if is_suspicious:
         logger.warning(
-            f"BLOCKED: Prompt injection in webhook from {source}: '{matched}'"
+            f"BLOCKED: Prompt injection in webhook from {scrub_log(source)}: '{scrub_log(matched)}'"
         )
         return SecurityVerdict(
             allowed=False,
@@ -144,7 +146,7 @@ def check_inter_agent_message(text: str, from_agent: str, to_agent: str) -> Secu
     is_suspicious, matched = detect_injection(text)
     if is_suspicious:
         logger.warning(
-            f"BLOCKED: Injection in inter-agent message from {from_agent} to {to_agent}: '{matched}'"
+            f"BLOCKED: Injection in inter-agent message from {scrub_log(from_agent)} to {scrub_log(to_agent)}: '{scrub_log(matched)}'"
         )
         return SecurityVerdict(
             allowed=False,
@@ -163,7 +165,7 @@ def sanitize_webhook_payload(payload: dict, source: str, event_type: str) -> str
     warning = ""
     if is_suspicious:
         logger.warning(
-            f"Potential prompt injection in webhook from {source}: '{matched}'"
+            f"Potential prompt injection in webhook from {scrub_log(source)}: '{scrub_log(matched)}'"
         )
         warning = (
             "\n\nWARNING: This payload contains text that matches known prompt "

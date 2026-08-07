@@ -476,3 +476,113 @@ async def get_agent_detail(
         ],
         "recent_errors": recent_errors,
     }
+
+
+@router.get("/agents/{agent_id}/development")
+async def agent_development(
+    agent_id: str,
+    days: int = Query(30, ge=7, le=180),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wird dieser Agent messbar besser? Und war die Probezeit erfolgreich?
+
+    Setzt NUR vorhandene Daten zusammen — Bewertungen, Fehlerquote der Aufgaben und die
+    Plan-Treue (geplant vs. erledigt, seit es den sichtbaren Tagesplan gibt). Bisher sah
+    man Kosten und Laufzahl, aber nirgends, ob die Arbeit besser wird.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.core.ownership import is_admin, visible_agent_ids
+    from app.models.agent import Agent
+    from app.models.agent_plan_item import AgentPlanItem
+    from app.models.task import Task
+
+    if not is_admin(user):
+        vids = await visible_agent_ids(user, db)
+        if vids is not None and agent_id not in vids:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+    half = now - timedelta(days=days // 2)
+
+    async def _task_stats(start):
+        rows = (await db.execute(
+            select(Task.status, Task.created_at).where(
+                Task.agent_id == agent_id, Task.created_at >= start
+            )
+        )).all()
+        total = len(rows)
+        failed = sum(1 for st, _ in rows if str(getattr(st, "value", st)).lower() == "failed")
+        return total, failed
+
+    total, failed = await _task_stats(since)
+    recent_total, recent_failed = await _task_stats(half)
+    older_total, older_failed = total - recent_total, failed - recent_failed
+
+    def _rate(f, t):
+        return round(100.0 * f / t, 1) if t else 0.0
+
+    # Plan-Treue: von dem, was er sich vorgenommen hat, wie viel wurde erledigt?
+    plan_rows = (await db.execute(
+        select(AgentPlanItem.status).where(
+            AgentPlanItem.agent_id == agent_id, AgentPlanItem.plan_date >= since.date()
+        )
+    )).scalars().all()
+    planned = sum(1 for st in plan_rows if st != "dropped")
+    done = sum(1 for st in plan_rows if st == "done")
+
+    # Bewertungen: der bestehende Rating-Pfad ueber Tasks.
+    ratings = []
+    try:
+        from app.models.task_rating import TaskRating
+        ratings = (await db.execute(
+            select(TaskRating.rating, TaskRating.created_at)
+            .where(TaskRating.agent_id == agent_id, TaskRating.created_at >= since)
+        )).all()
+    except Exception:  # noqa: BLE001 — ohne Bewertungen bleibt der Rest aussagekraeftig
+        logger.debug("Bewertungen fuer %s nicht ladbar", agent_id, exc_info=True)
+
+    def _avg(items):
+        vals = [float(r) for r, _ in items if r is not None]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    avg_recent = _avg([r for r in ratings if r[1] and r[1] >= half])
+    avg_older = _avg([r for r in ratings if r[1] and r[1] < half])
+
+    # Ein Wort statt einer Zahlenwueste — dieselbe Lesart wie bei den Skills.
+    trend = "zu wenig Daten"
+    if total >= 10:
+        besser = _rate(recent_failed, recent_total) < _rate(older_failed, older_total)
+        if avg_recent is not None and avg_older is not None:
+            besser = besser or avg_recent > avg_older
+        schlechter = _rate(recent_failed, recent_total) > _rate(older_failed, older_total) + 5
+        trend = "besser" if besser and not schlechter else ("schlechter" if schlechter else "stabil")
+
+    config = agent.config or {}
+    created = agent.created_at
+    probation_days = (now - created).days if created else 0
+    return {
+        "agent_id": agent_id,
+        "days": days,
+        "tasks": {"total": total, "failed": failed, "failure_rate": _rate(failed, total)},
+        "failure_rate_recent": _rate(recent_failed, recent_total),
+        "failure_rate_older": _rate(older_failed, older_total),
+        "ratings": {"count": len(ratings), "avg_recent": avg_recent, "avg_older": avg_older},
+        "plan_adherence": {
+            "planned": planned, "done": done,
+            "rate": round(100.0 * done / planned, 1) if planned else 0.0,
+        },
+        "trend": trend,
+        "probation": {
+            "days_active": probation_days,
+            "review_due": probation_days >= 7,
+            "onboarded": bool(config.get("onboarding_complete")),
+            "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
+        },
+    }

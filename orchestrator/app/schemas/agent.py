@@ -90,6 +90,9 @@ class AgentResponse(BaseModel):
     ai_account_provider: str | None = None
     role: str | None = None
     onboarding_complete: bool = False
+    # Hat er Verantwortungsbereiche? Ohne sie kann er sich keinen Tag bauen — die
+    # Kachel zeigt dann ein Ausrufezeichen, und der proaktive Lauf wird uebersprungen.
+    has_responsibilities: bool = False
     integrations: list[str] = []
     permissions: list[str] = []
     update_available: bool = False

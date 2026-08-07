@@ -21,6 +21,7 @@ from app.db.session import async_session_factory
 from app.dependencies import make_agent_token
 from app.models.agent import Agent
 from app.services.oauth_service import OAuthService
+from app.core import ms_access
 from app.core.msgraph_mcp import handle_mcp_request, mcp_error
 
 logger = logging.getLogger(__name__)
@@ -66,12 +67,12 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
         async with async_session_factory() as db:
             return await _get_access_token(agent_id, db)
 
-    # Determine the agent's Microsoft access mode (read-only by default).
-    # Write mode unlocks the send/create tools; outbound mail is sent for real.
+    # Determine the agent's Microsoft access mode (read-only by default). Write mode
+    # unlocks the send/create tools; outbound mail is sent for real. The platform-wide
+    # read-only switch overrides the agent's setting — see app.core.ms_access.
     async with async_session_factory() as db:
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
-    access = (agent.config or {}).get("msgraph_access", "read") if agent else "read"
-    write_enabled = access in ("write", "read_write", "rw")
+    may_write = ms_access.write_enabled(agent.config if agent else None, "msgraph_access")
 
-    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=write_enabled)
+    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=may_write)
     return JSONResponse(resp, status_code=status)

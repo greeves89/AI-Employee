@@ -26,6 +26,10 @@ class AgentTemplate(Base, TimestampMixin):
     mcp_server_ids: Mapped[list] = mapped_column(JSON, default=list)
     skill_ids: Mapped[list] = mapped_column(JSON, default=list)
     knowledge_template: Mapped[str] = mapped_column(Text, default="")
+    # Daueraufgaben, die diese Vorlage mitbringt — damit ein neuer Agent nicht bei
+    # null anfaengt und einzeln gebrieft werden muss. Format wie in
+    # core/responsibilities: [{title, rhythm, priority, notes}].
+    responsibilities: Mapped[list] = mapped_column(JSON, default=list)
     claude_md: Mapped[str] = mapped_column(Text, default="")
 
     # Meta

@@ -328,6 +328,107 @@ long tasks get detailed ones — but ALL tasks end with memory_save + rate_task 
 """
 
 
+# Cap on the instruction file we inline. AGENT.md runs ~20 KB; the CLI runtimes read it
+# from disk on their own, the custom_llm runtime has to carry it in the prompt, and a
+# voice/chat turn should not spend 6k tokens on it. The rest stays readable via read_file.
+_INSTRUCTIONS_MAX_CHARS = 12000
+
+
+def get_identity_context() -> str:
+    """Who this agent IS — name, role, and its orchestrator-written instruction file.
+
+    The CLI runtimes get this for free: Claude Code reads /workspace/CLAUDE.md, Codex
+    reads /workspace/AGENT.md. The custom_llm runtime builds its own system prompt and
+    reads NEITHER — so without this it introduces itself as "a helpful AI assistant
+    running in a Docker container" and does not even know its own name. This is the ONE
+    place that answers the question, used by every custom_llm entry point (chat, tasks,
+    agent-to-agent messages).
+
+    Returns "" when there is nothing to say, so callers can concatenate unconditionally.
+    """
+    parts: list[str] = []
+
+    name = (settings.agent_name or "").strip()
+    role = (settings.agent_role or "").strip()
+    if name or role:
+        who = f'Du bist „{name}“' if name else "Du bist ein Agent"
+        if role:
+            who += f" — {role}"
+        parts.append(
+            "=== WER DU BIST ===\n"
+            f"{who}.\n"
+            "Sprich in der Ich-Form und stehe zu diesem Namen: fragt dich jemand, wer oder "
+            "wie du bist, antworte damit — nicht mit „ich bin ein Assistent ohne Namen“. "
+            "Gibt dir der Nutzer einen anderen Namen oder eine andere Anrede, merke sie dir "
+            "SOFORT dauerhaft mit `memory_save` (category: preference) und nutze sie ab dann."
+        )
+
+    # The instruction file the orchestrator maintains for THIS agent (mode-independent).
+    for path in ("/workspace/AGENT.md", "/workspace/CLAUDE.md"):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read().strip()
+        except OSError:
+            continue
+        if not text:
+            continue
+        if len(text) > _INSTRUCTIONS_MAX_CHARS:
+            text = (
+                text[:_INSTRUCTIONS_MAX_CHARS]
+                + f"\n\n[gekürzt — die vollständige Fassung liegt in {path}, "
+                  "lies sie bei Bedarf mit read_file]"
+            )
+        parts.append(f"=== DEINE BETRIEBSANLEITUNG ({path}) ===\n{text}\n=== ENDE ANLEITUNG ===")
+        break  # AGENT.md wins; CLAUDE.md is only the fallback name for the same file
+
+    # Einrichtungsstand gehoert zur Identitaet: wer nicht weiss, wofuer er da ist, muss
+    # danach fragen — in JEDER Laufzeit, nicht nur im proaktiven Lauf.
+    onboarding = get_onboarding_context().strip()
+    if onboarding:
+        parts.append(onboarding)
+    return ("\n\n" + "\n\n".join(parts) + "\n") if parts else ""
+
+
+def get_onboarding_context() -> str:
+    """Einrichtungsstand dieses Agenten als Prompt-Block, oder "".
+
+    Der Orchestrator ist die Wahrheit (app.core.onboarding) — der Agent fragt sie bei
+    jedem Sitzungsstart ab, statt sich auf die Kopfzeile in knowledge.md zu verlassen,
+    die frueher mit der Datenbank auseinanderlief. Faellt der Aufruf aus, bleibt der
+    Block leer: lieber keine Ansage als eine falsche.
+    """
+    try:
+        url = f"{settings.orchestrator_url}/api/v1/agents/{settings.agent_id}/onboarding"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {settings.agent_token}",
+            "X-Agent-ID": settings.agent_id,
+        })
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = _json.loads(response.read())
+    except Exception:
+        return ""
+
+    if data.get("onboarded") and data.get("has_responsibilities"):
+        return ""
+    if not data.get("onboarded"):
+        return (
+            "\n=== EINRICHTUNG STEHT AUS ===\n"
+            "Dir hat noch niemand gesagt, wofuer du da bist. Warte NICHT stumm ab und melde\n"
+            "nicht 'nichts zu tun'. Frag den Nutzer nach: (1) deiner Rolle, (2) den Aufgaben,\n"
+            "die du DAUERHAFT uebernimmst — samt Takt, (3) was du NICHT tun sollst.\n"
+            "Sobald du die Antworten hast, rufe `complete_onboarding` auf (jede Daueraufgabe\n"
+            "als eigenen Bereich). Danach planst du deinen Tag selbst.\n"
+            "=== ENDE ===\n"
+        )
+    return (
+        "\n=== KEINE DAUERAUFGABEN HINTERLEGT ===\n"
+        "Du bist eingerichtet, hast aber keine Verantwortungsbereiche — du kannst dir deshalb\n"
+        "keinen eigenen Tag bauen. Frag den Nutzer, welche wiederkehrenden Aufgaben du\n"
+        "uebernehmen sollst, mach dabei einen konkreten Vorschlag, und sichere die Antwort\n"
+        "mit `complete_onboarding`.\n=== ENDE ===\n"
+    )
+
+
 def get_memory_preload() -> str:
     """Fetch critical memories for prompt injection.
 
@@ -650,6 +751,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
     if lightweight:
         return (
             CHAT_STARTUP_PREFIX
+            + get_onboarding_context()
             + get_memory_preload()
             + get_skill_preload()
             + get_skills_context()
@@ -658,6 +760,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
         )
     return (
         TASK_STARTUP_PREFIX
+        + get_onboarding_context()
         + get_memory_preload()
         + get_user_feedback()
         + get_skill_preload()

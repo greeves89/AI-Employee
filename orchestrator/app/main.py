@@ -958,6 +958,34 @@ async def lifespan(app: FastAPI):
                 "granted_by varchar, created_at timestamptz NOT NULL DEFAULT now())"
             ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_shares_user ON workflow_shares (user_id)"))
+            # Tagesplan eines Agenten (was er sich VORGENOMMEN hat, nicht was erledigt ist).
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS agent_plan_items ("
+                "id serial PRIMARY KEY, agent_id varchar NOT NULL, plan_date date NOT NULL,"
+                "title varchar NOT NULL, notes text DEFAULT '',"
+                "planned_start timestamptz, estimated_minutes integer NOT NULL DEFAULT 30,"
+                "source varchar(20) NOT NULL DEFAULT 'self',"
+                "status varchar(20) NOT NULL DEFAULT 'planned',"
+                "todo_id integer, task_id varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt(
+                "CREATE INDEX IF NOT EXISTS ix_plan_items_agent_date "
+                "ON agent_plan_items (agent_id, plan_date)"
+            ))
+            # Vorlagen bringen Daueraufgaben mit (V5).
+            await conn.execute(_txt(
+                "ALTER TABLE agent_templates ADD COLUMN IF NOT EXISTS "
+                "responsibilities json DEFAULT '[]'::json"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS "
+                "priority varchar(10) NOT NULL DEFAULT 'normal'"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS schedule_id varchar"
+            ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_folders_user ON workflow_folders (user_id)"))
         logger.info("workflow tables ensured")
     except Exception as e:

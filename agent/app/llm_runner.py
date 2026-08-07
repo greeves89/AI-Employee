@@ -16,6 +16,7 @@ from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     TASK_STARTUP_PREFIX,
     get_approval_rules_prefix,
+    get_identity_context,
     get_improvement_context,
     get_marketplace_skill_suggestions,
     get_memory_preload,
@@ -198,7 +199,9 @@ class LLMRunner:
             "You are a helpful AI coding assistant running in a Docker container. "
             "Your workspace is at /workspace. Use the available tools to complete tasks."
         )
-        base_system = base_system + MULTIMODAL_CAPABILITY_NOTE
+        # Identity (name, role, AGENT.md) for BOTH branches — this runtime never reads
+        # the instruction file from disk the way the CLI runtimes do.
+        base_system = base_system + get_identity_context() + MULTIMODAL_CAPABILITY_NOTE
 
         skills_ctx = get_skills_context()
         # Host mounts / Second Brain awareness — custom_llm builds its own system
@@ -208,7 +211,12 @@ class LLMRunner:
 
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
-            system_prompt = base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx
+            # Chat/Telegram deserves the same recall as a task run — the user's standing
+            # preferences (how to address them, what they decided) live in memory, and a
+            # quick reply that ignores them is exactly what feels like amnesia.
+            system_prompt = (
+                base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx + get_memory_preload()
+            )
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
             marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])

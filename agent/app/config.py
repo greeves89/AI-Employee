@@ -11,6 +11,10 @@ SHARED_TOKEN_PATH = "/shared/.auth/token.json"
 class Settings(BaseSettings):
     agent_id: str = "agent-001"
     agent_name: str = ""
+    # Role sentence the orchestrator passes in (AGENT_ROLE). The CLI runtimes get it
+    # through AGENT.md/CLAUDE.md; the custom_llm runtime needs it explicitly — see
+    # runner_hooks.get_identity_context().
+    agent_role: str = ""
     agent_token: str = ""
     redis_url: str = "redis://redis:6379"
     health_port: int = 8080

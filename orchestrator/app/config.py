@@ -186,6 +186,10 @@ class Settings(BaseSettings):
     # our built-in OAuth 2.1 AS. Admin-only; only effective when a Microsoft app
     # registration (oauth_microsoft_client_id) is configured. Default OFF.
     msgraph_mcp_external_enabled: bool = False
+    # Platform-wide read-only enforcement for ALL Microsoft access (M365/Graph and
+    # on-prem Exchange). Default ON: no agent gets a write/send tool, whatever its
+    # own msgraph_access/exchange_access says. Admin can lift it in Settings.
+    msgraph_read_only: bool = True
     # Optional independent signing key for MCP access tokens. Empty = derive from
     # api_secret_key (domain-separated). Set for full key isolation from sessions.
     mcp_signing_key: str = ""

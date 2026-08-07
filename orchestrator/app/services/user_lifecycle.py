@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.models.agent import Agent, AgentState
 from app.models.user import User
 
@@ -234,10 +235,10 @@ async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool
                             return True
                 return True
             except Exception as e:
-                logger.warning(f"[UserLifecycle] start_container failed for {agent_id}: {e}")
+                logger.warning(f"[UserLifecycle] start_container failed for {scrub_log(agent_id)}: {scrub_log(e)}")
 
     # Container missing or start failed — recreate via AgentManager
-    logger.info(f"[UserLifecycle] Container gone for {agent_id}, recreating via AgentManager")
+    logger.info(f"[UserLifecycle] Container gone for {scrub_log(agent_id)}, recreating via AgentManager")
     try:
         from app.core.agent_manager import AgentManager
         from app.services.redis_service import RedisService
@@ -255,5 +256,5 @@ async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool
                         return True
         return True
     except Exception as e:
-        logger.warning(f"[UserLifecycle] Could not recreate agent {agent_id}: {e}")
+        logger.warning(f"[UserLifecycle] Could not recreate agent {scrub_log(agent_id)}: {scrub_log(e)}")
         return False

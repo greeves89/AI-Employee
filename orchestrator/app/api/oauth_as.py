@@ -49,6 +49,20 @@ def _require_enabled() -> None:
         raise HTTPException(status_code=404, detail="Not found")
 
 
+# Marker on the return URL after we sent the user through Microsoft SSO. Present =
+# "we already tried" → never bounce a second time (redirect-loop guard).
+_SSO_DONE = "sso_done"
+
+
+def _ms_sso_available() -> bool:
+    """Can we authenticate the user with Microsoft alone (client id AND secret set)?"""
+    try:
+        from app.core.sso_providers import get_sso_provider, is_sso_available
+        return is_sso_available(get_sso_provider("microsoft"))
+    except Exception:
+        return False
+
+
 def _session_user_id(request: Request) -> str | None:
     """Resolve the current platform user from the existing session (httpOnly JWT
     cookie or Bearer). Returns None if not logged in — we never authenticate here."""
@@ -151,7 +165,11 @@ async def register(request: Request, db: AsyncSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @oauth_router.get("/authorize")
-async def authorize(request: Request, db: AsyncSession = Depends(get_db)):
+async def authorize(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
     _require_enabled()
     q = request.query_params
     client_id = q.get("client_id", "")
@@ -171,9 +189,45 @@ async def authorize(request: Request, db: AsyncSession = Depends(get_db)):
 
     user_id = await _approved_session_user_id(request, db)
     if not user_id:
-        # Bounce through the platform login, then come back to this exact URL.
-        back = quote(f"{request.url.path}?{request.url.query}", safe="")
-        return RedirectResponse(f"{oas.issuer()}/login?redirect={back}", status_code=302)
+        # No AI-Employee login form: this server hands out Microsoft data, so the
+        # Microsoft account IS the credential. Send the user straight through the
+        # Entra sign-in — a browser that already has an Entra session (the OpenWebUI
+        # case) passes through without a single prompt, and the login stores the
+        # Graph tokens we need anyway (see SSOService.handle_callback).
+        # _SSO_DONE guards the loop: after one attempt we explain instead of bouncing
+        # again (pending approval, closed registration, deactivated account).
+        back = f"{request.url.path}?{request.url.query}&{_SSO_DONE}=1"
+        if _ms_sso_available() and q.get(_SSO_DONE) != "1":
+            return RedirectResponse(
+                f"{oas.issuer()}/api/v1/auth/sso/microsoft/login?redirect={quote(back, safe='')}",
+                status_code=302,
+            )
+        if q.get(_SSO_DONE) == "1":
+            return _html(_error_page(
+                "Die Microsoft-Anmeldung hat keine nutzbare Sitzung ergeben. "
+                "Das Konto ist entweder noch nicht freigeschaltet oder deaktiviert — "
+                "bitte an einen Administrator wenden."
+            ), status=403)
+        # No Microsoft SSO configured → fall back to the platform login page.
+        return RedirectResponse(
+            f"{oas.issuer()}/login?redirect={quote(f'{request.url.path}?{request.url.query}', safe='')}",
+            status_code=302,
+        )
+
+    # Consent already given for this exact client → issue the code silently.
+    if await oas.has_grant(redis, user_id, client_id):
+        code = await oas.issue_code(redis, {
+            "user_id": user_id,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "code_challenge": code_challenge,
+            "scope": q.get("scope", oas.MCP_SCOPE),
+        })
+        sep = "&" if "?" in redirect_uri else "?"
+        return RedirectResponse(
+            f"{redirect_uri}{sep}code={quote(code)}&state={quote(q.get('state', ''))}",
+            status_code=302,
+        )
 
     return _html(_consent_page(
         client_name=client.client_name or client_id,
@@ -209,6 +263,9 @@ async def authorize_decide(
         return _redirect_error(redirect_uri, state, "access_denied", "csrf")
     if form.get("decision") != "allow":
         return _redirect_error(redirect_uri, state, "access_denied")
+
+    # Remember the decision so the next authorization for this client is silent.
+    await oas.remember_grant(redis, user_id, client_id)
 
     code = await oas.issue_code(redis, {
         "user_id": user_id,

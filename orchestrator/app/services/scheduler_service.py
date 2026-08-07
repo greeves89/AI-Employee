@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -90,6 +91,15 @@ class SchedulerService:
                         "[Scheduler] DueSchedules DB unavailable (transient, "
                         "retrying next tick): %s", e,
                     )
+                # Tagesplan: jeder Block mit Uhrzeit MUSS einen Ausloeser haben.
+                try:
+                    armed = await self._arm_plan_blocks()
+                    if armed:
+                        logger.info("[Scheduler] %s Plan-Block/Bloecke scharf gestellt", armed)
+                except _TRANSIENT_DB_ERRORS as e:
+                    logger.warning("[Scheduler] Plan-Bloecke DB unavailable (transient): %s", e)
+                except Exception as e:
+                    logger.warning("[Scheduler] Plan-Bloecke scharf stellen fehlgeschlagen: %s", e)
                 # Stale-task watchdog: flag RUNNING tasks with no heartbeat >30min.
                 try:
                     await self._tick_stale_task_watchdog()
@@ -454,6 +464,39 @@ class SchedulerService:
         now: datetime,
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
+        # A STOPPED agent must not be driven. Without this check the schedule fired on
+        # anyway and every run died immediately — at the customer two agents piled up
+        # 337 failed runs over four weeks, one per hour, and nobody noticed. A stopped
+        # agent is off duty; the schedule keeps its rhythm and resumes when it starts.
+        if schedule.agent_id:
+            from app.core import agent_duty
+            from app.models.agent import Agent
+            from app.services import duty_service
+
+            duty_agent = (await db.execute(
+                select(Agent).where(Agent.id == schedule.agent_id)
+            )).scalar_one_or_none()
+            if duty_agent is not None:
+                queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
+                stale = await self._stale_task_count(db, schedule.agent_id, now)
+                duty = agent_duty.assess(
+                    duty_agent, queue_depth=queue_depth, stale_tasks=stale,
+                    now=now, schedule_active=schedule.enabled,
+                )
+                if duty["state"] != agent_duty.OK:
+                    # Ausfall/Blockade: die Arbeit muss jemand anders uebernehmen,
+                    # sonst bleibt sie liegen und niemand merkt es.
+                    if agent_duty.needs_handover(duty):
+                        await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
+                    schedule.next_run_at = _calc_next_run(schedule, now)
+                    logger.info(
+                        "[Scheduler] %s uebersprungen — Agent %s: %s (%s)",
+                        schedule.name, schedule.agent_id, duty["state"], duty["reason"],
+                    )
+                    return
+                # Arbeitsfaehig — aber schweigt sein Ansprechpartner seit Tagen?
+                await duty_service.escalate_silence(db, self.redis, duty_agent)
+
         # Skip proactive schedules if the agent is busy with a TASK (not chat)
         is_cron = bool(schedule.cron_expression and _CRONITER_AVAILABLE)
         if schedule.name.startswith("[Proactive]") and schedule.agent_id:
@@ -494,7 +537,47 @@ class SchedulerService:
         is_proactive = schedule.name.startswith("[Proactive]")
         if is_proactive:
             prompt = PROACTIVE_PROMPT
-            extra = await self._proactive_custom_instructions(db, schedule.agent_id)
+            proactive_config = await self._proactive_config(db, schedule.agent_id)
+            hours_note = _contact_hours_note(proactive_config)
+            if hours_note:
+                prompt = prompt + "\n\n" + hours_note
+            # WHAT this agent owns. Without it the run can only work off todos someone
+            # else filed — it plans nothing of its own and goes idle the moment the
+            # list is empty. STEP 1 derives the day plan from this block.
+            from app.core.responsibilities import responsibilities_note
+            duties_note = responsibilities_note(proactive_config)
+            if duties_note:
+                prompt = prompt + "\n\n" + duties_note
+            # Ohne Auftrag kann der Lauf NICHTS zustande bringen: kein Einrichtungsstand,
+            # keine Verantwortungsbereiche → keine Arbeit, aus der sich ein Tag bauen liesse.
+            # Frueher lief er trotzdem, kostete Modell-Zeit und meldete brav "nichts zu tun"
+            # (beim Kunden 493 Laeufe, 51 USD, null Ergebnis). Jetzt wird der Lauf gar nicht
+            # erst gestartet — stattdessen bekommt der Besitzer EINE Benachrichtigung, und
+            # die Agentenkachel traegt ein Ausrufezeichen.
+            from app.core.onboarding import is_onboarded, has_duties, onboarding_note
+            from app.models.agent import Agent as _Agent
+            _agent = (await db.execute(
+                select(_Agent).where(_Agent.id == schedule.agent_id)
+            )).scalar_one_or_none() if schedule.agent_id else None
+            if _agent is not None and not (is_onboarded(_agent) and has_duties(_agent)):
+                await self._nudge_missing_assignment(db, _agent)
+                schedule.next_run_at = _calc_next_run(schedule, now)
+                logger.info(
+                    "[Scheduler] %s uebersprungen — Agent %s hat keinen Auftrag "
+                    "(eingerichtet=%s, Bereiche=%s)",
+                    schedule.name, _agent.id, is_onboarded(_agent), has_duties(_agent),
+                )
+                return
+            ob_note = onboarding_note(_agent)
+            if ob_note:
+                prompt = prompt + "\n" + ob_note
+            # Seine eigene Lage (Dienstzeit, Ueberlast, abwesender Ansprechpartner)
+            # gehoert IHM in den Prompt — nicht nur in unsere Logs.
+            if duty_agent is not None:
+                d_note = agent_duty.duty_note(duty_agent, duty, now=now)
+                if d_note:
+                    prompt = prompt + "\n" + d_note
+            extra = (proactive_config.get("custom_instructions", "") or "").strip()
             if extra:
                 prompt = (
                     prompt
@@ -515,36 +598,145 @@ class SchedulerService:
             metadata={"schedule_id": schedule.id},
         )
 
-        # Advance schedule
+        # Advance schedule. Einmal-Laeufe (kein Cron, Intervall 0) schalten sich danach
+        # ab — sonst stuende next_run_at sofort wieder in der Vergangenheit und der Block
+        # feuerte im 30-Sekunden-Takt weiter.
         schedule.last_run_at = now
         schedule.total_runs += 1
-        schedule.next_run_at = _calc_next_run(schedule, now)
+        if not schedule.cron_expression and schedule.interval_seconds == 0:
+            schedule.enabled = False
+            schedule.next_run_at = now
+        else:
+            schedule.next_run_at = _calc_next_run(schedule, now)
 
         logger.info(
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
 
-    async def _proactive_custom_instructions(
-        self, db: AsyncSession, agent_id: str | None
-    ) -> str:
-        """Per-agent proactive additions from agent.config['proactive']['custom_instructions'].
+    async def _arm_plan_blocks(self) -> int:
+        """Sicherstellen, dass jeder geplante Block mit Uhrzeit einen Ausloeser hat.
 
-        Appended to the code-level PROACTIVE_PROMPT at fire time so the base stays
-        centralized in code (one source of truth) while each agent can carry its own
-        extra instructions as plain data.
+        Der Block LEGT seinen Einmal-Zeitplan beim Planen selbst an. Aber Bloecke aus
+        aelteren Fassungen (und alles, was beim Schreiben schiefging) haetten keinen —
+        sie staenden im Kalender und wuerden nie laufen. Genau das ist passiert: der
+        Nutzer sah seinen Plan und fragte „wieso macht der nichts?".
+
+        Deshalb hier die Invariante statt einer einmaligen Nachbesserung: Block mit
+        Uhrzeit ⇒ Zeitplan. Vergangene Zeiten feuern sofort — nachholen ist richtig,
+        stillschweigend verfallen lassen waere es nicht.
+        """
+        import uuid as _uuid
+        from datetime import date as _date
+
+        from app.models.agent_plan_item import AgentPlanItem
+
+        armed = 0
+        async with resilient_session() as db:
+            orphans = (await db.execute(
+                select(AgentPlanItem).where(
+                    AgentPlanItem.status == "planned",
+                    AgentPlanItem.planned_start.isnot(None),
+                    AgentPlanItem.schedule_id.is_(None),
+                    AgentPlanItem.plan_date >= _date.today(),
+                )
+            )).scalars().all()
+            for item in orphans:
+                schedule_id = _uuid.uuid4().hex[:8]
+                db.add(Schedule(
+                    id=schedule_id,
+                    name=f"[Plan] {item.title[:60]}",
+                    prompt=(
+                        f"Das ist ein Block aus DEINEM eigenen Tagesplan "
+                        f"({item.planned_start:%H:%M}, ca. {item.estimated_minutes} Min, "
+                        f"Priorität {item.priority}):\n\n{item.title}\n"
+                        + (f"\nPräzisierung: {item.notes}\n" if item.notes else "")
+                        + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
+                        "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
+                        "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
+                        "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
+                    ),
+                    interval_seconds=0,
+                    priority=0 if item.priority == "high" else 1,
+                    agent_id=item.agent_id,
+                    enabled=True,
+                    next_run_at=item.planned_start,
+                ))
+                item.schedule_id = schedule_id
+                armed += 1
+            if armed:
+                # Ohne das faellt beim Verlassen der Sitzung alles weg: die Zeitplaene
+                # waren angelegt und beim naechsten Blick wieder verschwunden.
+                await db.commit()
+        return armed
+
+    async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:
+        """Wie viele Aufgaben dieses Agenten haengen? Nutzt die Watchdog-Definition,
+        damit 'haengt' ueberall dasselbe heisst."""
+        try:
+            stale = await find_stale_tasks(db, now)
+            return sum(1 for t in stale if t.agent_id == agent_id)
+        except Exception:  # noqa: BLE001 — im Zweifel nicht blockieren
+            logger.debug("[Scheduler] Stale-Zaehlung fehlgeschlagen", exc_info=True)
+            return 0
+
+    async def _nudge_missing_assignment(self, db: AsyncSession, agent) -> None:
+        """EINE Benachrichtigung an den Besitzer, wenn ein Agent ohne Auftrag dasteht.
+
+        Gedrosselt auf einmal pro 12 Stunden (gleicher Takt wie die Meldebremse des
+        Agenten) — sonst bekommt der Nutzer bei stuendlichem Zeitplan 24 Hinweise am Tag
+        und schaltet den Agenten ab, statt ihn einzurichten.
+        """
+        from app.models.notification import Notification
+
+        key = f"onboarding_nudge:{agent.id}"
+        try:
+            if await self.redis.client.exists(key):
+                return
+            await self.redis.client.setex(key, 12 * 3600, "1")
+        except Exception:  # noqa: BLE001 — ohne Redis lieber einmal zu viel als gar nicht
+            logger.debug("[Scheduler] Nudge-Drossel nicht verfuegbar", exc_info=True)
+
+        from app.core.onboarding import is_onboarded
+        fehlt = (
+            "Er weiss noch nicht, wofuer er da ist."
+            if not is_onboarded(agent)
+            else "Ihm fehlen die Verantwortungsbereiche — er hat also keine wiederkehrenden Aufgaben."
+        )
+        db.add(Notification(
+            agent_id=agent.id,
+            type="warning",
+            title=f"{agent.name} wartet auf seinen Auftrag",
+            message=(
+                f"{fehlt} Der proaktive Lauf wurde deshalb uebersprungen — ohne Auftrag "
+                f"kann er nichts tun. Sag ihm im Chat, welche Rolle er hat und welche "
+                f"Aufgaben er dauerhaft uebernimmt, oder trage die Bereiche direkt in "
+                f"seinen Einstellungen ein."
+            )[:240],
+            priority="normal",
+            action_url=f"/agents/{agent.id}?tab=settings",
+            meta={"reason": "missing_assignment"},
+        ))
+        logger.info("[Scheduler] Hinweis an Besitzer: %s hat keinen Auftrag", agent.id)
+
+    async def _proactive_config(
+        self, db: AsyncSession, agent_id: str | None
+    ) -> dict:
+        """Per-agent proactive settings from agent.config['proactive'] (custom
+        instructions, contact hours). Read fresh at fire time so the base
+        PROACTIVE_PROMPT stays centralized in code (one source of truth) while
+        each agent carries its own additions as plain data.
         """
         if not agent_id:
-            return ""
+            return {}
         from sqlalchemy import select
         from app.models.agent import Agent
 
         result = await db.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         if not agent:
-            return ""
-        proactive = (agent.config or {}).get("proactive", {}) or {}
-        return (proactive.get("custom_instructions", "") or "").strip()
+            return {}
+        return (agent.config or {}).get("proactive", {}) or {}
 
     async def _tick_failure_watchdog(self) -> None:
         """Detect schedules that fired but whose task never reached a terminal
@@ -857,6 +1049,28 @@ class SchedulerService:
         logger.info("[Scheduler] Started scheduled meeting %s: %s", room.id, room.name)
 
 
+def _contact_hours_note(proactive_config: dict) -> str:
+    """Render the agent's configured Ansprechpartner working hours as a prompt
+    block, or "" if none are set (PROACTIVE_PROMPT STEP 4 then treats every run
+    as off-hours by default).
+
+    Only formats the note — whether "now" falls inside the window is left to the
+    agent's own judgment at runtime; the orchestrator has no reliable way to know
+    which moment in the run the agent will act on a decision that needs sign-off.
+    """
+    hours = (proactive_config or {}).get("contact_hours") or {}
+    start = (hours.get("start") or "").strip()
+    end = (hours.get("end") or "").strip()
+    if not start or not end:
+        return ""
+    tz = (hours.get("timezone") or "UTC").strip() or "UTC"
+    return (
+        "## Ansprechpartner-Erreichbarkeit\n"
+        f"Erreichbar {start}–{end} ({tz}). Außerhalb dieses Fensters gilt STEP 4 "
+        "(Day/Night-Regel) als Off-Hours."
+    )
+
+
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
     """Return the next fire time (UTC) for a schedule.
 
@@ -879,3 +1093,64 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
         except Exception as e:
             logger.warning("[Scheduler] Invalid cron expression '%s': %s — falling back to interval", schedule.cron_expression, e)
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
+
+
+# Generous cap on enumerated fire times per schedule per call — protects against
+# a pathological cron expression (e.g. "* * * * *" over a wide range) or a huge
+# requested range; a real day-timeline range never needs anywhere near this many.
+_MAX_OCCURRENCES = 1000
+
+
+def schedule_occurrences(schedule: "Schedule", range_start: datetime, range_end: datetime) -> list[datetime]:
+    """All fire times (UTC) of `schedule` within [range_start, range_end).
+
+    Purely mathematical from cron_expression/interval_seconds — independent of
+    whether the schedule actually fired (Task rows are the record of that; this
+    is "the plan"). Used to render planned-run markers on the activity
+    timeline, including for past days where the plan may differ from what
+    actually ran (schedule was paused/changed since).
+    """
+    if range_end <= range_start:
+        return []
+    occurrences: list[datetime] = []
+
+    if schedule.cron_expression and _CRONITER_AVAILABLE:
+        try:
+            tz_name = getattr(schedule, "timezone", None) or "UTC"
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz = timezone.utc
+            cron = croniter(schedule.cron_expression, range_start.astimezone(tz))
+            cron.get_prev(datetime)  # step back so a fire time exactly at range_start isn't missed
+            for _ in range(_MAX_OCCURRENCES):
+                nxt = cron.get_next(datetime).astimezone(timezone.utc)
+                if nxt >= range_end:
+                    break
+                if nxt >= range_start:
+                    occurrences.append(nxt)
+        except Exception as e:
+            logger.warning(
+                "[Scheduler] Invalid cron expression '%s' while listing occurrences: %s",
+                schedule.cron_expression, e,
+            )
+    elif schedule.interval_seconds and schedule.interval_seconds > 0 and schedule.next_run_at:
+        step_s = schedule.interval_seconds
+        anchor = schedule.next_run_at
+        if anchor.tzinfo is None:  # SQLite drops tzinfo on round-trip; Postgres never does
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        # Jump straight to the first candidate at-or-before range_start via
+        # integer arithmetic instead of stepping one interval at a time —
+        # range_start can be arbitrarily far from the anchor (e.g. a past day
+        # for a schedule created recently).
+        steps_to_start = math.floor((range_start - anchor).total_seconds() / step_s)
+        t = anchor + timedelta(seconds=steps_to_start * step_s)
+        while t < range_start:
+            t += timedelta(seconds=step_s)
+        for _ in range(_MAX_OCCURRENCES):
+            if t >= range_end:
+                break
+            occurrences.append(t)
+            t += timedelta(seconds=step_s)
+
+    return occurrences

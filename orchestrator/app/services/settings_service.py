@@ -65,6 +65,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)
     "msgraph_mcp_external_enabled",
+    # Platform-wide read-only enforcement for M365/Graph AND on-prem Exchange
+    "msgraph_read_only",
     # Improvement engine thresholds
     "improvement_suggestion_model",
     "improvement_min_ratings",

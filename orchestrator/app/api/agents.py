@@ -554,6 +554,7 @@ async def list_agents(
                 mode=agent.mode or "claude_code",
                 role=config.get("role", ""),
                 onboarding_complete=config.get("onboarding_complete", False),
+                has_responsibilities=bool((config.get("proactive") or {}).get("responsibilities")),
                 integrations=config.get("integrations", []),
                 permissions=config.get("permissions", DEFAULT_PERMISSIONS),
                 update_available=config.get("agent_version") != current_agent_version,
@@ -2066,6 +2067,7 @@ async def get_agent_integrations(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
+        from app.core import ms_access
         return {
             "agent_id": agent_id,
             "integrations": config.get("integrations", []),
@@ -2073,6 +2075,9 @@ async def get_agent_integrations(
             # Was missing → the UI never saw the saved value and always fell back to
             # "read", so Exchange Read+Write looked like it reset itself after refresh.
             "exchange_access": (config or {}).get("exchange_access", "read"),
+            # Platform-wide read-only enforcement — the UI locks the write option and
+            # explains why, instead of offering a switch that silently does nothing.
+            "microsoft_read_only": ms_access.read_only_enabled(),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -2106,13 +2111,23 @@ async def update_agent_integrations(
                 )
         config["integrations"] = new_integrations
 
-        # Optional: Microsoft Graph read/write mode for this agent.
+        # Optional: Microsoft Graph / on-prem Exchange read/write mode for this agent.
+        # While the platform-wide read-only switch is on, "write" is refused outright
+        # instead of being stored as a setting that the MCP transports ignore anyway.
+        from app.core import ms_access
+        ms_read_only = ms_access.read_only_enabled()
+        if ms_read_only and "write" in (body.get("msgraph_access"), body.get("exchange_access")):
+            raise HTTPException(
+                status_code=422,
+                detail="Microsoft-Zugriff ist plattformweit auf Nur-Lesen gestellt. "
+                       "Ein Administrator muss den Schalter in den Einstellungen zuerst lösen.",
+            )
+
         old_msgraph_access = config.get("msgraph_access", "read")
         if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
             config["msgraph_access"] = body["msgraph_access"]
         msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
 
-        # Optional: on-prem Exchange read/write mode for this agent.
         old_exchange_access = config.get("exchange_access", "read")
         if "exchange_access" in body and body["exchange_access"] in ("read", "write"):
             config["exchange_access"] = body["exchange_access"]
@@ -2132,6 +2147,7 @@ async def update_agent_integrations(
             "integrations": config["integrations"],
             "msgraph_access": config.get("msgraph_access", "read"),
             "exchange_access": config.get("exchange_access", "read"),
+            "microsoft_read_only": ms_read_only,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -2323,6 +2339,34 @@ async def update_agent_mounts(
 
 # --- Proactive Mode ---
 
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def _validated_contact_hours(start: str, end: str, tz_name: str) -> dict:
+    """Validate + normalize Ansprechpartner working hours, or {} if unset.
+
+    Both start and end are required together — a one-sided window can't be
+    evaluated by the agent. Raises HTTPException(422) on malformed input so a
+    typo surfaces immediately instead of silently producing a note the agent
+    can't act on.
+    """
+    start = (start or "").strip()
+    end = (end or "").strip()
+    tz_name = (tz_name or "UTC").strip() or "UTC"
+    if not start and not end:
+        return {}
+    if not start or not end:
+        raise HTTPException(status_code=422, detail="contact_hours_start and contact_hours_end must be set together")
+    if not _HHMM_RE.match(start) or not _HHMM_RE.match(end):
+        raise HTTPException(status_code=422, detail="contact_hours must be in HH:MM 24h format")
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(tz_name)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"Unknown timezone: {tz_name}")
+    return {"start": start, "end": end, "timezone": tz_name}
+
+
 class ProactiveUpdate(BaseModel):
     enabled: bool = True
     interval_seconds: int = 3600
@@ -2330,6 +2374,32 @@ class ProactiveUpdate(BaseModel):
     # Per-agent additions appended to the code base prompt at fire time.
     # None = leave unchanged (toggle/interval-only saves); "" = clear.
     custom_instructions: str | None = None
+    # Ansprechpartner working hours (PROACTIVE_PROMPT STEP 3/4) — lets the agent
+    # know when it may reach out vs. when it's off-hours. None = leave unchanged;
+    # "" (on any of the three) = clear.
+    contact_hours_start: str | None = None   # "HH:MM"
+    contact_hours_end: str | None = None     # "HH:MM"
+    contact_timezone: str | None = None      # IANA name, e.g. "Europe/Berlin"
+    # Standing areas of responsibility — what this agent OWNS, independent of any todo
+    # somebody filed. The proactive run derives its day plan from these, which is what
+    # turns "waits for work" into "knows what its job is". None = leave unchanged;
+    # [] = clear. Each item: {title, rhythm, priority, notes}.
+    responsibilities: list[dict] | None = None
+    # Morgendlicher Planungslauf: feste Uhrzeit statt blossem Intervall-Takt. Der
+    # Agent hat die Selbstplanung laengst im Prompt — hier bekommt sie einen festen
+    # Termin, damit der Tag EINMAL bewusst geplant wird statt bei jedem Tick neu.
+    # None = unveraendert, "" = aus, "HH:MM" = an.
+    morning_planning_time: str | None = None
+    morning_planning_weekdays_only: bool | None = None
+    # Vertretung bei Ausfall: wer uebernimmt die offenen Todos. Leer = Team-Lead.
+    deputy_agent_id: str | None = None
+    # Dienstzeit DES AGENTEN (nicht die Erreichbarkeit des Menschen).
+    duty_start: str | None = None            # "HH:MM"
+    duty_end: str | None = None              # "HH:MM"
+    duty_weekdays_only: bool | None = None
+    # Abwesenheit des Ansprechpartners (Urlaub) — Rueckfragen werden dann gesammelt.
+    absence_from: str | None = None          # "YYYY-MM-DD"
+    absence_to: str | None = None
 
 
 @router.get("/{agent_id}/proactive")
@@ -2367,6 +2437,10 @@ async def get_proactive_config(
         return {
             "agent_id": agent_id,
             "proactive": proactive,
+            # Vertretung und eigene Dienstzeit haengen am Agenten, nicht am Proaktiv-Block —
+            # die Oberflaeche zeigt sie aber im selben Panel.
+            "deputy_agent_id": config.get("deputy_agent_id", ""),
+            "working_hours": config.get("working_hours") or {},
             "schedule": schedule_stats,
             "base_prompt": PROACTIVE_PROMPT,
         }
@@ -2405,6 +2479,21 @@ async def update_proactive_config(
             else existing_custom
         )
 
+        # Same preserve-unless-explicit pattern for contact hours.
+        existing_hours = (proactive or {}).get("contact_hours", {}) or {}
+        new_start = body.contact_hours_start if body.contact_hours_start is not None else existing_hours.get("start", "")
+        new_end = body.contact_hours_end if body.contact_hours_end is not None else existing_hours.get("end", "")
+        new_tz = body.contact_timezone if body.contact_timezone is not None else existing_hours.get("timezone", "")
+        new_hours = _validated_contact_hours(new_start, new_end, new_tz)
+
+        # Same preserve-unless-explicit pattern for the areas of responsibility.
+        from app.core.responsibilities import validated_responsibilities
+        new_responsibilities = validated_responsibilities(
+            body.responsibilities
+            if body.responsibilities is not None
+            else (proactive or {}).get("responsibilities", [])
+        )
+
         if schedule_id:
             result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
             schedule = result.scalar_one_or_none()
@@ -2432,11 +2521,117 @@ async def update_proactive_config(
             )
             db.add(schedule)
 
+        # Morgendlicher Planungslauf — ein ZWEITER Zeitplan mit fester Uhrzeit neben
+        # dem Intervall-Takt. Er heisst ebenfalls "[Proactive] …", damit der Scheduler
+        # ihn wie jeden proaktiven Lauf behandelt (Basis-Prompt aus dem Code, inklusive
+        # Verantwortungsbereichen und Tagesplan) — kein Sonderweg, nur ein anderer Takt.
+        existing_morning = (proactive or {}).get("morning_planning", {}) or {}
+        morning_time = (
+            body.morning_planning_time
+            if body.morning_planning_time is not None
+            else existing_morning.get("time", "")
+        )
+        weekdays_only = (
+            body.morning_planning_weekdays_only
+            if body.morning_planning_weekdays_only is not None
+            else bool(existing_morning.get("weekdays_only", True))
+        )
+        morning_id = existing_morning.get("schedule_id")
+        morning_time = (morning_time or "").strip()
+        if morning_time and not _HHMM_RE.match(morning_time):
+            raise HTTPException(status_code=422, detail="Planungszeit muss HH:MM sein (24h)")
+
+        morning_schedule = None
+        if morning_id:
+            morning_schedule = (await db.execute(
+                select(Schedule).where(Schedule.id == morning_id)
+            )).scalar_one_or_none()
+
+        if morning_time:
+            hour, minute = morning_time.split(":")
+            cron = f"{int(minute)} {int(hour)} * * {'1-5' if weekdays_only else '*'}"
+            tz_name = (new_hours or {}).get("timezone") or "UTC"
+            if morning_schedule is None:
+                morning_id = uuid.uuid4().hex[:8]
+                morning_schedule = Schedule(
+                    id=morning_id,
+                    name=f"[Proactive] {agent.name} — Tagesplanung",
+                    prompt=PROACTIVE_PROMPT,
+                    interval_seconds=0,
+                    priority=0,
+                    agent_id=agent_id,
+                    enabled=body.enabled,
+                    next_run_at=now,
+                )
+                db.add(morning_schedule)
+            morning_schedule.cron_expression = cron
+            morning_schedule.interval_seconds = 0
+            morning_schedule.timezone = tz_name
+            # Der Planungslauf haengt am Proaktiv-Schalter: ist Proaktiv aus, plant
+            # auch morgens niemand.
+            morning_schedule.enabled = body.enabled
+            from app.services.scheduler_service import _calc_next_run
+            morning_schedule.next_run_at = _calc_next_run(morning_schedule, now)
+        elif morning_schedule is not None:
+            # Abgewaehlt → Zeitplan entfernen statt still deaktiviert liegen zu lassen.
+            await db.delete(morning_schedule)
+            morning_id = None
+
+        # Vertretung, eigene Dienstzeit und Abwesenheit — gleiches
+        # preserve-unless-explicit-Muster wie bei Erreichbarkeit und Bereichen.
+        if body.deputy_agent_id is not None:
+            deputy = body.deputy_agent_id.strip()
+            if deputy and deputy == agent_id:
+                raise HTTPException(status_code=422, detail="Ein Agent kann nicht sein eigener Vertreter sein")
+            if deputy:
+                exists = (await db.execute(select(Agent.id).where(Agent.id == deputy))).scalar_one_or_none()
+                if not exists:
+                    raise HTTPException(status_code=422, detail="Vertreter-Agent existiert nicht")
+            config["deputy_agent_id"] = deputy
+
+        existing_duty = config.get("working_hours") or {}
+        d_start = body.duty_start if body.duty_start is not None else existing_duty.get("start", "")
+        d_end = body.duty_end if body.duty_end is not None else existing_duty.get("end", "")
+        d_week = (body.duty_weekdays_only if body.duty_weekdays_only is not None
+                  else bool(existing_duty.get("weekdays_only", False)))
+        d_start, d_end = (d_start or "").strip(), (d_end or "").strip()
+        if bool(d_start) != bool(d_end):
+            raise HTTPException(status_code=422, detail="Dienstzeit: Start und Ende zusammen setzen oder beide leeren")
+        if d_start and (not _HHMM_RE.match(d_start) or not _HHMM_RE.match(d_end)):
+            raise HTTPException(status_code=422, detail="Dienstzeit muss HH:MM sein (24h)")
+        config["working_hours"] = (
+            {"start": d_start, "end": d_end,
+             "timezone": (new_hours or {}).get("timezone") or "UTC",
+             "weekdays_only": d_week}
+            if d_start else {}
+        )
+
+        existing_absence = (proactive or {}).get("contact_absence") or {}
+        a_from = body.absence_from if body.absence_from is not None else existing_absence.get("from", "")
+        a_to = body.absence_to if body.absence_to is not None else existing_absence.get("to", "")
+        a_from, a_to = (a_from or "").strip(), (a_to or "").strip()
+        if bool(a_from) != bool(a_to):
+            raise HTTPException(status_code=422, detail="Abwesenheit: Von und Bis zusammen setzen oder beide leeren")
+        if a_from:
+            from datetime import date as _date
+            try:
+                if _date.fromisoformat(a_to) < _date.fromisoformat(a_from):
+                    raise HTTPException(status_code=422, detail="Abwesenheit: Bis liegt vor Von")
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Abwesenheit: Datum muss YYYY-MM-DD sein")
+
         proactive = {
             "enabled": body.enabled,
             "schedule_id": schedule_id,
             "interval_seconds": body.interval_seconds,
             "custom_instructions": new_custom,
+            "contact_hours": new_hours,
+            "responsibilities": new_responsibilities,
+            "contact_absence": ({"from": a_from, "to": a_to} if a_from else {}),
+            "morning_planning": (
+                {"time": morning_time, "weekdays_only": weekdays_only, "schedule_id": morning_id}
+                if morning_time else {}
+            ),
         }
         config["proactive"] = proactive
         agent.config = config
