@@ -1483,7 +1483,14 @@ class RealtimeVoiceSession:
         # sich aus im ERSTEN Satz sagen.
         self._needs_briefing = bool(_ob_note)
         self._agent_config = cfg
-        sys_prompt = _system_prompt(agent_name, agent_role, language) + _ob_note + self._memory_context
+        # Derselbe Arbeitsrhythmus wie im proaktiven Lauf — sonst sagt die Stimme am
+        # Abend „ich plane dir den heutigen Tag", waehrend der Agent laengst morgen plant.
+        from app.core import plan_rhythm as _rhythm
+        _rhythm_note = _rhythm.rhythm_note(agent, spoken=True)
+        sys_prompt = (
+            _system_prompt(agent_name, agent_role, language)
+            + _ob_note + _rhythm_note + self._memory_context
+        )
         engine = creds.get("engine") or "nova_sonic"
 
         if engine == "azure_realtime":
@@ -2758,15 +2765,22 @@ class RealtimeVoiceSession:
         # behauptete, obwohl die Bridge „Chrome not found" zurückgegeben hatte.
         if isinstance(result, dict) and result.get("ok") is False:
             why = str(result.get("error") or "").strip()
-            # Der Bedienungshilfen-Baum gibt es nur auf macOS. Unter Windows meldet die
-            # Bridge das als Fehler — daraus darf kein "geht gar nicht" werden, denn
-            # Klicken, Tippen und Tastenkombinationen gehen dort sehr wohl.
-            if "only available on macOS" in why or "AXUIElement" in why:
+            # Fehlt der Bedienungshilfen-Baum, ist das KEIN "geht gar nicht": Klicken,
+            # Tippen und Tastenkombinationen gehen ueberall. Unter Windows fehlt nur ein
+            # nachinstallierbares Paket — das gehoert gesagt, damit es behoben werden kann.
+            if "uiautomation" in why.lower() or "Windows-Bedienungshilfen" in why:
                 return (
-                    "Auf diesem Rechner kann ich Elemente nicht selbst suchen — den "
-                    "Bedienungshilfen-Baum gibt es nur auf macOS. Ich mache einen "
-                    "Screenshot, dann sag mir kurz, wo ich klicken soll; Klicken, Tippen "
-                    "und Tastenkombinationen gehen hier genauso."
+                    "Auf diesem Windows-Rechner fehlt noch das Paket fuer die "
+                    "Bedienungshilfen — sag ihm: einmal `pip install uiautomation` in der "
+                    "Bridge-Umgebung, dann finde ich Elemente auch dort selbst. Bis dahin "
+                    "mache ich einen Screenshot und du sagst mir, wo ich klicken soll; "
+                    "Klicken, Tippen und Tastenkombinationen gehen jetzt schon."
+                )
+            if "only available on" in why or "AXUIElement" in why:
+                return (
+                    "Auf diesem Rechner kann ich Elemente nicht selbst suchen. Ich mache "
+                    "einen Screenshot, dann sag mir kurz, wo ich klicken soll; Klicken, "
+                    "Tippen und Tastenkombinationen gehen hier genauso."
                 )
             return (f"Das hat NICHT geklappt: {why or 'die Bridge meldet einen Fehler'}. "
                     "Sag ihm genau das und behaupte auf keinen Fall, es sei geöffnet." + os_note)
@@ -3985,19 +3999,12 @@ class RealtimeVoiceSession:
 
         Der Plan wurde in UTC vorgelesen und angezeigt: der Nutzer hoerte „15:20", im
         Kalender stand 17:20. Massgeblich ist, was am Agenten konfiguriert ist —
-        Erreichbarkeit des Ansprechpartners, sonst seine Dienstzeit, sonst UTC.
+        Erreichbarkeit des Ansprechpartners, sonst seine Dienstzeit, sonst UTC. Die
+        Reihenfolge steht in `core.plan_rhythm`, damit gesprochene, angezeigte und
+        geplante Uhrzeit dieselbe Zone meinen.
         """
-        from zoneinfo import ZoneInfo
-        cfg = getattr(self, "_agent_config", None) or {}
-        name = (
-            ((cfg.get("proactive") or {}).get("contact_hours") or {}).get("timezone")
-            or (cfg.get("working_hours") or {}).get("timezone")
-            or "UTC"
-        )
-        try:
-            return ZoneInfo(name)
-        except Exception:  # noqa: BLE001
-            return ZoneInfo("UTC")
+        from app.core import plan_rhythm
+        return plan_rhythm.tzinfo(getattr(self, "_agent_config", None))
 
     async def _show_day_plan(self, day: str = "") -> bool:
         """Den Tagesplan als Karte in die rechte Spalte legen.
@@ -4115,36 +4122,51 @@ class RealtimeVoiceSession:
         taucht im Aufgaben-Panel auf, laeuft mit den Werkzeugen des Agenten und legt den
         Plan ueber `plan_day` in den Kalender.
         """
+        from datetime import timedelta as _td
+        from types import SimpleNamespace
+
+        from app.core import plan_rhythm
+
         horizon = (horizon or "today").strip().lower()
-        wann = {"tomorrow": "für MORGEN", "week": "für die kommende WOCHE"}.get(horizon, "für HEUTE")
-        schwerpunkt = f" Schwerpunkt laut Nutzer: {focus.strip()}." if focus.strip() else ""
-        instruction = (
-            f"Plane deinen Arbeitstag {wann}.{schwerpunkt}\n\n"
-            "1. Lies mit `get_day_plan`, was schon geplant ist und was der Nutzer gestrichen hat.\n"
-            "2. Leite aus deinen Verantwortungsbereichen ab, was heute faellig ist (Takt beachten), "
-            "und ziehe offene Todos hinzu (`list_todos`).\n"
-            "3. Schreibe den Plan mit `plan_day` weg — Bloecke in Arbeitsreihenfolge, mit "
-            "geschaetzter Dauer und der Prioritaet des jeweiligen Bereichs.\n"
-            "4. Melde in zwei Saetzen, was du dir vorgenommen hast."
+        # „Plan mir den Tag" am Abend meint den naechsten Tag — alles andere waere eine
+        # Planung fuer die letzte Stunde. Dieselbe Phasenlogik wie beim Rhythmus-Lauf.
+        agent_stub = SimpleNamespace(config=self._agent_config or {})
+        today = datetime.now(timezone.utc).astimezone(plan_rhythm.tzinfo(self._agent_config)).date()
+        if horizon == "tomorrow":
+            plan_date = today + _td(days=1)
+        elif horizon == "week":
+            plan_date = today
+        else:
+            plan_date = plan_rhythm.target_date(agent_stub)
+        wann = {"week": "für die kommende WOCHE"}.get(
+            horizon, "für MORGEN" if plan_date > today else "für HEUTE"
         )
-        title = {"tomorrow": "Tagesplanung für morgen", "week": "Wochenplanung"}.get(
-            horizon, "Tagesplanung für heute"
+        instruction = (
+            f"Plane deinen Arbeitstag {wann}.\n\n"
+            + plan_rhythm.planning_instruction(plan_date, focus=focus)
+            + "6. Melde in zwei Saetzen, was du dir vorgenommen hast.\n"
+        )
+        title = {"week": "Wochenplanung"}.get(
+            horizon, "Tagesplanung für morgen" if plan_date > today else "Tagesplanung für heute"
         )
         answer = await self._plan_task(instruction, title)
         # Sobald die Aufgabe durch ist, liegt der Plan in der Datenbank — dann zeigen
         # statt vorlesen. Nebenlaeufig, damit das Gespraech nicht wartet.
-        asyncio.create_task(self._show_plan_when_ready(horizon))
+        asyncio.create_task(self._show_plan_when_ready(plan_date.isoformat()))
         return answer
 
-    async def _show_plan_when_ready(self, horizon: str, tries: int = 20) -> None:
-        """Auf den fertigen Plan warten und ihn dann einblenden (max. ~2 Minuten)."""
-        from datetime import date as _date, datetime as _dt, timedelta as _td, timezone as _tz
-        target = _dt.now(_tz.utc).date() + (_td(days=1) if horizon == "tomorrow" else _td(0))
+    async def _show_plan_when_ready(self, target_iso: str, tries: int = 20) -> None:
+        """Auf den fertigen Plan warten und ihn dann einblenden (max. ~2 Minuten).
+
+        Gezeigt wird GENAU der Tag, der geplant wurde — am Abend also morgen. Vorher
+        wartete diese Schleife auf „heute" und blendete nie etwas ein, wenn der Agent
+        den naechsten Tag geplant hatte.
+        """
         for _ in range(tries):
             await asyncio.sleep(6)
             if self._closed:
                 return
-            if await self._show_day_plan(target.isoformat()):
+            if await self._show_day_plan(target_iso):
                 return
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:

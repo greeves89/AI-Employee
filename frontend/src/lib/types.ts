@@ -524,6 +524,8 @@ export interface AgentTemplate {
   integrations: string[];
   mcp_server_ids: number[];
   knowledge_template: string;
+  /** Dauerauftraege, die jeder Agent aus dieser Vorlage mitbekommt. */
+  responsibilities?: Responsibility[];
   is_builtin: boolean;
   is_published: boolean;
   published_at: string | null;
@@ -681,6 +683,10 @@ export interface ActivityScheduleMark {
   time: string;
   schedule_id: string;
   schedule_name: string;
+  /** Lesbarer Takt: "täglich 22:00", "alle 30 Min", "einmalig". */
+  rhythm?: string;
+  /** Woher der Lauf kommt: plan | rhythm | proactive | meeting | custom. */
+  kind?: string;
 }
 
 export interface ActivityAgentTimeline {

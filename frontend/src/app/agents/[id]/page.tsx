@@ -33,6 +33,7 @@ import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
 import { ProactiveToggle } from "@/components/agents/proactive-toggle";
+import { DevelopmentCard } from "@/components/agents/development-card";
 import { DockerAppsTab } from "@/components/agents/docker-apps-tab";
 import { SkillsTab } from "@/components/agents/skills-tab";
 import { ComputerUseTab } from "@/components/agents/computer-use-tab";
@@ -1572,6 +1573,9 @@ function AgentSettings({
 
       {/* Proactive Mode */}
       <ProactiveToggle agentId={agentId} />
+
+      {/* Entwicklung: Kosten und Laufzahl sagen nichts darueber, ob die Arbeit taugt. */}
+      <DevelopmentCard agentId={agentId} />
 
       {/* Always-on (Ausnahme vom Idle-Auto-Stopp) */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">

@@ -407,7 +407,13 @@ export async function getDayPlan(
 
 export async function patchDayPlanItem(
   itemId: number,
-  patch: { status?: string; planned_start?: string; estimated_minutes?: number; title?: string },
+  patch: {
+    status?: string;
+    planned_start?: string;
+    estimated_minutes?: number;
+    title?: string;
+    notes?: string;
+  },
 ): Promise<DayPlanItem> {
   return fetchJSON(`${getBase()}/day-plan/${itemId}`, {
     method: "PATCH",
@@ -1630,6 +1636,7 @@ export async function createTemplate(data: {
   permissions?: string[];
   integrations?: string[];
   knowledge_template?: string;
+  responsibilities?: Responsibility[];
 }): Promise<AgentTemplate> {
   return fetchJSON(`${getBase()}/templates`, {
     method: "POST",
@@ -1649,6 +1656,7 @@ export async function updateTemplate(
     permissions?: string[];
     integrations?: string[];
     knowledge_template?: string;
+    responsibilities?: Responsibility[];
   },
 ): Promise<AgentTemplate> {
   return fetchJSON(`${getBase()}/templates/${templateId}`, {
@@ -3135,6 +3143,30 @@ export async function getAnalyticsAgents(days = 30) {
 export async function getAnalyticsAgentDetail(agentId: string, days = 30) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return fetchJSON<any>(`${getBase()}/analytics/agents/${agentId}?days=${days}`);
+}
+
+export interface AgentDevelopment {
+  agent_id: string;
+  days: number;
+  tasks: { total: number; failed: number; failure_rate: number };
+  failure_rate_recent: number;
+  failure_rate_older: number;
+  ratings: { count: number; avg_recent: number | null; avg_older: number | null };
+  plan_adherence: { planned: number; done: number; rate: number };
+  trend: string;
+  probation: {
+    days_active: number;
+    review_due: boolean;
+    onboarded: boolean;
+    has_responsibilities: boolean;
+  };
+}
+
+/** Wird dieser Agent messbar besser? Backend: analytics.agent_development. */
+export async function getAgentDevelopment(agentId: string, days = 30): Promise<AgentDevelopment> {
+  return fetchJSON<AgentDevelopment>(
+    `${getBase()}/analytics/agents/${agentId}/development?days=${days}`,
+  );
 }
 
 export async function getSkillTrend(skillId: number, days = 60) {

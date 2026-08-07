@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { formatCost, formatDuration } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar, DayPlanItem } from "@/lib/types";
-import { CalendarClock, X } from "lucide-react";
+import { CalendarClock, Repeat, X } from "lucide-react";
 
 // Tagesschluessel in LOKALER Zeit — toISOString() wuerde vor 02:00 MESZ auf den
 // Vortag zeigen und den Plan des falschen Tages laden.
@@ -38,6 +38,11 @@ const MIN_BLOCK_PX = 22;
 // schedule that fires every few minutes) — without it, adjacent short blocks
 // touch with zero seam and read as one solid wall instead of distinct runs.
 const BLOCK_GAP_PX = 3;
+// Ein geplanter Lauf hat keine Dauer, aber er soll aussehen wie ein Plan-Block und
+// nicht wie ein Strich: zwei Zeilen (Titel, Takt) brauchen diese Hoehe. Vorher war
+// das ein 16-Pixel-Band mit abgeschnittener Mini-Schrift — im selben Kalender
+// standen daneben lesbare Karten, und der Unterschied sprang sofort ins Auge.
+const MARK_CARD_PX = 34;
 
 const statusStyle: Record<string, string> = {
   running: "bg-blue-500/70 border-blue-400",
@@ -271,7 +276,7 @@ function MultiAgentStrip({
               {a.scheduled_marks.map((m, i) => (
                 <div
                   key={`${m.schedule_id}-${i}`}
-                  title={`${m.schedule_name} — ${fmtTime(m.time)}`}
+                  title={`${m.schedule_name} — ${fmtTime(m.time)}${m.rhythm ? ` (${m.rhythm})` : ""}`}
                   className="absolute top-0 h-2 w-2 -translate-x-1/2 rotate-45 border border-foreground/30 bg-background"
                   style={{ left: `${pct(new Date(m.time).getTime() - dayStart.getTime())}%` }}
                 />
@@ -340,6 +345,69 @@ function DayAgenda({
   }, [agent.agent_id, planDate]);
   useEffect(() => { loadPlan(); }, [loadPlan]);
   const undatedPlan = useMemo(() => plan.filter((p) => !p.planned_start), [plan]);
+
+  // Ein Block, der noch nicht gelaufen ist, gehoert dem Nutzer: Titel, Uhrzeit und
+  // Dauer muessen aenderbar sein, ohne dass er den Agenten darum bitten muss. Sobald
+  // er laeuft oder erledigt ist, ist er Geschichte — dann nur noch ansehen.
+  const [editing, setEditing] = useState<DayPlanItem | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editMinutes, setEditMinutes] = useState(15);
+  const [editNotes, setEditNotes] = useState("");
+  const [editError, setEditError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const openEditor = (item: DayPlanItem) => {
+    setEditing(item);
+    setEditTitle(item.title);
+    setEditNotes(item.notes || "");
+    setEditMinutes(item.estimated_minutes);
+    setEditError("");
+    if (item.planned_start) {
+      const d = new Date(item.planned_start);
+      setEditTime(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+    } else {
+      setEditTime("");
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const title = editTitle.trim();
+    if (!title) {
+      setEditError("Ohne Titel ist es kein Block.");
+      return;
+    }
+    // Die Uhrzeit ist LOKAL eingegeben — sie muss auf den Tag des Blocks gelegt und
+    // erst dann nach UTC uebersetzt werden, sonst landet der Block je nach Zeitzone
+    // auf dem Vor- oder Folgetag.
+    let planned_start: string | undefined;
+    if (editTime) {
+      const [h, m] = editTime.split(":").map((v) => parseInt(v, 10));
+      if (Number.isNaN(h) || Number.isNaN(m)) {
+        setEditError("Die Uhrzeit sieht nicht nach HH:MM aus.");
+        return;
+      }
+      const d = new Date(dayStart);
+      d.setHours(h, m, 0, 0);
+      planned_start = d.toISOString();
+    }
+    setSaving(true);
+    try {
+      await api.patchDayPlanItem(editing.id, {
+        title,
+        notes: editNotes.trim(),
+        estimated_minutes: Math.max(editMinutes || 15, 15),
+        ...(planned_start ? { planned_start } : {}),
+      });
+      setEditing(null);
+      await loadPlan();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Speichern hat nicht geklappt.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const dropBlock = async (item: DayPlanItem) => {
     // Streichen statt loeschen: der Tag bleibt nachvollziehbar, und der Agent sieht
@@ -461,17 +529,20 @@ function DayAgenda({
             return (
               <div
                 key={`plan-${item.id}`}
-                role={item.task_id ? "button" : undefined}
-                onClick={item.task_id ? () => router.push(`/tasks/${item.task_id}`) : undefined}
+                role="button"
+                onClick={
+                  item.task_id
+                    ? () => router.push(`/tasks/${item.task_id}`)
+                    : () => openEditor(item)
+                }
                 title={
                   item.task_id
                     ? `${statusLabel(item.status)}: ${item.title} — klicken für Ergebnis und Dateien`
-                    : `Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""}`
+                    : `Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""} — klicken zum Bearbeiten`
                 }
                 className={cn(
-                  "group absolute left-0 w-[26%] overflow-hidden rounded-md border px-2 py-1",
+                  "group absolute left-0 w-[26%] cursor-pointer overflow-hidden rounded-md border px-2 py-1 hover:opacity-80",
                   item.status === "done" ? "border-solid" : "border-dashed",
-                  item.task_id && "cursor-pointer hover:opacity-80",
                   item.status === "running" && "animate-pulse",
                   dropped
                     ? "border-foreground/15 bg-foreground/[0.02] opacity-50"
@@ -490,12 +561,15 @@ function DayAgenda({
                 {height >= 30 && (
                   <div className="truncate text-[10px] text-muted-foreground/60">
                     {statusLabel(item.status)} · {item.estimated_minutes} Min
-                    {item.task_id && " · Ergebnis ansehen"}
+                    {item.task_id ? " · Ergebnis ansehen" : " · bearbeiten"}
                   </div>
                 )}
                 <button
                   type="button"
-                  onClick={() => dropBlock(item)}
+                  onClick={(e) => {
+                    e.stopPropagation();   // sonst oeffnet der Klick zusaetzlich den Editor
+                    dropBlock(item);
+                  }}
                   title={dropped ? "Wieder einplanen" : "Streichen — der Agent lässt es dann liegen"}
                   className="absolute right-1 top-1 hidden rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground group-hover:block"
                 >
@@ -512,19 +586,31 @@ function DayAgenda({
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
             const col = Math.min(lane, markLaneCount - 1);
             const w = 34 / markLaneCount;
+            const label = m.schedule_name.replace(/^\[(Proactive|Rhythmus)\]\s*/, "");
             return (
               <div
                 key={`${m.schedule_id}-${i}`}
-                title={`${m.schedule_name} — ${fmtTime(m.time)}`}
-                className="absolute flex h-4 items-center gap-1 overflow-hidden rounded border border-emerald-500/30 bg-emerald-500/[0.12] px-1.5 -translate-y-1/2 dark:border-emerald-400/25 dark:bg-emerald-400/[0.07]"
-                style={{ top, right: `${col * w}%`, width: `calc(${w}% - 3px)` }}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/schedules?schedule=${m.schedule_id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/schedules?schedule=${m.schedule_id}`);
+                  }
+                }}
+                title={`${m.schedule_name} — ${fmtTime(m.time)}${m.rhythm ? ` (${m.rhythm})` : ""} — klicken zum Bearbeiten`}
+                className="group absolute cursor-pointer overflow-hidden rounded-md border border-emerald-500/40 bg-emerald-500/[0.07] px-2 py-1 hover:opacity-80 dark:border-emerald-400/40"
+                style={{ top, right: `${col * w}%`, width: `calc(${w}% - 4px)`, height: MARK_CARD_PX }}
               >
-                <span className="shrink-0 font-mono text-[9px] text-emerald-700 dark:text-emerald-300/70">
+                <div className="flex items-start gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-200">
+                  <Repeat className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
+                  <span className="truncate">{label}</span>
+                </div>
+                <div className="truncate text-[10px] text-muted-foreground/60">
                   {fmtTime(m.time)}
-                </span>
-                <span className="truncate text-[10px] text-emerald-800 dark:text-emerald-100/70">
-                  {m.schedule_name.replace(/^\[Proactive\]\s*/, "")}
-                </span>
+                  {m.rhythm ? ` · ${m.rhythm}` : ""} · bearbeiten
+                </div>
               </div>
             );
           })}
@@ -603,12 +689,17 @@ function DayAgenda({
           <div className="space-y-1">
             {undatedPlan.map((item) => (
               <div key={`undated-${item.id}`} className="group flex items-center gap-2 text-[11px]">
-                <span className={cn(
-                  "flex-1 truncate",
-                  item.status === "dropped" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
-                )}>
+                <button
+                  type="button"
+                  onClick={() => openEditor(item)}
+                  title="Bearbeiten — hier kannst du ihm auch eine Uhrzeit geben, damit er von allein läuft"
+                  className={cn(
+                    "flex-1 truncate text-left hover:underline",
+                    item.status === "dropped" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
+                  )}
+                >
                   {item.title}
-                </span>
+                </button>
                 <span className="shrink-0 text-[10px] text-muted-foreground/40">
                   {item.estimated_minutes} Min
                 </span>
@@ -622,6 +713,103 @@ function DayAgenda({
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bearbeiten: solange ein Block nur GEPLANT ist, gehoert er dem Nutzer. Ohne
+          das konnte er ihn nur streichen — verschieben, kuerzen oder praezisieren ging
+          nur ueber den Agenten. Die Uhrzeit ist dabei der wichtigste Teil: erst mit ihr
+          bekommt der Block einen Ausloeser und laeuft von allein. */}
+      {editing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setEditing(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-foreground/10 bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <CalendarClock className="h-4 w-4 opacity-70" />
+              Block bearbeiten
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                  Was soll er tun?
+                </label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                    Uhrzeit
+                  </label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                    Dauer (Min, mind. 15)
+                  </label>
+                  <input
+                    type="number"
+                    min={15}
+                    step={5}
+                    value={editMinutes}
+                    onChange={(e) => setEditMinutes(parseInt(e.target.value, 10) || 15)}
+                    className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                  Präzisierung (optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full resize-none rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                />
+              </div>
+              {!editTime && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  Ohne Uhrzeit läuft der Block nicht von allein — er bleibt eine Notiz,
+                  die der Agent beim nächsten Lauf aufgreift.
+                </p>
+              )}
+              {editError && (
+                <p className="text-[11px] text-red-600 dark:text-red-400">{editError}</p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-foreground/[0.06]"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-sm text-background disabled:opacity-50"
+              >
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Speichern
+              </button>
+            </div>
           </div>
         </div>
       )}

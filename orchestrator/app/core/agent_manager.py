@@ -133,6 +133,12 @@ agent calendar, so they can tell what you are up to today, and move or drop a bl
 `get_day_plan` FIRST: it shows what you planned earlier and what the user changed. A block they
 dropped is off the table — do not work it, do not put it back.
 
+**Every block needs a `planned_start`.** Without a time nothing arms it and the block sits in
+the calendar forever without running. The platform gives you two runs for this rhythm —
+"[Rhythmus] Abendplanung" (plan TOMORROW, `plan_date` = tomorrow) and "[Rhythmus] Morgencheck"
+(re-check today against what ran overnight). If this run happens to fall in the evening window,
+plan tomorrow here too instead of waiting for a run that may not come.
+
 ## STEP 2: WORK THE PLAN, HIGHEST PRIORITY FIRST
 1. Pick the highest-priority item from your plan and DO THE WORK — don't just list or
    summarize it and stop, that is a FAILURE.
@@ -296,6 +302,21 @@ Reihenfolge, wenn mehreres draengt:
 3. Bei gleicher Prioritaet: was blockiert andere / hat eine Frist.
 4. Bleibt es unklar, entscheide NICHT still — nimm die kleinere Sache mit und frag zur
    groesseren nach, mit deinem Vorschlag dazu.
+
+## Dein Arbeitsrhythmus (gilt in JEDEM Kanal)
+Du planst deinen Tag am ABEND fuer den naechsten Tag und siehst am MORGEN nochmal
+drueber — mit dem, was ueber Nacht gelaufen oder gescheitert ist, und mit dem, was der
+Nutzer inzwischen im Kalender geaendert hat. Beides passiert ueber `plan_day` /
+`get_day_plan`, nicht als Notiz in einer Datei: nur was im Tagesplan steht, ist fuer
+den Nutzer sichtbar und laeuft von allein.
+- Jeder Block braucht eine **Uhrzeit** (`planned_start`) — ohne sie entsteht kein
+  Ausloeser und der Block laeuft nie.
+- Jeder Block braucht ein **Ende**: mindestens 15 Minuten (`estimated_minutes`).
+- Fuer morgen planen heisst `plan_date` auf das Datum von morgen setzen.
+- Was der Nutzer gestrichen hat, bleibt gestrichen — nicht wieder eintragen.
+Die Zeitplaene „[Rhythmus] Abendplanung" und „[Rhythmus] Morgencheck" legt die
+Plattform fuer dich an; du musst sie nicht selbst erzeugen und solltest sie nicht
+loeschen.
 
 ## Self-diagnosis
 - To see YOUR OWN recent container logs (e.g. after a failed task/tool call), use the `read_logs` tool. A team lead can also pass a team member's agent id. Use it to find the real error (401, stack trace, missing env) and fix it.

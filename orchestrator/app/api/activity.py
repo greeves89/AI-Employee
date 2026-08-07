@@ -47,6 +47,7 @@ async def get_activity_timeline(
 ):
     """One entry per visible agent: task bars + planned-run markers overlapping
     [start, end). Ownership-scoped identically to cost attribution/analytics."""
+    from app.core.plan_rhythm import describe_schedule
     from app.services.scheduler_service import schedule_occurrences
 
     # Query-param datetimes with no offset are ambiguous — treat as UTC rather
@@ -114,11 +115,24 @@ async def get_activity_timeline(
     for a in agents:
         marks = []
         for s in schedules_by_agent.get(a.id, []):
+            # Takt und Art gehoeren mit: sonst steht im Kalender nur eine Uhrzeit, und
+            # ob dahinter ein taeglicher Rhythmus oder ein Einmal-Lauf steckt, sieht
+            # man erst, wenn der Agent es zufaellig in den Namen geschrieben hat.
+            rhythm = describe_schedule(s)
+            kind = (
+                "plan" if s.name.startswith("[Plan] ")
+                else "rhythm" if s.name.startswith("[Rhythmus] ")
+                else "proactive" if s.name.startswith("[Proactive]")
+                else "meeting" if s.prompt.startswith("__meeting__:")
+                else "custom"
+            )
             for occ in schedule_occurrences(s, start, end):
                 marks.append({
                     "time": _to_iso(occ),
                     "schedule_id": s.id,
                     "schedule_name": s.name,
+                    "rhythm": rhythm,
+                    "kind": kind,
                 })
         marks.sort(key=lambda m: m["time"])
 

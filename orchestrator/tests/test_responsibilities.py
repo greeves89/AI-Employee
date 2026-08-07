@@ -117,29 +117,32 @@ if __name__ == "__main__":
 
 
 class MorningPlanningTests(unittest.TestCase):
-    """Der feste Planungstermin am Morgen — die Mechanik gab es, nur den Klick nicht."""
+    """Der feste Planungstermin am Morgen — heute steuert er den Morgencheck.
+
+    Frueher legte diese Einstellung einen EIGENEN Zeitplan an. Seit dem Arbeitsrhythmus
+    (`core/plan_rhythm`) hat jeder proaktive Agent den Morgencheck ohnehin; ein zweiter
+    Planungslauf am selben Morgen waere einer zu viel. Die Uhrzeit bleibt, sie steuert
+    jetzt nur.
+    """
 
     @staticmethod
     def _src() -> str:
         from pathlib import Path
         return (Path(__file__).resolve().parents[1] / "app/api/agents.py").read_text()
 
-    def test_creates_a_proactive_schedule_so_the_base_prompt_applies(self):
-        """Der Planungslauf muss '[Proactive]' heissen — sonst behandelt ihn der
-        Scheduler als gewoehnlichen Zeitplan und der Basis-Prompt (samt Bereichen
-        und Tagesplan) greift nicht."""
-        src = self._src()
-        self.assertIn('f"[Proactive] {agent.name} — Tagesplanung"', src)
-
-    def test_cron_respects_weekdays_only(self):
-        self.assertIn("'1-5' if weekdays_only else '*'", self._src())
+    def test_no_second_schedule_is_created_anymore(self):
+        self.assertNotIn('f"[Proactive] {agent.name} — Tagesplanung"', self._src())
 
     def test_time_format_is_validated(self):
         self.assertIn("Planungszeit muss HH:MM sein", self._src())
 
-    def test_disabling_removes_the_schedule(self):
-        """Abgewaehlt heisst weg — nicht 'liegt deaktiviert herum und feuert irgendwann'."""
-        self.assertIn("await db.delete(morning_schedule)", self._src())
+    def test_the_time_is_kept_and_steers_the_rhythm(self):
+        self.assertIn('"morning_planning": (', self._src())
+        from app.core.plan_rhythm import rhythm_times
+        from types import SimpleNamespace
+        agent = SimpleNamespace(config={"proactive": {"morning_planning": {"time": "06:15"}}})
+        self.assertEqual(rhythm_times(agent)["morning"], "06:15")
 
-    def test_follows_the_proactive_switch(self):
-        self.assertIn("morning_schedule.enabled = body.enabled", self._src())
+    def test_an_old_separate_schedule_is_cleaned_up(self):
+        """Abgewaehlt heisst weg — und der Alt-Bestand aus der Zeit davor auch."""
+        self.assertIn("await db.delete(legacy)", self._src())

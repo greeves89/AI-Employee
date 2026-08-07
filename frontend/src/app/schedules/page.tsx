@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Clock,
@@ -81,13 +82,28 @@ const INTERVAL_PRESETS = [
   { label: "24 hours", seconds: 86400 },
 ];
 
+// `useSearchParams` zwingt zu einer Suspense-Grenze — ohne sie bricht der Build
+// beim statischen Rendern dieser Seite ab.
 export default function SchedulesPage() {
+  return (
+    <Suspense fallback={null}>
+      <SchedulesPageInner />
+    </Suspense>
+  );
+}
+
+function SchedulesPageInner() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
   const { agents } = useAgents();
+  // Aus dem Kalender kommt man mit ?schedule=<id> hierher — dann muss der gemeinte
+  // Zeitplan auch sichtbar sein und nicht irgendwo in einer langen Liste stehen.
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get("schedule") || "";
+  const highlightRef = useRef<HTMLDivElement | null>(null);
 
   // Create form state
   const [name, setName] = useState("");
@@ -114,6 +130,13 @@ export default function SchedulesPage() {
     const interval = setInterval(refresh, 10000);
     return () => clearInterval(interval);
   }, [refresh]);
+
+  // Erst wenn die Liste da ist, kann gescrollt werden — vorher gibt es das
+  // Element noch nicht.
+  useEffect(() => {
+    if (!highlightId || !highlightRef.current) return;
+    highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, schedules]);
 
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) return;
@@ -388,8 +411,13 @@ export default function SchedulesPage() {
           {schedules.map((schedule) => (
             <motion.div
               key={schedule.id}
+              ref={schedule.id === highlightId ? highlightRef : undefined}
               variants={itemVariants}
-              className="group rounded-2xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm transition-all hover:border-foreground/[0.1]"
+              className={`group rounded-2xl border bg-card/80 p-5 backdrop-blur-sm transition-all ${
+                schedule.id === highlightId
+                  ? "border-emerald-500/60 ring-2 ring-emerald-500/30"
+                  : "border-foreground/[0.06] hover:border-foreground/[0.1]"
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">

@@ -135,9 +135,19 @@ class VoiceTriggersTheAgentTests(unittest.TestCase):
         self.assertNotIn("AgentPlanItem", handler)
 
     def test_instruction_tells_the_agent_to_use_its_own_tools(self):
+        """Die Anweisung kommt aus `plan_rhythm` — eine Fassung fuer Sprache und
+        Rhythmus-Lauf. Frueher stand hier eine eigene, kuerzere Variante ohne
+        Uhrzeit-Pflicht; die daraus entstandenen Bloecke liefen nie."""
+        from datetime import date
+
+        from app.core.plan_rhythm import planning_instruction
+
         handler = self.voice.split("async def _plan_my_day", 1)[1].split("async def _plan_task", 1)[0]
+        self.assertIn("plan_rhythm.planning_instruction", handler)
+        text = planning_instruction(date(2026, 8, 8))
         for tool in ("get_day_plan", "list_todos", "plan_day"):
-            self.assertIn(tool, handler)
+            self.assertIn(tool, text)
+        self.assertIn("planned_start", text)
 
     def test_prompt_forbids_announcing_without_doing(self):
         self.assertIn("NICHTS ANKÜNDIGEN, WAS DU NICHT IM SELBEN ZUG TUST", self.voice)
@@ -196,3 +206,76 @@ class MinimumBlockLengthTests(unittest.TestCase):
     def test_prompt_tells_the_agent_before_he_plans(self):
         mgr = (ORCH / "app/core/agent_manager.py").read_text()
         self.assertIn("at least 15 minutes per block", mgr)
+
+
+class EditablePlanBlockTests(unittest.TestCase):
+    """Ein Block, der noch nicht gelaufen ist, gehoert dem Nutzer.
+
+    Bisher konnte er ihn nur streichen. Verschieben ging nur ueber den Agenten — und
+    haette ohnehin nichts bewirkt: der Einmal-Zeitplan haette weiter zur alten Uhrzeit
+    gefeuert, waehrend der Kalender die neue zeigte.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.api = (ORCH / "app/api/day_plan.py").read_text()
+        cls.store = (ORCH / "app/core/day_plan_store.py").read_text()
+        cls.ui = (REPO / "frontend/src/components/activity/activity-timeline.tsx").read_text()
+
+    def test_changing_a_block_moves_its_trigger_along(self):
+        self.assertIn("async def sync_block_schedule", self.store)
+        self.assertIn("schedule.next_run_at = row.planned_start", self.store)
+        self.assertIn("sync_block_schedule(db, row)", self.api)
+
+    def test_dropping_a_block_disables_its_trigger(self):
+        self.assertIn('if row.status == "dropped":', self.store)
+        self.assertIn("schedule.enabled = False", self.store)
+
+    def test_removing_the_time_removes_the_trigger(self):
+        self.assertIn("row.schedule_id = None", self.store)
+
+    def test_history_cannot_be_rewritten(self):
+        self.assertIn("inhalt_geaendert", self.api)
+        self.assertIn("status_code=409", self.api)
+
+    def test_delete_takes_the_trigger_with_it(self):
+        self.assertIn("delete(Schedule).where(Schedule.id == row.schedule_id)", self.api)
+
+    def test_ui_opens_an_editor_and_warns_about_a_missing_time(self):
+        self.assertIn("openEditor", self.ui)
+        self.assertIn("Block bearbeiten", self.ui)
+        self.assertIn("Ohne Uhrzeit läuft der Block nicht von allein", self.ui)
+
+    def test_ui_floor_matches_the_backend(self):
+        self.assertIn("Math.max(editMinutes || 15, 15)", self.ui)
+
+    def test_block_prompt_has_one_definition(self):
+        """Derselbe Auftragstext stand doppelt im Code — eine Verbesserung ging an der
+        anderen Stelle vorbei."""
+        self.assertIn("def block_prompt(row)", self.store)
+        sched = (ORCH / "app/services/scheduler_service.py").read_text()
+        self.assertIn("prompt=block_prompt(item)", sched)
+        self.assertEqual(sched.count("Das ist ein Block aus DEINEM eigenen Tagesplan"), 0)
+
+
+class ScheduleCardTests(unittest.TestCase):
+    """Geplante Laeufe sahen im selben Kalender deutlich aermlicher aus als Plan-Bloecke."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ui = (REPO / "frontend/src/components/activity/activity-timeline.tsx").read_text()
+        cls.api = (ORCH / "app/api/activity.py").read_text()
+
+    def test_backend_sends_the_rhythm_and_the_kind(self):
+        self.assertIn('"rhythm": rhythm', self.api)
+        self.assertIn('"kind": kind', self.api)
+
+    def test_marks_are_cards_not_hairlines(self):
+        self.assertIn("MARK_CARD_PX", self.ui)
+        self.assertIn("m.rhythm", self.ui)
+
+    def test_a_planned_run_can_be_opened(self):
+        self.assertIn("/schedules?schedule=", self.ui)
+        page = (REPO / "frontend/src/app/schedules/page.tsx").read_text()
+        self.assertIn('searchParams.get("schedule")', page)
+        self.assertIn("scrollIntoView", page)

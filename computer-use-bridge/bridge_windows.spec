@@ -29,6 +29,12 @@ a = Analysis(
         'tkinter.ttk',
         'tkinter.filedialog',
         'customtkinter',
+        # UI Automation: ohne diese Module im Paket kann die gebaute Windows-Bridge
+        # keine Elemente finden — sie koennte nur klicken, wohin jemand zeigt.
+        'uiautomation',
+        'comtypes',
+        'comtypes.client',
+        'comtypes.stream',
     ] + ctk_hidden,
     hookspath=[],
     hooksconfig={},

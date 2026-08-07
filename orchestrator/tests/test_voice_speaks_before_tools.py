@@ -43,7 +43,7 @@ class SpeakBeforeToolsTests(unittest.TestCase):
         import inspect
         from app.services.realtime_voice_session import RealtimeVoiceSession
         src = inspect.getsource(RealtimeVoiceSession)
-        build = src.index("sys_prompt = _system_prompt")
+        build = src.index("_system_prompt(agent_name, agent_role, language)")
         branch = src.index('if engine == "azure_realtime"')
         self.assertLess(build, branch, "Prompt muss VOR der Engine-Weiche gebaut werden")
         self.assertEqual(src.count("system_prompt=sys_prompt"), 2,

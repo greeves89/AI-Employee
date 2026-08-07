@@ -2521,10 +2521,10 @@ async def update_proactive_config(
             )
             db.add(schedule)
 
-        # Morgendlicher Planungslauf — ein ZWEITER Zeitplan mit fester Uhrzeit neben
-        # dem Intervall-Takt. Er heisst ebenfalls "[Proactive] …", damit der Scheduler
-        # ihn wie jeden proaktiven Lauf behandelt (Basis-Prompt aus dem Code, inklusive
-        # Verantwortungsbereichen und Tagesplan) — kein Sonderweg, nur ein anderer Takt.
+        # „Tagesplanung am Morgen": frueher legte diese Einstellung einen ZWEITEN
+        # Zeitplan an. Seit dem Arbeitsrhythmus (core/plan_rhythm) gibt es den
+        # Morgencheck ohnehin fuer jeden proaktiven Agenten — die Uhrzeit hier STEUERT
+        # ihn jetzt nur noch. Zwei Planungslaeufe an einem Morgen waren einer zu viel.
         existing_morning = (proactive or {}).get("morning_planning", {}) or {}
         morning_time = (
             body.morning_planning_time
@@ -2536,45 +2536,19 @@ async def update_proactive_config(
             if body.morning_planning_weekdays_only is not None
             else bool(existing_morning.get("weekdays_only", False))
         )
-        morning_id = existing_morning.get("schedule_id")
         morning_time = (morning_time or "").strip()
         if morning_time and not _HHMM_RE.match(morning_time):
             raise HTTPException(status_code=422, detail="Planungszeit muss HH:MM sein (24h)")
 
-        morning_schedule = None
+        # Alten Einzel-Zeitplan abraeumen, falls dieser Agent noch einen aus der Zeit
+        # davor hat — sonst liefe er neben dem Morgencheck weiter.
+        morning_id = existing_morning.get("schedule_id")
         if morning_id:
-            morning_schedule = (await db.execute(
+            legacy = (await db.execute(
                 select(Schedule).where(Schedule.id == morning_id)
             )).scalar_one_or_none()
-
-        if morning_time:
-            hour, minute = morning_time.split(":")
-            cron = f"{int(minute)} {int(hour)} * * {'1-5' if weekdays_only else '*'}"
-            tz_name = (new_hours or {}).get("timezone") or "UTC"
-            if morning_schedule is None:
-                morning_id = uuid.uuid4().hex[:8]
-                morning_schedule = Schedule(
-                    id=morning_id,
-                    name=f"[Proactive] {agent.name} — Tagesplanung",
-                    prompt=PROACTIVE_PROMPT,
-                    interval_seconds=0,
-                    priority=0,
-                    agent_id=agent_id,
-                    enabled=body.enabled,
-                    next_run_at=now,
-                )
-                db.add(morning_schedule)
-            morning_schedule.cron_expression = cron
-            morning_schedule.interval_seconds = 0
-            morning_schedule.timezone = tz_name
-            # Der Planungslauf haengt am Proaktiv-Schalter: ist Proaktiv aus, plant
-            # auch morgens niemand.
-            morning_schedule.enabled = body.enabled
-            from app.services.scheduler_service import _calc_next_run
-            morning_schedule.next_run_at = _calc_next_run(morning_schedule, now)
-        elif morning_schedule is not None:
-            # Abgewaehlt → Zeitplan entfernen statt still deaktiviert liegen zu lassen.
-            await db.delete(morning_schedule)
+            if legacy is not None:
+                await db.delete(legacy)
             morning_id = None
 
         # Vertretung, eigene Dienstzeit und Abwesenheit — gleiches
@@ -2628,8 +2602,10 @@ async def update_proactive_config(
             "contact_hours": new_hours,
             "responsibilities": new_responsibilities,
             "contact_absence": ({"from": a_from, "to": a_to} if a_from else {}),
+            # Kein `schedule_id` mehr: der Morgencheck ist ein Rhythmus-Zeitplan,
+            # der aus dieser Uhrzeit abgeleitet wird (core/plan_rhythm.rhythm_times).
             "morning_planning": (
-                {"time": morning_time, "weekdays_only": weekdays_only, "schedule_id": morning_id}
+                {"time": morning_time, "weekdays_only": weekdays_only}
                 if morning_time else {}
             ),
         }

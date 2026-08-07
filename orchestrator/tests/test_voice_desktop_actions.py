@@ -44,15 +44,45 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class WindowsFallbackTests(unittest.TestCase):
-    """Unter Windows gibt es keinen Bedienungshilfen-Baum — das darf kein „geht gar
-    nicht" werden. Klicken, Tippen und Tastenkombinationen gehen dort sehr wohl."""
+class WindowsSupportTests(unittest.TestCase):
+    """Windows kann jetzt dasselbe wie macOS — und wo etwas fehlt, wird es gesagt.
 
-    def test_ax_error_is_translated_into_a_workable_answer(self):
-        self.assertIn("only available on macOS", VOICE)
-        hint = VOICE.split("only available on macOS", 1)[1][:400]
+    Vorher gab es den Bedienungshilfen-Baum nur auf macOS: unter Windows konnte die
+    Bridge nur klicken, wohin jemand zeigte. Jetzt liefert UI Automation denselben
+    Baum, und beide Systeme benutzen dieselbe Suche.
+    """
+
+    def test_windows_has_its_own_tree_producer(self):
+        self.assertIn("def _win_ui_tree(", BRIDGE)
+        self.assertIn("import uiautomation as auto", BRIDGE)
+
+    def test_both_platforms_share_ONE_search(self):
+        self.assertIn("def search_tree(", BRIDGE)
+        self.assertEqual(BRIDGE.count("def _search(node"), 0)
+        self.assertEqual(BRIDGE.count("def _find(node"), 0)
+
+    def test_role_names_work_across_platforms(self):
+        """`button` muss AXButton (macOS) UND ButtonControl (Windows) treffen."""
+        self.assertIn("def _role_matches(", BRIDGE)
+        self.assertIn('removeprefix("ax")', BRIDGE)
+        self.assertIn('removesuffix("control")', BRIDGE)
+
+    def test_capabilities_are_asked_not_guessed(self):
+        self.assertIn("def ax_tree_available(", BRIDGE)
+        self.assertIn("if ax_tree_available() else []", BRIDGE)
+        self.assertIn('"ax_tree_available": ax_tree_available()', BRIDGE)
+
+    def test_missing_package_is_reported_actionably(self):
+        self.assertIn("pip install uiautomation", BRIDGE)
+        self.assertIn("pip install uiautomation", VOICE)
+
+    def test_missing_tree_still_leaves_a_workable_answer(self):
+        self.assertIn("only available on", VOICE)
+        hint = VOICE.split('if "only available on" in why', 1)[1][:400]
         self.assertIn("Screenshot", hint)
-        self.assertIn("Tastenkombinationen gehen hier genauso", hint)
+        self.assertIn("gehen hier genauso", hint)
 
-    def test_bridge_reports_capabilities_per_platform(self):
-        self.assertIn('if IS_MAC else []', BRIDGE)
+    def test_windows_build_ships_the_dependency(self):
+        root = Path(__file__).resolve().parents[2]
+        self.assertIn("'uiautomation'", (root / "computer-use-bridge/bridge_windows.spec").read_text())
+        self.assertIn("uiautomation", (root / "computer-use-bridge/requirements.txt").read_text())

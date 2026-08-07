@@ -5,6 +5,56 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.165.0] — 2026-08-07
+
+### Added
+- **Jeder Agent plant jetzt abends den nächsten Tag und schaut morgens nochmal drüber.**
+  Bisher hatte genau EIN Agent diesen Rhythmus, weil er ihn sich im Chat selbst
+  eingerichtet hatte — die anderen planten irgendwann mitten am Tag oder gar nicht, und
+  der Montag blieb leer, weil sonntags niemand plante. Neu: `core/plan_rhythm.py` plus
+  zwei Zeitpläne pro proaktivem Agenten (`[Rhythmus] Abendplanung`, `[Rhythmus]
+  Morgencheck`), angelegt über dieselbe Zeitplan-Maschinerie wie alles andere.
+  - Die Zeiten leitet jeder Agent aus SEINER Dienstzeit ab (Planung eine halbe Stunde vor
+    Feierabend, Durchsicht zum Dienstbeginn); ohne Dienstzeit gelten 21:30 und 07:00.
+  - **Sieben Tage die Woche** — nur wer `weekdays_only` gesetzt hat, macht Wochenende.
+  - Der Morgencheck bekommt die Läufe der Nacht mit Ausgang vorgelegt, statt sie selbst
+    zusammensuchen zu müssen.
+  - Fällt ein Rhythmus-Lauf aus, holt der nächste proaktive Lauf im Abendfenster die
+    Planung nach — die Phase hängt an jedem proaktiven Lauf mit im Prompt.
+- **Windows kann Anwendungen jetzt genauso bedienen wie macOS.** Die Bridge liest dort den
+  UI-Automation-Baum in derselben Form wie den AX-Baum von macOS; `find_element` und
+  `wait_for_element` arbeiten unverändert weiter. Rollennamen werden tolerant verglichen,
+  `button` trifft damit `AXButton` und `ButtonControl`.
+- **Plan-Blöcke sind bearbeitbar, solange sie nur geplant sind** — Titel, Uhrzeit, Dauer
+  und Präzisierung, direkt im Kalender. Der Auslöser wird dabei mitgezogen: ein
+  verschobener Block läuft zur neuen Zeit, ein gestrichener gar nicht mehr.
+- **Verantwortungsbereiche in Vorlagen eintragbar** — das Backend konnte es seit v1.157.0,
+  die Oberfläche fehlte. Agent und Vorlage teilen sich jetzt EINEN Editor.
+- **Entwicklung & Probezeit pro Agent sichtbar** (Fehlerquote, Plan-Treue, Bewertungen,
+  Tendenz). Kosten und Laufzahl sagen nichts darüber, ob die Arbeit taugt.
+
+### Changed
+- **Geplante Läufe sehen im Kalender aus wie Plan-Blöcke** statt wie Haarstriche: Titel,
+  Uhrzeit, lesbarer Takt („täglich 22:00", „alle 30 Min") — und ein Klick führt auf den
+  Zeitplan, der dort hervorgehoben wird.
+- Die Planungsanweisung steht nur noch EINMAL im Code: Rhythmus-Lauf und Sprachfront
+  geben dieselbe weiter. Die kürzere Fassung der Stimme kannte die Uhrzeit-Pflicht nicht —
+  die daraus entstandenen Blöcke standen im Kalender und liefen nie.
+- „Plan mir den Tag" am Abend meint jetzt den nächsten Tag, nicht die letzte Stunde.
+
+### Fixed
+- Ein gelöschter Plan-Block ließ seinen Einmal-Zeitplan zurück, der weiter Arbeit anstieß.
+- Titel und Uhrzeit eines bereits laufenden oder erledigten Blocks lassen sich nicht mehr
+  überschreiben (409) — sonst stünde im Kalender ein Titel, unter dem etwas anderes lief.
+
+### Deployment
+- Orchestrator-Neustart (VERSION-Datei wird beim Start gelesen), Frontend-Rebuild.
+- Agenten neu erstellen, damit die neue `AGENT.md` mit dem Arbeitsrhythmus ankommt.
+- Windows-Bridge: `pip install uiautomation` bzw. neue Bridge-App; ohne das Paket sagt der
+  Agent selbst, was zu tun ist. Die macOS-Bridge braucht nichts.
+
+---
+
 ## [1.164.1] — 2026-08-07
 
 ### Fixed

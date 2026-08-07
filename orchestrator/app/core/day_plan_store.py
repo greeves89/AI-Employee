@@ -31,6 +31,56 @@ VALID_SOURCES = ("responsibility", "todo", "self", "user")
 VALID_PRIORITIES = ("high", "normal", "low")
 
 
+def block_prompt(row) -> str:
+    """Der Auftrag EINES Plan-Blocks — eine Fassung fuer Anlegen und Nachziehen.
+
+    Derselbe Text stand frueher zweimal im Code (hier und im Nachruest-Lauf des
+    Schedulers); eine Verbesserung an einer Stelle ging an der anderen vorbei.
+    """
+    return (
+        f"Das ist ein Block aus DEINEM eigenen Tagesplan "
+        f"({row.planned_start:%H:%M}, ca. {row.estimated_minutes} Min, "
+        f"Priorität {row.priority}):\n\n{row.title}\n"
+        + (f"\nPräzisierung: {row.notes}\n" if row.notes else "")
+        + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
+        "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
+        "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
+        "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
+    )
+
+
+async def sync_block_schedule(db: AsyncSession, row: AgentPlanItem) -> None:
+    """Den Ausloeser eines Blocks an den Block angleichen (nach dem Bearbeiten).
+
+    Verschiebt der Nutzer einen Block im Kalender, muss der Einmal-Zeitplan mit —
+    sonst feuert die Arbeit weiter zur alten Uhrzeit, waehrend der Kalender die neue
+    zeigt. Und ein gestrichener Block darf gar nicht mehr feuern.
+    """
+    if not row.schedule_id:
+        return
+    schedule = (await db.execute(
+        select(Schedule).where(Schedule.id == row.schedule_id)
+    )).scalar_one_or_none()
+    if schedule is None:
+        row.schedule_id = None
+        return
+    if row.status == "dropped":
+        schedule.enabled = False
+        return
+    if row.status in ("running", "done"):
+        return                                   # gelaufen ist gelaufen
+    if not row.planned_start:
+        # Uhrzeit entfernt: der Block wird zur Notiz, der Ausloeser faellt weg.
+        await db.execute(delete(Schedule).where(Schedule.id == schedule.id))
+        row.schedule_id = None
+        return
+    schedule.enabled = True
+    schedule.name = f"[Plan] {row.title[:60]}"
+    schedule.prompt = block_prompt(row)
+    schedule.priority = 0 if row.priority == "high" else 1
+    schedule.next_run_at = row.planned_start
+
+
 def _parse_start(raw) -> datetime | None:
     """ISO-Zeit annehmen, auch mit ``Z``; Unsinn wird zu „ohne feste Zeit"."""
     if not raw:
@@ -108,16 +158,7 @@ async def replace_plan(
         db.add(Schedule(
             id=schedule_id,
             name=f"[Plan] {row.title[:60]}",
-            prompt=(
-                f"Das ist ein Block aus DEINEM eigenen Tagesplan "
-                f"({row.planned_start:%H:%M}, ca. {row.estimated_minutes} Min, "
-                f"Priorität {row.priority}):\n\n{row.title}\n"
-                + (f"\nPräzisierung: {row.notes}\n" if row.notes else "")
-                + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
-                "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
-                "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
-                "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
-            ),
+            prompt=block_prompt(row),
             interval_seconds=0,          # Einmal-Lauf: schaltet sich nach dem Feuern ab
             priority=0 if row.priority == "high" else 1,
             agent_id=agent_id,
