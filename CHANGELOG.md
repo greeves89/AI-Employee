@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.164.0] — 2026-08-07
+
+### Fixed
+- **„Ich kann die App nur öffnen, nicht in ihr navigieren."** Das stimmte nie — die Bridge
+  beherrscht Klicken, Tippen, Tastenkombinationen, Scrollen und liest den
+  Bedienungshilfen-Baum. Im Sprachweg fehlten aber **Suchen** und **Tasten**, und ohne
+  Suche bleibt nur blindes Klicken auf geratene Koordinaten. Ergänzt: `find` (Element über
+  den Bedienungshilfen-Baum), `wait` (auf ein Element warten), `key` (z. B. `cmd+f`),
+  `scroll`. Dazu die Bedienkette im Werkzeug: öffnen → finden → klicken → tippen →
+  nachsehen; und das ausdrückliche Verbot der falschen Ausrede.
+- **Bildersuche gab zu früh auf.** Manche Treffer zeigen auf eine Webseite statt auf die
+  Bilddatei — dann hieß es „keine direkten Bilder". Jetzt werden deutlich mehr Kandidaten
+  geholt, und schlägt die Originaladresse fehl, wird das Vorschaubild genommen.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.163.0] — 2026-08-07
 
 ### Added

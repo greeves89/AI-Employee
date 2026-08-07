@@ -720,6 +720,14 @@ DESKTOP_TOOL = {
             "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
             "action='click' — klickt bei x/y. action='type' — tippt text.\n"
+            "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
+            "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
+            "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
+            "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
+            "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "SO BEDIENST DU EINE APP: oeffnen → `find` auf das Element → `click` → "
+            "`type`/`key` → wieder nachsehen (`screenshot` oder `find`). Sage NIEMALS, "
+            "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
             "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
             "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
             "fehlgeschlagen ist."
@@ -727,9 +735,9 @@ DESKTOP_TOOL = {
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "open | screenshot | click | type"},
-                "target": {"type": "string", "description": "URL oder Programmname (bei action='open')."},
-                "text": {"type": "string", "description": "Text (bei action='type')."},
+                "action": {"type": "string", "description": "open | screenshot | find | click | type | key | wait | scroll"},
+                "target": {"type": "string", "description": "URL/Programmname (open) oder Beschriftung des gesuchten Elements (find/wait)."},
+                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
             },
@@ -2700,6 +2708,28 @@ class RealtimeVoiceSession:
             if not text:
                 return "Mir fehlt der Text, den ich tippen soll."
             act, params = "type", {"text": text}
+        elif action == "find":
+            # Ohne Suche bleibt nur blindes Klicken auf geratene Koordinaten — deshalb
+            # sagte er, er koenne "nur oeffnen, nicht navigieren". Der Bedienungshilfen-
+            # Baum weiss, wo die Dinge sind.
+            if not target.strip():
+                return "Wonach soll ich auf dem Bildschirm suchen?"
+            act, params = "find_element", {"query": target.strip()}
+        elif action == "wait":
+            if not target.strip():
+                return "Worauf soll ich warten?"
+            act, params = "wait_for_element", {"query": target.strip(), "timeout": 10}
+        elif action == "key":
+            if not text.strip():
+                return "Welche Tastenkombination soll ich schicken?"
+            act, params = "hotkey", {"keys": [k.strip() for k in text.split("+") if k.strip()]}
+        elif action == "scroll":
+            amount = -5
+            try:
+                amount = int(text) if text.strip() else -5
+            except ValueError:
+                pass
+            act, params = "scroll", {"clicks": amount}
         else:
             return f"Die Aktion '{action}' kenne ich nicht."
 
@@ -4023,7 +4053,10 @@ class RealtimeVoiceSession:
         count = max(1, min(int(count or 3), 4))
         from app.core.image_search import image_search
 
-        hits = await image_search(q, max_results=count + 3)
+        # Reichlich Kandidaten holen: manche Treffer zeigen auf eine Webseite statt auf
+        # die Bilddatei, andere sperren fremde Abrufe. Wer aufgibt, sobald der erste
+        # nicht klappt, meldet faelschlich "keine Bilder" — also weitersuchen.
+        hits = await image_search(q, max_results=max(count * 5, 15))
         if not hits:
             return f"Zu '{q}' habe ich keine Bilder gefunden — sag mir gern einen anderen Begriff."
 
@@ -4031,9 +4064,22 @@ class RealtimeVoiceSession:
         for hit in hits:
             if shown >= count:
                 break
-            try:
-                _final, headers, content = await _safe_get(hit["image_url"], timeout=10.0)
-            except Exception:  # noqa: BLE001 — ein toter Treffer, der naechste ist dran
+            content = headers = None
+            # Erst die Originaladresse, dann das Vorschaubild — das ist immer eine
+            # echte Bilddatei und liegt auf dem Server der Suche.
+            for candidate in (hit.get("image_url"), hit.get("thumbnail")):
+                if not candidate or not str(candidate).startswith("https://"):
+                    continue
+                try:
+                    _final, headers, content = await _safe_get(candidate, timeout=8.0)
+                except Exception:  # noqa: BLE001 — toter Treffer, naechster Kandidat
+                    content = None
+                    continue
+                ctype_try = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
+                if ctype_try.startswith("image/"):
+                    break
+                content = None
+            if content is None or headers is None:
                 continue
             ctype = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
             if not ctype.startswith("image/"):
