@@ -356,6 +356,9 @@ gemacht* — und *was hat er heute noch vor*.
   6. **Speichern**. Der Auslöser zieht mit: verschiebst du den Block auf 15:00, läuft die
      Arbeit um 15:00 und nicht mehr zur alten Zeit.
 
+  ![Plan-Block bearbeiten](screenshots/34-block-bearbeiten.png)
+  *Abbildung 34: Titel, Uhrzeit, Dauer und Präzisierung eines geplanten Blocks*
+
   Ein Block, der bereits **läuft** oder **erledigt** ist, lässt sich nicht mehr umschreiben —
   ein Klick darauf öffnet stattdessen das **Ergebnis** samt erzeugter Dateien.
 - **Ohne feste Uhrzeit:** Was der Agent für heute vorhat, aber nicht auf eine Uhrzeit gelegt
@@ -471,6 +474,9 @@ und was eine Freigabe braucht.
 
 **Entwicklung & Probezeit** *(seit 1.165.0)* — direkt unter dem Proactive-Bereich. Kosten
 und Anzahl der Läufe sagen nichts darüber, **ob die Arbeit taugt**; diese Karte schon:
+
+![Entwicklung & Probezeit](screenshots/35-entwicklung.png)
+*Abbildung 35: Tendenz, Fehlerquote, Plan-Treue und Bewertungen auf einen Blick*
 
 - **Tendenz** — *besser · stabil · schlechter*, aus dem Vergleich der zweiten Hälfte des
   Zeitraums mit der ersten. Bei zu wenigen Daten steht das ausdrücklich da, statt eine
@@ -986,6 +992,9 @@ Eine Vorlage kann jetzt auch die **Verantwortungsbereiche** mitbringen. Das ist 
 Unterschied zwischen einem neuen Agenten, der auf Aufträge wartet, und einem, der seinen
 Job vom ersten Tag an kennt: Wer aus dieser Vorlage entsteht, gilt als **eingerichtet** und
 fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
+
+![Vorlage · Verantwortungsbereiche](screenshots/36-vorlagen-bereiche.png)
+*Abbildung 36: Derselbe Editor wie beim Agenten — hier in der Vorlage*
 
 1. Seitenleiste → **Settings** → Abschnitt **Agent-Vorlagen**.
 2. Die gewünschte Vorlage aufklappen → **Bearbeiten**.
@@ -1660,3 +1669,9 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Apps: Übersicht | `/apps` | `f19-apps-uebersicht.png` |
 | Apps: Detailfenster | `/apps` | `f20-app-detail.png` |
 | Apps: Freigabe-Dialog | `/apps` | `f21-app-freigeben.png` |
+| Agent: Verantwortungsbereiche | `/agents/<id>` → Settings | `31-verantwortungsbereiche.png` |
+| Agent: Tagesplan im Kalender | `/agents/<id>` → Activity → Kalender | `32-tagesplan.png` |
+| Agent: Plan-Block bearbeiten | `/agents/<id>` → Activity → Kalender | `34-block-bearbeiten.png` |
+| Agent: Entwicklung & Probezeit | `/agents/<id>` → Settings | `35-entwicklung.png` |
+| Vorlage: Verantwortungsbereiche | `/settings` → Agent-Vorlagen | `36-vorlagen-bereiche.png` |
+| Admin: Microsoft nur lesend | `/admin` → Settings → Integrationen | `33-microsoft-nur-lesend.png` |
