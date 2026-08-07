@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.log_redaction import scrub_log
 from app.core.sso_providers import (
     SSOProviderConfig,
     get_sso_client_id,
@@ -180,10 +181,10 @@ class SSOService:
                     provider_name, user.id, token_data
                 )
                 logger.info("Stored %s Graph tokens for user %s during login",
-                            provider_name, email)
+                            scrub_log(provider_name), scrub_log(email))
             except Exception as e:
                 logger.warning("Could not persist %s Graph tokens during login: %s",
-                               provider_name, e)
+                               scrub_log(provider_name), scrub_log(e))
 
         return user, return_to
 
@@ -265,7 +266,7 @@ class SSOService:
                 user.sso_provider = provider_name
                 user.sso_subject = subject
                 await self.db.commit()
-                logger.info(f"SSO linked {provider_name} to existing user {email}")
+                logger.info(f"SSO linked {scrub_log(provider_name)} to existing user {scrub_log(email)}")
             else:
                 logger.warning(
                     f"SSO email not verified for {email}, skipping account link"
@@ -299,7 +300,7 @@ class SSOService:
         await self.db.refresh(user)
 
         logger.info(
-            f"SSO user created: {email} via {provider_name} "
+            f"SSO user created: {scrub_log(email)} via {scrub_log(provider_name)} "
             f"(role: {user.role.value}, first: {is_first}, approved: {approved})"
         )
         return user

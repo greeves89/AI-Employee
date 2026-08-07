@@ -266,11 +266,11 @@ async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession
             return _tool_result(f"File already exists: {path} (set overwrite=true to replace).", is_error=True)
         except ValueError as e:
             return _tool_result(f"Error: {e}", is_error=True)
-        logger.info("brain_write brain=%s path=%s created=%s bytes=%s", brain.slug, vault.safe_log(path), res["created"], res["bytes"])
+        logger.info("brain_write brain=%s path=%s created=%s bytes=%s", vault.safe_log(brain.slug), vault.safe_log(path), res["created"], res["bytes"])
         try:
             await vault_indexer.index_file(db, brain.label, brain.host_path, path)
         except Exception as e:  # indexing must not fail the write
-            logger.warning("brain_write reindex failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
+            logger.warning("brain_write reindex failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), vault.safe_log(e))
         verb = "Created" if res["created"] else "Updated"
         return _tool_result(f"{verb} {path} in {brain.name} ({res['bytes']} bytes).")
 
@@ -286,11 +286,11 @@ async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession
             return _tool_result(f"File not found: {path}", is_error=True)
         except ValueError as e:
             return _tool_result(f"Error: {e}", is_error=True)
-        logger.info("brain_delete brain=%s path=%s", brain.slug, vault.safe_log(path))
+        logger.info("brain_delete brain=%s path=%s", vault.safe_log(brain.slug), vault.safe_log(path))
         try:
             await vault_indexer.remove_file(db, brain.label, path)
         except Exception as e:
-            logger.warning("brain_delete deindex failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), e)
+            logger.warning("brain_delete deindex failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), vault.safe_log(e))
         return _tool_result(f"Deleted {path} from {brain.name}.")
 
     return _tool_result(f"Unknown tool: {name}", is_error=True)
