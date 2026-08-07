@@ -635,6 +635,11 @@ export function VoiceSessionModal({
         } else {
           suppressAudioRef.current = false;  // new user turn -> allow the response audio
           upsertTurn("user", spokenText);
+          // Der Zwischenstand hat seinen Zweck erfuellt, sobald der Zug in der Liste
+          // steht. Blieb er stehen, klebte er als kursive Blase UNTEN fest, waehrend
+          // neue Nachrichten darueber einsortiert wurden — beim Dazwischenreden sah es
+          // aus, als stuende die Reihenfolge auf dem Kopf.
+          setTranscript("");
         }
         // #474: resolve a pending approval from what the user just said, since
         // clicking is the wrong interaction in voice mode.
@@ -1283,7 +1288,8 @@ export function VoiceSessionModal({
                       </div>
                     ))
                   )}
-                  {transcript && state === "listening" && (
+                  {transcript && state === "listening" &&
+                   turns[turns.length - 1]?.text !== transcript && (
                     <div className="text-right">
                       <div className="inline-block max-w-[92%] rounded-2xl bg-fuchsia-500/10 px-3 py-1.5 text-sm italic text-muted-foreground">
                         {transcript}…

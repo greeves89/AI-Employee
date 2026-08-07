@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.160.5] — 2026-08-07
+
+### Fixed
+- **Beim Dazwischenreden stand die Reihenfolge im Sprach-Gespräch auf dem Kopf.** Der
+  laufende Zwischenstand wurde als kursive Blase unter der Liste gezeigt und nie
+  aufgelöst — sobald der Zug als richtige Nachricht einsortiert war, klebte die alte
+  Blase weiter unten fest, während neue Nachrichten darüber erschienen. Der Zwischenstand
+  verschwindet jetzt, sobald der Zug in der Liste steht, und wird nie doppelt gezeigt.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.160.4] — 2026-08-07
 
 ### Fixed
