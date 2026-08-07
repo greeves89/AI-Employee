@@ -312,6 +312,10 @@ class OrchestratorAPIClient:
         elif cron_expression:
             body["cron_expression"] = cron_expression
             body["interval_seconds"] = 0
+            # Ohne Angabe setzt der Server die Zeitzone DES AGENTEN ein — nur eine
+            # ausdrueckliche Abweichung wird durchgereicht.
+            if params.get("timezone"):
+                body["timezone"] = params["timezone"]
         else:
             body["interval_seconds"] = max(int(interval_seconds), 60)
         result = await self._request("POST", "/schedules/", json=body)

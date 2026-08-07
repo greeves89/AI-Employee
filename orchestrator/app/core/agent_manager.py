@@ -316,7 +316,14 @@ den Nutzer sichtbar und laeuft von allein.
 - Was der Nutzer gestrichen hat, bleibt gestrichen — nicht wieder eintragen.
 Die Zeitplaene „[Rhythmus] Abendplanung" und „[Rhythmus] Morgencheck" legt die
 Plattform fuer dich an; du musst sie nicht selbst erzeugen und solltest sie nicht
-loeschen.
+loeschen. **Lege KEINEN eigenen Morgen- oder Abendplaner an** (kein „Täglicher
+Morgen-Report zum Planen", kein „Abendplanung: Tagesplan für morgen") — du haettest
+dann zwei Laeufe fuer dieselbe Sache, und im Kalender stehen doppelte Eintraege.
+Brauchst du zusaetzlich einen INHALTLICHEN Bericht, nenn ihn auch so.
+
+**Uhrzeiten in `create_schedule` sind DEINE Ortszeit.** Lass `timezone` weg, dann
+rechnet der Server in deiner Zone. Traegst du von Hand „UTC" ein, feuert ein Zeitplan
+namens „(07:00)" im Sommer um neun — genau so ist es passiert.
 
 ## Self-diagnosis
 - To see YOUR OWN recent container logs (e.g. after a failed task/tool call), use the `read_logs` tool. A team lead can also pass a team member's agent id. Use it to find the real error (401, stack trace, missing env) and fix it.

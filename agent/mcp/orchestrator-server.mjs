@@ -442,8 +442,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           timezone: {
             type: "string",
             description:
-              "IANA timezone the cron_expression is evaluated in (DST-aware). Default 'UTC'. " +
-              "Example: 'Europe/Berlin' so '0 6 * * *' fires at 06:00 local time year-round. " +
+              "IANA timezone the cron_expression is evaluated in (DST-aware). LEAVE EMPTY " +
+              "unless you mean a different zone than your own — without it the server uses " +
+              "YOUR timezone, so '0 7 * * *' fires at 07:00 your local time. Setting 'UTC' " +
+              "by hand is how a schedule named '(07:00)' ends up firing at 09:00. " +
               "Ignored for interval_seconds schedules.",
           },
         },

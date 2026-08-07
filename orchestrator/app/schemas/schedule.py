@@ -42,7 +42,10 @@ class ScheduleCreate(BaseModel):
     # One-shot: fire ONCE after this many seconds, then auto-disable. For an agent
     # saying "look at this again in 30 minutes" (self-follow-up), not a sleep.
     run_in_seconds: int | None = None
-    timezone: str = "UTC"
+    # Ohne Angabe gilt die Zeitzone DES AGENTEN, nicht UTC. „Täglich 07:00" meinte
+    # sonst 07:00 UTC — der Agent nannte seinen Zeitplan „(07:00)" und er feuerte um
+    # neun. Explizit gesetzte Zeitzonen bleiben unangetastet.
+    timezone: str | None = None
     priority: int = 1
     agent_id: str | None = None
     model: str | None = None

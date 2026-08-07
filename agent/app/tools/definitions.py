@@ -699,7 +699,11 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     },
                     "cron_expression": {
                         "type": "string",
-                        "description": "RECURRING at exact times, e.g. '0 6 * * *' = every day 06:00, '0 9,17 * * *' = 09:00 and 17:00.",
+                        "description": "RECURRING at exact times IN YOUR OWN TIMEZONE, e.g. '0 6 * * *' = every day 06:00, '0 9,17 * * *' = 09:00 and 17:00.",
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": "IANA timezone for cron_expression. LEAVE EMPTY unless you mean a different zone than your own — the server uses yours. Setting 'UTC' by hand is how a schedule named '(07:00)' ends up firing at 09:00.",
                     },
                 },
                 "required": ["name", "prompt"],

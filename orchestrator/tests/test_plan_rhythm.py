@@ -234,3 +234,37 @@ class ScheduleDescriptionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScheduleTimezoneTests(unittest.TestCase):
+    """Eine Uhrzeit ohne Zone meint die Zone DES AGENTEN — nicht UTC.
+
+    Der Agent nannte seinen Zeitplan „🌅 Täglicher Morgen-Report (07:00)" und trug
+    `0 7 * * *` ein. Der Server rechnete in UTC, im Kalender stand 09:00. Der Name log
+    also — und im Sommer zwei Stunden daneben ist keine Kleinigkeit, wenn daran ein
+    Bericht fuer den Nutzer haengt.
+    """
+
+    def test_schema_has_no_utc_default_anymore(self):
+        src = (ORCH / "app/schemas/schedule.py").read_text()
+        self.assertIn("timezone: str | None = None", src)
+        self.assertNotIn('timezone: str = "UTC"', src)
+
+    def test_api_falls_back_to_the_agents_zone(self):
+        api = (ORCH / "app/api/schedules.py").read_text()
+        self.assertIn("from app.core.plan_rhythm import timezone_name", api)
+        self.assertIn('data.timezone = tz_name or "UTC"', api)
+
+    def test_every_harness_says_the_same(self):
+        """Harness-Paritaet: das Werkzeug muss ueberall dieselbe Regel nennen."""
+        mcp = (REPO / "agent/mcp/orchestrator-server.mjs").read_text()
+        self.assertIn("LEAVE EMPTY", mcp)
+        defs = (REPO / "agent/app/tools/definitions.py").read_text()
+        self.assertIn('"timezone"', defs)
+        self.assertIn("LEAVE EMPTY", defs)
+        client = (REPO / "agent/app/tools/api_client.py").read_text()
+        self.assertIn('body["timezone"] = params["timezone"]', client)
+
+    def test_agents_are_told_not_to_build_their_own_planner(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("KEINEN eigenen Morgen- oder Abendplaner", mgr)

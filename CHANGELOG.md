@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.0] — 2026-08-07
+
+### Fixed
+- **Zeitpläne, die ein Agent selbst anlegt, laufen jetzt in SEINER Zeitzone.** Ohne Angabe
+  galt UTC: der Agent nannte seinen Zeitplan „🌅 Täglicher Morgen-Report (07:00)", trug
+  `0 7 * * *` ein — und im Kalender stand 09:00. Der Server setzt jetzt die Zone des
+  Agenten ein (Erreichbarkeit, sonst Dienstzeit, sonst UTC); eine ausdrücklich gesetzte
+  Zone bleibt unangetastet. Bestehende Zeitpläne ändern sich nicht.
+- Das Werkzeug sagt es in allen Laufzeiten gleich: `timezone` leer lassen, außer man meint
+  wirklich eine andere Zone. In den Codex-/Custom-LLM-Laufzeiten gab es den Parameter
+  bisher gar nicht.
+
+### Changed
+- **Agenten sollen keinen eigenen Morgen- oder Abendplaner mehr anlegen** — die Plattform
+  hat den Rhythmus seit 1.165.0. Bei DEV_Prod standen deshalb drei Morgenroutinen
+  nebeneinander (06:00, 07:00, 08:00, 09:00). Die Basis-Anleitung sagt das jetzt.
+
+### Deployment
+- Orchestrator-Neustart, Agenten neu erstellen (neue Basis-Anleitung).
+
+---
+
 ## [1.165.2] — 2026-08-07
 
 ### Fixed
