@@ -205,6 +205,9 @@ export function VoiceSessionModal({
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
+  // Werkzeug-Spur: was hat er gerade benutzt, womit, und was kam raus. Vorher lief
+  // das unsichtbar ab und es sah aus, als haette er nichts getan.
+  const [toolLog, setToolLog] = useState<{ name: string; input?: string; output?: string; done: boolean }[]>([]);
   const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string; url?: string; embeddable?: boolean; auto_open?: boolean;
     // kind="plan": der Tagesplan als Karte — sehen schlaegt hoeren.
     items?: { title: string; time?: string; minutes?: number; priority?: string; status?: string; notes?: string }[] }[]>([]);
@@ -657,6 +660,26 @@ export function VoiceSessionModal({
         setResponse(String(data.text || ""));
         if (modeRef.current === "nova_sonic") upsertTurn("assistant", String(data.text || ""));
         break;
+      case "tool_call":
+        setToolLog((prev) => [
+          ...prev.slice(-19),
+          { name: String(data.name || ""), input: String(data.input || ""), done: false },
+        ]);
+        break;
+      case "tool_result": {
+        const name = String(data.name || "");
+        setToolLog((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].name === name && !next[i].done) {
+              next[i] = { ...next[i], output: String(data.output || ""), done: true };
+              return next;
+            }
+          }
+          return [...next.slice(-19), { name, output: String(data.output || ""), done: true }];
+        });
+        break;
+      }
       case "media":
         // Agent presented an image/file while working — show it in the Jarvis panel.
         setMedia((prev) =>
@@ -1423,6 +1446,36 @@ export function VoiceSessionModal({
                   Aufgaben &amp; Aktivität
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                  {/* Werkzeug-Spur: sichtbar machen, dass und WOMIT er gearbeitet hat. */}
+                  {toolLog.length > 0 && (
+                    <div className="space-y-1">
+                      {toolLog.slice(-8).map((t, ti) => (
+                        <div
+                          key={ti}
+                          className="rounded-md border border-border bg-foreground/[0.02] px-2 py-1 text-[10px]"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {t.done ? (
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" />
+                            ) : (
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-500" />
+                            )}
+                            <span className="font-mono text-[10px] text-foreground/80">{t.name}</span>
+                          </div>
+                          {t.input && (
+                            <div className="mt-0.5 truncate pl-4 text-muted-foreground/60">
+                              → {t.input}
+                            </div>
+                          )}
+                          {t.output && (
+                            <div className="mt-0.5 line-clamp-2 pl-4 text-muted-foreground/80">
+                              {t.output}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {paneMedia.map((m, mi) => (
                     <div key={mi} className="rounded-lg border border-border bg-foreground/[0.03] p-2">
                       {m.kind === "plan" && m.items ? (

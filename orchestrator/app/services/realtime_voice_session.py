@@ -1084,6 +1084,18 @@ def _now_context() -> str:
     )
 
 
+def _short_args(args: dict, limit: int = 160) -> str:
+    """Argumente kurz und lesbar — fuer die Anzeige, nicht fuers Protokoll."""
+    parts = []
+    for k, v in (args or {}).items():
+        text = str(v)
+        if len(text) > 60:
+            text = text[:60] + "…"
+        parts.append(f"{k}: {text}")
+    joined = ", ".join(parts)
+    return joined[:limit] + ("…" if len(joined) > limit else "")
+
+
 def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     lang = "Deutsch" if (language or "de").startswith("de") else language
     role = f" Deine Rolle: {agent_role}." if agent_role else ""
@@ -1328,6 +1340,7 @@ class RealtimeVoiceSession:
     _resumed_from_earlier_call: bool = False  # summary came from an EARLIER call, not this session
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
     _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
+    _tool_calls: dict = field(default_factory=dict)  # tool_use_id → (Name, Argumente)
     _memory_context: str = ""  # facts this agent stored earlier (name, preferences, decisions)
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
@@ -1865,6 +1878,12 @@ class RealtimeVoiceSession:
         return cleaned
 
     async def _respond(self, tool_use_id: str, text: str) -> None:
+        name, _args = self._tool_calls.pop(tool_use_id, ("", {}))
+        if name:
+            await self._emit({"type": "tool_result", "data": {
+                "name": name,
+                "output": (text or "")[:400],
+            }})
         if self._nova:
             await self._nova.send_tool_result(tool_use_id, self._engine_safe(text))
 
@@ -1878,6 +1897,15 @@ class RealtimeVoiceSession:
                 args = {}
         except (json.JSONDecodeError, TypeError):
             args = {}
+
+        # Fuer die Anzeige merken: der Nutzer soll SEHEN, was gerade benutzt wird.
+        # Vorher lief alles unsichtbar, und es sah aus, als haette der Agent nichts
+        # getan — „ich denke immer der hat dann nichts gemacht".
+        self._tool_calls[tool_use_id] = (name, args)
+        await self._emit({"type": "tool_call", "data": {
+            "name": name,
+            "input": _short_args(args),
+        }})
 
         # ── Fast tools: read orchestrator data directly (ms, no agent round-trip) ──
         if name == "get_agent_status":

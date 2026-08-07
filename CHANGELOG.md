@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.163.0] — 2026-08-07
+
+### Added
+- **Werkzeug-Nutzung im Sprachmodus ist sichtbar.** Jeder Aufruf erscheint rechts in der
+  Spalte „Aufgaben & Aktivität": Name des Werkzeugs, die Eingabe (gekürzt) und das
+  Ergebnis. Laufende Aufrufe drehen sich, fertige tragen einen Haken. Vorher lief alles
+  unsichtbar ab und man musste dem gesprochenen Satz glauben — „ich denke immer, der hat
+  dann nichts gemacht". Die Spur hängt am zentralen Einstiegspunkt, damit auch jedes
+  künftige Werkzeug automatisch darin auftaucht.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.162.0] — 2026-08-07
 
 ### Added
