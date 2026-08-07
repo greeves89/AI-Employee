@@ -1,8 +1,8 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.88.0
-**Stand:** 30. Juni 2026
+**Version:** 1.154.0
+**Stand:** 7. August 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** skbs-s-kichat.klinikum-bs.de
 
@@ -332,6 +332,24 @@ und was tatsächlich gelaufen ist, ohne über die Seitenleiste zu wechseln. Beim
 die Ansicht automatisch zur aktuellen Uhrzeit (bei „heute") bzw. zur ersten Aufgabe des Tages.
 Ein Block anklicken → öffnet die Aufgaben-Detailansicht mit voller Zeitreise.
 
+**Der Tagesplan — was der Agent VORHAT** *(seit 1.154.0)*
+
+In derselben Ansicht siehst du links eine schmale Spur mit **gestrichelten Blöcken**. Das
+ist der Plan, den der Agent sich selbst gemacht hat; die vollen Balken rechts daneben sind,
+was tatsächlich gelaufen ist. So beantwortet der Kalender endlich beide Fragen: *was hat er
+gemacht* — und *was hat er heute noch vor*.
+
+![Agent · Tagesplan im Kalender](screenshots/32-tagesplan.png)
+*Abbildung 32: Geplante Blöcke (gestrichelt, links) neben den erledigten Aufgaben*
+
+- **Einen Block streichen:** mit der Maus über den gestrichelten Block fahren → oben rechts
+  erscheint ein **✕** → anklicken. Der Block wird durchgestrichen dargestellt, und der Agent
+  lässt ihn beim nächsten Lauf liegen. Nochmal klicken = wieder einplanen.
+- **Ohne feste Uhrzeit:** Was der Agent für heute vorhat, aber nicht auf eine Uhrzeit gelegt
+  hat, steht als Liste **unterhalb** des Kalenders — es verschwindet nicht.
+- Der Plan entsteht automatisch, wenn der Agent im proaktiven Modus läuft (siehe 5.6). Ohne
+  Proactive Mode und ohne Verantwortungsbereiche bleibt die Spur leer — das ist kein Fehler.
+
 ### 5.4 Workspace — die Dateien des Agenten
 ![Agent · Workspace](screenshots/f04-agent-workspace.png)
 Tab **Workspace**: Dateibrowser seines privaten Bereichs (`/workspace`). Hier liegen seine
@@ -369,6 +387,39 @@ Tab **Settings** mit drei Unter-Tabs: **Allgemein · Integrationen · Command Po
   nur Dinge, die keine Rückfrage brauchen. Zusätzlich meldet sich ein proaktiver Agent bei
   Leerlauf höchstens **einmal pro Halbtag** von sich aus (Meldebremse) — auch wenn mehrere
   Agenten gleichzeitig nichts zu tun haben, bekommst du nicht neun Nachrichten auf einmal.
+
+- **Verantwortungsbereiche** *(seit 1.154.0)* — wofür dieser Agent **dauerhaft** zuständig
+  ist. Das ist der Unterschied zwischen einem Agenten, der auf Aufträge wartet, und einem,
+  der seinen Job kennt: Aus den Bereichen baut er sich jeden Tag selbst die Aufgabenliste.
+
+  ![Proaktiv · Verantwortungsbereiche](screenshots/31-verantwortungsbereiche.png)
+  *Abbildung 31: Daueraufträge mit Takt und Priorität*
+
+  So legst du einen Bereich an:
+  1. Agent öffnen → **Settings → Allgemein**.
+  2. Bei **Proactive Mode** auf **Prompt & Anweisungen** klicken (klappt den Bereich auf).
+  3. Oben rechts bei *Verantwortungsbereiche* auf **+ Bereich** klicken.
+  4. **Titel** eintragen — kurz und konkret, z. B. „Posteingang sichten".
+  5. **Takt** wählen: *täglich · wöchentlich · monatlich · laufend*.
+  6. **Priorität** wählen: *hoch · normal · niedrig*.
+  7. Optional die **Präzisierung** ausfüllen (das schmale Feld darunter): woran der Agent
+     erkennt, dass der heutige Durchgang erledigt ist.
+  8. Unten auf **Speichern** klicken.
+
+  Ein Bereich wird **nie „fertig"** — abgehakt wird immer nur der heutige Durchgang.
+  Deshalb geht dem Agenten die Arbeit nicht mehr aus, sobald die Todo-Liste leer ist.
+  Maximal 20 Bereiche pro Agent; ohne Titel lässt sich nicht speichern.
+
+- **Tagesplanung am Morgen** *(seit 1.154.0)* — ein fester Termin, zu dem der Agent
+  **einmal bewusst** seinen Tag plant, zusätzlich zum Intervall oben.
+  1. Im selben aufgeklappten Bereich zum Feld **Tagesplanung am Morgen** gehen.
+  2. Uhrzeit eintragen (z. B. **07:00**).
+  3. Haken **nur werktags** setzen oder entfernen.
+  4. **Speichern**.
+
+  Der Agent plant dann zu dieser Uhrzeit aus seinen Verantwortungsbereichen den Tag und
+  legt das Ergebnis in den Kalender (siehe 5.3). Feld leeren = wieder abschalten.
+  Die Zeitzone kommt aus der **Erreichbarkeit** darunter.
 
 - **Autonomie-Level** — wie eigenständig der Agent **handeln** darf:
   - **L1 — Nur lesen & suchen**: darf nur lesen/recherchieren, **keine** verändernden
@@ -860,6 +911,32 @@ Seitenleiste → **Settings**.
 
 > Plattform-weite Einstellungen (Modelle, Accounts, Rollen, Budgets, Schlüssel) liegen
 > **nicht** hier, sondern in der **Admin-Konsole** (Kap. 22).
+
+### 20.1 Microsoft nur lesend (nur Administratoren) *(seit 1.154.0)*
+
+Damit kein Agent versehentlich Mail versendet, Termine anlegt oder Dateien ändert, lässt
+sich der Microsoft-Zugriff **plattformweit auf Nur-Lesen** stellen. Der Schalter steht
+standardmäßig **an** und gilt für **Microsoft 365 (Graph) und den on-prem-Exchange-Connector
+gleichermaßen** — unabhängig davon, was bei einem einzelnen Agenten eingestellt ist.
+
+![Einstellungen · Microsoft nur lesend](screenshots/33-microsoft-nur-lesend.png)
+*Abbildung 33: Der plattformweite Nur-Lesen-Schalter*
+
+So findest du ihn:
+1. Seitenleiste → **Admin-Konsole**.
+2. Reiter **Integrationen** wählen.
+3. Zum Abschnitt **Microsoft 365** scrollen.
+4. Dort der Schalter **Microsoft nur lesend** — grün = aktiv (nur lesen).
+
+Solange er aktiv ist, sieht der Agent die Schreib-Werkzeuge gar nicht erst, und bei einem
+Agenten steht die Auswahl **Read + Write** gesperrt (mit Schloss-Symbol) unter
+**Settings → Integrationen**. Erst wenn ein Administrator den Schalter löst, lässt sich
+Schreibzugriff pro Agent freigeben.
+
+> **Hinweis:** Der externe MCP-Zugang für OpenWebUI ist **immer** nur lesend — unabhängig
+> von diesem Schalter. Und die Anmeldung dorthin läuft seit 1.154.0 über das
+> **Microsoft-Konto**: wer in OpenWebUI bereits mit Microsoft angemeldet ist, wird
+> durchgereicht und sieht keine zusätzliche AI-Employee-Anmeldemaske mehr.
 
 ---
 
