@@ -16,6 +16,7 @@ import { VoiceSettings } from "@/components/settings/voice-settings";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
 import { PushToggle } from "@/components/settings/push-toggle";
+import { SamlConfig } from "@/components/settings/saml-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -1114,6 +1115,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           <div className="mb-4 rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
             <PushToggle />
           </div>
+
+          {isAdmin && (
+            <div className="mb-4">
+              <SamlConfig />
+            </div>
+          )}
 
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.04]">

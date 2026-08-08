@@ -285,6 +285,17 @@ export interface Settings {
   smtp_relay_verify_tls?: boolean;
   smtp_relay_user?: string;
   smtp_allowed_recipient_domains?: string;
+  // SAML 2.0 — Einrichtungsangaben (nur fuer Admins gefuellt); `saml_configured`
+  // entscheidet, ob die Anmeldeseite den Knopf zeigt.
+  saml_display_name?: string;
+  saml_idp_entity_id?: string;
+  saml_idp_sso_url?: string;
+  saml_idp_slo_url?: string;
+  saml_idp_x509_cert?: string;
+  saml_sp_entity_id?: string;
+  saml_group_attribute?: string;
+  saml_group_role_map?: string;
+  saml_configured?: boolean;
 }
 
 // Provenance of a memory entry (who/what wrote it).

@@ -119,6 +119,17 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
+    # SAML 2.0 SSO: Angaben des Identitaetsanbieters + Gruppen-Rollen-Zuordnung.
+    # Das Zertifikat ist die Vertrauensbasis der gesamten Anmeldung — ohne das ist
+    # keine Signatur pruefbar und SAML wird gar nicht erst angeboten.
+    "saml_display_name",
+    "saml_idp_entity_id",
+    "saml_idp_sso_url",
+    "saml_idp_slo_url",
+    "saml_idp_x509_cert",
+    "saml_sp_entity_id",
+    "saml_group_attribute",        # aus welchem Attribut die Gruppen kommen
+    "saml_group_role_map",         # JSON {"Gruppe": "admin"|"manager"|"member"}
     # Web Push (VAPID): EINMAL erzeugt, danach unveraendert. Ein Wechsel entwertet
     # saemtliche bestehenden Browser-Anmeldungen — Meldungen blieben dann still aus.
     "webpush_vapid_private_key",

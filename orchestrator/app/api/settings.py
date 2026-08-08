@@ -109,7 +109,30 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         smtp_relay_verify_tls=(await svc.get("smtp_relay_verify_tls") or "true").lower() in ("true", "1", "yes"),
         smtp_relay_user=(await svc.get("smtp_relay_user") or "") if admin else "",
         smtp_allowed_recipient_domains=(await svc.get("smtp_allowed_recipient_domains") or "") if admin else "",
+        # SAML: Einrichtungsangaben sind interne Infrastruktur → nur fuer Admins.
+        # `saml_configured` darf jeder sehen, denn genau das entscheidet, ob die
+        # Anmeldeseite den Knopf zeigt.
+        **await _saml_response_fields(svc, admin),
     )
+
+
+async def _saml_response_fields(svc: SettingsService, admin: bool) -> dict:
+    """Die SAML-Angaben fuer die Antwort — der vierte und letzte Weg einer Einstellung.
+
+    Fehlt er, meldet die Oberflaeche „Gespeichert." und zeigt beim naechsten Laden
+    wieder leere Felder. Dreimal in diesem Projekt passiert (Stimme, Verzeichnis-ID,
+    Berechtigungen), deshalb hier ausdruecklich gebuendelt.
+    """
+    from app.core import saml_config
+
+    values = {k: (await svc.get(k)) or "" for k in (
+        saml_config.DISPLAY_NAME_SETTING, saml_config.IDP_ENTITY_ID,
+        saml_config.IDP_SSO_URL, saml_config.IDP_SLO_URL, saml_config.IDP_CERT,
+        saml_config.SP_ENTITY_ID, saml_config.GROUP_ATTRIBUTE, saml_config.GROUP_ROLE_MAP,
+    )}
+    out = {k: (v if admin else "") for k, v in values.items()}
+    out["saml_configured"] = saml_config.is_configured(values)
+    return out
 
 
 # Mapping from SettingsUpdate field names to config attribute names
@@ -256,6 +279,10 @@ async def update_settings(
         # einschalten laesst. Fehlt ein Feld hier, meldet die Oberflaeche
         # "Gespeichert." und es passiert nichts.
         "synthesis_enabled", "synthesis_weekday", "synthesis_hour",
+        # SAML 2.0 — derselbe Weg, sonst laesst es sich nicht einrichten.
+        "saml_display_name", "saml_idp_entity_id", "saml_idp_sso_url",
+        "saml_idp_slo_url", "saml_idp_x509_cert", "saml_sp_entity_id",
+        "saml_group_attribute", "saml_group_role_map",
     ]
     for field_name in _REFLECTION_FIELDS:
         value = getattr(data, field_name, None)

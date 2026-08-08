@@ -232,6 +232,50 @@ class SSOService:
 
             return resp.json()
 
+    async def apply_group_role(self, user: User, groups: list[str], group_role_map: dict) -> bool:
+        """Rolle aus den Gruppen des Identitaetsanbieters setzen. Gibt zurueck, ob
+        sich etwas geaendert hat.
+
+        Drei bewusste Entscheidungen:
+
+        * **Kein Treffer aendert nichts.** Eine leere oder unpassende Zuordnung darf
+          niemandem Rechte wegnehmen, die ein Mensch von Hand vergeben hat.
+        * **Die hoechste Rolle gewinnt** (siehe ``saml_config.role_for_groups``) —
+          sonst haengt das Ergebnis davon ab, wie das Verzeichnis die Gruppen sortiert.
+        * **Der allererste Nutzer behaelt Administrator.** Ihn ueber eine
+          Gruppenzuordnung herabzustufen wuerde die Plattform aussperren.
+        """
+        from app.core.saml_config import role_for_groups
+
+        role_name = role_for_groups(groups or [], group_role_map or {})
+        if not role_name:
+            return False
+
+        target = {"admin": UserRole.ADMIN, "manager": UserRole.MANAGER,
+                  "member": UserRole.MEMBER}.get(role_name)
+        if target is None or user.role == target:
+            return False
+
+        if user.role == UserRole.ADMIN and target != UserRole.ADMIN:
+            from sqlalchemy import func
+            admin_count = await self.db.scalar(
+                select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
+            )
+            if (admin_count or 0) <= 1:
+                logger.warning(
+                    "Gruppenzuordnung wuerde den letzten Administrator herabstufen — uebersprungen"
+                )
+                return False
+
+        previous = user.role
+        user.role = target
+        await self.db.commit()
+        logger.info(
+            "Rolle aus IdP-Gruppen gesetzt: %s %s -> %s",
+            scrub_log(user.email), previous.value, target.value,
+        )
+        return True
+
     async def _find_or_create_user(
         self,
         provider_name: str,

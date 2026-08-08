@@ -276,7 +276,7 @@ async def registration_status(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/sso/providers")
-async def list_sso_providers():
+async def list_sso_providers(db: AsyncSession = Depends(get_db)):
     """Public: list available SSO providers (only those with configured credentials)."""
     from app.core.sso_providers import SSO_PROVIDERS, is_sso_available
 
@@ -288,6 +288,22 @@ async def list_sso_providers():
                 "display_name": provider.display_name,
                 "icon": provider.icon,
             })
+
+    # SAML steht in derselben Liste wie die OIDC-Anbieter, damit die Anmeldeseite
+    # nichts ueber die Protokolle wissen muss. Es erscheint nur, wenn die Angaben
+    # vollstaendig sind — sonst fuehrte der Knopf sicher in einen Fehler.
+    try:
+        from app.core import saml_config
+
+        saml_cfg = await saml_config.load_settings(db)
+        if saml_config.is_configured(saml_cfg):
+            providers.append({
+                "name": saml_config.PROVIDER_NAME,
+                "display_name": saml_cfg.get(saml_config.DISPLAY_NAME_SETTING) or "SAML",
+                "icon": "key",
+            })
+    except Exception as e:  # noqa: BLE001 — SAML darf die Anmeldeseite nie blockieren
+        logger.warning("SAML-Anbieter konnte nicht geprueft werden: %s", e)
     # sso_only: tells the login page to hide the password form (SSO + MFA only).
     # The env break-glass still allows password login server-side for recovery.
     sso_only = bool(settings.sso_only_login and not settings.emergency_password_login and providers)
@@ -307,6 +323,141 @@ def safe_internal_path(path: str | None) -> str:
     if not p.startswith("/") or p[1:2] in ("/", "\\"):
         return ""
     return p
+
+
+# --- SAML 2.0 ------------------------------------------------------------------
+# Anderes Protokoll, gleicher Rest: die Nutzeraufloesung laeuft ueber dasselbe
+# SSOService._find_or_create_user wie bei OIDC, die Sitzung ueber dieselbe
+# finish_sso_login. Nur der Weg, auf dem die Identitaet ankommt, ist ein anderer.
+
+
+def _saml_request_dict(request: Request, form: dict | None = None) -> dict:
+    """Die Anfrage in der Form, die python3-saml erwartet.
+
+    ``https`` wird aus der konfigurierten oeffentlichen Adresse abgeleitet, nicht aus
+    dem Schema, mit dem die Anfrage beim Prozess ankommt — hinter dem Reverse-Proxy
+    ist das intern immer http, und der Identitaetsanbieter wuerde die daraus gebaute
+    Zieladresse dann zu Recht ablehnen.
+    """
+    from urllib.parse import urlparse
+
+    public = urlparse(settings.oauth_redirect_base_url)
+    return {
+        "https": "on" if public.scheme == "https" else "off",
+        "http_host": public.netloc or request.url.hostname or "",
+        "script_name": request.url.path,
+        "get_data": dict(request.query_params),
+        "post_data": form or {},
+    }
+
+
+async def _saml_auth(request: Request, db: AsyncSession, form: dict | None = None):
+    """Ein vorbereitetes SAML-Objekt, oder ``None`` wenn nichts konfiguriert ist."""
+    from app.core import saml_config
+
+    cfg = await saml_config.load_settings(db)
+    if not saml_config.is_configured(cfg):
+        return None, cfg
+    try:
+        from onelogin.saml2.auth import OneLogin_Saml2_Auth
+    except ImportError:
+        # Getrennt gefangen und laut gemeldet: das ist ein Installationsfehler
+        # (fehlendes libxmlsec1 im Image), kein Betriebszustand.
+        logger.error("SAML ist konfiguriert, aber python3-saml/xmlsec fehlt im Image")
+        return None, cfg
+    saml_settings = saml_config.build_saml_settings(cfg, settings.oauth_redirect_base_url)
+    return OneLogin_Saml2_Auth(_saml_request_dict(request, form), saml_settings), cfg
+
+
+@router.get("/sso/saml/metadata")
+async def saml_metadata(request: Request, db: AsyncSession = Depends(get_db)):
+    """Unsere Dienstanbieter-Metadaten — die traegt der Administrator beim
+    Identitaetsanbieter ein."""
+    from fastapi.responses import Response as RawResponse
+
+    auth_obj, _cfg = await _saml_auth(request, db)
+    if auth_obj is None:
+        raise HTTPException(status_code=503, detail="SAML ist nicht konfiguriert")
+    saml_settings = auth_obj.get_settings()
+    metadata = saml_settings.get_sp_metadata()
+    errors = saml_settings.validate_metadata(metadata)
+    if errors:
+        raise HTTPException(status_code=500, detail=f"Metadaten fehlerhaft: {errors}")
+    return RawResponse(content=metadata, media_type="application/xml")
+
+
+@router.get("/sso/saml/login")
+async def saml_login(
+    request: Request,
+    return_to: str = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Zum Identitaetsanbieter weiterleiten."""
+    auth_obj, _cfg = await _saml_auth(request, db)
+    if auth_obj is None:
+        raise HTTPException(status_code=503, detail="SAML ist nicht konfiguriert")
+    # Nur ein geprueftes internes Ziel wird mitgegeben — dieselbe Pruefung wie beim
+    # OIDC-Weg, sonst waere das eine offene Weiterleitung.
+    target = safe_internal_path(return_to)
+    return RedirectResponse(url=auth_obj.login(return_to=target or None), status_code=302)
+
+
+@router.post("/sso/saml/acs")
+async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
+    """Antwort des Identitaetsanbieters entgegennehmen und anmelden.
+
+    Die Pruefung der Signatur macht python3-saml. Wir werten NUR aus, was die
+    Bibliothek als gueltig bestaetigt hat — jeder Zugriff auf die Attribute vor
+    ``is_authenticated`` waere ein Einfallstor.
+    """
+    from app.core import saml_config
+    from app.services.sso_service import SSOService
+
+    frontend_url = settings.oauth_redirect_base_url
+    if frontend_url.endswith(":8000"):
+        frontend_url = frontend_url.replace(":8000", ":3000")
+
+    form = dict(await request.form())
+    auth_obj, cfg = await _saml_auth(request, db, form)
+    if auth_obj is None:
+        return RedirectResponse(url=f"{frontend_url}/login?error=saml_not_configured")
+
+    auth_obj.process_response()
+    errors = auth_obj.get_errors()
+    if errors or not auth_obj.is_authenticated():
+        reason = auth_obj.get_last_error_reason() or ",".join(errors)
+        logger.warning("SAML-Antwort abgelehnt: %s", scrub_log(str(reason)))
+        return RedirectResponse(url=f"{frontend_url}/login?error=saml_invalid")
+
+    attributes = auth_obj.get_attributes() or {}
+    name_id = auth_obj.get_nameid() or ""
+    email, name = saml_config.extract_identity(attributes, name_id)
+    if not email:
+        logger.warning("SAML-Antwort ohne E-Mail-Attribut — Anmeldung nicht moeglich")
+        return RedirectResponse(url=f"{frontend_url}/login?error=saml_no_email")
+
+    sso_service = SSOService(db, request.app.state.redis)
+    try:
+        # Derselbe Weg wie bei OIDC. Die E-Mail gilt als bestaetigt: sie kommt aus
+        # einer signierten Assertion des Identitaetsanbieters, nicht aus einer
+        # Eingabe des Anmeldenden.
+        user = await sso_service._find_or_create_user(
+            provider_name=saml_config.PROVIDER_NAME,
+            subject=name_id or email,
+            email=email,
+            name=name or email.split("@")[0],
+            email_verified=True,
+        )
+    except ValueError as e:
+        logger.warning("SAML-Anmeldung fehlgeschlagen: %s", scrub_log(str(e)))
+        return RedirectResponse(url=f"{frontend_url}/login?error={e}")
+
+    groups = saml_config.extract_groups(attributes, cfg)
+    await sso_service.apply_group_role(user, groups,
+                                       saml_config.parse_group_role_map(cfg.get(saml_config.GROUP_ROLE_MAP, "")))
+
+    relay = form.get("RelayState") or ""
+    return finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
 
 
 @router.get("/sso/{provider}/login")
@@ -384,7 +535,18 @@ async def sso_callback(
             url=f"{frontend_url}/login?error={str(e)}&provider={provider}"
         )
 
-    # Pending admin approval → no session; bounce back to login with a clear notice.
+    return finish_sso_login(user, return_to, provider, frontend_url)
+
+
+def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: str):
+    """Freigabe pruefen, Ziel bestimmen, Sitzungs-Cookies setzen.
+
+    Die gemeinsame Endstrecke JEDER Single-Sign-On-Anmeldung — OIDC wie SAML. Wuerde
+    SAML das nachbauen, gaebe es zwei Stellen, an denen Sitzungen entstehen: die
+    Freigabepflicht koennte an einer davon fehlen, und genau dort kaeme jemand ohne
+    Freischaltung herein.
+    """
+    # Freigabe steht aus → keine Sitzung, zurueck zur Anmeldung mit Hinweis.
     if not getattr(user, "approved", True):
         logger.info(f"SSO login blocked (pending approval): {user.email}")
         return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
@@ -408,6 +570,8 @@ async def sso_callback(
 
     logger.info(f"SSO login successful: {scrub_log(user.email)} via {scrub_log(provider)}")
     return redirect_resp
+
+
 
 
 # --- Authenticated Endpoints ---
