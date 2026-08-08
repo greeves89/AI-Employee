@@ -245,3 +245,157 @@ class LoopProtectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SlackTests(unittest.TestCase):
+    def _agent(self, **cfg):
+        return SimpleNamespace(id="a1", name="Helfer", user_id="u1",
+                               config={"channels": {"slack": cfg}})
+
+    def test_disabled_without_channels(self):
+        from app.services import slack_gateway as sl
+        self.assertFalse(sl.is_enabled(self._agent(enabled=True)))
+        self.assertTrue(sl.is_enabled(self._agent(enabled=True, channels=["C1"])))
+
+    def test_mention_by_bot_user_id(self):
+        from app.services import slack_gateway as sl
+        agent = self._agent(enabled=True, channels=["C1"], bot_user_id="U42")
+        cfg = sl.channel_config(agent)
+        self.assertTrue(sl._mentions_agent("hey <@U42> mach mal", agent, cfg))
+        self.assertFalse(sl._mentions_agent("nur so geredet", agent, cfg))
+
+    def test_mrkdwn_is_not_markdown(self):
+        """Slack kennt *fett*, nicht **fett** — ohne Umwandlung stehen die
+        Sternchen im Klartext da."""
+        from app.services.slack_gateway import to_mrkdwn
+        self.assertEqual(to_mrkdwn("**wichtig**"), "*wichtig*")
+        self.assertEqual(to_mrkdwn("## Titel"), "*Titel*")
+
+
+class WhatsAppTests(unittest.TestCase):
+    SECRET = "geheim"
+
+    def test_signature_must_match(self):
+        """Die Webhook-Adresse ist oeffentlich erreichbar — ohne Pruefung koennte
+        jeder, der sie kennt, dem Agenten Nachrichten unterschieben."""
+        import hashlib, hmac
+        from app.services import whatsapp_gateway as wa
+
+        body = b'{"entry":[]}'
+        good = "sha256=" + hmac.new(self.SECRET.encode(), body, hashlib.sha256).hexdigest()
+        self.assertTrue(wa.verify_signature(body, good, self.SECRET))
+        self.assertFalse(wa.verify_signature(body, "sha256=falsch", self.SECRET))
+        self.assertFalse(wa.verify_signature(b'{"entry":[1]}', good, self.SECRET))
+
+    def test_missing_secret_rejects_instead_of_waving_through(self):
+        from app.services import whatsapp_gateway as wa
+        self.assertFalse(wa.verify_signature(b"x", "sha256=irgendwas", ""))
+        self.assertFalse(wa.verify_signature(b"x", "", self.SECRET))
+
+    def test_delivery_receipts_are_not_messages(self):
+        """Statusmeldungen kommen ueber denselben Weg — wuerde man sie
+        mitverarbeiten, antwortete der Agent auf seine eigenen Quittungen."""
+        from app.services import whatsapp_gateway as wa
+        payload = {"entry": [{"changes": [{"value": {
+            "metadata": {"phone_number_id": "123"},
+            "statuses": [{"status": "delivered"}],
+        }}]}]}
+        self.assertEqual(wa.extract_messages(payload), [])
+
+    def test_text_messages_are_extracted(self):
+        from app.services import whatsapp_gateway as wa
+        payload = {"entry": [{"changes": [{"value": {
+            "metadata": {"phone_number_id": "123"},
+            "contacts": [{"wa_id": "4915112345", "profile": {"name": "Anna"}}],
+            "messages": [{"from": "4915112345", "id": "wamid.1",
+                          "type": "text", "text": {"body": "Hallo"}}],
+        }}]}]}
+        out = wa.extract_messages(payload)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["text"], "Hallo")
+        self.assertEqual(out[0]["sender_name"], "Anna")
+
+    def test_non_text_types_are_skipped(self):
+        from app.services import whatsapp_gateway as wa
+        payload = {"entry": [{"changes": [{"value": {
+            "metadata": {"phone_number_id": "1"},
+            "messages": [{"from": "4915", "id": "w1", "type": "image"}],
+        }}]}]}
+        self.assertEqual(wa.extract_messages(payload), [])
+
+
+class OneResponderTests(unittest.TestCase):
+    """Drei fast gleiche Antwort-Lauscher waeren genau die Doppelung, die dieser
+    Baustein vermeiden soll."""
+
+    def test_one_responder_serves_all_polled_channels(self):
+        from app.core.channel_gateway import ChannelResponder
+        self.assertEqual(set(ChannelResponder.HANDLED),
+                         {gw.CHANNEL_TEAMS, gw.CHANNEL_SLACK, gw.CHANNEL_WHATSAPP})
+
+    def test_telegram_keeps_its_streaming_path(self):
+        """Telegram laesst die Nachricht mitwachsen und kann deshalb nicht auf
+        'fertiger Text am Ende' reduziert werden."""
+        from app.core.channel_gateway import ChannelResponder
+        self.assertNotIn(gw.CHANNEL_TELEGRAM, ChannelResponder.HANDLED)
+
+    def test_teams_has_no_own_responder_anymore(self):
+        src = (ORCH / "app/services/teams_gateway.py").read_text()
+        self.assertNotIn("class TeamsResponder", src)
+
+    def test_send_dispatch_covers_every_handled_channel(self):
+        src = (ORCH / "app/core/channel_gateway.py").read_text()
+        block = src.split("async def send_reply")[1].split("class ChannelResponder")[0]
+        for module in ("teams_gateway", "slack_gateway", "whatsapp_gateway"):
+            with self.subTest(module=module):
+                self.assertIn(module, block)
+
+    def test_webhook_never_returns_5xx_to_meta(self):
+        """Meta wiederholt sonst die Zustellung und stellt den Webhook nach
+        wiederholten Fehlern ganz ab."""
+        src = (ORCH / "app/api/webhooks.py").read_text()
+        block = src.split("async def whatsapp_inbound")[1]
+        self.assertIn("except Exception", block)
+        self.assertIn('return {"status": "ok"}', block)
+
+
+class WatermarkTests(unittest.IsolatedAsyncioTestCase):
+    """Der Wasserstand ist eine Laufmarke, keine Einstellung.
+
+    SettingsService.set lehnt unbekannte Schluessel mit ValueError ab — ein
+    Wasserstand je Agent waere dort NIE gespeichert worden, und der Poller haette
+    bei jedem Durchlauf dasselbe Fenster erneut gelesen.
+    """
+
+    async def test_round_trip_through_redis(self):
+        from app.services.teams_gateway import TeamsGateway
+
+        gwy = TeamsGateway(_FakeRedis())
+        stamp = datetime(2026, 8, 8, 9, 30, tzinfo=timezone.utc)
+        await gwy._save_watermark("a1", stamp)
+        self.assertEqual(await gwy._watermark("a1"), stamp)
+
+    async def test_first_run_uses_the_short_lookback(self):
+        from app.services.teams_gateway import TeamsGateway, FIRST_RUN_LOOKBACK
+
+        got = await TeamsGateway(_FakeRedis())._watermark("neu")
+        age = datetime.now(timezone.utc) - got
+        self.assertLessEqual(age, FIRST_RUN_LOOKBACK + timedelta(seconds=5))
+
+    async def test_slack_uses_its_own_namespace(self):
+        """Sonst ueberschreiben sich die Marken beider Kanaele gegenseitig."""
+        from app.services.slack_gateway import SlackGateway
+        from app.services.teams_gateway import TeamsGateway
+
+        redis = _FakeRedis()
+        await TeamsGateway(redis)._save_watermark("a1", datetime(2026, 1, 1, tzinfo=timezone.utc))
+        await SlackGateway(redis)._save_watermark("a1", datetime(2026, 6, 1, tzinfo=timezone.utc))
+        self.assertEqual((await TeamsGateway(redis)._watermark("a1")).month, 1)
+        self.assertEqual((await SlackGateway(redis)._watermark("a1")).month, 6)
+
+    def test_no_dynamic_keys_in_platform_settings(self):
+        for rel in ("app/services/teams_gateway.py", "app/services/slack_gateway.py"):
+            src = (ORCH / rel).read_text()
+            with self.subTest(file=rel):
+                self.assertNotIn("watermark_{agent_id}", src)
+                self.assertNotIn('SettingsService(db).set(f"', src)

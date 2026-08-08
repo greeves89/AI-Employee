@@ -35,6 +35,8 @@ from app.models.agent import Agent
 logger = logging.getLogger(__name__)
 
 CONFIG_KEY = "teams"
+# Redis-Namensraum fuer die Laufmarken dieses Kanals.
+KEY_PREFIX = "teams"
 # Wie weit zurück beim allerersten Lauf geschaut wird. Kurz gehalten: sonst arbeitet
 # der Agent beim Einschalten den halben Chatverlauf als „neue" Nachrichten ab.
 FIRST_RUN_LOOKBACK = timedelta(minutes=15)
@@ -221,25 +223,32 @@ class TeamsGateway:
 
     # -------------------------------------------------------------- Wasserstand
 
-    async def _watermark(self, agent_id: str) -> datetime:
-        """Bis wohin dieser Agent schon gelesen hat."""
-        from app.services.settings_service import SettingsService
+    # ------------------------------------------------------------ Wasserstand
 
-        async with resilient_session() as db:
-            raw = await SettingsService(db).get(f"teams_watermark_{agent_id}")
-        if raw:
-            try:
-                return datetime.fromisoformat(raw)
-            except ValueError:
-                pass
+    async def _watermark(self, agent_id: str) -> datetime:
+        """Bis wohin dieser Agent schon gelesen hat.
+
+        In Redis, NICHT in den Plattform-Einstellungen: das ist eine Laufmarke, keine
+        Einstellung. ``SettingsService.set`` lehnt unbekannte Schluessel ausserdem ab —
+        ein Wasserstand je Agent waere dort nie gespeichert worden, und der Poller
+        haette bei jedem Durchlauf dasselbe Fenster erneut gelesen.
+        """
+        try:
+            raw = await self.redis.client.get(f"{KEY_PREFIX}:watermark:{agent_id}")
+            if raw:
+                return datetime.fromisoformat(raw if isinstance(raw, str) else raw.decode())
+        except Exception:  # noqa: BLE001
+            logger.debug("[%s] Wasserstand nicht lesbar", KEY_PREFIX, exc_info=True)
         return datetime.now(timezone.utc) - FIRST_RUN_LOOKBACK
 
     async def _save_watermark(self, agent_id: str, value: datetime) -> None:
-        from app.services.settings_service import SettingsService
-
-        async with resilient_session() as db:
-            await SettingsService(db).set(f"teams_watermark_{agent_id}", value.isoformat())
-            await db.commit()
+        try:
+            await self.redis.client.set(
+                f"{KEY_PREFIX}:watermark:{agent_id}", value.isoformat()
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("[%s] Wasserstand nicht speicherbar — naechster Lauf liest erneut",
+                           KEY_PREFIX)
 
 
 async def send_reply(agent: Agent, context: dict, text: str) -> bool:
@@ -269,104 +278,6 @@ async def send_reply(agent: Agent, context: dict, text: str) -> bool:
     except Exception as e:  # noqa: BLE001
         logger.warning("[Teams] Senden fehlgeschlagen: %s", e)
         return False
-
-
-class TeamsResponder:
-    """Hört auf die Antworten der Agenten und schickt sie nach Teams zurück.
-
-    Dieselbe Redis-Schiene, auf der auch Telegram und der Web-Chat lauschen —
-    ``agent:{id}:chat:response``. Gefiltert wird über das Nachrichten-Präfix ``tm-``,
-    genau wie Telegram auf ``tg-`` filtert.
-
-    Gesammelt statt gestreamt: Teams kennt kein „Nachricht wächst mit" wie Telegram.
-    Häppchenweise zu senden ergäbe zwanzig Einzelnachrichten für eine Antwort.
-    """
-
-    def __init__(self, redis=None):
-        self.redis = redis
-        self._tasks: dict[str, object] = {}
-
-    async def ensure_listeners(self) -> int:
-        """Für jeden Agenten mit eingeschaltetem Teams-Kanal einen Lauscher starten."""
-        import asyncio
-
-        async with resilient_session() as db:
-            agents = (await db.execute(
-                select(Agent).where(Agent.user_id.isnot(None))
-            )).scalars().all()
-            wanted = {a.id: a for a in agents if is_enabled(a)}
-
-        # Abgeschaltete Kanäle: Lauscher beenden, sonst laufen sie bis zum Neustart.
-        for agent_id in list(self._tasks):
-            task = self._tasks[agent_id]
-            if agent_id not in wanted or getattr(task, "done", lambda: True)():
-                try:
-                    task.cancel()  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001
-                    pass
-                self._tasks.pop(agent_id, None)
-
-        for agent_id, agent in wanted.items():
-            if agent_id not in self._tasks:
-                self._tasks[agent_id] = asyncio.create_task(self._listen(agent_id))
-                logger.info("[Teams] Antwort-Lauscher fuer %s gestartet", agent_id)
-        return len(self._tasks)
-
-    async def _listen(self, agent_id: str) -> None:
-        pubsub = self.redis.client.pubsub()
-        await pubsub.subscribe(f"agent:{agent_id}:chat:response")
-        buffers: dict[str, str] = {}
-        contexts: dict[str, dict] = {}
-
-        try:
-            while True:
-                raw = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if not raw or raw.get("type") != "message":
-                    continue
-                try:
-                    data = json.loads(raw["data"])
-                except (ValueError, TypeError):
-                    continue
-
-                msg_id = data.get("message_id", "")
-                if not msg_id.startswith(f"{gw.CHANNEL_PREFIX[gw.CHANNEL_TEAMS]}-"):
-                    continue
-
-                event = data.get("type", "")
-                payload = data.get("data", {})
-
-                if event == "text":
-                    buffers[msg_id] = buffers.get(msg_id, "") + (payload.get("text") or "")
-                    if payload.get("context"):
-                        contexts[msg_id] = payload["context"]
-                elif event in ("result", "done", "complete"):
-                    text = buffers.pop(msg_id, "").strip()
-                    ctx = contexts.pop(msg_id, None) or await self._context_for(msg_id)
-                    if text and ctx:
-                        async with resilient_session() as db:
-                            agent = await db.get(Agent, agent_id)
-                        if agent:
-                            await send_reply(agent, ctx, text)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[Teams] Lauscher %s beendet: %s", agent_id, e)
-        finally:
-            try:
-                await pubsub.unsubscribe()
-            except Exception:  # noqa: BLE001
-                pass
-
-    async def _context_for(self, msg_id: str) -> dict | None:
-        """Wohin die Antwort gehört, falls der Lauf den Kontext nicht mitgeliefert hat.
-
-        Der Kontext wurde beim Einreihen mitgegeben; hier wird er aus der zuletzt
-        gespeicherten Nachricht dieser Sitzung rekonstruiert, damit eine Antwort
-        nicht verloren geht, nur weil die Laufzeit das Feld nicht durchgereicht hat.
-        """
-        try:
-            raw = await self.redis.client.get(f"gateway:ctx:{msg_id}")
-            return json.loads(raw) if raw else None
-        except Exception:  # noqa: BLE001
-            return None
 
 
 def _to_html(text: str) -> str:

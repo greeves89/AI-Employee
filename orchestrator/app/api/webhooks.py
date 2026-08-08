@@ -461,3 +461,62 @@ async def list_webhook_events(
             for e in events
         ]
     }
+
+
+# --- WhatsApp (Meta Cloud API) -------------------------------------------------
+# Der einzige Kanal, der NICHT abgefragt werden kann: Meta stellt ausschliesslich
+# per Webhook zu. Diese Adresse ist damit oeffentlich erreichbar — deshalb wird
+# jede Zustellung gegen die Signatur geprueft, bevor irgendetwas passiert.
+
+@router.get("/whatsapp")
+async def whatsapp_verify(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Einrichtungs-Prueffrage von Meta beantworten.
+
+    Meta schickt beim Verbinden ein ``hub.challenge`` und erwartet es unveraendert
+    zurueck — aber nur, wenn das mitgeschickte Token zu dem passt, das der
+    Administrator hinterlegt hat.
+    """
+    from fastapi.responses import PlainTextResponse
+    from app.services.settings_service import SettingsService
+
+    params = request.query_params
+    expected = await SettingsService(db).get("whatsapp_verify_token")
+    if params.get("hub.mode") == "subscribe" and expected and \
+            params.get("hub.verify_token") == expected:
+        return PlainTextResponse(params.get("hub.challenge") or "")
+    logger.warning("[WhatsApp] Verifizierung abgelehnt")
+    raise HTTPException(status_code=403, detail="Verifizierung fehlgeschlagen")
+
+
+@router.post("/whatsapp")
+async def whatsapp_inbound(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Eingehende WhatsApp-Nachrichten an die Agenten weiterreichen.
+
+    Antwortet IMMER mit 200, sobald die Signatur stimmt: Meta wiederholt sonst die
+    Zustellung und stellt den Webhook nach wiederholten Fehlern ganz ab. Was intern
+    schiefgeht, gehoert ins Log, nicht in den Statuscode.
+    """
+    from app.services import whatsapp_gateway as wa
+    from app.services.settings_service import SettingsService
+
+    body = await request.body()
+    secret = await SettingsService(db).get("whatsapp_app_secret") or ""
+    signature = request.headers.get("x-hub-signature-256", "")
+    if not wa.verify_signature(body, signature, secret):
+        logger.warning("[WhatsApp] Zustellung mit ungueltiger Signatur abgelehnt")
+        raise HTTPException(status_code=403, detail="Signatur ungueltig")
+
+    try:
+        payload = json.loads(body)
+        delivered = await wa.handle_payload(request.app.state.redis, payload)
+        if delivered:
+            logger.info("[WhatsApp] %s Nachricht(en) zugestellt", delivered)
+    except Exception as e:  # noqa: BLE001 — nie 5xx an Meta zurueckgeben
+        logger.warning("[WhatsApp] Verarbeitung fehlgeschlagen: %s", e)
+    return {"status": "ok"}

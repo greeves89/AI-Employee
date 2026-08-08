@@ -63,7 +63,9 @@ class SchedulerService:
         self._synthesis_service = None
         self._teams_counter = 0
         self._teams_gateway = None
-        self._teams_responder = None
+        self._channel_responder = None
+        self._teams_meetings = None
+        self._slack_gateway = None
         self._codex_refresh_counter = 0
         # Rhythmus-Invariante wird alle 5 Minuten geprueft — beim ersten Tick sofort,
         # damit ein frisch gestarteter Orchestrator die Zeitplaene nicht erst spaeter anlegt.
@@ -244,13 +246,32 @@ class SchedulerService:
                     self._teams_counter = 0
                     try:
                         if self._teams_gateway is None:
-                            from app.services.teams_gateway import TeamsGateway, TeamsResponder
+                            from app.core.channel_gateway import ChannelResponder
+                            from app.services.slack_gateway import SlackGateway
+                            from app.services.teams_gateway import TeamsGateway
                             self._teams_gateway = TeamsGateway(self.redis)
-                            self._teams_responder = TeamsResponder(self.redis)
-                        await self._teams_responder.ensure_listeners()
+                            self._slack_gateway = SlackGateway(self.redis)
+                            self._channel_responder = ChannelResponder(self.redis)
+
+                        # EIN Lauscher je Agent bedient alle abgefragten Kanaele.
+                        await self._channel_responder.ensure_listeners(
+                            await self._agents_with_channels()
+                        )
                         result = await self._teams_gateway.tick()
                         if result:
                             logger.info("[Scheduler] Teams: %s", result)
+                        slack_result = await self._slack_gateway.tick()
+                        if slack_result:
+                            logger.info("[Scheduler] Slack: %s", slack_result)
+                        # Termine: Agent als Beisitzer an den laufenden Termin-Chat
+                        # haengen bzw. nach dem Termin das Transkript ablegen. Haengt am
+                        # selben Takt und an derselben Chat-Liste wie der Teams-Eingang.
+                        if self._teams_meetings is None:
+                            from app.services.teams_meetings import TeamsMeetingService
+                            self._teams_meetings = TeamsMeetingService(self.redis)
+                        meeting_result = await self._teams_meetings.tick()
+                        if meeting_result:
+                            logger.info("[Scheduler] Termine: %s", meeting_result)
                     except Exception as e:
                         logger.warning("[Scheduler] Teams-Fehler: %s", e)
 
@@ -421,6 +442,29 @@ class SchedulerService:
                 logger.info("[Scheduler] GC: evicted %s expired task(s)", len(expired))
             except Exception as e:
                 logger.warning("[Scheduler] GC error: %s", e)
+
+    async def _agents_with_channels(self) -> set:
+        """Agenten mit mindestens einem abgefragten Kanal.
+
+        Eine Abfrage fuer alle Kanaele — sonst laedt jeder Kanal die Agentenliste
+        einzeln, dreissig Sekunden lang, immer wieder.
+        """
+        from app.models.agent import Agent as _Agent
+        from app.services import slack_gateway as _slack
+        from app.services import teams_gateway as _teams
+        from app.services import teams_meetings as _meetings
+        from app.services import whatsapp_gateway as _wa
+        from sqlalchemy import select as _select
+
+        async with resilient_session() as db:
+            agents = (await db.execute(
+                _select(_Agent).where(_Agent.user_id.isnot(None))
+            )).scalars().all()
+        return {
+            a.id for a in agents
+            if _teams.is_enabled(a) or _slack.is_enabled(a)
+            or _wa.is_enabled(a) or _meetings.is_enabled(a)
+        }
 
     async def _check_due_schedules(self) -> None:
         now = datetime.now(timezone.utc)

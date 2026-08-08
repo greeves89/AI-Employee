@@ -173,6 +173,123 @@ async def enqueue(redis, message: InboundMessage) -> None:
         logger.debug("[Gateway] Kontext konnte nicht hinterlegt werden", exc_info=True)
 
 
+async def send_reply(channel: str, agent, context: dict, text: str) -> bool:
+    """Eine fertige Antwort an den Kanal zurückgeben, aus dem sie kam.
+
+    Die einzige Stelle, an der entschieden wird, welcher Kanal wie sendet. Jeder
+    Kanal bringt sein eigenes ``send_reply`` mit; hier steht nur die Zuordnung.
+    Telegram fehlt bewusst: dessen Rückweg streamt die Antwort in eine mitwachsende
+    Nachricht und kann deshalb nicht auf „fertiger Text am Ende" reduziert werden.
+    """
+    if channel == CHANNEL_TEAMS:
+        from app.services.teams_gateway import send_reply as _send
+    elif channel == CHANNEL_SLACK:
+        from app.services.slack_gateway import send_reply as _send
+    elif channel == CHANNEL_WHATSAPP:
+        from app.services.whatsapp_gateway import send_reply as _send
+    else:
+        logger.warning("[Gateway] kein Rueckweg fuer Kanal %s", channel)
+        return False
+    return await _send(agent, context, text)
+
+
+class ChannelResponder:
+    """Hört auf die Antworten der Agenten und schickt sie in ihren Kanal zurück.
+
+    Dieselbe Redis-Schiene, auf der auch der Web-Chat und Telegram lauschen
+    (``agent:{id}:chat:response``). Ein Lauscher je Agent bedient ALLE abgefragten
+    Kanäle — drei fast gleiche Lauscher wären genau die Doppelung, die dieser
+    Baustein vermeiden soll.
+
+    Gesammelt statt gestreamt: Teams, Slack und WhatsApp kennen kein „Nachricht
+    wächst mit" wie Telegram. Häppchenweise zu senden ergäbe zwanzig Einzel-
+    nachrichten für eine Antwort.
+    """
+
+    # Präfixe, für die dieser Lauscher zuständig ist. Telegram fehlt: dessen
+    # Rückweg streamt und liegt weiterhin im Telegram-Bot.
+    HANDLED = (CHANNEL_TEAMS, CHANNEL_SLACK, CHANNEL_WHATSAPP)
+
+    def __init__(self, redis=None):
+        self.redis = redis
+        self._tasks: dict = {}
+
+    def _prefixes(self) -> dict:
+        return {f"{CHANNEL_PREFIX[c]}-": c for c in self.HANDLED}
+
+    async def ensure_listeners(self, agent_ids: set) -> int:
+        """Für jeden Agenten mit mindestens einem abgefragten Kanal einen Lauscher."""
+        import asyncio
+
+        for agent_id in list(self._tasks):
+            task = self._tasks[agent_id]
+            if agent_id not in agent_ids or task.done():
+                task.cancel()
+                self._tasks.pop(agent_id, None)
+
+        for agent_id in agent_ids:
+            if agent_id not in self._tasks:
+                self._tasks[agent_id] = asyncio.create_task(self._listen(agent_id))
+                logger.info("[Gateway] Antwort-Lauscher fuer %s gestartet", agent_id)
+        return len(self._tasks)
+
+    async def _listen(self, agent_id: str) -> None:
+        from app.db.session import resilient_session
+        from app.models.agent import Agent
+
+        prefixes = self._prefixes()
+        pubsub = self.redis.client.pubsub()
+        await pubsub.subscribe(f"agent:{agent_id}:chat:response")
+        buffers: dict = {}
+
+        try:
+            while True:
+                raw = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if not raw or raw.get("type") != "message":
+                    continue
+                try:
+                    data = json.loads(raw["data"])
+                except (ValueError, TypeError):
+                    continue
+
+                msg_id = str(data.get("message_id") or "")
+                channel = next((c for p, c in prefixes.items() if msg_id.startswith(p)), None)
+                if channel is None:
+                    continue
+
+                event = data.get("type", "")
+                payload = data.get("data", {})
+                if event == "text":
+                    buffers[msg_id] = buffers.get(msg_id, "") + (payload.get("text") or "")
+                elif event in ("result", "done", "complete"):
+                    text = buffers.pop(msg_id, "").strip()
+                    if not text:
+                        continue
+                    context = await self.context_for(msg_id)
+                    if not context:
+                        logger.warning("[Gateway] Antwort ohne Ziel: %s", msg_id)
+                        continue
+                    async with resilient_session() as db:
+                        agent = await db.get(Agent, agent_id)
+                    if agent:
+                        await send_reply(channel, agent, context, text)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Gateway] Lauscher %s beendet: %s", agent_id, e)
+        finally:
+            try:
+                await pubsub.unsubscribe()
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def context_for(self, msg_id: str) -> dict | None:
+        """Wohin die Antwort gehört — hinterlegt beim Einreihen (siehe ``enqueue``)."""
+        try:
+            raw = await self.redis.client.get(f"gateway:ctx:{msg_id}")
+            return json.loads(raw) if raw else None
+        except Exception:  # noqa: BLE001
+            return None
+
+
 async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bool:
     """Der vollständige Weg von außen zum Agenten. Gibt zurück, ob zugestellt wurde.
 

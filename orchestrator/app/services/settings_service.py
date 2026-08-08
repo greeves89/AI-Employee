@@ -119,6 +119,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
+    # Kanaele: Slack-Bot-Token (plattformweiter Rueckfall) und WhatsApp-Webhook.
+    # Die Wasserstaende je Agent (teams_watermark_*, slack_watermark_*) sind
+    # Laufzeitmarken und stehen bewusst NICHT hier — sie werden nicht bedient.
+    "slack_bot_token",
+    "whatsapp_verify_token",       # Prueffrage beim Einrichten des Webhooks
+    "whatsapp_app_secret",         # Signaturpruefung JEDER Zustellung
     # SAML 2.0 SSO: Angaben des Identitaetsanbieters + Gruppen-Rollen-Zuordnung.
     # Das Zertifikat ist die Vertrauensbasis der gesamten Anmeldung — ohne das ist
     # keine Signatur pruefbar und SAML wird gar nicht erst angeboten.
