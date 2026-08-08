@@ -88,5 +88,5 @@ def get_all_files_for_agent(skill_id: int) -> list[tuple[str, bytes]]:
         try:
             result.append((name, read_file(skill_id, name)))
         except Exception as e:
-            logger.warning(f"Could not read skill file {scrub_log(name)} for skill {skill_id}: {scrub_log(e)}")
+            logger.warning(f"Could not read skill file {scrub_log(name)} for skill {scrub_log(skill_id)}: {scrub_log(e)}")
     return result
