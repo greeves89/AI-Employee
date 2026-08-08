@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.3] — 2026-08-08
+
+### Fixed
+- **OAuth-Token-Erneuerung skaliert nicht mehr mit der Zahl der Agenten (#503).** Bei über
+  20 Agenten lief `refresh_if_needed` einmal pro Agent pro Server pro Runde; sobald ein
+  Token die Ablaufschwelle überschritt, konkurrierten alle gleichzeitig um dieselbe
+  Sperre. Jetzt merkt sich der Prozess 30 Sekunden lang, dass ein Server ein brauchbares
+  Token hat — strikt unter den 60 Sekunden Ablauf-Puffer, ein gemerktes „brauchbar" kann
+  also nie ein inzwischen abgelaufenes Token verdecken. Aus dem offenen Teil von PR #539.
+- **Compose-Ausgabe wird wirklich entschärft, nicht nur einzeilig gemacht.** `scrub_log`
+  entfernt Steuerzeichen gegen Log-Injection — Geheimnisse maskiert erst `redact_logs`.
+  Und in der HTTP-Antwort stand die Ausgabe ohnehin ungefiltert: der Weg nach außen war
+  offen, während der Log als dicht galt. Betrifft Start, Stopp und Rebuild einer App.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.166.2] — 2026-08-08
 
 ### Fixed
