@@ -84,6 +84,9 @@ class APIRateLimitMiddleware:
         self.window = window_seconds
         # In-memory fallback (only used if Redis is unreachable)
         self._fallback: dict[str, list[float]] = {}
+        # Throttle "rate limit exceeded" WARNINGs to once per key+window in the
+        # fallback path, so a client hammering the endpoint can't flood the log.
+        self._fallback_logged: dict[str, float] = {}
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -128,7 +131,12 @@ class APIRateLimitMiddleware:
                 if current > self.max_requests:
                     ttl = await redis_client.ttl(redis_key)
                     retry_after = max(ttl, 1)
-                    logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
+                    # Log once per key+window (#521): INCR is monotonic within the
+                    # window, so exactly one request hits current == max+1. Logging
+                    # only on that first over-limit request avoids the observed
+                    # flood (126 identical WARNINGs for one user in one window).
+                    if current == self.max_requests + 1:
+                        logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
                 redis_ok = True
             except Exception:
                 pass  # Redis unavailable — fall through to in-memory
@@ -153,7 +161,11 @@ class APIRateLimitMiddleware:
         self._fallback[key] = [t for t in self._fallback[key] if now - t < self.window]
 
         if len(self._fallback[key]) >= self.max_requests:
-            logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
+            # Same log-once-per-window throttle as the Redis path (#521).
+            last_logged = self._fallback_logged.get(key, 0.0)
+            if now - last_logged >= self.window:
+                self._fallback_logged[key] = now
+                logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
             response = Response(
                 content='{"detail":"Rate limit exceeded. Try again later."}',
                 status_code=429,
