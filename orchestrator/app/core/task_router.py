@@ -1232,7 +1232,7 @@ class TaskRouter:
             return
         try:
             from app.models.agent import Agent
-            from app.services.apns_service import push_to_user
+            from app.core.push import push_to_user
 
             agent = await self.db.scalar(select(Agent).where(Agent.id == agent_id))
             if not agent or not agent.user_id:

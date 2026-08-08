@@ -15,6 +15,7 @@ import { TemplateManager } from "@/components/settings/template-manager";
 import { VoiceSettings } from "@/components/settings/voice-settings";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
+import { PushToggle } from "@/components/settings/push-toggle";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -1106,6 +1107,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
               Notifications
             </h2>
+          </div>
+
+          {/* Browser-Meldungen — gilt pro Browser, nicht pro Konto, deshalb ohne
+              Serverspeicherung in den Einstellungen und direkt hier bedienbar. */}
+          <div className="mb-4 rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
+            <PushToggle />
           </div>
 
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">

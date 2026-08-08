@@ -119,6 +119,11 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
+    # Web Push (VAPID): EINMAL erzeugt, danach unveraendert. Ein Wechsel entwertet
+    # saemtliche bestehenden Browser-Anmeldungen — Meldungen blieben dann still aus.
+    "webpush_vapid_private_key",
+    "webpush_vapid_public_key",
+    "webpush_vapid_subject",       # mailto:… — Kontakt fuer den Push-Dienst
     # Wochensynthese (#384): laeuft am selben Takt wie die Nachtschicht, eigener Rhythmus
     "synthesis_enabled",           # "true" | "false" (Vorgabe aus)
     "synthesis_weekday",           # 0=Montag .. 6=Sonntag (Vorgabe 0)
