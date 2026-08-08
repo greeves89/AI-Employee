@@ -2851,15 +2851,67 @@ async def send_telegram_message(
         # Bot eines anderen aus — der Empfaenger konnte nicht erkennen, mit wem er
         # eigentlich schreibt, und der Besitzer des Bots bekam Meldungen, die ihn
         # nichts angingen. Ein Kanal, den niemand eingerichtet hat, existiert nicht.
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Dieser Agent hat keinen eigenen Telegram-Bot (oder keinen autorisierten "
-                "Chat). Telegram gibt es fuer ihn deshalb nicht — trage in seinen "
-                "Einstellungen einen eigenen Bot-Token ein, wenn er diesen Kanal nutzen "
-                "soll. Melde das NICHT als Fehler und versuche es nicht erneut."
-            ),
+        #
+        # Verloren geht die Meldung trotzdem nicht: sie landet als Nachricht im Chat
+        # dieses Agenten. Dort sieht der Nutzer sie beim naechsten Blick — und der
+        # Absender ist eindeutig, weil es SEIN Chat ist. Zusaetzlich sagen wir dem
+        # Agenten, wer sein Team-Lead ist: hat der einen Telegram-Bot, kann er die
+        # Meldung auf Bitte weitergeben und schreibt dabei unter SEINEM Namen.
+        import uuid as _uuid
+
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent as _A
+        from app.models.chat_message import ChatMessage as _CM
+
+        lead_hint = (
+            " Du hast keinen Team-Lead — im Chat steht die Meldung jetzt, mehr Kanaele "
+            "gibt es fuer dich nicht."
         )
+        try:
+            from app.services.duty_service import team_lead_for
+            async with async_session_factory() as _db:
+                lead_id = await team_lead_for(_db, agent_id)
+                lead = (await _db.execute(
+                    select(_A).where(_A.id == lead_id)
+                )).scalar_one_or_none() if lead_id else None
+                if lead is not None:
+                    lead_hint = (
+                        f" Ist es dringend, bitte deinen Team-Lead {lead.name} ({lead.id}) "
+                        f"mit `send_message`, die Meldung weiterzugeben — er entscheidet und "
+                        f"schreibt unter seinem Namen. Hat er auch kein Telegram, bleibt es "
+                        f"beim Chat."
+                    )
+                _db.add(_CM(
+                    agent_id=agent_id,
+                    session_id="meldungen",
+                    message_id=_uuid.uuid4().hex[:12],
+                    role="assistant",
+                    content=body.message,
+                    meta={"source": "broadcast_ohne_telegram"},
+                ))
+                await _db.commit()
+        except Exception as e:  # noqa: BLE001 — die Meldung darf nicht am Kanal scheitern
+            logger.warning("[Telegram] Meldung von %s konnte nicht in den Chat: %s",
+                           agent_id, e)
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Kein eigener Telegram-Bot, und die Meldung liess sich auch nicht im "
+                    "Chat ablegen. Melde das NICHT erneut."
+                ),
+            )
+        return {
+            "agent_id": agent_id,
+            "sent_to": 0,
+            "delivered_via": "chat",
+            "detail": (
+                "Du hast keinen eigenen Telegram-Bot — einen fremden leihst du dir nicht, "
+                "sonst weiss der Leser nicht, wer schreibt. Deine Meldung steht jetzt im "
+                "Chat dieses Agenten (Unterhaltung „meldungen\u201c) und ist damit "
+                "zugestellt." + lead_hint +
+                " Melde das NICHT als Fehler und versuche es nicht erneut."
+            ),
+        }
 
     return {"agent_id": agent_id, "sent_to": sent_to}
 

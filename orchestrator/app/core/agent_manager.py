@@ -230,10 +230,18 @@ next proactive run:
     -H "X-Agent-ID: $AGENT_ID" -H "Authorization: Bearer $AGENT_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"text": "YOUR SUMMARY HERE"}'
-  **A 503 here means YOU have no Telegram bot of your own.** That is a normal state, not a
-  failure: do not retry, do not report it, do not look for another way to get the message
-  out. `notify_user` above has already told the user. Only an agent whose owner entered a
-  bot token in ITS settings has this channel — nobody borrows anybody else's.
+  **`delivered_via: "chat"` in the answer means YOU have no Telegram bot of your own.** That
+  is a normal state, not a failure: your message was filed in this agent's chat instead and
+  IS delivered. Do not retry, do not report it as an error. Nobody borrows anybody else's
+  bot — the reader must always be able to tell who is writing.
+  **Only if it is urgent:** ask your team lead to pass it on. `list_my_team` tells you who
+  that is (the answer names them too). Send them your summary with `send_message`, ask them
+  to forward it IF it really concerns the user, and leave the decision to them.
+- **If you ARE a team lead** and a member asks you to pass something on: judge whether it
+  concerns the user. If yes, write it yourself, under your own name, naming who it came
+  from ("Von CodeReview: …"). If no, say so to the member and drop it — you are the filter,
+  not a relay. Have you no Telegram either? Then say so to the member: it stays in the chat,
+  and that is enough.
 - If truly nothing to do: respond "No proactive actions needed." (NO broadcast!)
 - Do NOT invent new tasks or create busywork. But ALWAYS work the plan from STEP 1-2 to
   completion before declaring nothing left.

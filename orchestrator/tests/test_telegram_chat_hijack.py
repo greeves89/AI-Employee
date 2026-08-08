@@ -53,11 +53,58 @@ class NoBorrowingAtAllTests(unittest.TestCase):
         self.assertNotIn("Fallback for agents without their own Telegram bot", AGENTS_API)
         self.assertNotIn("fallback_bot", AGENTS_API)
 
-    def test_the_answer_says_what_to_do_instead(self):
-        self.assertIn("hat keinen eigenen Telegram-Bot", AGENTS_API)
-        self.assertIn("eigenen Bot-Token", AGENTS_API)
+    def test_the_message_is_still_delivered_via_the_chat(self):
+        """Kein Bot heisst nicht: Meldung weg. Sie landet im Chat des Agenten."""
+        block = AGENTS_API.split("if sent_to == 0:", 1)[1][:3500]
+        self.assertIn('session_id="meldungen"', block)
+        self.assertIn('"delivered_via": "chat"', block)
 
     def test_the_agent_is_told_not_to_treat_it_as_an_error(self):
         mgr = (ORCH / "app/core/agent_manager.py").read_text()
-        self.assertIn("A 503 here means YOU have no Telegram bot of your own", mgr)
-        self.assertIn("nobody borrows anybody else's", mgr)
+        self.assertIn('delivered_via: "chat"', mgr)
+        self.assertIn("Nobody borrows anybody else's", mgr)
+
+
+class TeamLeadIsTheWayTests(unittest.TestCase):
+    """Kein eigener Bot heisst nicht sprachlos: der Team-Lead gibt weiter.
+
+    Nicht als heimliche Weiterleitung, sondern als Bitte — der Lead entscheidet und
+    schreibt unter SEINEM Namen. Damit bleibt fuer den Leser immer erkennbar, wer da
+    schreibt; genau das war beim geliehenen Bot nicht der Fall.
+    """
+
+    def test_the_answer_names_the_actual_lead(self):
+        block = AGENTS_API.split("if sent_to == 0:", 1)[1][:3500]
+        self.assertIn("team_lead_for(_db, agent_id)", block)
+        self.assertIn("send_message", block)
+
+    def test_without_a_team_it_says_what_the_channel_is(self):
+        block = AGENTS_API.split("if sent_to == 0:", 1)[1][:3500]
+        self.assertIn("keinen Team-Lead", block)
+        self.assertIn("mehr Kanaele", block)
+
+    def test_a_lead_without_telegram_ends_the_chain_honestly(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("Have you no Telegram either?", mgr)
+        self.assertIn("it stays in the chat", mgr)
+
+    def test_the_member_is_told_to_ask_the_lead(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("ask your team lead to pass it on", mgr)
+        self.assertIn("list_my_team", mgr)
+
+    def test_the_lead_knows_it_is_a_filter_not_a_relay(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("If you ARE a team lead", mgr)
+        self.assertIn("you are the filter", mgr)
+
+    def test_both_tools_exist_in_every_harness(self):
+        """Harness-Paritaet: ohne `send_message`/`list_my_team` waere die Anweisung leer."""
+        from pathlib import Path
+        repo = Path(__file__).resolve().parents[2]
+        mcp = (repo / "agent/mcp/orchestrator-server.mjs").read_text()
+        defs = (repo / "agent/app/tools/definitions.py").read_text()
+        self.assertIn('name: "send_message"', mcp)
+        self.assertIn('name: "list_my_team"', mcp)
+        self.assertIn('"name": "send_message"', defs)
+        self.assertIn('"name": "list_team"', defs)

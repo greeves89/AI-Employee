@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.7] — 2026-08-08
+
+### Added
+- **Ohne eigenen Telegram-Bot geht die Meldung trotzdem nicht verloren — sie landet im
+  Chat.** Die Zustellkette ist jetzt: eigener Bot → sonst Ablage als Nachricht im Chat des
+  Agenten (Unterhaltung „meldungen"), und der Agent erfährt dabei, wer sein **Team-Lead**
+  ist. Ist die Sache dringend, bittet er ihn per `send_message`, sie weiterzugeben — der
+  Lead entscheidet und schreibt unter **seinem** Namen, damit immer erkennbar bleibt, wer
+  da schreibt. Hat der Lead auch kein Telegram, bleibt es beim Chat, und er sagt das dem
+  Absender. Kein Ausleihen, kein stiller Umweg, keine verlorene Meldung.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.166.6] — 2026-08-08
 
 ### Changed
