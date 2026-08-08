@@ -612,27 +612,17 @@ class ReflectionService:
         await self._apply_knowledge(db, run_id, proposal, stats)
 
     async def _apply_knowledge(self, db: AsyncSession, run_id: int, proposal: dict, stats: dict) -> None:
-        """Create/update a KnowledgeEntry + embed + auto-link (mirrors api/knowledge.py)."""
+        """Wissenseintrag schreiben und den Vorgang im Pruefprotokoll festhalten."""
         owner_id = proposal.get("user_id")
         title = proposal["title"]
         content = proposal["content"]
-        existing = await db.scalar(
-            select(KnowledgeEntry).where(
-                and_(KnowledgeEntry.title == title, KnowledgeEntry.user_id == owner_id)
-            )
+        # Anlegen/Ergaenzen + Einbetten + Verknuepfen liegt in core.knowledge_write —
+        # das hier war frueher eine Kopie von api/knowledge.py (siehe Docstring dort).
+        from app.core.knowledge_write import write_entry
+        entry, _created = await write_entry(
+            db, user_id=owner_id, title=title, content=content,
+            tags=["reflection"], author="reflection",
         )
-        if existing:
-            existing.content = content
-            existing.updated_by = "reflection"
-            entry = existing
-        else:
-            entry = KnowledgeEntry(
-                title=title, content=content, tags=["reflection"],
-                created_by="reflection", updated_by="reflection", user_id=owner_id,
-            )
-            db.add(entry)
-        await db.commit()
-        await db.refresh(entry)
         stats["kb_entries"] += 1
         db.add(AuditLog(
             agent_id=proposal.get("agent_id") or "reflection",
@@ -642,23 +632,6 @@ class ReflectionService:
             meta={"run_id": run_id, "entry_id": entry.id, "applied": True},
         ))
         await db.commit()
-        try:
-            from sqlalchemy import text as sa_text
-            from app.services.brain_linker import auto_link
-            from app.services.embedding_service import get_embedding_service
-            svc = get_embedding_service()
-            if svc.enabled:
-                emb = await svc.embed(f"{title}: {content}")
-                if emb is not None:
-                    await db.execute(
-                        sa_text("UPDATE knowledge_entries SET embedding = CAST(:emb AS vector) WHERE id = :id"),
-                        {"emb": str(emb), "id": entry.id},
-                    )
-                    await db.commit()
-                    if owner_id:
-                        await auto_link(entry.id, owner_id, db)
-        except Exception as e:  # noqa: BLE001 — embedding is best-effort
-            logger.debug("[Reflection] knowledge embed/link skipped: %s", e)
 
     async def _draft_skill(
         self, db: AsyncSession, run_id: int, agent: Agent, cand: dict,

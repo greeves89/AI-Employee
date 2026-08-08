@@ -96,6 +96,74 @@ class OrchestratorAPIClient:
             lines.append(f"- {a.get('name', '?')} (id: {a.get('id')}, role: {a.get('role', 'none')}, status: {status})")
         return "\n".join(lines)
 
+    async def tickets(self, params: dict) -> str:
+        """Ticketsystem der Firma. Ein Werkzeug, vier Aktionen.
+
+        Laeuft ueber den Orchestrator, NICHT direkt gegen das Ticketsystem: dort liegen
+        Adresse und Token zentral, und der Agent bekommt sie nie zu sehen.
+        """
+        action = str(params.get("action") or "").strip().lower()
+
+        if action == "list":
+            limit = str(params.get("limit") or "20")
+            query = params.get("query") or ""
+            result = await self._request(
+                "GET", f"/tickets/?limit={limit}" + (f"&query={query}" if query else "")
+            )
+            rows = (result or {}).get("tickets", [])
+            if not rows:
+                return "No tickets found."
+            return "\n".join(
+                f"- [{t.get('id')}] {t.get('title')} ({t.get('status') or 'ohne Status'})"
+                for t in rows
+            )
+
+        if action == "get":
+            ticket_id = str(params.get("ticket_id") or "").strip()
+            if not ticket_id:
+                return "Error: ticket_id is required for get."
+            result = await self._request("GET", f"/tickets/{ticket_id}")
+            if not result:
+                return f"Ticket {ticket_id} not found."
+            return "\n".join(f"{k}: {v}" for k, v in result.items() if v)
+
+        if action == "create":
+            title = str(params.get("title") or "").strip()
+            if not title:
+                return "Error: title is required for create."
+            result = await self._request("POST", "/tickets/", json={
+                "title": title,
+                "description": params.get("description") or "",
+                "priority": params.get("priority") or "",
+            })
+            return f"Ticket created: {(result or {}).get('id', '?')}"
+
+        if action == "comment":
+            ticket_id = str(params.get("ticket_id") or "").strip()
+            text = str(params.get("text") or "").strip()
+            if not (ticket_id and text):
+                return "Error: ticket_id and text are required for comment."
+            await self._request("POST", f"/tickets/{ticket_id}/comment", json={"text": text})
+            return f"Comment added to {ticket_id}."
+
+        return "Error: unknown action. Use list | get | create | comment."
+
+    async def browser(self, params: dict) -> str:
+        """Kopfloser Browser IM Container — das Gegenstueck zum Playwright-MCP.
+
+        Claude Code bekommt die Faehigkeit ueber `claude mcp add`; diese Laufzeit liest
+        die Claude-Konfiguration nicht. Ohne diese Methode koennte nur einer von drei
+        Harnessen im Browser arbeiten.
+
+        Laeuft ausdruecklich NICHT ueber den Orchestrator: der Browser steht im
+        Agenten-Container, ein Umweg ueber den Server waere ein zweiter Netzweg ohne
+        Nutzen. Die Methode haengt hier, weil der Werkzeug-Dispatch fuer
+        ORCHESTRATOR_TOOLS an dieser Klasse haengt.
+        """
+        from app.tools import browser as _browser
+
+        return await _browser.run(params)
+
     async def computer_use(self, params: dict) -> str:
         """Control the user's desktop through the Computer-Use Bridge.
 

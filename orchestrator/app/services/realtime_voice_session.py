@@ -4585,8 +4585,20 @@ class RealtimeVoiceSession:
             user = await self._load_user(db)
             if user is None:
                 return "Ich konnte deine Berechtigung nicht prüfen — du musst im Web angemeldet sein."
+            # Same manager hand-off as the model switch below: with it the new
+            # level's sudo grant lands in the running container right away,
+            # without it at the next start.
+            manager = None
             try:
-                res = await change_autonomy_level(db, user, self.agent_id, lvl)
+                from app.api import ws as ws_module
+                from app.core.agent_manager import AgentManager
+                docker = getattr(ws_module, "_docker", None)
+                if docker is not None:
+                    manager = AgentManager(db, docker, self.redis)
+            except Exception:  # noqa: BLE001
+                manager = None
+            try:
+                res = await change_autonomy_level(db, user, self.agent_id, lvl, manager)
             except HTTPException as e:
                 return f"Das ging nicht: {e.detail}"
             except Exception:  # noqa: BLE001

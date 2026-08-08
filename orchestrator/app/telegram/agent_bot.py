@@ -409,33 +409,26 @@ class TelegramAgentBot:
         # Wake up agent if stopped (auto-lifecycle), with user-visible status messages
         woke_up = await self._ensure_agent_running(update, target_agent_id)
 
-        # Send message to agent via Redis
+        # Zustellung ueber den gemeinsamen Kanal-Eingang (core/channel_gateway):
+        # Historie festhalten, Auto-Capture, einreihen. Denselben Weg nehmen Teams und
+        # Slack — steht der Ablauf je Kanal einzeln da, wird beim naechsten Fix einer
+        # davon vergessen.
         try:
+            from types import SimpleNamespace
+
+            from app.core import channel_gateway as gw
+
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-            message_id = f"tg-{update.message.message_id}"
-            session_id = f"telegram:{chat_id}"
-            # Persist the user message so Telegram chats (1) appear in history and
-            # (2) get picked up by [ChatPersist] → auto-embedded into conversation
-            # memory. Without a stored user ChatMessage, [ChatPersist] skipped them.
-            try:
-                from app.db.session import async_session_factory
-                from app.models.chat_message import ChatMessage as _CM
-                async with async_session_factory() as _db:
-                    _db.add(_CM(
-                        agent_id=target_agent_id, session_id=session_id,
-                        message_id=message_id, role="user", content=text,
-                    ))
-                    await _db.commit()
-            except Exception as _e:  # noqa: BLE001
-                print(f"[Telegram] persist user message failed: {_e}")
-            payload = json.dumps({
-                "id": message_id,
-                "text": text,
-                "model": None,
-                "chat_session_id": session_id,
-                "telegram": tg_context,
-            })
-            await redis.lpush(f"agent:{target_agent_id}:chat", payload)
+            inbound = gw.InboundMessage(
+                agent_id=target_agent_id,
+                text=text,
+                channel=gw.CHANNEL_TELEGRAM,
+                conversation_id=str(chat_id),
+                message_id=str(update.message.message_id),
+                context=tg_context,
+                sender_name=(user.first_name if user else "") or "",
+            )
+            await gw.deliver(SimpleNamespace(client=redis), inbound)
             await redis.aclose()
 
             await update.effective_chat.send_action("typing")

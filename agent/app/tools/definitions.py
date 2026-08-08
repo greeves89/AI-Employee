@@ -407,6 +407,86 @@ LOCAL_TOOLS.extend(get_skill_tool_definitions())
 # ── Orchestrator API Tools (replicate MCP server functionality) ──
 
 ORCHESTRATOR_TOOLS: list[dict] = [
+    # ── Ticketsystem (Matrix42 o.a.) ──
+    # Ein Werkzeug mit action-Parameter statt vier; siehe browser/computer_use.
+    # Schliessen und Loeschen fehlen bewusst: ein Agent, der ein Ticket eigenmaechtig
+    # schliesst, erzeugt genau den Aerger, den die Automatisierung sparen soll.
+    {
+        "type": "function",
+        "function": {
+            "name": "tickets",
+            "description": (
+                "Read and write the company ticket system (Matrix42 or compatible). "
+                "Use it to look up an existing ticket, list open ones, file a new ticket, "
+                "or add a comment. You can NOT close or delete tickets — a human does that. "
+                "Actions: list | get | create | comment."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "list | get | create | comment"},
+                    "ticket_id": {"type": "string", "description": "For get / comment."},
+                    "title": {"type": "string", "description": "For create."},
+                    "description": {"type": "string", "description": "For create."},
+                    "priority": {"type": "string", "description": "For create (optional)."},
+                    "text": {"type": "string", "description": "For comment."},
+                    "query": {"type": "string", "description": "For list: system filter expression."},
+                    "limit": {"type": "string", "description": "For list: max results (default 20)."},
+                },
+                "required": ["action"],
+            },
+        },
+    },
+    # ── Browser im Container (Codex / Custom-LLM) ──
+    # Claude Code bekommt dasselbe ueber den Playwright-MCP; `claude mcp add` schreibt
+    # aber in die Konfiguration der Claude-CLI, die diese Laufzeiten nicht lesen. Ohne
+    # diesen Eintrag koennte nur einer von drei Harnessen im Browser arbeiten.
+    {
+        "type": "function",
+        "function": {
+            "name": "browser",
+            "description": (
+                "Control a headless browser INSIDE your container: open pages, click, "
+                "type, read the rendered text. Use this for public websites and web apps "
+                "that need JavaScript — `bash`/`curl` only returns raw HTML, which is "
+                "empty for most modern sites. "
+                "NOT for the user's own screen or internal company URLs: those go through "
+                "`computer_use`, which drives the user's real desktop. "
+                "Typical flow: navigate → read_text → click/type → read_text."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": (
+                            "navigate | click | type | read_text | read_links | "
+                            "screenshot | wait_for | back | close"
+                        ),
+                    },
+                    "url": {"type": "string", "description": "For navigate."},
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector. For click/type/wait_for.",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "For click: match a visible label instead of a selector.",
+                    },
+                    "value": {"type": "string", "description": "For type: the text to enter."},
+                    "submit": {
+                        "type": "boolean",
+                        "description": "For type: press Enter afterwards.",
+                    },
+                    "full_page": {
+                        "type": "boolean",
+                        "description": "For screenshot: capture the whole page, not just the viewport.",
+                    },
+                },
+                "required": ["action"],
+            },
+        },
+    },
     # ── Computer-Use Desktop Bridge ──
     {
         "type": "function",

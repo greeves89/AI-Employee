@@ -85,6 +85,9 @@ class CreateRoom(BaseModel):
     use_moderator: bool = False
     moderator_ai_account_id: str | None = None  # per-meeting moderator LLM (None = global default)
     deliverable: bool = False  # Taskforce mode: agents build a real artifact together
+    # Vorlage (#14): fuellt Stufen, Rundenzahl, Moderator und Artefakt-Modus vor.
+    # Ausdrueckliche Angaben oben gewinnen — die Vorlage ist ein Startpunkt.
+    template: str | None = None
 
 
 class StartRoom(BaseModel):
@@ -92,6 +95,18 @@ class StartRoom(BaseModel):
 
 
 # ─── CRUD ────────────────────────────────────────────────────────
+
+
+@router.get("/templates")
+async def list_meeting_templates(user=Depends(require_auth)):
+    """Die Ablauf-Vorlagen fuer Besprechungen.
+
+    Ohne Ablauf wird eine Besprechung ein Rundgespraech: alle sagen etwas, am Ende
+    steht eine Zusammenfassung, aber niemand hat entschieden.
+    """
+    from app.core.meeting_templates import list_templates
+
+    return {"templates": list_templates()}
 
 
 def _may_see_room(room, vids: set[str] | None, uid: str) -> bool:
@@ -446,8 +461,24 @@ async def create_room(
     # Build stages config and derive max_rounds from it
     stages = None
     max_rounds = body.max_rounds
+    use_moderator = body.use_moderator
+    deliverable = body.deliverable
+
+    if body.template:
+        from app.core.meeting_templates import apply_template
+
+        applied = apply_template(body.template)
+        if applied is None:
+            raise HTTPException(status_code=400, detail=f"Unbekannte Vorlage: {body.template}")
+        stages = applied["stages_config"]
+        max_rounds = applied["max_rounds"]
+        use_moderator = applied["use_moderator"]
+        deliverable = applied["deliverable"]
+
+    # Eigene Stufen schlagen die Vorlage: wer sie ausdruecklich mitschickt, will sie.
     if body.stages_config:
         stages = [s.model_dump() for s in body.stages_config]
+    if stages:
         max_rounds = sum(s["rounds"] for s in stages)
 
     room = MeetingRoom(
@@ -457,9 +488,9 @@ async def create_room(
         agent_ids=body.agent_ids,
         max_rounds=max_rounds,
         stages_config=stages,
-        use_moderator=body.use_moderator,
+        use_moderator=use_moderator,
         moderator_ai_account_id=(body.moderator_ai_account_id or None),
-        deliverable=body.deliverable,
+        deliverable=deliverable,
         created_by=user.id if user.id != "__anonymous__" else None,
         messages=[],
     )

@@ -353,6 +353,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "tickets",
+      description:
+        "Read and write the company ticket system (Matrix42 or compatible). Use it to " +
+        "look up an existing ticket, list open ones, file a new ticket, or add a comment. " +
+        "You can NOT close or delete tickets — a human does that. " +
+        "Actions: list | get | create | comment.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: { type: "string", description: "list | get | create | comment" },
+          ticket_id: { type: "string", description: "For get / comment." },
+          title: { type: "string", description: "For create." },
+          description: { type: "string", description: "For create." },
+          priority: { type: "string", description: "For create (optional)." },
+          text: { type: "string", description: "For comment." },
+          query: { type: "string", description: "For list: system filter expression." },
+          limit: { type: "number", description: "For list: max results (default 20)." },
+        },
+        required: ["action"],
+      },
+    },
+    {
       name: "plan_day",
       description:
         "Write down what you intend to do TODAY so it becomes VISIBLE to the user in the " +
@@ -1307,6 +1329,55 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
+    }
+
+    case "tickets": {
+      const action = String(args.action || "").toLowerCase();
+      if (action === "list") {
+        const limit = args.limit || 20;
+        const q = args.query ? `&query=${encodeURIComponent(args.query)}` : "";
+        const res = await apiCall(`/tickets/?limit=${limit}${q}`);
+        const rows = res.tickets || [];
+        return {
+          content: [{
+            type: "text",
+            text: rows.length
+              ? rows.map((t) => `- [${t.id}] ${t.title} (${t.status || "ohne Status"})`).join("\n")
+              : "No tickets found.",
+          }],
+        };
+      }
+      if (action === "get") {
+        if (!args.ticket_id) throw new Error("ticket_id is required for get.");
+        const t = await apiCall(`/tickets/${encodeURIComponent(args.ticket_id)}`);
+        return {
+          content: [{
+            type: "text",
+            text: Object.entries(t).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n"),
+          }],
+        };
+      }
+      if (action === "create") {
+        if (!args.title) throw new Error("title is required for create.");
+        const created = await apiCall("/tickets/", {
+          method: "POST",
+          body: JSON.stringify({
+            title: args.title,
+            description: args.description || "",
+            priority: args.priority || "",
+          }),
+        });
+        return { content: [{ type: "text", text: `Ticket created: ${created.id || "?"}` }] };
+      }
+      if (action === "comment") {
+        if (!args.ticket_id || !args.text) throw new Error("ticket_id and text are required.");
+        await apiCall(`/tickets/${encodeURIComponent(args.ticket_id)}/comment`, {
+          method: "POST",
+          body: JSON.stringify({ text: args.text }),
+        });
+        return { content: [{ type: "text", text: `Comment added to ${args.ticket_id}.` }] };
+      }
+      throw new Error("Unknown action. Use list | get | create | comment.");
     }
 
     case "plan_day": {

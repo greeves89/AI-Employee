@@ -578,6 +578,56 @@ async def backfill_brain_links(
     return {"processed": processed, "links_created": total_links}
 
 
+# ── Wochensynthese (#384) ──────────────────────────────────────────────────────
+# Eine Synthese IST ein Wissenseintrag (`#synthesis`, `#weekly`). Deshalb gibt es
+# hier keine eigene Tabelle und keinen eigenen Speicher — nur eine gefilterte Sicht
+# auf das, was ohnehin schon im Graphen liegt.
+
+@router.get("/syntheses")
+async def list_syntheses(
+    limit: int = Query(20, ge=1, le=100),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bisherige Wochensynthesen, neueste zuerst."""
+    from app.core.ownership import is_admin
+    from app.services.synthesis_service import SYNTHESIS_TAG
+
+    stmt = select(KnowledgeEntry).where(KnowledgeEntry.created_by == "synthesis")
+    if not is_admin(user):
+        stmt = stmt.where(KnowledgeEntry.user_id == str(user.id))
+    entries = (await db.execute(
+        stmt.order_by(KnowledgeEntry.created_at.desc()).limit(limit)
+    )).scalars().all()
+
+    return {"syntheses": [
+        {
+            "id": e.id,
+            "title": e.title,
+            "content": e.content,
+            "tags": e.tags or [SYNTHESIS_TAG],
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in entries
+    ]}
+
+
+@router.post("/synthesize-now", status_code=200)
+async def synthesize_now(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Synthese fuer den eigenen Second Brain sofort erzeugen.
+
+    Laeuft ausserhalb des Wochentakts, aber durch denselben Dienst — es gibt keinen
+    zweiten Weg, auf dem eine Synthese entstehen koennte.
+    """
+    from app.services.synthesis_service import WeeklySynthesisService
+
+    result = await WeeklySynthesisService().run(trigger="manual", user_id=str(user.id))
+    return result
+
+
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
 async def _brain_search(q: str, user_id: str | None, limit: int, db: AsyncSession) -> dict:

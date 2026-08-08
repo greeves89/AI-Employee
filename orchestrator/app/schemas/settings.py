@@ -91,6 +91,23 @@ class SettingsUpdate(BaseModel):
     reflection_hour: int | str | None = None    # local hour 0-23
     reflection_mode: str | None = None          # auto | hybrid | strict
     reflection_token_budget: int | str | None = None
+    # Wochensynthese (#384) — gleicher Takt wie die Nachtschicht, eigener Rhythmus
+    synthesis_enabled: str | None = None        # "true" | "false"
+    synthesis_weekday: int | str | None = None  # 0=Montag .. 6=Sonntag
+    synthesis_hour: int | str | None = None     # lokale Stunde 0-23
+    # SAML 2.0 SSO
+    saml_display_name: str | None = None
+    saml_idp_entity_id: str | None = None
+    saml_idp_sso_url: str | None = None
+    saml_idp_slo_url: str | None = None
+    saml_idp_x509_cert: str | None = None
+    saml_sp_entity_id: str | None = None
+    saml_group_attribute: str | None = None
+    saml_group_role_map: str | None = None
+    # Ticketsystem
+    ticket_base_url: str | None = None
+    ticket_api_token: str | None = None
+    ticket_profile: str | None = None
 
 
 class VoiceSettings(BaseModel):
@@ -172,3 +189,13 @@ class SettingsResponse(BaseModel):
     smtp_relay_verify_tls: bool = True
     smtp_relay_user: str = ""
     smtp_allowed_recipient_domains: str = ""
+    # SAML 2.0 — Einrichtungsangaben, nur fuer Administratoren gefuellt.
+    saml_display_name: str = ""
+    saml_idp_entity_id: str = ""
+    saml_idp_sso_url: str = ""
+    saml_idp_slo_url: str = ""
+    saml_idp_x509_cert: str = ""
+    saml_sp_entity_id: str = ""
+    saml_group_attribute: str = ""
+    saml_group_role_map: str = ""
+    saml_configured: bool = False

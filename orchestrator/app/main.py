@@ -390,7 +390,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                 from app.models.agent import Agent
                 from app.models.chat_message import ChatMessage
                 from app.models.notification import Notification
-                from app.services.apns_service import push_to_user
+                from app.core.push import push_to_user
                 from sqlalchemy import select as sel
                 from sqlalchemy.exc import IntegrityError
 
@@ -997,6 +997,21 @@ async def lifespan(app: FastAPI):
             ))
             await conn.execute(_txt(
                 "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS schedule_id varchar"
+            ))
+            # Web-Push-Anmeldungen der Browser — das Gegenstueck zu device_tokens (iOS).
+            # Der Endpunkt ist eindeutig, damit ein erneut angemeldeter Browser den
+            # bestehenden Eintrag auffrischt statt Meldungen doppelt zu bekommen.
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS push_subscriptions ("
+                "id serial PRIMARY KEY, user_id varchar NOT NULL,"
+                "endpoint text NOT NULL UNIQUE, p256dh varchar NOT NULL,"
+                "auth varchar NOT NULL, user_agent varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt(
+                "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user "
+                "ON push_subscriptions (user_id)"
             ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_folders_user ON workflow_folders (user_id)"))
         logger.info("workflow tables ensured")

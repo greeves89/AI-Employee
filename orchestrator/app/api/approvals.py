@@ -107,7 +107,7 @@ async def _push_ios_for_agent(
     data: dict | None = None,
 ) -> None:
     try:
-        from app.services.apns_service import push_to_user
+        from app.core.push import push_to_user
 
         agent = (await db.execute(
             select(Agent).where(Agent.id == agent_id)

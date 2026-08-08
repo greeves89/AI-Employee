@@ -1199,6 +1199,12 @@ function AgentSettings({
 
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [selected, setSelected] = useState<string[]>(currentPermissions);
+  // Standardmaessig folgen die sudo-Pakete der Autonomiestufe. Wer hier selbst
+  // waehlt, koppelt den Agenten bewusst davon ab.
+  const [permissionsMode, setPermissionsMode] = useState<"auto" | "manual">(
+    agent.permissions_mode ?? "auto"
+  );
+  const [derivedPermissions, setDerivedPermissions] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null);
 
@@ -1269,6 +1275,7 @@ function AgentSettings({
   useEffect(() => {
     api.getPermissionPackages().then((data) => {
       setPackages(data.packages);
+      setDerivedPermissions(data.derived || {});
     }).catch(() => setPackages([]));
     api.listAIAccounts(true).then(setAiAccounts).catch(() => setAiAccounts([]));
   }, []);
@@ -1320,13 +1327,16 @@ function AgentSettings({
     });
   };
 
-  const hasChanges = JSON.stringify([...selected].sort()) !== JSON.stringify([...currentPermissions].sort());
+  const modeChanged = permissionsMode !== (agent.permissions_mode ?? "auto");
+  const listChanged =
+    JSON.stringify([...selected].sort()) !== JSON.stringify([...currentPermissions].sort());
+  const hasChanges = modeChanged || (permissionsMode === "manual" && listChanged);
 
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);
     try {
-      const result = await api.updateAgentPermissions(agentId, selected);
+      const result = await api.updateAgentPermissions(agentId, selected, permissionsMode);
       if (result.warning) {
         setMessage({ type: "warning", text: result.warning });
       } else {
@@ -2260,6 +2270,13 @@ function AgentSettings({
             <span className="text-sm font-medium">Berechtigungen (Sudo-Pakete)</span>
           </div>
           <button
+            type="button"
+            onClick={() => setPermissionsMode(permissionsMode === "auto" ? "manual" : "auto")}
+            className="ml-auto mr-3 text-[11px] text-primary hover:underline"
+          >
+            {permissionsMode === "auto" ? "Selbst festlegen" : "Wieder an Stufe koppeln"}
+          </button>
+          <button
             onClick={handleSave}
             disabled={saving || !hasChanges}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
@@ -2269,16 +2286,30 @@ function AgentSettings({
           </button>
         </div>
 
-        <div className="p-5 space-y-2">
+        {permissionsMode === "auto" && (
+          <p className="px-5 pt-4 text-[11px] text-muted-foreground">
+            Folgt der Autonomiestufe {(agent.autonomy_level ?? "l3").toUpperCase()}.{" "}
+            {(derivedPermissions[agent.autonomy_level ?? "l3"] || []).length === 0
+              ? "Der Container bekommt keine sudo-Rechte."
+              : `Der Container bekommt: ${(derivedPermissions[agent.autonomy_level ?? "l3"] || [])
+                  .map((id) => packages.find((p) => p.id === id)?.label || id)
+                  .join(", ")}.`}
+          </p>
+        )}
+
+        <div className={cn("p-5 space-y-2", permissionsMode === "auto" && "pointer-events-none opacity-40")}>
           {packages.map((pkg) => {
             const Icon = PERM_ICON_MAP[pkg.icon] || Package;
-            const isSelected = selected.includes(pkg.id);
+            const isSelected = permissionsMode === "auto"
+              ? (derivedPermissions[agent.autonomy_level ?? "l3"] || []).includes(pkg.id)
+              : selected.includes(pkg.id);
             const isFullAccess = pkg.id === "full-access";
 
             return (
               <button
                 key={pkg.id}
                 type="button"
+                disabled={permissionsMode === "auto"}
                 onClick={() => togglePermission(pkg.id)}
                 className={cn(
                   "w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200",

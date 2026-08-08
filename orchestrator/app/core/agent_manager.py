@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import get_agent_version, settings
+from app.core import autonomy_matrix
 from app.core.encryption import decrypt_token
 from app.core.log_redaction import scrub_log
 from app.dependencies import make_agent_token
@@ -1218,7 +1219,15 @@ class AgentManager:
             })
 
         # Create Docker container with workspace + session + shared volumes
-        agent_permissions = permissions if permissions is not None else DEFAULT_PERMISSIONS
+        # Container sudo follows the autonomy matrix — see
+        # core.autonomy_matrix.effective_permissions. An explicit list from the
+        # create modal means the user picked by hand, which pins the agent to
+        # manual mode; without one the level's matrix decides.
+        permissions_mode = "manual" if permissions is not None else "auto"
+        agent_permissions = (
+            list(permissions) if permissions is not None
+            else autonomy_matrix.effective_permissions({}, autonomy_level)
+        )
         needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
@@ -1296,6 +1305,7 @@ class AgentManager:
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "permissions": agent_permissions,
+                "permissions_mode": permissions_mode,
                 "agent_version": get_agent_version(),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
             },
@@ -1478,7 +1488,9 @@ class AgentManager:
             })
 
         # 3. Create new container with same volumes + any assigned bind mounts
-        agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
+        agent_permissions = autonomy_matrix.effective_permissions(
+            config, agent.autonomy_level or "l3"
+        )
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
@@ -1704,7 +1716,9 @@ class AgentManager:
             })
 
         # 3. Create new container with same volumes + any assigned bind mounts
-        agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
+        agent_permissions = autonomy_matrix.effective_permissions(
+            config, agent.autonomy_level or "l3"
+        )
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
@@ -2004,7 +2018,12 @@ class AgentManager:
             # elf Verantwortungsbereiche hinterlegt waren.
             "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
             "integrations": config.get("integrations", []),
-            "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
+            # What the container will actually get on the next (re)create — not the
+            # stale stored list, otherwise the UI shows a grant the box no longer has.
+            "permissions": autonomy_matrix.effective_permissions(
+                config, agent.autonomy_level or "l3"
+            ),
+            "permissions_mode": config.get("permissions_mode") or "auto",
             "update_available": update_available,
             "image_outdated": image_outdated,
             "budget_usd": agent.budget_usd,

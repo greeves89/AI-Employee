@@ -27,6 +27,15 @@ SECRET_KEYS = {
     "oauth_microsoft_client_secret",
     "oauth_apple_client_id",
     "oauth_apple_private_key",
+    # Kanal-Zugangsdaten. Das Slack-Bot-Token erlaubt Lesen und Schreiben in den
+    # freigegebenen Kanaelen; das WhatsApp-App-Geheimnis ist der Schluessel, mit dem
+    # JEDE eingehende Zustellung geprueft wird — wer es kennt, kann dem Agenten
+    # beliebige Nachrichten unterschieben. Das Verify-Token schuetzt die Einrichtung.
+    "slack_bot_token",
+    "whatsapp_verify_token",
+    "whatsapp_app_secret",
+    # Zugang zum Ticketsystem: erlaubt Anlegen und Kommentieren im Namen der Firma.
+    "ticket_api_token",
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
@@ -119,6 +128,36 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
+    # Kanaele. Alle drei stehen zusaetzlich in SECRET_KEYS: sie werden verschluesselt
+    # abgelegt und nie im Klartext zurueckgegeben. Die Wasserstaende je Agent liegen
+    # bewusst NICHT hier, sondern in Redis — das sind Laufmarken, keine Einstellungen.
+    "slack_bot_token",
+    "whatsapp_verify_token",
+    "whatsapp_app_secret",
+    # Ticketsystem (Matrix42 o.a.). Das Token ist zusaetzlich in SECRET_KEYS.
+    "ticket_base_url",
+    "ticket_api_token",
+    "ticket_profile",              # matrix42 | generic
+    # SAML 2.0 SSO: Angaben des Identitaetsanbieters + Gruppen-Rollen-Zuordnung.
+    # Das Zertifikat ist die Vertrauensbasis der gesamten Anmeldung — ohne das ist
+    # keine Signatur pruefbar und SAML wird gar nicht erst angeboten.
+    "saml_display_name",
+    "saml_idp_entity_id",
+    "saml_idp_sso_url",
+    "saml_idp_slo_url",
+    "saml_idp_x509_cert",
+    "saml_sp_entity_id",
+    "saml_group_attribute",        # aus welchem Attribut die Gruppen kommen
+    "saml_group_role_map",         # JSON {"Gruppe": "admin"|"manager"|"member"}
+    # Web Push (VAPID): EINMAL erzeugt, danach unveraendert. Ein Wechsel entwertet
+    # saemtliche bestehenden Browser-Anmeldungen — Meldungen blieben dann still aus.
+    "webpush_vapid_private_key",
+    "webpush_vapid_public_key",
+    "webpush_vapid_subject",       # mailto:… — Kontakt fuer den Push-Dienst
+    # Wochensynthese (#384): laeuft am selben Takt wie die Nachtschicht, eigener Rhythmus
+    "synthesis_enabled",           # "true" | "false" (Vorgabe aus)
+    "synthesis_weekday",           # 0=Montag .. 6=Sonntag (Vorgabe 0)
+    "synthesis_hour",              # lokale Stunde 0-23 (Vorgabe 7)
     # Dynamic model catalog: provider auto-discovery cache + admin enable map (JSON)
     "model_discovery_cache",       # JSON {discovered_at, models:[...]} — non-seed extras
     "model_enabled_overrides",     # JSON {model_value: bool} — admin freischaltung

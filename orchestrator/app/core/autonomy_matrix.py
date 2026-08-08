@@ -149,6 +149,58 @@ def matrix_to_prompt(matrix: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────
+# Container sudo — derived from the matrix, not configured beside it
+# ──────────────────────────────────────────────
+# The matrix says what the agent MAY do; the sudoers file says what the container
+# TECHNICALLY permits. They used to be set independently, so an L1 "nur lesen"
+# agent still received the ``package-install`` default: the prompt said no, the
+# box said yes. The package set is now derived from the matrix — one direction,
+# no second place to keep in sync.
+
+PKG_PACKAGE_INSTALL = "package-install"
+PKG_SYSTEM_CONFIG = "system-config"
+PKG_FULL_ACCESS = "full-access"
+
+
+def derive_permissions(matrix: dict[str, str]) -> list[str]:
+    """Container sudo packages implied by the matrix.
+
+    ``system_config`` ("Pakete / Config") is the only capability that grants sudo,
+    and only at ``allow``: at ``ask``/``deny`` the agent has to call
+    ``request_approval`` first, and a standing sudo grant is exactly the way
+    around that gate. Fail-closed — anything unknown yields no sudo at all.
+
+    ``full-access`` is never derived. Unrestricted root in the container stays a
+    deliberate manual act, including at L4.
+    """
+    if matrix.get("system_config") != ALLOW:
+        return []
+    return [PKG_PACKAGE_INSTALL, PKG_SYSTEM_CONFIG]
+
+
+def effective_permissions(config: dict | None, level: str = "l3") -> list[str]:
+    """The sudo packages an agent's container must actually get.
+
+    ``config["permissions_mode"]``:
+      * ``"auto"`` (default) — derived from the agent's matrix
+      * ``"manual"`` — the stored ``config["permissions"]`` list wins
+
+    An agent that was granted ``full-access`` before this coupling existed keeps
+    it: that grant is only ever made on purpose, and silently revoking it on the
+    next recreate would break working setups. Every other legacy agent follows
+    its matrix from now on.
+    """
+    cfg = config or {}
+    stored = cfg.get("permissions")
+    mode = cfg.get("permissions_mode")
+    if mode == "manual":
+        return list(stored or [])
+    if mode is None and stored and PKG_FULL_ACCESS in stored:
+        return list(stored)
+    return derive_permissions(normalize_matrix(cfg.get("autonomy_matrix"), level))
+
+
 def taxonomy_payload() -> dict:
     """Capability taxonomy + presets for the frontend matrix editor."""
     return {
