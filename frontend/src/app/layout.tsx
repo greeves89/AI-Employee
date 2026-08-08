@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { DialogProvider } from "@/components/ui/dialog-provider";
 import { PwaRegistrar } from "@/components/pwa-registrar";
+import { ConciergeWidget } from "@/components/concierge/concierge-widget";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -47,7 +48,11 @@ export default function RootLayout({
         <PwaRegistrar />
         <ThemeProvider>
           <DialogProvider>
-            <AuthGuard>{children}</AuthGuard>
+            <AuthGuard>
+              {children}
+              {/* Nur fuer Administratoren; blendet sich sonst selbst aus. */}
+              <ConciergeWidget />
+            </AuthGuard>
           </DialogProvider>
         </ThemeProvider>
       </body>

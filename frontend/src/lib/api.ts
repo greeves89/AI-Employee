@@ -3201,6 +3201,32 @@ export interface AgentDevelopment {
   };
 }
 
+// Admin-Concierge (#11): setzt vorhandene Abfragen zusammen — bewusst ohne
+// Sprachmodell, ein Concierge der eine Zahl halluziniert ist schlimmer als keiner.
+export interface ConciergeOverview {
+  verdict: string;
+  agents: {
+    total: number;
+    by_state: Record<string, number>;
+    unhealthy: { id: string; name: string; state: string }[];
+  };
+  tasks_24h: { total: number; failed: number; running: number; stale: number };
+  cost_24h_usd: number;
+  pending_approvals: number;
+  actions: { id: string; label: string }[];
+}
+
+export async function getConciergeOverview(): Promise<ConciergeOverview> {
+  return fetchJSON(`${getBase()}/concierge/overview`);
+}
+
+export async function runConciergeAction(action: string, agentId?: string) {
+  return fetchJSON(`${getBase()}/concierge/action`, {
+    method: "POST",
+    body: JSON.stringify({ action, agent_id: agentId ?? null }),
+  });
+}
+
 // Was hat die Plattform dazugelernt? Setzt vorhandene Daten zusammen (Skill-Entwuerfe
 // der Nachtschicht, ueberarbeitete Skills, Erinnerungen aus der Reflexion) — die
 // Mechanik lief laengst, sichtbar war sie nirgends.
