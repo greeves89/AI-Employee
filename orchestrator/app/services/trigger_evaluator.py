@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.models.event_trigger import EventTrigger
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,7 @@ async def fire_trigger(
     await db.flush()
 
     logger.info(
-        f"Trigger '{trigger.name}' (id={trigger.id}) fired for "
-        f"{source}/{event_type} → agent {trigger.agent_id}"
+        f"Trigger '{scrub_log(trigger.name)}' (id={trigger.id}) fired for "
+        f"{scrub_log(source)}/{scrub_log(event_type)} → agent {scrub_log(trigger.agent_id)}"
     )
     return prompt

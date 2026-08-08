@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth, require_auth_or_agent, verify_agent_token
 from app.models.agent import Agent
@@ -221,7 +222,7 @@ async def rate_task(
                 mem_db.add(mem)
                 await mem_db.commit()
         except Exception as e:
-            logger.warning(f"Could not save feedback memory: {e}")
+            logger.warning(f"Could not save feedback memory: {scrub_log(e)}")
 
     # If task has a linked SkillTaskUsage, merge the user_rating into it
     try:
@@ -290,7 +291,7 @@ async def rate_task(
                 await redis.disconnect()
                 logger.info(f"Queued skill-update follow-up for skill {skill.id} after {body.rating}★ feedback")
         except Exception as e:
-            logger.warning(f"Could not queue skill-update follow-up: {e}")
+            logger.warning(f"Could not queue skill-update follow-up: {scrub_log(e)}")
 
     return _to_response(rating)
 

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_manager import PROACTIVE_PROMPT
 from app.core.load_balancer import LoadBalancer
+from app.core.log_redaction import scrub_log
 from app.core.task_router import TaskRouter
 from app.db.session import resilient_session
 from app.models.schedule import Schedule
@@ -1296,13 +1297,16 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
             try:
                 tz = ZoneInfo(tz_name)
             except Exception:
-                logger.warning("[Scheduler] Unknown timezone '%s' — evaluating cron in UTC", tz_name)
+                logger.warning("[Scheduler] Unknown timezone '%s' — evaluating cron in UTC", scrub_log(tz_name))
                 tz = timezone.utc
             base = now.astimezone(tz)
             cron = croniter(schedule.cron_expression, base)
             return cron.get_next(datetime).astimezone(timezone.utc)
         except Exception as e:
-            logger.warning("[Scheduler] Invalid cron expression '%s': %s — falling back to interval", schedule.cron_expression, e)
+            logger.warning(
+                "[Scheduler] Invalid cron expression '%s': %s — falling back to interval",
+                scrub_log(schedule.cron_expression), scrub_log(e),
+            )
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
 
 
@@ -1343,7 +1347,7 @@ def schedule_occurrences(schedule: "Schedule", range_start: datetime, range_end:
         except Exception as e:
             logger.warning(
                 "[Scheduler] Invalid cron expression '%s' while listing occurrences: %s",
-                schedule.cron_expression, e,
+                scrub_log(schedule.cron_expression), scrub_log(e),
             )
     elif schedule.interval_seconds and schedule.interval_seconds > 0 and schedule.next_run_at:
         step_s = schedule.interval_seconds

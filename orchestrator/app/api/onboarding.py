@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core import onboarding as ob
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth_or_agent
 from app.models.agent import Agent
@@ -98,7 +99,7 @@ async def complete_onboarding(
     flag_modified(agent, "config")
     await db.commit()
     duties = (agent.config.get("proactive") or {}).get("responsibilities") or []
-    logger.info("[Onboarding] agent=%s abgeschlossen, %d Bereiche", agent_id, len(duties))
+    logger.info("[Onboarding] agent=%s abgeschlossen, %d Bereiche", scrub_log(agent_id), len(duties))
     return {
         "agent_id": agent_id,
         "onboarded": True,

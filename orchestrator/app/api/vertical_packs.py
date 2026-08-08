@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.core.vertical_packs import BUILTIN_VERTICAL_PACKS, get_pack
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
@@ -93,7 +94,7 @@ async def provision_vertical_pack(
     try:
         result = await provision_pack(pack, uid, db, docker, redis)
     except Exception as e:
-        logger.error(f"[VerticalPack] Provisioning '{slug}' failed: {e}", exc_info=True)
+        logger.error(f"[VerticalPack] Provisioning '{scrub_log(slug)}' failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Provisioning failed: {e}")
 
     return {

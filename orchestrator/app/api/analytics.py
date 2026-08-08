@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.core.ownership import visible_agent_ids
 from app.db.session import get_db
 from app.dependencies import require_auth
@@ -546,7 +547,7 @@ async def agent_development(
             .where(TaskRating.agent_id == agent_id, TaskRating.created_at >= since)
         )).all()
     except Exception:  # noqa: BLE001 — ohne Bewertungen bleibt der Rest aussagekraeftig
-        logger.debug("Bewertungen fuer %s nicht ladbar", agent_id, exc_info=True)
+        logger.debug("Bewertungen fuer %s nicht ladbar", scrub_log(agent_id), exc_info=True)
 
     def _avg(items):
         vals = [float(r) for r, _ in items if r is not None]

@@ -24,6 +24,8 @@ import json
 import logging
 from typing import Awaitable, Callable
 
+from app.core.log_redaction import scrub_log
+
 logger = logging.getLogger(__name__)
 
 MCP_VERSION = "2025-06-18"
@@ -630,7 +632,7 @@ async def handle_mcp_request(
             # ErrorNonExistentMailbox / UnauthorizedError / TransportError …) that
             # pinpoints the cause WITHOUT leaking server URLs, mailbox addresses,
             # tenant IDs or other internals that the free-text message can contain.
-            logger.error("Exchange tool error [%s]: %s", tool_name, e, exc_info=True)
+            logger.error("Exchange tool error [%s]: %s", scrub_log(tool_name), e, exc_info=True)
             return mcp_result(id_, tool_result(
                 f"Exchange request failed ({type(e).__name__}). Check the mailbox "
                 "permissions / impersonation rights and the EWS server connection; "
