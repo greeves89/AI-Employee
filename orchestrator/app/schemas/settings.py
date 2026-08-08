@@ -104,6 +104,10 @@ class SettingsUpdate(BaseModel):
     saml_sp_entity_id: str | None = None
     saml_group_attribute: str | None = None
     saml_group_role_map: str | None = None
+    # Ticketsystem
+    ticket_base_url: str | None = None
+    ticket_api_token: str | None = None
+    ticket_profile: str | None = None
 
 
 class VoiceSettings(BaseModel):

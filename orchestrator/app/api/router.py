@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.config import settings as app_config
-from app.api import concierge, activity, admin, day_plan, onboarding as onboarding_api, agent_apps, agents, ai_accounts, analytics, approval_rules, approvals, apps_overview, audit, auth, brain, brain_mcp, brains, command_policies, computer_use, dlp, docker_apps, workflows, downloads, event_triggers, features, feedback, health, integrations, kiosk, knowledge, knowledge_feeds, license as license_api, meeting_rooms, meetings, memory, reflection, mcp_agent, mcp_exchange, mcp_msgraph, mcp_msgraph_external, mcp_servers, notifications, oauth_as, presence, ratings, roles, schedules, secrets, skill_marketplace, skills_catalog, tasks, teams, telegram_actions, templates, todos, url_allowlist, user_profiles, version, vertical_packs, webhooks, ws, settings
+from app.api import concierge, tickets, activity, admin, day_plan, onboarding as onboarding_api, agent_apps, agents, ai_accounts, analytics, approval_rules, approvals, apps_overview, audit, auth, brain, brain_mcp, brains, command_policies, computer_use, dlp, docker_apps, workflows, downloads, event_triggers, features, feedback, health, integrations, kiosk, knowledge, knowledge_feeds, license as license_api, meeting_rooms, meetings, memory, reflection, mcp_agent, mcp_exchange, mcp_msgraph, mcp_msgraph_external, mcp_servers, notifications, oauth_as, presence, ratings, roles, schedules, secrets, skill_marketplace, skills_catalog, tasks, teams, telegram_actions, templates, todos, url_allowlist, user_profiles, version, vertical_packs, webhooks, ws, settings
 
 api_router = APIRouter()
 api_router.include_router(activity.router)
@@ -69,3 +69,4 @@ api_router.include_router(license_api.router)
 api_router.include_router(user_profiles.router)
 api_router.include_router(vertical_packs.router)
 api_router.include_router(concierge.router)
+api_router.include_router(tickets.router)

@@ -283,6 +283,8 @@ async def update_settings(
         "saml_display_name", "saml_idp_entity_id", "saml_idp_sso_url",
         "saml_idp_slo_url", "saml_idp_x509_cert", "saml_sp_entity_id",
         "saml_group_attribute", "saml_group_role_map",
+        # Ticketsystem — derselbe Weg, sonst laesst es sich nicht einrichten.
+        "ticket_base_url", "ticket_profile", "ticket_api_token",
     ]
     for field_name in _REFLECTION_FIELDS:
         value = getattr(data, field_name, None)

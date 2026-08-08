@@ -34,6 +34,8 @@ SECRET_KEYS = {
     "slack_bot_token",
     "whatsapp_verify_token",
     "whatsapp_app_secret",
+    # Zugang zum Ticketsystem: erlaubt Anlegen und Kommentieren im Namen der Firma.
+    "ticket_api_token",
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
@@ -132,6 +134,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "slack_bot_token",
     "whatsapp_verify_token",
     "whatsapp_app_secret",
+    # Ticketsystem (Matrix42 o.a.). Das Token ist zusaetzlich in SECRET_KEYS.
+    "ticket_base_url",
+    "ticket_api_token",
+    "ticket_profile",              # matrix42 | generic
     # SAML 2.0 SSO: Angaben des Identitaetsanbieters + Gruppen-Rollen-Zuordnung.
     # Das Zertifikat ist die Vertrauensbasis der gesamten Anmeldung — ohne das ist
     # keine Signatur pruefbar und SAML wird gar nicht erst angeboten.

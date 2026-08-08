@@ -407,6 +407,36 @@ LOCAL_TOOLS.extend(get_skill_tool_definitions())
 # ── Orchestrator API Tools (replicate MCP server functionality) ──
 
 ORCHESTRATOR_TOOLS: list[dict] = [
+    # ── Ticketsystem (Matrix42 o.a.) ──
+    # Ein Werkzeug mit action-Parameter statt vier; siehe browser/computer_use.
+    # Schliessen und Loeschen fehlen bewusst: ein Agent, der ein Ticket eigenmaechtig
+    # schliesst, erzeugt genau den Aerger, den die Automatisierung sparen soll.
+    {
+        "type": "function",
+        "function": {
+            "name": "tickets",
+            "description": (
+                "Read and write the company ticket system (Matrix42 or compatible). "
+                "Use it to look up an existing ticket, list open ones, file a new ticket, "
+                "or add a comment. You can NOT close or delete tickets — a human does that. "
+                "Actions: list | get | create | comment."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "list | get | create | comment"},
+                    "ticket_id": {"type": "string", "description": "For get / comment."},
+                    "title": {"type": "string", "description": "For create."},
+                    "description": {"type": "string", "description": "For create."},
+                    "priority": {"type": "string", "description": "For create (optional)."},
+                    "text": {"type": "string", "description": "For comment."},
+                    "query": {"type": "string", "description": "For list: system filter expression."},
+                    "limit": {"type": "string", "description": "For list: max results (default 20)."},
+                },
+                "required": ["action"],
+            },
+        },
+    },
     # ── Browser im Container (Codex / Custom-LLM) ──
     # Claude Code bekommt dasselbe ueber den Playwright-MCP; `claude mcp add` schreibt
     # aber in die Konfiguration der Claude-CLI, die diese Laufzeiten nicht lesen. Ohne
