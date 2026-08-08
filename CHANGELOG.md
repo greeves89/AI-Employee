@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.10] — 2026-08-08
+
+### Fixed
+- **Ein angehaltener AudioContext machte den Sprachmodus stumm — ohne einen einzigen
+  Fehler.** Chrome startet einen AudioContext ohne Nutzergeste als `suspended`.
+  - **Aufnahme:** `onaudioprocess` feuert dann nie. Die Verbindung steht, der Agent
+    begrüßt, danach kommt nichts mehr an. Der Kontext wird jetzt aufgeweckt, und liefert
+    die Aufnahme nach 2,5 Sekunden immer noch keinen einzigen Block, steht das als
+    Meldung da — samt Zustand des Kontexts, statt still zu bleiben.
+  - **Wiedergabe:** Die Blöcke werden eingeplant und nie hörbar — in der Oberfläche steht
+    „Spricht…", aus dem Lautsprecher kommt nichts. Der Kontext wird jetzt bei jedem Block
+    geprüft und aufgeweckt.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
 ## [1.166.9] — 2026-08-08
 
 ### Fixed

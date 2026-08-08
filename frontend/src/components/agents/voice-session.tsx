@@ -856,6 +856,13 @@ export function VoiceSessionModal({
       outCtxRef.current = ctx;
       nextPlayRef.current = 0;
     }
+    // Chrome haelt einen AudioContext ohne Nutzergeste "suspended". Die Bloecke werden
+    // dann brav eingeplant und NIE hoerbar: in der Oberflaeche steht „Spricht…", aus dem
+    // Lautsprecher kommt nichts. Deshalb bei jedem Block nachsehen — resume() auf einem
+    // laufenden Kontext kostet nichts.
+    if (outCtxRef.current.state === "suspended") {
+      void outCtxRef.current.resume().catch(() => {});
+    }
     return outCtxRef.current;
   }, []);
 
@@ -945,11 +952,23 @@ export function VoiceSessionModal({
       streamRef.current = stream;
       const ctx = new AudioContext();
       inCtxRef.current = ctx;
+      // Chrome startet einen AudioContext ohne Nutzergeste als "suspended". Dann
+      // feuert `onaudioprocess` NIE — kein Ton geht raus, kein Fehler kommt an: die
+      // Verbindung steht, der Agent begruesst, und danach passiert nichts mehr.
+      // Genau dieses Bild hatte der Nutzer.
+      if (ctx.state === "suspended") {
+        try {
+          await ctx.resume();
+        } catch {
+          /* der Wachhund unten meldet es, wenn es wirklich stumm bleibt */
+        }
+      }
       const source = ctx.createMediaStreamSource(stream);
       srcNodeRef.current = source;
       const proc = ctx.createScriptProcessor(4096, 1, 1);
       procRef.current = proc;
       let vadHigh = 0;
+      let framesSent = 0;
       proc.onaudioprocess = (e) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const input = e.inputBuffer.getChannelData(0);
@@ -968,6 +987,7 @@ export function VoiceSessionModal({
             vadHigh = 0;
           }
         }
+        framesSent++;
         const ds = downsample(input, ctx.sampleRate, 16000);
         const b64 = bufToBase64(floatTo16LE(ds));
         wsRef.current.send(JSON.stringify({ type: "audio_chunk", data: { b64 } }));
@@ -976,6 +996,23 @@ export function VoiceSessionModal({
       proc.connect(ctx.destination); // required for onaudioprocess to fire
       setLive(true);
       setState("listening");
+      // Wachhund: kommt nach zweieinhalb Sekunden kein einziger Block, liegt es nicht
+      // am leisen Sprechen — dann laeuft die Aufnahme gar nicht. Das gehoert gesagt,
+      // samt Zustand des AudioContext, sonst sucht man an der falschen Stelle.
+      window.setTimeout(() => {
+        if (framesSent === 0 && inCtxRef.current === ctx) {
+          void ctx.resume().catch(() => {});
+          window.setTimeout(() => {
+            if (framesSent === 0 && inCtxRef.current === ctx) {
+              setError(
+                `Das Mikrofon liefert keine Daten (Audio-Kontext: ${ctx.state}). ` +
+                  "Erlaube den Mikrofon-Zugriff für diese Seite und prüfe in den " +
+                  "Browser-Einstellungen, welches Gerät ausgewählt ist.",
+              );
+            }
+          }, 1500);
+        }
+      }, 2500);
     } catch (e) {
       const name = (e as Error)?.name || "";
       const msg = (e as Error)?.message || "";
