@@ -428,6 +428,13 @@ class TelegramAgentBot:
                     await _db.commit()
             except Exception as _e:  # noqa: BLE001
                 print(f"[Telegram] persist user message failed: {_e}")
+
+            # Auto-Capture (#385): Link, laengerer Textblock oder ein ausdrueckliches
+            # „merk dir das" wandert zusaetzlich als Wissenseintrag ins Second Brain
+            # des Besitzers — sonst bleibt es im Chatverlauf liegen und ist weder
+            # auffindbar noch verknuepft. Der Agent bekommt die Nachricht trotzdem
+            # ganz normal; Capture ist Beiwerk und darf die Zustellung NIE aufhalten.
+            await self._maybe_capture(target_agent_id, text)
             payload = json.dumps({
                 "id": message_id,
                 "text": text,
@@ -443,6 +450,32 @@ class TelegramAgentBot:
                 await update.message.reply_text("✅ Agent hochgefahren!")
         except Exception as e:
             await update.message.reply_text(f"Fehler beim Senden: {e}")
+
+    async def _maybe_capture(self, target_agent_id: str, text: str) -> None:
+        """Auto-Capture ins Second Brain des Agenten-Besitzers.
+
+        Vollstaendig abgesichert: schlaegt das Ablegen fehl, wird es geloggt und die
+        Nachricht laeuft weiter zum Agenten. Am 2026-08-06 hat genau so ein Beiwerk
+        schon einmal die Zustellung verhindert — das darf sich nicht wiederholen.
+        """
+        try:
+            from app.core.capture import capture
+            from app.db.session import async_session_factory
+            from app.models.agent import Agent as _Agent
+
+            async with async_session_factory() as db:
+                agent = await db.get(_Agent, target_agent_id)
+                owner = getattr(agent, "user_id", None)
+                if not owner:
+                    return
+                entry, reason = await capture(
+                    db, user_id=owner, text=text, source="Telegram",
+                    author=target_agent_id,
+                )
+                if entry is not None:
+                    logger.info("[Telegram] Auto-Capture (%s) -> Eintrag %s", reason, entry.id)
+        except Exception as e:  # noqa: BLE001 — Zustellung geht IMMER vor
+            logger.warning("[Telegram] Auto-Capture fehlgeschlagen: %s", e)
 
     async def _active_target_agent_id(self, chat_id: int) -> str:
         """Return the agent Telegram replies should currently go to.

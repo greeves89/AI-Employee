@@ -252,6 +252,10 @@ async def update_settings(
     _REFLECTION_FIELDS = [
         "reflection_enabled", "reflection_hour",
         "reflection_mode", "reflection_token_budget",
+        # Wochensynthese (#384) — derselbe Weg, damit sie sich ueberhaupt
+        # einschalten laesst. Fehlt ein Feld hier, meldet die Oberflaeche
+        # "Gespeichert." und es passiert nichts.
+        "synthesis_enabled", "synthesis_weekday", "synthesis_hour",
     ]
     for field_name in _REFLECTION_FIELDS:
         value = getattr(data, field_name, None)

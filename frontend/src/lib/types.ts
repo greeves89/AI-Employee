@@ -344,6 +344,14 @@ export interface ReflectionStatus {
   token_budget: number;
   pending_approvals: number;
   last_run: ReflectionRun | null;
+  /** Wochensynthese (#384) — gleicher Takt und gleicher LLM-Zugang wie die
+   *  Nachtschicht, deshalb Teil DIESER Antwort statt eines zweiten Statuswegs. */
+  synthesis?: {
+    enabled: boolean;
+    weekday: number;
+    hour: number;
+    last_run: string | null;
+  };
 }
 
 // Meta payload of approvals with command === "reflection_change".

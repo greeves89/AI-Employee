@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Plus, Search, Tag, Network, FileText,
   Trash2, ArrowLeft, Clock, User, Link2, X, Hash,
-  Brain, Loader2, Sparkles,
+  Brain, Loader2, Sparkles, Inbox,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -20,6 +20,8 @@ import type { KnowledgeEntry, KnowledgeTag, KnowledgeGraphNode, KnowledgeGraphEd
 import type { RelatedMemoryItem, RelatedKnowledgeItem } from "@/lib/api";
 import type { VaultGraph } from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { SynthesisView } from "@/components/knowledge/synthesis-view";
+import { CaptureInbox } from "@/components/knowledge/capture-inbox";
 
 // Reuse the Second-Brain 3D graph renderer (WebGL + automatic 2D fallback) for the
 // Knowledge base — same component, just fed with the knowledge graph. Client-only.
@@ -27,7 +29,7 @@ const VaultGraph3D = dynamic(() => import("@/app/second-brains/vault-graph-3d"),
   ssr: false,
 });
 
-type ViewMode = "list" | "editor" | "graph";
+type ViewMode = "list" | "editor" | "graph" | "synthesis" | "inbox";
 
 export default function KnowledgePage() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
@@ -227,6 +229,36 @@ export default function KnowledgePage() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setPreviousView(viewMode === "editor" ? "list" : viewMode);
+              setViewMode("inbox");
+            }}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm",
+              viewMode === "inbox"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+            )}
+          >
+            <Inbox className="h-4 w-4" />
+            Inbox
+          </button>
+          <button
+            onClick={() => {
+              setPreviousView(viewMode === "editor" ? "list" : viewMode);
+              setViewMode("synthesis");
+            }}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm",
+              viewMode === "synthesis"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+            )}
+          >
+            <Sparkles className="h-4 w-4" />
+            Synthese
+          </button>
           <button
             onClick={openGraph}
             className={cn(
@@ -569,6 +601,34 @@ export default function KnowledgePage() {
                 )}
               </div>
             )}
+          </motion.div>
+        )}
+
+        {viewMode === "inbox" && (
+          <motion.div
+            key="inbox"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {/* Gefilterte Sicht auf die Wissensbasis, kein zweiter Speicher —
+                der Klick fuehrt in denselben Editor wie jeder andere Eintrag. */}
+            <CaptureInbox onOpenEntry={openEntry} />
+          </motion.div>
+        )}
+
+        {viewMode === "synthesis" && (
+          <motion.div
+            key="synthesis"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {/* Klick fuehrt in DENSELBEN Editor wie jeder andere Eintrag — eine
+                Synthese ist ein normaler Wissenseintrag, keine Sonderform. */}
+            <SynthesisView onOpenEntry={openEntry} />
           </motion.div>
         )}
 

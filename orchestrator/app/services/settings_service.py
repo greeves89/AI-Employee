@@ -119,6 +119,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
+    # Wochensynthese (#384): laeuft am selben Takt wie die Nachtschicht, eigener Rhythmus
+    "synthesis_enabled",           # "true" | "false" (Vorgabe aus)
+    "synthesis_weekday",           # 0=Montag .. 6=Sonntag (Vorgabe 0)
+    "synthesis_hour",              # lokale Stunde 0-23 (Vorgabe 7)
     # Dynamic model catalog: provider auto-discovery cache + admin enable map (JSON)
     "model_discovery_cache",       # JSON {discovered_at, models:[...]} — non-seed extras
     "model_enabled_overrides",     # JSON {model_value: bool} — admin freischaltung

@@ -2656,6 +2656,31 @@ export async function getBrainGraph(): Promise<{ nodes: KnowledgeGraphNode[]; ed
   return fetchJSON(`${getBase()}/brain/graph`);
 }
 
+// ── Wochensynthese (#384) ────────────────────────────────────────────────────
+// Eine Synthese IST ein Wissenseintrag (created_by = "synthesis"); diese beiden
+// Aufrufe sind nur eine gefilterte Sicht bzw. der Anstoss — kein zweiter Speicher.
+export interface Synthesis {
+  id: number;
+  title: string;
+  content: string;
+  tags: string[];
+  created_at: string | null;
+}
+
+export async function listSyntheses(limit = 20): Promise<{ syntheses: Synthesis[] }> {
+  return fetchJSON(`${getBase()}/brain/syntheses?limit=${limit}`);
+}
+
+export async function synthesizeNow(): Promise<{
+  trigger: string;
+  users: number;
+  written: number;
+  skipped: string[];
+  errors: string[];
+}> {
+  return fetchJSON(`${getBase()}/brain/synthesize-now`, { method: "POST" });
+}
+
 // Audit Logs
 export async function getAuditLogs(params?: {
   agent_id?: string;

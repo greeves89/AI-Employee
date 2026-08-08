@@ -60,6 +60,7 @@ class SchedulerService:
         self._dreaming_counter = 0
         self._reflection_counter = 0
         self._reflection_service = None
+        self._synthesis_service = None
         self._codex_refresh_counter = 0
         # Rhythmus-Invariante wird alle 5 Minuten geprueft — beim ersten Tick sofort,
         # damit ein frisch gestarteter Orchestrator die Zeitplaene nicht erst spaeter anlegt.
@@ -216,6 +217,20 @@ class SchedulerService:
                             logger.info("[Scheduler] Reflection: %s", result)
                     except Exception as e:
                         logger.warning("[Scheduler] Reflection error: %s", e)
+
+                    # Wochensynthese (#384) haengt am SELBEN Takt — ein eigener
+                    # Scheduler waere ein zweites Uhrwerk fuer dieselbe Frage.
+                    # Der Dienst prueft Wochentag und Stunde selbst und ist billig,
+                    # wenn abgeschaltet.
+                    try:
+                        if self._synthesis_service is None:
+                            from app.services.synthesis_service import WeeklySynthesisService
+                            self._synthesis_service = WeeklySynthesisService(self.redis)
+                        syn = await self._synthesis_service.tick()
+                        if syn:
+                            logger.info("[Scheduler] Wochensynthese: %s", syn)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Wochensynthese-Fehler: %s", e)
 
                 # Codex token: keep the shared ChatGPT auth fresh CENTRALLY (single
                 # thread) so agents never refresh the single-use token concurrently

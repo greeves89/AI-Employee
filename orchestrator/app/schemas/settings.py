@@ -91,6 +91,10 @@ class SettingsUpdate(BaseModel):
     reflection_hour: int | str | None = None    # local hour 0-23
     reflection_mode: str | None = None          # auto | hybrid | strict
     reflection_token_budget: int | str | None = None
+    # Wochensynthese (#384) — gleicher Takt wie die Nachtschicht, eigener Rhythmus
+    synthesis_enabled: str | None = None        # "true" | "false"
+    synthesis_weekday: int | str | None = None  # 0=Montag .. 6=Sonntag
+    synthesis_hour: int | str | None = None     # lokale Stunde 0-23
 
 
 class VoiceSettings(BaseModel):
