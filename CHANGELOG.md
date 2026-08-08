@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.9] — 2026-08-08
+
+### Fixed
+- **Das Live-Gespräch starb, wenn vom Mikrofon nichts kam** — mit einer AWS-Meldung statt
+  einer Erklärung („Timed out waiting for audio bytes … less than 55 seconds"). Die
+  Erhaltungsschleife schickte Stille erst, NACHDEM die Begrüßung lief, und die lief erst
+  nach dem ersten echten Mikrofon-Frame. Kam der nie (Freigabe verweigert, falsches Gerät,
+  stumm), blieb alles still und der Anbieter brach nach 55 Sekunden ab. Jetzt hält die
+  Schleife den Strom ab dem ersten Tick warm, und die Begrüßung spricht auch ohne Zutun.
+- **Ein totes Mikrofon wird benannt:** Kommt 20 Sekunden lang kein Signal, sagt die
+  Oberfläche das — statt den Nutzer raten zu lassen, warum niemand antwortet.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.166.8] — 2026-08-08
 
 ### Changed

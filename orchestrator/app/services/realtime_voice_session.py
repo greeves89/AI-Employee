@@ -1332,6 +1332,9 @@ class RealtimeVoiceSession:
     # Bedrock bidi stream would idle-timeout and drop with an error. We feed it a tiny
     # silent frame whenever no real audio flowed for a while, keeping it warm.
     _last_audio_sent: float = 0.0      # monotonic ts of the last frame sent to Nova
+    _last_real_audio: float = 0.0      # monotonic ts of the last frame FROM THE MICROPHONE
+    _mic_warned: bool = False
+    _opened_at: float = 0.0            # monotonic ts of the session start
     _closed: bool = False
     _greeted: bool = False
     # Barge-in: while True, ALL outgoing audio is dropped (the whole interrupted
@@ -1523,6 +1526,7 @@ class RealtimeVoiceSession:
             )
         await self._nova.open()
         self._pump_task = asyncio.create_task(self._audio_pump())
+        self._opened_at = time.monotonic()
         self._keepalive_task = asyncio.create_task(self._keepalive_loop())
         self._proactive_task = asyncio.create_task(self._proactive_loop())
         logger.info(
@@ -1594,6 +1598,8 @@ class RealtimeVoiceSession:
                 if self._nova:
                     await self._nova.send_audio(chunk)
                     self._last_audio_sent = time.monotonic()
+                    self._last_real_audio = self._last_audio_sent
+                    self._mic_warned = False
                     # Greet proactively once the first audio frame has reached Nova
                     # Sonic (it needs audio content before an injected text turn speaks).
                     if not self._greeted:
@@ -1608,6 +1614,8 @@ class RealtimeVoiceSession:
     _SILENCE_FRAME = b"\x00" * (int(16000 * 0.2) * 2)
     _KEEPALIVE_IDLE_S = 5.0     # send silence after this long without real audio
     _KEEPALIVE_TICK_S = 2.0     # how often we check
+    # So lange warten wir auf den ERSTEN echten Mikrofon-Frame, bevor wir es sagen.
+    _MIC_SILENT_WARN_S = 20.0
 
     async def _keepalive_loop(self) -> None:
         """Keep the Bedrock bidi stream warm while the mic is muted (focus mode).
@@ -1621,15 +1629,35 @@ class RealtimeVoiceSession:
         try:
             while not self._closed:
                 await asyncio.sleep(self._KEEPALIVE_TICK_S)
-                if self._closed or not self._greeted or not self._nova:
-                    continue  # nothing to keep alive until real audio has started
-                if time.monotonic() - self._last_audio_sent < self._KEEPALIVE_IDLE_S:
-                    continue  # real audio is flowing, no keepalive needed
-                try:
-                    await self._nova.send_audio(self._SILENCE_FRAME)
-                    self._last_audio_sent = time.monotonic()
-                except Exception:  # noqa: BLE001
-                    logger.debug("keepalive silence failed agent=%s", self.agent_id, exc_info=True)
+                if self._closed or not self._nova:
+                    continue
+                now = time.monotonic()
+                if now - self._last_audio_sent >= self._KEEPALIVE_IDLE_S:
+                    try:
+                        await self._nova.send_audio(self._SILENCE_FRAME)
+                        self._last_audio_sent = now
+                        # Stille IST Ton-Inhalt: damit spricht die Begruessung auch dann,
+                        # wenn vom Mikrofon nie etwas kommt. Vorher wartete sie auf den
+                        # ersten echten Frame — kam der nicht, blieb es still, der Strom
+                        # bekam 55 Sekunden nichts und Bedrock brach ab ("Timed out
+                        # waiting for audio bytes").
+                        if not self._greeted:
+                            self._greeted = True
+                            asyncio.create_task(self._greet())
+                    except Exception:  # noqa: BLE001
+                        logger.debug("keepalive silence failed agent=%s", self.agent_id, exc_info=True)
+                # Und wenn vom Mikrofon dauerhaft nichts kommt, sagen wir es — statt den
+                # Nutzer raten zu lassen, warum niemand antwortet.
+                if (self._greeted and not self._mic_warned
+                        and self._last_real_audio == 0.0
+                        and now - self._opened_at >= self._MIC_SILENT_WARN_S):
+                    self._mic_warned = True
+                    await self._emit({"type": "status", "data": {
+                        "message": ("Ich bekomme kein Signal von deinem Mikrofon. "
+                                    "Prüf die Freigabe im Browser und das gewählte Gerät — "
+                                    "die Verbindung steht, ich höre nur nichts."),
+                        "level": "warning",
+                    }})
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
