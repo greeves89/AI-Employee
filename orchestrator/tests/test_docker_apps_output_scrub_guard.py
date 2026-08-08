@@ -61,6 +61,29 @@ def _fstring_calls_scrub_log_on(call: ast.Call, var_name: str) -> bool:
     return False
 
 
+class DockerAppsOutputSecretGuardTests(unittest.TestCase):
+    """`scrub_log` entfernt nur Steuerzeichen — Geheimnisse maskiert `redact_logs`.
+
+    Die Begruendung im Ursprungs-PR („kann Build-Arg-Secrets enthalten") traf zu, das
+    Mittel aber nicht: ein Token waere weiter im Log gelandet, nur einzeilig. Und in
+    der HTTP-Antwort stand die Ausgabe ohnehin ungefiltert — der Weg nach draussen war
+    also offen, waehrend der Log als dicht galt.
+    """
+
+    def test_output_is_redacted_before_it_is_used_anywhere(self):
+        src = _MODULE.read_text()
+        self.assertIn("from app.core.log_redaction import redact_logs, scrub_log", src)
+        # Einmal pro Compose-Aufruf, der eine Ausgabe zurueckgibt: start, stop, rebuild.
+        self.assertEqual(src.count("output = redact_logs(output)"), 3)
+
+    def test_secrets_really_disappear(self):
+        from app.core.log_redaction import redact_logs
+        text = "Step 3/9 : ARG API_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz012345\nBearer eyJhbGciOi.JIUzI1NiJ9.sig"
+        out = redact_logs(text)
+        self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz012345", out)
+        self.assertIn("REDACTED", out)
+
+
 class DockerAppsOutputScrubGuardTests(unittest.TestCase):
     def test_output_is_scrubbed_in_failure_logs(self):
         mod = _module()
