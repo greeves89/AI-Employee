@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
+from app.core import autonomy_matrix
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
 from app.core.log_redaction import scrub_log
@@ -69,7 +70,12 @@ async def _check_owner(agent_id: str, user, db: AsyncSession) -> None:
 
 @router.get("/permissions")
 async def get_permission_packages(user=Depends(require_auth)):
-    """List available permission packages for agent creation."""
+    """List available permission packages for agent creation.
+
+    ``derived`` carries the sudo set each autonomy level implies, so the create
+    modal can show what "automatisch" will grant without re-implementing the
+    rule in TypeScript — it lives once, in core.autonomy_matrix.
+    """
     from app.core.agent_manager import PERMISSION_PACKAGES, DEFAULT_PERMISSIONS
     packages = [
         {
@@ -81,7 +87,11 @@ async def get_permission_packages(user=Depends(require_auth)):
         }
         for pkg_id, pkg in PERMISSION_PACKAGES.items()
     ]
-    return {"packages": packages, "defaults": DEFAULT_PERMISSIONS}
+    derived = {
+        lvl: autonomy_matrix.derive_permissions(autonomy_matrix.matrix_for_level(lvl))
+        for lvl in ("l1", "l2", "l3", "l4")
+    }
+    return {"packages": packages, "defaults": DEFAULT_PERMISSIONS, "derived": derived}
 
 
 @router.get("/models")
@@ -538,10 +548,16 @@ async def list_agents(
         agent_responses = []
         for agent in agents:
             config = agent.config or {}
+            # Derived from the autonomy matrix, same as the full response — the lite
+            # list must not report a different sudo grant than the detail view.
+            eff_permissions = autonomy_matrix.effective_permissions(
+                config, agent.autonomy_level or "l3"
+            )
             safe_config = {
                 "role": config.get("role", ""),
                 "integrations": config.get("integrations", []),
-                "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
+                "permissions": eff_permissions,
+                "permissions_mode": config.get("permissions_mode") or "auto",
                 "proactive": config.get("proactive"),
             }
             agent_responses.append(AgentResponse(
@@ -556,7 +572,7 @@ async def list_agents(
                 onboarding_complete=config.get("onboarding_complete", False),
                 has_responsibilities=bool((config.get("proactive") or {}).get("responsibilities")),
                 integrations=config.get("integrations", []),
-                permissions=config.get("permissions", DEFAULT_PERMISSIONS),
+                permissions=eff_permissions,
                 update_available=config.get("agent_version") != current_agent_version,
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
@@ -749,9 +765,10 @@ async def set_autonomy_level(
     data: AutonomyLevelUpdate,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     from app.services.agent_settings import change_autonomy_level
-    return await change_autonomy_level(db, user, agent_id, data.level)
+    return await change_autonomy_level(db, user, agent_id, data.level, manager)
 
 
 class ParallelSessionsUpdate(BaseModel):
@@ -806,6 +823,7 @@ async def update_autonomy_matrix(
     body: AutonomyMatrixUpdate,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Set a custom 3-state matrix (fine-tuning after a preset). Level → 'custom'
     when the matrix no longer matches its L1–L4 preset."""
@@ -825,11 +843,37 @@ async def update_autonomy_matrix(
     elif agent.autonomy_level in ("l1", "l2", "l3", "l4"):
         agent.autonomy_level = "custom"
     await db.commit()
+    # The matrix now decides the container's sudo grant. Applying it only on the
+    # next recreate would leave a running L1 agent with the root rights of its
+    # old level — so push the sudoers file into the live container right away.
+    permissions = await _sync_container_sudo(agent, manager)
     return {
         "agent_id": agent_id,
         "autonomy_level": agent.autonomy_level,
         "matrix": matrix,
+        "permissions": permissions,
     }
+
+
+async def _sync_container_sudo(agent: Agent, manager: AgentManager) -> list[str]:
+    """Write the matrix-derived sudoers file into the running container.
+
+    Returns the effective package list either way — a stopped or vanished
+    container is not an error here, it picks the grant up when it next starts.
+    """
+    permissions = autonomy_matrix.effective_permissions(
+        agent.config or {}, agent.autonomy_level or "l3"
+    )
+    if agent.container_id:
+        try:
+            await asyncio.to_thread(
+                manager._apply_permissions, agent.container_id, permissions
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not sync sudo for agent %s: %s", scrub_log(agent.id), scrub_log(str(e))
+            )
+    return permissions
 
 
 @router.post("/{agent_id}/stop")
@@ -1959,6 +2003,8 @@ async def update_chat_session(
 
 class PermissionsUpdate(BaseModel):
     permissions: list[str]
+    # "manual" (Vorgabe) = die Liste gilt; "auto" = die Autonomiestufe entscheidet.
+    mode: str | None = None
 
 
 @router.patch("/{agent_id}/permissions")
@@ -1969,10 +2015,19 @@ async def update_agent_permissions(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Update the sudo permission packages for a running agent."""
+    """Update the sudo permission packages for a running agent.
+
+    Setting a list by hand pins the agent to ``permissions_mode="manual"``, so the
+    next recreate does not quietly overwrite the choice with the matrix-derived
+    set. ``mode="auto"`` hands control back to the autonomy level.
+    """
     await _check_owner(agent_id, user, db)
-    from app.core.agent_manager import PERMISSION_PACKAGES, generate_sudoers
+    from app.core.agent_manager import PERMISSION_PACKAGES
     from sqlalchemy.orm.attributes import flag_modified
+
+    mode = (body.mode or "manual").lower()
+    if mode not in ("auto", "manual"):
+        raise HTTPException(status_code=400, detail="mode must be 'auto' or 'manual'")
 
     # Validate package names
     for perm in body.permissions:
@@ -1982,23 +2037,29 @@ async def update_agent_permissions(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        config["permissions"] = body.permissions
+        config["permissions_mode"] = mode
+        if mode == "manual":
+            config["permissions"] = body.permissions
         agent.config = config
         flag_modified(agent, "config")
         await db.commit()
 
+        # In auto mode the matrix decides — never the list that came in.
+        effective = autonomy_matrix.effective_permissions(config, agent.autonomy_level or "l3")
+
         # Apply to running container
         if agent.container_id:
             try:
-                manager._apply_permissions(agent.container_id, body.permissions)
+                await asyncio.to_thread(manager._apply_permissions, agent.container_id, effective)
             except Exception as e:
                 return {
                     "agent_id": agent_id,
-                    "permissions": body.permissions,
+                    "permissions": effective,
+                    "permissions_mode": mode,
                     "warning": f"Saved but could not apply to container: {e}. Restart agent to apply.",
                 }
 
-        return {"agent_id": agent_id, "permissions": body.permissions}
+        return {"agent_id": agent_id, "permissions": effective, "permissions_mode": mode}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 

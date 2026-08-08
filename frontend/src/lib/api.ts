@@ -310,14 +310,18 @@ export async function restartSystemComponent(
   });
 }
 
-export async function getPermissionPackages(): Promise<{ packages: PermissionPackage[]; defaults: string[] }> {
+// `derived` = welche sudo-Pakete jede Autonomiestufe hergibt. Kommt vom Server,
+// damit die Regel nicht ein zweites Mal in TypeScript steht.
+export async function getPermissionPackages(): Promise<{ packages: PermissionPackage[]; defaults: string[]; derived: Record<string, string[]> }> {
   return fetchJSON(`${getBase()}/agents/permissions`);
 }
 
-export async function updateAgentPermissions(agentId: string, permissions: string[]): Promise<{ agent_id: string; permissions: string[]; warning?: string }> {
+// `mode: "auto"` gibt die Rechte an die Autonomiestufe zurueck — die Liste wird dann
+// ignoriert und der Server leitet sie aus der Matrix ab.
+export async function updateAgentPermissions(agentId: string, permissions: string[], mode: "auto" | "manual" = "manual"): Promise<{ agent_id: string; permissions: string[]; permissions_mode: "auto" | "manual"; warning?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/permissions`, {
     method: "PATCH",
-    body: JSON.stringify({ permissions }),
+    body: JSON.stringify({ permissions, mode }),
   });
 }
 

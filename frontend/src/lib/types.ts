@@ -98,6 +98,8 @@ export interface Agent {
   has_responsibilities?: boolean;
   integrations: string[];
   permissions: string[];
+  /** "auto" = die sudo-Pakete folgen der Autonomiestufe (Vorgabe), "manual" = feste Liste. */
+  permissions_mode?: "auto" | "manual";
   update_available: boolean;
   image_outdated?: boolean;
   budget_usd: number | null;
