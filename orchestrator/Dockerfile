@@ -7,8 +7,9 @@ FROM python:3.12-slim AS base
 # Rad vorliegt.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git nodejs npm \
-    pkg-config libxml2 libxml2-dev libxmlsec1 libxmlsec1-dev libxmlsec1-openssl \
-    gcc libc6-dev \
+    pkg-config gcc libc6-dev \
+    libxml2 libxml2-dev libxslt1-dev zlib1g-dev \
+    libxmlsec1 libxmlsec1-dev libxmlsec1-openssl \
     && npm install -g @anthropic-ai/claude-code \
     && npm install -g @openai/codex \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -22,7 +23,10 @@ COPY pyproject.toml .
 # libxml2 mit, deshalb werden beide hier aus den Quellen gegen die libxml2 des Images
 # uebersetzt. Muss VOR dem restlichen Install stehen, damit pip sie nicht doch als
 # Rad nachzieht. Der Quellbau braucht einen Compiler — deshalb stehen gcc und
-# libc6-dev oben mit in der apt-Zeile (ohne sie: "No such file or directory: 'gcc'").
+# libc6-dev oben mit in der apt-Zeile, dazu libxslt1-dev und zlib1g-dev — lxml
+# linkt gegen -lxslt/-lexslt/-lz. Der Satz wurde in einem Wegwerf-Container auf
+# arm64 nachgestellt, bevor er hier landete: danach laden lxml und xmlsec beide
+# gegen libxml2 2.9.14.
 RUN pip install --no-cache-dir --no-binary lxml,xmlsec lxml xmlsec
 
 RUN pip install --no-cache-dir -e .
