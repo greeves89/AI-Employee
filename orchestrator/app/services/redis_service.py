@@ -4,6 +4,8 @@ import os
 import redis.asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
 
+from app.core.log_redaction import scrub_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,7 +91,7 @@ class RedisService:
             await self.client.ltrim(queue_key, 0, self.MAX_QUEUE_SIZE - 1)
             import logging
             logging.getLogger(__name__).warning(
-                f"Queue {queue_key} exceeded {self.MAX_QUEUE_SIZE} — "
+                f"Queue {scrub_log(queue_key)} exceeded {self.MAX_QUEUE_SIZE} — "
                 f"evicted {evicted} oldest task(s)"
             )
 

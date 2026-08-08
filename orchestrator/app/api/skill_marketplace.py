@@ -10,6 +10,7 @@ import logging
 import re
 from datetime import datetime, timezone
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth, require_admin, verify_agent_token
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
@@ -58,7 +59,7 @@ async def _gate_skill_or_reject(
         )
         db.add(audit)
         await db.commit()
-        logger.warning("Skill '%s' blocked by security gate: %s", skill_name, e.reason)
+        logger.warning("Skill '%s' blocked by security gate: %s", scrub_log(skill_name), scrub_log(e.reason))
         raise HTTPException(status_code=400, detail=e.reason)
 
 
@@ -178,7 +179,7 @@ async def _generate_skill_embedding(db: AsyncSession, skill: Skill) -> None:
             )
             await db.commit()
     except Exception as e:
-        _logger.warning(f"Failed to generate skill embedding for '{skill.name}': {e}")
+        _logger.warning(f"Failed to generate skill embedding for '{scrub_log(skill.name)}': {e}")
 
 
 async def _snapshot_version(db: AsyncSession, skill: Skill, created_by: str, change_reason: str | None = None) -> SkillVersion:
@@ -635,11 +636,11 @@ async def _push_skill_files_to_agent(request, db: AsyncSession, skill_id: int, s
         docker.write_files_in_container(agent.container_id, target_dir, files)
         import logging
         logging.getLogger(__name__).info(
-            f"Pushed {len(files)} file(s) for skill '{skill_name}' to agent {agent_id}"
+            f"Pushed {len(files)} file(s) for skill '{scrub_log(skill_name)}' to agent {scrub_log(agent_id)}"
         )
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Could not push skill files to agent {agent_id}: {e}")
+        logging.getLogger(__name__).warning(f"Could not push skill files to agent {scrub_log(agent_id)}: {e}")
 
 
 @router.delete("/marketplace/{skill_id}/unassign/{agent_id}")

@@ -15,6 +15,7 @@ from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.models.agent import Agent
 from app.models.skill import AgentSkillAssignment, Skill, SkillStatus
 
@@ -141,6 +142,6 @@ async def auto_inject_skills(
     if injected:
         await db.commit()
         names = ", ".join(f"{i['skill_name']} ({i['assigned_by']})" for i in injected)
-        logger.info(f"Auto-injected {len(injected)} skill(s) for agent {agent_id}: {names}")
+        logger.info(f"Auto-injected {len(injected)} skill(s) for agent {scrub_log(agent_id)}: {scrub_log(names)}")
 
     return injected

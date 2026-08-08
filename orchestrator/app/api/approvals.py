@@ -131,7 +131,7 @@ async def request_approval(
     agent_id = agent_auth["agent_id"]
 
     if body.risk_level == "blocked":
-        logger.warning(f"Agent {agent_id} attempted blocked command: {scrub_log(body.tool)}")
+        logger.warning(f"Agent {scrub_log(agent_id)} attempted blocked command: {scrub_log(body.tool)}")
         raise HTTPException(status_code=403, detail="This command is forbidden and cannot be executed even with approval.")
 
     is_question = bool(body.question and not body.tool)
@@ -271,7 +271,7 @@ async def request_approval(
     await db.commit()
 
     logger.info(
-        f"Approval {approval.id} created for agent {agent_id} - "
+        f"Approval {approval.id} created for agent {scrub_log(agent_id)} - "
         f"{scrub_log(body.tool)} (risk: {scrub_log(body.risk_level)})"
     )
 

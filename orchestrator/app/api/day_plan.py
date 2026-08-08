@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth, require_auth_or_agent
 from app.models.agent_plan_item import AgentPlanItem
@@ -124,7 +125,7 @@ async def replace_day_plan(
     await db.commit()
     for row in created:
         await db.refresh(row)
-    logger.info("[DayPlan] agent=%s date=%s items=%d", agent_id, plan_date, len(created))
+    logger.info("[DayPlan] agent=%s date=%s items=%d", scrub_log(agent_id), plan_date, len(created))
     return {"agent_id": agent_id, "plan_date": plan_date.isoformat(),
             "items": [_to_response(r) for r in created]}
 

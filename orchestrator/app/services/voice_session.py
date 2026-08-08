@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.services.redis_service import RedisService
 from app.services.voice_providers import get_llm, get_stt, get_tts
 from app.services.voice_providers.registry import DEFAULT_LANGUAGE
@@ -165,7 +166,7 @@ class VoiceSession:
             stt_language = default_language
         logger.warning(
             "VoiceSession commit agent=%s session=%s audio=%d language=%s",
-            self.agent_id, self.session_id, len(audio), stt_language,
+            self.agent_id, self.session_id, len(audio), scrub_log(stt_language),
         )
         if not audio:
             await self._emit({"type": "error", "data": {"message": "no audio"}})
