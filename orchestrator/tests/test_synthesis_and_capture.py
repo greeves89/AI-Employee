@@ -179,10 +179,19 @@ class NoSecondSystemTests(unittest.TestCase):
                                  f"{rel} bettet noch selbst ein.")
 
     def test_capture_never_blocks_delivery(self):
-        """Am 2026-08-06 hat genau so ein Beiwerk die Zustellung verhindert."""
-        src = (ORCH / "app/telegram/agent_bot.py").read_text()
-        block = src.split("async def _maybe_capture")[1].split("\n    async def ")[0]
+        """Am 2026-08-06 hat genau so ein Beiwerk die Zustellung verhindert.
+
+        Liegt seit dem Kanal-Gateway an EINER Stelle — damit gilt die Absicherung
+        fuer Telegram, Teams und Slack gleichermassen."""
+        src = (ORCH / "app/core/channel_gateway.py").read_text()
+        block = src.split("async def capture_if_worthwhile")[1].split("\nasync def ")[0]
         self.assertIn("except Exception", block)
+
+    def test_every_channel_captures_through_the_same_gateway(self):
+        tg = (ORCH / "app/telegram/agent_bot.py").read_text()
+        self.assertIn("channel_gateway", tg)
+        self.assertNotIn("_maybe_capture", tg,
+                         "Telegram hat wieder einen eigenen Capture-Weg.")
 
     def test_inbox_has_no_own_endpoints(self):
         """Die Inbox ist eine gefilterte Sicht, kein zweiter Zustand."""

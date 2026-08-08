@@ -61,6 +61,9 @@ class SchedulerService:
         self._reflection_counter = 0
         self._reflection_service = None
         self._synthesis_service = None
+        self._teams_counter = 0
+        self._teams_gateway = None
+        self._teams_responder = None
         self._codex_refresh_counter = 0
         # Rhythmus-Invariante wird alle 5 Minuten geprueft — beim ersten Tick sofort,
         # damit ein frisch gestarteter Orchestrator die Zeitplaene nicht erst spaeter anlegt.
@@ -231,6 +234,25 @@ class SchedulerService:
                             logger.info("[Scheduler] Wochensynthese: %s", syn)
                     except Exception as e:
                         logger.warning("[Scheduler] Wochensynthese-Fehler: %s", e)
+
+                # Teams-Kanal: eingehende Nachrichten abfragen (Graph kennt kein
+                # getUpdates). Eigener, kuerzerer Takt als die Nachtschicht — eine
+                # Antwort erst nach fuenf Minuten waere kein Gespraech. Billig, wenn
+                # kein Agent Teams eingeschaltet hat.
+                self._teams_counter += 30
+                if self._teams_counter >= 30:
+                    self._teams_counter = 0
+                    try:
+                        if self._teams_gateway is None:
+                            from app.services.teams_gateway import TeamsGateway, TeamsResponder
+                            self._teams_gateway = TeamsGateway(self.redis)
+                            self._teams_responder = TeamsResponder(self.redis)
+                        await self._teams_responder.ensure_listeners()
+                        result = await self._teams_gateway.tick()
+                        if result:
+                            logger.info("[Scheduler] Teams: %s", result)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Teams-Fehler: %s", e)
 
                 # Codex token: keep the shared ChatGPT auth fresh CENTRALLY (single
                 # thread) so agents never refresh the single-use token concurrently

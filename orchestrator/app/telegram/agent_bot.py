@@ -409,40 +409,26 @@ class TelegramAgentBot:
         # Wake up agent if stopped (auto-lifecycle), with user-visible status messages
         woke_up = await self._ensure_agent_running(update, target_agent_id)
 
-        # Send message to agent via Redis
+        # Zustellung ueber den gemeinsamen Kanal-Eingang (core/channel_gateway):
+        # Historie festhalten, Auto-Capture, einreihen. Denselben Weg nehmen Teams und
+        # Slack — steht der Ablauf je Kanal einzeln da, wird beim naechsten Fix einer
+        # davon vergessen.
         try:
-            redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-            message_id = f"tg-{update.message.message_id}"
-            session_id = f"telegram:{chat_id}"
-            # Persist the user message so Telegram chats (1) appear in history and
-            # (2) get picked up by [ChatPersist] → auto-embedded into conversation
-            # memory. Without a stored user ChatMessage, [ChatPersist] skipped them.
-            try:
-                from app.db.session import async_session_factory
-                from app.models.chat_message import ChatMessage as _CM
-                async with async_session_factory() as _db:
-                    _db.add(_CM(
-                        agent_id=target_agent_id, session_id=session_id,
-                        message_id=message_id, role="user", content=text,
-                    ))
-                    await _db.commit()
-            except Exception as _e:  # noqa: BLE001
-                print(f"[Telegram] persist user message failed: {_e}")
+            from types import SimpleNamespace
 
-            # Auto-Capture (#385): Link, laengerer Textblock oder ein ausdrueckliches
-            # „merk dir das" wandert zusaetzlich als Wissenseintrag ins Second Brain
-            # des Besitzers — sonst bleibt es im Chatverlauf liegen und ist weder
-            # auffindbar noch verknuepft. Der Agent bekommt die Nachricht trotzdem
-            # ganz normal; Capture ist Beiwerk und darf die Zustellung NIE aufhalten.
-            await self._maybe_capture(target_agent_id, text)
-            payload = json.dumps({
-                "id": message_id,
-                "text": text,
-                "model": None,
-                "chat_session_id": session_id,
-                "telegram": tg_context,
-            })
-            await redis.lpush(f"agent:{target_agent_id}:chat", payload)
+            from app.core import channel_gateway as gw
+
+            redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+            inbound = gw.InboundMessage(
+                agent_id=target_agent_id,
+                text=text,
+                channel=gw.CHANNEL_TELEGRAM,
+                conversation_id=str(chat_id),
+                message_id=str(update.message.message_id),
+                context=tg_context,
+                sender_name=(user.first_name if user else "") or "",
+            )
+            await gw.deliver(SimpleNamespace(client=redis), inbound)
             await redis.aclose()
 
             await update.effective_chat.send_action("typing")
@@ -450,32 +436,6 @@ class TelegramAgentBot:
                 await update.message.reply_text("✅ Agent hochgefahren!")
         except Exception as e:
             await update.message.reply_text(f"Fehler beim Senden: {e}")
-
-    async def _maybe_capture(self, target_agent_id: str, text: str) -> None:
-        """Auto-Capture ins Second Brain des Agenten-Besitzers.
-
-        Vollstaendig abgesichert: schlaegt das Ablegen fehl, wird es geloggt und die
-        Nachricht laeuft weiter zum Agenten. Am 2026-08-06 hat genau so ein Beiwerk
-        schon einmal die Zustellung verhindert — das darf sich nicht wiederholen.
-        """
-        try:
-            from app.core.capture import capture
-            from app.db.session import async_session_factory
-            from app.models.agent import Agent as _Agent
-
-            async with async_session_factory() as db:
-                agent = await db.get(_Agent, target_agent_id)
-                owner = getattr(agent, "user_id", None)
-                if not owner:
-                    return
-                entry, reason = await capture(
-                    db, user_id=owner, text=text, source="Telegram",
-                    author=target_agent_id,
-                )
-                if entry is not None:
-                    logger.info("[Telegram] Auto-Capture (%s) -> Eintrag %s", reason, entry.id)
-        except Exception as e:  # noqa: BLE001 — Zustellung geht IMMER vor
-            logger.warning("[Telegram] Auto-Capture fehlgeschlagen: %s", e)
 
     async def _active_target_agent_id(self, chat_id: int) -> str:
         """Return the agent Telegram replies should currently go to.
