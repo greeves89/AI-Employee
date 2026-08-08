@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.8] — 2026-08-08
+
+### Changed
+- **Die Telegram-Regel steht jetzt im Systemprompt aller drei Laufzeiten** (Claude Code,
+  Codex, Custom-LLM) statt nur im Proaktiv-Prompt. Vorher galt sie nur für geplante Läufe —
+  im Chat und in jeder normalen Aufgabe wusste der Agent nichts davon. Enthalten: kein
+  fremder Bot, „kein eigener Bot" ist kein Fehler, bei Dringendem den Team-Lead per
+  `send_message` bitten, und die Gegenseite (was ein Team-Lead damit zu tun hat).
+
+### Deployment
+- Orchestrator-Neustart, Agenten neu erstellen (neue Anleitung).
+
+---
+
 ## [1.166.7] — 2026-08-08
 
 ### Added

@@ -108,3 +108,38 @@ class TeamLeadIsTheWayTests(unittest.TestCase):
         self.assertIn('name: "list_my_team"', mcp)
         self.assertIn('"name": "send_message"', defs)
         self.assertIn('"name": "list_team"', defs)
+
+
+class SystemPromptParityTests(unittest.TestCase):
+    """Die Regel muss im SYSTEMPROMPT stehen — und der ist fuer alle drei Laufzeiten
+    dieselbe Vorlage (CLAUDE.md / AGENTS.md / AGENT.md aus `DEFAULT_CLAUDE_MD`).
+
+    Im Proaktiv-Prompt allein stuende sie nur fuer geplante Laeufe; im Chat und in jeder
+    normalen Aufgabe wuesste der Agent nichts davon und liehe sich wieder einen Bot.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        cls.template = mgr.split("DEFAULT_CLAUDE_MD = ", 1)[1].split("PROACTIVE_PROMPT", 1)[0]
+
+    def test_the_rule_is_in_the_shared_system_prompt(self):
+        self.assertIn("Telegram: nur mit EIGENEM Bot", self.template)
+        self.assertIn("leihst du dir NIE", self.template)
+
+    def test_it_names_the_way_out(self):
+        self.assertIn("list_my_team", self.template)
+        self.assertIn("send_message", self.template)
+
+    def test_the_lead_side_is_covered_too(self):
+        self.assertIn("Du bist der Filter", self.template)
+        self.assertIn("Hast du selbst kein Telegram", self.template)
+
+    def test_the_template_reaches_all_three_runtimes(self):
+        """instructions_paths deckt Claude, Codex und Custom-LLM ab — sonst haette eine
+        Laufzeit die Regel nicht."""
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        paths = mgr.split("def instructions_paths(", 1)[1].split("def _render_claude_md", 1)[0]
+        self.assertIn("/workspace/CLAUDE.md", paths)
+        self.assertIn("/workspace/AGENTS.md", paths)
+        self.assertIn("/workspace/AGENT.md", paths)
