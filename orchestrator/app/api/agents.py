@@ -2843,72 +2843,22 @@ async def send_telegram_message(
                 redis = aioredis.from_url(settings.redis_url, decode_responses=True)
                 sent_to = await redis.scard(f"agent:{agent_id}:tg_auth")
                 await redis.aclose()
-            if sent_to == 0:
-                # Fallback for agents without their own Telegram bot: deliver through
-                # any running per-agent bot that already has authorized chats.
-                import redis.asyncio as aioredis
-                redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-                # Geliehen wird NUR innerhalb desselben Besitzers. Vorher lief die
-                # Schleife ueber alle laufenden Bots: der Agent des einen Nutzers
-                # konnte seine Meldung in den privaten Chat eines anderen schicken.
-                # Ein Agent ohne Besitzer (System-/Admin-Agent) leiht sich gar nichts
-                # — seine Meldungen gehoeren in keinen privaten Chat.
-                sender = await manager._get_agent(agent_id)
-                owner_id = getattr(sender, "user_id", None)
-                allowed: set[str] = set()
-                if owner_id:
-                    from app.db.session import async_session_factory
-                    from app.models.agent import Agent as _A
-                    async with async_session_factory() as _db:
-                        allowed = {
-                            row for row in (await _db.execute(
-                                select(_A.id).where(_A.user_id == owner_id)
-                            )).scalars().all()
-                        }
-                try:
-                    for fallback_agent_id, fallback_bot in list(getattr(tg_manager, "_bots", {}).items()):
-                        if not fallback_bot or not fallback_bot._started:
-                            continue
-                        if fallback_agent_id not in allowed:
-                            continue
-                        count = await redis.scard(f"agent:{fallback_agent_id}:tg_auth")
-                        if count <= 0:
-                            continue
-                        # Eine geliehene Meldung ist EINWEG. Frueher wurde der Chat
-                        # dabei fuer 24 Stunden auf den leihenden Agenten umgeleitet —
-                        # danach landete JEDE Nachricht des Nutzers bei ihm, und der
-                        # Agent, dem der Bot gehoert, hoerte nie wieder etwas. Genau so
-                        # ist JujaBot verstummt: eine Meldung von CodeReview hatte den
-                        # Chat gekapert. Wer dem anderen Agenten wirklich schreiben
-                        # will, waehlt ihn ausdruecklich mit /agent.
-                        prefix = ""
-                        if fallback_agent_id != agent_id:
-                            try:
-                                agent = await manager._get_agent(agent_id)
-                                name = agent.name
-                            except Exception:
-                                name = f"Agent {agent_id}"
-                            prefix = (
-                                f"*{name}:*\n"
-                            )
-                            suffix = (
-                                f"\n\n_Antwort geht an diesen Bot. Willst du {name} "
-                                f"direkt schreiben: /agent {agent_id}_"
-                            )
-                        await fallback_bot.send_to_all_authorized(
-                            prefix + body.message + (suffix if fallback_agent_id != agent_id else "")
-                        )
-                        sent_to = count
-                        break
-                finally:
-                    await redis.aclose()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     if sent_to == 0:
+        # KEIN Ausleihen mehr. Frueher lieferte ein Agent ohne eigenen Bot ueber den
+        # Bot eines anderen aus — der Empfaenger konnte nicht erkennen, mit wem er
+        # eigentlich schreibt, und der Besitzer des Bots bekam Meldungen, die ihn
+        # nichts angingen. Ein Kanal, den niemand eingerichtet hat, existiert nicht.
         raise HTTPException(
             status_code=503,
-            detail="No running Telegram bot with authorized chats is available",
+            detail=(
+                "Dieser Agent hat keinen eigenen Telegram-Bot (oder keinen autorisierten "
+                "Chat). Telegram gibt es fuer ihn deshalb nicht — trage in seinen "
+                "Einstellungen einen eigenen Bot-Token ein, wenn er diesen Kanal nutzen "
+                "soll. Melde das NICHT als Fehler und versuche es nicht erneut."
+            ),
         )
 
     return {"agent_id": agent_id, "sent_to": sent_to}

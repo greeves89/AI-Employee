@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.6] — 2026-08-08
+
+### Changed
+- **Ein Agent ohne eigenen Telegram-Bot hat keinen Telegram-Kanal — Punkt.** Das Ausleihen
+  fremder Bots ist ersatzlos raus. Es war nicht erkennbar, mit wem man eigentlich schreibt:
+  im Chat stand JujaBot, geantwortet hat CodeReview. Wer den Kanal nutzen soll, bekommt
+  einen eigenen Bot-Token in seinen Einstellungen. Der Agent bekommt eine klare Antwort
+  (503 mit Erklärung) und ist in seiner Basis-Anleitung angewiesen, das **nicht** als
+  Fehler zu melden und nicht nach einem anderen Weg zu suchen.
+
+### Deployment
+- Orchestrator-Neustart, Agenten neu erstellen (neue Basis-Anleitung).
+
+---
+
 ## [1.166.5] — 2026-08-08
 
 ### Fixed

@@ -230,6 +230,10 @@ next proactive run:
     -H "X-Agent-ID: $AGENT_ID" -H "Authorization: Bearer $AGENT_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"text": "YOUR SUMMARY HERE"}'
+  **A 503 here means YOU have no Telegram bot of your own.** That is a normal state, not a
+  failure: do not retry, do not report it, do not look for another way to get the message
+  out. `notify_user` above has already told the user. Only an agent whose owner entered a
+  bot token in ITS settings has this channel — nobody borrows anybody else's.
 - If truly nothing to do: respond "No proactive actions needed." (NO broadcast!)
 - Do NOT invent new tasks or create busywork. But ALWAYS work the plan from STEP 1-2 to
   completion before declaring nothing left.

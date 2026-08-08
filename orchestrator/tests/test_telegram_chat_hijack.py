@@ -19,12 +19,9 @@ BOT = (ORCH / "app/telegram/agent_bot.py").read_text()
 
 
 class BroadcastDoesNotHijackTests(unittest.TestCase):
-    def test_the_fallback_no_longer_sets_the_switch(self):
-        fallback = AGENTS_API.split("Fallback for agents without their own Telegram bot", 1)[1][:2500]
-        self.assertNotIn('setex(f"telegram:chat:{cid}:active_agent"', fallback)
-
-    def test_the_reader_is_told_how_to_reach_the_other_agent(self):
-        self.assertIn("/agent {agent_id}", AGENTS_API)
+    def test_nothing_sets_the_switch_behind_the_users_back(self):
+        """Die Weiche darf NUR die ausdrueckliche Wahl des Nutzers setzen."""
+        self.assertNotIn('setex(f"telegram:chat:{cid}:active_agent"', AGENTS_API)
 
     def test_the_explicit_choice_still_persists(self):
         """`/agent <Name>` ist die Wahl des NUTZERS — die bleibt."""
@@ -43,21 +40,24 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class BorrowStaysWithinTheOwnerTests(unittest.TestCase):
-    """Geliehen wird nur beim eigenen Besitzer.
+class NoBorrowingAtAllTests(unittest.TestCase):
+    """Ein Agent ohne eigenen Token hat Pech — er kapert keinen fremden.
 
-    Die Schleife lief ueber ALLE laufenden Bots. Der Agent des einen Nutzers konnte
-    seine Meldung damit in den privaten Telegram-Chat eines anderen schicken — die App
-    ist userbased, das darf sie nicht. Ein Agent ohne Besitzer (System-/Admin-Agent)
-    leiht sich gar nichts: seine Meldungen gehoeren in keinen privaten Chat.
+    Vorher lieferte ein Agent ohne Bot ueber den Bot eines anderen aus. Der Empfaenger
+    konnte nicht erkennen, mit wem er eigentlich schreibt, und der Besitzer des Bots bekam
+    Meldungen, die ihn nichts angingen. Genau so landeten die Arbeitsberichte von
+    CodeReview — fuer den nie ein Telegram eingerichtet wurde — im JujaBot-Chat.
     """
 
-    def test_only_bots_of_the_same_owner_are_considered(self):
-        fallback = AGENTS_API.split("Fallback for agents without their own Telegram bot", 1)[1][:3000]
-        self.assertIn("select(_A.id).where(_A.user_id == owner_id)", fallback)
-        self.assertIn("if fallback_agent_id not in allowed:", fallback)
+    def test_the_fallback_is_gone(self):
+        self.assertNotIn("Fallback for agents without their own Telegram bot", AGENTS_API)
+        self.assertNotIn("fallback_bot", AGENTS_API)
 
-    def test_an_ownerless_agent_borrows_nothing(self):
-        fallback = AGENTS_API.split("Fallback for agents without their own Telegram bot", 1)[1][:3000]
-        self.assertIn("allowed: set[str] = set()", fallback)
-        self.assertIn("if owner_id:", fallback)
+    def test_the_answer_says_what_to_do_instead(self):
+        self.assertIn("hat keinen eigenen Telegram-Bot", AGENTS_API)
+        self.assertIn("eigenen Bot-Token", AGENTS_API)
+
+    def test_the_agent_is_told_not_to_treat_it_as_an_error(self):
+        mgr = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn("A 503 here means YOU have no Telegram bot of your own", mgr)
+        self.assertIn("nobody borrows anybody else's", mgr)
