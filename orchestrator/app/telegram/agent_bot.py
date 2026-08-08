@@ -447,14 +447,33 @@ class TelegramAgentBot:
     async def _active_target_agent_id(self, chat_id: int) -> str:
         """Return the agent Telegram replies should currently go to.
 
-        When another agent uses this bot as a fallback outbound channel, the
-        fallback sender stores a short-lived chat->agent route. Replies then go
-        back to that agent instead of the bot-owning gateway agent.
+        Das ist die AUSDRUECKLICHE Wahl des Nutzers (`/agent <Name>`) — sonst der
+        Agent, dem dieser Bot gehoert. Frueher setzte auch eine geliehene Meldung
+        eines fremden Agenten diese Weiche; danach landete jede Nachricht bei ihm
+        und der Besitzer des Bots hoerte nie wieder etwas.
+
+        Zeigt die Weiche auf einen Agenten, den es nicht mehr gibt, faellt sie
+        zurueck auf den Besitzer und wird geloescht — sonst laeuft der Chat gegen
+        eine Wand, ohne dass jemand sieht, warum.
         """
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         try:
             target = await redis.get(f"telegram:chat:{chat_id}:active_agent")
-            return target or self.agent_id
+            if not target or target == self.agent_id:
+                return self.agent_id
+            from app.db.session import async_session_factory
+            from app.models.agent import Agent
+            from sqlalchemy import select
+            async with async_session_factory() as db:
+                exists = await db.scalar(select(Agent.id).where(Agent.id == target))
+            if not exists:
+                await redis.delete(f"telegram:chat:{chat_id}:active_agent")
+                logger.info(
+                    "[Telegram] Weiche von Chat %s zeigte auf den geloeschten Agenten %s "
+                    "— zurueck auf %s", chat_id, target, self.agent_id,
+                )
+                return self.agent_id
+            return target
         finally:
             await redis.aclose()
 

@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.4] — 2026-08-08
+
+### Fixed
+- **Ein Agent-Bot verstummte, weil eine fremde Meldung den Chat gekapert hatte.** Ein Agent
+  ohne eigenen Telegram-Bot leiht sich den eines anderen, um eine Meldung loszuwerden.
+  Dabei wurde die Weiche des Chats für **24 Stunden** auf den leihenden Agenten gestellt —
+  danach ging jede Nachricht des Nutzers an ihn, und der Agent, dem der Bot gehört, hörte
+  nie wieder etwas. Beim JujaBot stand deshalb tagelang `gateway=JujaBot →
+  target=CodeReview` im Log: geschrieben wurde an Julia's Bot, angekommen ist es woanders.
+  Eine geliehene Meldung ist jetzt **Einweg**; wer dem anderen Agenten wirklich schreiben
+  will, wählt ihn ausdrücklich mit `/agent`, und die Meldung sagt auch wie.
+- **Eine Weiche auf einen gelöschten Agenten führte ins Leere.** Sie fällt jetzt auf den
+  Besitzer des Bots zurück und wird entfernt — statt den Chat stumm gegen eine Wand laufen
+  zu lassen.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.166.3] — 2026-08-08
 
 ### Fixed

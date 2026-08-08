@@ -2855,16 +2855,30 @@ async def send_telegram_message(
                         count = await redis.scard(f"agent:{fallback_agent_id}:tg_auth")
                         if count <= 0:
                             continue
-                        for cid in await redis.smembers(f"agent:{fallback_agent_id}:tg_auth"):
-                            await redis.setex(f"telegram:chat:{cid}:active_agent", 86400, agent_id)
+                        # Eine geliehene Meldung ist EINWEG. Frueher wurde der Chat
+                        # dabei fuer 24 Stunden auf den leihenden Agenten umgeleitet —
+                        # danach landete JEDE Nachricht des Nutzers bei ihm, und der
+                        # Agent, dem der Bot gehoert, hoerte nie wieder etwas. Genau so
+                        # ist JujaBot verstummt: eine Meldung von CodeReview hatte den
+                        # Chat gekapert. Wer dem anderen Agenten wirklich schreiben
+                        # will, waehlt ihn ausdruecklich mit /agent.
                         prefix = ""
                         if fallback_agent_id != agent_id:
                             try:
                                 agent = await manager._get_agent(agent_id)
-                                prefix = f"*{agent.name}:*\n"
+                                name = agent.name
                             except Exception:
-                                prefix = f"*Agent {agent_id}:*\n"
-                        await fallback_bot.send_to_all_authorized(prefix + body.message)
+                                name = f"Agent {agent_id}"
+                            prefix = (
+                                f"*{name}:*\n"
+                            )
+                            suffix = (
+                                f"\n\n_Antwort geht an diesen Bot. Willst du {name} "
+                                f"direkt schreiben: /agent {agent_id}_"
+                            )
+                        await fallback_bot.send_to_all_authorized(
+                            prefix + body.message + (suffix if fallback_agent_id != agent_id else "")
+                        )
                         sent_to = count
                         break
                 finally:
