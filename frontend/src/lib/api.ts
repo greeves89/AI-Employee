@@ -3201,6 +3201,50 @@ export interface AgentDevelopment {
   };
 }
 
+// Was hat die Plattform dazugelernt? Setzt vorhandene Daten zusammen (Skill-Entwuerfe
+// der Nachtschicht, ueberarbeitete Skills, Erinnerungen aus der Reflexion) — die
+// Mechanik lief laengst, sichtbar war sie nirgends.
+export interface LearnedSkill {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  origin: "nachtschicht" | "agent" | "import" | "mensch";
+  version: number;
+  usage_count: number;
+  avg_rating: number | null;
+  created_at: string | null;
+}
+
+export interface SelfImprovement {
+  period_days: number;
+  summary: {
+    skills_learned: number;
+    skills_awaiting_review: number;
+    skills_improved: number;
+    improvements_kept: number;
+    improvements_reverted: number;
+    memories_from_reflection: number;
+    reflection_runs: number;
+  };
+  awaiting_review: LearnedSkill[];
+  learned: LearnedSkill[];
+  improved: LearnedSkill[];
+  runs: {
+    id: number;
+    started_at: string | null;
+    status: string;
+    facts_new: number;
+    skills_drafted: number;
+    kb_entries: number;
+  }[];
+  scoped: boolean;
+}
+
+export async function getSelfImprovement(days = 30): Promise<SelfImprovement> {
+  return fetchJSON<SelfImprovement>(`${getBase()}/analytics/self-improvement?days=${days}`);
+}
+
 /** Wird dieser Agent messbar besser? Backend: analytics.agent_development. */
 export async function getAgentDevelopment(agentId: string, days = 30): Promise<AgentDevelopment> {
   return fetchJSON<AgentDevelopment>(

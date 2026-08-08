@@ -669,3 +669,121 @@ async def agent_development(
             "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
         },
     }
+
+
+@router.get("/self-improvement")
+async def self_improvement(
+    days: int = Query(30, ge=7, le=180),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Was hat die Plattform in diesem Zeitraum dazugelernt?
+
+    Die Mechanik lief laengst — die Nachtschicht schreibt Skill-Entwuerfe, der
+    Verbesserungs-Motor ueberarbeitet schlecht bewertete Skills, aus Gespraechen
+    entstehen dauerhafte Erinnerungen. Nur sah das niemand: es gab keine Flaeche, auf
+    der steht, was der Agent gelernt hat. Dieser Endpunkt setzt ausschliesslich
+    vorhandene Daten zusammen, es wird nichts zusaetzlich erhoben.
+    """
+    from datetime import timedelta
+
+    from app.core.ownership import is_admin, visible_agent_ids
+    from app.models.agent_memory import AgentMemory as _Mem  # noqa: F401  (Fallback unten)
+
+    since = _days_ago(days)
+    vids = await visible_agent_ids(user, db)
+
+    # --- Skills: was ist neu entstanden, was wurde ueberarbeitet ---------------
+    from app.models.skill import Skill, SkillStatus
+
+    skills = (await db.execute(
+        select(Skill).where(Skill.created_at >= since).order_by(Skill.created_at.desc())
+    )).scalars().all()
+
+    def _origin(skill) -> str:
+        by = (skill.created_by or "").lower()
+        if by.startswith("reflection"):
+            return "nachtschicht"
+        if by.startswith("agent:"):
+            return "agent"
+        if by.startswith("import:"):
+            return "import"
+        return "mensch"
+
+    drafted = [s for s in skills if str(getattr(s.status, "value", s.status)) == "draft"]
+    learned = [s for s in skills if _origin(s) in ("nachtschicht", "agent")]
+
+    improved = (await db.execute(
+        select(Skill).where(
+            Skill.updated_at >= since,
+            Skill.current_version > 1,
+        ).order_by(Skill.updated_at.desc()).limit(50)
+    )).scalars().all()
+
+    validated = [s for s in improved
+                 if str(getattr(s.status, "value", s.status)) == "validated"]
+    rolled_back = [s for s in improved
+                   if str(getattr(s.status, "value", s.status)) == "rolled_back"]
+
+    # --- Erinnerungen, die aus der Reflexion stammen ---------------------------
+    memories = 0
+    try:
+        rows = await db.execute(sa_text(
+            "SELECT count(*) FROM agent_memories "
+            "WHERE created_at >= :since AND source = 'reflection' "
+            "AND superseded_by IS NULL"
+        ), {"since": since})
+        memories = int(rows.scalar() or 0)
+    except Exception:  # noqa: BLE001 — ohne Spalte bleibt der Rest aussagekraeftig
+        logger.debug("Reflexions-Erinnerungen nicht zaehlbar", exc_info=True)
+
+    # --- Naechtliche Laeufe ----------------------------------------------------
+    from app.models.reflection_run import ReflectionRun
+
+    runs = (await db.execute(
+        select(ReflectionRun).where(ReflectionRun.started_at >= since)
+        .order_by(ReflectionRun.started_at.desc()).limit(30)
+    )).scalars().all()
+
+    def _run_row(run):
+        stats = run.stats or {}
+        return {
+            "id": run.id,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "status": run.status,
+            "facts_new": stats.get("facts_new", 0),
+            "skills_drafted": stats.get("skills_drafted", 0),
+            "kb_entries": stats.get("kb_entries", 0),
+        }
+
+    def _skill_row(skill):
+        return {
+            "id": skill.id,
+            "name": skill.name,
+            "description": (skill.description or "")[:160],
+            "status": str(getattr(skill.status, "value", skill.status)),
+            "origin": _origin(skill),
+            "version": skill.current_version,
+            "usage_count": skill.usage_count,
+            "avg_rating": round(skill.avg_rating, 2) if skill.avg_rating else None,
+            "created_at": skill.created_at.isoformat() if skill.created_at else None,
+        }
+
+    return {
+        "period_days": days,
+        "summary": {
+            "skills_learned": len(learned),
+            "skills_awaiting_review": len(drafted),
+            "skills_improved": len(improved),
+            "improvements_kept": len(validated),
+            "improvements_reverted": len(rolled_back),
+            "memories_from_reflection": memories,
+            "reflection_runs": len(runs),
+        },
+        # Entwuerfe zuerst: das ist das, wo ein Mensch etwas tun soll.
+        "awaiting_review": [_skill_row(s) for s in drafted[:20]],
+        "learned": [_skill_row(s) for s in learned[:20]],
+        "improved": [_skill_row(s) for s in improved[:20]],
+        "runs": [_run_row(r) for r in runs],
+        "scoped": vids is not None and not is_admin(user),
+    }
