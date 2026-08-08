@@ -96,6 +96,22 @@ class OrchestratorAPIClient:
             lines.append(f"- {a.get('name', '?')} (id: {a.get('id')}, role: {a.get('role', 'none')}, status: {status})")
         return "\n".join(lines)
 
+    async def browser(self, params: dict) -> str:
+        """Kopfloser Browser IM Container — das Gegenstueck zum Playwright-MCP.
+
+        Claude Code bekommt die Faehigkeit ueber `claude mcp add`; diese Laufzeit liest
+        die Claude-Konfiguration nicht. Ohne diese Methode koennte nur einer von drei
+        Harnessen im Browser arbeiten.
+
+        Laeuft ausdruecklich NICHT ueber den Orchestrator: der Browser steht im
+        Agenten-Container, ein Umweg ueber den Server waere ein zweiter Netzweg ohne
+        Nutzen. Die Methode haengt hier, weil der Werkzeug-Dispatch fuer
+        ORCHESTRATOR_TOOLS an dieser Klasse haengt.
+        """
+        from app.tools import browser as _browser
+
+        return await _browser.run(params)
+
     async def computer_use(self, params: dict) -> str:
         """Control the user's desktop through the Computer-Use Bridge.
 

@@ -40,6 +40,9 @@ CORE_TOOL_NAMES = {
     "list_files", "grep", "glob", "git_status", "git_diff",
     "web_search", "web_fetch",
     "computer_use",
+    # Browser im Container: muss ohne search_tools erreichbar sein, sonst weicht
+    # das Modell auf bash/curl aus und bekommt HTML ohne JavaScript-Inhalt.
+    "browser",
     "request_approval", "notify_user", "send_message_and_wait",
     "memory_save", "memory_search", "brain_search", "secondbrain_search",
     "list_todos", "complete_todo", "update_todos",
