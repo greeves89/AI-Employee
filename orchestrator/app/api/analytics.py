@@ -307,6 +307,56 @@ async def get_skill_trend(
 # Agent analytics
 # ---------------------------------------------------------------------------
 
+async def rework_task_ids(db, agent_ids: list[str], since) -> dict[str, dict[str, set[str]]]:
+    """Aufgaben je Agent, die noch einmal angefasst werden mussten.
+
+    Zwei Signale, beide schon in den Daten — es wird nichts zusaetzlich erhoben:
+
+    * ``resumed`` — ``metadata.resumed_from_task``: der Lauf lief nicht in einem Zug
+      durch und wurde fortgesetzt (dieselbe Markierung wie in der Aktivitaets-Zeitachse)
+    * ``poor`` — Bewertung 1 oder 2: der Mensch hat die Arbeit zurueckgegeben
+
+    Getrennt zurueckgegeben, weil eine Aufgabe beides sein kann — die Quote nutzt die
+    Vereinigung, die Aufschluesselung die einzelnen Mengen. Eine Stelle fuer die Regel,
+    damit Agenten-Tabelle und Entwicklungs-Karte nicht auseinanderlaufen.
+    """
+    out: dict[str, dict[str, set[str]]] = {
+        aid: {"resumed": set(), "poor": set()} for aid in agent_ids
+    }
+    if not agent_ids:
+        return out
+
+    rows = (await db.execute(
+        select(Task.id, Task.agent_id, Task.metadata_)
+        .where(Task.agent_id.in_(agent_ids), Task.created_at >= since)
+    )).all()
+    for tid, aid, meta in rows:
+        if (meta or {}).get("resumed_from_task"):
+            out.setdefault(aid, {"resumed": set(), "poor": set()})["resumed"].add(tid)
+
+    try:
+        poor = (await db.execute(
+            select(TaskRating.task_id, TaskRating.agent_id).where(
+                TaskRating.agent_id.in_(agent_ids),
+                TaskRating.created_at >= since,
+                TaskRating.rating <= 2,
+            )
+        )).all()
+        for tid, aid in poor:
+            out.setdefault(aid, {"resumed": set(), "poor": set()})["poor"].add(tid)
+    except Exception:  # noqa: BLE001 — ohne Bewertungen bleiben die Fortsetzungen
+        logger.debug("Schlechte Bewertungen nicht ladbar", exc_info=True)
+
+    return out
+
+
+def rework_union(entry: dict[str, set[str]] | None) -> set[str]:
+    """Vereinigung beider Signale — ein Fall mit beidem zaehlt einmal."""
+    if not entry:
+        return set()
+    return entry["resumed"] | entry["poor"]
+
+
 @router.get("/agents")
 async def get_agents_analytics(
     days: int = Query(30, ge=1, le=365),
@@ -354,13 +404,17 @@ async def get_agents_analytics(
         .group_by(TaskRating.agent_id)
     )
     rating_by_agent = {row.agent_id: row for row in rating_agg.all()}
+    rework_by_agent = await rework_task_ids(db, agent_ids, since)
 
     result = []
     for agent in agents:
         t = task_by_agent.get(agent.id)
         r = rating_by_agent.get(agent.id)
         total = t.total if t else 0
+        rework = len(rework_union(rework_by_agent.get(agent.id)))
         result.append({
+            "rework_count": rework,
+            "rework_rate_pct": round(rework / total * 100, 1) if total else 0.0,
             "id": agent.id,
             "name": agent.name,
             "state": agent.state,
@@ -512,18 +566,20 @@ async def agent_development(
     since = now - timedelta(days=days)
     half = now - timedelta(days=days // 2)
 
-    async def _task_stats(start):
-        rows = (await db.execute(
-            select(Task.status, Task.created_at).where(
-                Task.agent_id == agent_id, Task.created_at >= start
-            )
-        )).all()
-        total = len(rows)
-        failed = sum(1 for st, _ in rows if str(getattr(st, "value", st)).lower() == "failed")
-        return total, failed
+    task_rows = (await db.execute(
+        select(Task.id, Task.status, Task.created_at, Task.metadata_).where(
+            Task.agent_id == agent_id, Task.created_at >= since
+        )
+    )).all()
 
-    total, failed = await _task_stats(since)
-    recent_total, recent_failed = await _task_stats(half)
+    def _task_stats(rows):
+        failed = sum(1 for _, st, _, _ in rows
+                     if str(getattr(st, "value", st)).lower() == "failed")
+        return len(rows), failed
+
+    recent_rows = [r for r in task_rows if r[2] and r[2] >= half]
+    total, failed = _task_stats(task_rows)
+    recent_total, recent_failed = _task_stats(recent_rows)
     older_total, older_failed = total - recent_total, failed - recent_failed
 
     def _rate(f, t):
@@ -556,13 +612,31 @@ async def agent_development(
     avg_recent = _avg([r for r in ratings if r[1] and r[1] >= half])
     avg_older = _avg([r for r in ratings if r[1] and r[1] < half])
 
+    # Nacharbeitsquote — dieselbe Regel wie in der Agenten-Tabelle, eine Funktion.
+    rework_entry = (await rework_task_ids(db, [agent_id], since)).get(agent_id)
+    rework_all = rework_union(rework_entry)
+    recent_ids = {tid for tid, _, _, _ in recent_rows}
+    rework_recent = rework_all & recent_ids
+    rework_rate = _rate(len(rework_all), total)
+    rework_rate_recent = _rate(len(rework_recent), recent_total)
+    rework_rate_older = _rate(len(rework_all) - len(rework_recent), older_total)
+    resumed_count = len(rework_entry["resumed"]) if rework_entry else 0
+    poorly_rated = len(rework_entry["poor"]) if rework_entry else 0
+
     # Ein Wort statt einer Zahlenwueste — dieselbe Lesart wie bei den Skills.
     trend = "zu wenig Daten"
     if total >= 10:
         besser = _rate(recent_failed, recent_total) < _rate(older_failed, older_total)
         if avg_recent is not None and avg_older is not None:
             besser = besser or avg_recent > avg_older
-        schlechter = _rate(recent_failed, recent_total) > _rate(older_failed, older_total) + 5
+        # Weniger Nacharbeit zaehlt genauso als Fortschritt wie weniger Fehlschlaege:
+        # ein Agent, der gleich viele Aufgaben schafft, sie aber nicht mehr zweimal
+        # anfassen muss, ist messbar besser geworden.
+        besser = besser or rework_rate_recent < rework_rate_older
+        schlechter = (
+            _rate(recent_failed, recent_total) > _rate(older_failed, older_total) + 5
+            or rework_rate_recent > rework_rate_older + 5
+        )
         trend = "besser" if besser and not schlechter else ("schlechter" if schlechter else "stabil")
 
     config = agent.config or {}
@@ -575,6 +649,14 @@ async def agent_development(
         "failure_rate_recent": _rate(recent_failed, recent_total),
         "failure_rate_older": _rate(older_failed, older_total),
         "ratings": {"count": len(ratings), "avg_recent": avg_recent, "avg_older": avg_older},
+        "rework": {
+            "count": len(rework_all),
+            "rate": rework_rate,
+            "rate_recent": rework_rate_recent,
+            "rate_older": rework_rate_older,
+            "resumed": resumed_count,
+            "poorly_rated": poorly_rated,
+        },
         "plan_adherence": {
             "planned": planned, "done": done,
             "rate": round(100.0 * done / planned, 1) if planned else 0.0,

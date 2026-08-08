@@ -91,11 +91,16 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
             {data.trend === "zu wenig Daten" ? "Noch zu wenig Daten für ein Urteil" : `Tendenz: ${data.trend}`}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Kennzahl
               label="Fehlerquote"
               value={`${data.tasks.failure_rate} %`}
               hint={`zuletzt ${data.failure_rate_recent} % · davor ${data.failure_rate_older} %`}
+            />
+            <Kennzahl
+              label="Nacharbeit"
+              value={`${data.rework.rate} %`}
+              hint={`zuletzt ${data.rework.rate_recent} % · davor ${data.rework.rate_older} % · ${data.rework.resumed} fortgesetzt, ${data.rework.poorly_rated} zurückgegeben`}
             />
             <Kennzahl
               label="Plan-Treue"

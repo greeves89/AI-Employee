@@ -3156,6 +3156,16 @@ export interface AgentDevelopment {
   failure_rate_recent: number;
   failure_rate_older: number;
   ratings: { count: number; avg_recent: number | null; avg_older: number | null };
+  /** Anteil der Aufgaben, die noch einmal angefasst werden mussten: fortgesetzte
+   *  Laeufe (`resumed_from_task`) plus vom Menschen zurueckgegebene (Bewertung <= 2). */
+  rework: {
+    count: number;
+    rate: number;
+    rate_recent: number;
+    rate_older: number;
+    resumed: number;
+    poorly_rated: number;
+  };
   plan_adherence: { planned: number; done: number; rate: number };
   trend: string;
   probation: {
