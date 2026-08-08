@@ -363,9 +363,18 @@ async def refresh_mcp_credentials_loop(agent_id: str, register_via_cli: bool, in
             continue
 
         # Always refresh the in-process env — cheap, and covers custom_llm mode.
-        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)
+        # Write SERVERS *last* (#502): every reader (mcp_client, this module's
+        # config builders) reads CUSTOM_MCP_SERVERS first and only then looks up
+        # the matching CUSTOM_MCP_AUTH/CUSTOM_MCP_HEADERS. Individual os.environ
+        # writes are GIL-atomic but the three together are not, so a reader in an
+        # asyncio.to_thread() path could otherwise observe a new server whose
+        # token has not landed yet (→ 401). Writing creds before SERVERS makes
+        # that harmful torn read impossible: seeing new SERVERS guarantees the
+        # new creds are already in place. The reverse (old SERVERS + new creds)
+        # is harmless — a rotated token applied to an already-known server.
         os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)
         os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)
+        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)
 
         failed_names: set[str] = set()
         if register_via_cli:

@@ -456,7 +456,7 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
     )
 
     if exit_code != 0:
-        logger.error(f"Failed to start {scrub_log(project_name)}: {output}")
+        logger.error(f"Failed to start {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
     _connect_containers_to_network(docker, project_name)
@@ -479,7 +479,7 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
         _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
     )
     if exit_code != 0:
-        logger.warning(f"Compose down warning for {scrub_log(project_name)}: {output}")
+        logger.warning(f"Compose down warning for {scrub_log(project_name)}: {scrub_log(output)}")
     return {"project": project_name, "status": "stopped", "output": output}
 
 
