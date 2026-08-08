@@ -238,8 +238,8 @@ async def rate_task(
             # Auto-trigger skill improvement if user rating dropped vs agent self-rating
             if usage.agent_self_rating and body.rating < usage.agent_self_rating - 1:
                 logger.info(
-                    f"User rating {body.rating} significantly below agent self-rating "
-                    f"{usage.agent_self_rating} for skill {usage.skill_id} — will queue improvement"
+                    f"User rating {scrub_log(body.rating)} significantly below agent self-rating "
+                    f"{scrub_log(usage.agent_self_rating)} for skill {scrub_log(usage.skill_id)} — will queue improvement"
                 )
             await db.commit()
     except Exception as e:
@@ -289,7 +289,7 @@ async def rate_task(
                     priority=8 if body.rating < 4 else 3,
                 )
                 await redis.disconnect()
-                logger.info(f"Queued skill-update follow-up for skill {skill.id} after {body.rating}★ feedback")
+                logger.info(f"Queued skill-update follow-up for skill {scrub_log(skill.id)} after {scrub_log(body.rating)}★ feedback")
         except Exception as e:
             logger.warning(f"Could not queue skill-update follow-up: {scrub_log(e)}")
 
