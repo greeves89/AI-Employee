@@ -262,6 +262,68 @@ class RouteOrderTests(unittest.TestCase):
         self.assertIn("/auth/sso/saml/login", self._sso_paths())
 
 
+class RedirectTargetTests(unittest.TestCase):
+    """Das Rueckkehrziel darf NIE aus der Anwendung herausfuehren.
+
+    Bei SAML kommt es als ``RelayState`` mit der Antwort des Identitaetsanbieters —
+    also aus einer Quelle, die der Anmeldende beeinflussen kann (der Wert ist nicht
+    Teil der signierten Assertion). Ein ungeprueftes Ziel waere eine offene
+    Weiterleitung: Angreifer schickt jemanden ueber die echte Anmeldung und leitet
+    ihn danach auf eine nachgebaute Seite.
+
+    Geprueft wird ``finish_sso_login`` selbst — die EINE Stelle, an der jedes
+    Anmeldeverfahren sein Ziel bestimmt. Die Pruefung dort zu haben (statt an jeder
+    Aufrufstelle) ist Absicht: eine neue Anmeldeart kann sie so nicht vergessen.
+    """
+
+    FRONTEND = "https://ai.example.de"
+
+    def _redirect_for(self, return_to):
+        from types import SimpleNamespace
+        from app.api.auth import finish_sso_login
+        from app.models.user import UserRole
+
+        user = SimpleNamespace(id="u1", email="a@b.de", role=UserRole.MEMBER, approved=True)
+        resp = finish_sso_login(user, return_to, "saml", self.FRONTEND)
+        return resp.headers["location"]
+
+    def test_hostile_targets_fall_back_to_the_dashboard(self):
+        hostile = [
+            "https://evil.example/phish",      # absolute Adresse
+            "//evil.example/phish",            # protokollrelativ
+            "/\\evil.example",                 # Backslash-Variante
+            "\\\\evil.example",
+            "javascript:alert(1)",
+            "http://evil.example",
+            "evil.example/pfad",               # ohne fuehrenden Schraegstrich
+        ]
+        for value in hostile:
+            with self.subTest(relay=value):
+                location = self._redirect_for(value)
+                self.assertEqual(location, f"{self.FRONTEND}/dashboard")
+                self.assertNotIn("evil.example", location)
+
+    def test_empty_and_missing_are_safe(self):
+        for value in ("", None, "   "):
+            with self.subTest(relay=value):
+                self.assertEqual(self._redirect_for(value), f"{self.FRONTEND}/dashboard")
+
+    def test_an_overlong_target_is_rejected(self):
+        self.assertEqual(self._redirect_for("/" + "a" * 2500), f"{self.FRONTEND}/dashboard")
+
+    def test_a_genuine_internal_target_still_works(self):
+        """Die Pruefung darf den eigentlichen Zweck nicht kaputt machen."""
+        self.assertEqual(self._redirect_for("/agents/abc123"),
+                         f"{self.FRONTEND}/agents/abc123")
+
+    def test_the_check_lives_in_the_shared_tail(self):
+        """Nicht an den Aufrufstellen: sonst sieht es aus, als laege die
+        Zustaendigkeit dort, und jemand entfernt sie hier."""
+        src = (ORCH / "app/api/auth.py").read_text()
+        tail = src.split("def finish_sso_login")[1].split("\n# --- SAML")[0]
+        self.assertIn("safe_internal_path(return_to)", tail)
+
+
 class SettingsPathTests(unittest.TestCase):
     """Vier Stellen, sonst meldet die Oberflaeche „Gespeichert." und nichts passiert."""
 
