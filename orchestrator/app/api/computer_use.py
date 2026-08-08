@@ -443,7 +443,7 @@ async def update_capabilities(
         raise HTTPException(status_code=422, detail=f"Unknown capability groups: {sorted(unknown)}")
 
     session["allowed_capabilities"] = set(req.allowed_capabilities)
-    logger.info(f"Session {scrub_log(session_id)}: capabilities updated to {sorted(req.allowed_capabilities)}")
+    logger.info(f"Session {scrub_log(session_id)}: capabilities updated to {scrub_log(sorted(req.allowed_capabilities))}")
     return {
         "session_id": session_id,
         "allowed_capabilities": sorted(session["allowed_capabilities"]),
