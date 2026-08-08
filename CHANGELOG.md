@@ -5,6 +5,66 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.167.0] — 2026-08-08
+
+Der Vision-Abschluss: die offenen Punkte aus allen vier Roadmap-Säulen. Drei davon
+waren keine Lücken, sondern **Wege, die an einer vorhandenen Fähigkeit vorbeigingen** —
+sie fielen erst beim Nachsehen auf.
+
+### Added
+- **SAML 2.0 SSO mit IdP-Gruppen-Zuordnung.** Die Signaturprüfung bewusst über
+  `python3-saml`/`xmlsec` statt selbst geschrieben — XML-DSig von Hand zu prüfen ist
+  der klassische Ort für Signature-Wrapping, und ein Kanonisierungsfehler dort ist ein
+  Authentifizierungs-Bypass. Höchste zutreffende Rolle gewinnt; ohne Treffer bleibt die
+  Rolle unverändert, und der letzte Administrator wird nie herabgestuft.
+- **Browser-Meldungen (Web Push) und installierbare App (PWA).** Ohne neue
+  Abhängigkeit umgesetzt (RFC 8292 + RFC 8291/8188 mit `cryptography`). Der Inhalt ist
+  für den Empfänger verschlüsselt — der Push-Dienst leitet nur weiter.
+- **Multi-Channel: Teams, Slack, WhatsApp.** Teams in drei Richtungen — Mensch schreibt
+  den Agenten an, Agent schreibt Agent, Agent als Mitschreiber oder Beisitzer in
+  Terminen. Ohne Bot-Registrierung: die Graph-Anbindung mit Nutzer-OAuth darf das
+  bereits.
+- **Wochensynthese (#384) und Auto-Capture (#385).** Muster, Widersprüche,
+  Wissenslücken und EINE Aktion aus den letzten sieben Tagen; Links und lange
+  Textblöcke landen im Second Brain statt im Chatverlauf.
+- **Self-Improvement sichtbar (#13).** Die Mechanik lief längst — es gab nur keine
+  Fläche, auf der steht, was der Agent gelernt hat.
+- **Admin-Concierge (#11).** „Läuft alles?" in einer Antwort, bewusst ohne
+  Sprachmodell: ein Concierge, der eine Zahl halluziniert, ist schlimmer als keiner.
+- **Ticketsystem-Anschluss** mit Matrix42 als erstem Profil. Ohne Schließen und
+  Löschen — den Abschluss macht ein Mensch.
+- **Ablauf-Vorlagen für Besprechungen (#14):** Daily, Retrospektive, Workshop,
+  Entscheidung.
+- **Nacharbeitsquote** in der Entwicklungs-Karte und im Analytics-Tab.
+- **MCP-Brücke:** Rückruf beim Fertigwerden statt Polling, plus `cancel_task`.
+
+### Fixed
+- **Die Team-Lead-Stufe der Vertretungskette hat nie ausgelöst.** `team_lead_for`
+  verband sich auf eine Tabelle `team_members`, die es in diesem Projekt nie gab. Der
+  ImportError lief jedes Mal ins umschließende `except`, die Funktion gab stumm `""`
+  zurück. Folge: ohne eingetragenen Vertreter übernahm **niemand**, und unbeantwortete
+  Rückfragen gingen immer an die Administration statt an den Team-Lead. Aufgefallen nur,
+  weil der neue Beleg gegen echtes SQL läuft statt gegen Attrappen.
+- **Die Autonomiestufe bestimmt jetzt auch den sudo-Zugriff im Container.** Ein
+  L1-Agent („nur lesen") bekam trotzdem das Standardpaket — der Prompt sagte nein, die
+  Kiste sagte ja.
+- **Browser-Steuerung gab es nur für Claude Code.** `claude mcp add` schreibt in die
+  Konfiguration der Claude-CLI, die Codex und Custom-LLM nicht lesen. Von drei
+  Harnessen konnte nur einer im Browser arbeiten.
+- **Kanal-Zugangsdaten** (Slack-Token, WhatsApp-Geheimnis) werden verschlüsselt
+  abgelegt statt im Klartext.
+
+### Changed
+- Der Wissens-Schreibweg (anlegen, einbetten, verknüpfen) existierte **viermal** fast
+  gleich — der Kommentar im Code sagte selbst „mirrors api/knowledge.py". Jetzt in
+  `core/knowledge_write`, von allen Aufrufern genutzt.
+- Der Kanal-Eingang (Historie, Auto-Capture, Einreihen) lag im Telegram-Bot und liegt
+  jetzt in `core/channel_gateway` — Telegram, Teams, Slack und WhatsApp teilen ihn.
+- `push_to_user` lag in `apns_service` und erreichte nur iPhones; der Verteilpunkt
+  liegt jetzt in `core/push` und fächert auf alle Geräte auf.
+
+---
+
 ## [1.166.10] — 2026-08-08
 
 ### Fixed
