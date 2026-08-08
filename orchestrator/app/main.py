@@ -1580,6 +1580,9 @@ clean Markdown; you don't need to commit.
     except Exception as e:
         logger.warning(f"Agent startup recovery failed: {e}")
 
+    # So oft wird eine unterbrochene Aufgabe hoechstens automatisch neu gestartet.
+    _MAX_RESUMES = 3
+
     # Resume long-running jobs that were checkpointing before shutdown (issue #211).
     # Jobs with a fresh heartbeat are resumable; stale ones are marked crashed and
     # the user is alerted so no long job silently dies across a container restart.
@@ -1619,6 +1622,43 @@ clean Markdown; you don't need to commit.
                 logger.info(f"[Resume] Job {job.id} original task {job.ref_id} already completed — skipping")
                 return
 
+            # Eine Fortsetzung kann selbst wieder unterbrochen werden — und ihre
+            # Fortsetzung wieder. Jeder Anlauf faengt bei null an und kostet voll:
+            # bei fuenf Neustarts hintereinander lief EIN Plan-Block fuenfmal
+            # komplett durch (rund 14 USD statt knapp 4). Nach drei Anlaeufen wird
+            # deshalb nicht mehr automatisch fortgesetzt, sondern gemeldet.
+            resume_count = int(((orig.metadata_ or {}) if orig is not None else {})
+                               .get("resume_count") or 0) + 1
+            if resume_count > _MAX_RESUMES:
+                if orig is not None and not is_terminal_task_status(orig.status):
+                    orig.status = TaskStatus.FAILED
+                    orig.error = (
+                        f"Nach {_MAX_RESUMES} Fortsetzungen nicht weiter automatisch "
+                        f"neu gestartet — jeder Anlauf beginnt von vorn."
+                    )
+                    orig.completed_at = datetime.now(timezone.utc)
+                from app.models.notification import Notification
+                db.add(Notification(
+                    agent_id=meta.get("agent_id"),
+                    type="warning",
+                    title="Aufgabe bricht immer wieder ab",
+                    message=(
+                        f"„{(meta.get('title') or job.ref_id or '')[:90]}" + "\u201c wurde "
+                        f"{_MAX_RESUMES}-mal nach einer Unterbrechung neu gestartet und "
+                        f"kommt nicht durch. Ich starte sie nicht weiter — sieh sie dir an."
+                    )[:240],
+                    priority="high",
+                    action_url=f"/tasks/{job.ref_id}" if job.ref_id else "/tasks",
+                    meta={"reason": "resume_limit", "resume_count": resume_count},
+                ))
+                await db.commit()
+                await delete_job(db, job.id)
+                logger.warning(
+                    "[Resume] Job %s nach %s Fortsetzungen gestoppt (Aufgabe %s)",
+                    job.id, resume_count - 1, job.ref_id,
+                )
+                return
+
             # Retire a non-terminal original so it can't run alongside the replacement.
             if orig is not None and not is_terminal_task_status(orig.status):
                 if orig.status == TaskStatus.QUEUED and orig.agent_id:
@@ -1635,7 +1675,8 @@ clean Markdown; you don't need to commit.
                 priority=int(meta.get("priority") or 5),
                 agent_id=meta.get("agent_id"),
                 model=meta.get("model"),
-                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id},
+                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id,
+                          "resume_count": resume_count},
             )
             await delete_job(db, job.id)
             logger.info(

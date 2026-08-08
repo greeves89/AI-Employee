@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.2] — 2026-08-08
+
+### Fixed
+- **Eine unterbrochene Aufgabe konnte sich endlos selbst fortsetzen.** Wird ein laufender
+  Agenten-Lauf von einem Neustart unterbrochen, nimmt die Plattform ihn als neue Aufgabe
+  wieder auf — die Fortsetzung kann aber selbst unterbrochen werden, und ihre Fortsetzung
+  wieder. Jeder Anlauf beginnt bei null und kostet voll: bei mehreren Deployments
+  hintereinander lief EIN Plan-Block fünfmal komplett durch (16:33 → 16:37 → 16:42 →
+  16:45 → 16:51), rund 14 USD statt knapp vier. Nach **drei** Fortsetzungen wird jetzt
+  nicht mehr automatisch neu gestartet, sondern der Besitzer bekommt eine Meldung mit
+  hoher Priorität.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.166.1] — 2026-08-07
 
 ### Fixed
