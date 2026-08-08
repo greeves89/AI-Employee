@@ -5,7 +5,7 @@
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
 [![License: Source Available](https://img.shields.io/badge/license-Source%20Available-orange.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.167.0-green.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.168.0-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -302,7 +302,8 @@ What we shipped recently, what's in progress, and what's planned next:
 **Recently shipped** (was on the roadmap, now live)
 - **SAML 2.0 + IdP group mapping** — SAML SSO alongside OIDC, with automatic mapping of identity-provider groups to AI-Employee roles. Signature verification runs through `python3-saml`/`xmlsec` — never hand-rolled.
 - **Mobile PWA + Web Push** — installable PWA for iOS/Android/desktop with encrypted web push for approvals and task completions, on the same fan-out point as the existing native iOS push.
-- **Multi-channel gateway** — Microsoft Teams, Slack and WhatsApp next to Telegram. Teams works in three directions: a human messages the agent, an agent messages another agent, and an agent joins a meeting as scribe or participant. No Azure Bot registration needed — the existing per-user Graph integration already covers it.
+- **Multi-channel gateway** — Microsoft Teams, Slack and WhatsApp next to Telegram. Teams works in three directions: a human messages the agent, an agent messages another agent, and an agent joins a meeting as scribe or participant. No Azure Bot registration needed for the chat side — the existing per-user Graph integration already covers it.
+- **Agent with a voice in a Teams meeting** — joins, speaks, hears a reply and responds, turn by turn. Uses Graph Communications with *service-hosted media*, so no .NET media module and no open media ports. Admin card with a copyable callback URL plus a click-by-click Azure guide ([docs/TEAMS_CALLING_SETUP.md](docs/TEAMS_CALLING_SETUP.md)). `Calls.AccessMedia.All` is deliberately not requested.
 - **Second Brain: Weekly Synthesis & Capture** ([#384](https://github.com/greeves89/AI-Employee/issues/384) / [#385](https://github.com/greeves89/AI-Employee/issues/385)) — a weekly pass over the last seven days surfaces patterns, contradictions, knowledge gaps and ONE action; links and long messages are captured into the vault automatically.
 - **Autonomy level → container sudo** — the autonomy matrix now derives the container's sudo package set. An L1 "read-only" agent no longer receives a package-install grant it was never meant to have.
 - **Self-improvement dashboard** — what the platform learned: skills that emerged on their own, drafts awaiting review, revisions kept vs. reverted.

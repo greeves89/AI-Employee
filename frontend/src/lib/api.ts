@@ -3201,6 +3201,33 @@ export interface AgentDevelopment {
   };
 }
 
+// Teams-Anrufe: Agent mit Stimme im Termin (service-hosted media).
+export interface TeamsCallingSetup {
+  callback_url: string;
+  https_ok: boolean;
+  app_id: string;
+  tenant_id: string;
+  has_secret: boolean;
+  configured: boolean;
+  enabled: boolean;
+  permissions: { name: string; why: string }[];
+}
+
+export async function getTeamsCallingSetup(): Promise<TeamsCallingSetup> {
+  return fetchJSON(`${getBase()}/teams/calling/setup`);
+}
+
+export async function testTeamsCalling(): Promise<{ ok: boolean; reason: string }> {
+  return fetchJSON(`${getBase()}/teams/calling/test`, { method: "POST" });
+}
+
+export async function joinTeamsMeeting(joinUrl: string, agentId: string) {
+  return fetchJSON(`${getBase()}/teams/calling/join`, {
+    method: "POST",
+    body: JSON.stringify({ join_url: joinUrl, agent_id: agentId }),
+  });
+}
+
 // Admin-Concierge (#11): setzt vorhandene Abfragen zusammen — bewusst ohne
 // Sprachmodell, ein Concierge der eine Zahl halluziniert ist schlimmer als keiner.
 export interface ConciergeOverview {

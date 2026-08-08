@@ -36,6 +36,8 @@ SECRET_KEYS = {
     "whatsapp_app_secret",
     # Zugang zum Ticketsystem: erlaubt Anlegen und Kommentieren im Namen der Firma.
     "ticket_api_token",
+    # Das Bot-Geheimnis erlaubt, im Namen der Organisation Terminen beizutreten.
+    "teams_calling_app_secret",
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
@@ -134,6 +136,11 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "slack_bot_token",
     "whatsapp_verify_token",
     "whatsapp_app_secret",
+    # Teams-Anrufe (Agent mit Stimme im Termin, service-hosted media).
+    "teams_calling_app_id",
+    "teams_calling_app_secret",
+    "teams_calling_tenant_id",
+    "teams_calling_enabled",
     # Ticketsystem (Matrix42 o.a.). Das Token ist zusaetzlich in SECRET_KEYS.
     "ticket_base_url",
     "ticket_api_token",

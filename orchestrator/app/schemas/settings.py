@@ -108,6 +108,11 @@ class SettingsUpdate(BaseModel):
     ticket_base_url: str | None = None
     ticket_api_token: str | None = None
     ticket_profile: str | None = None
+    # Teams-Anrufe
+    teams_calling_app_id: str | None = None
+    teams_calling_app_secret: str | None = None
+    teams_calling_tenant_id: str | None = None
+    teams_calling_enabled: str | None = None
 
 
 class VoiceSettings(BaseModel):

@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.168.0] — 2026-08-08
+
+### Added
+- **Agent mit Stimme im Teams-Termin.** Er tritt bei, sagt etwas, hört eine Antwort
+  und reagiert darauf — abwechselnd, wie am Telefon. Über Graph Communications mit
+  *service-hosted media*: Microsoft hält die Medien, wir brauchen weder ein
+  .NET-Medienmodul noch offene Medienports.
+- **Einrichtungs-Karte für Administratoren** mit der Rückruf-Adresse zum Kopieren,
+  einem Prüfknopf und der Berechtigungs-Checkliste — plus
+  `docs/TEAMS_CALLING_SETUP.md`, Klick für Klick durch Azure.
+
+### Notes
+- `Calls.AccessMedia.All` wird **bewusst nicht** angefordert. Die Berechtigung
+  erlaubt den Zugriff auf den rohen Audiostrom aller Teilnehmer und wird nur für
+  durchgehendes Mithören gebraucht — was dieser Weg nicht tut.
+- Die Karte warnt vorab, wenn die Anlage nicht über HTTPS erreichbar ist: Microsoft
+  ruft ausschließlich HTTPS zurück, und sonst bliebe der Agent stumm, ohne dass
+  irgendwo ein Fehler aufträte.
+
+---
+
 ## [1.167.0] — 2026-08-08
 
 Der Vision-Abschluss: die offenen Punkte aus allen vier Roadmap-Säulen. Drei davon

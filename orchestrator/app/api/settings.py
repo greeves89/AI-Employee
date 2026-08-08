@@ -285,6 +285,9 @@ async def update_settings(
         "saml_group_attribute", "saml_group_role_map",
         # Ticketsystem — derselbe Weg, sonst laesst es sich nicht einrichten.
         "ticket_base_url", "ticket_profile", "ticket_api_token",
+        # Teams-Anrufe — derselbe Weg, sonst laesst es sich nicht einrichten.
+        "teams_calling_app_id", "teams_calling_app_secret",
+        "teams_calling_tenant_id", "teams_calling_enabled",
     ]
     for field_name in _REFLECTION_FIELDS:
         value = getattr(data, field_name, None)

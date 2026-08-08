@@ -17,6 +17,7 @@ import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
 import { PushToggle } from "@/components/settings/push-toggle";
 import { SamlConfig } from "@/components/settings/saml-config";
+import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -1119,6 +1120,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           {isAdmin && (
             <div className="mb-4">
               <SamlConfig />
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="mb-4">
+              <TeamsCallingConfig />
             </div>
           )}
 
