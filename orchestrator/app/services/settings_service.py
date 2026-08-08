@@ -27,6 +27,13 @@ SECRET_KEYS = {
     "oauth_microsoft_client_secret",
     "oauth_apple_client_id",
     "oauth_apple_private_key",
+    # Kanal-Zugangsdaten. Das Slack-Bot-Token erlaubt Lesen und Schreiben in den
+    # freigegebenen Kanaelen; das WhatsApp-App-Geheimnis ist der Schluessel, mit dem
+    # JEDE eingehende Zustellung geprueft wird — wer es kennt, kann dem Agenten
+    # beliebige Nachrichten unterschieben. Das Verify-Token schuetzt die Einrichtung.
+    "slack_bot_token",
+    "whatsapp_verify_token",
+    "whatsapp_app_secret",
     # Voice provider API keys
     "voice_openai_api_key",
     "voice_elevenlabs_api_key",
@@ -119,12 +126,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "reflection_token_budget",     # hard output-token cap per run (default 200000)
     "reflection_max_transcripts",  # max bundles per run (default 30)
     "reflection_watermarks",       # JSON {agent_id: iso} — internal progress marker
-    # Kanaele: Slack-Bot-Token (plattformweiter Rueckfall) und WhatsApp-Webhook.
-    # Die Wasserstaende je Agent (teams_watermark_*, slack_watermark_*) sind
-    # Laufzeitmarken und stehen bewusst NICHT hier — sie werden nicht bedient.
+    # Kanaele. Alle drei stehen zusaetzlich in SECRET_KEYS: sie werden verschluesselt
+    # abgelegt und nie im Klartext zurueckgegeben. Die Wasserstaende je Agent liegen
+    # bewusst NICHT hier, sondern in Redis — das sind Laufmarken, keine Einstellungen.
     "slack_bot_token",
-    "whatsapp_verify_token",       # Prueffrage beim Einrichten des Webhooks
-    "whatsapp_app_secret",         # Signaturpruefung JEDER Zustellung
+    "whatsapp_verify_token",
+    "whatsapp_app_secret",
     # SAML 2.0 SSO: Angaben des Identitaetsanbieters + Gruppen-Rollen-Zuordnung.
     # Das Zertifikat ist die Vertrauensbasis der gesamten Anmeldung — ohne das ist
     # keine Signatur pruefbar und SAML wird gar nicht erst angeboten.

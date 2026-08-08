@@ -399,3 +399,38 @@ class WatermarkTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(file=rel):
                 self.assertNotIn("watermark_{agent_id}", src)
                 self.assertNotIn('SettingsService(db).set(f"', src)
+
+
+class ChannelSecretsTests(unittest.TestCase):
+    """Kanal-Zugangsdaten sind Geheimnisse, keine gewoehnlichen Einstellungen.
+
+    Das Slack-Bot-Token erlaubt Lesen und Schreiben in den freigegebenen Kanaelen.
+    Das WhatsApp-App-Geheimnis ist der Schluessel, mit dem JEDE eingehende Zustellung
+    geprueft wird — wer es kennt, kann dem Agenten beliebige Nachrichten unterschieben.
+    Beide muessen verschluesselt liegen und duerfen nie im Klartext zurueckkommen.
+    """
+
+    KEYS = ("slack_bot_token", "whatsapp_verify_token", "whatsapp_app_secret")
+
+    def test_all_channel_credentials_are_secrets(self):
+        from app.services.settings_service import SECRET_KEYS
+
+        for key in self.KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key, SECRET_KEYS)
+
+    def test_and_are_settable_at_all(self):
+        from app.services.settings_service import ALLOWED_KEYS
+
+        for key in self.KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key, ALLOWED_KEYS)
+
+    def test_per_agent_tokens_are_stored_encrypted(self):
+        """Ein Token im Klartext in agent.config landet in JEDER Antwort, die die
+        Agenten-Konfiguration ausliefert."""
+        for rel in ("app/services/slack_gateway.py", "app/services/whatsapp_gateway.py"):
+            src = (ORCH / rel).read_text()
+            with self.subTest(file=rel):
+                self.assertIn("decrypt_token", src)
+                self.assertIn("_enc", src)
