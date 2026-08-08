@@ -41,3 +41,23 @@ class DeadSwitchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BorrowStaysWithinTheOwnerTests(unittest.TestCase):
+    """Geliehen wird nur beim eigenen Besitzer.
+
+    Die Schleife lief ueber ALLE laufenden Bots. Der Agent des einen Nutzers konnte
+    seine Meldung damit in den privaten Telegram-Chat eines anderen schicken — die App
+    ist userbased, das darf sie nicht. Ein Agent ohne Besitzer (System-/Admin-Agent)
+    leiht sich gar nichts: seine Meldungen gehoeren in keinen privaten Chat.
+    """
+
+    def test_only_bots_of_the_same_owner_are_considered(self):
+        fallback = AGENTS_API.split("Fallback for agents without their own Telegram bot", 1)[1][:3000]
+        self.assertIn("select(_A.id).where(_A.user_id == owner_id)", fallback)
+        self.assertIn("if fallback_agent_id not in allowed:", fallback)
+
+    def test_an_ownerless_agent_borrows_nothing(self):
+        fallback = AGENTS_API.split("Fallback for agents without their own Telegram bot", 1)[1][:3000]
+        self.assertIn("allowed: set[str] = set()", fallback)
+        self.assertIn("if owner_id:", fallback)

@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.166.5] — 2026-08-08
+
+### Fixed
+- **Ein Agent konnte seine Telegram-Meldung in den privaten Chat eines FREMDEN Nutzers
+  schicken.** Hat ein Agent keinen eigenen Bot, leiht er sich einen — die Suche lief aber
+  über *alle* laufenden Bots, ohne Rücksicht auf den Besitzer. Die App ist userbased; das
+  darf sie nicht. Geliehen wird jetzt nur noch bei einem Agenten **desselben Besitzers**,
+  und ein Agent ohne Besitzer (System-/Admin-Agent) leiht sich gar nichts — seine
+  Meldungen gehören in keinen privaten Chat. Genau darüber landeten die Arbeitsberichte
+  von CodeReview, für den nie ein Telegram eingerichtet wurde, im JujaBot-Chat.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
 ## [1.166.4] — 2026-08-08
 
 ### Fixed
