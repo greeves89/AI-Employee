@@ -84,6 +84,18 @@ class APIRateLimitMiddleware:
         self.window = window_seconds
         # In-memory fallback (only used if Redis is unreachable)
         self._fallback: dict[str, list[float]] = {}
+        # Log "rate limit exceeded" at most once per key per window instead of once
+        # per rejected request — a single hammering client can otherwise produce
+        # hundreds of identical WARNING lines per window (observed: 126x for one
+        # user in one window on 2026-08-05), drowning out real signal in the log.
+        self._last_logged: dict[str, float] = {}
+
+    def _should_log(self, key: str, now: float) -> bool:
+        last = self._last_logged.get(key)
+        if last is not None and now - last < self.window:
+            return False
+        self._last_logged[key] = now
+        return True
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -128,7 +140,8 @@ class APIRateLimitMiddleware:
                 if current > self.max_requests:
                     ttl = await redis_client.ttl(redis_key)
                     retry_after = max(ttl, 1)
-                    logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
+                    if self._should_log(key, time.time()):
+                        logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
                 redis_ok = True
             except Exception:
                 pass  # Redis unavailable — fall through to in-memory
@@ -153,7 +166,8 @@ class APIRateLimitMiddleware:
         self._fallback[key] = [t for t in self._fallback[key] if now - t < self.window]
 
         if len(self._fallback[key]) >= self.max_requests:
-            logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
+            if self._should_log(key, now):
+                logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
             response = Response(
                 content='{"detail":"Rate limit exceeded. Try again later."}',
                 status_code=429,

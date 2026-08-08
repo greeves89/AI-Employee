@@ -10,9 +10,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from typing import Any
 
 import httpx
+
+# Guards the three CUSTOM_MCP_* env vars as a set (#502). The credential-refresh
+# loop rewrites all three in sequence; a reader running in a worker thread (custom_llm
+# mode instantiates a client via asyncio.to_thread) must not observe a torn view —
+# e.g. new SERVERS paired with stale AUTH. Writers and readers both hold this lock
+# so the trio is always read/written atomically. os.environ writes are individually
+# atomic under the GIL; the lock makes the *sequence* atomic too.
+MCP_ENV_LOCK = threading.Lock()
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +52,11 @@ class MCPHTTPClient:
 
     def _load_servers(self) -> None:
         """Load MCP server config from environment."""
-        custom_mcp = os.environ.get("CUSTOM_MCP_SERVERS", "")
+        # Snapshot all three env vars atomically w.r.t. the refresh loop (#502).
+        with MCP_ENV_LOCK:
+            custom_mcp = os.environ.get("CUSTOM_MCP_SERVERS", "")
+            custom_auth = os.environ.get("CUSTOM_MCP_AUTH", "")
+            custom_headers = os.environ.get("CUSTOM_MCP_HEADERS", "")
         if not custom_mcp:
             return
         try:
@@ -53,7 +66,6 @@ class MCPHTTPClient:
         except (json.JSONDecodeError, TypeError):
             logger.warning("Could not parse CUSTOM_MCP_SERVERS env var")
         # Optional per-server bearer tokens
-        custom_auth = os.environ.get("CUSTOM_MCP_AUTH", "")
         if custom_auth:
             try:
                 auth = json.loads(custom_auth)
@@ -62,7 +74,6 @@ class MCPHTTPClient:
             except (json.JSONDecodeError, TypeError):
                 logger.warning("Could not parse CUSTOM_MCP_AUTH env var")
         # Optional per-server custom auth headers (x-api-key etc.)
-        custom_headers = os.environ.get("CUSTOM_MCP_HEADERS", "")
         if custom_headers:
             try:
                 hdrs = json.loads(custom_headers)

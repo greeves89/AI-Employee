@@ -90,6 +90,11 @@ class RefreshLockDialectTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RefreshIfNeededRaceTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # The #503 debounce keeps a process-global "recently verified" cache; clear
+        # it so these tests never short-circuit on a verdict left by a sibling test.
+        mor._recently_verified.clear()
+
     async def test_late_caller_skips_token_request_after_winner_refreshed(self):
         """#462 core: if the reload under the lock shows a fresh token, no request."""
         server = _make_server(expires_in=-10)  # currently expired → needs refresh

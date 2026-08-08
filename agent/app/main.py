@@ -363,9 +363,13 @@ async def refresh_mcp_credentials_loop(agent_id: str, register_via_cli: bool, in
             continue
 
         # Always refresh the in-process env — cheap, and covers custom_llm mode.
-        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)
-        os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)
-        os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)
+        # Hold MCP_ENV_LOCK so a concurrent reader (MCPHTTPClient._load_servers,
+        # which may run in a worker thread) never sees a torn trio (#502).
+        from app.tools.mcp_client import MCP_ENV_LOCK
+        with MCP_ENV_LOCK:
+            os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)
+            os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)
+            os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)
 
         failed_names: set[str] = set()
         if register_via_cli:
