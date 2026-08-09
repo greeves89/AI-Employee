@@ -434,3 +434,56 @@ class ChannelSecretsTests(unittest.TestCase):
             with self.subTest(file=rel):
                 self.assertIn("decrypt_token", src)
                 self.assertIn("_enc", src)
+
+
+class WhatsAppSenderAclTests(unittest.TestCase):
+    """Absenderpruefung — die einzige Stelle ohne natuerlichen Rahmen.
+
+    Telegram verlangt `/auth <key>`, Teams und Slack liegen im Firmen-Tenant. Eine
+    WhatsApp-Nummer ist oeffentlich: wer sie kennt, schreibt dem Agenten. Ohne Liste
+    waere der Agent fuer die ganze Welt erreichbar — und er arbeitet im Namen der
+    Firma und hat Zugriff auf ihr Wissen.
+    """
+
+    def _allowed(self, entries, sender):
+        from app.services.whatsapp_gateway import sender_allowed
+        return sender_allowed({"allowed_senders": entries}, sender)
+
+    def test_fail_closed_without_a_list(self):
+        """Ohne gepflegte Liste kommt NIEMAND durch. Bewusst unbequem."""
+        from app.services.whatsapp_gateway import sender_allowed
+        self.assertFalse(sender_allowed({}, "4915112345"))
+        self.assertFalse(self._allowed([], "4915112345"))
+
+    def test_same_number_in_different_notations(self):
+        """+49…, 0049… und 0151… sind dieselbe Nummer; der Anbieter liefert sie
+        ohne Plus. Die fuehrende Null wird durch die Laendervorwahl ERSETZT."""
+        for entry in ("+49 151 12345", "0049 151 12345", "0151 12345", "4915112345"):
+            with self.subTest(entry=entry):
+                self.assertTrue(self._allowed([entry], "4915112345"))
+
+    def test_a_different_number_is_rejected(self):
+        self.assertFalse(self._allowed(["+49 151 12345"], "4915199999"))
+
+    def test_too_short_an_entry_matches_nothing(self):
+        """Sonst passt eine vierstellige Angabe auf beliebig viele fremde Nummern."""
+        self.assertFalse(self._allowed(["1234"], "4915101234"))
+
+    def test_empty_sender_is_rejected(self):
+        self.assertFalse(self._allowed(["+49 151 12345"], ""))
+
+    def test_check_runs_before_anything_is_stored(self):
+        """Eine abgewiesene Nachricht darf keine Spur hinterlassen — nicht in der
+        Historie, nicht im Second Brain, nicht in der Warteschlange."""
+        src = (ORCH / "app/services/whatsapp_gateway.py").read_text()
+        block = src.split("async def handle_payload")[1]
+        self.assertIn("sender_allowed", block)
+        self.assertLess(block.index("sender_allowed"), block.index("gw.deliver"))
+
+    def test_other_channels_have_their_own_gate(self):
+        """Zum Vergleich festgehalten: die anderen Kanaele sind nicht ungeschuetzt."""
+        tg_src = (ORCH / "app/telegram/agent_bot.py").read_text()
+        self.assertIn("_is_authorized", tg_src)
+        for rel in ("app/services/teams_gateway.py", "app/services/slack_gateway.py"):
+            with self.subTest(file=rel):
+                self.assertIn("mention_only", (ORCH / rel).read_text())

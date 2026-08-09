@@ -40,6 +40,58 @@ def is_enabled(agent: Agent) -> bool:
     return bool(cfg.get("enabled") and cfg.get("phone_number_id"))
 
 
+# Kuerzer als das vergleichen wir nicht — sonst passt eine vierstellige Angabe auf
+# beliebig viele fremde Nummern.
+_MIN_MATCH_DIGITS = 6
+
+
+def normalize_number(raw: str) -> str:
+    """Eine Telefonnummer auf vergleichbare Ziffern bringen.
+
+    Dieselbe Nummer wird sehr unterschiedlich geschrieben: ``+49 151 12345``,
+    ``0049 151 12345`` und ``0151 12345`` sind alle dieselbe. Die fuehrende Null der
+    nationalen Schreibweise wird durch die Laendervorwahl ERSETZT, nicht ergaenzt —
+    wer sie stehen laesst, vergleicht ``015112345`` gegen ``4915112345`` und findet
+    nie eine Uebereinstimmung.
+    """
+    digits = "".join(c for c in str(raw or "") if c.isdigit())
+    if digits.startswith("00"):        # internationale Vorwahl
+        digits = digits[2:]
+    elif digits.startswith("0"):       # nationale Amtskennziffer
+        digits = digits[1:]
+    return digits
+
+
+def sender_allowed(cfg: dict, sender: str) -> bool:
+    """Darf diese Nummer den Agenten ansprechen?
+
+    Anders als bei den uebrigen Kanaelen gibt es hier keinen natuerlichen Rahmen:
+    Telegram verlangt ``/auth <key>``, Teams und Slack liegen im Firmen-Tenant.
+    Eine WhatsApp-Nummer ist oeffentlich — wer sie kennt, schreibt dem Agenten.
+
+    Deshalb gilt hier **fail-closed**: ohne gepflegte Liste kommt NIEMAND durch.
+    Das ist bewusst unbequem. Ein Agent, der aus Versehen fuer die ganze Welt
+    erreichbar ist, arbeitet im Namen der Firma und hat Zugriff auf ihr Wissen —
+    das darf keine Voreinstellung sein.
+
+    Verglichen wird ueber die Endziffern, weil die Laendervorwahl je nach
+    Schreibweise fehlt; dafuer muessen mindestens sechs Stellen uebereinstimmen.
+    """
+    allowed = cfg.get("allowed_senders") or []
+    if not allowed:
+        return False
+    incoming = normalize_number(sender)
+    if len(incoming) < _MIN_MATCH_DIGITS:
+        return False
+    for entry in allowed:
+        want = normalize_number(entry)
+        if len(want) < _MIN_MATCH_DIGITS:
+            continue
+        if incoming.endswith(want) or want.endswith(incoming):
+            return True
+    return False
+
+
 def verify_signature(body: bytes, header: str, app_secret: str) -> bool:
     """Stammt diese Zustellung wirklich von Meta?
 
@@ -110,6 +162,13 @@ async def handle_payload(redis, payload: dict) -> int:
         if agent is None:
             logger.debug("[WhatsApp] keine Zuordnung fuer Nummer %s",
                          message["phone_number_id"])
+            continue
+
+        # Absenderpruefung VOR allem anderen: nicht speichern, nicht aufheben,
+        # nicht einreihen. Eine abgewiesene Nachricht darf keine Spur hinterlassen,
+        # sonst waere die Ablehnung nur halb.
+        if not sender_allowed(channel_config(agent), message["from"]):
+            logger.warning("[WhatsApp] Nachricht von nicht freigegebener Nummer abgewiesen")
             continue
         inbound = gw.InboundMessage(
             agent_id=agent.id,
