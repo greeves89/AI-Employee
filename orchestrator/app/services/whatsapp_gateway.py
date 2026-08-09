@@ -40,19 +40,21 @@ def is_enabled(agent: Agent) -> bool:
     return bool(cfg.get("enabled") and cfg.get("phone_number_id"))
 
 
-# Kuerzer als das vergleichen wir nicht — sonst passt eine vierstellige Angabe auf
-# beliebig viele fremde Nummern.
-_MIN_MATCH_DIGITS = 6
+# Eine nationale Nummer ohne Laendervorwahl hat in Deutschland rund zehn Stellen
+# (0151 1234567 -> 1511234567). Kuerzere Eintraege werden NICHT verglichen: bei sechs
+# oder sieben Stellen ist eine zufaellige Uebereinstimmung mit einer fremden Nummer
+# realistisch, und die Liste wuerde Fremde hereinlassen statt sie fernzuhalten.
+_MIN_ENTRY_DIGITS = 10
 
 
 def normalize_number(raw: str) -> str:
     """Eine Telefonnummer auf vergleichbare Ziffern bringen.
 
-    Dieselbe Nummer wird sehr unterschiedlich geschrieben: ``+49 151 12345``,
-    ``0049 151 12345`` und ``0151 12345`` sind alle dieselbe. Die fuehrende Null der
-    nationalen Schreibweise wird durch die Laendervorwahl ERSETZT, nicht ergaenzt —
-    wer sie stehen laesst, vergleicht ``015112345`` gegen ``4915112345`` und findet
-    nie eine Uebereinstimmung.
+    Dieselbe Nummer wird sehr unterschiedlich geschrieben: ``+49 151 1234567``,
+    ``0049 151 1234567`` und ``0151 1234567``. Die fuehrende Null der nationalen
+    Schreibweise wird durch die Laendervorwahl ERSETZT, nicht ergaenzt — wer sie
+    stehen laesst, vergleicht ``01511234567`` gegen ``491511234567`` und findet nie
+    eine Uebereinstimmung.
     """
     digits = "".join(c for c in str(raw or "") if c.isdigit())
     if digits.startswith("00"):        # internationale Vorwahl
@@ -69,25 +71,32 @@ def sender_allowed(cfg: dict, sender: str) -> bool:
     Telegram verlangt ``/auth <key>``, Teams und Slack liegen im Firmen-Tenant.
     Eine WhatsApp-Nummer ist oeffentlich — wer sie kennt, schreibt dem Agenten.
 
-    Deshalb gilt hier **fail-closed**: ohne gepflegte Liste kommt NIEMAND durch.
-    Das ist bewusst unbequem. Ein Agent, der aus Versehen fuer die ganze Welt
-    erreichbar ist, arbeitet im Namen der Firma und hat Zugriff auf ihr Wissen —
-    das darf keine Voreinstellung sein.
+    Deshalb **fail-closed**: ohne gepflegte Liste kommt NIEMAND durch.
 
-    Verglichen wird ueber die Endziffern, weil die Laendervorwahl je nach
-    Schreibweise fehlt; dafuer muessen mindestens sechs Stellen uebereinstimmen.
+    Verglichen wird in EINE Richtung: die eingehende Nummer muss auf einen
+    Listeneintrag enden, nie umgekehrt. Der umgekehrte Vergleich waere eine offene
+    Liste — ein kurzer Eintrag haette auf beliebig viele fremde Nummern gepasst.
+    Der Grund fuer das Suffix ueberhaupt ist die fehlende Laendervorwahl bei
+    national notierten Eintraegen; dafuer reicht eine Richtung.
     """
     allowed = cfg.get("allowed_senders") or []
     if not allowed:
         return False
     incoming = normalize_number(sender)
-    if len(incoming) < _MIN_MATCH_DIGITS:
+    if len(incoming) < _MIN_ENTRY_DIGITS:
         return False
+
     for entry in allowed:
         want = normalize_number(entry)
-        if len(want) < _MIN_MATCH_DIGITS:
+        if len(want) < _MIN_ENTRY_DIGITS:
+            # Laut melden statt still uebergehen: ein zu kurzer Eintrag sieht in der
+            # Oberflaeche aus, als sei jemand freigegeben — er ist es aber nicht.
+            logger.warning(
+                "[WhatsApp] Freigabe-Eintrag zu kurz (%d Stellen, mindestens %d) — "
+                "wird nicht beruecksichtigt", len(want), _MIN_ENTRY_DIGITS,
+            )
             continue
-        if incoming.endswith(want) or want.endswith(incoming):
+        if incoming == want or incoming.endswith(want):
             return True
     return False
 

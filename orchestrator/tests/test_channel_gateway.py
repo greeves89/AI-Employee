@@ -458,19 +458,35 @@ class WhatsAppSenderAclTests(unittest.TestCase):
     def test_same_number_in_different_notations(self):
         """+49…, 0049… und 0151… sind dieselbe Nummer; der Anbieter liefert sie
         ohne Plus. Die fuehrende Null wird durch die Laendervorwahl ERSETZT."""
-        for entry in ("+49 151 12345", "0049 151 12345", "0151 12345", "4915112345"):
+        for entry in ("+49 151 1234567", "0049 151 1234567", "0151 1234567",
+                      "491511234567"):
             with self.subTest(entry=entry):
-                self.assertTrue(self._allowed([entry], "4915112345"))
+                self.assertTrue(self._allowed([entry], "491511234567"))
 
     def test_a_different_number_is_rejected(self):
-        self.assertFalse(self._allowed(["+49 151 12345"], "4915199999"))
+        self.assertFalse(self._allowed(["+49 151 1234567"], "491519999999"))
 
     def test_too_short_an_entry_matches_nothing(self):
-        """Sonst passt eine vierstellige Angabe auf beliebig viele fremde Nummern."""
-        self.assertFalse(self._allowed(["1234"], "4915101234"))
+        """Bei sechs oder sieben Stellen ist eine zufaellige Uebereinstimmung mit
+        einer fremden Nummer realistisch — die Liste wuerde Fremde hereinlassen,
+        statt sie fernzuhalten."""
+        for entry in ("1234", "1234567", "123456789"):
+            with self.subTest(entry=entry):
+                self.assertFalse(self._allowed([entry], "49151123456789"))
 
-    def test_empty_sender_is_rejected(self):
-        self.assertFalse(self._allowed(["+49 151 12345"], ""))
+    def test_comparison_is_one_directional(self):
+        """Der umgekehrte Vergleich (Eintrag endet auf eingehende Nummer) waere eine
+        offene Liste: ein langer Eintrag haette jede kurze Nummer hereingelassen,
+        die zufaellig sein Ende bildet."""
+        self.assertFalse(self._allowed(["491511234567"], "1511234567"))
+
+    def test_full_e164_matches_exactly(self):
+        self.assertTrue(self._allowed(["+49 151 1234567"], "491511234567"))
+
+    def test_empty_or_short_sender_is_rejected(self):
+        for sender in ("", "123", "12345"):
+            with self.subTest(sender=sender):
+                self.assertFalse(self._allowed(["+49 151 1234567"], sender))
 
     def test_check_runs_before_anything_is_stored(self):
         """Eine abgewiesene Nachricht darf keine Spur hinterlassen — nicht in der
