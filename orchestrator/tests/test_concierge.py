@@ -78,7 +78,16 @@ class WiringTests(unittest.TestCase):
     def test_router_is_registered(self):
         from app.api.router import api_router
 
-        paths = {r.path for r in api_router.routes}
+        # FastAPI >=0.141 resolves include_router() lazily: api_router.routes holds
+        # _IncludedRouter wrappers (no .path) instead of flat routes. Walk through
+        # fastapi.routing.iter_route_contexts() to get the effective paths; fall back
+        # to the old flat attribute for pre-0.141 installs.
+        try:
+            from fastapi.routing import iter_route_contexts
+
+            paths = {rc.path for rc in iter_route_contexts(api_router.routes)}
+        except ImportError:
+            paths = {r.path for r in api_router.routes if hasattr(r, "path")}
         self.assertIn("/concierge/overview", paths)
         self.assertIn("/concierge/action", paths)
 
