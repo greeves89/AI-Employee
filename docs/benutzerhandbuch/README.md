@@ -67,6 +67,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 25a. [Agenten suchen, filtern und sortieren](#25a-agenten-suchen-filtern-und-sortieren)
 25b. [Selbstheilung: gescheiterte Aufgaben wiederholen lassen](#25b-selbstheilung-gescheiterte-aufgaben-wiederholen-lassen)
 25c. [Bei Unsicherheit nachfragen lassen](#25c-bei-unsicherheit-nachfragen-lassen)
+25d. [Golden-Tests: Verschlechterungen vor dem Update abfangen](#25d-golden-tests-verschlechterungen-vor-dem-update-abfangen)
 26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
 27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
@@ -1415,6 +1416,65 @@ beide Fälle, in denen ein Mensch übernehmen muss:
 > _[Screenshot folgt: Schieberegler „Bei Unsicherheit nachfragen"]_
 >
 > _[Screenshot folgt: Reiter „Eskalationen" unter Freigaben]_
+
+---
+
+## 25d. Golden-Tests: Verschlechterungen vor dem Update abfangen
+
+Ein Prompt-, Modell- oder Skill-Update kann eine Agentenrolle **heimlich**
+verschlechtern. Man merkt es Wochen später an einem falschen Bericht — und weiß dann
+nicht mehr, welche Änderung es war. Golden-Tests sind der Regressionstest dafür.
+
+### Eine Sammlung anlegen
+
+1. Links im Menü **Automation** → **Golden-Tests**.
+2. Oben rechts **Neue Sammlung**.
+3. **Name** und **Rolle** eintragen (die Rolle ist frei wählbar, z. B. *Buchhaltung*).
+4. Pro **Aufgabe** ausfüllen:
+   - **Titel** — z. B. „USt korrekt berechnen"
+   - **Gewicht** — wie schwer die Aufgabe zählt. „Umsatzsteuer korrekt" darf mehr
+     wiegen als „Grußformel vorhanden".
+   - **Auftrag** — was der Agent tun soll
+   - **Muss enthalten** — eine Angabe je Zeile, Groß-/Kleinschreibung egal
+   - **Darf nicht enthalten** — z. B. „ich kann das nicht"
+5. **Aufgabe hinzufügen** für weitere, dann **Speichern**.
+
+> **Jede Aufgabe braucht mindestens eine Erwartung.** Eine Aufgabe, die nie
+> durchfallen kann, ist kein Test — sie würde den Wert stillschweigend nach oben
+> ziehen. Das Speichern wird in dem Fall mit einer Begründung abgelehnt.
+
+### Laufen lassen
+
+1. Oben rechts den **Agenten wählen**.
+2. Bei der Sammlung auf **Laufen lassen**.
+3. Die Aufgaben gehen als **echte Aufträge** in die Warteschlange des Agenten —
+   mit seinem Systemprompt, seinen Skills und seinem Modell. Geprüft wird der Agent,
+   wie er wirklich läuft.
+4. Das Ergebnis erscheint rechts im **Verlauf**, sobald der Agent geantwortet hat.
+   Ein Klick auf den Lauf zeigt **je Aufgabe**, was gefehlt hat.
+
+**Die Punktzahl** ist der gewichtete Anteil bestandener Aufgaben (0–100). Ein
+abgestürzter Auftrag zählt als **nicht bestanden** — ein Agent, der abstürzt, hat die
+Aufgabe nicht gelöst.
+
+### Das Gatter vor dem Update
+
+Der **beste** bisherige Lauf ist die **Grundlinie**. Liegt ein neuer Lauf mehr als
+5 Punkte darunter, gilt das als **Rückschritt**.
+
+- Beim nächsten **Update** dieses Agenten wird abgelehnt, mit der Begründung
+  („70,0 statt 95,0 Punkte").
+- Im Dialog kannst du **Trotzdem aktualisieren** wählen.
+- Der Kasten oben auf der Golden-Tests-Seite zeigt jederzeit, ob ein Update
+  gerade durchginge — damit du es **nachsehen** kannst, statt es am blockierten
+  Update zu merken.
+
+> **Ohne Golden-Tests wird nichts blockiert.** Ein Gatter, das jedes Update aufhält,
+> wird binnen einer Woche abgeschaltet und schützt dann gar nichts mehr.
+>
+> _[Screenshot folgt: Sammlung mit zwei Aufgaben im Bearbeiten-Modus]_
+>
+> _[Screenshot folgt: Verlauf mit Rückschritt-Markierung]_
 
 ---
 

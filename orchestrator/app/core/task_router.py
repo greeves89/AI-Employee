@@ -535,6 +535,16 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"job_state cleanup failed for {task_id}: {e}")
 
+        # Golden-Test (#391): die Antwort gehoert zu einem Testlauf und wird
+        # bewertet. Hier und nicht in einer eigenen Warteschleife — die Antwort
+        # trifft an dieser Stelle ohnehin ein.
+        if (task.metadata_ or {}).get("eval_run_id"):
+            try:
+                from app.services.eval_service import record_answer
+                await record_answer(self.db, task)
+            except Exception as e:  # noqa: BLE001 — ein Test darf nichts anhalten
+                logger.warning("[Eval] Antwort nicht bewertet: %s", scrub_log(e))
+
         # Auto-rate the task based on outcome metrics
         await self._auto_rate_task(task)
 
@@ -586,7 +596,10 @@ class TaskRouter:
         # Ein Probelauf ist eine Vorschau, kein Auftrag — den zu wiederholen waere
         # sinnlos. Und ein Auftrag, der selbst schon eine Wiederholung ist, zaehlt
         # seine Versuche weiter, statt bei null anzufangen.
-        if meta.get("dry_run"):
+        # Ein Probelauf ist eine Vorschau. Und eine Testaufgabe (#391) bekaeme durch
+        # eine Wiederholung einen zweiten Anlauf, den es im Betrieb nicht gab — der
+        # gemessene Wert waere damit besser als die Wirklichkeit.
+        if meta.get("dry_run") or meta.get("no_self_healing") or meta.get("eval_run_id"):
             return False
 
         agent = (await self.db.execute(

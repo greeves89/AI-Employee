@@ -15,6 +15,21 @@ import { getAgentTag } from "@/components/agents/agent-avatar";
 import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
 type ViewMode = "grid" | "network" | "teams";
 
+/** Die Begründung aus einer 409-Antwort herausholen.
+ *
+ *  Der Fehlertext ist „API Error 409: {json}". Ohne das stünde im Dialog eine
+ *  JSON-Zeile — und der Grund, weshalb blockiert wurde, wäre unlesbar. */
+function extractGateMessage(raw: string): string {
+  const start = raw.indexOf("{");
+  if (start < 0) return raw;
+  try {
+    const parsed = JSON.parse(raw.slice(start));
+    return String(parsed?.detail?.message ?? parsed?.detail ?? raw);
+  } catch {
+    return raw;
+  }
+}
+
 const CreateAgentModal = dynamic(
   () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
   { ssr: false },
@@ -59,11 +74,30 @@ export default function AgentsPage() {
     });
 
   // Update one agent: spin its card, then refresh so its "Update" badge clears.
+  //
+  // Blockiert das Golden-Test-Gatter (#391), kommt ein 409 zurueck. Das muss man
+  // sehen UND ueberstimmen koennen: ein Gatter ohne Notausgang wird beim ersten
+  // dringenden Fall umgangen, und dann dauerhaft abgeschaltet.
   const updateOne = async (id: string) => {
     markUpdating(id, true);
     try {
       await api.updateAgent(id);
       await refresh();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!message.includes("409")) throw e;
+      const ok = await confirm({
+        title: "Golden-Tests schlagen Alarm",
+        message:
+          `${extractGateMessage(message)}\n\n` +
+          "Trotzdem aktualisieren? Der Rückschritt wäre danach draußen.",
+        variant: "warning",
+        confirmLabel: "Trotzdem aktualisieren",
+      });
+      if (ok) {
+        await api.updateAgent(id, true);
+        await refresh();
+      }
     } finally {
       markUpdating(id, false);
     }

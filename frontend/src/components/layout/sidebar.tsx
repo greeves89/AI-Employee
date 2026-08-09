@@ -25,6 +25,7 @@ import {
   AppWindow,
   Sparkles,
   Zap,
+  ClipboardCheck,
   Users,
   ChevronLeft,
   ChevronRight,
@@ -92,6 +93,7 @@ const navGroups: NavGroup[] = [
       { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false },
       { href: "/skills", label: "Skill Marketplace", icon: Sparkles, simpleVisible: false },
       { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
+      { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false },
     ],
   },
   {

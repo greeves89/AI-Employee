@@ -933,6 +933,41 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure dlp_rules table: {e}")
 
+    # Golden-Tests (#391): zwei neue Tabellen. Getrennt, weil es zwei Dinge sind —
+    # die Sammlung aendert sich selten und gehoert der Rolle, der Lauf entsteht
+    # staendig und gehoert einem Agenten zu einem Zeitpunkt. In einer Tabelle wuerde
+    # jede Ausfuehrung die Sammlung ueberschreiben, und der Vergleich mit "vorher"
+    # waere weg — also genau das, wofuer es das Ganze gibt.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS eval_sets ("
+                "id varchar PRIMARY KEY, name varchar NOT NULL, role varchar NOT NULL DEFAULT '',"
+                "description text NOT NULL DEFAULT '', version integer NOT NULL DEFAULT 1,"
+                "items json NOT NULL DEFAULT '[]', user_id varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS eval_runs ("
+                "id varchar PRIMARY KEY,"
+                "set_id varchar REFERENCES eval_sets(id) ON DELETE CASCADE,"
+                "set_version integer NOT NULL DEFAULT 1, agent_id varchar NOT NULL,"
+                "status varchar(20) NOT NULL DEFAULT 'running', score double precision,"
+                "passed integer NOT NULL DEFAULT 0, total integer NOT NULL DEFAULT 0,"
+                "baseline_score double precision, regression boolean NOT NULL DEFAULT false,"
+                "trigger varchar(20) NOT NULL DEFAULT 'manual', results json NOT NULL DEFAULT '[]',"
+                "created_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz)"
+            ))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_eval_runs_agent ON eval_runs (agent_id)"))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_eval_runs_set ON eval_runs (set_id)"))
+            await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_eval_sets_role ON eval_sets (role)"))
+        logger.info("eval_sets + eval_runs tables ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure eval tables: {e}")
+
     # Workflow engine (#392): new tables; create_all is only a fresh-DB fallback.
     try:
         from app.db.session import engine as _eng

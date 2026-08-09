@@ -344,8 +344,16 @@ export async function restartAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}/restart`, { method: "POST" });
 }
 
-export async function updateAgent(id: string): Promise<Agent> {
-  return fetchJSON(`${getBase()}/agents/${id}/update`, { method: "POST" });
+/** Agent auf das neueste Abbild bringen.
+ *
+ *  Läuft vorher durch das Golden-Test-Gatter (#391) und wirft bei einem
+ *  Rückschritt einen Fehler mit der Begründung. `force` geht trotzdem durch —
+ *  ein Gatter ohne Notausgang wird beim ersten dringenden Fall umgangen, und zwar
+ *  dauerhaft. */
+export async function updateAgent(id: string, force = false): Promise<Agent> {
+  return fetchJSON(`${getBase()}/agents/${id}/update${force ? "?force=true" : ""}`, {
+    method: "POST",
+  });
 }
 
 export async function renameAgent(id: string, name: string): Promise<{ agent_id: string; name: string; status: string }> {
@@ -517,6 +525,134 @@ export async function updateAgentConfidence(
   patch: { enabled?: boolean; threshold?: number },
 ): Promise<ConfidenceSettings> {
   return fetchJSON(`${getBase()}/agents/${agentId}/confidence`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Golden-Tests (#391): Sammlungen, Läufe und das Update-Gatter. */
+export interface EvalItem {
+  id?: string;
+  title?: string;
+  prompt: string;
+  weight?: number;
+  expect_contains?: string[];
+  expect_absent?: string[];
+  expect_regex?: string[];
+  min_length?: number;
+}
+
+export interface EvalSet {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  version: number;
+  items: EvalItem[];
+  item_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface EvalCheck {
+  kind: string;
+  value: unknown;
+  ok: boolean;
+  error?: string;
+}
+
+export interface EvalResult {
+  id: string;
+  title: string;
+  ok: boolean;
+  weight: number;
+  checks: EvalCheck[];
+  answer_excerpt: string;
+}
+
+export interface EvalRun {
+  id: string;
+  set_id: string;
+  set_version: number;
+  agent_id: string;
+  status: "running" | "completed" | "failed";
+  score: number | null;
+  passed: number;
+  total: number;
+  baseline_score: number | null;
+  regression: boolean;
+  trigger: string;
+  results: EvalResult[];
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface EvalGate {
+  allowed: boolean;
+  reason: string;
+  message: string;
+  run_id?: string;
+  score?: number | null;
+  baseline?: number | null;
+}
+
+export async function getEvalSets(role?: string): Promise<{ sets: EvalSet[] }> {
+  const q = role ? `?role=${encodeURIComponent(role)}` : "";
+  return fetchJSON(`${getBase()}/evals/sets${q}`);
+}
+
+export async function createEvalSet(body: {
+  name: string;
+  role?: string;
+  description?: string;
+  items: EvalItem[];
+}): Promise<EvalSet> {
+  return fetchJSON(`${getBase()}/evals/sets`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateEvalSet(
+  setId: string,
+  body: { name: string; role?: string; description?: string; items: EvalItem[] },
+): Promise<EvalSet> {
+  return fetchJSON(`${getBase()}/evals/sets/${setId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteEvalSet(setId: string): Promise<void> {
+  await fetchJSON(`${getBase()}/evals/sets/${setId}`, { method: "DELETE" });
+}
+
+export async function runEvalSet(setId: string, agentId: string): Promise<EvalRun> {
+  return fetchJSON(`${getBase()}/evals/sets/${setId}/run`, {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId }),
+  });
+}
+
+export async function getEvalRuns(params: {
+  agentId?: string;
+  setId?: string;
+  limit?: number;
+} = {}): Promise<{ runs: EvalRun[] }> {
+  const q = new URLSearchParams();
+  if (params.agentId) q.set("agent_id", params.agentId);
+  if (params.setId) q.set("set_id", params.setId);
+  if (params.limit) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return fetchJSON(`${getBase()}/evals/runs${qs ? `?${qs}` : ""}`);
+}
+
+export async function getEvalGate(agentId: string): Promise<EvalGate> {
+  return fetchJSON(`${getBase()}/evals/gate/${agentId}`);
+}
+
+export async function updateEvalGate(
+  agentId: string,
+  patch: { enabled?: boolean; require_run?: boolean; tolerance?: number },
+): Promise<{ agent_id: string; gate: Record<string, unknown> }> {
+  return fetchJSON(`${getBase()}/evals/gate/${agentId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
   });

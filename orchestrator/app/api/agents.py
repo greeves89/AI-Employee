@@ -933,12 +933,36 @@ async def restart_agent(
 @router.post("/{agent_id}/update")
 async def update_agent(
     agent_id: str,
+    force: bool = False,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Update agent to latest container image, preserving all data."""
+    """Update agent to latest container image, preserving all data.
+
+    Vorher läuft das Golden-Test-Gatter (#391): steht der letzte Testlauf spürbar
+    unter der Grundlinie, wird das Update **abgelehnt**. Hier ist der richtige Ort
+    dafür — beim Neuerstellen des Containers wird das neue Abbild wirksam, und
+    danach ist der Rückschritt draussen.
+
+    ``force=true`` geht trotzdem durch. Ein Gatter ohne Notausgang wird beim ersten
+    dringenden Fall umgangen, und zwar dauerhaft.
+    """
     await _check_owner(agent_id, user, db)
+    if not force:
+        from app.services.eval_service import gate_for_agent
+        target = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+        if target is not None:
+            decision = await gate_for_agent(db, target)
+            if not decision.get("allowed"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "eval_gate",
+                        "message": decision.get("message"),
+                        **{k: v for k, v in decision.items() if k != "message"},
+                    },
+                )
     try:
         agent = await manager.update_agent(agent_id)
         metrics = await manager.get_agent_with_metrics(agent.id)
