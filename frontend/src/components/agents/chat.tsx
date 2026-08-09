@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Send, RotateCcw, Bot, AlertTriangle, WifiOff, ListChecks,
-  Paperclip, Loader2, Gauge, Square, Mic,
+  Paperclip, Loader2, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
   Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose, Brain, Check, Wrench,
   GitBranch,
@@ -282,6 +282,46 @@ function extractResultContent(content: unknown): string {
 }
 
 /* ─── Main Component ────────────────────────────────────────────────── */
+
+/**
+ * Befehle, die im Eingabefeld über „/" erreichbar sind.
+ *
+ * Sie führen AUSSCHLIESSLICH auf Fähigkeiten, die es schon gibt — dieselben
+ * Funktionen, die auch die Knöpfe auslösen. Ein Hinweis auf Befehle, die nirgends
+ * hinführen, wäre schlimmer als gar keiner.
+ */
+const SLASH_COMMANDS: { name: string; hint: string }[] = [
+  { name: "planen", hint: "Nur den Weg beschreiben, nichts ausführen" },
+  { name: "zusammenfassen", hint: "In frischem Gespräch weiterreden" },
+  { name: "verzweigen", hint: "Ab der letzten Nachricht abzweigen" },
+  { name: "zurueckspulen", hint: "Auf die letzte Nachricht zurücksetzen" },
+];
+
+/** Kontextring — der belegte Anteil des Gesprächsfensters als Kreis.
+ *
+ *  Ein Ring statt eines Balkens, weil er neben dem Absenden liegt und dort nur
+ *  wenige Millimeter breit sein darf. Die Zahlen dahinter stehen im Aufklapper. */
+function ContextRing({ percent }: { percent: number }) {
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const filled = (Math.min(Math.max(percent, 0), 100) / 100) * circumference;
+  const color =
+    percent < 50 ? "stroke-emerald-500" : percent < 80 ? "stroke-amber-500" : "stroke-red-500";
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 -rotate-90">
+      <circle cx="8" cy="8" r={radius} className="fill-none stroke-foreground/[0.12]" strokeWidth="2.5" />
+      <circle
+        cx="8"
+        cy="8"
+        r={radius}
+        className={cn("fill-none transition-all duration-500", color)}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeDasharray={`${filled} ${circumference}`}
+      />
+    </svg>
+  );
+}
 
 export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[] }) {
   const { simpleMode } = useSimpleMode();
@@ -1080,8 +1120,24 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && slashOpen) {
+      // Nicht das Feld leeren: der Nutzer wollte vielleicht wirklich einen Text
+      // schreiben, der mit einem Schraegstrich beginnt.
+      e.preventDefault();
+      setInput(input + " ");
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (slashOpen) {
+        // Enter bei offener Befehlsliste fuehrt den Befehl aus, statt „/zusa" als
+        // Nachricht abzuschicken.
+        const match = SLASH_COMMANDS.find((c) => c.name.startsWith(input.slice(1).toLowerCase()));
+        if (match) {
+          runSlash(match.name);
+          return;
+        }
+      }
       sendMessage();
     }
   };
@@ -1294,6 +1350,45 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
   const contextLimit = 200000;
   const contextPercent = Math.min((estimatedTokens / contextLimit) * 100, 100);
+
+  // Der Composer zeigt das Modell an. Einmal geholt, nicht bei jeder Nachricht:
+  // es aendert sich nur, wenn jemand es in den Einstellungen umstellt.
+  const [agentModel, setAgentModel] = useState("");
+  useEffect(() => {
+    api.getAgent(agentId).then((a) => setAgentModel(a.model || "")).catch(() => {});
+  }, [agentId]);
+
+  // Befehlsliste: oeffnet sich, sobald die Eingabe mit "/" beginnt und noch kein
+  // Leerzeichen enthaelt — danach ist es Fliesstext, kein Befehl mehr.
+  const slashOpen = /^\/[a-z]*$/i.test(input);
+
+  const runSlash = useCallback((name: string) => {
+    setInput("");
+    const lastId = [...messages].reverse().find((m) => m.role !== "system")?.id;
+    if (name === "planen") {
+      // Ohne Text gibt es nichts zu planen — das Feld bleibt leer und der Nutzer
+      // schreibt weiter, statt eine leere Nachricht abzuschicken.
+      inputRef.current?.focus();
+      chatToast.info("Planen", "Schreib den Auftrag und drück auf „Planen“.");
+      return;
+    }
+    if (name === "zusammenfassen") { void summarizeToNew(); return; }
+    if (name === "verzweigen" && lastId) { void forkFrom(lastId); return; }
+    if (name === "zurueckspulen" && lastId) { void rewindTo(lastId); return; }
+    chatToast.info("Geht gerade nicht", "Dafür braucht es mindestens eine Nachricht.");
+  }, [messages, summarizeToNew, forkFrom, rewindTo, chatToast]);
+
+  const [inputFocused, setInputFocused] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const contextRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!contextOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!contextRef.current?.contains(e.target as Node)) setContextOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [contextOpen]);
 
   /* ─── Render ──────────────────────────────────────────────────────── */
 
@@ -1598,133 +1693,229 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2.5">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!isConnected || isUploading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-all shrink-0"
-            title="Upload files"
-          >
-            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={() => {
-              voiceSession.startSession({
-                agentId,
-                agentName: agentId,
-                resumeSessionId: activeSessionId ?? undefined,
-                // Surface the persisted voice conversation as a session tab once
-                // the call has actually ended and the backend has saved it.
-                onEnd: () => { void refreshSessions(); },
-              });
-            }}
-            disabled={!isConnected}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-40 transition-all shrink-0"
-            title="Live-Sprachsession starten"
-          >
-            <Mic className="h-4 w-4" />
-          </button>
-          <div className="relative shrink-0" ref={reasoningRef}>
-            <button
-              onClick={() => setReasoningOpen((o) => !o)}
+        {/* Composer im Claude-Code-Zuschnitt (#538): Eingabe oben, Bedienung in
+            einer Fusszeile darunter. Vorher standen sechs Knoepfe NEBEN dem
+            Eingabefeld — auf schmalen Schirmen blieb fuer den Text eine Spalte, und
+            die Kontextanzeige lag als eigener Streifen darunter, ohne Bezug. */}
+        <div
+          className={cn(
+            "rounded-2xl border bg-background/80 transition-all",
+            inputFocused ? "border-primary/50 ring-1 ring-primary/20" : "border-border",
+            !isConnected && "opacity-40",
+          )}
+        >
+          <div className="relative">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              placeholder={
+                connectionFailed
+                  ? "Agent not connected"
+                  : isWaiting
+                  ? "Agent arbeitet… (du kannst trotzdem schreiben)"
+                  : "Nachricht… — / für Befehle, Bild mit Strg+V"
+              }
               disabled={!isConnected}
-              title={`Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === reasoning)?.label}`}
-              className={cn(
-                "flex h-10 items-center gap-1.5 rounded-xl border px-2.5 transition-all disabled:opacity-40",
-                reasoning
-                  ? "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
-                  : "border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]",
-              )}
-            >
-              <Brain className="h-4 w-4" />
-              {reasoning && (
-                <span className="text-[11px] font-medium">
-                  {REASONING_OPTIONS.find((o) => o.value === reasoning)?.short}
-                </span>
-              )}
-            </button>
-            {reasoningOpen && (
-              <div className="absolute bottom-full left-0 z-50 mb-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/20">
-                <p className="px-3 pt-2.5 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                  Wie gründlich denken?
+              className="max-h-48 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground/30 disabled:opacity-40"
+              rows={1}
+            />
+
+            {/* Befehlsliste. Sie fuehrt AUSSCHLIESSLICH auf Dinge, die es schon
+                gibt — ein Hinweis auf Befehle, die nirgends hinfuehren, waere
+                schlimmer als gar keiner. */}
+            {slashOpen && (
+              <div className="absolute bottom-full left-3 z-50 mb-2 w-72 overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/20">
+                <p className="px-3 pb-1.5 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  Befehle
                 </p>
-                {REASONING_OPTIONS.map((opt) => (
+                {SLASH_COMMANDS.filter((c) =>
+                  c.name.startsWith(input.slice(1).toLowerCase()),
+                ).map((c) => (
                   <button
-                    key={opt.value || "default"}
-                    onClick={() => { setReasoning(opt.value); setReasoningOpen(false); }}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06]",
-                      reasoning === opt.value ? "text-violet-300" : "text-foreground/80",
-                    )}
+                    key={c.name}
+                    onMouseDown={(e) => { e.preventDefault(); runSlash(c.name); }}
+                    className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-foreground/[0.06]"
                   >
-                    <span>{opt.label}</span>
-                    {reasoning === opt.value && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    <span className="font-mono text-xs text-primary">/{c.name}</span>
+                    <span className="text-[11px] text-muted-foreground/70">{c.hint}</span>
                   </button>
                 ))}
+                {SLASH_COMMANDS.every((c) => !c.name.startsWith(input.slice(1).toLowerCase())) && (
+                  <p className="px-3 pb-2.5 text-[11px] text-muted-foreground/50">
+                    Kein Befehl mit diesem Namen — Enter schickt den Text normal ab.
+                  </p>
+                )}
               </div>
             )}
           </div>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={connectionFailed ? "Agent not connected" : isWaiting ? "Agent arbeitet... (du kannst trotzdem schreiben)" : "Nachricht... (Bild mit Strg+V einfügen, Enter zum Senden)"}
-            disabled={!isConnected}
-            className="flex-1 resize-none max-h-48 overflow-y-auto rounded-xl border border-border bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-40 transition-all placeholder:text-muted-foreground/30"
-            rows={1}
-          />
-          {isWaiting ? (
+
+          {/* Fusszeile */}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 px-2 py-1.5">
             <button
-              onClick={stopGeneration}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/90 text-white hover:bg-red-500 shadow-lg shadow-red-500/20 transition-all"
-              title="Stop"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!isConnected || isUploading}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40"
+              title="Dateien anhängen"
             >
-              <Square className="h-4 w-4 fill-current" />
+              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
             </button>
-          ) : (
-            <>
+            <button
+              onClick={() => {
+                voiceSession.startSession({
+                  agentId,
+                  agentName: agentId,
+                  resumeSessionId: activeSessionId ?? undefined,
+                  onEnd: () => { void refreshSessions(); },
+                });
+              }}
+              disabled={!isConnected}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40"
+              title="Live-Sprachsession starten"
+            >
+              <Mic className="h-4 w-4" />
+            </button>
+
+            <div className="relative" ref={reasoningRef}>
               <button
-                onClick={() => sendMessage(true)}
-                disabled={!isConnected || isUploading || !input.trim()}
-                className="flex h-10 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-40 transition-all"
-                title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
+                onClick={() => setReasoningOpen((o) => !o)}
+                disabled={!isConnected}
+                title={`Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === reasoning)?.label}`}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] transition-all disabled:opacity-40",
+                  reasoning
+                    ? "bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+                    : "text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
+                )}
               >
-                <ListChecks className="h-4 w-4" /> Planen
+                <Brain className="h-4 w-4" />
+                <span className="font-medium">
+                  {reasoning
+                    ? REASONING_OPTIONS.find((o) => o.value === reasoning)?.short
+                    : "Auto"}
+                </span>
               </button>
-              <button
-                onClick={() => sendMessage()}
-                disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 shadow-lg shadow-primary/20 disabled:shadow-none transition-all"
-              >
-                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
-            </>
-          )}
+              {reasoningOpen && (
+                <div className="absolute bottom-full left-0 z-50 mb-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/20">
+                  <p className="px-3 pb-1.5 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                    Wie gründlich denken?
+                  </p>
+                  {REASONING_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value || "default"}
+                      onClick={() => { setReasoning(opt.value); setReasoningOpen(false); }}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06]",
+                        reasoning === opt.value ? "text-violet-300" : "text-foreground/80",
+                      )}
+                    >
+                      <span>{opt.label}</span>
+                      {reasoning === opt.value && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="ml-auto flex items-center gap-1.5">
+              {agentModel && (
+                <span
+                  className="hidden max-w-[10rem] truncate font-mono text-[10px] text-muted-foreground/50 sm:inline"
+                  title={agentModel}
+                >
+                  {agentModel}
+                </span>
+              )}
+
+              {/* Kontextring: ersetzt den frueheren Streifen unter dem Composer.
+                  Dort stand er ohne Bezug zur Eingabe; hier sitzt er neben dem
+                  Absenden, also da, wo die Entscheidung faellt. */}
+              <div className="relative" ref={contextRef}>
+                <button
+                  onClick={() => setContextOpen((o) => !o)}
+                  title="Kontext: belegter Anteil des Gesprächsfensters"
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-[10px] tabular-nums text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground"
+                >
+                  <ContextRing percent={contextPercent} />
+                  <span>{contextPercent.toFixed(0)}%</span>
+                </button>
+                {contextOpen && (
+                  <div className="absolute bottom-full right-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border border-border bg-card p-3 shadow-xl shadow-black/20">
+                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                      <div className="flex justify-between">
+                        <span>Zeichen als Tokens geschätzt</span>
+                        <span className="tabular-nums text-foreground/80">
+                          {estimatedTokens.toLocaleString()} / {(contextLimit / 1000).toFixed(0)}k
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Nachrichten</span>
+                        <span className="tabular-nums text-foreground/80">{messageCount}</span>
+                      </div>
+                      {totalTurns > 0 && (
+                        <div className="flex justify-between">
+                          <span>Züge</span>
+                          <span className="tabular-nums text-foreground/80">{totalTurns}</span>
+                        </div>
+                      )}
+                      {totalCost > 0 && (
+                        <div className="flex justify-between">
+                          <span>Kosten</span>
+                          <span className="tabular-nums text-foreground/80">${totalCost.toFixed(4)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setContextOpen(false); void summarizeToNew(); }}
+                      disabled={!activeSessionId || messages.length < 6}
+                      className="mt-2.5 w-full rounded-lg border border-foreground/[0.08] px-2 py-1.5 text-[11px] transition-colors hover:bg-foreground/[0.06] disabled:opacity-30"
+                    >
+                      In frischem Gespräch weiterreden
+                    </button>
+                    <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+                      Der Verlauf bleibt unangetastet — die Fortsetzung startet mit
+                      einem kurzen Stand statt der vollen Last.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {isWaiting ? (
+                <button
+                  onClick={stopGeneration}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/90 text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-500"
+                  title="Stop"
+                >
+                  <Square className="h-4 w-4 fill-current" />
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => sendMessage(true)}
+                    disabled={!isConnected || isUploading || !input.trim()}
+                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
+                    title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
+                  >
+                    <ListChecks className="h-4 w-4" /> Planen
+                  </button>
+                  <button
+                    onClick={() => sendMessage()}
+                    disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 disabled:opacity-40 disabled:shadow-none"
+                  >
+                    {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Context usage bar (hidden in simple mode) */}
-      {!simpleMode && <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
-        <div className="flex items-center gap-1.5">
-          <Gauge className="h-3 w-3" />
-          <span>Context</span>
-        </div>
-        <div className="flex-1 h-1.5 rounded-full bg-foreground/[0.06] max-w-[200px]">
-          <div
-            className={cn(
-              "h-1.5 rounded-full transition-all duration-500",
-              contextPercent < 50 ? "bg-emerald-500" : contextPercent < 80 ? "bg-amber-500" : "bg-red-500"
-            )}
-            style={{ width: `${contextPercent}%` }}
-          />
-        </div>
-        <span>{estimatedTokens.toLocaleString()} / {(contextLimit / 1000).toFixed(0)}k tokens</span>
-        <span className="border-l border-border pl-3">{messageCount} msgs</span>
-        {totalTurns > 0 && <span>{totalTurns} turns</span>}
-        {totalCost > 0 && <span>${totalCost.toFixed(4)}</span>}
-      </div>}
       {/* end right column */}
       </div>
     </div>

@@ -68,6 +68,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 25b. [Selbstheilung: gescheiterte Aufgaben wiederholen lassen](#25b-selbstheilung-gescheiterte-aufgaben-wiederholen-lassen)
 25c. [Bei Unsicherheit nachfragen lassen](#25c-bei-unsicherheit-nachfragen-lassen)
 25d. [Golden-Tests: Verschlechterungen vor dem Update abfangen](#25d-golden-tests-verschlechterungen-vor-dem-update-abfangen)
+25e. [Der Nachrichten-Composer: Befehle, Denktiefe, Kontextring](#25e-der-nachrichten-composer-befehle-denktiefe-kontextring)
 26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
 27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
@@ -1475,6 +1476,49 @@ Der **beste** bisherige Lauf ist die **Grundlinie**. Liegt ein neuer Lauf mehr a
 > _[Screenshot folgt: Sammlung mit zwei Aufgaben im Bearbeiten-Modus]_
 >
 > _[Screenshot folgt: Verlauf mit Rückschritt-Markierung]_
+
+---
+
+## 25e. Der Nachrichten-Composer: Befehle, Denktiefe, Kontextring
+
+Das Eingabefeld im Agent-Chat hat unter dem Text eine **Fußzeile** mit allem, was zum
+Absenden gehört. Vorher standen die Knöpfe *neben* dem Feld — auf schmalen Bildschirmen
+blieb für den Text eine Spalte übrig.
+
+**Links in der Fußzeile:**
+- **Büroklammer** — Dateien anhängen (Bilder gehen auch mit **Strg+V** direkt ins Feld)
+- **Mikrofon** — Live-Sprachsession starten
+- **Gehirn / „Auto"** — **Denktiefe** für die nächste Nachricht. „Auto" überlässt es
+  dem Agenten; die anderen Stufen lassen ihn gründlicher (und langsamer) arbeiten.
+
+**Rechts in der Fußzeile:**
+- **Modellname** — welches Modell dieser Agent gerade benutzt
+- **Kontextring** — wie voll das Gesprächsfenster ist (grün → gelb → rot). **Klick**
+  darauf zeigt Tokens, Nachrichten, Züge und Kosten — und den Knopf
+  **In frischem Gespräch weiterreden**.
+- **Planen** — der Agent beschreibt nur die Schritte und führt nichts aus
+- **Senden** (bzw. **Stop**, während er arbeitet)
+
+### Befehle mit „/"
+
+Tippe im leeren Feld einen **Schrägstrich** — es öffnet sich eine kurze Liste:
+
+| Befehl | Was er tut |
+|---|---|
+| `/planen` | Wechselt zum Planen-Modus (schreib den Auftrag, dann auf **Planen**) |
+| `/zusammenfassen` | Führt in einem frischen Gespräch mit kurzem Stand weiter |
+| `/verzweigen` | Zweigt ab der letzten Nachricht in ein neues Gespräch ab |
+| `/zurueckspulen` | Setzt das Gespräch auf die letzte Nachricht zurück |
+
+Weitertippen filtert die Liste, **Enter** führt den obersten Treffer aus, **Esc**
+schließt sie (der Text bleibt stehen — falls du wirklich mit einem Schrägstrich
+beginnen wolltest).
+
+> Die Befehle führen **nur** auf Dinge, die es ohnehin gibt — dieselben Funktionen wie
+> die Knöpfe. Ein Hinweis auf Befehle, die nirgends hinführen, wäre schlimmer als gar
+> keiner.
+>
+> _[Screenshot folgt: Composer mit Fußzeile und geöffneter Befehlsliste]_
 
 ---
 
