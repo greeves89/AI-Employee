@@ -5,6 +5,81 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.170.0] — 2026-08-09
+
+Vier offene Roadmap-Punkte, die dieselbe Frage beantworten: **Wann darf ein Agent
+allein weitermachen — und wann muss ein Mensch ran?**
+
+### Added
+- **Selbstheilung gescheiterter Aufgaben** (#390). Ein Zeitablauf oder ein 503 wird
+  mit wachsender Wartezeit wiederholt, ein falsches Kennwort nie — das kostet Geld
+  und ändert nichts. Die Vorgehensweise wechselt: erst dasselbe nochmal (bei einem
+  Ausfall wäre jede Änderung am Auftrag nur Rauschen), dann in kleineren Schritten,
+  dann mit einem anderen Modell. Erst danach der Mensch, mit dem gesammelten
+  Verlauf statt eines nackten „Task failed". Regelwerk pro Agent einstellbar.
+- **Nachfragen statt raten** (#389). Agenten melden vor unklaren Entscheidungen ihre
+  Sicherheit. Die Schwelle liegt auf dem **Server**: würde der Agent selbst
+  beurteilen, ob seine 40 % genügen, wäre diese Beurteilung genauso unsicher wie die
+  Antwort. Reicht die Sicherheit, kostet der Aufruf nichts — kein Mensch wird
+  behelligt. In allen drei Laufzeiten, über denselben Freigabe-Weg wie alles andere.
+- **Golden-Tests als Update-Gatter** (#391). Versionierte Aufgabensammlungen je
+  Rolle, ausgeführt als **echte Aufträge** durch den echten Agenten — samt
+  Systemprompt, Skills und Modell. Fällt der Wert unter die Grundlinie, wird das
+  Container-Update abgelehnt (mit Notausgang). Bewusst ohne Modell-Schiedsrichter:
+  ein Gatter, dessen Bewertung schwankt, blockiert mal und lässt mal durch.
+- **Eskalations-Posteingang.** „Zu unsicher" (#389) und „endgültig gescheitert"
+  (#390) landen an EINER Stelle unter Freigaben. Für den Menschen ist es dieselbe
+  Frage; zwei Listen wären zwei Orte zum Nachsehen, und einer würde vergessen.
+- **Jedes Symbol, jede Farbe, ein Schlagwort** (#523, #524). Statt 18 kuratierter
+  Symbole der ganze lucide-Satz (nachgeladen, nicht im Erstladen), freie Farben, und
+  ein frei wählbares Schlagwort mit Suche, Filter, Gruppierung und Sortierung in der
+  Übersicht. Das Team bleibt davon getrennt — es ist ein Verhaltens-, kein
+  Ordnungsbegriff.
+- **Composer im Claude-Code-Zuschnitt** (#538, Punkt 1). Eingabe oben, Bedienung in
+  einer Fußzeile darunter, Kontextring neben dem Absenden. Befehle mit „/", die
+  ausschließlich auf vorhandene Fähigkeiten führen.
+- **Ein Skript für die Roadmap-Bilder** (`docs/generate_roadmap.py`). Vorher wurden
+  sie bei jedem Release von Hand neu gebaut, jedes Mal etwas anders.
+
+### Fixed
+- **Golden-Test-Läufe waren nicht mandantengetrennt.** `GET /evals/runs` hatte den
+  Besitzcheck im `if agent_id:`-Zweig — wer den Parameter wegließ (und genau das tut
+  die Übersichtsseite), bekam die Läufe aller Nutzer. Die Einschränkung steht jetzt
+  im Query, nicht in einem Zweig.
+- **Der Selbsttest holte nie ein GitHub-Token über OAuth.** `self_test_service.py`
+  importierte aus `app.security.encryption` — das Modul gibt es nicht, die Funktion
+  heißt anders. Beide Aufrufe standen in einem `except Exception`.
+- **Codex-Agenten bekamen keine frischen MCP-Zugangsdaten** (#488). Die
+  Auffrischungsschleife schloss `codex_cli` aus, mit der Begründung, Codex nutze
+  `CUSTOM_MCP_*` gar nicht — es liest sie bei jedem Aufruf neu. Auf dem Pi sind
+  sieben von acht Agenten Codex.
+- **Der Appearance-Endpunkt meldete 404 „Agent not found" bei einer abgelehnten
+  Farbe.** Ein `except ValueError` lag um den ganzen Rumpf. Jetzt 400.
+- **Die Kurzfassung von `GET /agents` ließ `avatar` weg** — die Übersicht lädt genau
+  diese Liste, Sinnbild und Farbe wären dort nie angekommen.
+- **`CommandApproval.task_id` wurde nie gefüllt**, obwohl die Spalte seit jeher
+  existiert: in der Ablage stand die Frage ohne den Auftrag, um den es ging.
+- Der neue statische Importtest hing an der Testreihenfolge (`find_spec` stolpert
+  über Attrappen anderer Tests). Er sieht die Existenz eines Moduls jetzt auf der
+  Platte nach.
+
+### Changed
+- **Der statische Importtest prüft jetzt JEDEN `app.*`-Import** — auch die innerhalb
+  von Funktionen, also genau die, die hinter den 172 breiten `except`-Blöcken liegen
+  und weder beim Start noch im Testlauf auffallen. Geprüft wird Modulpfad UND Name.
+  Damit ist der Roadmap-Punkt „verschluckte Import-Fehler" anders gelöst als
+  geplant: nicht durch einen riskanten Großumbau, sondern durch einen Test, der
+  diese Fehlerklasse unversendbar macht.
+- Handbuch um die Abschnitte 25–25e erweitert (Symbol/Schlagwort, Suche & Filter,
+  Selbstheilung, Nachfragen, Golden-Tests, Composer).
+
+### Tests
+1804 grün, 1 vorbestehend rot (Nova Sonic, fehlendes Bedrock-Modul lokal).
+Neu: 24 + 11 Selbstheilung, 17 + 7 Konfidenz (inkl. Harness-Parität), 31 + 14 + 6
+Golden-Tests, 20 Aussehen/Schlagwort.
+
+---
+
 ## [1.169.1] — 2026-08-09
 
 ### Fixed

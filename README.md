@@ -163,6 +163,9 @@ Database migrations run automatically on startup. Your data is persisted in name
 - **Approval rules & inline Telegram approvals** — Define additional natural-language rules on top of the level preset. Agents call the `request_approval` MCP tool and wait. Approve or deny with a single Telegram button tap.
 - **Full governance audit trail** — Every governance event is written to `audit_logs`: approval requests, approvals/denials, level changes, rule edits, preset changes. Enterprise-ready traceability out of the box.
 - **DLP egress filter** — Outbound, agent-generated text is scanned for PII/secrets before it leaves the platform (credentials, IBAN, credit card with Luhn check, email, German tax ID). The action per data class is configurable — **allow / log / mask / block** (agent-specific > global > default) — and every hit is audited **without the sensitive value** (only class + count). Opt-in and fail-open, with an admin UI to toggle rules and preview a test scan. The argument for DSGVO-sensitive customers.
+- **Confidence routing** — Agents report how sure they are before an uncertain decision; below the operator's threshold the decision goes to a human instead of being guessed. The threshold lives on the server — an agent judging whether its own 40% is enough would judge that just as unreliably as the answer. Per agent and per task, available in all three runtimes, escalating through the same approval inbox as everything else.
+- **Self-healing with escalation** — A failed task is classified (transient vs. permanent) and retried with a growing delay and a changing strategy: same again, then in smaller steps, then with a different model. A permanent error (wrong credential, missing permission) is never retried — it costs money and changes nothing. Once exhausted, a human gets the full attempt history rather than a bare "Task failed".
+- **Golden tests as an update gate** — Versioned task sets per role, executed as real tasks through the real agent. If the score drops below the baseline, the container update is refused (with a documented override). Scoring is deterministic on purpose — a gate whose verdict wobbles is a gate nobody trusts.
 - **Decision-Trace / time-travel** — A full, replayable task timeline answers "why did the agent do that?" on demand: raw steps are folded into thought → tool-call → result, with per-step duration, a governance & cost strip (blocked/failed actions visible), play/pause playback, and export as JSON or PDF.
 - **Multi-tenant isolation** — Complete data isolation at both the API and database layer (PostgreSQL RLS). Users see only their own agents, tasks, schedules, knowledge entries, approval rules, and memories. Agents of the same user share one knowledge base; agents of different users are completely isolated.
 - **DSGVO-ready\*** — All embeddings, memory, knowledge, and logs stay on your infrastructure. Data export and deletion endpoints included. *\*Note: LLM inference via Claude API or OpenAI routes prompts through external servers (US). For full DSGVO compliance use local models (Ollama/Mistral) or Azure OpenAI in EU data regions.*
@@ -300,6 +303,12 @@ What we shipped recently, what's in progress, and what's planned next:
 <summary>Roadmap as text</summary>
 
 **Recently shipped** (was on the roadmap, now live)
+- **Self-healing failed tasks** ([#390](https://github.com/greeves89/AI-Employee/issues/390)) — a timeout or a 503 is retried with a growing delay; a wrong credential never is. Escalates to a human with the full attempt history instead of a bare "Task failed". Per-agent policy.
+- **Ask instead of guess** ([#389](https://github.com/greeves89/AI-Employee/issues/389)) — agents report a confidence per uncertain decision. The threshold lives on the **server**, not in the agent: an agent judging whether its own 40% is enough would judge that just as unreliably as the answer. Available in all three runtimes.
+- **Golden tests as an update gate** ([#391](https://github.com/greeves89/AI-Employee/issues/391)) — versioned task sets per role, run as real tasks through the real agent. A regression against the baseline blocks the container update. Deliberately no LLM judge: a gate whose score wobbles blocks sometimes and passes sometimes, and then nobody trusts it.
+- **Escalation inbox** — "too unsure" and "finally failed" arrive in one place, not two.
+- **Any icon, any colour, one tag** ([#523](https://github.com/greeves89/AI-Employee/issues/523) / [#524](https://github.com/greeves89/AI-Employee/issues/524)) — the whole lucide set instead of 18 curated icons, free colours, plus a free-form tag with search, filter, grouping and sorting in the overview.
+- **Claude-Code-style composer** ([#538](https://github.com/greeves89/AI-Employee/issues/538)) — input on top, controls in a footer, context ring next to send, and `/` commands that only lead to capabilities that already exist.
 - **SAML 2.0 + IdP group mapping** — SAML SSO alongside OIDC, with automatic mapping of identity-provider groups to AI-Employee roles. Signature verification runs through `python3-saml`/`xmlsec` — never hand-rolled.
 - **Mobile PWA + Web Push** — installable PWA for iOS/Android/desktop with encrypted web push for approvals and task completions, on the same fan-out point as the existing native iOS push.
 - **Multi-channel gateway** — Microsoft Teams, Slack and WhatsApp next to Telegram. Teams works in three directions: a human messages the agent, an agent messages another agent, and an agent joins a meeting as scribe or participant. No Azure Bot registration needed for the chat side — the existing per-user Graph integration already covers it.
@@ -322,11 +331,15 @@ What we shipped recently, what's in progress, and what's planned next:
 **In progress**
 - **Agent-to-agent file handoff** — handoff messaging exists; files currently pass through the shared volume, first-class file handoff is next.
 - **Deputy chain, verified live** — the team-lead fallback was repaired in 1.167.0 and is covered end-to-end against real SQL; a live drill on the production box is still outstanding.
+- **Manual context trimming** (point 4 of [#538](https://github.com/greeves89/AI-Employee/issues/538)) — what exactly should be editable (individual messages, attachments, the system prompt) is not settled; the three readings lead to three different UIs.
 
 **Planned**
-- **DATEV / Lexware export** — export improvements for DACH tax workflows.
-- **Fewer swallowed import errors** — 160 places wrap an import in a broad `except Exception`, where an `ImportError` silently turns a function into a no-op. One of them had disabled the deputy chain for its entire lifetime.
+- **DATEV / Lexware export** — export improvements for DACH tax workflows. Deferred at the user's explicit request.
 - **Schema changes through migrations only** — 41 `CREATE TABLE IF NOT EXISTS` statements still run at startup alongside the Alembic history.
+- **Documented local test setup** — 21 test files cannot even be collected without extra packages.
+
+**Closed differently than planned**
+- **Swallowed import errors** — rewriting 172 broad `except Exception` blocks around imports was the plan; that would have been a large, risky change, and most of those blocks legitimately catch runtime errors. Instead a static test now walks the AST of every module and checks that each `app.*` import resolves to a real module *and* a real attribute — including imports inside functions, which is exactly where the swallowed ones hide. It found two live bugs on its first run.
 
 </details>
 
