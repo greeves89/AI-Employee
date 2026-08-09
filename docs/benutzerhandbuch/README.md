@@ -65,6 +65,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 24. [Skills herunterladen & installieren](#24-skills-herunterladen--installieren)
 25. [Agent-Symbol, Farbe und Schlagwort anpassen](#25-agent-symbol-farbe-und-schlagwort-anpassen)
 25a. [Agenten suchen, filtern und sortieren](#25a-agenten-suchen-filtern-und-sortieren)
+25b. [Selbstheilung: gescheiterte Aufgaben wiederholen lassen](#25b-selbstheilung-gescheiterte-aufgaben-wiederholen-lassen)
 26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
 27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
@@ -1342,6 +1343,43 @@ Ab etwa einem halben Dutzend Agenten erscheint über der Übersicht eine **Leist
 > Passt nichts zur Suche, erscheint **Filter zurücksetzen**.
 >
 > _[Screenshot folgt: Filterleiste über der Agentenübersicht mit aktivem Schlagwort-Chip]_
+
+---
+
+## 25b. Selbstheilung: gescheiterte Aufgaben wiederholen lassen
+
+Scheitert eine Aufgabe an einem **Zeitablauf** oder einem **Ausfall der
+Gegenstelle**, versucht der Agent es von sich aus noch einmal — statt dich nachts zu
+wecken. **Dauerhafte** Fehler (falsches Kennwort, fehlende Berechtigung, aufgebrauchtes
+Guthaben) werden **nicht** wiederholt, sondern sofort weitergereicht: ein zweiter
+Versuch kostet dort nur Geld und ändert nichts.
+
+1. **Agents** → Agent öffnen → **Einstellungen** → Bereich **Selbstheilung**.
+2. **Schalter rechts** — schaltet die Selbstheilung für diesen Agenten ein oder aus.
+3. **Neue Versuche** (0–5) — wie oft insgesamt neu versucht wird. Die Vorgehensweise
+   ändert sich dabei von Versuch zu Versuch:
+   - 1. Versuch: **dasselbe nochmal** (bei einem Ausfall wäre jede Änderung nur Rauschen)
+   - 2. Versuch: **in kleineren Schritten** — der Agent bekommt den Fehler genannt und
+     die Anweisung, die Aufgabe zu zerlegen
+   - 3. Versuch: **mit einem anderen Modell**
+4. **Erste Wartezeit** — Sekunden bis zum ersten neuen Versuch. Sie **verdoppelt sich**
+   danach. Die Wartezeit ist der eigentliche Wirkstoff: sofort neu zu versuchen trifft
+   dieselbe überlastete Gegenstelle im selben Zustand.
+5. **Unklare Fehler wiederholen** — ein Lauf, der ohne Meldung endet, wurde meist
+   abgebrochen (Speicher, Absturz). Standardmäßig eingeschaltet.
+6. **Vorgaben wiederherstellen** — erscheint, sobald etwas Eigenes eingestellt wurde.
+
+**Was du davon siehst:** Solange ein neuer Versuch aussteht, kommt **keine**
+Fehlermeldung — sonst piepte es dreimal für einen Zeitablauf, der sich von selbst
+erledigt. Der Wiederholungsauftrag steht als eigene Aufgabe in der Liste („… (Versuch 2)").
+
+**Wenn nichts mehr hilft:** Die Aufgabe landet unter **Freigaben** — mit dem
+**Verlauf aller Versuche**, nicht mit einem nackten „Task failed". Dort steht, welcher
+Fehler wie oft auftrat, und du kannst übernehmen oder verwerfen.
+
+> _[Screenshot folgt: Selbstheilungs-Karte in den Agent-Einstellungen]_
+>
+> _[Screenshot folgt: eskalierte Aufgabe mit Versuchsverlauf unter Freigaben]_
 
 ---
 

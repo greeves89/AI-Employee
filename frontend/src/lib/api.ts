@@ -462,6 +462,43 @@ export async function setAgentModelRouter(
   });
 }
 
+/** Selbstheilung pro Agent (#390) — wie oft und wie lange gewartet wird. */
+export interface SelfHealingPolicy {
+  enabled: boolean;
+  max_attempts: number;
+  base_delay_seconds: number;
+  max_delay_seconds: number;
+  retry_unknown: boolean;
+}
+
+interface SelfHealingResponse {
+  agent_id: string;
+  policy: SelfHealingPolicy;
+  customized: boolean;
+}
+
+export async function getAgentSelfHealing(agentId: string): Promise<SelfHealingResponse> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/self-healing`);
+}
+
+export async function updateAgentSelfHealing(
+  agentId: string,
+  policy: SelfHealingPolicy,
+): Promise<SelfHealingResponse> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/self-healing`, {
+    method: "PATCH",
+    body: JSON.stringify(policy),
+  });
+}
+
+/** Leerer Rumpf = Vorgaben wiederherstellen (der Agent hat dann nichts Eigenes). */
+export async function resetAgentSelfHealing(agentId: string): Promise<SelfHealingResponse> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/self-healing`, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+  });
+}
+
 export interface RolePermissions {
   max_agents?: number | null;
   template_ids?: number[] | null;

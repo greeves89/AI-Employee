@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
 from app.core.log_redaction import scrub_log
+from app.models.agent import Agent
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.models.task_step import TaskStep
@@ -563,7 +564,276 @@ class TaskRouter:
         if task.status == TaskStatus.COMPLETED:
             await self._request_task_rating(task, agent_id)
         elif task.status == TaskStatus.FAILED:
+            # Selbstheilung zuerst (#390): ist ein neuer Versuch geplant, wird der
+            # Mensch NICHT benachrichtigt — sonst piept es dreimal fuer einen
+            # Zeitablauf, der sich von selbst erledigt.
+            healed = await self._maybe_self_heal(task, agent_id)
+            if not healed:
+                await self._notify_failed_task(task, agent_id)
+
+    async def _maybe_self_heal(self, task: Task, agent_id: str | None) -> bool:
+        """Einen neuen Versuch planen — oder den Menschen holen (#390).
+
+        Rueckgabe ``True`` heisst „uebernommen": entweder laeuft ein neuer Versuch,
+        oder es wurde bereits eskaliert. In beiden Faellen ist die normale
+        Fehlerbenachrichtigung ueberfluessig.
+        """
+        from app.core import self_healing
+
+        if not agent_id:
+            return False
+        meta = dict(task.metadata_ or {})
+        # Ein Probelauf ist eine Vorschau, kein Auftrag — den zu wiederholen waere
+        # sinnlos. Und ein Auftrag, der selbst schon eine Wiederholung ist, zaehlt
+        # seine Versuche weiter, statt bei null anzufangen.
+        if meta.get("dry_run"):
+            return False
+
+        agent = (await self.db.execute(
+            select(Agent).where(Agent.id == agent_id)
+        )).scalar_one_or_none() if agent_id else None
+        policy = self_healing.policy_for(getattr(agent, "config", None))
+
+        history = list(meta.get("heal_history") or [])
+        attempt_so_far = int(meta.get("heal_attempt") or 0)
+        plan = self_healing.plan_next_attempt(
+            error=task.error, attempt_so_far=attempt_so_far, policy=policy
+        )
+
+        history.append({
+            "attempt": attempt_so_far,
+            "strategy": meta.get("heal_strategy") or "original",
+            "classification": self_healing.classify_error(task.error),
+            "error": (task.error or "")[:400],
+            "task_id": task.id,
+        })
+
+        if plan is None:
+            await self._escalate_exhausted_task(task, agent_id, history)
+            return True
+
+        try:
+            await self._schedule_retry(task, agent_id, plan, history)
+        except Exception as e:  # noqa: BLE001 — lieber normal melden als schweigen
+            logger.warning(
+                "[Selbstheilung] Neuer Versuch fuer %s nicht geplant: %s",
+                scrub_log(task.id), scrub_log(e),
+            )
+            return False
+        return True
+
+    async def _schedule_retry(
+        self, task: Task, agent_id: str, plan: dict, history: list[dict]
+    ) -> None:
+        """Den Wiederholungsauftrag anlegen — faellig, aber noch nicht abgeschickt.
+
+        Der Auftrag entsteht sofort als Zeile in der Datenbank und ist damit
+        sichtbar („wird erneut versucht") und ueberlebt einen Neustart. Losgeschickt
+        wird er erst, wenn die Wartezeit um ist — das erledigt der Zeitgeber, der
+        ohnehin alle 30 Sekunden laeuft. Ein asyncio.sleep waere nach einem Neustart
+        des Orchestrators weg.
+        """
+        from app.core import self_healing
+
+        due = datetime.now(timezone.utc) + timedelta(seconds=plan["delay_seconds"])
+        base_prompt = str((task.metadata_ or {}).get("heal_original_prompt") or task.prompt)
+        retry_id = _make_task_id()
+
+        model = task.model
+        if plan["strategy"] == self_healing.STRATEGY_OTHER_MODEL:
+            model = await self._fallback_model_for(agent_id, task.model)
+
+        meta = dict(task.metadata_ or {})
+        meta.update({
+            "heal_attempt": plan["attempt"],
+            "heal_strategy": plan["strategy"],
+            "heal_history": history,
+            "heal_of": (task.metadata_ or {}).get("heal_of") or task.id,
+            "heal_due_at": due.isoformat(),
+            "heal_original_prompt": base_prompt,
+        })
+        # Bewertungsanfragen und Rueckrufe gehoeren zum urspruenglichen Lauf; sie
+        # ein zweites Mal auszuloesen wuerde denselben Vorgang doppelt melden.
+        meta.pop("rating_requested", None)
+
+        retry = Task(
+            id=retry_id,
+            title=f"{task.title} (Versuch {plan['attempt'] + 1})"[:200],
+            prompt=self_healing.build_retry_prompt(base_prompt, plan["strategy"], task.error),
+            status=TaskStatus.PENDING,
+            priority=task.priority,
+            agent_id=agent_id,
+            model=model,
+            parent_task_id=task.parent_task_id,
+            metadata_=meta,
+        )
+        self.db.add(retry)
+        await self.db.commit()
+
+        logger.info(
+            "[Selbstheilung] %s gescheitert (%s) → Versuch %s als %s in %ss (%s)",
+            scrub_log(task.id), plan["classification"], plan["attempt"] + 1,
+            scrub_log(retry_id), plan["delay_seconds"], plan["strategy"],
+        )
+        await self._publish_activity(
+            agent_id,
+            f"Selbstheilung: neuer Versuch in {plan['delay_seconds']}s ({plan['strategy']})",
+        )
+
+    async def _fallback_model_for(self, agent_id: str, current: str | None) -> str | None:
+        """Ein anderes Modell fuer den letzten Anlauf.
+
+        Nutzt die Modellwahl, die der Agent ohnehin hat; nur wenn die dasselbe
+        Modell liefert, wird auf das guenstige Ausweichmodell gewechselt. Ein
+        „anderes Modell", das dasselbe ist, waere ein Versuch ohne Unterschied.
+        """
+        try:
+            candidate = await self._coerce_task_model_for_agent(agent_id, BUDGET_FALLBACK_MODEL)
+        except Exception:  # noqa: BLE001
+            candidate = None
+        if candidate and candidate != current:
+            return candidate
+        return current
+
+    async def _escalate_exhausted_task(
+        self, task: Task, agent_id: str | None, history: list[dict]
+    ) -> None:
+        """Der Mensch, mit Verlauf — nicht mit einem nackten „Task failed" (#390).
+
+        Bewusst ueber dieselbe Freigabe-Ablage wie alles andere, was auf einen
+        Menschen wartet: eine zweite Eskalations-Liste waere ein zweiter Ort, an dem
+        man nachsehen muesste.
+        """
+        from app.core import self_healing
+        from app.models.command_approval import ApprovalStatus, CommandApproval
+        from app.models.notification import Notification
+
+        summary = self_healing.escalation_summary(history, task.error)
+        permanent = self_healing.classify_error(task.error) == self_healing.PERMANENT
+        try:
+            approval = CommandApproval(
+                agent_id=agent_id or "system",
+                task_id=task.id,
+                command="task_failed",
+                description=f"{task.title}\n\n{summary}",
+                risk_level="high",
+                status=ApprovalStatus.PENDING,
+                meta={
+                    "kind": "escalation",
+                    "reason": "self_healing_exhausted" if not permanent else "permanent_error",
+                    "task_id": task.id,
+                    "attempts": len(history),
+                    "history": history[-5:],
+                    "question": f'„{task.title}“ ist endgültig gescheitert. Übernehmen?',
+                    "options": ["Ich übernehme", "Verwerfen"],
+                },
+            )
+            self.db.add(approval)
+            await self.db.commit()
+            await self.db.refresh(approval)
+
+            notif = Notification(
+                agent_id=agent_id or "system",
+                type="error",
+                title="Aufgabe braucht dich",
+                message=f"{task.title}: {summary}"[:240],
+                priority="high",
+                action_url="/approvals",
+                meta={
+                    "type": "task_escalated",
+                    "task_id": task.id,
+                    "approval_id": approval.id,
+                    "attempts": len(history),
+                },
+            )
+            self.db.add(notif)
+            await self.db.commit()
+            await self.db.refresh(notif)
+            await self._publish_notification(notif)
+            await self._push_notification_to_agent_user(notif, agent_id)
+            logger.info(
+                "[Selbstheilung] %s eskaliert nach %s Versuch(en) (%s)",
+                scrub_log(task.id), len(history),
+                "dauerhafter Fehler" if permanent else "erschoepft",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Selbstheilung] Eskalation fehlgeschlagen: %s", scrub_log(e))
             await self._notify_failed_task(task, agent_id)
+
+    async def dispatch_due_retries(self, limit: int = 20) -> int:
+        """Faellige Wiederholungen abschicken (vom Zeitgeber aufgerufen, #390).
+
+        Wartende Wiederholungen sind ``PENDING`` mit ``heal_due_at``. Der Zustand
+        ``PENDING`` heisst sonst „kein Agent frei"; die Wartenden hier tragen
+        zusaetzlich eine Faelligkeit und einen Agenten — daran sind sie zu erkennen,
+        ohne dafuer eine eigene Tabelle zu brauchen.
+        """
+        now = datetime.now(timezone.utc)
+        rows = (await self.db.execute(
+            select(Task)
+            .where(Task.status == TaskStatus.PENDING, Task.agent_id.isnot(None))
+            .order_by(Task.created_at)
+            .limit(200)
+        )).scalars().all()
+
+        sent = 0
+        for task in rows:
+            meta = task.metadata_ or {}
+            due_raw = meta.get("heal_due_at")
+            if not due_raw:
+                continue
+            try:
+                due = datetime.fromisoformat(str(due_raw))
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+            except ValueError:
+                logger.warning("[Selbstheilung] %s hat eine unlesbare Faelligkeit", task.id)
+                continue
+            if due > now:
+                continue
+            if await self._send_retry(task):
+                sent += 1
+            if sent >= limit:
+                break
+        return sent
+
+    async def _send_retry(self, task: Task) -> bool:
+        """Einen faelligen Wiederholungsauftrag in die Warteschlange legen."""
+        agent_id = task.agent_id
+        if not agent_id or not await self._agent_exists(agent_id):
+            logger.warning(
+                "[Selbstheilung] %s kann nicht laufen — Agent %s fehlt",
+                scrub_log(task.id), scrub_log(str(agent_id)),
+            )
+            return False
+
+        if self.docker:
+            try:
+                from app.services.user_lifecycle import wake_agent
+                await wake_agent(self.db, self.docker, agent_id)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[Selbstheilung] Agent nicht geweckt: %s", scrub_log(e))
+
+        # Die Faelligkeit wird entfernt, BEVOR abgeschickt wird: bliebe sie stehen
+        # und der Zeitgeber liefe erneut, ginge derselbe Auftrag zweimal los.
+        meta = dict(task.metadata_ or {})
+        meta.pop("heal_due_at", None)
+        task.metadata_ = meta
+        task.status = TaskStatus.QUEUED
+        task.started_at = datetime.now(timezone.utc)
+        await self.db.commit()
+
+        rules_prefix = await _build_approval_rules_prefix(self.db, agent_id)
+        payload = json.dumps({
+            "id": task.id,
+            "prompt": (rules_prefix + task.prompt) if rules_prefix else task.prompt,
+            "model": task.model,
+            "priority": task.priority,
+        })
+        await self.redis.push_task(agent_id, payload)
+        await self._publish_activity(agent_id, f"Selbstheilung: {task.title}")
+        logger.info("[Selbstheilung] %s abgeschickt", scrub_log(task.id))
+        return True
 
     async def _recover_task_completion_from_steps(self, task: Task) -> bool:
         """Recover a missed task completion from persisted step history.

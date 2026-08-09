@@ -130,6 +130,18 @@ class SchedulerService:
                     await self._tick_stale_task_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] StaleTaskWatchdog error: %s", e)
+                # Selbstheilung (#390): faellige Wiederholungen abschicken. Hier und
+                # nicht in einem eigenen Dienst — die Wartezeit ist ohnehin auf 30
+                # Sekunden genau, und ein zweiter Takt waere ein zweiter Ort, an dem
+                # etwas haengenbleiben kann.
+                try:
+                    resent = await self._dispatch_due_retries()
+                    if resent:
+                        logger.info("[Scheduler] Selbstheilung: %s Wiederholung(en) abgeschickt", resent)
+                except _TRANSIENT_DB_ERRORS as e:
+                    logger.warning("[Scheduler] Selbstheilung DB unavailable (transient): %s", e)
+                except Exception as e:
+                    logger.warning("[Scheduler] Selbstheilung error: %s", e)
                 # Workflow engine (#392): start cron-due workflows + advance active runs.
                 try:
                     await self._start_due_workflows()
@@ -1096,6 +1108,18 @@ class SchedulerService:
                     self._watchdog_alerted[s.id] = drift
                 except Exception as e:
                     logger.warning("[Scheduler] FailureWatchdog publish error: %s", e)
+
+    async def _dispatch_due_retries(self) -> int:
+        """Faellige Wiederholungen der Selbstheilung abschicken (#390).
+
+        Die Entscheidung, OB und WANN wiederholt wird, faellt im Task-Router beim
+        Fehlschlag — hier wird nur noch abgeschickt, was faellig geworden ist. So
+        gibt es genau eine Stelle mit der Regel und genau eine mit der Uhr.
+        """
+        async with resilient_session() as db:
+            lb = LoadBalancer(self.redis)
+            router = TaskRouter(db, self.redis, lb, docker_service=self.docker)
+            return await router.dispatch_due_retries()
 
     async def _tick_stale_task_watchdog(self) -> None:
         """Mark RUNNING tasks that stopped heart-beating (>30min) as stale.

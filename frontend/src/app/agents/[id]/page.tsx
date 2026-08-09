@@ -18,6 +18,7 @@ import {
 import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
+import { SelfHealingCard } from "@/components/agents/self-healing-card";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -1575,6 +1576,9 @@ function AgentSettings({
 
       {/* Entwicklung: Kosten und Laufzahl sagen nichts darueber, ob die Arbeit taugt. */}
       <DevelopmentCard agentId={agentId} />
+
+      {/* Selbstheilung: gescheiterte Aufgaben sterben nicht mehr still. */}
+      <SelfHealingCard agentId={agentId} />
 
       {/* Always-on (Ausnahme vom Idle-Auto-Stopp) */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">

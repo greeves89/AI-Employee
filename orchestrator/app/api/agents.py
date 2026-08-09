@@ -1335,6 +1335,78 @@ async def update_agent_model_router(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.get("/{agent_id}/self-healing")
+async def get_agent_self_healing(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Das Selbstheilungs-Regelwerk dieses Agenten (#390), fertig aufgefüllt.
+
+    Geliefert wird die WIRKSAME Fassung, nicht die gespeicherte: sonst zeigte die
+    Oberfläche leere Felder, während im Betrieb die Vorgaben greifen — und wer
+    speichert, würde die Vorgaben unbeabsichtigt einfrieren.
+    """
+    from app.core.self_healing import DEFAULT_POLICY, policy_for
+
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return {
+        "agent_id": agent_id,
+        "policy": policy_for(agent.config),
+        "defaults": DEFAULT_POLICY,
+        "customized": bool((agent.config or {}).get("self_healing")),
+    }
+
+
+@router.patch("/{agent_id}/self-healing")
+async def update_agent_self_healing(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Regelwerk setzen. Ein leerer Rumpf stellt die Vorgaben wieder her.
+
+    Geprüft und gedeckelt wird in ``core.self_healing`` — dieselbe Funktion, die
+    auch im Betrieb liest. Damit kann hier nichts gespeichert werden, was dort
+    anders ausgelegt würde.
+    """
+    from app.core.self_healing import DEFAULT_POLICY, policy_for
+
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    unknown = set(body) - set(DEFAULT_POLICY)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Einstellung(en): {', '.join(sorted(unknown))}",
+        )
+
+    cfg = dict(agent.config or {})
+    if not body:
+        cfg.pop("self_healing", None)
+    else:
+        try:
+            cfg["self_healing"] = policy_for({"self_healing": body})
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Ungültige Werte")
+    agent.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(agent, "config")
+    await db.commit()
+    return {"agent_id": agent_id, "policy": policy_for(cfg), "customized": bool(body)}
+
+
 # Realtime voice interaction engines the agent can front with (besides the classic
 # staged STT→LLM→TTS pipeline). Single source of truth is the realtime catalog, so
 # the selector, session backends and this allowlist never drift apart — previously
