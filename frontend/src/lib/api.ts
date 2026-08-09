@@ -3201,6 +3201,29 @@ export interface AgentDevelopment {
   };
 }
 
+// Gespraech verzweigen, zurueckspulen, zusammenfassen (#538). Alle drei arbeiten
+// auf "die Nachrichten bis hierher" und liefern die Kennung des neuen Gespraechs.
+export async function forkChatSession(agentId: string, sessionId: string, messageId: string) {
+  return fetchJSON<{ ok: boolean; session_id: string; copied: number }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/fork`,
+    { method: "POST", body: JSON.stringify({ message_id: messageId }) },
+  );
+}
+
+export async function rewindChatSession(agentId: string, sessionId: string, messageId: string) {
+  return fetchJSON<{ ok: boolean; removed: number; backup_session_id: string | null }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/rewind`,
+    { method: "POST", body: JSON.stringify({ message_id: messageId }) },
+  );
+}
+
+export async function summarizeChatSession(agentId: string, sessionId: string) {
+  return fetchJSON<{ ok: boolean; session_id: string; summarized: number }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/summarize`,
+    { method: "POST" },
+  );
+}
+
 // Teams-Anrufe: Agent mit Stimme im Termin (service-hosted media).
 export interface TeamsCallingSetup {
   callback_url: string;

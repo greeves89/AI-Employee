@@ -1968,6 +1968,76 @@ class ChatSessionUpdate(BaseModel):
     pinned: bool | None = None
 
 
+class ForkRequest(BaseModel):
+    message_id: str
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/fork")
+async def fork_chat_session(
+    agent_id: str,
+    session_id: str,
+    body: ForkRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ab einer Nachricht in einem neuen Gespraech weiterreden (#538).
+
+    Kopiert, verschiebt nicht — das Original bleibt vollstaendig.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import fork
+
+    result = await fork(db, agent_id, session_id, body.message_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/rewind")
+async def rewind_chat_session(
+    agent_id: str,
+    session_id: str,
+    body: ForkRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alles NACH einer Nachricht verwerfen (#538).
+
+    Der verworfene Teil wandert in ein Sicherungs-Gespraech — ein Fehlklick in einer
+    Nachrichtenliste ist zu leicht passiert, um ihn unumkehrbar zu machen.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import rewind
+
+    result = await rewind(db, agent_id, session_id, body.message_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/summarize")
+async def summarize_chat_session(
+    agent_id: str,
+    session_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein langes Gespraech als kurzen Stand in ein frisches uebernehmen (#538).
+
+    Der Verlauf bleibt, wo er ist — es wird nichts geloescht und nichts verschoben.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import summarize_to_new_session
+
+    result = await summarize_to_new_session(db, agent_id, session_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
 @router.patch("/{agent_id}/chat/sessions/{session_id}")
 async def update_chat_session(
     agent_id: str,
