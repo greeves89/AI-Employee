@@ -189,6 +189,14 @@ def validate_items(items) -> list[dict]:
             raise ValueError(f"Aufgabe {index + 1}: Auftragstext ist zu lang")
 
         item_id = str(raw.get("id") or f"i{index + 1}").strip()
+        # Die Kennung landet in Protokollen und in der Zuordnung Auftrag→Aufgabe.
+        # Zeilenumbrüche darin waeren eine Protokoll-Faelschung mit Ansage, und ein
+        # Leerzeichen macht die Zuordnung unlesbar.
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", item_id):
+            raise ValueError(
+                f"Aufgabe {index + 1}: Kennung darf nur Buchstaben, Ziffern und "
+                f"-_.: enthalten (höchstens 64 Zeichen)"
+            )
         if item_id in seen_ids:
             # Doppelte Kennungen wuerden beim Zuordnen der Antworten die falsche
             # Aufgabe treffen — und der Wert waere still falsch.

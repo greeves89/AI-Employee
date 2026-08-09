@@ -169,6 +169,20 @@ class ValidateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_items([{"prompt": "x", "expect_contains": "nicht-liste"}])
 
+    def test_id_with_newlines_is_refused(self):
+        """Die Kennung landet in Protokollen — ein Zeilenumbruch darin waere eine
+        Protokoll-Faelschung mit Ansage."""
+        for bad in ("a\nb", "mit leerzeichen", "a" * 65, "<x>"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    validate_items([{"id": bad, "prompt": "x", "expect_contains": ["x"]}])
+
+    def test_missing_id_gets_a_generated_one(self):
+        """Leer heisst „keine vergeben" und ist in Ordnung — die Kennung entsteht
+        dann aus der Position."""
+        items = validate_items([{"id": "", "prompt": "x", "expect_contains": ["x"]}])
+        self.assertEqual(items[0]["id"], "i1")
+
     def test_too_many_items_refused(self):
         with self.assertRaises(ValueError):
             validate_items([{"prompt": "x", "expect_contains": ["x"]}] * 101)
