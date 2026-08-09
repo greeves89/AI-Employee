@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_manager import PROACTIVE_PROMPT
 from app.core.load_balancer import LoadBalancer
+from app.core.log_redaction import scrub_log
 from app.core.task_router import TaskRouter
 from app.db.session import resilient_session
 from app.models.schedule import Schedule
@@ -58,7 +60,16 @@ class SchedulerService:
         self._dreaming_counter = 0
         self._reflection_counter = 0
         self._reflection_service = None
+        self._synthesis_service = None
+        self._teams_counter = 0
+        self._teams_gateway = None
+        self._channel_responder = None
+        self._teams_meetings = None
+        self._slack_gateway = None
         self._codex_refresh_counter = 0
+        # Rhythmus-Invariante wird alle 5 Minuten geprueft — beim ersten Tick sofort,
+        # damit ein frisch gestarteter Orchestrator die Zeitplaene nicht erst spaeter anlegt.
+        self._rhythm_counter = 300
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
@@ -100,6 +111,20 @@ class SchedulerService:
                     logger.warning("[Scheduler] Plan-Bloecke DB unavailable (transient): %s", e)
                 except Exception as e:
                     logger.warning("[Scheduler] Plan-Bloecke scharf stellen fehlgeschlagen: %s", e)
+                # Arbeitsrhythmus: proaktiver Agent ⇒ Abendplanung + Morgencheck.
+                # Alle 5 Minuten genuegt — die Zeitplaene aendern sich nur, wenn der
+                # Nutzer die Dienstzeit umstellt.
+                self._rhythm_counter += 30
+                if self._rhythm_counter >= 300:
+                    self._rhythm_counter = 0
+                    try:
+                        n = await self._ensure_planning_rhythm()
+                        if n:
+                            logger.info("[Scheduler] %s Rhythmus-Zeitplan/-plaene angelegt", n)
+                    except _TRANSIENT_DB_ERRORS as e:
+                        logger.warning("[Scheduler] Rhythmus DB unavailable (transient): %s", e)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Rhythmus sicherstellen fehlgeschlagen: %s", e)
                 # Stale-task watchdog: flag RUNNING tasks with no heartbeat >30min.
                 try:
                     await self._tick_stale_task_watchdog()
@@ -197,6 +222,58 @@ class SchedulerService:
                             logger.info("[Scheduler] Reflection: %s", result)
                     except Exception as e:
                         logger.warning("[Scheduler] Reflection error: %s", e)
+
+                    # Wochensynthese (#384) haengt am SELBEN Takt — ein eigener
+                    # Scheduler waere ein zweites Uhrwerk fuer dieselbe Frage.
+                    # Der Dienst prueft Wochentag und Stunde selbst und ist billig,
+                    # wenn abgeschaltet.
+                    try:
+                        if self._synthesis_service is None:
+                            from app.services.synthesis_service import WeeklySynthesisService
+                            self._synthesis_service = WeeklySynthesisService(self.redis)
+                        syn = await self._synthesis_service.tick()
+                        if syn:
+                            logger.info("[Scheduler] Wochensynthese: %s", syn)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Wochensynthese-Fehler: %s", e)
+
+                # Teams-Kanal: eingehende Nachrichten abfragen (Graph kennt kein
+                # getUpdates). Eigener, kuerzerer Takt als die Nachtschicht — eine
+                # Antwort erst nach fuenf Minuten waere kein Gespraech. Billig, wenn
+                # kein Agent Teams eingeschaltet hat.
+                self._teams_counter += 30
+                if self._teams_counter >= 30:
+                    self._teams_counter = 0
+                    try:
+                        if self._teams_gateway is None:
+                            from app.core.channel_gateway import ChannelResponder
+                            from app.services.slack_gateway import SlackGateway
+                            from app.services.teams_gateway import TeamsGateway
+                            self._teams_gateway = TeamsGateway(self.redis)
+                            self._slack_gateway = SlackGateway(self.redis)
+                            self._channel_responder = ChannelResponder(self.redis)
+
+                        # EIN Lauscher je Agent bedient alle abgefragten Kanaele.
+                        await self._channel_responder.ensure_listeners(
+                            await self._agents_with_channels()
+                        )
+                        result = await self._teams_gateway.tick()
+                        if result:
+                            logger.info("[Scheduler] Teams: %s", result)
+                        slack_result = await self._slack_gateway.tick()
+                        if slack_result:
+                            logger.info("[Scheduler] Slack: %s", slack_result)
+                        # Termine: Agent als Beisitzer an den laufenden Termin-Chat
+                        # haengen bzw. nach dem Termin das Transkript ablegen. Haengt am
+                        # selben Takt und an derselben Chat-Liste wie der Teams-Eingang.
+                        if self._teams_meetings is None:
+                            from app.services.teams_meetings import TeamsMeetingService
+                            self._teams_meetings = TeamsMeetingService(self.redis)
+                        meeting_result = await self._teams_meetings.tick()
+                        if meeting_result:
+                            logger.info("[Scheduler] Termine: %s", meeting_result)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Teams-Fehler: %s", e)
 
                 # Codex token: keep the shared ChatGPT auth fresh CENTRALLY (single
                 # thread) so agents never refresh the single-use token concurrently
@@ -366,6 +443,29 @@ class SchedulerService:
             except Exception as e:
                 logger.warning("[Scheduler] GC error: %s", e)
 
+    async def _agents_with_channels(self) -> set:
+        """Agenten mit mindestens einem abgefragten Kanal.
+
+        Eine Abfrage fuer alle Kanaele — sonst laedt jeder Kanal die Agentenliste
+        einzeln, dreissig Sekunden lang, immer wieder.
+        """
+        from app.models.agent import Agent as _Agent
+        from app.services import slack_gateway as _slack
+        from app.services import teams_gateway as _teams
+        from app.services import teams_meetings as _meetings
+        from app.services import whatsapp_gateway as _wa
+        from sqlalchemy import select as _select
+
+        async with resilient_session() as db:
+            agents = (await db.execute(
+                _select(_Agent).where(_Agent.user_id.isnot(None))
+            )).scalars().all()
+        return {
+            a.id for a in agents
+            if _teams.is_enabled(a) or _slack.is_enabled(a)
+            or _wa.is_enabled(a) or _meetings.is_enabled(a)
+        }
+
     async def _check_due_schedules(self) -> None:
         now = datetime.now(timezone.utc)
 
@@ -534,20 +634,14 @@ class SchedulerService:
         # so prompt improvements apply immediately to all agents without DB migration.
         # Per-agent additions (admin/user editable in the UI) are appended to the
         # code base — stored as data in agent.config, never duplicating the base.
+        # Rhythmus-Laeufe (Abendplanung/Morgencheck) sind KEIN Sonderweg: sie bekommen
+        # denselben Kontext-Anhang wie ein proaktiver Lauf — Erreichbarkeit, Bereiche,
+        # Einrichtungsstand, eigene Lage —, nur mit einem anderen Auftrag im Kopf.
+        from app.core import plan_rhythm
         is_proactive = schedule.name.startswith("[Proactive]")
-        if is_proactive:
-            prompt = PROACTIVE_PROMPT
+        is_rhythm = schedule.name.startswith(plan_rhythm.SCHEDULE_PREFIX)
+        if is_proactive or is_rhythm:
             proactive_config = await self._proactive_config(db, schedule.agent_id)
-            hours_note = _contact_hours_note(proactive_config)
-            if hours_note:
-                prompt = prompt + "\n\n" + hours_note
-            # WHAT this agent owns. Without it the run can only work off todos someone
-            # else filed — it plans nothing of its own and goes idle the moment the
-            # list is empty. STEP 1 derives the day plan from this block.
-            from app.core.responsibilities import responsibilities_note
-            duties_note = responsibilities_note(proactive_config)
-            if duties_note:
-                prompt = prompt + "\n\n" + duties_note
             # Ohne Auftrag kann der Lauf NICHTS zustande bringen: kein Einrichtungsstand,
             # keine Verantwortungsbereiche → keine Arbeit, aus der sich ein Tag bauen liesse.
             # Frueher lief er trotzdem, kostete Modell-Zeit und meldete brav "nichts zu tun"
@@ -568,6 +662,31 @@ class SchedulerService:
                     schedule.name, _agent.id, is_onboarded(_agent), has_duties(_agent),
                 )
                 return
+
+            if is_rhythm:
+                # Abends planen, morgens nachschaerfen — mit dem, was ueber Nacht lief.
+                night = await self._night_runs(db, schedule.agent_id, now)
+                plan_for = plan_rhythm.target_date(_agent, now)
+                prompt = (
+                    plan_rhythm.evening_prompt(_agent, plan_for, night)
+                    if schedule.name == plan_rhythm.EVENING_SCHEDULE_NAME
+                    else plan_rhythm.morning_prompt(_agent, plan_for, night)
+                )
+            else:
+                prompt = PROACTIVE_PROMPT
+            # Welche Phase gerade ist, gehoert in JEDEN Lauf: faellt der Abend-Zeitplan
+            # aus, plant der naechste proaktive Lauf im Abendfenster trotzdem.
+            prompt = prompt + "\n" + plan_rhythm.rhythm_note(_agent, now)
+            hours_note = _contact_hours_note(proactive_config)
+            if hours_note:
+                prompt = prompt + "\n\n" + hours_note
+            # WHAT this agent owns. Without it the run can only work off todos someone
+            # else filed — it plans nothing of its own and goes idle the moment the
+            # list is empty. STEP 1 derives the day plan from this block.
+            from app.core.responsibilities import responsibilities_note
+            duties_note = responsibilities_note(proactive_config)
+            if duties_note:
+                prompt = prompt + "\n\n" + duties_note
             ob_note = onboarding_note(_agent)
             if ob_note:
                 prompt = prompt + "\n" + ob_note
@@ -640,6 +759,7 @@ class SchedulerService:
         import uuid as _uuid
         from datetime import date as _date
 
+        from app.core.day_plan_store import block_prompt
         from app.models.agent_plan_item import AgentPlanItem
 
         armed = 0
@@ -696,21 +816,19 @@ class SchedulerService:
                 db.add(Schedule(
                     id=schedule_id,
                     name=f"[Plan] {item.title[:60]}",
-                    prompt=(
-                        f"Das ist ein Block aus DEINEM eigenen Tagesplan "
-                        f"({item.planned_start:%H:%M}, ca. {item.estimated_minutes} Min, "
-                        f"Priorität {item.priority}):\n\n{item.title}\n"
-                        + (f"\nPräzisierung: {item.notes}\n" if item.notes else "")
-                        + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
-                        "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
-                        "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
-                        "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
-                    ),
+                    prompt=block_prompt(item),
                     interval_seconds=0,
                     priority=0 if item.priority == "high" else 1,
                     agent_id=item.agent_id,
                     enabled=True,
-                    next_run_at=item.planned_start,
+                    # Verpasste Zeiten werden nachgeholt — aber GESTAFFELT. Fuenf
+                    # Bloecke, deren Zeit vorbei ist, wuerden sonst gleichzeitig
+                    # feuern; auf einem Pi bringt das die CLI zum Absturz (exit -6).
+                    next_run_at=max(
+                        item.planned_start,
+                        datetime.now(timezone.utc) + timedelta(minutes=3 * armed),
+                    ) if item.planned_start < datetime.now(timezone.utc)
+                    else item.planned_start,
                 ))
                 item.schedule_id = schedule_id
                 armed += 1
@@ -719,6 +837,131 @@ class SchedulerService:
                 # waren angelegt und beim naechsten Blick wieder verschwunden.
                 await db.commit()
         return armed
+
+    async def _night_runs(
+        self, db: AsyncSession, agent_id: str | None, now: datetime,
+    ) -> list[dict]:
+        """Die Laeufe seit der letzten Planung — Titel und Ausgang, mehr nicht.
+
+        Genau das, was ein Mensch morgens als Erstes anschaut: Was lief durch, was ist
+        auf die Nase gefallen? Ohne diese Liste plant der Morgencheck an der Nacht vorbei.
+        """
+        if not agent_id:
+            return []
+        try:
+            rows = (await db.execute(
+                select(Task)
+                .where(Task.agent_id == agent_id,
+                       Task.created_at >= now - timedelta(hours=14))
+                .order_by(Task.created_at.desc()).limit(25)
+            )).scalars().all()
+        except Exception:  # noqa: BLE001 — ohne die Liste plant er eben ohne sie
+            logger.debug("[Rhythmus] Nachtlaeufe nicht lesbar", exc_info=True)
+            return []
+        out: list[dict] = []
+        for row in rows:
+            state = str(getattr(row.status, "value", row.status)).lower()
+            if state in ("pending", "queued"):
+                continue          # noch nicht gelaufen — sagt ueber die Nacht nichts aus
+            out.append({"title": row.title or "", "status": state})
+        return out
+
+    async def _ensure_planning_rhythm(self) -> int:
+        """Jeder proaktive Agent plant abends und schaut morgens drueber. Invariante.
+
+        Ein Agent hatte diesen Rhythmus — er hatte ihn sich im Chat selbst eingerichtet.
+        Alle anderen planten irgendwann mitten am Tag oder gar nicht, und der Montag
+        blieb leer, weil sonntags niemand plante. Deshalb steht der Rhythmus hier und
+        nicht in einer Anleitung: Wer einen aktiven ``[Proactive]``-Zeitplan hat, bekommt
+        die zwei Rhythmus-Zeitplaene dazu — ueber dieselbe Maschinerie, kein Sonderweg.
+
+        Bestehende Rhythmus-Zeitplaene werden nur an die Uhrzeit angepasst, wenn der
+        Nutzer die Dienstzeit geaendert hat. Ausgeschaltet lassen kann er sie: ein
+        ``enabled=False`` wird respektiert und nicht wieder angeknipst.
+        """
+        from app.core import plan_rhythm
+        from app.models.agent import Agent as _Agent
+
+        created = 0
+        async with resilient_session() as db:
+            agent_ids = (await db.execute(
+                select(Schedule.agent_id).where(
+                    Schedule.name.startswith("[Proactive]"),
+                    Schedule.enabled.is_(True),
+                    Schedule.agent_id.isnot(None),
+                ).distinct()
+            )).scalars().all()
+            if not agent_ids:
+                return 0
+            existing = (await db.execute(
+                select(Schedule).where(
+                    Schedule.agent_id.in_(agent_ids),
+                    Schedule.name.startswith(plan_rhythm.SCHEDULE_PREFIX),
+                )
+            )).scalars().all()
+            by_agent: dict[tuple[str, str], Schedule] = {
+                (s.agent_id, s.name): s for s in existing
+            }
+            agents = {a.id: a for a in (await db.execute(
+                select(_Agent).where(_Agent.id.in_(agent_ids))
+            )).scalars().all()}
+            # Alt-Bestand: „Tagesplanung am Morgen" legte frueher einen EIGENEN
+            # Zeitplan an. Der Morgencheck macht dasselbe — zwei Planungslaeufe an
+            # einem Morgen sind einer zu viel, also raeumt der Abgleich ihn weg.
+            legacy = (await db.execute(
+                select(Schedule).where(
+                    Schedule.agent_id.in_(agent_ids),
+                    Schedule.name.like("%— Tagesplanung"),
+                )
+            )).scalars().all()
+            for old in legacy:
+                logger.info("[Rhythmus] Alten Planungslauf %s (%s) entfernt — der "
+                            "Morgencheck uebernimmt", old.id, old.name)
+                await db.delete(old)
+            now = datetime.now(timezone.utc)
+            for agent_id in agent_ids:
+                agent = agents.get(agent_id)
+                if agent is None:
+                    continue
+                crons = plan_rhythm.cron_expressions(agent)
+                for name, cron in (
+                    (plan_rhythm.EVENING_SCHEDULE_NAME, crons["evening"]),
+                    (plan_rhythm.MORNING_SCHEDULE_NAME, crons["morning"]),
+                ):
+                    found = by_agent.get((agent_id, name))
+                    if found is not None:
+                        if (found.cron_expression != cron
+                                or found.timezone != crons["timezone"]):
+                            found.cron_expression = cron
+                            found.timezone = crons["timezone"]
+                            found.next_run_at = _calc_next_run(found, now)
+                            logger.info("[Rhythmus] %s fuer %s auf %s (%s) gesetzt",
+                                        name, agent_id, cron, crons["timezone"])
+                        continue
+                    sched = Schedule(
+                        id=uuid.uuid4().hex[:8],
+                        name=name,
+                        # Der Text wird beim Feuern aus dem Code gebaut (siehe
+                        # _execute_schedule) — hier steht nur, was in der UI lesbar ist.
+                        prompt=(
+                            "Wird beim Ausführen aus dem Code gebaut: "
+                            "Tagesplanung am Abend bzw. Durchsicht am Morgen."
+                        ),
+                        interval_seconds=0,
+                        cron_expression=cron,
+                        timezone=crons["timezone"],
+                        priority=0,
+                        agent_id=agent_id,
+                        enabled=True,
+                        next_run_at=now,
+                    )
+                    sched.next_run_at = _calc_next_run(sched, now)
+                    db.add(sched)
+                    created += 1
+                    logger.info("[Rhythmus] %s fuer %s angelegt (%s, %s)",
+                                name, agent_id, cron, crons["timezone"])
+            await db.commit()
+        return created
 
     async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:
         """Wie viele Aufgaben dieses Agenten haengen? Nutzt die Watchdog-Definition,
@@ -1135,13 +1378,16 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
             try:
                 tz = ZoneInfo(tz_name)
             except Exception:
-                logger.warning("[Scheduler] Unknown timezone '%s' — evaluating cron in UTC", tz_name)
+                logger.warning("[Scheduler] Unknown timezone '%s' — evaluating cron in UTC", scrub_log(tz_name))
                 tz = timezone.utc
             base = now.astimezone(tz)
             cron = croniter(schedule.cron_expression, base)
             return cron.get_next(datetime).astimezone(timezone.utc)
         except Exception as e:
-            logger.warning("[Scheduler] Invalid cron expression '%s': %s — falling back to interval", schedule.cron_expression, e)
+            logger.warning(
+                "[Scheduler] Invalid cron expression '%s': %s — falling back to interval",
+                scrub_log(schedule.cron_expression), scrub_log(e),
+            )
     return now + timedelta(seconds=max(schedule.interval_seconds, 60))
 
 
@@ -1182,7 +1428,7 @@ def schedule_occurrences(schedule: "Schedule", range_start: datetime, range_end:
         except Exception as e:
             logger.warning(
                 "[Scheduler] Invalid cron expression '%s' while listing occurrences: %s",
-                schedule.cron_expression, e,
+                scrub_log(schedule.cron_expression), scrub_log(e),
             )
     elif schedule.interval_seconds and schedule.interval_seconds > 0 and schedule.next_run_at:
         step_s = schedule.interval_seconds

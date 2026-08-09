@@ -13,11 +13,7 @@ import time
 
 import httpx
 import jwt
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import settings
-from app.models.device_token import DeviceToken
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +87,7 @@ class APNsService:
             return False
 
 
-async def push_to_user(
-    db: AsyncSession,
-    user_id: str,
-    title: str,
-    body: str,
-    data: dict | None = None,
-) -> None:
-    """Send an alert to every device the user has registered. Best-effort."""
-    if not user_id or not APNsService.configured():
-        return
-    rows = await db.execute(
-        select(DeviceToken).where(DeviceToken.user_id == user_id)
-    )
-    for dt in rows.scalars().all():
-        await APNsService.send(dt.token, title, body, data=data)
+# Der Verteilpunkt an die Geraete eines Nutzers liegt jetzt in ``core.push`` und
+# faechert auf iOS UND Browser auf. Hier bleibt nur der APNs-Transport. Wer eine
+# Meldung verschicken will, ruft ``core.push.push_to_user`` — sonst erreicht sie
+# ausschliesslich iPhones, und niemand merkt es.

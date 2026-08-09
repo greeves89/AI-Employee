@@ -42,7 +42,15 @@ class InstructionFileTests(unittest.TestCase):
                     self.assertTrue(p.startswith("/workspace/"))
 
     def test_claude_code_gets_claude_md(self):
-        self.assertEqual(self.ns["instructions_paths"]("claude_code"), ["/workspace/CLAUDE.md"])
+        """CLAUDE.md ist die Datei, die Claude Code liest — sie muss zuerst kommen.
+
+        AGENT.md wird zusaetzlich geschrieben: auf dem Pi lagen bei jedem Claude-Agenten
+        uralte AGENT.md-Reste aus der Zeit, als sie fuer alle Modi geschrieben wurde. Wer
+        sie ansieht, las eine Anleitung von vor mehreren Fassungen.
+        """
+        paths = self.ns["instructions_paths"]("claude_code")
+        self.assertEqual(paths[0], "/workspace/CLAUDE.md")
+        self.assertIn("/workspace/AGENT.md", paths)
 
     def test_codex_gets_the_file_its_cli_actually_reads(self):
         """AGENTS.md (Mehrzahl) ist die Codex-Konvention — genau das fehlte."""

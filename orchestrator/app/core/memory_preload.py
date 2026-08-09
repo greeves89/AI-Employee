@@ -11,7 +11,10 @@ Nutzer taufte den Agenten „Luna" und einen Anruf spaeter hatte er keinen Namen
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent_memory import AgentMemory
+# Das Modell liegt in app/models/memory.py — ein Import aus app.models.agent_memory
+# ist seit 6e635f8 (2026-08-07) fehlgeschlagen und hat den Gedaechtnis-Preload
+# unbenutzbar gemacht. Der Fehler faellt erst beim Aufruf auf, nicht beim Start.
+from app.models.memory import AgentMemory
 
 # Kategorien, die Zugangsdaten enthalten — im Klartext, deshalb nie in einen Kontext,
 # der nach draussen geht (der Sprach-Prompt laesst sie weg, siehe as_prompt_block).

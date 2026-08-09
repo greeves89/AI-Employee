@@ -191,6 +191,27 @@ class TemplateAndDevelopmentTests(unittest.TestCase):
         self.assertIn("plan_adherence", ana)
         self.assertIn("probation", ana)
 
+    def test_both_are_reachable_in_the_ui(self):
+        """Backend ohne Oberflaeche ist fuer den Nutzer nicht vorhanden: die
+        Vorlagen-Bereiche konnte niemand eintragen, die Kennzahl niemand sehen."""
+        tpl = (REPO / "frontend/src/components/settings/template-manager.tsx").read_text()
+        self.assertIn("ResponsibilitiesEditor", tpl)
+        self.assertIn("responsibilities", tpl)
+        page = (REPO / "frontend/src/app/agents/[id]/page.tsx").read_text()
+        self.assertIn("DevelopmentCard", page)
+        card = (REPO / "frontend/src/components/agents/development-card.tsx").read_text()
+        self.assertIn("getAgentDevelopment", card)
+        self.assertIn("Plan-Treue", card)
+
+    def test_the_editor_exists_only_once(self):
+        """Agent und Vorlage teilen sich EINEN Editor — sonst laufen die Regeln
+        (Grenze, Takt, Prioritaet) auseinander."""
+        shared = (REPO / "frontend/src/components/agents/responsibilities-editor.tsx").read_text()
+        self.assertIn("MAX_RESPONSIBILITIES = 20", shared)
+        toggle = (REPO / "frontend/src/components/agents/proactive-toggle.tsx").read_text()
+        self.assertIn("ResponsibilitiesEditor", toggle)
+        self.assertNotIn("const RHYTHMS", toggle)
+
     def test_screen_rules_are_in_the_shared_instructions(self):
         mgr = (ORCH / "app/core/agent_manager.py").read_text()
         self.assertIn("computer_find_element", mgr)

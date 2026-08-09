@@ -39,6 +39,12 @@ dependencies = [
     # QR codes for the voice cockpit (show_on_screen kind='qr'). Pure Python — we use
     # the bit matrix and build the SVG ourselves, so no Pillow / image stack needed.
     "qrcode>=8.0",
+    # SAML 2.0 SSO. Die Signaturpruefung von XML-Assertions wird BEWUSST nicht selbst
+    # geschrieben: XML-DSig ist der klassische Ort fuer Signature-Wrapping (XSW), und
+    # ein Kanonisierungsfehler dort ist kein Schoenheitsfehler, sondern ein
+    # Authentifizierungs-Bypass. python3-saml setzt auf xmlsec auf (Systempaket
+    # libxmlsec1, siehe Dockerfile).
+    "python3-saml>=1.16",
 ]
 
 [build-system]

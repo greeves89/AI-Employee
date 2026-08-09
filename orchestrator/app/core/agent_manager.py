@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import get_agent_version, settings
+from app.core import autonomy_matrix
 from app.core.encryption import decrypt_token
 from app.core.log_redaction import scrub_log
 from app.dependencies import make_agent_token
@@ -122,11 +123,22 @@ Before doing anything, work out what's actually in front of you:
 Write this plan into `.agent_state.md` under "Active Work" before you start executing it —
 that way a run that gets cut short still leaves a plan the next run can pick up.
 
+Plan in REALISTIC chunks: **at least 15 minutes per block**, and rather one honest
+45-minute block than three optimistic 10-minute ones. A day packed with ten-minute
+slivers is not a plan, it is a wish — you will overrun the first one and the rest is
+worthless.
+
 **And make it VISIBLE: call `plan_day` with the blocks you just decided on.** `.agent_state.md`
 lives inside your container — nobody can see it. `plan_day` puts the same plan into the user's
 agent calendar, so they can tell what you are up to today, and move or drop a block. Call
 `get_day_plan` FIRST: it shows what you planned earlier and what the user changed. A block they
 dropped is off the table — do not work it, do not put it back.
+
+**Every block needs a `planned_start`.** Without a time nothing arms it and the block sits in
+the calendar forever without running. The platform gives you two runs for this rhythm —
+"[Rhythmus] Abendplanung" (plan TOMORROW, `plan_date` = tomorrow) and "[Rhythmus] Morgencheck"
+(re-check today against what ran overnight). If this run happens to fall in the evening window,
+plan tomorrow here too instead of waiting for a run that may not come.
 
 ## STEP 2: WORK THE PLAN, HIGHEST PRIORITY FIRST
 1. Pick the highest-priority item from your plan and DO THE WORK — don't just list or
@@ -219,6 +231,18 @@ next proactive run:
     -H "X-Agent-ID: $AGENT_ID" -H "Authorization: Bearer $AGENT_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"text": "YOUR SUMMARY HERE"}'
+  **`delivered_via: "chat"` in the answer means YOU have no Telegram bot of your own.** That
+  is a normal state, not a failure: your message was filed in this agent's chat instead and
+  IS delivered. Do not retry, do not report it as an error. Nobody borrows anybody else's
+  bot — the reader must always be able to tell who is writing.
+  **Only if it is urgent:** ask your team lead to pass it on. `list_my_team` tells you who
+  that is (the answer names them too). Send them your summary with `send_message`, ask them
+  to forward it IF it really concerns the user, and leave the decision to them.
+- **If you ARE a team lead** and a member asks you to pass something on: judge whether it
+  concerns the user. If yes, write it yourself, under your own name, naming who it came
+  from ("Von CodeReview: …"). If no, say so to the member and drop it — you are the filter,
+  not a relay. Have you no Telegram either? Then say so to the member: it stays in the chat,
+  and that is enough.
 - If truly nothing to do: respond "No proactive actions needed." (NO broadcast!)
 - Do NOT invent new tasks or create busywork. But ALWAYS work the plan from STEP 1-2 to
   completion before declaring nothing left.
@@ -284,6 +308,21 @@ Alles, was auf dem Bildschirm des Nutzers passiert, laeuft AUSSCHLIESSLICH ueber
   bevor du weitermachst oder behauptest, es sei passiert.
 - Findest du ein Element nicht, sag das — statt blind an eine Stelle zu klicken.
 
+## Telegram: nur mit EIGENEM Bot — sonst ueber deinen Team-Lead
+Telegram hast du nur, wenn in DEINEN Einstellungen ein eigener Bot-Token steht. Den Bot
+eines anderen Agenten leihst du dir NIE: der Leser sieht dort dessen Namen und weiss nicht,
+mit wem er eigentlich schreibt.
+- Bekommst du „kein eigener Telegram-Bot" zurueck, ist das KEIN Fehler. Deine Meldung ist
+  im Chat dieses Agenten abgelegt und damit zugestellt. Nicht wiederholen, nicht melden,
+  keinen anderen Weg suchen.
+- Ist die Sache DRINGEND: `list_my_team` sagt dir, wer dein Team-Lead ist. Schick ihm die
+  Meldung mit `send_message` und BITTE ihn, sie weiterzugeben. Er entscheidet.
+- Bist DU der Team-Lead und ein Mitglied bittet dich darum: pruefe, ob es den Nutzer
+  wirklich betrifft. Wenn ja, schreib es selbst, unter deinem Namen, und sag dazu, von wem
+  es kommt („Von CodeReview: …"). Wenn nein, sag dem Mitglied ab. Du bist der Filter, nicht
+  die Weiterleitung. Hast du selbst kein Telegram, sag das dem Mitglied — dann bleibt es
+  beim Chat, und das reicht.
+
 ## Zwei Dinge gleichzeitig dringend?
 Reihenfolge, wenn mehreres draengt:
 1. Was dein Ansprechpartner ausdruecklich fuer heute verlangt hat.
@@ -291,6 +330,28 @@ Reihenfolge, wenn mehreres draengt:
 3. Bei gleicher Prioritaet: was blockiert andere / hat eine Frist.
 4. Bleibt es unklar, entscheide NICHT still — nimm die kleinere Sache mit und frag zur
    groesseren nach, mit deinem Vorschlag dazu.
+
+## Dein Arbeitsrhythmus (gilt in JEDEM Kanal)
+Du planst deinen Tag am ABEND fuer den naechsten Tag und siehst am MORGEN nochmal
+drueber — mit dem, was ueber Nacht gelaufen oder gescheitert ist, und mit dem, was der
+Nutzer inzwischen im Kalender geaendert hat. Beides passiert ueber `plan_day` /
+`get_day_plan`, nicht als Notiz in einer Datei: nur was im Tagesplan steht, ist fuer
+den Nutzer sichtbar und laeuft von allein.
+- Jeder Block braucht eine **Uhrzeit** (`planned_start`) — ohne sie entsteht kein
+  Ausloeser und der Block laeuft nie.
+- Jeder Block braucht ein **Ende**: mindestens 15 Minuten (`estimated_minutes`).
+- Fuer morgen planen heisst `plan_date` auf das Datum von morgen setzen.
+- Was der Nutzer gestrichen hat, bleibt gestrichen — nicht wieder eintragen.
+Die Zeitplaene „[Rhythmus] Abendplanung" und „[Rhythmus] Morgencheck" legt die
+Plattform fuer dich an; du musst sie nicht selbst erzeugen und solltest sie nicht
+loeschen. **Lege KEINEN eigenen Morgen- oder Abendplaner an** (kein „Täglicher
+Morgen-Report zum Planen", kein „Abendplanung: Tagesplan für morgen") — du haettest
+dann zwei Laeufe fuer dieselbe Sache, und im Kalender stehen doppelte Eintraege.
+Brauchst du zusaetzlich einen INHALTLICHEN Bericht, nenn ihn auch so.
+
+**Uhrzeiten in `create_schedule` sind DEINE Ortszeit.** Lass `timezone` weg, dann
+rechnet der Server in deiner Zone. Traegst du von Hand „UTC" ein, feuert ein Zeitplan
+namens „(07:00)" im Sommer um neun — genau so ist es passiert.
 
 ## Self-diagnosis
 - To see YOUR OWN recent container logs (e.g. after a failed task/tool call), use the `read_logs` tool. A team lead can also pass a team member's agent id. Use it to find the real error (401, stack trace, missing env) and fix it.
@@ -608,6 +669,12 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
     return "\n".join(lines)
 
 
+def agent_timezone(config: dict | None) -> str:
+    """Die Zeitzone DIESES Agenten — dieselbe Reihenfolge wie ueberall sonst."""
+    from app.core.plan_rhythm import timezone_name
+    return timezone_name(config)
+
+
 def instructions_paths(mode: str | None) -> list[str]:
     """Wohin die Agenten-Anleitung geschrieben wird — EINE Quelle für alle Pfade.
 
@@ -624,7 +691,11 @@ def instructions_paths(mode: str | None) -> list[str]:
     oder fehlender Modus faellt auf `AGENT.md` zurueck statt auf gar keine Anleitung.
     """
     if mode == "claude_code":
-        return ["/workspace/CLAUDE.md"]
+        # AGENT.md kommt mit: Claude Code liest zwar nur CLAUDE.md, aber auf dem Pi lagen
+        # bei jedem Claude-Agenten uralte AGENT.md-Reste aus der Zeit, als sie fuer alle
+        # Modi geschrieben wurde. Wer sie ansieht (Nutzer, Werkzeug, spaeterer Umbau),
+        # liest sonst eine Anleitung von vor mehreren Fassungen.
+        return ["/workspace/CLAUDE.md", "/workspace/AGENT.md"]
     if mode in ("codex_cli", "codex"):
         return ["/workspace/AGENTS.md", "/workspace/AGENT.md"]
     return ["/workspace/AGENT.md"]
@@ -1111,6 +1182,10 @@ class AgentManager:
             "MAX_PARALLEL_CHATS": str(settings.max_parallel_chats),
             "MAX_PARALLEL_TASKS": str(settings.max_parallel_tasks),
             "AUTONOMY_LEVEL": autonomy_level.lower(),
+            # Der Container tickt in SEINER Zeitzone. Ohne das lief `date` im Agenten
+            # in UTC: er schrieb „07:00" in einen Zeitplan und meinte neun, und in
+            # jedem Bericht stand eine Uhrzeit, die zwei Stunden daneben lag.
+            "TZ": agent_timezone(config),
         }
 
         if mode == "custom_llm" and effective_llm:
@@ -1144,7 +1219,15 @@ class AgentManager:
             })
 
         # Create Docker container with workspace + session + shared volumes
-        agent_permissions = permissions if permissions is not None else DEFAULT_PERMISSIONS
+        # Container sudo follows the autonomy matrix — see
+        # core.autonomy_matrix.effective_permissions. An explicit list from the
+        # create modal means the user picked by hand, which pins the agent to
+        # manual mode; without one the level's matrix decides.
+        permissions_mode = "manual" if permissions is not None else "auto"
+        agent_permissions = (
+            list(permissions) if permissions is not None
+            else autonomy_matrix.effective_permissions({}, autonomy_level)
+        )
         needs_sudo = len(agent_permissions) > 0
         container = self.docker.create_container(
             image=settings.agent_image,
@@ -1222,6 +1305,7 @@ class AgentManager:
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "permissions": agent_permissions,
+                "permissions_mode": permissions_mode,
                 "agent_version": get_agent_version(),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
             },
@@ -1364,6 +1448,7 @@ class AgentManager:
             "REDIS_URL": settings.redis_url_internal,
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
             # global default; applies to both tasks and chats. Beyond it, work
@@ -1403,7 +1488,9 @@ class AgentManager:
             })
 
         # 3. Create new container with same volumes + any assigned bind mounts
-        agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
+        agent_permissions = autonomy_matrix.effective_permissions(
+            config, agent.autonomy_level or "l3"
+        )
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
@@ -1574,6 +1661,7 @@ class AgentManager:
             "REDIS_URL": settings.redis_url_internal,
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
             # global default; applies to both tasks and chats. Beyond it, work
@@ -1628,7 +1716,9 @@ class AgentManager:
             })
 
         # 3. Create new container with same volumes + any assigned bind mounts
-        agent_permissions = config.get("permissions", DEFAULT_PERMISSIONS)
+        agent_permissions = autonomy_matrix.effective_permissions(
+            config, agent.autonomy_level or "l3"
+        )
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
@@ -1928,7 +2018,12 @@ class AgentManager:
             # elf Verantwortungsbereiche hinterlegt waren.
             "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
             "integrations": config.get("integrations", []),
-            "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
+            # What the container will actually get on the next (re)create — not the
+            # stale stored list, otherwise the UI shows a grant the box no longer has.
+            "permissions": autonomy_matrix.effective_permissions(
+                config, agent.autonomy_level or "l3"
+            ),
+            "permissions_mode": config.get("permissions_mode") or "auto",
             "update_available": update_available,
             "image_outdated": image_outdated,
             "budget_usd": agent.budget_usd,

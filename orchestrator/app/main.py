@@ -84,6 +84,9 @@ class APIRateLimitMiddleware:
         self.window = window_seconds
         # In-memory fallback (only used if Redis is unreachable)
         self._fallback: dict[str, list[float]] = {}
+        # Throttle "rate limit exceeded" WARNINGs to once per key+window in the
+        # fallback path, so a client hammering the endpoint can't flood the log.
+        self._fallback_logged: dict[str, float] = {}
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -128,7 +131,12 @@ class APIRateLimitMiddleware:
                 if current > self.max_requests:
                     ttl = await redis_client.ttl(redis_key)
                     retry_after = max(ttl, 1)
-                    logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
+                    # Log once per key+window (#521): INCR is monotonic within the
+                    # window, so exactly one request hits current == max+1. Logging
+                    # only on that first over-limit request avoids the observed
+                    # flood (126 identical WARNINGs for one user in one window).
+                    if current == self.max_requests + 1:
+                        logger.warning(f"Rate limit exceeded for {key} ({current}/{self.max_requests})")
                 redis_ok = True
             except Exception:
                 pass  # Redis unavailable — fall through to in-memory
@@ -153,7 +161,11 @@ class APIRateLimitMiddleware:
         self._fallback[key] = [t for t in self._fallback[key] if now - t < self.window]
 
         if len(self._fallback[key]) >= self.max_requests:
-            logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
+            # Same log-once-per-window throttle as the Redis path (#521).
+            last_logged = self._fallback_logged.get(key, 0.0)
+            if now - last_logged >= self.window:
+                self._fallback_logged[key] = now
+                logger.warning(f"Rate limit exceeded for {key} (in-memory fallback)")
             response = Response(
                 content='{"detail":"Rate limit exceeded. Try again later."}',
                 status_code=429,
@@ -378,7 +390,7 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                 from app.models.agent import Agent
                 from app.models.chat_message import ChatMessage
                 from app.models.notification import Notification
-                from app.services.apns_service import push_to_user
+                from app.core.push import push_to_user
                 from sqlalchemy import select as sel
                 from sqlalchemy.exc import IntegrityError
 
@@ -986,6 +998,21 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt(
                 "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS schedule_id varchar"
             ))
+            # Web-Push-Anmeldungen der Browser — das Gegenstueck zu device_tokens (iOS).
+            # Der Endpunkt ist eindeutig, damit ein erneut angemeldeter Browser den
+            # bestehenden Eintrag auffrischt statt Meldungen doppelt zu bekommen.
+            await conn.execute(_txt(
+                "CREATE TABLE IF NOT EXISTS push_subscriptions ("
+                "id serial PRIMARY KEY, user_id varchar NOT NULL,"
+                "endpoint text NOT NULL UNIQUE, p256dh varchar NOT NULL,"
+                "auth varchar NOT NULL, user_agent varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt(
+                "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user "
+                "ON push_subscriptions (user_id)"
+            ))
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_wf_folders_user ON workflow_folders (user_id)"))
         logger.info("workflow tables ensured")
     except Exception as e:
@@ -1580,6 +1607,9 @@ clean Markdown; you don't need to commit.
     except Exception as e:
         logger.warning(f"Agent startup recovery failed: {e}")
 
+    # So oft wird eine unterbrochene Aufgabe hoechstens automatisch neu gestartet.
+    _MAX_RESUMES = 3
+
     # Resume long-running jobs that were checkpointing before shutdown (issue #211).
     # Jobs with a fresh heartbeat are resumable; stale ones are marked crashed and
     # the user is alerted so no long job silently dies across a container restart.
@@ -1619,6 +1649,43 @@ clean Markdown; you don't need to commit.
                 logger.info(f"[Resume] Job {job.id} original task {job.ref_id} already completed — skipping")
                 return
 
+            # Eine Fortsetzung kann selbst wieder unterbrochen werden — und ihre
+            # Fortsetzung wieder. Jeder Anlauf faengt bei null an und kostet voll:
+            # bei fuenf Neustarts hintereinander lief EIN Plan-Block fuenfmal
+            # komplett durch (rund 14 USD statt knapp 4). Nach drei Anlaeufen wird
+            # deshalb nicht mehr automatisch fortgesetzt, sondern gemeldet.
+            resume_count = int(((orig.metadata_ or {}) if orig is not None else {})
+                               .get("resume_count") or 0) + 1
+            if resume_count > _MAX_RESUMES:
+                if orig is not None and not is_terminal_task_status(orig.status):
+                    orig.status = TaskStatus.FAILED
+                    orig.error = (
+                        f"Nach {_MAX_RESUMES} Fortsetzungen nicht weiter automatisch "
+                        f"neu gestartet — jeder Anlauf beginnt von vorn."
+                    )
+                    orig.completed_at = datetime.now(timezone.utc)
+                from app.models.notification import Notification
+                db.add(Notification(
+                    agent_id=meta.get("agent_id"),
+                    type="warning",
+                    title="Aufgabe bricht immer wieder ab",
+                    message=(
+                        f"„{(meta.get('title') or job.ref_id or '')[:90]}" + "\u201c wurde "
+                        f"{_MAX_RESUMES}-mal nach einer Unterbrechung neu gestartet und "
+                        f"kommt nicht durch. Ich starte sie nicht weiter — sieh sie dir an."
+                    )[:240],
+                    priority="high",
+                    action_url=f"/tasks/{job.ref_id}" if job.ref_id else "/tasks",
+                    meta={"reason": "resume_limit", "resume_count": resume_count},
+                ))
+                await db.commit()
+                await delete_job(db, job.id)
+                logger.warning(
+                    "[Resume] Job %s nach %s Fortsetzungen gestoppt (Aufgabe %s)",
+                    job.id, resume_count - 1, job.ref_id,
+                )
+                return
+
             # Retire a non-terminal original so it can't run alongside the replacement.
             if orig is not None and not is_terminal_task_status(orig.status):
                 if orig.status == TaskStatus.QUEUED and orig.agent_id:
@@ -1635,7 +1702,8 @@ clean Markdown; you don't need to commit.
                 priority=int(meta.get("priority") or 5),
                 agent_id=meta.get("agent_id"),
                 model=meta.get("model"),
-                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id},
+                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id,
+                          "resume_count": resume_count},
             )
             await delete_job(db, job.id)
             logger.info(

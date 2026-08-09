@@ -15,6 +15,9 @@ import { TemplateManager } from "@/components/settings/template-manager";
 import { VoiceSettings } from "@/components/settings/voice-settings";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
+import { PushToggle } from "@/components/settings/push-toggle";
+import { SamlConfig } from "@/components/settings/saml-config";
+import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -260,6 +263,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [reflMode, setReflMode] = useState<"auto" | "hybrid" | "strict">("hybrid");
   const [reflBudget, setReflBudget] = useState(200000);
   const [reflSaving, setReflSaving] = useState(false);
+  // Wochensynthese (#384) — haengt am selben Takt und teilt sich Speicherweg und
+  // Statusendpunkt mit der Nachtschicht, deshalb hier und nicht als eigene Karte.
+  const [synEnabled, setSynEnabled] = useState(false);
+  const [synWeekday, setSynWeekday] = useState(0);
+  const [synHour, setSynHour] = useState(7);
   const saveReflection = async (patch: Record<string, unknown>) => {
     setReflSaving(true);
     try {
@@ -400,6 +408,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setReflHour(r.hour);
       setReflMode(r.mode);
       if (r.token_budget) setReflBudget(r.token_budget);
+      if (r.synthesis) {
+        setSynEnabled(r.synthesis.enabled);
+        setSynWeekday(r.synthesis.weekday);
+        setSynHour(r.synthesis.hour);
+      }
     }).catch(() => {});
     api.getSettings().then((s) => {
       setSettings(s);
@@ -1098,6 +1111,24 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </h2>
           </div>
 
+          {/* Browser-Meldungen — gilt pro Browser, nicht pro Konto, deshalb ohne
+              Serverspeicherung in den Einstellungen und direkt hier bedienbar. */}
+          <div className="mb-4 rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
+            <PushToggle />
+          </div>
+
+          {isAdmin && (
+            <div className="mb-4">
+              <SamlConfig />
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="mb-4">
+              <TeamsCallingConfig />
+            </div>
+          )}
+
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.04]">
               <div className="flex items-center gap-3">
@@ -1337,6 +1368,81 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     Speichern
                   </button>
                 </div>
+              </div>
+
+              {/* Wochensynthese — gleicher Takt, gleicher Speicherweg, deshalb
+                  in derselben Karte statt daneben. */}
+              <div className="border-t border-foreground/[0.06] px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">Wochensynthese</div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                      Fasst einmal pro Woche zusammen, welches Thema sich durchzieht, wo
+                      Neues einer älteren Überzeugung widerspricht und was der größte
+                      Hebel wäre. Das Ergebnis landet als Wissenseintrag.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !synEnabled;
+                      setSynEnabled(next);
+                      saveReflection({ synthesis_enabled: next ? "true" : "false" });
+                    }}
+                    disabled={reflSaving}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      synEnabled ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                      reflSaving && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    <span className={cn(
+                      "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                      synEnabled ? "translate-x-6" : "translate-x-1",
+                    )} />
+                  </button>
+                </div>
+
+                {synEnabled && (
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-sm font-medium">Wochentag</div>
+                      <select
+                        value={synWeekday}
+                        onChange={(e) => {
+                          const d = parseInt(e.target.value, 10);
+                          setSynWeekday(d);
+                          saveReflection({ synthesis_weekday: d });
+                        }}
+                        disabled={reflSaving}
+                        className="mt-2 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 disabled:opacity-40"
+                      >
+                        {["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+                          .map((label, i) => (
+                            <option key={i} value={i}>{label}</option>
+                          ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">Uhrzeit</div>
+                      <select
+                        value={synHour}
+                        onChange={(e) => {
+                          const h = parseInt(e.target.value, 10);
+                          setSynHour(h);
+                          saveReflection({ synthesis_hour: h });
+                        }}
+                        disabled={reflSaving}
+                        className="mt-2 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 disabled:opacity-40"
+                      >
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <option key={h} value={h}>
+                            {String(h).padStart(2, "0")}:00 Uhr
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </section>

@@ -315,6 +315,18 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         output_tokens=output_tokens,
                     ))
                 await db.commit()
+
+                # Titel aus dem ersten Austausch (#538). Die Liste zeigte bis hierher
+                # die rohe letzte Nachricht auf 80 Zeichen gekuerzt — bei drei
+                # Gespraechen zum selben Thema unbrauchbar. Nur bei der ERSTEN
+                # Nutzernachricht, und ein selbst vergebener Titel bleibt unangetastet.
+                if role == "user":
+                    try:
+                        from app.core.chat_history import ensure_title
+                        await ensure_title(db, msg_agent_id, session_id)
+                        await db.commit()
+                    except Exception:  # noqa: BLE001 — ein Titel ist kein Grund, den Chat zu stoeren
+                        logger.debug("[Chat] Titel nicht ableitbar", exc_info=True)
         except Exception:
             pass  # Don't break chat if DB write fails
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth, require_auth_or_agent, verify_agent_token
 from app.models.agent import Agent
@@ -221,7 +222,7 @@ async def rate_task(
                 mem_db.add(mem)
                 await mem_db.commit()
         except Exception as e:
-            logger.warning(f"Could not save feedback memory: {e}")
+            logger.warning(f"Could not save feedback memory: {scrub_log(e)}")
 
     # If task has a linked SkillTaskUsage, merge the user_rating into it
     try:
@@ -237,8 +238,8 @@ async def rate_task(
             # Auto-trigger skill improvement if user rating dropped vs agent self-rating
             if usage.agent_self_rating and body.rating < usage.agent_self_rating - 1:
                 logger.info(
-                    f"User rating {body.rating} significantly below agent self-rating "
-                    f"{usage.agent_self_rating} for skill {usage.skill_id} — will queue improvement"
+                    f"User rating {scrub_log(body.rating)} significantly below agent self-rating "
+                    f"{scrub_log(usage.agent_self_rating)} for skill {scrub_log(usage.skill_id)} — will queue improvement"
                 )
             await db.commit()
     except Exception as e:
@@ -288,9 +289,9 @@ async def rate_task(
                     priority=8 if body.rating < 4 else 3,
                 )
                 await redis.disconnect()
-                logger.info(f"Queued skill-update follow-up for skill {skill.id} after {body.rating}★ feedback")
+                logger.info(f"Queued skill-update follow-up for skill {scrub_log(skill.id)} after {scrub_log(body.rating)}★ feedback")
         except Exception as e:
-            logger.warning(f"Could not queue skill-update follow-up: {e}")
+            logger.warning(f"Could not queue skill-update follow-up: {scrub_log(e)}")
 
     return _to_response(rating)
 

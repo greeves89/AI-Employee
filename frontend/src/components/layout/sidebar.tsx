@@ -73,6 +73,7 @@ const navGroups: NavGroup[] = [
       { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
       { href: "/activity", label: "Activity", icon: Activity, simpleVisible: true },
       { href: "/analytics", label: "Analytics", icon: BarChart3, simpleVisible: true },
+      { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: true },
     ],
   },
   {

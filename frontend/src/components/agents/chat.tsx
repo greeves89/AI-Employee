@@ -6,6 +6,9 @@ import {
   Paperclip, Loader2, Gauge, Square, Mic,
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
   Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose, Brain, Check, Wrench,
+  GitBranch,
+  Undo2,
+  Sparkles as SummarizeIcon,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -13,6 +16,7 @@ import { ChatOverview } from "./chat-overview";
 import { SessionRail } from "./session-rail";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { cn, formatBytes } from "@/lib/utils";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
@@ -283,6 +287,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const chatToast = useToast();
+  const chatConfirm = useConfirm();
   // Chat management UX
   const [viewMode, setViewMode] = useState<"chat" | "overview">("chat");
   // Conversation rail (left) — starts open on desktop, collapsed on small screens.
@@ -1105,6 +1111,55 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     }
   };
 
+  // Verzweigen / Zurueckspulen / Zusammenfassen (#538). Alle drei arbeiten auf
+  // "die Nachrichten bis hierher" und liefern ein neues Gespraech, in das direkt
+  // gewechselt wird — sonst muesste man es in der Liste suchen.
+  const forkFrom = useCallback(async (messageId: string) => {
+    if (!activeSessionId) return;
+    try {
+      const res = await api.forkChatSession(agentId, activeSessionId, messageId);
+      chatToast.success("Abgezweigt", `${res.copied} Nachricht(en) übernommen.`);
+      await refreshSessions();
+      switchSession(res.session_id);
+    } catch (e) {
+      chatToast.error("Abzweigen fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    }
+  }, [agentId, activeSessionId]);
+
+  const rewindTo = useCallback(async (messageId: string) => {
+    if (!activeSessionId) return;
+    const ok = await chatConfirm({
+      title: "Bis hierher zurückspulen?",
+      message: "Alles danach wird aus diesem Gespräch entfernt. Eine Sicherung bleibt als eigenes Gespräch erhalten.",
+      variant: "destructive",
+      confirmLabel: "Zurückspulen",
+    });
+    if (!ok) return;
+    try {
+      const res = await api.rewindChatSession(agentId, activeSessionId, messageId);
+      chatToast.success(
+        `${res.removed} Nachricht(en) entfernt`,
+        res.backup_session_id ? "Die Sicherung liegt als eigenes Gespräch in der Liste." : undefined,
+      );
+      await refreshSessions();
+      window.location.reload();
+    } catch (e) {
+      chatToast.error("Zurückspulen fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    }
+  }, [agentId, activeSessionId]);
+
+  const summarizeToNew = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      const res = await api.summarizeChatSession(agentId, activeSessionId);
+      chatToast.success("Fortsetzung angelegt", `${res.summarized} Nachrichten verdichtet.`);
+      await refreshSessions();
+      switchSession(res.session_id);
+    } catch (e) {
+      chatToast.error("Nicht möglich", e instanceof Error ? e.message : undefined);
+    }
+  }, [agentId, activeSessionId]);
+
   const switchSession = (sessionId: string) => {
     if (sessionId === activeSessionId) return;
     setActiveSessionId(sessionId);
@@ -1308,8 +1363,19 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         </button>
         <div className="flex-1 min-w-0" />
 
-        {/* Right controls: overview toggle · font size · delete all · connection */}
+        {/* Right controls: summarize · overview toggle · font size · delete all · connection */}
         <div className="flex items-center gap-0.5 shrink-0 border-l border-border pl-2 ml-1">
+          {/* Fortsetzung mit kurzem Stand (#538). Ein langes Gespraech wird traege und
+              teuer; hier geht es in einem frischen weiter, ohne dass der Verlauf
+              verloren geht — er bleibt unangetastet in der Liste. */}
+          <button
+            onClick={summarizeToNew}
+            disabled={!activeSessionId || messages.length < 6}
+            className="mr-0.5 rounded-lg p-1.5 text-muted-foreground/60 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-30"
+            title="In einem frischen Gespräch weiterreden — mit dem Stand von hier"
+          >
+            <SummarizeIcon className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={() => setViewMode((m) => (m === "chat" ? "overview" : "chat"))}
             className={cn(
@@ -1397,7 +1463,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           </div>
         )}
         {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => (
-          <MessageRow key={`${msg.id}-${msg.role}`} message={msg} />
+          <MessageRow key={`${msg.id}-${msg.role}`} message={msg} onFork={forkFrom} onRewind={rewindTo} />
         ))}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-start gap-3 pl-1 py-2">
@@ -1667,7 +1733,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
 
 /* ─── Message Row ───────────────────────────────────────────────────── */
 
-function MessageRow({ message }: { message: ChatMessage }) {
+function MessageRow({
+  message,
+  onFork,
+  onRewind,
+}: {
+  message: ChatMessage;
+  onFork?: (messageId: string) => void;
+  onRewind?: (messageId: string) => void;
+}) {
   if (message.role === "system") {
     if (message.isQueued) {
       return (
@@ -1697,12 +1771,63 @@ function MessageRow({ message }: { message: ChatMessage }) {
     );
   }
 
+  const actions = (
+    <MessageActions messageId={message.id} onFork={onFork} onRewind={onRewind} />
+  );
+
   if (message.role === "user") {
-    return <UserMessage content={message.content} images={message.images} files={message.files} timestamp={message.timestamp} />;
+    return (
+      <UserMessage
+        content={message.content}
+        images={message.images}
+        files={message.files}
+        timestamp={message.timestamp}
+        actions={actions}
+      />
+    );
   }
 
   // Assistant message - render as timeline of steps
-  return <AssistantResponse message={message} />;
+  return <AssistantResponse message={message} actions={actions} />;
+}
+
+/** Aktionen an einer einzelnen Nachricht (#538).
+
+    Erscheint erst beim Darüberfahren: dauerhaft sichtbare Knöpfe an jeder Nachricht
+    machen einen langen Verlauf unruhig. Zurückspulen ist rot, weil es als einziges
+    etwas entfernt — auch wenn eine Sicherung angelegt wird. */
+function MessageActions({
+  messageId,
+  onFork,
+  onRewind,
+}: {
+  messageId?: string;
+  onFork?: (id: string) => void;
+  onRewind?: (id: string) => void;
+}) {
+  if (!messageId || (!onFork && !onRewind)) return null;
+  return (
+    <span className="ml-1 inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      {onFork && (
+        <button
+          onClick={() => onFork(messageId)}
+          title="Ab hier in einem neuen Gespräch weiterreden — dieses bleibt erhalten"
+          className="rounded p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+        >
+          <GitBranch className="h-3 w-3" />
+        </button>
+      )}
+      {onRewind && (
+        <button
+          onClick={() => onRewind(messageId)}
+          title="Bis hierher zurückspulen — alles danach wird entfernt (Sicherung bleibt)"
+          className="rounded p-1 text-muted-foreground/60 hover:bg-red-500/10 hover:text-red-400"
+        >
+          <Undo2 className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  );
 }
 
 /** Subtle message timestamp — HH:MM, full date/time in the title tooltip. */
@@ -1720,14 +1845,15 @@ function MsgTime({ ts }: { ts?: string }) {
 
 /* ─── User Message ──────────────────────────────────────────────────── */
 
-function UserMessage({ content, images, files, timestamp }: { content: string; images?: ChatImage[]; files?: ChatFile[]; timestamp?: string }) {
+function UserMessage({ content, images, files, timestamp, actions }: { content: string; images?: ChatImage[]; files?: ChatFile[]; timestamp?: string; actions?: React.ReactNode }) {
   const { user } = useAuthStore();
   return (
-    <div className="flex items-start gap-3 pl-1">
+    <div className="group flex items-start gap-3 pl-1">
       <UserAvatar name={user?.name || "Du"} className="h-6 w-6 rounded-md text-[10px] shrink-0 mt-0.5" />
       <div className="text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-muted-foreground">Du</span>
+          {actions}
           <MsgTime ts={timestamp} />
         </div>
         {images && images.length > 0 && (
@@ -1764,15 +1890,18 @@ function UserMessage({ content, images, files, timestamp }: { content: string; i
 
 /* ─── Assistant Response (Claude CLI Style) ─────────────────────────── */
 
-function AssistantResponse({ message }: { message: ChatMessage }) {
+function AssistantResponse({ message, actions }: { message: ChatMessage; actions?: React.ReactNode }) {
   const steps = message.steps || [];
   const { simpleMode } = useSimpleMode();
 
   // If no steps at all (legacy), show as simple text
   if (steps.length === 0 && message.content) {
     return (
-      <div className="pl-1 space-y-2">
-        <MsgTime ts={message.timestamp} />
+      <div className="group pl-1 space-y-2">
+        <div className="flex items-center">
+          <MsgTime ts={message.timestamp} />
+          {actions}
+        </div>
         <MarkdownContent content={message.content} />
         <PresentedImages images={message.images} />
         <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
@@ -1791,8 +1920,11 @@ function AssistantResponse({ message }: { message: ChatMessage }) {
   const noVisibleContent = visibleSteps.length === 0;
 
   return (
-    <div className="space-y-2.5 pl-1">
-      <MsgTime ts={message.timestamp} />
+    <div className="group space-y-2.5 pl-1">
+      <div className="flex items-center">
+        <MsgTime ts={message.timestamp} />
+        {actions}
+      </div>
       {simpleMode && hasRunningTools && noVisibleContent && (
         <div className="flex items-center gap-2 text-muted-foreground/60 text-xs py-1">
           <Loader2 className="h-3 w-3 animate-spin" />

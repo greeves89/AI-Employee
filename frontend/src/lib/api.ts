@@ -310,14 +310,18 @@ export async function restartSystemComponent(
   });
 }
 
-export async function getPermissionPackages(): Promise<{ packages: PermissionPackage[]; defaults: string[] }> {
+// `derived` = welche sudo-Pakete jede Autonomiestufe hergibt. Kommt vom Server,
+// damit die Regel nicht ein zweites Mal in TypeScript steht.
+export async function getPermissionPackages(): Promise<{ packages: PermissionPackage[]; defaults: string[]; derived: Record<string, string[]> }> {
   return fetchJSON(`${getBase()}/agents/permissions`);
 }
 
-export async function updateAgentPermissions(agentId: string, permissions: string[]): Promise<{ agent_id: string; permissions: string[]; warning?: string }> {
+// `mode: "auto"` gibt die Rechte an die Autonomiestufe zurueck — die Liste wird dann
+// ignoriert und der Server leitet sie aus der Matrix ab.
+export async function updateAgentPermissions(agentId: string, permissions: string[], mode: "auto" | "manual" = "manual"): Promise<{ agent_id: string; permissions: string[]; permissions_mode: "auto" | "manual"; warning?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/permissions`, {
     method: "PATCH",
-    body: JSON.stringify({ permissions }),
+    body: JSON.stringify({ permissions, mode }),
   });
 }
 
@@ -407,7 +411,13 @@ export async function getDayPlan(
 
 export async function patchDayPlanItem(
   itemId: number,
-  patch: { status?: string; planned_start?: string; estimated_minutes?: number; title?: string },
+  patch: {
+    status?: string;
+    planned_start?: string;
+    estimated_minutes?: number;
+    title?: string;
+    notes?: string;
+  },
 ): Promise<DayPlanItem> {
   return fetchJSON(`${getBase()}/day-plan/${itemId}`, {
     method: "PATCH",
@@ -1630,6 +1640,7 @@ export async function createTemplate(data: {
   permissions?: string[];
   integrations?: string[];
   knowledge_template?: string;
+  responsibilities?: Responsibility[];
 }): Promise<AgentTemplate> {
   return fetchJSON(`${getBase()}/templates`, {
     method: "POST",
@@ -1649,6 +1660,7 @@ export async function updateTemplate(
     permissions?: string[];
     integrations?: string[];
     knowledge_template?: string;
+    responsibilities?: Responsibility[];
   },
 ): Promise<AgentTemplate> {
   return fetchJSON(`${getBase()}/templates/${templateId}`, {
@@ -2644,6 +2656,31 @@ export async function getBrainGraph(): Promise<{ nodes: KnowledgeGraphNode[]; ed
   return fetchJSON(`${getBase()}/brain/graph`);
 }
 
+// ── Wochensynthese (#384) ────────────────────────────────────────────────────
+// Eine Synthese IST ein Wissenseintrag (created_by = "synthesis"); diese beiden
+// Aufrufe sind nur eine gefilterte Sicht bzw. der Anstoss — kein zweiter Speicher.
+export interface Synthesis {
+  id: number;
+  title: string;
+  content: string;
+  tags: string[];
+  created_at: string | null;
+}
+
+export async function listSyntheses(limit = 20): Promise<{ syntheses: Synthesis[] }> {
+  return fetchJSON(`${getBase()}/brain/syntheses?limit=${limit}`);
+}
+
+export async function synthesizeNow(): Promise<{
+  trigger: string;
+  users: number;
+  written: number;
+  skipped: string[];
+  errors: string[];
+}> {
+  return fetchJSON(`${getBase()}/brain/synthesize-now`, { method: "POST" });
+}
+
 // Audit Logs
 export async function getAuditLogs(params?: {
   agent_id?: string;
@@ -3135,6 +3172,160 @@ export async function getAnalyticsAgents(days = 30) {
 export async function getAnalyticsAgentDetail(agentId: string, days = 30) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return fetchJSON<any>(`${getBase()}/analytics/agents/${agentId}?days=${days}`);
+}
+
+export interface AgentDevelopment {
+  agent_id: string;
+  days: number;
+  tasks: { total: number; failed: number; failure_rate: number };
+  failure_rate_recent: number;
+  failure_rate_older: number;
+  ratings: { count: number; avg_recent: number | null; avg_older: number | null };
+  /** Anteil der Aufgaben, die noch einmal angefasst werden mussten: fortgesetzte
+   *  Laeufe (`resumed_from_task`) plus vom Menschen zurueckgegebene (Bewertung <= 2). */
+  rework: {
+    count: number;
+    rate: number;
+    rate_recent: number;
+    rate_older: number;
+    resumed: number;
+    poorly_rated: number;
+  };
+  plan_adherence: { planned: number; done: number; rate: number };
+  trend: string;
+  probation: {
+    days_active: number;
+    review_due: boolean;
+    onboarded: boolean;
+    has_responsibilities: boolean;
+  };
+}
+
+// Gespraech verzweigen, zurueckspulen, zusammenfassen (#538). Alle drei arbeiten
+// auf "die Nachrichten bis hierher" und liefern die Kennung des neuen Gespraechs.
+export async function forkChatSession(agentId: string, sessionId: string, messageId: string) {
+  return fetchJSON<{ ok: boolean; session_id: string; copied: number }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/fork`,
+    { method: "POST", body: JSON.stringify({ message_id: messageId }) },
+  );
+}
+
+export async function rewindChatSession(agentId: string, sessionId: string, messageId: string) {
+  return fetchJSON<{ ok: boolean; removed: number; backup_session_id: string | null }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/rewind`,
+    { method: "POST", body: JSON.stringify({ message_id: messageId }) },
+  );
+}
+
+export async function summarizeChatSession(agentId: string, sessionId: string) {
+  return fetchJSON<{ ok: boolean; session_id: string; summarized: number }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/summarize`,
+    { method: "POST" },
+  );
+}
+
+// Teams-Anrufe: Agent mit Stimme im Termin (service-hosted media).
+export interface TeamsCallingSetup {
+  callback_url: string;
+  https_ok: boolean;
+  app_id: string;
+  tenant_id: string;
+  has_secret: boolean;
+  configured: boolean;
+  enabled: boolean;
+  permissions: { name: string; why: string }[];
+}
+
+export async function getTeamsCallingSetup(): Promise<TeamsCallingSetup> {
+  return fetchJSON(`${getBase()}/teams/calling/setup`);
+}
+
+export async function testTeamsCalling(): Promise<{ ok: boolean; reason: string }> {
+  return fetchJSON(`${getBase()}/teams/calling/test`, { method: "POST" });
+}
+
+export async function joinTeamsMeeting(joinUrl: string, agentId: string) {
+  return fetchJSON(`${getBase()}/teams/calling/join`, {
+    method: "POST",
+    body: JSON.stringify({ join_url: joinUrl, agent_id: agentId }),
+  });
+}
+
+// Admin-Concierge (#11): setzt vorhandene Abfragen zusammen — bewusst ohne
+// Sprachmodell, ein Concierge der eine Zahl halluziniert ist schlimmer als keiner.
+export interface ConciergeOverview {
+  verdict: string;
+  agents: {
+    total: number;
+    by_state: Record<string, number>;
+    unhealthy: { id: string; name: string; state: string }[];
+  };
+  tasks_24h: { total: number; failed: number; running: number; stale: number };
+  cost_24h_usd: number;
+  pending_approvals: number;
+  actions: { id: string; label: string }[];
+}
+
+export async function getConciergeOverview(): Promise<ConciergeOverview> {
+  return fetchJSON(`${getBase()}/concierge/overview`);
+}
+
+export async function runConciergeAction(action: string, agentId?: string) {
+  return fetchJSON(`${getBase()}/concierge/action`, {
+    method: "POST",
+    body: JSON.stringify({ action, agent_id: agentId ?? null }),
+  });
+}
+
+// Was hat die Plattform dazugelernt? Setzt vorhandene Daten zusammen (Skill-Entwuerfe
+// der Nachtschicht, ueberarbeitete Skills, Erinnerungen aus der Reflexion) — die
+// Mechanik lief laengst, sichtbar war sie nirgends.
+export interface LearnedSkill {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  origin: "nachtschicht" | "agent" | "import" | "mensch";
+  version: number;
+  usage_count: number;
+  avg_rating: number | null;
+  created_at: string | null;
+}
+
+export interface SelfImprovement {
+  period_days: number;
+  summary: {
+    skills_learned: number;
+    skills_awaiting_review: number;
+    skills_improved: number;
+    improvements_kept: number;
+    improvements_reverted: number;
+    memories_from_reflection: number;
+    reflection_runs: number;
+  };
+  awaiting_review: LearnedSkill[];
+  learned: LearnedSkill[];
+  improved: LearnedSkill[];
+  runs: {
+    id: number;
+    started_at: string | null;
+    status: string;
+    facts_new: number;
+    skills_drafted: number;
+    kb_entries: number;
+  }[];
+  scoped: boolean;
+}
+
+export async function getSelfImprovement(days = 30): Promise<SelfImprovement> {
+  return fetchJSON<SelfImprovement>(`${getBase()}/analytics/self-improvement?days=${days}`);
+}
+
+/** Wird dieser Agent messbar besser? Backend: analytics.agent_development. */
+export async function getAgentDevelopment(agentId: string, days = 30): Promise<AgentDevelopment> {
+  return fetchJSON<AgentDevelopment>(
+    `${getBase()}/analytics/agents/${agentId}/development?days=${days}`,
+  );
 }
 
 export async function getSkillTrend(skillId: number, days = 60) {

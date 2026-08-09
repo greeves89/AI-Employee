@@ -119,7 +119,8 @@ async def change_parallel_sessions(
     return {"agent_id": agent_id, "parallel_sessions": n}
 
 
-async def change_autonomy_level(db: AsyncSession, user, agent_id: str, level: str) -> dict:
+async def change_autonomy_level(db: AsyncSession, user, agent_id: str, level: str,
+                                manager=None) -> dict:
     """Change an agent's autonomy level (l1–l4). Enforces ownership, fills the
     autonomy matrix + approval preset, and writes an audit log entry."""
     from app.dependencies import require_agent_access
@@ -152,9 +153,24 @@ async def change_autonomy_level(db: AsyncSession, user, agent_id: str, level: st
               "rules_applied": [r.name for r in rules]},
     ))
     await db.commit()
+
+    # The level drives the container's sudo grant too — push it into the live
+    # container, so lowering an agent to L1 takes its root rights away now and
+    # not at some later recreate.
+    from app.api.agents import _sync_container_sudo
+    permissions = await _sync_container_sudo(agent, manager) if manager else \
+        autonomy_matrix_permissions(agent)
+
     return {
         "agent_id": agent_id,
         "autonomy_level": level,
         "rules_applied": len(rules),
         "rule_names": [r.name for r in rules],
+        "permissions": permissions,
     }
+
+
+def autonomy_matrix_permissions(agent) -> list[str]:
+    """Effective sudo packages without touching Docker (no manager at hand)."""
+    from app.core import autonomy_matrix as am
+    return am.effective_permissions(agent.config or {}, agent.autonomy_level or "l3")

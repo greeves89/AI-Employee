@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_manager import AgentManager
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent_template import AgentTemplate
@@ -222,7 +223,7 @@ async def publish_template(
     template.is_published = True
     template.published_at = datetime.now(timezone.utc)
     await db.commit()
-    logger.info(f"Template {template_id} published by {user.id}")
+    logger.info(f"Template {scrub_log(template_id)} published by {scrub_log(user.id)}")
     return _template_to_dict(template)
 
 
@@ -246,7 +247,7 @@ async def unpublish_template(
     template.is_published = False
     template.published_at = None
     await db.commit()
-    logger.info(f"Template {template_id} unpublished by {user.id}")
+    logger.info(f"Template {scrub_log(template_id)} unpublished by {scrub_log(user.id)}")
     return _template_to_dict(template)
 
 
@@ -370,7 +371,7 @@ async def create_agent_from_template(
             try:
                 duties = validated_responsibilities(template_duties)
             except Exception as e:  # noqa: BLE001
-                logger.warning("Vorlage %s hat unbrauchbare Verantwortungsbereiche: %s", template.name, e)
+                logger.warning("Vorlage %s hat unbrauchbare Verantwortungsbereiche: %s", scrub_log(template.name), e)
                 duties = []
             if duties:
                 cfg = dict(agent.config or {})
@@ -381,7 +382,7 @@ async def create_agent_from_template(
                 agent.config = cfg
                 flag_modified(agent, "config")
                 await db.commit()
-                logger.info("Vorlage %s: %d Verantwortungsbereich(e) uebernommen", template.name, len(duties))
+                logger.info("Vorlage %s: %d Verantwortungsbereich(e) uebernommen", scrub_log(template.name), len(duties))
 
         # Store template origin on agent
         from app.models.agent import Agent

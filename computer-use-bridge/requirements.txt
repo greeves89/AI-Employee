@@ -15,3 +15,7 @@ pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
 # Screenshot `screencapture` als Fremdprozess, und macOS fragt jedes Mal neu
 # nach der Freigabe.
 pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
+# Windows only (UI Automation — das Gegenstueck zum AX-Baum von macOS). Ohne das
+# kann die Bridge unter Windows nur klicken, wohin jemand zeigt, aber keine
+# Elemente FINDEN; die Bedienung innerhalb einer Anwendung waere ein Blindflug.
+uiautomation>=2.0.18; sys_platform == "win32"

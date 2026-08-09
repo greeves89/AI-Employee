@@ -16,6 +16,7 @@ Supported MCP methods:
 
 import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -49,6 +50,14 @@ AGENT_TOOLS = [
                     "type": "string",
                     "description": "Short task title (optional, auto-generated if omitted).",
                 },
+                "callback_url": {
+                    "type": "string",
+                    "description": (
+                        "Optional HTTPS URL that receives a POST as soon as the task "
+                        "finishes — result, status and duration. Use this instead of "
+                        "polling get_task_status in a loop."
+                    ),
+                },
             },
             "required": ["prompt"],
         },
@@ -73,6 +82,23 @@ AGENT_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {},
+        },
+    },
+    {
+        "name": "cancel_task",
+        "description": (
+            "Cancel a queued or running task you created via send_task. Use this when "
+            "the work is no longer needed — a task left running keeps costing tokens."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "The task ID returned by send_task.",
+                },
+            },
+            "required": ["task_id"],
         },
     },
     {
@@ -364,6 +390,22 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
             return _tool_result("Error: 'prompt' is required", is_error=True)
         title = args.get("title") or prompt[:60]
         task_id = uuid.uuid4().hex[:12]
+
+        # Rueckruf statt Nachfragen: bisher blieb der Bruecke nur, get_task_status im
+        # Takt abzufragen. Bei einem Lauf ueber zwanzig Minuten sind das hunderte
+        # Anfragen fuer eine einzige Antwort. Die Adresse wird geprueft — sonst waere
+        # das ein Weg, den Orchestrator beliebige Ziele anfragen zu lassen (SSRF).
+        callback_url = (args.get("callback_url") or "").strip()
+        if callback_url:
+            from app.core.url_guard import is_allowed_callback
+
+            if not await is_allowed_callback(callback_url, db, agent.id):
+                return _tool_result(
+                    "Error: callback_url is not permitted. It must be https and its host "
+                    "must be on the outbound allowlist.",
+                    is_error=True,
+                )
+
         # Create DB record so get_task_status can find it
         task_obj = Task(
             id=task_id,
@@ -372,6 +414,7 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
             status=TaskStatus.QUEUED,
             agent_id=agent.id,
             model=None,
+            metadata_={"callback_url": callback_url} if callback_url else {},
         )
         db.add(task_obj)
         await db.commit()
@@ -382,10 +425,39 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
             "model": None,
         })
         await redis.client.lpush(f"agent:{agent.id}:tasks", payload)
+        hint = ("A POST will be sent to your callback_url when it finishes."
+                if callback_url
+                else f"Use get_task_status(task_id='{task_id}') to check progress.")
         return _tool_result(
-            f"Task created successfully.\ntask_id: {task_id}\ntitle: {title}\n\n"
-            f"Use get_task_status(task_id='{task_id}') to check progress."
+            f"Task created successfully.\ntask_id: {task_id}\ntitle: {title}\n\n{hint}"
         )
+
+    if name == "cancel_task":
+        task_id = args.get("task_id", "").strip()
+        if not task_id:
+            return _tool_result("Error: 'task_id' is required", is_error=True)
+        task = (await db.execute(
+            select(Task).where(Task.id == task_id, Task.agent_id == agent.id)
+        )).scalar_one_or_none()
+        if task is None:
+            # Bewusst dieselbe Antwort wie fuer eine fremde Aufgabe: sonst verraet der
+            # Unterschied, welche Aufgaben-IDs auf der Plattform existieren.
+            return _tool_result("Task not found.", is_error=True)
+        current = str(getattr(task.status, "value", task.status)).lower()
+        if current in ("completed", "failed", "cancelled"):
+            return _tool_result(f"Task is already {current} — nothing to cancel.")
+
+        task.status = TaskStatus.CANCELLED
+        task.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+        # Laeuft die Aufgabe bereits, muss der Agent es auch mitbekommen — der
+        # Datenbankeintrag allein stoppt keinen laufenden Prozess.
+        try:
+            await redis.client.publish(f"agent:{agent.id}:task:cancel",
+                                       json.dumps({"task_id": task_id}))
+        except Exception:  # noqa: BLE001
+            logger.warning("[MCP] Abbruch konnte nicht signalisiert werden: %s", task_id)
+        return _tool_result(f"Task {task_id} cancelled.")
 
     if name == "get_task_status":
         task_id = args.get("task_id", "").strip()

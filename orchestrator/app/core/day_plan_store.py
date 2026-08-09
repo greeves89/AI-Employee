@@ -22,8 +22,63 @@ from app.models.agent_plan_item import AgentPlanItem
 from app.models.schedule import Schedule
 
 MAX_PLAN_ITEMS = 40
+# Kein Block unter einer Viertelstunde. Agenten schaetzen sich notorisch zu kurz
+# ("10 Minuten") und stapeln dann sechs Sachen in eine Stunde, die nie hinkommt —
+# im Kalender werden daraus Striche, die man nicht lesen kann. Ohne Angabe gilt
+# ebenfalls diese Viertelstunde, damit JEDER Block ein sichtbares Ende hat.
+MIN_BLOCK_MINUTES = 15
 VALID_SOURCES = ("responsibility", "todo", "self", "user")
 VALID_PRIORITIES = ("high", "normal", "low")
+
+
+def block_prompt(row) -> str:
+    """Der Auftrag EINES Plan-Blocks — eine Fassung fuer Anlegen und Nachziehen.
+
+    Derselbe Text stand frueher zweimal im Code (hier und im Nachruest-Lauf des
+    Schedulers); eine Verbesserung an einer Stelle ging an der anderen vorbei.
+    """
+    return (
+        f"Das ist ein Block aus DEINEM eigenen Tagesplan "
+        f"({row.planned_start:%H:%M}, ca. {row.estimated_minutes} Min, "
+        f"Priorität {row.priority}):\n\n{row.title}\n"
+        + (f"\nPräzisierung: {row.notes}\n" if row.notes else "")
+        + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
+        "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
+        "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
+        "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
+    )
+
+
+async def sync_block_schedule(db: AsyncSession, row: AgentPlanItem) -> None:
+    """Den Ausloeser eines Blocks an den Block angleichen (nach dem Bearbeiten).
+
+    Verschiebt der Nutzer einen Block im Kalender, muss der Einmal-Zeitplan mit —
+    sonst feuert die Arbeit weiter zur alten Uhrzeit, waehrend der Kalender die neue
+    zeigt. Und ein gestrichener Block darf gar nicht mehr feuern.
+    """
+    if not row.schedule_id:
+        return
+    schedule = (await db.execute(
+        select(Schedule).where(Schedule.id == row.schedule_id)
+    )).scalar_one_or_none()
+    if schedule is None:
+        row.schedule_id = None
+        return
+    if row.status == "dropped":
+        schedule.enabled = False
+        return
+    if row.status in ("running", "done"):
+        return                                   # gelaufen ist gelaufen
+    if not row.planned_start:
+        # Uhrzeit entfernt: der Block wird zur Notiz, der Ausloeser faellt weg.
+        await db.execute(delete(Schedule).where(Schedule.id == schedule.id))
+        row.schedule_id = None
+        return
+    schedule.enabled = True
+    schedule.name = f"[Plan] {row.title[:60]}"
+    schedule.prompt = block_prompt(row)
+    schedule.priority = 0 if row.priority == "high" else 1
+    schedule.next_run_at = row.planned_start
 
 
 def _parse_start(raw) -> datetime | None:
@@ -74,16 +129,16 @@ async def replace_plan(
         source = str(item.get("source") or "self")
         priority = str(item.get("priority") or "normal")
         try:
-            minutes = int(item.get("estimated_minutes") or 30)
+            minutes = int(item.get("estimated_minutes") or MIN_BLOCK_MINUTES)
         except (TypeError, ValueError):
-            minutes = 30
+            minutes = MIN_BLOCK_MINUTES
         row = AgentPlanItem(
             agent_id=agent_id,
             plan_date=plan_date,
             title=title[:200],
             notes=str(item.get("notes") or "").strip()[:2000],
             planned_start=_parse_start(item.get("planned_start")),
-            estimated_minutes=min(max(minutes, 1), 1440),
+            estimated_minutes=min(max(minutes, MIN_BLOCK_MINUTES), 1440),
             source=source if source in VALID_SOURCES else "self",
             priority=priority if priority in VALID_PRIORITIES else "normal",
             todo_id=item.get("todo_id") if isinstance(item.get("todo_id"), int) else None,
@@ -103,16 +158,7 @@ async def replace_plan(
         db.add(Schedule(
             id=schedule_id,
             name=f"[Plan] {row.title[:60]}",
-            prompt=(
-                f"Das ist ein Block aus DEINEM eigenen Tagesplan "
-                f"({row.planned_start:%H:%M}, ca. {row.estimated_minutes} Min, "
-                f"Priorität {row.priority}):\n\n{row.title}\n"
-                + (f"\nPräzisierung: {row.notes}\n" if row.notes else "")
-                + "\nArbeite ihn JETZT ab — vollständig, nicht nur beschreiben. Ist er "
-                "größer als gedacht, mach den ersten sinnvollen Schritt fertig und halte "
-                "den Rest in `.agent_state.md` fest. Melde am Ende in zwei Sätzen das "
-                "Ergebnis und lege erzeugte Dateien nach /workspace/transfer/."
-            ),
+            prompt=block_prompt(row),
             interval_seconds=0,          # Einmal-Lauf: schaltet sich nach dem Feuern ab
             priority=0 if row.priority == "high" else 1,
             agent_id=agent_id,

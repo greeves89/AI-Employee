@@ -22,6 +22,12 @@ dependencies = [
     # SVG → PNG rasterization for the view_image/present_image tools (logos are
     # usually SVG, which vision APIs reject). Uses system libcairo2 (in Dockerfile).
     "cairosvg>=2.7",
+    # Browser-Steuerung fuer Codex und Custom-LLM. Claude Code bekommt sie ueber den
+    # Playwright-MCP (`claude mcp add`), den die anderen Laufzeiten NICHT lesen — ohne
+    # dieses Paket koennte nur eine von drei Laufzeiten im Browser arbeiten, und die
+    # Faehigkeit gilt bei uns erst als vorhanden, wenn sie ueberall vorhanden ist.
+    # Chromium liegt bereits im Image, es kommt also nur die Steuerung dazu.
+    "playwright>=1.49",
 ]
 
 [build-system]

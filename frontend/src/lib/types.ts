@@ -98,6 +98,8 @@ export interface Agent {
   has_responsibilities?: boolean;
   integrations: string[];
   permissions: string[];
+  /** "auto" = die sudo-Pakete folgen der Autonomiestufe (Vorgabe), "manual" = feste Liste. */
+  permissions_mode?: "auto" | "manual";
   update_available: boolean;
   image_outdated?: boolean;
   budget_usd: number | null;
@@ -283,6 +285,17 @@ export interface Settings {
   smtp_relay_verify_tls?: boolean;
   smtp_relay_user?: string;
   smtp_allowed_recipient_domains?: string;
+  // SAML 2.0 — Einrichtungsangaben (nur fuer Admins gefuellt); `saml_configured`
+  // entscheidet, ob die Anmeldeseite den Knopf zeigt.
+  saml_display_name?: string;
+  saml_idp_entity_id?: string;
+  saml_idp_sso_url?: string;
+  saml_idp_slo_url?: string;
+  saml_idp_x509_cert?: string;
+  saml_sp_entity_id?: string;
+  saml_group_attribute?: string;
+  saml_group_role_map?: string;
+  saml_configured?: boolean;
 }
 
 // Provenance of a memory entry (who/what wrote it).
@@ -342,6 +355,14 @@ export interface ReflectionStatus {
   token_budget: number;
   pending_approvals: number;
   last_run: ReflectionRun | null;
+  /** Wochensynthese (#384) — gleicher Takt und gleicher LLM-Zugang wie die
+   *  Nachtschicht, deshalb Teil DIESER Antwort statt eines zweiten Statuswegs. */
+  synthesis?: {
+    enabled: boolean;
+    weekday: number;
+    hour: number;
+    last_run: string | null;
+  };
 }
 
 // Meta payload of approvals with command === "reflection_change".
@@ -524,6 +545,8 @@ export interface AgentTemplate {
   integrations: string[];
   mcp_server_ids: number[];
   knowledge_template: string;
+  /** Dauerauftraege, die jeder Agent aus dieser Vorlage mitbekommt. */
+  responsibilities?: Responsibility[];
   is_builtin: boolean;
   is_published: boolean;
   published_at: string | null;
@@ -675,12 +698,18 @@ export interface ActivityTaskBar {
   completed_at: string | null; // null = still running
   duration_ms: number | null;
   cost_usd: number | null;
+  /** Fortsetzung eines unterbrochenen Laufs — kein zweiter Auftrag. */
+  resumed?: boolean;
 }
 
 export interface ActivityScheduleMark {
   time: string;
   schedule_id: string;
   schedule_name: string;
+  /** Lesbarer Takt: "täglich 22:00", "alle 30 Min", "einmalig". */
+  rhythm?: string;
+  /** Woher der Lauf kommt: plan | rhythm | proactive | meeting | custom. */
+  kind?: string;
 }
 
 export interface ActivityAgentTimeline {

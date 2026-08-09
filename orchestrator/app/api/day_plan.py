@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_auth, require_auth_or_agent
 from app.models.agent_plan_item import AgentPlanItem
@@ -40,7 +41,7 @@ class PlanItemIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     notes: str = ""
     planned_start: datetime | None = None
-    estimated_minutes: int = Field(default=30, ge=1, le=1440)
+    estimated_minutes: int = Field(default=30, ge=1, le=1440)   # wird auf mind. 15 angehoben
     source: str = "self"
     priority: str = "normal"   # high | normal | low — vom Bereich oder vom Todo geerbt
     todo_id: int | None = None
@@ -124,7 +125,7 @@ async def replace_day_plan(
     await db.commit()
     for row in created:
         await db.refresh(row)
-    logger.info("[DayPlan] agent=%s date=%s items=%d", agent_id, plan_date, len(created))
+    logger.info("[DayPlan] agent=%s date=%s items=%d", scrub_log(agent_id), scrub_log(plan_date), len(created))
     return {"agent_id": agent_id, "plan_date": plan_date.isoformat(),
             "items": [_to_response(r) for r in created]}
 
@@ -179,11 +180,25 @@ async def patch_plan_item(
 
     Das ist die Haelfte, die den Plan erst nuetzlich macht: du kannst eingreifen, und
     der naechste Lauf des Agenten liest den korrigierten Plan.
+
+    Was schon LAEUFT oder ERLEDIGT ist, laesst sich nicht mehr umschreiben — sonst
+    stuende im Kalender ein Titel, unter dem etwas anderes gelaufen ist. Erlaubt bleibt
+    dort nur die Statusaenderung.
     """
     row = await db.get(AgentPlanItem, item_id)
     if not row:
         raise HTTPException(status_code=404, detail="Plan item not found")
     await _assert_access(row.agent_id, user, db)
+
+    inhalt_geaendert = any(
+        v is not None for v in (body.planned_start, body.estimated_minutes,
+                                body.title, body.notes)
+    )
+    if inhalt_geaendert and row.status in ("running", "done"):
+        raise HTTPException(
+            status_code=409,
+            detail="Der Block läuft bereits oder ist erledigt — er lässt sich nicht mehr ändern.",
+        )
 
     if body.status is not None:
         if body.status not in VALID_STATUS:
@@ -195,7 +210,10 @@ async def patch_plan_item(
     if body.planned_start is not None:
         row.planned_start = body.planned_start
     if body.estimated_minutes is not None:
-        row.estimated_minutes = body.estimated_minutes
+        # Dieselbe Untergrenze wie beim Planen — sonst schreibt die Oberflaeche einen
+        # Fuenf-Minuten-Block, den der Agent so nie anlegen duerfte.
+        from app.core.day_plan_store import MIN_BLOCK_MINUTES
+        row.estimated_minutes = max(body.estimated_minutes, MIN_BLOCK_MINUTES)
     if body.title is not None:
         title = body.title.strip()
         if not title:
@@ -203,6 +221,11 @@ async def patch_plan_item(
         row.title = title[:200]
     if body.notes is not None:
         row.notes = body.notes.strip()[:2000]
+    # Der Ausloeser muss mitgehen: ein verschobener Block, dessen Zeitplan auf der
+    # alten Uhrzeit steht, laeuft zur falschen Zeit — und ein gestrichener liefe
+    # ueberhaupt noch.
+    from app.core.day_plan_store import sync_block_schedule
+    await sync_block_schedule(db, row)
     await db.commit()
     await db.refresh(row)
     return _to_response(row)
@@ -219,6 +242,11 @@ async def delete_plan_item(
     if not row:
         raise HTTPException(status_code=404, detail="Plan item not found")
     await _assert_access(row.agent_id, user, db)
+    # Ohne das bliebe der Einmal-Zeitplan zurueck und feuerte Arbeit an, zu der es
+    # keinen Block mehr gibt.
+    if row.schedule_id:
+        from app.models.schedule import Schedule
+        await db.execute(delete(Schedule).where(Schedule.id == row.schedule_id))
     await db.delete(row)
     await db.commit()
     return {"ok": True}

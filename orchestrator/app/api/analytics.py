@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.core.ownership import visible_agent_ids
 from app.db.session import get_db
 from app.dependencies import require_auth
@@ -306,6 +307,56 @@ async def get_skill_trend(
 # Agent analytics
 # ---------------------------------------------------------------------------
 
+async def rework_task_ids(db, agent_ids: list[str], since) -> dict[str, dict[str, set[str]]]:
+    """Aufgaben je Agent, die noch einmal angefasst werden mussten.
+
+    Zwei Signale, beide schon in den Daten — es wird nichts zusaetzlich erhoben:
+
+    * ``resumed`` — ``metadata.resumed_from_task``: der Lauf lief nicht in einem Zug
+      durch und wurde fortgesetzt (dieselbe Markierung wie in der Aktivitaets-Zeitachse)
+    * ``poor`` — Bewertung 1 oder 2: der Mensch hat die Arbeit zurueckgegeben
+
+    Getrennt zurueckgegeben, weil eine Aufgabe beides sein kann — die Quote nutzt die
+    Vereinigung, die Aufschluesselung die einzelnen Mengen. Eine Stelle fuer die Regel,
+    damit Agenten-Tabelle und Entwicklungs-Karte nicht auseinanderlaufen.
+    """
+    out: dict[str, dict[str, set[str]]] = {
+        aid: {"resumed": set(), "poor": set()} for aid in agent_ids
+    }
+    if not agent_ids:
+        return out
+
+    rows = (await db.execute(
+        select(Task.id, Task.agent_id, Task.metadata_)
+        .where(Task.agent_id.in_(agent_ids), Task.created_at >= since)
+    )).all()
+    for tid, aid, meta in rows:
+        if (meta or {}).get("resumed_from_task"):
+            out.setdefault(aid, {"resumed": set(), "poor": set()})["resumed"].add(tid)
+
+    try:
+        poor = (await db.execute(
+            select(TaskRating.task_id, TaskRating.agent_id).where(
+                TaskRating.agent_id.in_(agent_ids),
+                TaskRating.created_at >= since,
+                TaskRating.rating <= 2,
+            )
+        )).all()
+        for tid, aid in poor:
+            out.setdefault(aid, {"resumed": set(), "poor": set()})["poor"].add(tid)
+    except Exception:  # noqa: BLE001 — ohne Bewertungen bleiben die Fortsetzungen
+        logger.debug("Schlechte Bewertungen nicht ladbar", exc_info=True)
+
+    return out
+
+
+def rework_union(entry: dict[str, set[str]] | None) -> set[str]:
+    """Vereinigung beider Signale — ein Fall mit beidem zaehlt einmal."""
+    if not entry:
+        return set()
+    return entry["resumed"] | entry["poor"]
+
+
 @router.get("/agents")
 async def get_agents_analytics(
     days: int = Query(30, ge=1, le=365),
@@ -353,13 +404,17 @@ async def get_agents_analytics(
         .group_by(TaskRating.agent_id)
     )
     rating_by_agent = {row.agent_id: row for row in rating_agg.all()}
+    rework_by_agent = await rework_task_ids(db, agent_ids, since)
 
     result = []
     for agent in agents:
         t = task_by_agent.get(agent.id)
         r = rating_by_agent.get(agent.id)
         total = t.total if t else 0
+        rework = len(rework_union(rework_by_agent.get(agent.id)))
         result.append({
+            "rework_count": rework,
+            "rework_rate_pct": round(rework / total * 100, 1) if total else 0.0,
             "id": agent.id,
             "name": agent.name,
             "state": agent.state,
@@ -511,18 +566,20 @@ async def agent_development(
     since = now - timedelta(days=days)
     half = now - timedelta(days=days // 2)
 
-    async def _task_stats(start):
-        rows = (await db.execute(
-            select(Task.status, Task.created_at).where(
-                Task.agent_id == agent_id, Task.created_at >= start
-            )
-        )).all()
-        total = len(rows)
-        failed = sum(1 for st, _ in rows if str(getattr(st, "value", st)).lower() == "failed")
-        return total, failed
+    task_rows = (await db.execute(
+        select(Task.id, Task.status, Task.created_at, Task.metadata_).where(
+            Task.agent_id == agent_id, Task.created_at >= since
+        )
+    )).all()
 
-    total, failed = await _task_stats(since)
-    recent_total, recent_failed = await _task_stats(half)
+    def _task_stats(rows):
+        failed = sum(1 for _, st, _, _ in rows
+                     if str(getattr(st, "value", st)).lower() == "failed")
+        return len(rows), failed
+
+    recent_rows = [r for r in task_rows if r[2] and r[2] >= half]
+    total, failed = _task_stats(task_rows)
+    recent_total, recent_failed = _task_stats(recent_rows)
     older_total, older_failed = total - recent_total, failed - recent_failed
 
     def _rate(f, t):
@@ -546,7 +603,7 @@ async def agent_development(
             .where(TaskRating.agent_id == agent_id, TaskRating.created_at >= since)
         )).all()
     except Exception:  # noqa: BLE001 — ohne Bewertungen bleibt der Rest aussagekraeftig
-        logger.debug("Bewertungen fuer %s nicht ladbar", agent_id, exc_info=True)
+        logger.debug("Bewertungen fuer %s nicht ladbar", scrub_log(agent_id), exc_info=True)
 
     def _avg(items):
         vals = [float(r) for r, _ in items if r is not None]
@@ -555,13 +612,31 @@ async def agent_development(
     avg_recent = _avg([r for r in ratings if r[1] and r[1] >= half])
     avg_older = _avg([r for r in ratings if r[1] and r[1] < half])
 
+    # Nacharbeitsquote — dieselbe Regel wie in der Agenten-Tabelle, eine Funktion.
+    rework_entry = (await rework_task_ids(db, [agent_id], since)).get(agent_id)
+    rework_all = rework_union(rework_entry)
+    recent_ids = {tid for tid, _, _, _ in recent_rows}
+    rework_recent = rework_all & recent_ids
+    rework_rate = _rate(len(rework_all), total)
+    rework_rate_recent = _rate(len(rework_recent), recent_total)
+    rework_rate_older = _rate(len(rework_all) - len(rework_recent), older_total)
+    resumed_count = len(rework_entry["resumed"]) if rework_entry else 0
+    poorly_rated = len(rework_entry["poor"]) if rework_entry else 0
+
     # Ein Wort statt einer Zahlenwueste — dieselbe Lesart wie bei den Skills.
     trend = "zu wenig Daten"
     if total >= 10:
         besser = _rate(recent_failed, recent_total) < _rate(older_failed, older_total)
         if avg_recent is not None and avg_older is not None:
             besser = besser or avg_recent > avg_older
-        schlechter = _rate(recent_failed, recent_total) > _rate(older_failed, older_total) + 5
+        # Weniger Nacharbeit zaehlt genauso als Fortschritt wie weniger Fehlschlaege:
+        # ein Agent, der gleich viele Aufgaben schafft, sie aber nicht mehr zweimal
+        # anfassen muss, ist messbar besser geworden.
+        besser = besser or rework_rate_recent < rework_rate_older
+        schlechter = (
+            _rate(recent_failed, recent_total) > _rate(older_failed, older_total) + 5
+            or rework_rate_recent > rework_rate_older + 5
+        )
         trend = "besser" if besser and not schlechter else ("schlechter" if schlechter else "stabil")
 
     config = agent.config or {}
@@ -574,6 +649,14 @@ async def agent_development(
         "failure_rate_recent": _rate(recent_failed, recent_total),
         "failure_rate_older": _rate(older_failed, older_total),
         "ratings": {"count": len(ratings), "avg_recent": avg_recent, "avg_older": avg_older},
+        "rework": {
+            "count": len(rework_all),
+            "rate": rework_rate,
+            "rate_recent": rework_rate_recent,
+            "rate_older": rework_rate_older,
+            "resumed": resumed_count,
+            "poorly_rated": poorly_rated,
+        },
         "plan_adherence": {
             "planned": planned, "done": done,
             "rate": round(100.0 * done / planned, 1) if planned else 0.0,
@@ -585,4 +668,121 @@ async def agent_development(
             "onboarded": bool(config.get("onboarding_complete")),
             "has_responsibilities": bool((config.get("proactive") or {}).get("responsibilities")),
         },
+    }
+
+
+@router.get("/self-improvement")
+async def self_improvement(
+    days: int = Query(30, ge=7, le=180),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Was hat die Plattform in diesem Zeitraum dazugelernt?
+
+    Die Mechanik lief laengst — die Nachtschicht schreibt Skill-Entwuerfe, der
+    Verbesserungs-Motor ueberarbeitet schlecht bewertete Skills, aus Gespraechen
+    entstehen dauerhafte Erinnerungen. Nur sah das niemand: es gab keine Flaeche, auf
+    der steht, was der Agent gelernt hat. Dieser Endpunkt setzt ausschliesslich
+    vorhandene Daten zusammen, es wird nichts zusaetzlich erhoben.
+    """
+    from datetime import timedelta
+
+    from app.core.ownership import is_admin, visible_agent_ids
+
+    since = _days_ago(days)
+    vids = await visible_agent_ids(user, db)
+
+    # --- Skills: was ist neu entstanden, was wurde ueberarbeitet ---------------
+    from app.models.skill import Skill, SkillStatus
+
+    skills = (await db.execute(
+        select(Skill).where(Skill.created_at >= since).order_by(Skill.created_at.desc())
+    )).scalars().all()
+
+    def _origin(skill) -> str:
+        by = (skill.created_by or "").lower()
+        if by.startswith("reflection"):
+            return "nachtschicht"
+        if by.startswith("agent:"):
+            return "agent"
+        if by.startswith("import:"):
+            return "import"
+        return "mensch"
+
+    drafted = [s for s in skills if str(getattr(s.status, "value", s.status)) == "draft"]
+    learned = [s for s in skills if _origin(s) in ("nachtschicht", "agent")]
+
+    improved = (await db.execute(
+        select(Skill).where(
+            Skill.updated_at >= since,
+            Skill.current_version > 1,
+        ).order_by(Skill.updated_at.desc()).limit(50)
+    )).scalars().all()
+
+    validated = [s for s in improved
+                 if str(getattr(s.status, "value", s.status)) == "validated"]
+    rolled_back = [s for s in improved
+                   if str(getattr(s.status, "value", s.status)) == "rolled_back"]
+
+    # --- Erinnerungen, die aus der Reflexion stammen ---------------------------
+    memories = 0
+    try:
+        rows = await db.execute(sa_text(
+            "SELECT count(*) FROM agent_memories "
+            "WHERE created_at >= :since AND source = 'reflection' "
+            "AND superseded_by IS NULL"
+        ), {"since": since})
+        memories = int(rows.scalar() or 0)
+    except Exception:  # noqa: BLE001 — ohne Spalte bleibt der Rest aussagekraeftig
+        logger.debug("Reflexions-Erinnerungen nicht zaehlbar", exc_info=True)
+
+    # --- Naechtliche Laeufe ----------------------------------------------------
+    from app.models.reflection_run import ReflectionRun
+
+    runs = (await db.execute(
+        select(ReflectionRun).where(ReflectionRun.started_at >= since)
+        .order_by(ReflectionRun.started_at.desc()).limit(30)
+    )).scalars().all()
+
+    def _run_row(run):
+        stats = run.stats or {}
+        return {
+            "id": run.id,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "status": run.status,
+            "facts_new": stats.get("facts_new", 0),
+            "skills_drafted": stats.get("skills_drafted", 0),
+            "kb_entries": stats.get("kb_entries", 0),
+        }
+
+    def _skill_row(skill):
+        return {
+            "id": skill.id,
+            "name": skill.name,
+            "description": (skill.description or "")[:160],
+            "status": str(getattr(skill.status, "value", skill.status)),
+            "origin": _origin(skill),
+            "version": skill.current_version,
+            "usage_count": skill.usage_count,
+            "avg_rating": round(skill.avg_rating, 2) if skill.avg_rating else None,
+            "created_at": skill.created_at.isoformat() if skill.created_at else None,
+        }
+
+    return {
+        "period_days": days,
+        "summary": {
+            "skills_learned": len(learned),
+            "skills_awaiting_review": len(drafted),
+            "skills_improved": len(improved),
+            "improvements_kept": len(validated),
+            "improvements_reverted": len(rolled_back),
+            "memories_from_reflection": memories,
+            "reflection_runs": len(runs),
+        },
+        # Entwuerfe zuerst: das ist das, wo ein Mensch etwas tun soll.
+        "awaiting_review": [_skill_row(s) for s in drafted[:20]],
+        "learned": [_skill_row(s) for s in learned[:20]],
+        "improved": [_skill_row(s) for s in improved[:20]],
+        "runs": [_run_row(r) for r in runs],
+        "scoped": vids is not None and not is_admin(user),
     }

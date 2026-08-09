@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_manager import AgentManager
 from app.core.encryption import decrypt_token, encrypt_token
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent_secret import AgentSecret, AgentSecretAssignment, SecretType
@@ -97,7 +98,7 @@ async def _refresh_agents_for_secret(
             await manager.update_agent(agent_id)
             refreshed.append(agent_id)
         except Exception as exc:
-            logger.warning("Could not refresh agent %s after secret change: %s", agent_id, exc)
+            logger.warning("Could not refresh agent %s after secret change: %s", scrub_log(agent_id), exc)
             warnings.append(f"{agent_id}: {exc}")
 
     return {"refreshed_agent_ids": refreshed, "warnings": warnings}

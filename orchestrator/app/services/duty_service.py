@@ -30,15 +30,23 @@ UNANSWERED_AFTER = timedelta(hours=12)
 
 
 async def team_lead_for(db: AsyncSession, agent_id: str) -> str:
-    """Der Team-Lead dieses Agenten, oder "" — letzte Stufe vor der Administration."""
+    """Der Team-Lead dieses Agenten, oder "" — letzte Stufe vor der Administration.
+
+    Die Mitgliedschaft steht als Liste in ``Team.member_agent_ids``; eine
+    ``team_members``-Tabelle gibt es nicht. Der frueher hier stehende JOIN darauf
+    lief ausnahmslos in den ImportError und wurde vom ``except`` verschluckt —
+    die Team-Lead-Stufe der Vertretungskette hat damit nie ausgeloest. Gefiltert
+    wird wie ueberall sonst mit ``_teams_for_agent`` in Python, weil sich
+    JSONB-Containment je nach Treiber unterschiedlich verhaelt.
+    """
     try:
-        from app.models.team import Team, TeamMember
-        rows = (await db.execute(
-            select(Team.lead_agent_id)
-            .join(TeamMember, TeamMember.team_id == Team.id)
-            .where(TeamMember.agent_id == agent_id)
+        from app.api.mcp_agent import _teams_for_agent
+        from app.models.team import Team
+        teams = (await db.execute(
+            select(Team).where(Team.is_active.is_(True))
         )).scalars().all()
-        for lead in rows:
+        for team in _teams_for_agent(list(teams), agent_id):
+            lead = team.lead_agent_id
             if lead and lead != agent_id:
                 return lead
     except Exception:  # noqa: BLE001 — ohne Team gibt es eben keinen Lead

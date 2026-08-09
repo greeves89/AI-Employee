@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { formatCost, formatDuration } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar, DayPlanItem } from "@/lib/types";
-import { CalendarClock, X } from "lucide-react";
+import { CalendarClock, Repeat, RotateCw, X } from "lucide-react";
 
 // Tagesschluessel in LOKALER Zeit — toISOString() wuerde vor 02:00 MESZ auf den
 // Vortag zeigen und den Plan des falschen Tages laden.
@@ -38,6 +38,28 @@ const MIN_BLOCK_PX = 22;
 // schedule that fires every few minutes) — without it, adjacent short blocks
 // touch with zero seam and read as one solid wall instead of distinct runs.
 const BLOCK_GAP_PX = 3;
+// Ein geplanter Lauf hat keine Dauer, aber er soll aussehen wie ein Plan-Block und
+// nicht wie ein Strich: zwei Zeilen (Titel, Takt) brauchen diese Hoehe. Vorher war
+// das ein 16-Pixel-Band mit abgeschnittener Mini-Schrift — im selben Kalender
+// standen daneben lesbare Karten, und der Unterschied sprang sofort ins Auge.
+const MARK_CARD_PX = 34;
+// Die drei Spuren des Tages, in Prozent der Breite — an EINER Stelle, damit sie sich
+// nicht gegenseitig ueberlappen koennen. Der Plan war 26 % breit, die Aufgaben 36 %:
+// bei drei gleichzeitigen Laeufen blieben pro Aufgabe 12 % und der Titel war nach
+// zwoelf Zeichen zu Ende („[Scheduled] SAP M…").
+const PLAN_COL_PCT = 22;
+const TASK_COL_PCT = 44;
+const MARK_COL_PCT = 32;
+// Mehr als vier nebeneinander liest niemand mehr.
+const MAX_TASK_LANES = 4;
+
+/** Was im Kasten stehen soll: die Systempraefixe kosten nur Platz. */
+function cleanTitle(title: string): string {
+  return (title || "")
+    .replace(/^\[Scheduled\]\s*/, "")
+    .replace(/^\[(Proactive|Rhythmus|Plan)\]\s*/, "")
+    .trim();
+}
 
 const statusStyle: Record<string, string> = {
   running: "bg-blue-500/70 border-blue-400",
@@ -271,7 +293,7 @@ function MultiAgentStrip({
               {a.scheduled_marks.map((m, i) => (
                 <div
                   key={`${m.schedule_id}-${i}`}
-                  title={`${m.schedule_name} — ${fmtTime(m.time)}`}
+                  title={`${m.schedule_name} — ${fmtTime(m.time)}${m.rhythm ? ` (${m.rhythm})` : ""}`}
                   className="absolute top-0 h-2 w-2 -translate-x-1/2 rotate-45 border border-foreground/30 bg-background"
                   style={{ left: `${pct(new Date(m.time).getTime() - dayStart.getTime())}%` }}
                 />
@@ -294,30 +316,41 @@ function MultiAgentStrip({
 
 type LanedTask = ActivityTaskBar & { lane: number; laneCount: number };
 
-function layoutLanes(tasks: ActivityTaskBar[], now: Date): LanedTask[] {
-  const withTimes = tasks
-    .map((t) => ({
-      task: t,
-      start: new Date(t.started_at).getTime(),
-      end: (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()),
-    }))
-    .sort((a, b) => a.start - b.start);
+function layoutLanes(tasks: ActivityTaskBar[], now: Date, dayStart: Date): LanedTask[] {
+  // Spuren werden auf der GEZEICHNETEN Geometrie berechnet, nicht auf den rohen
+  // Zeiten. Eine Aufgabe, die in Sekunden durch ist, waere sonst ein Strich von
+  // null Höhe — bekaeme aber MIN_BLOCK_PX gezeichnet und ueberdeckte die naechste.
+  // Genau das war zu sehen: zwei Titel lagen uebereinander im selben Kasten.
+  const base = dayStart.getTime();
+  const withGeometry = tasks
+    .map((t) => {
+      const startMs = Math.min(Math.max(new Date(t.started_at).getTime() - base, 0), DAY_MS);
+      const endRaw = (t.completed_at ? new Date(t.completed_at).getTime() : now.getTime()) - base;
+      const endMs = Math.min(Math.max(endRaw, 0), DAY_MS);
+      const top = (startMs / DAY_MS) * 24 * HOUR_PX;
+      const height = Math.max(((endMs - startMs) / DAY_MS) * 24 * HOUR_PX, MIN_BLOCK_PX);
+      return { task: t, top, bottom: top + height + BLOCK_GAP_PX };
+    })
+    .sort((a, b) => a.top - b.top);
 
-  // Greedy interval scheduling: each task takes the first lane whose last
-  // task already ended before this one starts; otherwise open a new lane.
-  const laneEndTimes: number[] = [];
-  const placed = withTimes.map(({ task, start, end }) => {
-    let lane = laneEndTimes.findIndex((endTime) => endTime <= start);
+  // Greedy: jede Aufgabe nimmt die erste Spur, deren letzter Kasten oberhalb endet.
+  const laneBottoms: number[] = [];
+  const placed = withGeometry.map(({ task, top, bottom }) => {
+    let lane = laneBottoms.findIndex((b) => b <= top);
     if (lane === -1) {
-      lane = laneEndTimes.length;
-      laneEndTimes.push(end);
+      lane = laneBottoms.length;
+      laneBottoms.push(bottom);
     } else {
-      laneEndTimes[lane] = end;
+      laneBottoms[lane] = bottom;
     }
     return { task, lane };
   });
-  const laneCount = Math.max(1, laneEndTimes.length);
-  return placed.map(({ task, lane }) => ({ ...task, lane, laneCount }));
+  // Mehr als vier Spuren machen jeden Kasten unlesbar schmal; darueber hinaus
+  // teilen sich die Aufgaben eine Spur und liegen beim Ueberfahren vorn.
+  const laneCount = Math.min(Math.max(1, laneBottoms.length), MAX_TASK_LANES);
+  return placed.map(({ task, lane }) => ({
+    ...task, lane: Math.min(lane, laneCount - 1), laneCount,
+  }));
 }
 
 function DayAgenda({
@@ -341,6 +374,69 @@ function DayAgenda({
   useEffect(() => { loadPlan(); }, [loadPlan]);
   const undatedPlan = useMemo(() => plan.filter((p) => !p.planned_start), [plan]);
 
+  // Ein Block, der noch nicht gelaufen ist, gehoert dem Nutzer: Titel, Uhrzeit und
+  // Dauer muessen aenderbar sein, ohne dass er den Agenten darum bitten muss. Sobald
+  // er laeuft oder erledigt ist, ist er Geschichte — dann nur noch ansehen.
+  const [editing, setEditing] = useState<DayPlanItem | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editMinutes, setEditMinutes] = useState(15);
+  const [editNotes, setEditNotes] = useState("");
+  const [editError, setEditError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const openEditor = (item: DayPlanItem) => {
+    setEditing(item);
+    setEditTitle(item.title);
+    setEditNotes(item.notes || "");
+    setEditMinutes(item.estimated_minutes);
+    setEditError("");
+    if (item.planned_start) {
+      const d = new Date(item.planned_start);
+      setEditTime(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+    } else {
+      setEditTime("");
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const title = editTitle.trim();
+    if (!title) {
+      setEditError("Ohne Titel ist es kein Block.");
+      return;
+    }
+    // Die Uhrzeit ist LOKAL eingegeben — sie muss auf den Tag des Blocks gelegt und
+    // erst dann nach UTC uebersetzt werden, sonst landet der Block je nach Zeitzone
+    // auf dem Vor- oder Folgetag.
+    let planned_start: string | undefined;
+    if (editTime) {
+      const [h, m] = editTime.split(":").map((v) => parseInt(v, 10));
+      if (Number.isNaN(h) || Number.isNaN(m)) {
+        setEditError("Die Uhrzeit sieht nicht nach HH:MM aus.");
+        return;
+      }
+      const d = new Date(dayStart);
+      d.setHours(h, m, 0, 0);
+      planned_start = d.toISOString();
+    }
+    setSaving(true);
+    try {
+      await api.patchDayPlanItem(editing.id, {
+        title,
+        notes: editNotes.trim(),
+        estimated_minutes: Math.max(editMinutes || 15, 15),
+        ...(planned_start ? { planned_start } : {}),
+      });
+      setEditing(null);
+      await loadPlan();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Speichern hat nicht geklappt.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const dropBlock = async (item: DayPlanItem) => {
     // Streichen statt loeschen: der Tag bleibt nachvollziehbar, und der Agent sieht
     // beim naechsten Lauf, dass dieser Block vom Tisch ist.
@@ -352,7 +448,48 @@ function DayAgenda({
       // stiller Fehlschlag: der naechste Load holt den echten Stand
     }
   };
-  const laned = useMemo(() => layoutLanes(agent.tasks, now), [agent.tasks, now]);
+  // Ein Plan-Block laeuft ueber einen Zeitplan — der taucht sonst NOCH EINMAL als
+  // Balken und als Rautenmarke auf. Der Block links ist die Wahrheit; alles mit
+  // '[Plan]' wird hier ausgeblendet, sonst steht dieselbe Sache dreifach im Tag.
+  const ownTasks = useMemo(
+    () => agent.tasks.filter((t) => !t.title?.includes("[Plan]")),
+    [agent.tasks],
+  );
+  const ownMarks = useMemo(
+    () => agent.scheduled_marks.filter((m) => !m.schedule_name?.startsWith("[Plan]")),
+    [agent.scheduled_marks],
+  );
+  const laned = useMemo(() => layoutLanes(ownTasks, now, dayStart), [ownTasks, now, dayStart]);
+  // Mehrere Laeufe zur selben Minute lagen exakt uebereinander (morgen 3x um 04:00)
+  // und ergaben einen unlesbaren Klumpen. Wer sich zeitlich beisst, kommt nebeneinander.
+  // Ein gelaufener Zeitplan erscheint sonst ZWEIMAL: als Band (die Vorhersage) und
+  // als Balken (der echte Lauf). Wo es den Lauf gibt, ist die Vorhersage ueberfluessig —
+  // Baender bleiben nur fuer das, was noch aussteht.
+  const pendingMarks = useMemo(() => {
+    const WINDOW_MS = 12 * 60_000;
+    return ownMarks.filter((m) => {
+      const t = new Date(m.time).getTime();
+      const name = m.schedule_name.slice(0, 30);
+      return !agent.tasks.some(
+        (task) =>
+          Math.abs(new Date(task.started_at).getTime() - t) <= WINDOW_MS &&
+          (task.title?.includes(name) ?? false),
+      );
+    });
+  }, [ownMarks, agent.tasks]);
+  const markLanes = useMemo(() => {
+    const GAP_MS = 20 * 60_000;
+    const sorted = [...pendingMarks].sort((a, b) => a.time.localeCompare(b.time));
+    const laneEnds: number[] = [];
+    return sorted.map((m) => {
+      const t = new Date(m.time).getTime();
+      let lane = laneEnds.findIndex((end) => end <= t);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(t + GAP_MS); }
+      else laneEnds[lane] = t + GAP_MS;
+      return { mark: m, lane };
+    });
+  }, [pendingMarks]);
+  const markLaneCount = Math.min(Math.max(...markLanes.map((m) => m.lane + 1), 1), 3);
   const nowOffsetPx = isToday ? ((now.getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX : null;
 
   // Open the agenda scrolled to something useful instead of dumping the user
@@ -364,8 +501,8 @@ function DayAgenda({
     let targetHour = 7;
     if (isToday) {
       targetHour = now.getHours();
-    } else if (agent.tasks.length > 0) {
-      const earliest = agent.tasks.reduce(
+    } else if (ownTasks.length > 0) {
+      const earliest = ownTasks.reduce(
         (min, t) => Math.min(min, new Date(t.started_at).getHours()), 24
       );
       if (earliest < 24) targetHour = earliest;
@@ -420,28 +557,31 @@ function DayAgenda({
             return (
               <div
                 key={`plan-${item.id}`}
-                role={item.task_id ? "button" : undefined}
-                onClick={item.task_id ? () => router.push(`/tasks/${item.task_id}`) : undefined}
+                role="button"
+                onClick={
+                  item.task_id
+                    ? () => router.push(`/tasks/${item.task_id}`)
+                    : () => openEditor(item)
+                }
                 title={
                   item.task_id
                     ? `${statusLabel(item.status)}: ${item.title} — klicken für Ergebnis und Dateien`
-                    : `Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""}`
+                    : `Geplant: ${item.title}${item.notes ? ` — ${item.notes}` : ""} — klicken zum Bearbeiten`
                 }
                 className={cn(
-                  "group absolute left-0 w-[26%] overflow-hidden rounded-md border px-2 py-1",
+                  "group absolute left-0 cursor-pointer overflow-hidden rounded-md border px-2 py-1 hover:opacity-80",
                   item.status === "done" ? "border-solid" : "border-dashed",
-                  item.task_id && "cursor-pointer hover:opacity-80",
                   item.status === "running" && "animate-pulse",
                   dropped
                     ? "border-foreground/15 bg-foreground/[0.02] opacity-50"
                     : "border-sky-400/40 bg-sky-400/[0.07]",
                   item.status === "done" && "border-emerald-400/40 bg-emerald-400/[0.07]"
                 )}
-                style={{ top, height }}
+                style={{ top, height, width: `${PLAN_COL_PCT}%` }}
               >
                 <div className={cn(
                   "flex items-start gap-1 text-[11px] font-medium",
-                  dropped ? "text-muted-foreground/60 line-through" : "text-sky-200"
+                  dropped ? "text-muted-foreground/60 line-through" : "text-sky-700 dark:text-sky-200"
                 )}>
                   <CalendarClock className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
                   <span className="truncate">{item.title}</span>
@@ -449,12 +589,15 @@ function DayAgenda({
                 {height >= 30 && (
                   <div className="truncate text-[10px] text-muted-foreground/60">
                     {statusLabel(item.status)} · {item.estimated_minutes} Min
-                    {item.task_id && " · Ergebnis ansehen"}
+                    {item.task_id ? " · Ergebnis ansehen" : " · bearbeiten"}
                   </div>
                 )}
                 <button
                   type="button"
-                  onClick={() => dropBlock(item)}
+                  onClick={(e) => {
+                    e.stopPropagation();   // sonst oeffnet der Klick zusaetzlich den Editor
+                    dropBlock(item);
+                  }}
                   title={dropped ? "Wieder einplanen" : "Streichen — der Agent lässt es dann liegen"}
                   className="absolute right-1 top-1 hidden rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground group-hover:block"
                 >
@@ -464,15 +607,39 @@ function DayAgenda({
             );
           })}
 
-          {agent.scheduled_marks.map((m: ActivityScheduleMark, i) => {
+          {/* Geplante Laeufe waren 8-Pixel-Rauten am linken Rand — praktisch unsichtbar
+              und seit der Planspur auch noch verdeckt. Ein zukuenftiger Tag sah deshalb
+              leer aus, obwohl 38 Laeufe anstanden. Jetzt schmale, beschriftete Baender. */}
+          {markLanes.map(({ mark: m, lane }, i) => {
             const top = ((new Date(m.time).getTime() - dayStart.getTime()) / DAY_MS) * 24 * HOUR_PX;
+            const col = Math.min(lane, markLaneCount - 1);
+            const w = MARK_COL_PCT / markLaneCount;
+            const label = cleanTitle(m.schedule_name);
             return (
               <div
                 key={`${m.schedule_id}-${i}`}
-                title={`${m.schedule_name} — ${fmtTime(m.time)}`}
-                className="absolute left-1 h-2 w-2 -translate-y-1/2 rotate-45 border border-foreground/30 bg-background"
-                style={{ top }}
-              />
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/schedules?schedule=${m.schedule_id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/schedules?schedule=${m.schedule_id}`);
+                  }
+                }}
+                title={`${m.schedule_name} — ${fmtTime(m.time)}${m.rhythm ? ` (${m.rhythm})` : ""} — klicken zum Bearbeiten`}
+                className="group absolute cursor-pointer overflow-hidden rounded-md border border-emerald-500/40 bg-emerald-500/[0.07] px-2 py-1 hover:opacity-80 dark:border-emerald-400/40"
+                style={{ top, right: `${col * w}%`, width: `calc(${w}% - 4px)`, height: MARK_CARD_PX }}
+              >
+                <div className="flex items-start gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-200">
+                  <Repeat className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
+                  <span className="truncate">{label}</span>
+                </div>
+                <div className="truncate text-[10px] text-muted-foreground/60">
+                  {fmtTime(m.time)}
+                  {m.rhythm ? ` · ${m.rhythm}` : ""} · bearbeiten
+                </div>
+              </div>
             );
           })}
 
@@ -505,6 +672,9 @@ function DayAgenda({
                 type="button"
                 key={t.task_id}
                 onClick={() => router.push(`/tasks/${t.task_id}`)}
+                // Kurze Aufgaben sind nur einen Titel hoch — die zweite Zeile passt
+                // nicht hinein. Beim Ueberfahren steht trotzdem alles da.
+                title={`${cleanTitle(t.title)}${t.resumed ? " (fortgesetzt)" : ""}\n${timeRange} · ${t.status}${durationSuffix}${costSuffix}`}
                 className={cn(
                   "absolute overflow-hidden rounded-md border-l-2 px-2 py-1 text-left transition-opacity hover:z-10 hover:opacity-80",
                   statusAccent[t.status] || "border-l-foreground/30 bg-foreground/10",
@@ -513,15 +683,22 @@ function DayAgenda({
                 style={{
                   top,
                   height,
-                  // Die Planspur belegt die linken 26 % — die Aufgaben teilen sich den Rest.
-                  left: `calc(28% + ${t.lane * laneWidthPct * 0.72}% + 2px)`,
-                  width: `calc(${laneWidthPct * 0.72}% - 4px)`,
+                  // Drei Spuren: links der Plan (26 %), Mitte die Aufgaben, rechts die
+                  // geplanten Laeufe (34 %). Vorher lagen sie uebereinander.
+                  left: `calc(${PLAN_COL_PCT + 2}% + ${t.lane * laneWidthPct * (TASK_COL_PCT / 100)}% + 2px)`,
+                  width: `calc(${laneWidthPct * (TASK_COL_PCT / 100)}% - 4px)`,
                 }}
               >
-                <div className="truncate text-[12px] font-medium text-foreground">{t.title}</div>
+                <div className="flex items-center gap-1 truncate text-[12px] font-medium text-foreground">
+                  {/* Wurde der Lauf unterbrochen (z.B. Neustart) und fortgesetzt, steht
+                      derselbe Titel zweimal im Tag. Ohne diesen Hinweis sieht das nach
+                      doppelter Arbeit aus — es ist EIN Auftrag in zwei Abschnitten. */}
+                  {t.resumed && <RotateCw className="h-3 w-3 shrink-0 opacity-60" />}
+                  <span className="truncate">{cleanTitle(t.title)}</span>
+                </div>
                 {height >= 32 && (
                   <div className="truncate text-[10px] text-muted-foreground/70">
-                    {timeRange} · {t.status}{durationSuffix}{costSuffix}
+                    {t.resumed ? "fortgesetzt · " : ""}{timeRange} · {t.status}{durationSuffix}{costSuffix}
                   </div>
                 )}
               </button>
@@ -549,12 +726,17 @@ function DayAgenda({
           <div className="space-y-1">
             {undatedPlan.map((item) => (
               <div key={`undated-${item.id}`} className="group flex items-center gap-2 text-[11px]">
-                <span className={cn(
-                  "flex-1 truncate",
-                  item.status === "dropped" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
-                )}>
+                <button
+                  type="button"
+                  onClick={() => openEditor(item)}
+                  title="Bearbeiten — hier kannst du ihm auch eine Uhrzeit geben, damit er von allein läuft"
+                  className={cn(
+                    "flex-1 truncate text-left hover:underline",
+                    item.status === "dropped" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
+                  )}
+                >
                   {item.title}
-                </span>
+                </button>
                 <span className="shrink-0 text-[10px] text-muted-foreground/40">
                   {item.estimated_minutes} Min
                 </span>
@@ -568,6 +750,103 @@ function DayAgenda({
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bearbeiten: solange ein Block nur GEPLANT ist, gehoert er dem Nutzer. Ohne
+          das konnte er ihn nur streichen — verschieben, kuerzen oder praezisieren ging
+          nur ueber den Agenten. Die Uhrzeit ist dabei der wichtigste Teil: erst mit ihr
+          bekommt der Block einen Ausloeser und laeuft von allein. */}
+      {editing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setEditing(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-foreground/10 bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <CalendarClock className="h-4 w-4 opacity-70" />
+              Block bearbeiten
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                  Was soll er tun?
+                </label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                    Uhrzeit
+                  </label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                    Dauer (Min, mind. 15)
+                  </label>
+                  <input
+                    type="number"
+                    min={15}
+                    step={5}
+                    value={editMinutes}
+                    onChange={(e) => setEditMinutes(parseInt(e.target.value, 10) || 15)}
+                    className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                  Präzisierung (optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full resize-none rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+                />
+              </div>
+              {!editTime && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  Ohne Uhrzeit läuft der Block nicht von allein — er bleibt eine Notiz,
+                  die der Agent beim nächsten Lauf aufgreift.
+                </p>
+              )}
+              {editError && (
+                <p className="text-[11px] text-red-600 dark:text-red-400">{editError}</p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-foreground/[0.06]"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-sm text-background disabled:opacity-50"
+              >
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Speichern
+              </button>
+            </div>
           </div>
         </div>
       )}

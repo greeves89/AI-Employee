@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
@@ -205,6 +205,9 @@ export function VoiceSessionModal({
   const activityRef = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [webResults, setWebResults] = useState<WebResultSet[]>([]);
+  // Werkzeug-Spur: was hat er gerade benutzt, womit, und was kam raus. Vorher lief
+  // das unsichtbar ab und es sah aus, als haette er nichts getan.
+  const [toolLog, setToolLog] = useState<{ name: string; input?: string; output?: string; done: boolean }[]>([]);
   const [media, setMedia] = useState<{ kind: string; media_type?: string; b64?: string; filename?: string; caption?: string; path?: string; url?: string; embeddable?: boolean; auto_open?: boolean;
     // kind="plan": der Tagesplan als Karte — sehen schlaegt hoeren.
     items?: { title: string; time?: string; minutes?: number; priority?: string; status?: string; notes?: string }[] }[]>([]);
@@ -635,6 +638,11 @@ export function VoiceSessionModal({
         } else {
           suppressAudioRef.current = false;  // new user turn -> allow the response audio
           upsertTurn("user", spokenText);
+          // Der Zwischenstand hat seinen Zweck erfuellt, sobald der Zug in der Liste
+          // steht. Blieb er stehen, klebte er als kursive Blase UNTEN fest, waehrend
+          // neue Nachrichten darueber einsortiert wurden — beim Dazwischenreden sah es
+          // aus, als stuende die Reihenfolge auf dem Kopf.
+          setTranscript("");
         }
         // #474: resolve a pending approval from what the user just said, since
         // clicking is the wrong interaction in voice mode.
@@ -652,6 +660,26 @@ export function VoiceSessionModal({
         setResponse(String(data.text || ""));
         if (modeRef.current === "nova_sonic") upsertTurn("assistant", String(data.text || ""));
         break;
+      case "tool_call":
+        setToolLog((prev) => [
+          ...prev.slice(-19),
+          { name: String(data.name || ""), input: String(data.input || ""), done: false },
+        ]);
+        break;
+      case "tool_result": {
+        const name = String(data.name || "");
+        setToolLog((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].name === name && !next[i].done) {
+              next[i] = { ...next[i], output: String(data.output || ""), done: true };
+              return next;
+            }
+          }
+          return [...next.slice(-19), { name, output: String(data.output || ""), done: true }];
+        });
+        break;
+      }
       case "media":
         // Agent presented an image/file while working — show it in the Jarvis panel.
         setMedia((prev) =>
@@ -828,6 +856,13 @@ export function VoiceSessionModal({
       outCtxRef.current = ctx;
       nextPlayRef.current = 0;
     }
+    // Chrome haelt einen AudioContext ohne Nutzergeste "suspended". Die Bloecke werden
+    // dann brav eingeplant und NIE hoerbar: in der Oberflaeche steht „Spricht…", aus dem
+    // Lautsprecher kommt nichts. Deshalb bei jedem Block nachsehen — resume() auf einem
+    // laufenden Kontext kostet nichts.
+    if (outCtxRef.current.state === "suspended") {
+      void outCtxRef.current.resume().catch(() => {});
+    }
     return outCtxRef.current;
   }, []);
 
@@ -917,11 +952,23 @@ export function VoiceSessionModal({
       streamRef.current = stream;
       const ctx = new AudioContext();
       inCtxRef.current = ctx;
+      // Chrome startet einen AudioContext ohne Nutzergeste als "suspended". Dann
+      // feuert `onaudioprocess` NIE — kein Ton geht raus, kein Fehler kommt an: die
+      // Verbindung steht, der Agent begruesst, und danach passiert nichts mehr.
+      // Genau dieses Bild hatte der Nutzer.
+      if (ctx.state === "suspended") {
+        try {
+          await ctx.resume();
+        } catch {
+          /* der Wachhund unten meldet es, wenn es wirklich stumm bleibt */
+        }
+      }
       const source = ctx.createMediaStreamSource(stream);
       srcNodeRef.current = source;
       const proc = ctx.createScriptProcessor(4096, 1, 1);
       procRef.current = proc;
       let vadHigh = 0;
+      let framesSent = 0;
       proc.onaudioprocess = (e) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const input = e.inputBuffer.getChannelData(0);
@@ -940,6 +987,7 @@ export function VoiceSessionModal({
             vadHigh = 0;
           }
         }
+        framesSent++;
         const ds = downsample(input, ctx.sampleRate, 16000);
         const b64 = bufToBase64(floatTo16LE(ds));
         wsRef.current.send(JSON.stringify({ type: "audio_chunk", data: { b64 } }));
@@ -948,6 +996,23 @@ export function VoiceSessionModal({
       proc.connect(ctx.destination); // required for onaudioprocess to fire
       setLive(true);
       setState("listening");
+      // Wachhund: kommt nach zweieinhalb Sekunden kein einziger Block, liegt es nicht
+      // am leisen Sprechen — dann laeuft die Aufnahme gar nicht. Das gehoert gesagt,
+      // samt Zustand des AudioContext, sonst sucht man an der falschen Stelle.
+      window.setTimeout(() => {
+        if (framesSent === 0 && inCtxRef.current === ctx) {
+          void ctx.resume().catch(() => {});
+          window.setTimeout(() => {
+            if (framesSent === 0 && inCtxRef.current === ctx) {
+              setError(
+                `Das Mikrofon liefert keine Daten (Audio-Kontext: ${ctx.state}). ` +
+                  "Erlaube den Mikrofon-Zugriff für diese Seite und prüfe in den " +
+                  "Browser-Einstellungen, welches Gerät ausgewählt ist.",
+              );
+            }
+          }, 1500);
+        }
+      }, 2500);
     } catch (e) {
       const name = (e as Error)?.name || "";
       const msg = (e as Error)?.message || "";
@@ -1283,7 +1348,8 @@ export function VoiceSessionModal({
                       </div>
                     ))
                   )}
-                  {transcript && state === "listening" && (
+                  {transcript && state === "listening" &&
+                   turns[turns.length - 1]?.text !== transcript && (
                     <div className="text-right">
                       <div className="inline-block max-w-[92%] rounded-2xl bg-fuchsia-500/10 px-3 py-1.5 text-sm italic text-muted-foreground">
                         {transcript}…
@@ -1417,9 +1483,82 @@ export function VoiceSessionModal({
                   Aufgaben &amp; Aktivität
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                  {/* Werkzeug-Spur: sichtbar machen, dass und WOMIT er gearbeitet hat. */}
+                  {toolLog.length > 0 && (
+                    <div className="space-y-1">
+                      {toolLog.slice(-8).map((t, ti) => (
+                        <div
+                          key={ti}
+                          className="rounded-md border border-border bg-foreground/[0.02] px-2 py-1 text-[10px]"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {t.done ? (
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" />
+                            ) : (
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-500" />
+                            )}
+                            <span className="font-mono text-[10px] text-foreground/80">{t.name}</span>
+                          </div>
+                          {t.input && (
+                            <div className="mt-0.5 truncate pl-4 text-muted-foreground/60">
+                              → {t.input}
+                            </div>
+                          )}
+                          {t.output && (
+                            <div className="mt-0.5 line-clamp-2 pl-4 text-muted-foreground/80">
+                              {t.output}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {paneMedia.map((m, mi) => (
                     <div key={mi} className="rounded-lg border border-border bg-foreground/[0.03] p-2">
-                      {m.path ? (
+                      {m.kind === "plan" && m.items ? (
+                        /* Der Tagesplan als Karte. Ohne eigene Darstellung landete er in
+                           der Datei-Zeile und der Nutzer sah nur „Datei" — kein Kalender. */
+                        <div>
+                          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+                            <CalendarClock className="h-3.5 w-3.5 text-sky-400" />
+                            {m.caption || "Tagesplan"}
+                          </div>
+                          <div className="space-y-1">
+                            {m.items.map((it, ii) => (
+                              <div
+                                key={ii}
+                                className={`flex items-start gap-2 rounded-md border-l-2 px-2 py-1 text-[11px] ${
+                                  it.status === "done"
+                                    ? "border-l-emerald-500/60 bg-emerald-500/[0.10] text-muted-foreground dark:border-l-emerald-400/60 dark:bg-emerald-400/[0.06]"
+                                    : it.status === "running"
+                                    ? "border-l-sky-500 bg-sky-500/[0.10] text-foreground dark:border-l-sky-400 dark:bg-sky-400/[0.08]"
+                                    : it.status === "dropped"
+                                    ? "border-l-foreground/20 bg-foreground/[0.02] text-muted-foreground/50 line-through"
+                                    : "border-l-sky-500/40 bg-sky-500/[0.06] text-foreground/90 dark:border-l-sky-400/40 dark:bg-sky-400/[0.04]"
+                                }`}
+                              >
+                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                                  {it.time || "--:--"}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate">{it.title}</span>
+                                  <span className="text-[10px] text-muted-foreground/50">
+                                    {it.status === "done"
+                                      ? "erledigt"
+                                      : it.status === "running"
+                                      ? "läuft"
+                                      : it.status === "dropped"
+                                      ? "gestrichen"
+                                      : "geplant"}
+                                    {it.minutes ? ` · ${it.minutes} Min` : ""}
+                                    {it.priority === "high" ? " · hohe Priorität" : ""}
+                                  </span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : m.path ? (
                         <button
                           onClick={async () => {
                             try {
@@ -1455,7 +1594,8 @@ export function VoiceSessionModal({
                           <span className="truncate">{m.filename || "Datei"}</span>
                         </div>
                       )}
-                      {m.caption && (
+                      {/* Beim Tagesplan steht die Ueberschrift schon oben in der Karte. */}
+                      {m.caption && m.kind !== "plan" && (
                         <div className="mt-1 text-[11px] text-muted-foreground/70">{m.caption}</div>
                       )}
                     </div>

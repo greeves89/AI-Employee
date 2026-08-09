@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
+from app.core import autonomy_matrix
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
 from app.core.log_redaction import scrub_log
@@ -69,7 +70,12 @@ async def _check_owner(agent_id: str, user, db: AsyncSession) -> None:
 
 @router.get("/permissions")
 async def get_permission_packages(user=Depends(require_auth)):
-    """List available permission packages for agent creation."""
+    """List available permission packages for agent creation.
+
+    ``derived`` carries the sudo set each autonomy level implies, so the create
+    modal can show what "automatisch" will grant without re-implementing the
+    rule in TypeScript — it lives once, in core.autonomy_matrix.
+    """
     from app.core.agent_manager import PERMISSION_PACKAGES, DEFAULT_PERMISSIONS
     packages = [
         {
@@ -81,7 +87,11 @@ async def get_permission_packages(user=Depends(require_auth)):
         }
         for pkg_id, pkg in PERMISSION_PACKAGES.items()
     ]
-    return {"packages": packages, "defaults": DEFAULT_PERMISSIONS}
+    derived = {
+        lvl: autonomy_matrix.derive_permissions(autonomy_matrix.matrix_for_level(lvl))
+        for lvl in ("l1", "l2", "l3", "l4")
+    }
+    return {"packages": packages, "defaults": DEFAULT_PERMISSIONS, "derived": derived}
 
 
 @router.get("/models")
@@ -538,10 +548,16 @@ async def list_agents(
         agent_responses = []
         for agent in agents:
             config = agent.config or {}
+            # Derived from the autonomy matrix, same as the full response — the lite
+            # list must not report a different sudo grant than the detail view.
+            eff_permissions = autonomy_matrix.effective_permissions(
+                config, agent.autonomy_level or "l3"
+            )
             safe_config = {
                 "role": config.get("role", ""),
                 "integrations": config.get("integrations", []),
-                "permissions": config.get("permissions", DEFAULT_PERMISSIONS),
+                "permissions": eff_permissions,
+                "permissions_mode": config.get("permissions_mode") or "auto",
                 "proactive": config.get("proactive"),
             }
             agent_responses.append(AgentResponse(
@@ -556,7 +572,7 @@ async def list_agents(
                 onboarding_complete=config.get("onboarding_complete", False),
                 has_responsibilities=bool((config.get("proactive") or {}).get("responsibilities")),
                 integrations=config.get("integrations", []),
-                permissions=config.get("permissions", DEFAULT_PERMISSIONS),
+                permissions=eff_permissions,
                 update_available=config.get("agent_version") != current_agent_version,
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
@@ -749,9 +765,10 @@ async def set_autonomy_level(
     data: AutonomyLevelUpdate,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     from app.services.agent_settings import change_autonomy_level
-    return await change_autonomy_level(db, user, agent_id, data.level)
+    return await change_autonomy_level(db, user, agent_id, data.level, manager)
 
 
 class ParallelSessionsUpdate(BaseModel):
@@ -806,6 +823,7 @@ async def update_autonomy_matrix(
     body: AutonomyMatrixUpdate,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
 ):
     """Set a custom 3-state matrix (fine-tuning after a preset). Level → 'custom'
     when the matrix no longer matches its L1–L4 preset."""
@@ -825,11 +843,37 @@ async def update_autonomy_matrix(
     elif agent.autonomy_level in ("l1", "l2", "l3", "l4"):
         agent.autonomy_level = "custom"
     await db.commit()
+    # The matrix now decides the container's sudo grant. Applying it only on the
+    # next recreate would leave a running L1 agent with the root rights of its
+    # old level — so push the sudoers file into the live container right away.
+    permissions = await _sync_container_sudo(agent, manager)
     return {
         "agent_id": agent_id,
         "autonomy_level": agent.autonomy_level,
         "matrix": matrix,
+        "permissions": permissions,
     }
+
+
+async def _sync_container_sudo(agent: Agent, manager: AgentManager) -> list[str]:
+    """Write the matrix-derived sudoers file into the running container.
+
+    Returns the effective package list either way — a stopped or vanished
+    container is not an error here, it picks the grant up when it next starts.
+    """
+    permissions = autonomy_matrix.effective_permissions(
+        agent.config or {}, agent.autonomy_level or "l3"
+    )
+    if agent.container_id:
+        try:
+            await asyncio.to_thread(
+                manager._apply_permissions, agent.container_id, permissions
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not sync sudo for agent %s: %s", scrub_log(agent.id), scrub_log(str(e))
+            )
+    return permissions
 
 
 @router.post("/{agent_id}/stop")
@@ -1924,6 +1968,76 @@ class ChatSessionUpdate(BaseModel):
     pinned: bool | None = None
 
 
+class ForkRequest(BaseModel):
+    message_id: str
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/fork")
+async def fork_chat_session(
+    agent_id: str,
+    session_id: str,
+    body: ForkRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ab einer Nachricht in einem neuen Gespraech weiterreden (#538).
+
+    Kopiert, verschiebt nicht — das Original bleibt vollstaendig.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import fork
+
+    result = await fork(db, agent_id, session_id, body.message_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/rewind")
+async def rewind_chat_session(
+    agent_id: str,
+    session_id: str,
+    body: ForkRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alles NACH einer Nachricht verwerfen (#538).
+
+    Der verworfene Teil wandert in ein Sicherungs-Gespraech — ein Fehlklick in einer
+    Nachrichtenliste ist zu leicht passiert, um ihn unumkehrbar zu machen.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import rewind
+
+    result = await rewind(db, agent_id, session_id, body.message_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/summarize")
+async def summarize_chat_session(
+    agent_id: str,
+    session_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein langes Gespraech als kurzen Stand in ein frisches uebernehmen (#538).
+
+    Der Verlauf bleibt, wo er ist — es wird nichts geloescht und nichts verschoben.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import summarize_to_new_session
+
+    result = await summarize_to_new_session(db, agent_id, session_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
 @router.patch("/{agent_id}/chat/sessions/{session_id}")
 async def update_chat_session(
     agent_id: str,
@@ -1959,6 +2073,8 @@ async def update_chat_session(
 
 class PermissionsUpdate(BaseModel):
     permissions: list[str]
+    # "manual" (Vorgabe) = die Liste gilt; "auto" = die Autonomiestufe entscheidet.
+    mode: str | None = None
 
 
 @router.patch("/{agent_id}/permissions")
@@ -1969,10 +2085,19 @@ async def update_agent_permissions(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Update the sudo permission packages for a running agent."""
+    """Update the sudo permission packages for a running agent.
+
+    Setting a list by hand pins the agent to ``permissions_mode="manual"``, so the
+    next recreate does not quietly overwrite the choice with the matrix-derived
+    set. ``mode="auto"`` hands control back to the autonomy level.
+    """
     await _check_owner(agent_id, user, db)
-    from app.core.agent_manager import PERMISSION_PACKAGES, generate_sudoers
+    from app.core.agent_manager import PERMISSION_PACKAGES
     from sqlalchemy.orm.attributes import flag_modified
+
+    mode = (body.mode or "manual").lower()
+    if mode not in ("auto", "manual"):
+        raise HTTPException(status_code=400, detail="mode must be 'auto' or 'manual'")
 
     # Validate package names
     for perm in body.permissions:
@@ -1982,23 +2107,29 @@ async def update_agent_permissions(
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        config["permissions"] = body.permissions
+        config["permissions_mode"] = mode
+        if mode == "manual":
+            config["permissions"] = body.permissions
         agent.config = config
         flag_modified(agent, "config")
         await db.commit()
 
+        # In auto mode the matrix decides — never the list that came in.
+        effective = autonomy_matrix.effective_permissions(config, agent.autonomy_level or "l3")
+
         # Apply to running container
         if agent.container_id:
             try:
-                manager._apply_permissions(agent.container_id, body.permissions)
+                await asyncio.to_thread(manager._apply_permissions, agent.container_id, effective)
             except Exception as e:
                 return {
                     "agent_id": agent_id,
-                    "permissions": body.permissions,
+                    "permissions": effective,
+                    "permissions_mode": mode,
                     "warning": f"Saved but could not apply to container: {e}. Restart agent to apply.",
                 }
 
-        return {"agent_id": agent_id, "permissions": body.permissions}
+        return {"agent_id": agent_id, "permissions": effective, "permissions_mode": mode}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -2521,10 +2652,10 @@ async def update_proactive_config(
             )
             db.add(schedule)
 
-        # Morgendlicher Planungslauf — ein ZWEITER Zeitplan mit fester Uhrzeit neben
-        # dem Intervall-Takt. Er heisst ebenfalls "[Proactive] …", damit der Scheduler
-        # ihn wie jeden proaktiven Lauf behandelt (Basis-Prompt aus dem Code, inklusive
-        # Verantwortungsbereichen und Tagesplan) — kein Sonderweg, nur ein anderer Takt.
+        # „Tagesplanung am Morgen": frueher legte diese Einstellung einen ZWEITEN
+        # Zeitplan an. Seit dem Arbeitsrhythmus (core/plan_rhythm) gibt es den
+        # Morgencheck ohnehin fuer jeden proaktiven Agenten — die Uhrzeit hier STEUERT
+        # ihn jetzt nur noch. Zwei Planungslaeufe an einem Morgen waren einer zu viel.
         existing_morning = (proactive or {}).get("morning_planning", {}) or {}
         morning_time = (
             body.morning_planning_time
@@ -2534,47 +2665,21 @@ async def update_proactive_config(
         weekdays_only = (
             body.morning_planning_weekdays_only
             if body.morning_planning_weekdays_only is not None
-            else bool(existing_morning.get("weekdays_only", True))
+            else bool(existing_morning.get("weekdays_only", False))
         )
-        morning_id = existing_morning.get("schedule_id")
         morning_time = (morning_time or "").strip()
         if morning_time and not _HHMM_RE.match(morning_time):
             raise HTTPException(status_code=422, detail="Planungszeit muss HH:MM sein (24h)")
 
-        morning_schedule = None
+        # Alten Einzel-Zeitplan abraeumen, falls dieser Agent noch einen aus der Zeit
+        # davor hat — sonst liefe er neben dem Morgencheck weiter.
+        morning_id = existing_morning.get("schedule_id")
         if morning_id:
-            morning_schedule = (await db.execute(
+            legacy = (await db.execute(
                 select(Schedule).where(Schedule.id == morning_id)
             )).scalar_one_or_none()
-
-        if morning_time:
-            hour, minute = morning_time.split(":")
-            cron = f"{int(minute)} {int(hour)} * * {'1-5' if weekdays_only else '*'}"
-            tz_name = (new_hours or {}).get("timezone") or "UTC"
-            if morning_schedule is None:
-                morning_id = uuid.uuid4().hex[:8]
-                morning_schedule = Schedule(
-                    id=morning_id,
-                    name=f"[Proactive] {agent.name} — Tagesplanung",
-                    prompt=PROACTIVE_PROMPT,
-                    interval_seconds=0,
-                    priority=0,
-                    agent_id=agent_id,
-                    enabled=body.enabled,
-                    next_run_at=now,
-                )
-                db.add(morning_schedule)
-            morning_schedule.cron_expression = cron
-            morning_schedule.interval_seconds = 0
-            morning_schedule.timezone = tz_name
-            # Der Planungslauf haengt am Proaktiv-Schalter: ist Proaktiv aus, plant
-            # auch morgens niemand.
-            morning_schedule.enabled = body.enabled
-            from app.services.scheduler_service import _calc_next_run
-            morning_schedule.next_run_at = _calc_next_run(morning_schedule, now)
-        elif morning_schedule is not None:
-            # Abgewaehlt → Zeitplan entfernen statt still deaktiviert liegen zu lassen.
-            await db.delete(morning_schedule)
+            if legacy is not None:
+                await db.delete(legacy)
             morning_id = None
 
         # Vertretung, eigene Dienstzeit und Abwesenheit — gleiches
@@ -2628,8 +2733,10 @@ async def update_proactive_config(
             "contact_hours": new_hours,
             "responsibilities": new_responsibilities,
             "contact_absence": ({"from": a_from, "to": a_to} if a_from else {}),
+            # Kein `schedule_id` mehr: der Morgencheck ist ein Rhythmus-Zeitplan,
+            # der aus dieser Uhrzeit abgeleitet wird (core/plan_rhythm.rhythm_times).
             "morning_planning": (
-                {"time": morning_time, "weekdays_only": weekdays_only, "schedule_id": morning_id}
+                {"time": morning_time, "weekdays_only": weekdays_only}
                 if morning_time else {}
             ),
         }
@@ -2867,40 +2974,75 @@ async def send_telegram_message(
                 redis = aioredis.from_url(settings.redis_url, decode_responses=True)
                 sent_to = await redis.scard(f"agent:{agent_id}:tg_auth")
                 await redis.aclose()
-            if sent_to == 0:
-                # Fallback for agents without their own Telegram bot: deliver through
-                # any running per-agent bot that already has authorized chats.
-                import redis.asyncio as aioredis
-                redis = aioredis.from_url(settings.redis_url, decode_responses=True)
-                try:
-                    for fallback_agent_id, fallback_bot in list(getattr(tg_manager, "_bots", {}).items()):
-                        if not fallback_bot or not fallback_bot._started:
-                            continue
-                        count = await redis.scard(f"agent:{fallback_agent_id}:tg_auth")
-                        if count <= 0:
-                            continue
-                        for cid in await redis.smembers(f"agent:{fallback_agent_id}:tg_auth"):
-                            await redis.setex(f"telegram:chat:{cid}:active_agent", 86400, agent_id)
-                        prefix = ""
-                        if fallback_agent_id != agent_id:
-                            try:
-                                agent = await manager._get_agent(agent_id)
-                                prefix = f"*{agent.name}:*\n"
-                            except Exception:
-                                prefix = f"*Agent {agent_id}:*\n"
-                        await fallback_bot.send_to_all_authorized(prefix + body.message)
-                        sent_to = count
-                        break
-                finally:
-                    await redis.aclose()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     if sent_to == 0:
-        raise HTTPException(
-            status_code=503,
-            detail="No running Telegram bot with authorized chats is available",
+        # KEIN Ausleihen mehr. Frueher lieferte ein Agent ohne eigenen Bot ueber den
+        # Bot eines anderen aus — der Empfaenger konnte nicht erkennen, mit wem er
+        # eigentlich schreibt, und der Besitzer des Bots bekam Meldungen, die ihn
+        # nichts angingen. Ein Kanal, den niemand eingerichtet hat, existiert nicht.
+        #
+        # Verloren geht die Meldung trotzdem nicht: sie landet als Nachricht im Chat
+        # dieses Agenten. Dort sieht der Nutzer sie beim naechsten Blick — und der
+        # Absender ist eindeutig, weil es SEIN Chat ist. Zusaetzlich sagen wir dem
+        # Agenten, wer sein Team-Lead ist: hat der einen Telegram-Bot, kann er die
+        # Meldung auf Bitte weitergeben und schreibt dabei unter SEINEM Namen.
+        import uuid as _uuid
+
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent as _A
+        from app.models.chat_message import ChatMessage as _CM
+
+        lead_hint = (
+            " Du hast keinen Team-Lead — im Chat steht die Meldung jetzt, mehr Kanaele "
+            "gibt es fuer dich nicht."
         )
+        try:
+            from app.services.duty_service import team_lead_for
+            async with async_session_factory() as _db:
+                lead_id = await team_lead_for(_db, agent_id)
+                lead = (await _db.execute(
+                    select(_A).where(_A.id == lead_id)
+                )).scalar_one_or_none() if lead_id else None
+                if lead is not None:
+                    lead_hint = (
+                        f" Ist es dringend, bitte deinen Team-Lead {lead.name} ({lead.id}) "
+                        f"mit `send_message`, die Meldung weiterzugeben — er entscheidet und "
+                        f"schreibt unter seinem Namen. Hat er auch kein Telegram, bleibt es "
+                        f"beim Chat."
+                    )
+                _db.add(_CM(
+                    agent_id=agent_id,
+                    session_id="meldungen",
+                    message_id=_uuid.uuid4().hex[:12],
+                    role="assistant",
+                    content=body.message,
+                    meta={"source": "broadcast_ohne_telegram"},
+                ))
+                await _db.commit()
+        except Exception as e:  # noqa: BLE001 — die Meldung darf nicht am Kanal scheitern
+            logger.warning("[Telegram] Meldung von %s konnte nicht in den Chat: %s",
+                           agent_id, e)
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Kein eigener Telegram-Bot, und die Meldung liess sich auch nicht im "
+                    "Chat ablegen. Melde das NICHT erneut."
+                ),
+            )
+        return {
+            "agent_id": agent_id,
+            "sent_to": 0,
+            "delivered_via": "chat",
+            "detail": (
+                "Du hast keinen eigenen Telegram-Bot — einen fremden leihst du dir nicht, "
+                "sonst weiss der Leser nicht, wer schreibt. Deine Meldung steht jetzt im "
+                "Chat dieses Agenten (Unterhaltung „meldungen\u201c) und ist damit "
+                "zugestellt." + lead_hint +
+                " Melde das NICHT als Fehler und versuche es nicht erneut."
+            ),
+        }
 
     return {"agent_id": agent_id, "sent_to": sent_to}
 

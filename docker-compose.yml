@@ -98,6 +98,10 @@ services:
       # Prevents the orchestrator API being directly reachable on the public IP.
       - "127.0.0.1:${ORCHESTRATOR_PORT:-8000}:8000"
     environment:
+      # Der Container lief in UTC, waehrend der Host laengst lokal tickte: in den Logs
+      # stand 21:31, im Haus war es 23:31. Gerechnet wird ohnehin zeitzonenbewusst —
+      # das hier macht nur die Anzeige ehrlich.
+      TZ: ${TZ:-Europe/Berlin}
       DATABASE_URL: postgresql+asyncpg://ai_employee:${DB_PASSWORD:-devpassword}@postgres:5432/ai_employee
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@redis:6379
       # INTERNAL uses the container_name (ai-employee-redis) so agent containers

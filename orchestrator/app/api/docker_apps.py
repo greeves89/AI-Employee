@@ -31,7 +31,7 @@ from app.core.app_sharing import (
     is_app_owner,
     resolve_app_access,
 )
-from app.core.log_redaction import scrub_log
+from app.core.log_redaction import redact_logs, scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, optional_auth, require_auth
 from app.models.agent import Agent
@@ -455,8 +455,13 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
         ["up", "-d", "--build"],
     )
 
+    # Compose-Ausgabe kann Build-Argumente und Env-Dumps enthalten. `scrub_log`
+    # entfernt nur Steuerzeichen (Log-Injection) — Geheimnisse maskiert erst
+    # `redact_logs`. Und sie gehoert auch nicht in die Antwort an den Aufrufer,
+    # sonst ist der Weg ueber HTTP offen, waehrend der Log dicht ist.
+    output = redact_logs(output)
     if exit_code != 0:
-        logger.error(f"Failed to start {scrub_log(project_name)}: {output}")
+        logger.error(f"Failed to start {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
     _connect_containers_to_network(docker, project_name)
@@ -478,8 +483,9 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
     exit_code, output = await asyncio.to_thread(
         _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
     )
+    output = redact_logs(output)          # siehe _start_core
     if exit_code != 0:
-        logger.warning(f"Compose down warning for {scrub_log(project_name)}: {output}")
+        logger.warning(f"Compose down warning for {scrub_log(project_name)}: {scrub_log(output)}")
     return {"project": project_name, "status": "stopped", "output": output}
 
 
@@ -501,6 +507,7 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
         _run_compose, docker, workspace_volume, project_name, compose_file,
         ["up", "-d", "--build", "--force-recreate"],
     )
+    output = redact_logs(output)          # siehe _start_core
     if exit_code != 0:
         logger.error(f"Failed to rebuild {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")

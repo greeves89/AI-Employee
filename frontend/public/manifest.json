@@ -1,0 +1,37 @@
+{
+  "name": "AI Employee",
+  "short_name": "AI Employee",
+  "description": "Autonome Agenten — Aufgaben, Freigaben und Meldungen unterwegs",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Freigaben",
+      "url": "/approvals",
+      "description": "Offene Freigabe-Anfragen"
+    },
+    {
+      "name": "Aufgaben",
+      "url": "/tasks",
+      "description": "Laufende und erledigte Aufgaben"
+    }
+  ]
+}

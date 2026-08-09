@@ -1514,7 +1514,7 @@ function FeedbackTab({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.toLowerCase().includes("not connected") || msg.toLowerCase().includes("integration not connected")) {
-        setGithubConnected(false);
+        setGithubConnected(null);
         toast.warning(
           "GitHub nicht verbunden",
           "Bitte zuerst unter Einstellungen → Integrationen einen GitHub-Account (PAT) verbinden."

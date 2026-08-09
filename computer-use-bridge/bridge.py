@@ -284,12 +284,170 @@ def _applescript_string_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-# ── AXUIElement (macOS Accessibility Tree) ────────────────────────────────────
+# ── Bedienungshilfen-Baum (macOS AXUIElement / Windows UI Automation) ─────────
+#
+# EINE Baumform fuer beide Systeme: {role, title, label, value, bbox, children}.
+# Nur der Erzeuger ist plattformabhaengig — `find_element` und `wait_for_element`
+# arbeiten unveraendert weiter, egal woher der Baum kommt. Ohne das haette Windows
+# einen zweiten Suchpfad gebraucht, und jede Verbesserung waere nur auf einer
+# Plattform angekommen.
+
+
+def _win_ui_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
+    """Windows-Gegenstueck zum AX-Baum, ueber UI Automation.
+
+    Ohne das konnte die Bridge unter Windows nur klicken, wohin jemand zeigte —
+    Elemente FINDEN ging nicht, also war jede Bedienung innerhalb einer Anwendung
+    ein Blindflug ueber geratene Koordinaten.
+    """
+    try:
+        import uiautomation as auto  # type: ignore
+    except ImportError:
+        return {"error": (
+            "Windows-Bedienungshilfen fehlen. Installiere sie einmalig mit "
+            "'pip install uiautomation', dann kann ich Elemente auch unter Windows finden."
+        )}
+
+    def _to_node(ctrl, depth: int) -> dict | None:
+        if depth <= 0:
+            return None
+        try:
+            node: dict[str, Any] = {"role": ctrl.ControlTypeName or ""}
+            name = (ctrl.Name or "").strip()
+            if name:
+                node["title"] = name
+            help_text = ""
+            try:
+                help_text = (ctrl.HelpText or "").strip()
+            except Exception:
+                pass
+            aid = ""
+            try:
+                aid = (ctrl.AutomationId or "").strip()
+            except Exception:
+                pass
+            label = help_text or aid
+            if label:
+                node["label"] = label
+            try:
+                pattern = ctrl.GetValuePattern()
+                if pattern is not None and pattern.Value:
+                    node["value"] = str(pattern.Value)[:200]
+            except Exception:
+                pass
+            try:
+                r = ctrl.BoundingRectangle
+                if r and (r.right - r.left) > 0 and (r.bottom - r.top) > 0:
+                    node["bbox"] = {"x": r.left, "y": r.top,
+                                    "w": r.right - r.left, "h": r.bottom - r.top}
+            except Exception:
+                pass
+            children = []
+            try:
+                for child in ctrl.GetChildren():
+                    child_node = _to_node(child, depth - 1)
+                    if child_node:
+                        children.append(child_node)
+            except Exception:
+                pass
+            if children:
+                node["children"] = children
+            return node
+        except Exception:
+            return None
+
+    try:
+        root = auto.GetRootControl()
+        if app_name:
+            wanted = app_name.strip().lower()
+            for window in root.GetChildren():
+                title = (getattr(window, "Name", "") or "").lower()
+                proc = ""
+                try:
+                    proc = (window.ProcessId and auto.ProcessIdToProcessName(window.ProcessId) or "").lower()
+                except Exception:
+                    pass
+                if wanted in title or (proc and wanted in proc):
+                    return _to_node(window, max_depth) or {}
+            return {"error": f"Kein Fenster gefunden, das zu '{app_name}' passt."}
+        return _to_node(root, max_depth) or {}
+    except Exception as e:  # noqa: BLE001 — ein kaputter Baum darf die Bridge nicht killen
+        return {"error": str(e)}
+
+
+def ax_tree_available() -> bool:
+    """Kann DIESE Maschine einen Bedienungshilfen-Baum liefern?
+
+    Unter Windows haengt das an einem nachinstallierbaren Paket — deshalb wird
+    gefragt statt geraten, sonst verspricht die Bridge etwas, das dann fehlschlaegt.
+    """
+    if IS_MAC:
+        return True
+    if IS_WIN:
+        try:
+            import uiautomation  # type: ignore  # noqa: F401
+            return True
+        except ImportError:
+            return False
+    return False
+
+
+def _role_matches(node_role: str, wanted: str) -> bool:
+    """Rollenname tolerant vergleichen — „button" trifft AXButton UND ButtonControl.
+
+    macOS nennt einen Knopf ``AXButton``, Windows ``ButtonControl``. Wer beides
+    exakt treffen muesste, koennte keine Anweisung schreiben, die auf beiden Systemen
+    funktioniert — und genau das ist die Vorgabe: gleiche Faehigkeit ueberall.
+    """
+    if not wanted:
+        return True
+    a = node_role.lower().removeprefix("ax").removesuffix("control")
+    b = wanted.lower().removeprefix("ax").removesuffix("control")
+    return a == b or (bool(b) and b in a)
+
+
+def search_tree(node: dict | None, query: str, role: str = "") -> dict | None:
+    """Ersten passenden Knoten mit Klickpunkt zurueckgeben — eine Suche fuer alle.
+
+    ``find_element`` und ``wait_for_element`` hatten je eine eigene, leicht
+    unterschiedliche Fassung: die eine sah in ``value`` nach, die andere nicht. Wer
+    ein Textfeld ueber seinen Inhalt suchte, fand es also nur beim Suchen und nicht
+    beim Warten.
+    """
+    if not node:
+        return None
+    q = (query or "").lower()
+    title = node.get("title", "").lower()
+    label = node.get("label", "").lower()
+    value = node.get("value", "").lower()
+    if (_role_matches(node.get("role", ""), role)
+            and (not q or q in title or q in label or q in value)
+            and node.get("bbox")):
+        bbox = node["bbox"]
+        return {
+            "found": True,
+            "role": node.get("role"),
+            "title": node.get("title", ""),
+            "label": node.get("label", ""),
+            "bbox": bbox,
+            "center": {
+                "x": int(bbox["x"] + bbox["w"] / 2),
+                "y": int(bbox["y"] + bbox["h"] / 2),
+            },
+        }
+    for child in node.get("children", []):
+        found = search_tree(child, query, role)
+        if found:
+            return found
+    return None
+
 
 def get_ax_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
-    """Read AXUIElement tree. Returns structured dict with roles, names, bboxes."""
+    """Read the accessibility tree. Same node shape on macOS and Windows."""
+    if IS_WIN:
+        return _win_ui_tree(app_name, max_depth)
     if not IS_MAC:
-        return {"error": "AXUIElement only available on macOS"}
+        return {"error": "Accessibility tree only available on macOS and Windows"}
 
     try:
         import ApplicationServices as AS  # type: ignore
@@ -569,46 +727,16 @@ class CommandDispatcher:
                 return {"error": "Clipboard write not supported on this platform"}
 
             elif action == "find_element":
-                # Search AX tree for element matching role/title/label, return center coords
                 query = params.get("query", "")
                 role = params.get("role", "")
                 app = params.get("app")
                 tree = get_ax_tree(app, max_depth=8)
-
-                def _search(node: dict) -> dict | None:
-                    if not node:
-                        return None
-                    node_title = node.get("title", "").lower()
-                    node_label = node.get("label", "").lower()
-                    node_value = node.get("value", "").lower()
-                    node_role = node.get("role", "").lower()
-                    q = query.lower()
-                    role_match = (not role) or node_role == role.lower()
-                    text_match = (not q) or q in node_title or q in node_label or q in node_value
-                    if role_match and text_match and node.get("bbox"):
-                        bbox = node["bbox"]
-                        return {
-                            "found": True,
-                            "role": node.get("role"),
-                            "title": node.get("title", ""),
-                            "label": node.get("label", ""),
-                            "bbox": bbox,
-                            "center": {
-                                "x": int(bbox["x"] + bbox["w"] / 2),
-                                "y": int(bbox["y"] + bbox["h"] / 2),
-                            },
-                        }
-                    for child in node.get("children", []):
-                        found = _search(child)
-                        if found:
-                            return found
-                    return None
-
-                result = _search(tree)
+                if isinstance(tree, dict) and tree.get("error"):
+                    return {"found": False, "error": tree["error"], "query": query}
+                result = search_tree(tree, query, role)
                 return result or {"found": False, "query": query, "role": role}
 
             elif action == "wait_for_element":
-                # Poll AX tree until element appears (or timeout)
                 query = params.get("query", "")
                 role = params.get("role", "")
                 app = params.get("app")
@@ -616,36 +744,19 @@ class CommandDispatcher:
                 interval = params.get("interval", 0.5)
 
                 deadline = time.time() + timeout
+                last_error = ""
                 while time.time() < deadline:
                     tree = get_ax_tree(app, max_depth=8)
-
-                    def _find(node: dict) -> dict | None:
-                        if not node:
-                            return None
-                        q = query.lower()
-                        role_match = (not role) or node.get("role", "").lower() == role.lower()
-                        text_match = (not q) or q in node.get("title", "").lower() or q in node.get("label", "").lower()
-                        if role_match and text_match and node.get("bbox"):
-                            bbox = node["bbox"]
-                            return {
-                                "found": True,
-                                "role": node.get("role"),
-                                "title": node.get("title", ""),
-                                "bbox": bbox,
-                                "center": {"x": int(bbox["x"] + bbox["w"] / 2), "y": int(bbox["y"] + bbox["h"] / 2)},
-                            }
-                        for child in node.get("children", []):
-                            r = _find(child)
-                            if r:
-                                return r
-                        return None
-
-                    found = _find(tree)
+                    if isinstance(tree, dict) and tree.get("error"):
+                        # Fehlt der Baum ganz (z.B. Paket nicht installiert), hilft
+                        # Warten nicht — dann lieber sofort ehrlich sein.
+                        return {"found": False, "error": tree["error"], "query": query}
+                    found = search_tree(tree, query, role)
                     if found:
                         return found
                     time.sleep(interval)
 
-                return {"found": False, "timeout": True, "query": query}
+                return {"found": False, "timeout": True, "query": query, "error": last_error}
 
             elif action == "ping":
                 return {"pong": True, "ts": time.time()}
@@ -758,10 +869,16 @@ class Bridge:
                     "type": "hello",
                     "platform": platform.system(),
                     "bridge_version": BRIDGE_VERSION,
-                    "capabilities": ["screenshot", "ax_tree", "click", "type", "key", "scroll", "move", "drag",
-                                     "open_app", "open_url", "close_app", "get_clipboard", "set_clipboard", "find_element",
-                                     "wait_for_element", "start_input_capture", "stop_input_capture"],
-                    "ax_tree_available": IS_MAC,
+                    # Nur melden, was diese Maschine WIRKLICH kann. Der
+                    # Bedienungshilfen-Baum gibt es auf macOS immer, auf Windows nur
+                    # mit installiertem `uiautomation` — ein Agent, der sich auf eine
+                    # falsche Zusage verlaesst, verspricht dem Nutzer etwas.
+                    "capabilities": ["screenshot", "click", "type", "key", "scroll", "move", "drag",
+                                     "open_app", "open_url", "close_app", "get_clipboard",
+                                     "set_clipboard", "start_input_capture", "stop_input_capture"]
+                                    + (["ax_tree", "find_element", "wait_for_element"]
+                                       if ax_tree_available() else []),
+                    "ax_tree_available": ax_tree_available(),
                 }
                 await ws.send(json.dumps(caps))
                 log.info(f"Connected. Waiting for commands... (platform: {platform.system()})")

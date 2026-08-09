@@ -541,6 +541,11 @@ class TaskRouter:
         if agent_id and task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
             await self._record_skill_usages(task, agent_id)
 
+        # Rueckruf an die MCP-Bruecke, falls beim Anlegen eine Adresse mitkam.
+        # Bisher blieb der Bruecke nur, get_task_status im Takt abzufragen — bei einem
+        # Lauf ueber zwanzig Minuten hunderte Anfragen fuer eine einzige Antwort.
+        await self._deliver_task_callback(task)
+
         # Subtask completion callback: notify the parent task's agent
         if task.parent_task_id:
             await self._notify_parent_agent(task)
@@ -1232,7 +1237,7 @@ class TaskRouter:
             return
         try:
             from app.models.agent import Agent
-            from app.services.apns_service import push_to_user
+            from app.core.push import push_to_user
 
             agent = await self.db.scalar(select(Agent).where(Agent.id == agent_id))
             if not agent or not agent.user_id:
@@ -1246,6 +1251,45 @@ class TaskRouter:
             )
         except Exception:
             logger.exception("APNs push failed for task notification")
+
+    async def _deliver_task_callback(self, task) -> None:
+        """Das Ergebnis an die beim Anlegen hinterlegte Adresse schicken.
+
+        Best effort und bewusst ohne Wiederholung: Ein Rueckruf, der nicht ankommt,
+        darf den Aufgabenlauf nicht aufhalten, und der Aufrufer kann jederzeit
+        ``get_task_status`` nutzen. Die Adresse wurde beim Anlegen gegen das
+        SSRF-Gate geprueft; hier wird sie ERNEUT geprueft, weil zwischen Anlegen und
+        Fertigwerden Stunden liegen koennen und ein Name inzwischen woanders
+        hinzeigen kann.
+        """
+        callback_url = (task.metadata_ or {}).get("callback_url")
+        if not callback_url:
+            return
+        try:
+            import httpx
+
+            from app.core.url_guard import check_outbound_url
+
+            allowed, reason = check_outbound_url(callback_url)
+            if not allowed:
+                logger.warning("[Rueckruf] Adresse nicht mehr zulaessig (%s)", reason)
+                return
+
+            payload = {
+                "task_id": task.id,
+                "status": str(getattr(task.status, "value", task.status)),
+                "title": task.title,
+                "result": (task.result or "")[:20000],
+                "error": task.error,
+                "duration_ms": task.duration_ms,
+                "cost_usd": task.cost_usd,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(callback_url, json=payload)
+            logger.info("[Rueckruf] %s -> %s", task.id, resp.status_code)
+        except Exception as e:  # noqa: BLE001 — nie den Lauf kippen
+            logger.warning("[Rueckruf] Zustellung fehlgeschlagen: %s", e)
 
     def _notification_push_payload(self, notif) -> dict:
         meta = notif.meta or {}

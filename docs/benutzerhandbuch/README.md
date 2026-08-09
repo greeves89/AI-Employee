@@ -345,8 +345,28 @@ gemacht* — und *was hat er heute noch vor*.
 - **Einen Block streichen:** mit der Maus über den gestrichelten Block fahren → oben rechts
   erscheint ein **✕** → anklicken. Der Block wird durchgestrichen dargestellt, und der Agent
   lässt ihn beim nächsten Lauf liegen. Nochmal klicken = wieder einplanen.
+- **Einen Block bearbeiten** *(seit 1.165.0)*: Solange er nur **geplant** ist, gehört er dir.
+  1. Auf den gestrichelten Block klicken → das Fenster **Block bearbeiten** geht auf.
+  2. **Was soll er tun?** — der Titel, kurz und konkret.
+  3. **Uhrzeit** — wichtigstes Feld: erst mit ihr läuft der Block von allein los. Bleibt es
+     leer, ist der Block nur eine Notiz, die der Agent beim nächsten Lauf aufgreift (das
+     Fenster sagt dir das auch).
+  4. **Dauer** in Minuten, mindestens 15.
+  5. Optional die **Präzisierung** — woran er erkennt, dass es erledigt ist.
+  6. **Speichern**. Der Auslöser zieht mit: verschiebst du den Block auf 15:00, läuft die
+     Arbeit um 15:00 und nicht mehr zur alten Zeit.
+
+  ![Plan-Block bearbeiten](screenshots/34-block-bearbeiten.png)
+  *Abbildung 34: Titel, Uhrzeit, Dauer und Präzisierung eines geplanten Blocks*
+
+  Ein Block, der bereits **läuft** oder **erledigt** ist, lässt sich nicht mehr umschreiben —
+  ein Klick darauf öffnet stattdessen das **Ergebnis** samt erzeugter Dateien.
 - **Ohne feste Uhrzeit:** Was der Agent für heute vorhat, aber nicht auf eine Uhrzeit gelegt
-  hat, steht als Liste **unterhalb** des Kalenders — es verschwindet nicht.
+  hat, steht als Liste **unterhalb** des Kalenders — es verschwindet nicht. Auch diese
+  Einträge lassen sich anklicken und bearbeiten (z. B. um ihnen eine Uhrzeit zu geben).
+- **Geplante Läufe** stehen rechts als eigene Karten mit Uhrzeit und Takt („täglich 22:00",
+  „alle 30 Min"). Ein Klick führt auf den zugehörigen **Zeitplan** (Kap. 12), wo er
+  hervorgehoben ist — dort änderst oder pausierst du ihn.
 - Der Plan entsteht automatisch, wenn der Agent im proaktiven Modus läuft (siehe 5.6). Ohne
   Proactive Mode und ohne Verantwortungsbereiche bleibt die Spur leer — das ist kein Fehler.
 
@@ -410,16 +430,26 @@ Tab **Settings** mit drei Unter-Tabs: **Allgemein · Integrationen · Command Po
   Deshalb geht dem Agenten die Arbeit nicht mehr aus, sobald die Todo-Liste leer ist.
   Maximal 20 Bereiche pro Agent; ohne Titel lässt sich nicht speichern.
 
-- **Tagesplanung am Morgen** *(seit 1.154.0)* — ein fester Termin, zu dem der Agent
-  **einmal bewusst** seinen Tag plant, zusätzlich zum Intervall oben.
-  1. Im selben aufgeklappten Bereich zum Feld **Tagesplanung am Morgen** gehen.
-  2. Uhrzeit eintragen (z. B. **07:00**).
-  3. Haken **nur werktags** setzen oder entfernen.
-  4. **Speichern**.
+- **Arbeitsrhythmus: abends planen, morgens durchsehen** *(seit 1.165.0)* — jeder Agent im
+  proaktiven Modus bekommt das **automatisch**, du musst nichts einschalten:
+  - **Abends** legt er fest, was **morgen** ansteht, und schreibt es in den Kalender.
+  - **Morgens** sieht er nochmal drüber: Was ist über Nacht gelaufen, was ist
+    **gescheitert** und muss nachgeholt werden, was hast **du** inzwischen gestrichen oder
+    verschoben? Danach fängt er mit dem ersten Block an.
+  - **Auch am Wochenende.** Nur wenn du bei der **Dienstzeit** (weiter unten) den Haken
+    *nur werktags* setzt, macht er Samstag und Sonntag frei.
 
-  Der Agent plant dann zu dieser Uhrzeit aus seinen Verantwortungsbereichen den Tag und
-  legt das Ergebnis in den Kalender (siehe 5.3). Feld leeren = wieder abschalten.
-  Die Zeitzone kommt aus der **Erreichbarkeit** darunter.
+  Die **Uhrzeiten** leitet er aus seiner **Dienstzeit** ab: Planung eine halbe Stunde vor
+  Feierabend, Durchsicht zum Dienstbeginn. Ist keine Dienstzeit gesetzt, gelten **21:30**
+  und **07:00**. Im Zeitplan-Bereich (Kap. 12) erscheinen die beiden Läufe als
+  **[Rhythmus] Abendplanung** und **[Rhythmus] Morgencheck** — dort siehst du auch, wann
+  sie das nächste Mal laufen.
+
+  Willst du eine **abweichende Uhrzeit** für den Morgencheck:
+  1. Agent öffnen → **Settings → Allgemein** → bei *Proactive Mode* auf **Prompt &
+     Anweisungen** klicken.
+  2. Beim Feld **Morgencheck — abweichende Uhrzeit** eine Zeit eintragen (z. B. **06:15**).
+  3. **Speichern**. Feld leeren = wieder nach Dienstzeit.
 
 - **Autonomie-Level** — wie eigenständig der Agent **handeln** darf:
   - **L1 — Nur lesen & suchen**: darf nur lesen/recherchieren, **keine** verändernden
@@ -441,6 +471,24 @@ und was eine Freigabe braucht.
 > Budget (Admin setzt, User liest) und der **externe Zugriff** (Webhook/MCP-Endpoint mit
 > Bearer-Token, um den Agenten von außen z. B. aus n8n anzusprechen) findest du ebenfalls
 > in den Einstellungen.
+
+**Entwicklung & Probezeit** *(seit 1.165.0)* — direkt unter dem Proactive-Bereich. Kosten
+und Anzahl der Läufe sagen nichts darüber, **ob die Arbeit taugt**; diese Karte schon:
+
+![Entwicklung & Probezeit](screenshots/35-entwicklung.png)
+*Abbildung 35: Tendenz, Fehlerquote, Plan-Treue und Bewertungen auf einen Blick*
+
+- **Tendenz** — *besser · stabil · schlechter*, aus dem Vergleich der zweiten Hälfte des
+  Zeitraums mit der ersten. Bei zu wenigen Daten steht das ausdrücklich da, statt eine
+  Zahl vorzutäuschen.
+- **Fehlerquote** — wie viele seiner Aufgaben scheitern, mit dem Vorher/Nachher darunter.
+- **Plan-Treue** — wie viel von dem, was er sich vorgenommen hat, er auch erledigt hat.
+- **Bewertungen** — der Schnitt deiner Daumen/Sterne auf seine Aufgaben.
+- **Im Dienst seit** — die Grundlage für die Probezeit-Bilanz.
+
+Oben rechts stellst du den **Zeitraum** um (7 / 30 / 90 Tage). Fehlt ihm die Einrichtung
+oder fehlen die Verantwortungsbereiche, steht das als **Warnung** in der Karte — das ist
+dann der erste Hebel, nicht das Modell.
 
 ### 5.7 Szenario: Vom leeren Agenten zum fertigen Helfer
 1. **Agents → + New Agent → Leerer Agent.**
@@ -938,6 +986,26 @@ Schreibzugriff pro Agent freigeben.
 > **Microsoft-Konto**: wer in OpenWebUI bereits mit Microsoft angemeldet ist, wird
 > durchgereicht und sieht keine zusätzliche AI-Employee-Anmeldemaske mehr.
 
+### 20.2 Agent-Vorlagen: Verantwortungsbereiche hinterlegen *(seit 1.165.0)*
+
+Eine Vorlage kann jetzt auch die **Verantwortungsbereiche** mitbringen. Das ist der
+Unterschied zwischen einem neuen Agenten, der auf Aufträge wartet, und einem, der seinen
+Job vom ersten Tag an kennt: Wer aus dieser Vorlage entsteht, gilt als **eingerichtet** und
+fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
+
+![Vorlage · Verantwortungsbereiche](screenshots/36-vorlagen-bereiche.png)
+*Abbildung 36: Derselbe Editor wie beim Agenten — hier in der Vorlage*
+
+1. Seitenleiste → **Settings** → Abschnitt **Agent-Vorlagen**.
+2. Die gewünschte Vorlage aufklappen → **Bearbeiten**.
+3. Zum Block **Verantwortungsbereiche** scrollen → **+ Bereich**.
+4. **Titel**, **Takt** (täglich/wöchentlich/monatlich/laufend) und **Priorität** setzen —
+   dieselben Felder wie beim einzelnen Agenten (Kap. 5.6), es ist derselbe Editor.
+5. **Speichern**.
+
+Die aufgeklappte Vorlage zeigt die hinterlegten Bereiche in der Übersicht. Änderst du sie,
+gilt das für **neue** Agenten — bestehende behalten ihre eigenen.
+
 ---
 
 ## 21. Benachrichtigungen
@@ -1194,6 +1262,17 @@ Klick, Tippen, App öffnen, Shell, Zwischenablage …), **was der Agent darf** �
 **Schritt 4 — Nutzen.** Im **Chat** eines Agenten bitten, `computer_use` zu verwenden. Der
 Agent listet die verfügbaren **Bridge-Sessions**, macht Screenshots deines Bildschirms und
 führt — im Rahmen deiner Freigaben — Aktionen aus.
+
+**Was der Agent innerhalb einer Anwendung kann.** Er bedient sie wie ein Mensch: App
+öffnen → das gesuchte Element **finden** → klicken → tippen → **nachsehen**, ob es geklappt
+hat. Elemente findet er über die **Bedienungshilfen** des Betriebssystems, nicht über
+geratene Koordinaten — das funktioniert seit 1.165.0 unter **macOS und Windows**
+gleichermaßen.
+
+*Nur Windows:* Dafür braucht die Bridge einmalig das Paket `uiautomation`. Die aktuelle
+Bridge-App bringt es mit; bei einer selbst installierten Bridge einmal
+`pip install uiautomation` ausführen. Fehlt es, sagt der Agent das von sich aus — klicken,
+tippen und Tastenkombinationen gehen auch ohne, er braucht dann nur deinen Hinweis, wo.
 
 ### 23.1 Szenario: Agent zeigt etwas auf deinem PC
 1. Bridge starten, anmelden, Berechtigungen *Screenshot* + *Klick* erlauben.
@@ -1590,3 +1669,9 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Apps: Übersicht | `/apps` | `f19-apps-uebersicht.png` |
 | Apps: Detailfenster | `/apps` | `f20-app-detail.png` |
 | Apps: Freigabe-Dialog | `/apps` | `f21-app-freigeben.png` |
+| Agent: Verantwortungsbereiche | `/agents/<id>` → Settings | `31-verantwortungsbereiche.png` |
+| Agent: Tagesplan im Kalender | `/agents/<id>` → Activity → Kalender | `32-tagesplan.png` |
+| Agent: Plan-Block bearbeiten | `/agents/<id>` → Activity → Kalender | `34-block-bearbeiten.png` |
+| Agent: Entwicklung & Probezeit | `/agents/<id>` → Settings | `35-entwicklung.png` |
+| Vorlage: Verantwortungsbereiche | `/settings` → Agent-Vorlagen | `36-vorlagen-bereiche.png` |
+| Admin: Microsoft nur lesend | `/admin` → Settings → Integrationen | `33-microsoft-nur-lesend.png` |

@@ -522,6 +522,7 @@ export default function AnalyticsPage() {
                           <th className="text-left pb-2 pr-4">Agent</th>
                           <th className="text-right pb-2 px-3">Tasks</th>
                           <th className="text-right pb-2 px-3">Erfolg</th>
+                          <th className="text-right pb-2 px-3" title="Anteil der Aufgaben, die noch einmal angefasst werden mussten — fortgesetzte Läufe und vom Menschen zurückgegebene">Nacharbeit</th>
                           <th className="text-right pb-2 px-3">Ø Dauer</th>
                           <th className="text-right pb-2 px-3">Kosten</th>
                           <th className="text-right pb-2 pl-3">Bewertung</th>
@@ -546,6 +547,15 @@ export default function AnalyticsPage() {
                                   a.success_rate_pct >= 60 ? "text-amber-400" : "text-red-400"
                                 )}>
                                   {a.success_rate_pct}%
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-[12px]">
+                                <span className={cn(
+                                  "font-medium",
+                                  a.rework_rate_pct <= 10 ? "text-emerald-400" :
+                                  a.rework_rate_pct <= 25 ? "text-amber-400" : "text-red-400"
+                                )}>
+                                  {a.rework_rate_pct ?? 0}%
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 text-right text-[12px] text-muted-foreground">{fmtMs(a.avg_duration_ms)}</td>

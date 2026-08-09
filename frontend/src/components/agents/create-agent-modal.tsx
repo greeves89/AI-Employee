@@ -184,6 +184,10 @@ export function CreateAgentModal({
   const [avatarIcon, setAvatarIcon] = useState("Cpu");
   const [avatarColor, setAvatarColor] = useState("violet");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  // "auto" = der Container bekommt die sudo-Pakete, die die Autonomiestufe hergibt.
+  // Nur wer hier bewusst umschaltet, haengt die Rechte von der Stufe ab.
+  const [permissionsMode, setPermissionsMode] = useState<"auto" | "manual">("auto");
+  const [derivedPermissions, setDerivedPermissions] = useState<Record<string, string[]>>({});
   const [budgetUsd, setBudgetUsd] = useState<string>("");
   const [budgetExceededAction, setBudgetExceededAction] = useState<"haiku" | "stop">("haiku");
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
@@ -253,12 +257,15 @@ export function CreateAgentModal({
         setTemplates(data.templates);
       }).catch(() => setTemplates([]));
 
+      setPermissionsMode("auto");
       api.getPermissionPackages().then((data) => {
         setPackages(data.packages);
         setSelectedPermissions(data.defaults);
+        setDerivedPermissions(data.derived || {});
       }).catch(() => {
         setPackages([]);
         setSelectedPermissions(["package-install"]);
+        setDerivedPermissions({});
       });
     }
   }, [open]);
@@ -268,6 +275,9 @@ export function CreateAgentModal({
     if (template) {
       setName("");
       setRole(template.role);
+      // Eine Vorlage MIT Paketliste ist eine bewusste Vorgabe ihres Autors — die
+      // schaltet auf "manuell". Ohne Liste bleibt es bei der Autonomiestufe.
+      setPermissionsMode(template.permissions.length > 0 ? "manual" : "auto");
       setSelectedPermissions(template.permissions.length > 0 ? template.permissions : ["package-install"]);
       // Pre-fill system prompt from template for Custom LLM usage
       const templatePrompt = template.knowledge_template
@@ -277,6 +287,7 @@ export function CreateAgentModal({
     } else {
       setName("");
       setRole("");
+      setPermissionsMode("auto");
       setSelectedPermissions(["package-install"]);
       setLlmSystemPrompt("");
     }
@@ -373,6 +384,10 @@ export function CreateAgentModal({
     setError(null);
     try {
       const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
+      // Im Auto-Modus schickt die Oberflaeche BEWUSST nichts: erst dadurch leitet
+      // der Server die sudo-Pakete aus der Autonomiestufe ab. Eine mitgeschickte
+      // Liste heisst "von Hand gewaehlt" und haengt den Agenten von der Stufe ab.
+      const permissionsPayload = permissionsMode === "manual" ? selectedPermissions : undefined;
 
       let created: Awaited<ReturnType<typeof api.createAgent>> | undefined;
       if (aiAccountId !== null) {
@@ -380,7 +395,7 @@ export function CreateAgentModal({
           name.trim() || selectedTemplate?.name || "agent",
           aiAccountModel || undefined,
           role.trim() || selectedTemplate?.role || undefined,
-          selectedPermissions.length > 0 ? selectedPermissions : selectedTemplate?.permissions,
+          permissionsPayload,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           mode,
           undefined,
@@ -400,7 +415,7 @@ export function CreateAgentModal({
           name.trim() || selectedTemplate?.name || "codex-agent",
           "gpt-5.5",
           role.trim() || selectedTemplate?.role || undefined,
-          selectedPermissions.length > 0 ? selectedPermissions : selectedTemplate?.permissions,
+          permissionsPayload,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           "codex_cli",
           undefined,
@@ -423,7 +438,7 @@ export function CreateAgentModal({
           name.trim(),
           llmModelName.trim(),
           role.trim() || undefined,
-          selectedPermissions.length > 0 ? selectedPermissions : undefined,
+          permissionsPayload,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           "custom_llm",
           llmConfig,
@@ -435,7 +450,7 @@ export function CreateAgentModal({
           name.trim(),
           undefined,
           role.trim() || undefined,
-          selectedPermissions.length > 0 ? selectedPermissions : undefined,
+          permissionsPayload,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           "claude_code",
           undefined,
@@ -1008,21 +1023,47 @@ export function CreateAgentModal({
                             </p>
                           </div>
 
-                          {/* Permission Packages */}
+                          {/* Permission Packages — folgen standardmaessig der Autonomiestufe */}
                           <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-2.5">
-                              Berechtigungen (Sudo-Pakete)
-                            </label>
-                            <div className="space-y-2">
+                            <div className="mb-2.5 flex items-center justify-between gap-3">
+                              <label className="block text-xs font-medium text-muted-foreground">
+                                Berechtigungen (Sudo-Pakete)
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setPermissionsMode(permissionsMode === "auto" ? "manual" : "auto")}
+                                className="text-[11px] text-primary hover:underline"
+                              >
+                                {permissionsMode === "auto" ? "Selbst festlegen" : "Wieder an Stufe koppeln"}
+                              </button>
+                            </div>
+
+                            {permissionsMode === "auto" && (
+                              <div className="mb-2.5 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
+                                <p className="text-[11px] text-muted-foreground">
+                                  Folgt der Autonomiestufe {autonomyLevel.toUpperCase()}.{" "}
+                                  {(derivedPermissions[autonomyLevel] || []).length === 0
+                                    ? "Der Container bekommt keine sudo-Rechte."
+                                    : `Der Container bekommt: ${(derivedPermissions[autonomyLevel] || [])
+                                        .map((id) => packages.find((p) => p.id === id)?.label || id)
+                                        .join(", ")}.`}
+                                </p>
+                              </div>
+                            )}
+
+                            <div className={cn("space-y-2", permissionsMode === "auto" && "pointer-events-none opacity-40")}>
                               {packages.map((pkg) => {
                                 const Icon = PERMISSION_ICON_MAP[pkg.icon] || Package;
-                                const isSelected = selectedPermissions.includes(pkg.id);
+                                const isSelected = permissionsMode === "auto"
+                                  ? (derivedPermissions[autonomyLevel] || []).includes(pkg.id)
+                                  : selectedPermissions.includes(pkg.id);
                                 const isFullAccess = pkg.id === "full-access";
 
                                 return (
                                   <button
                                     key={pkg.id}
                                     type="button"
+                                    disabled={permissionsMode === "auto"}
                                     onClick={() => togglePermission(pkg.id)}
                                     className={cn(
                                       "w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200",

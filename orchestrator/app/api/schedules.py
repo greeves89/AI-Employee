@@ -89,6 +89,19 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
     if agent_id is None and is_agent_principal(user):
         agent_id = user.id
 
+    # Zeitzone: was der Agent NICHT angibt, meint seine eigene. Ein Zeitplan
+    # „täglich 07:00", der in UTC gerechnet wird, feuert in Berlin um neun — genau
+    # so standen im Kalender Namen, die nicht zur Uhrzeit passten.
+    tz_name = (data.timezone or "").strip()
+    if not tz_name and agent_id:
+        from app.core.plan_rhythm import timezone_name
+        from app.models.agent import Agent as _Agent
+        _agent = (await db.execute(
+            select(_Agent).where(_Agent.id == agent_id)
+        )).scalar_one_or_none()
+        tz_name = timezone_name(getattr(_agent, "config", None))
+    data.timezone = tz_name or "UTC"
+
     # One-shot ("look at this again in N seconds") fires once at now+run_in_seconds;
     # interval_seconds==0 + no cron → the scheduler disables it after the single run.
     if data.run_in_seconds is not None:

@@ -364,7 +364,7 @@ async def create_session(user=Depends(require_auth), reuse: bool = True):
         "capture_human": False,
     }
     await _persist_session(session_id)
-    logger.info(f"Created computer-use session {session_id} for user {user.id}")
+    logger.info(f"Created computer-use session {scrub_log(session_id)} for user {user.id}")
     return {
         "session_id": session_id,
         "status": "waiting_for_bridge",
@@ -443,7 +443,7 @@ async def update_capabilities(
         raise HTTPException(status_code=422, detail=f"Unknown capability groups: {sorted(unknown)}")
 
     session["allowed_capabilities"] = set(req.allowed_capabilities)
-    logger.info(f"Session {scrub_log(session_id)}: capabilities updated to {sorted(req.allowed_capabilities)}")
+    logger.info(f"Session {scrub_log(session_id)}: capabilities updated to {scrub_log(sorted(req.allowed_capabilities))}")
     return {
         "session_id": session_id,
         "allowed_capabilities": sorted(session["allowed_capabilities"]),
@@ -474,7 +474,7 @@ async def assign_agent(
             raise HTTPException(status_code=404, detail="Agent not found or not yours")
 
     session["agent_id"] = req.agent_id
-    logger.info(f"Session {scrub_log(session_id)}: agent_id set to {req.agent_id}")
+    logger.info(f"Session {scrub_log(session_id)}: agent_id set to {scrub_log(req.agent_id)}")
     return _session_view(session_id, session)
 
 

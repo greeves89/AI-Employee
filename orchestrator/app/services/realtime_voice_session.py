@@ -157,6 +157,27 @@ SAVE_MEMORY_TOOL = {
     }
 }
 
+WEB_PICTURE_SEARCH_TOOL = {
+    "toolSpec": {
+        "name": "web_picture_search",
+        "description": (
+            "Search the web for PICTURES and show them to the user right away. Use this "
+            "whenever someone asks to see something ('zeig mir Bilder von…', 'wie sieht … "
+            "aus'). Give the plain search term — I get real image addresses back and put "
+            "the best hits on screen. Never build an image address yourself; this is the "
+            "way to get one."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Suchbegriff, z. B. 'Titanic Ausstellung Potsdam'."},
+                "count": {"type": "integer", "description": "Wie viele Bilder (1-4, Standard 3)."},
+            },
+            "required": ["query"],
+        })},
+    }
+}
+
 PLAN_MY_DAY_TOOL = {
     "toolSpec": {
         "name": "plan_my_day",
@@ -663,6 +684,11 @@ SHOW_ON_SCREEN_TOOL = {
             "document the agent produced, a web page, or a link the user should take to "
             "their phone. kind='image' shows a picture (source = a file path in my "
             "workspace, e.g. /workspace/transfer/chart.png, or a public image URL). "
+            "NEVER invent or assemble an image URL from memory — a guessed path 404s and "
+            "the user sees nothing. Get it from a real result first: `web_search` for the "
+            "topic and take an image address from the hits, or ask the MediaWiki API for a "
+            "Commons file (commons.wikimedia.org/w/api.php?action=query&titles=File:NAME"
+            "&prop=imageinfo&iiprop=url&format=json) and use the returned url. "
             "kind='qr' shows a QR code for a link so the user can open it on their phone. "
             "kind='web' opens the page in a window inside the app (works for pages that "
             "allow embedding — my own HTML reports always do). kind='tab' opens the page "
@@ -694,6 +720,14 @@ DESKTOP_TOOL = {
             "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
             "action='click' — klickt bei x/y. action='type' — tippt text.\n"
+            "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
+            "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
+            "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
+            "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
+            "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "SO BEDIENST DU EINE APP: oeffnen → `find` auf das Element → `click` → "
+            "`type`/`key` → wieder nachsehen (`screenshot` oder `find`). Sage NIEMALS, "
+            "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
             "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
             "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
             "fehlgeschlagen ist."
@@ -701,9 +735,9 @@ DESKTOP_TOOL = {
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "open | screenshot | click | type"},
-                "target": {"type": "string", "description": "URL oder Programmname (bei action='open')."},
-                "text": {"type": "string", "description": "Text (bei action='type')."},
+                "action": {"type": "string", "description": "open | screenshot | find | click | type | key | wait | scroll"},
+                "target": {"type": "string", "description": "URL/Programmname (open) oder Beschriftung des gesuchten Elements (find/wait)."},
+                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
             },
@@ -958,7 +992,19 @@ async def _safe_get(url: str, *, timeout: float, max_bytes: int = _MAX_FETCH_BYT
         pinned = urlunparse((p.scheme, netloc, p.path or "/", p.params, p.query, ""))
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             req = client.build_request(
-                "GET", pinned, headers={"Host": host},
+                "GET", pinned,
+                headers={
+                    "Host": host,
+                    # Ohne User-Agent lehnen viele Server ab — Wikimedia antwortet mit
+                    # "Please set a user-agent and respect our robot policy" als
+                    # text/plain, und im Sprachmodus hiess es dann "Bild konnte nicht
+                    # geladen werden". Wir sagen ehrlich, wer wir sind.
+                    "User-Agent": (
+                        "AI-Employee/1.0 (self-hosted agent platform; "
+                        "+https://github.com/greeves89/AI-Employee)"
+                    ),
+                    "Accept": "image/*,text/html;q=0.9,*/*;q=0.8",
+                },
                 extensions={"sni_hostname": host},
             )
             resp = await client.send(req, stream=True)
@@ -1044,6 +1090,18 @@ def _now_context() -> str:
         "Beantworte Fragen nach Uhrzeit, Datum, Wochentag oder Zeitzonen-Umrechnungen IMMER "
         "direkt daraus — nutze dafür NIEMALS web_search.\n"
     )
+
+
+def _short_args(args: dict, limit: int = 160) -> str:
+    """Argumente kurz und lesbar — fuer die Anzeige, nicht fuers Protokoll."""
+    parts = []
+    for k, v in (args or {}).items():
+        text = str(v)
+        if len(text) > 60:
+            text = text[:60] + "…"
+        parts.append(f"{k}: {text}")
+    joined = ", ".join(parts)
+    return joined[:limit] + ("…" if len(joined) > limit else "")
 
 
 def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
@@ -1274,6 +1332,9 @@ class RealtimeVoiceSession:
     # Bedrock bidi stream would idle-timeout and drop with an error. We feed it a tiny
     # silent frame whenever no real audio flowed for a while, keeping it warm.
     _last_audio_sent: float = 0.0      # monotonic ts of the last frame sent to Nova
+    _last_real_audio: float = 0.0      # monotonic ts of the last frame FROM THE MICROPHONE
+    _mic_warned: bool = False
+    _opened_at: float = 0.0            # monotonic ts of the session start
     _closed: bool = False
     _greeted: bool = False
     # Barge-in: while True, ALL outgoing audio is dropped (the whole interrupted
@@ -1289,6 +1350,8 @@ class RealtimeVoiceSession:
     _resume_summary: str = ""  # prior conversation context when continuing a session
     _resumed_from_earlier_call: bool = False  # summary came from an EARLIER call, not this session
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
+    _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
+    _tool_calls: dict = field(default_factory=dict)  # tool_use_id → (Name, Argumente)
     _memory_context: str = ""  # facts this agent stored earlier (name, preferences, decisions)
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
@@ -1408,6 +1471,7 @@ class RealtimeVoiceSession:
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
             SAVE_MEMORY_TOOL, LIST_TODOS_TOOL, GET_DAY_PLAN_TOOL, PLAN_MY_DAY_TOOL,
+            WEB_PICTURE_SEARCH_TOOL,
             COMPLETE_ONBOARDING_TOOL,
             SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
@@ -1421,7 +1485,15 @@ class RealtimeVoiceSession:
         # der Agent sagte erst auf Nachfrage, dass ihm der Auftrag fehlt. Er muss es von
         # sich aus im ERSTEN Satz sagen.
         self._needs_briefing = bool(_ob_note)
-        sys_prompt = _system_prompt(agent_name, agent_role, language) + _ob_note + self._memory_context
+        self._agent_config = cfg
+        # Derselbe Arbeitsrhythmus wie im proaktiven Lauf — sonst sagt die Stimme am
+        # Abend „ich plane dir den heutigen Tag", waehrend der Agent laengst morgen plant.
+        from app.core import plan_rhythm as _rhythm
+        _rhythm_note = _rhythm.rhythm_note(agent, spoken=True)
+        sys_prompt = (
+            _system_prompt(agent_name, agent_role, language)
+            + _ob_note + _rhythm_note + self._memory_context
+        )
         engine = creds.get("engine") or "nova_sonic"
 
         if engine == "azure_realtime":
@@ -1454,6 +1526,7 @@ class RealtimeVoiceSession:
             )
         await self._nova.open()
         self._pump_task = asyncio.create_task(self._audio_pump())
+        self._opened_at = time.monotonic()
         self._keepalive_task = asyncio.create_task(self._keepalive_loop())
         self._proactive_task = asyncio.create_task(self._proactive_loop())
         logger.info(
@@ -1525,6 +1598,8 @@ class RealtimeVoiceSession:
                 if self._nova:
                     await self._nova.send_audio(chunk)
                     self._last_audio_sent = time.monotonic()
+                    self._last_real_audio = self._last_audio_sent
+                    self._mic_warned = False
                     # Greet proactively once the first audio frame has reached Nova
                     # Sonic (it needs audio content before an injected text turn speaks).
                     if not self._greeted:
@@ -1539,6 +1614,8 @@ class RealtimeVoiceSession:
     _SILENCE_FRAME = b"\x00" * (int(16000 * 0.2) * 2)
     _KEEPALIVE_IDLE_S = 5.0     # send silence after this long without real audio
     _KEEPALIVE_TICK_S = 2.0     # how often we check
+    # So lange warten wir auf den ERSTEN echten Mikrofon-Frame, bevor wir es sagen.
+    _MIC_SILENT_WARN_S = 20.0
 
     async def _keepalive_loop(self) -> None:
         """Keep the Bedrock bidi stream warm while the mic is muted (focus mode).
@@ -1552,15 +1629,35 @@ class RealtimeVoiceSession:
         try:
             while not self._closed:
                 await asyncio.sleep(self._KEEPALIVE_TICK_S)
-                if self._closed or not self._greeted or not self._nova:
-                    continue  # nothing to keep alive until real audio has started
-                if time.monotonic() - self._last_audio_sent < self._KEEPALIVE_IDLE_S:
-                    continue  # real audio is flowing, no keepalive needed
-                try:
-                    await self._nova.send_audio(self._SILENCE_FRAME)
-                    self._last_audio_sent = time.monotonic()
-                except Exception:  # noqa: BLE001
-                    logger.debug("keepalive silence failed agent=%s", self.agent_id, exc_info=True)
+                if self._closed or not self._nova:
+                    continue
+                now = time.monotonic()
+                if now - self._last_audio_sent >= self._KEEPALIVE_IDLE_S:
+                    try:
+                        await self._nova.send_audio(self._SILENCE_FRAME)
+                        self._last_audio_sent = now
+                        # Stille IST Ton-Inhalt: damit spricht die Begruessung auch dann,
+                        # wenn vom Mikrofon nie etwas kommt. Vorher wartete sie auf den
+                        # ersten echten Frame — kam der nicht, blieb es still, der Strom
+                        # bekam 55 Sekunden nichts und Bedrock brach ab ("Timed out
+                        # waiting for audio bytes").
+                        if not self._greeted:
+                            self._greeted = True
+                            asyncio.create_task(self._greet())
+                    except Exception:  # noqa: BLE001
+                        logger.debug("keepalive silence failed agent=%s", self.agent_id, exc_info=True)
+                # Und wenn vom Mikrofon dauerhaft nichts kommt, sagen wir es — statt den
+                # Nutzer raten zu lassen, warum niemand antwortet.
+                if (self._greeted and not self._mic_warned
+                        and self._last_real_audio == 0.0
+                        and now - self._opened_at >= self._MIC_SILENT_WARN_S):
+                    self._mic_warned = True
+                    await self._emit({"type": "status", "data": {
+                        "message": ("Ich bekomme kein Signal von deinem Mikrofon. "
+                                    "Prüf die Freigabe im Browser und das gewählte Gerät — "
+                                    "die Verbindung steht, ich höre nur nichts."),
+                        "level": "warning",
+                    }})
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
@@ -1824,6 +1921,12 @@ class RealtimeVoiceSession:
         return cleaned
 
     async def _respond(self, tool_use_id: str, text: str) -> None:
+        name, _args = self._tool_calls.pop(tool_use_id, ("", {}))
+        if name:
+            await self._emit({"type": "tool_result", "data": {
+                "name": name,
+                "output": (text or "")[:400],
+            }})
         if self._nova:
             await self._nova.send_tool_result(tool_use_id, self._engine_safe(text))
 
@@ -1837,6 +1940,15 @@ class RealtimeVoiceSession:
                 args = {}
         except (json.JSONDecodeError, TypeError):
             args = {}
+
+        # Fuer die Anzeige merken: der Nutzer soll SEHEN, was gerade benutzt wird.
+        # Vorher lief alles unsichtbar, und es sah aus, als haette der Agent nichts
+        # getan — „ich denke immer der hat dann nichts gemacht".
+        self._tool_calls[tool_use_id] = (name, args)
+        await self._emit({"type": "tool_call", "data": {
+            "name": name,
+            "input": _short_args(args),
+        }})
 
         # ── Fast tools: read orchestrator data directly (ms, no agent round-trip) ──
         if name == "get_agent_status":
@@ -1978,6 +2090,11 @@ class RealtimeVoiceSession:
             # Immer AUCH zeigen — der Plan ist eine Liste mit Uhrzeiten, die hoert niemand mit.
             await self._show_day_plan(str(args.get("date") or ""))
             await self._respond(tool_use_id, await self._get_day_plan(str(args.get("date") or "")))
+            return
+        if name == "web_picture_search":
+            await self._respond(tool_use_id, await self._web_picture_search(
+                str(args.get("query") or ""), int(args.get("count") or 3),
+            ))
             return
         if name == "plan_my_day":
             await self._respond(tool_use_id, await self._plan_my_day(
@@ -2626,6 +2743,28 @@ class RealtimeVoiceSession:
             if not text:
                 return "Mir fehlt der Text, den ich tippen soll."
             act, params = "type", {"text": text}
+        elif action == "find":
+            # Ohne Suche bleibt nur blindes Klicken auf geratene Koordinaten — deshalb
+            # sagte er, er koenne "nur oeffnen, nicht navigieren". Der Bedienungshilfen-
+            # Baum weiss, wo die Dinge sind.
+            if not target.strip():
+                return "Wonach soll ich auf dem Bildschirm suchen?"
+            act, params = "find_element", {"query": target.strip()}
+        elif action == "wait":
+            if not target.strip():
+                return "Worauf soll ich warten?"
+            act, params = "wait_for_element", {"query": target.strip(), "timeout": 10}
+        elif action == "key":
+            if not text.strip():
+                return "Welche Tastenkombination soll ich schicken?"
+            act, params = "hotkey", {"keys": [k.strip() for k in text.split("+") if k.strip()]}
+        elif action == "scroll":
+            amount = -5
+            try:
+                amount = int(text) if text.strip() else -5
+            except ValueError:
+                pass
+            act, params = "scroll", {"clicks": amount}
         else:
             return f"Die Aktion '{action}' kenne ich nicht."
 
@@ -2654,6 +2793,23 @@ class RealtimeVoiceSession:
         # behauptete, obwohl die Bridge „Chrome not found" zurückgegeben hatte.
         if isinstance(result, dict) and result.get("ok") is False:
             why = str(result.get("error") or "").strip()
+            # Fehlt der Bedienungshilfen-Baum, ist das KEIN "geht gar nicht": Klicken,
+            # Tippen und Tastenkombinationen gehen ueberall. Unter Windows fehlt nur ein
+            # nachinstallierbares Paket — das gehoert gesagt, damit es behoben werden kann.
+            if "uiautomation" in why.lower() or "Windows-Bedienungshilfen" in why:
+                return (
+                    "Auf diesem Windows-Rechner fehlt noch das Paket fuer die "
+                    "Bedienungshilfen — sag ihm: einmal `pip install uiautomation` in der "
+                    "Bridge-Umgebung, dann finde ich Elemente auch dort selbst. Bis dahin "
+                    "mache ich einen Screenshot und du sagst mir, wo ich klicken soll; "
+                    "Klicken, Tippen und Tastenkombinationen gehen jetzt schon."
+                )
+            if "only available on" in why or "AXUIElement" in why:
+                return (
+                    "Auf diesem Rechner kann ich Elemente nicht selbst suchen. Ich mache "
+                    "einen Screenshot, dann sag mir kurz, wo ich klicken soll; Klicken, "
+                    "Tippen und Tastenkombinationen gehen hier genauso."
+                )
             return (f"Das hat NICHT geklappt: {why or 'die Bridge meldet einen Fehler'}. "
                     "Sag ihm genau das und behaupte auf keinen Fall, es sei geöffnet." + os_note)
         if act == "screenshot":
@@ -2767,10 +2923,18 @@ class RealtimeVoiceSession:
                 except ValueError as e:
                     return str(e)
                 except Exception:  # noqa: BLE001
-                    return "Bild konnte nicht geladen werden."
+                    return (
+                        "Das Bild war unter der Adresse nicht abrufbar - die URL stimmt "
+                        "vermutlich nicht. Such sie mit `web_search` (oder ueber die "
+                        "MediaWiki-API) und nimm die Adresse aus dem Treffer, statt sie "
+                        "selbst zu bilden."
+                    )
                 ctype = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
                 if not ctype.startswith("image/"):
-                    return "Das ist kein (anzeigbares) Bild."
+                    return (
+                        "Unter der Adresse liegt kein Bild, sondern eine Seite. Nimm die "
+                        "direkte Bild-Adresse aus einem Suchtreffer."
+                    )
                 b64 = base64.b64encode(content).decode("ascii")
             else:
                 # Workspace file → read it out of the agent's container. FileManager
@@ -3858,6 +4022,18 @@ class RealtimeVoiceSession:
             return f"Der Neustart von „{rel}“ hat gerade nicht geklappt."
         return f"Ich habe {n} Container der App „{rel}“ neu gestartet. Bestätige das kurz in der ICH-Form."
 
+    def _local_tz(self):
+        """Zeitzone, in der dieser Agent denkt.
+
+        Der Plan wurde in UTC vorgelesen und angezeigt: der Nutzer hoerte „15:20", im
+        Kalender stand 17:20. Massgeblich ist, was am Agenten konfiguriert ist —
+        Erreichbarkeit des Ansprechpartners, sonst seine Dienstzeit, sonst UTC. Die
+        Reihenfolge steht in `core.plan_rhythm`, damit gesprochene, angezeigte und
+        geplante Uhrzeit dieselbe Zone meinen.
+        """
+        from app.core import plan_rhythm
+        return plan_rhythm.tzinfo(getattr(self, "_agent_config", None))
+
     async def _show_day_plan(self, day: str = "") -> bool:
         """Den Tagesplan als Karte in die rechte Spalte legen.
 
@@ -3897,7 +4073,8 @@ class RealtimeVoiceSession:
             "items": [
                 {
                     "title": r.title,
-                    "time": r.planned_start.strftime("%H:%M") if r.planned_start else "",
+                    "time": r.planned_start.astimezone(self._local_tz()).strftime("%H:%M")
+                            if r.planned_start else "",
                     "minutes": r.estimated_minutes,
                     "priority": r.priority,
                     "status": r.status,
@@ -3908,6 +4085,62 @@ class RealtimeVoiceSession:
         }})
         return True
 
+    async def _web_picture_search(self, query: str, count: int = 3) -> str:
+        """Bilder suchen UND zeigen — in einem Zug.
+
+        Vorher konnte er nur ein Bild anzeigen, dessen Adresse er schon kannte; also hat
+        er Adressen erfunden, die es nie gab. Jetzt: Begriff rein, echte Treffer raus,
+        die besten davon direkt auf den Schirm.
+        """
+        q = (query or "").strip()
+        if not q:
+            return "Wonach soll ich Bilder suchen?"
+        count = max(1, min(int(count or 3), 4))
+        from app.core.image_search import image_search
+
+        # Reichlich Kandidaten holen: manche Treffer zeigen auf eine Webseite statt auf
+        # die Bilddatei, andere sperren fremde Abrufe. Wer aufgibt, sobald der erste
+        # nicht klappt, meldet faelschlich "keine Bilder" — also weitersuchen.
+        hits = await image_search(q, max_results=max(count * 5, 15))
+        if not hits:
+            return f"Zu '{q}' habe ich keine Bilder gefunden — sag mir gern einen anderen Begriff."
+
+        shown = 0
+        for hit in hits:
+            if shown >= count:
+                break
+            content = headers = None
+            # Erst die Originaladresse, dann das Vorschaubild — das ist immer eine
+            # echte Bilddatei und liegt auf dem Server der Suche.
+            for candidate in (hit.get("image_url"), hit.get("thumbnail")):
+                if not candidate or not str(candidate).startswith("https://"):
+                    continue
+                try:
+                    _final, headers, content = await _safe_get(candidate, timeout=8.0)
+                except Exception:  # noqa: BLE001 — toter Treffer, naechster Kandidat
+                    content = None
+                    continue
+                ctype_try = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
+                if ctype_try.startswith("image/"):
+                    break
+                content = None
+            if content is None or headers is None:
+                continue
+            ctype = (headers.get("content-type", "") or "").split(";")[0].strip().lower()
+            if not ctype.startswith("image/"):
+                continue
+            await self._emit({"type": "media", "data": {
+                "kind": "image", "media_type": ctype,
+                "b64": base64.b64encode(content).decode("ascii"),
+                "caption": hit["title"] or q,
+                "auto_open": shown == 0,
+            }})
+            shown += 1
+        if not shown:
+            return (f"Ich habe Treffer zu '{q}', aber keiner liess sich laden. "
+                    "Nenn mir einen anderen Begriff, dann versuche ich es nochmal.")
+        return f"{shown} Bild(er) zu '{q}' sind auf dem Schirm. Sag kurz, was du siehst oder brauchst."
+
     async def _plan_my_day(self, horizon: str = "today", focus: str = "") -> str:
         """Die Planung an den AGENTEN geben — der Sprachfront plant nicht selbst.
 
@@ -3917,36 +4150,51 @@ class RealtimeVoiceSession:
         taucht im Aufgaben-Panel auf, laeuft mit den Werkzeugen des Agenten und legt den
         Plan ueber `plan_day` in den Kalender.
         """
+        from datetime import timedelta as _td
+        from types import SimpleNamespace
+
+        from app.core import plan_rhythm
+
         horizon = (horizon or "today").strip().lower()
-        wann = {"tomorrow": "für MORGEN", "week": "für die kommende WOCHE"}.get(horizon, "für HEUTE")
-        schwerpunkt = f" Schwerpunkt laut Nutzer: {focus.strip()}." if focus.strip() else ""
-        instruction = (
-            f"Plane deinen Arbeitstag {wann}.{schwerpunkt}\n\n"
-            "1. Lies mit `get_day_plan`, was schon geplant ist und was der Nutzer gestrichen hat.\n"
-            "2. Leite aus deinen Verantwortungsbereichen ab, was heute faellig ist (Takt beachten), "
-            "und ziehe offene Todos hinzu (`list_todos`).\n"
-            "3. Schreibe den Plan mit `plan_day` weg — Bloecke in Arbeitsreihenfolge, mit "
-            "geschaetzter Dauer und der Prioritaet des jeweiligen Bereichs.\n"
-            "4. Melde in zwei Saetzen, was du dir vorgenommen hast."
+        # „Plan mir den Tag" am Abend meint den naechsten Tag — alles andere waere eine
+        # Planung fuer die letzte Stunde. Dieselbe Phasenlogik wie beim Rhythmus-Lauf.
+        agent_stub = SimpleNamespace(config=self._agent_config or {})
+        today = datetime.now(timezone.utc).astimezone(plan_rhythm.tzinfo(self._agent_config)).date()
+        if horizon == "tomorrow":
+            plan_date = today + _td(days=1)
+        elif horizon == "week":
+            plan_date = today
+        else:
+            plan_date = plan_rhythm.target_date(agent_stub)
+        wann = {"week": "für die kommende WOCHE"}.get(
+            horizon, "für MORGEN" if plan_date > today else "für HEUTE"
         )
-        title = {"tomorrow": "Tagesplanung für morgen", "week": "Wochenplanung"}.get(
-            horizon, "Tagesplanung für heute"
+        instruction = (
+            f"Plane deinen Arbeitstag {wann}.\n\n"
+            + plan_rhythm.planning_instruction(plan_date, focus=focus)
+            + "6. Melde in zwei Saetzen, was du dir vorgenommen hast.\n"
+        )
+        title = {"week": "Wochenplanung"}.get(
+            horizon, "Tagesplanung für morgen" if plan_date > today else "Tagesplanung für heute"
         )
         answer = await self._plan_task(instruction, title)
         # Sobald die Aufgabe durch ist, liegt der Plan in der Datenbank — dann zeigen
         # statt vorlesen. Nebenlaeufig, damit das Gespraech nicht wartet.
-        asyncio.create_task(self._show_plan_when_ready(horizon))
+        asyncio.create_task(self._show_plan_when_ready(plan_date.isoformat()))
         return answer
 
-    async def _show_plan_when_ready(self, horizon: str, tries: int = 20) -> None:
-        """Auf den fertigen Plan warten und ihn dann einblenden (max. ~2 Minuten)."""
-        from datetime import date as _date, datetime as _dt, timedelta as _td, timezone as _tz
-        target = _dt.now(_tz.utc).date() + (_td(days=1) if horizon == "tomorrow" else _td(0))
+    async def _show_plan_when_ready(self, target_iso: str, tries: int = 20) -> None:
+        """Auf den fertigen Plan warten und ihn dann einblenden (max. ~2 Minuten).
+
+        Gezeigt wird GENAU der Tag, der geplant wurde — am Abend also morgen. Vorher
+        wartete diese Schleife auf „heute" und blendete nie etwas ein, wenn der Agent
+        den naechsten Tag geplant hatte.
+        """
         for _ in range(tries):
             await asyncio.sleep(6)
             if self._closed:
                 return
-            if await self._show_day_plan(target.isoformat()):
+            if await self._show_day_plan(target_iso):
                 return
 
     async def _plan_task(self, instruction: str, title: str = "") -> str:
@@ -4289,7 +4537,8 @@ class RealtimeVoiceSession:
         marks = {"done": "erledigt", "running": "läuft gerade", "dropped": "gestrichen"}
         lines = []
         for r in rows:
-            when = r.planned_start.strftime("%H:%M") if r.planned_start else "ohne feste Zeit"
+            when = (r.planned_start.astimezone(self._local_tz()).strftime("%H:%M")
+                    if r.planned_start else "ohne feste Zeit")
             state = marks.get(r.status, "geplant")
             lines.append(f"- {when}: {r.title} ({state}, ca. {r.estimated_minutes} Minuten)")
         return "Mein Plan:\n" + "\n".join(lines)
@@ -4336,8 +4585,20 @@ class RealtimeVoiceSession:
             user = await self._load_user(db)
             if user is None:
                 return "Ich konnte deine Berechtigung nicht prüfen — du musst im Web angemeldet sein."
+            # Same manager hand-off as the model switch below: with it the new
+            # level's sudo grant lands in the running container right away,
+            # without it at the next start.
+            manager = None
             try:
-                res = await change_autonomy_level(db, user, self.agent_id, lvl)
+                from app.api import ws as ws_module
+                from app.core.agent_manager import AgentManager
+                docker = getattr(ws_module, "_docker", None)
+                if docker is not None:
+                    manager = AgentManager(db, docker, self.redis)
+            except Exception:  # noqa: BLE001
+                manager = None
+            try:
+                res = await change_autonomy_level(db, user, self.agent_id, lvl, manager)
             except HTTPException as e:
                 return f"Das ging nicht: {e.detail}"
             except Exception:  # noqa: BLE001

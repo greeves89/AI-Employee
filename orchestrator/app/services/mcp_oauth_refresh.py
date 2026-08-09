@@ -7,6 +7,7 @@ the agent manager (mint a fresh access token just before an agent starts).
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -27,6 +28,28 @@ _TOKEN_TIMEOUT = 15.0
 # server id can never collide with another advisory-lock user in the cluster.
 # Arbitrary fixed int4 ("mcp\0"); must stay stable across releases.
 _REFRESH_LOCK_NAMESPACE = 0x6D63_7000
+
+# Per-server in-process debounce (#503). With many agents (>20) polling
+# /mcp-credentials on a 300s cycle, ``refresh_if_needed`` runs once per agent per
+# server per tick. When a token crosses the expiry-skew threshold, every one of
+# those calls would otherwise contend on the per-server advisory lock for the same
+# refresh. After a server is confirmed to hold a usable (fresh or still-valid)
+# token, we remember that verdict for a short window and short-circuit subsequent
+# calls, so only one caller per window does the expiry-check / lock / token dance.
+# MUST stay strictly below EXPIRY_SKEW_SECONDS (60): a token confirmed "not expiring
+# within the skew" cannot actually expire before the debounce elapses, so a cached
+# "usable" verdict can never mask a token that has since gone stale.
+_REFRESH_DEBOUNCE_SECONDS = 30.0
+_recently_verified: dict[int, float] = {}  # server_id -> monotonic deadline
+
+
+def _mark_verified(server_id: int) -> None:
+    _recently_verified[server_id] = time.monotonic() + _REFRESH_DEBOUNCE_SECONDS
+
+
+def _debounced(server_id: int) -> bool:
+    deadline = _recently_verified.get(server_id)
+    return deadline is not None and time.monotonic() < deadline
 
 
 def _is_postgres(db: AsyncSession) -> bool:
@@ -135,9 +158,15 @@ async def refresh_if_needed(server: McpServer, db: AsyncSession) -> bool:
     if not getattr(server, "oauth_enabled", False):
         return bool(server.auth_token_encrypted)
 
+    # Recently confirmed usable by another caller (#503) — skip the expiry-check,
+    # advisory lock and any token request for the debounce window.
+    if _debounced(server.id):
+        return True
+
     expires_at = server.oauth_access_expires_at
     epoch = expires_at.timestamp() if expires_at else None
     if server.auth_token_encrypted and not oc.is_expired(epoch):
+        _mark_verified(server.id)
         return True
 
     if not server.oauth_refresh_token_encrypted or not server.oauth_token_endpoint:
@@ -157,6 +186,7 @@ async def refresh_if_needed(server: McpServer, db: AsyncSession) -> bool:
         if server.auth_token_encrypted and not oc.is_expired(epoch):
             # A concurrent winner already refreshed; release the lock promptly.
             await _release(db)
+            _mark_verified(server.id)
             return True
 
         try:
@@ -185,6 +215,7 @@ async def refresh_if_needed(server: McpServer, db: AsyncSession) -> bool:
             await db.rollback()
             logger.warning("Could not persist refreshed MCP token for server %s", server.name)
             return bool(server.auth_token_encrypted)
+        _mark_verified(server.id)
         return True
 
 

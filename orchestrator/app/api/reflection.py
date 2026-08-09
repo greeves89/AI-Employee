@@ -56,6 +56,13 @@ async def reflection_status(user=Depends(require_auth), db: AsyncSession = Depen
             CommandApproval.status == ApprovalStatus.PENDING,
         ))
     )).scalar() or 0
+    # Die Wochensynthese (#384) haengt am selben Takt und teilt sich den LLM-Zugang.
+    # Ihr Zustand kommt deshalb ueber DIESE Karte zurueck und nicht ueber einen
+    # zweiten Statusweg, der auseinanderlaufen koennte.
+    from app.services.synthesis_service import WeeklySynthesisService
+    syn_cfg = await WeeklySynthesisService()._load_config(db)
+    last_synthesis = await WeeklySynthesisService._latest_synthesis_at(db)
+
     return {
         "enabled": cfg["enabled"],
         "mode": cfg["mode"],
@@ -63,6 +70,12 @@ async def reflection_status(user=Depends(require_auth), db: AsyncSession = Depen
         "token_budget": cfg["token_budget"],
         "pending_approvals": int(pending),
         "last_run": _run_to_dict(last) if last else None,
+        "synthesis": {
+            "enabled": syn_cfg["enabled"],
+            "weekday": syn_cfg["weekday"],
+            "hour": syn_cfg["hour"],
+            "last_run": last_synthesis.isoformat() if last_synthesis else None,
+        },
     }
 
 

@@ -5,6 +5,611 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.169.1] — 2026-08-09
+
+### Fixed
+- **Der Gedächtnis-Preload war seit dem 2026-08-07 unbenutzbar.**
+  `core/memory_preload.py` importierte aus `app.models.agent_memory` — ein Modul,
+  das es nicht gibt (es heißt `app.models.memory`). Der Import steht auf Modulebene,
+  aber das Modul selbst wird erst spät geladen, deshalb fiel es nie beim Start auf,
+  sondern erst als 500 beim Aufruf. Aus V1 der Vision-Arbeit (`6e635f8`).
+- Denselben falschen Pfad hatte ich beim Self-Improvement-Endpunkt nachgebaut; der
+  Import war dort ohnehin überflüssig.
+
+### Added
+- **Ein Test importiert jetzt jedes Modul unter `app/` einmal.** Ein nicht
+  auflösbarer Import ist immer ein Fehler, nie ein Zustand — und diese Klasse
+  Fehler gehört in den Testlauf, nicht zum Nutzer.
+
+---
+
+## [1.169.0] — 2026-08-09
+
+### Added
+- **Gespräche verzweigen, zurückspulen und zusammenfassen** (#538). Alle drei
+  arbeiten auf „die Nachrichten bis hierher". Verzweigen **kopiert** — das Original
+  bleibt; Zurückspulen **löscht** und legt deshalb eine Sicherung an.
+- **Echte Gesprächstitel** statt der rohen letzten Nachricht. Aus dem ersten
+  Austausch abgeleitet, bewusst ohne Sprachmodell — ein Titel ist keine hundert
+  Modellaufrufe wert, und der erste Satz sagt fast immer schon, worum es geht.
+
+### Fixed
+- **WhatsApp hatte keine Absenderprüfung** — wer die Nummer kannte, schrieb dem
+  Agenten. Als einziger Kanal ohne natürlichen Rahmen (Telegram verlangt `/auth`,
+  Teams und Slack liegen im Firmen-Tenant). Jetzt fail-closed, einseitig verglichen
+  und mit mindestens zehn Stellen.
+- **Kopfbereich der Agentenseite war zu hoch** (#537). Beschreibung auf eine Zeile
+  gekürzt (voller Text im Tooltip), Umbenennen direkt am Namen statt am rechten
+  Rand, Budget einzeilig statt als vollbreite Karte.
+- **Protokoll-Injektion** in fünf weiteren Ausgabestellen (PR #545, #546) — damit
+  sind #542 und #543 erledigt.
+
+### Changed
+- Frontend-Basis auf `node:26-alpine` (PR #158).
+
+---
+
+## [1.168.0] — 2026-08-08
+
+### Added
+- **Agent mit Stimme im Teams-Termin.** Er tritt bei, sagt etwas, hört eine Antwort
+  und reagiert darauf — abwechselnd, wie am Telefon. Über Graph Communications mit
+  *service-hosted media*: Microsoft hält die Medien, wir brauchen weder ein
+  .NET-Medienmodul noch offene Medienports.
+- **Einrichtungs-Karte für Administratoren** mit der Rückruf-Adresse zum Kopieren,
+  einem Prüfknopf und der Berechtigungs-Checkliste — plus
+  `docs/TEAMS_CALLING_SETUP.md`, Klick für Klick durch Azure.
+
+### Notes
+- `Calls.AccessMedia.All` wird **bewusst nicht** angefordert. Die Berechtigung
+  erlaubt den Zugriff auf den rohen Audiostrom aller Teilnehmer und wird nur für
+  durchgehendes Mithören gebraucht — was dieser Weg nicht tut.
+- Die Karte warnt vorab, wenn die Anlage nicht über HTTPS erreichbar ist: Microsoft
+  ruft ausschließlich HTTPS zurück, und sonst bliebe der Agent stumm, ohne dass
+  irgendwo ein Fehler aufträte.
+
+---
+
+## [1.167.0] — 2026-08-08
+
+Der Vision-Abschluss: die offenen Punkte aus allen vier Roadmap-Säulen. Drei davon
+waren keine Lücken, sondern **Wege, die an einer vorhandenen Fähigkeit vorbeigingen** —
+sie fielen erst beim Nachsehen auf.
+
+### Added
+- **SAML 2.0 SSO mit IdP-Gruppen-Zuordnung.** Die Signaturprüfung bewusst über
+  `python3-saml`/`xmlsec` statt selbst geschrieben — XML-DSig von Hand zu prüfen ist
+  der klassische Ort für Signature-Wrapping, und ein Kanonisierungsfehler dort ist ein
+  Authentifizierungs-Bypass. Höchste zutreffende Rolle gewinnt; ohne Treffer bleibt die
+  Rolle unverändert, und der letzte Administrator wird nie herabgestuft.
+- **Browser-Meldungen (Web Push) und installierbare App (PWA).** Ohne neue
+  Abhängigkeit umgesetzt (RFC 8292 + RFC 8291/8188 mit `cryptography`). Der Inhalt ist
+  für den Empfänger verschlüsselt — der Push-Dienst leitet nur weiter.
+- **Multi-Channel: Teams, Slack, WhatsApp.** Teams in drei Richtungen — Mensch schreibt
+  den Agenten an, Agent schreibt Agent, Agent als Mitschreiber oder Beisitzer in
+  Terminen. Ohne Bot-Registrierung: die Graph-Anbindung mit Nutzer-OAuth darf das
+  bereits.
+- **Wochensynthese (#384) und Auto-Capture (#385).** Muster, Widersprüche,
+  Wissenslücken und EINE Aktion aus den letzten sieben Tagen; Links und lange
+  Textblöcke landen im Second Brain statt im Chatverlauf.
+- **Self-Improvement sichtbar (#13).** Die Mechanik lief längst — es gab nur keine
+  Fläche, auf der steht, was der Agent gelernt hat.
+- **Admin-Concierge (#11).** „Läuft alles?" in einer Antwort, bewusst ohne
+  Sprachmodell: ein Concierge, der eine Zahl halluziniert, ist schlimmer als keiner.
+- **Ticketsystem-Anschluss** mit Matrix42 als erstem Profil. Ohne Schließen und
+  Löschen — den Abschluss macht ein Mensch.
+- **Ablauf-Vorlagen für Besprechungen (#14):** Daily, Retrospektive, Workshop,
+  Entscheidung.
+- **Nacharbeitsquote** in der Entwicklungs-Karte und im Analytics-Tab.
+- **MCP-Brücke:** Rückruf beim Fertigwerden statt Polling, plus `cancel_task`.
+
+### Fixed
+- **Die Team-Lead-Stufe der Vertretungskette hat nie ausgelöst.** `team_lead_for`
+  verband sich auf eine Tabelle `team_members`, die es in diesem Projekt nie gab. Der
+  ImportError lief jedes Mal ins umschließende `except`, die Funktion gab stumm `""`
+  zurück. Folge: ohne eingetragenen Vertreter übernahm **niemand**, und unbeantwortete
+  Rückfragen gingen immer an die Administration statt an den Team-Lead. Aufgefallen nur,
+  weil der neue Beleg gegen echtes SQL läuft statt gegen Attrappen.
+- **Die Autonomiestufe bestimmt jetzt auch den sudo-Zugriff im Container.** Ein
+  L1-Agent („nur lesen") bekam trotzdem das Standardpaket — der Prompt sagte nein, die
+  Kiste sagte ja.
+- **Browser-Steuerung gab es nur für Claude Code.** `claude mcp add` schreibt in die
+  Konfiguration der Claude-CLI, die Codex und Custom-LLM nicht lesen. Von drei
+  Harnessen konnte nur einer im Browser arbeiten.
+- **Kanal-Zugangsdaten** (Slack-Token, WhatsApp-Geheimnis) werden verschlüsselt
+  abgelegt statt im Klartext.
+
+### Changed
+- Der Wissens-Schreibweg (anlegen, einbetten, verknüpfen) existierte **viermal** fast
+  gleich — der Kommentar im Code sagte selbst „mirrors api/knowledge.py". Jetzt in
+  `core/knowledge_write`, von allen Aufrufern genutzt.
+- Der Kanal-Eingang (Historie, Auto-Capture, Einreihen) lag im Telegram-Bot und liegt
+  jetzt in `core/channel_gateway` — Telegram, Teams, Slack und WhatsApp teilen ihn.
+- `push_to_user` lag in `apns_service` und erreichte nur iPhones; der Verteilpunkt
+  liegt jetzt in `core/push` und fächert auf alle Geräte auf.
+
+---
+
+## [1.166.10] — 2026-08-08
+
+### Fixed
+- **Ein angehaltener AudioContext machte den Sprachmodus stumm — ohne einen einzigen
+  Fehler.** Chrome startet einen AudioContext ohne Nutzergeste als `suspended`.
+  - **Aufnahme:** `onaudioprocess` feuert dann nie. Die Verbindung steht, der Agent
+    begrüßt, danach kommt nichts mehr an. Der Kontext wird jetzt aufgeweckt, und liefert
+    die Aufnahme nach 2,5 Sekunden immer noch keinen einzigen Block, steht das als
+    Meldung da — samt Zustand des Kontexts, statt still zu bleiben.
+  - **Wiedergabe:** Die Blöcke werden eingeplant und nie hörbar — in der Oberfläche steht
+    „Spricht…", aus dem Lautsprecher kommt nichts. Der Kontext wird jetzt bei jedem Block
+    geprüft und aufgeweckt.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.166.9] — 2026-08-08
+
+### Fixed
+- **Das Live-Gespräch starb, wenn vom Mikrofon nichts kam** — mit einer AWS-Meldung statt
+  einer Erklärung („Timed out waiting for audio bytes … less than 55 seconds"). Die
+  Erhaltungsschleife schickte Stille erst, NACHDEM die Begrüßung lief, und die lief erst
+  nach dem ersten echten Mikrofon-Frame. Kam der nie (Freigabe verweigert, falsches Gerät,
+  stumm), blieb alles still und der Anbieter brach nach 55 Sekunden ab. Jetzt hält die
+  Schleife den Strom ab dem ersten Tick warm, und die Begrüßung spricht auch ohne Zutun.
+- **Ein totes Mikrofon wird benannt:** Kommt 20 Sekunden lang kein Signal, sagt die
+  Oberfläche das — statt den Nutzer raten zu lassen, warum niemand antwortet.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.166.8] — 2026-08-08
+
+### Changed
+- **Die Telegram-Regel steht jetzt im Systemprompt aller drei Laufzeiten** (Claude Code,
+  Codex, Custom-LLM) statt nur im Proaktiv-Prompt. Vorher galt sie nur für geplante Läufe —
+  im Chat und in jeder normalen Aufgabe wusste der Agent nichts davon. Enthalten: kein
+  fremder Bot, „kein eigener Bot" ist kein Fehler, bei Dringendem den Team-Lead per
+  `send_message` bitten, und die Gegenseite (was ein Team-Lead damit zu tun hat).
+
+### Deployment
+- Orchestrator-Neustart, Agenten neu erstellen (neue Anleitung).
+
+---
+
+## [1.166.7] — 2026-08-08
+
+### Added
+- **Ohne eigenen Telegram-Bot geht die Meldung trotzdem nicht verloren — sie landet im
+  Chat.** Die Zustellkette ist jetzt: eigener Bot → sonst Ablage als Nachricht im Chat des
+  Agenten (Unterhaltung „meldungen"), und der Agent erfährt dabei, wer sein **Team-Lead**
+  ist. Ist die Sache dringend, bittet er ihn per `send_message`, sie weiterzugeben — der
+  Lead entscheidet und schreibt unter **seinem** Namen, damit immer erkennbar bleibt, wer
+  da schreibt. Hat der Lead auch kein Telegram, bleibt es beim Chat, und er sagt das dem
+  Absender. Kein Ausleihen, kein stiller Umweg, keine verlorene Meldung.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.166.6] — 2026-08-08
+
+### Changed
+- **Ein Agent ohne eigenen Telegram-Bot hat keinen Telegram-Kanal — Punkt.** Das Ausleihen
+  fremder Bots ist ersatzlos raus. Es war nicht erkennbar, mit wem man eigentlich schreibt:
+  im Chat stand JujaBot, geantwortet hat CodeReview. Wer den Kanal nutzen soll, bekommt
+  einen eigenen Bot-Token in seinen Einstellungen. Der Agent bekommt eine klare Antwort
+  (503 mit Erklärung) und ist in seiner Basis-Anleitung angewiesen, das **nicht** als
+  Fehler zu melden und nicht nach einem anderen Weg zu suchen.
+
+### Deployment
+- Orchestrator-Neustart, Agenten neu erstellen (neue Basis-Anleitung).
+
+---
+
+## [1.166.5] — 2026-08-08
+
+### Fixed
+- **Ein Agent konnte seine Telegram-Meldung in den privaten Chat eines FREMDEN Nutzers
+  schicken.** Hat ein Agent keinen eigenen Bot, leiht er sich einen — die Suche lief aber
+  über *alle* laufenden Bots, ohne Rücksicht auf den Besitzer. Die App ist userbased; das
+  darf sie nicht. Geliehen wird jetzt nur noch bei einem Agenten **desselben Besitzers**,
+  und ein Agent ohne Besitzer (System-/Admin-Agent) leiht sich gar nichts — seine
+  Meldungen gehören in keinen privaten Chat. Genau darüber landeten die Arbeitsberichte
+  von CodeReview, für den nie ein Telegram eingerichtet wurde, im JujaBot-Chat.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.166.4] — 2026-08-08
+
+### Fixed
+- **Ein Agent-Bot verstummte, weil eine fremde Meldung den Chat gekapert hatte.** Ein Agent
+  ohne eigenen Telegram-Bot leiht sich den eines anderen, um eine Meldung loszuwerden.
+  Dabei wurde die Weiche des Chats für **24 Stunden** auf den leihenden Agenten gestellt —
+  danach ging jede Nachricht des Nutzers an ihn, und der Agent, dem der Bot gehört, hörte
+  nie wieder etwas. Beim JujaBot stand deshalb tagelang `gateway=JujaBot →
+  target=CodeReview` im Log: geschrieben wurde an Julia's Bot, angekommen ist es woanders.
+  Eine geliehene Meldung ist jetzt **Einweg**; wer dem anderen Agenten wirklich schreiben
+  will, wählt ihn ausdrücklich mit `/agent`, und die Meldung sagt auch wie.
+- **Eine Weiche auf einen gelöschten Agenten führte ins Leere.** Sie fällt jetzt auf den
+  Besitzer des Bots zurück und wird entfernt — statt den Chat stumm gegen eine Wand laufen
+  zu lassen.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.166.3] — 2026-08-08
+
+### Fixed
+- **OAuth-Token-Erneuerung skaliert nicht mehr mit der Zahl der Agenten (#503).** Bei über
+  20 Agenten lief `refresh_if_needed` einmal pro Agent pro Server pro Runde; sobald ein
+  Token die Ablaufschwelle überschritt, konkurrierten alle gleichzeitig um dieselbe
+  Sperre. Jetzt merkt sich der Prozess 30 Sekunden lang, dass ein Server ein brauchbares
+  Token hat — strikt unter den 60 Sekunden Ablauf-Puffer, ein gemerktes „brauchbar" kann
+  also nie ein inzwischen abgelaufenes Token verdecken. Aus dem offenen Teil von PR #539.
+- **Compose-Ausgabe wird wirklich entschärft, nicht nur einzeilig gemacht.** `scrub_log`
+  entfernt Steuerzeichen gegen Log-Injection — Geheimnisse maskiert erst `redact_logs`.
+  Und in der HTTP-Antwort stand die Ausgabe ohnehin ungefiltert: der Weg nach außen war
+  offen, während der Log als dicht galt. Betrifft Start, Stopp und Rebuild einer App.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.166.2] — 2026-08-08
+
+### Fixed
+- **Eine unterbrochene Aufgabe konnte sich endlos selbst fortsetzen.** Wird ein laufender
+  Agenten-Lauf von einem Neustart unterbrochen, nimmt die Plattform ihn als neue Aufgabe
+  wieder auf — die Fortsetzung kann aber selbst unterbrochen werden, und ihre Fortsetzung
+  wieder. Jeder Anlauf beginnt bei null und kostet voll: bei mehreren Deployments
+  hintereinander lief EIN Plan-Block fünfmal komplett durch (16:33 → 16:37 → 16:42 →
+  16:45 → 16:51), rund 14 USD statt knapp vier. Nach **drei** Fortsetzungen wird jetzt
+  nicht mehr automatisch neu gestartet, sondern der Besitzer bekommt eine Meldung mit
+  hoher Priorität.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.166.1] — 2026-08-07
+
+### Fixed
+- **Die Container liefen in UTC, während der Host längst lokal tickte.** In den Logs stand
+  21:31, im Haus war es 23:31 — und ein Agent, der in seiner Shell `date` aufrief, bekam
+  eine Uhrzeit zwei Stunden daneben. Der Orchestrator bekommt jetzt `TZ` (Standard
+  `Europe/Berlin`, über `.env` änderbar), jeder Agent-Container **seine eigene** Zone
+  (Erreichbarkeit → Dienstzeit → UTC). Gerechnet wurde ohnehin zeitzonenbewusst; das
+  macht die Anzeige ehrlich.
+
+### Deployment
+- `docker compose up -d orchestrator`, Agenten neu erstellen.
+
+---
+
+## [1.166.0] — 2026-08-07
+
+### Fixed
+- **Zeitpläne, die ein Agent selbst anlegt, laufen jetzt in SEINER Zeitzone.** Ohne Angabe
+  galt UTC: der Agent nannte seinen Zeitplan „🌅 Täglicher Morgen-Report (07:00)", trug
+  `0 7 * * *` ein — und im Kalender stand 09:00. Der Server setzt jetzt die Zone des
+  Agenten ein (Erreichbarkeit, sonst Dienstzeit, sonst UTC); eine ausdrücklich gesetzte
+  Zone bleibt unangetastet. Bestehende Zeitpläne ändern sich nicht.
+- Das Werkzeug sagt es in allen Laufzeiten gleich: `timezone` leer lassen, außer man meint
+  wirklich eine andere Zone. In den Codex-/Custom-LLM-Laufzeiten gab es den Parameter
+  bisher gar nicht.
+
+### Changed
+- **Agenten sollen keinen eigenen Morgen- oder Abendplaner mehr anlegen** — die Plattform
+  hat den Rhythmus seit 1.165.0. Bei DEV_Prod standen deshalb drei Morgenroutinen
+  nebeneinander (06:00, 07:00, 08:00, 09:00). Die Basis-Anleitung sagt das jetzt.
+
+### Deployment
+- Orchestrator-Neustart, Agenten neu erstellen (neue Basis-Anleitung).
+
+---
+
+## [1.165.2] — 2026-08-07
+
+### Fixed
+- **Zweimal derselbe Titel im Tageskalender sah nach doppelter Arbeit aus.** Es war eine
+  FORTSETZUNG: wird ein Lauf unterbrochen (z. B. Orchestrator-Neustart mitten in der
+  Arbeit), nimmt die Plattform ihn als neue Aufgabe wieder auf. Der zweite Kasten trägt
+  jetzt ein Wiederholungs-Symbol und „fortgesetzt" — ein Auftrag in zwei Abschnitten,
+  nicht zwei Aufträge.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
+## [1.165.1] — 2026-08-07
+
+### Fixed
+- **Im Tageskalender eines Agenten waren die Aufgaben-Kästen unlesbar schmal.** Der Plan
+  bekam 26 % der Breite, die geplanten Läufe 34 % — für die Aufgaben blieben 36 %, geteilt
+  durch die Zahl gleichzeitiger Läufe. Bei dreien war der Titel nach zwölf Zeichen zu Ende
+  („[Scheduled] SAP M…"). Jetzt: Plan 22 %, Aufgaben 44 %, geplante Läufe 32 %, höchstens
+  vier Spuren nebeneinander.
+- **Zwei Aufgaben lagen übereinander im selben Kasten.** Die Spuren wurden aus den rohen
+  Zeiten berechnet: eine Aufgabe, die in Sekunden durch ist, ist zeitlich ein Strich, wird
+  aber mit einer Mindesthöhe gezeichnet — die nächste rutschte darunter. Die Spuren
+  richten sich jetzt nach dem, was tatsächlich gezeichnet wird.
+- **„[Scheduled]" und „[Proactive]" stehen nicht mehr im Kasten** — die Präfixe kosteten
+  ein Viertel der Zeile und sagen dem Leser nichts.
+- Kurze Aufgaben sind nur eine Zeile hoch; beim Überfahren stehen jetzt Titel, Zeitraum,
+  Status, Dauer und Kosten im Tooltip.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.165.0] — 2026-08-07
+
+### Added
+- **Jeder Agent plant jetzt abends den nächsten Tag und schaut morgens nochmal drüber.**
+  Bisher hatte genau EIN Agent diesen Rhythmus, weil er ihn sich im Chat selbst
+  eingerichtet hatte — die anderen planten irgendwann mitten am Tag oder gar nicht, und
+  der Montag blieb leer, weil sonntags niemand plante. Neu: `core/plan_rhythm.py` plus
+  zwei Zeitpläne pro proaktivem Agenten (`[Rhythmus] Abendplanung`, `[Rhythmus]
+  Morgencheck`), angelegt über dieselbe Zeitplan-Maschinerie wie alles andere.
+  - Die Zeiten leitet jeder Agent aus SEINER Dienstzeit ab (Planung eine halbe Stunde vor
+    Feierabend, Durchsicht zum Dienstbeginn); ohne Dienstzeit gelten 21:30 und 07:00.
+  - **Sieben Tage die Woche** — nur wer `weekdays_only` gesetzt hat, macht Wochenende.
+  - Der Morgencheck bekommt die Läufe der Nacht mit Ausgang vorgelegt, statt sie selbst
+    zusammensuchen zu müssen.
+  - Fällt ein Rhythmus-Lauf aus, holt der nächste proaktive Lauf im Abendfenster die
+    Planung nach — die Phase hängt an jedem proaktiven Lauf mit im Prompt.
+- **Windows kann Anwendungen jetzt genauso bedienen wie macOS.** Die Bridge liest dort den
+  UI-Automation-Baum in derselben Form wie den AX-Baum von macOS; `find_element` und
+  `wait_for_element` arbeiten unverändert weiter. Rollennamen werden tolerant verglichen,
+  `button` trifft damit `AXButton` und `ButtonControl`.
+- **Plan-Blöcke sind bearbeitbar, solange sie nur geplant sind** — Titel, Uhrzeit, Dauer
+  und Präzisierung, direkt im Kalender. Der Auslöser wird dabei mitgezogen: ein
+  verschobener Block läuft zur neuen Zeit, ein gestrichener gar nicht mehr.
+- **Verantwortungsbereiche in Vorlagen eintragbar** — das Backend konnte es seit v1.157.0,
+  die Oberfläche fehlte. Agent und Vorlage teilen sich jetzt EINEN Editor.
+- **Entwicklung & Probezeit pro Agent sichtbar** (Fehlerquote, Plan-Treue, Bewertungen,
+  Tendenz). Kosten und Laufzahl sagen nichts darüber, ob die Arbeit taugt.
+
+### Changed
+- **Geplante Läufe sehen im Kalender aus wie Plan-Blöcke** statt wie Haarstriche: Titel,
+  Uhrzeit, lesbarer Takt („täglich 22:00", „alle 30 Min") — und ein Klick führt auf den
+  Zeitplan, der dort hervorgehoben wird.
+- Die Planungsanweisung steht nur noch EINMAL im Code: Rhythmus-Lauf und Sprachfront
+  geben dieselbe weiter. Die kürzere Fassung der Stimme kannte die Uhrzeit-Pflicht nicht —
+  die daraus entstandenen Blöcke standen im Kalender und liefen nie.
+- „Plan mir den Tag" am Abend meint jetzt den nächsten Tag, nicht die letzte Stunde.
+
+### Fixed
+- Ein gelöschter Plan-Block ließ seinen Einmal-Zeitplan zurück, der weiter Arbeit anstieß.
+- Titel und Uhrzeit eines bereits laufenden oder erledigten Blocks lassen sich nicht mehr
+  überschreiben (409) — sonst stünde im Kalender ein Titel, unter dem etwas anderes lief.
+
+### Deployment
+- Orchestrator-Neustart (VERSION-Datei wird beim Start gelesen), Frontend-Rebuild.
+- Agenten neu erstellen, damit die neue `AGENT.md` mit dem Arbeitsrhythmus ankommt.
+- Windows-Bridge: `pip install uiautomation` bzw. neue Bridge-App; ohne das Paket sagt der
+  Agent selbst, was zu tun ist. Die macOS-Bridge braucht nichts.
+
+---
+
+## [1.164.1] — 2026-08-07
+
+### Fixed
+- **Unter Windows versprach die Bridge Fähigkeiten, die sie dort nicht hat.** Der
+  Bedienungshilfen-Baum (`ax_tree`, `find_element`, `wait_for_element`) ist macOS-only,
+  wurde aber plattformunabhängig gemeldet. Die Bridge meldet jetzt nur noch, was die
+  jeweilige Plattform wirklich kann.
+- **Und der Sprachweg macht daraus kein „geht gar nicht":** Kommt der macOS-Fehler zurück,
+  sagt er, dass er Elemente hier nicht selbst suchen kann, macht einen Screenshot und
+  bittet um die Stelle — Klicken, Tippen und Tastenkombinationen funktionieren unter
+  Windows genauso.
+
+### Deployment
+- Orchestrator-Neustart. Die Bridge-App muss NICHT neu installiert werden; die
+  plattformehrliche Fähigkeitsmeldung wirkt beim nächsten Bridge-Update.
+
+---
+
+## [1.164.0] — 2026-08-07
+
+### Fixed
+- **„Ich kann die App nur öffnen, nicht in ihr navigieren."** Das stimmte nie — die Bridge
+  beherrscht Klicken, Tippen, Tastenkombinationen, Scrollen und liest den
+  Bedienungshilfen-Baum. Im Sprachweg fehlten aber **Suchen** und **Tasten**, und ohne
+  Suche bleibt nur blindes Klicken auf geratene Koordinaten. Ergänzt: `find` (Element über
+  den Bedienungshilfen-Baum), `wait` (auf ein Element warten), `key` (z. B. `cmd+f`),
+  `scroll`. Dazu die Bedienkette im Werkzeug: öffnen → finden → klicken → tippen →
+  nachsehen; und das ausdrückliche Verbot der falschen Ausrede.
+- **Bildersuche gab zu früh auf.** Manche Treffer zeigen auf eine Webseite statt auf die
+  Bilddatei — dann hieß es „keine direkten Bilder". Jetzt werden deutlich mehr Kandidaten
+  geholt, und schlägt die Originaladresse fehl, wird das Vorschaubild genommen.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.163.0] — 2026-08-07
+
+### Added
+- **Werkzeug-Nutzung im Sprachmodus ist sichtbar.** Jeder Aufruf erscheint rechts in der
+  Spalte „Aufgaben & Aktivität": Name des Werkzeugs, die Eingabe (gekürzt) und das
+  Ergebnis. Laufende Aufrufe drehen sich, fertige tragen einen Haken. Vorher lief alles
+  unsichtbar ab und man musste dem gesprochenen Satz glauben — „ich denke immer, der hat
+  dann nichts gemacht". Die Spur hängt am zentralen Einstiegspunkt, damit auch jedes
+  künftige Werkzeug automatisch darin auftaucht.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
+## [1.162.0] — 2026-08-07
+
+### Added
+- **Bildersuche im Sprachmodus** (`web_picture_search`) — Begriff rein, echte Treffer
+  raus, die besten davon sofort auf dem Schirm. Schlüssellos über DuckDuckGo, nach
+  demselben Muster wie die vorhandene Websuche. Bilder werden serverseitig durch dasselbe
+  SSRF-Gate geholt wie bisher; tote Treffer werden übersprungen statt zu scheitern.
+
+### Fixed
+- **Der Agent erfand Bild-Adressen.** Er nannte Wikimedia-Links aus dem Gedächtnis, die es
+  nie gab (400/404), und meldete dann ein Problem beim Bildserver. Das Werkzeug sagt jetzt
+  ausdrücklich: Adressen nie selbst bilden, sondern aus einem Suchtreffer nehmen — und die
+  Fehlermeldungen sagen, was als Nächstes zu tun ist, statt nur „ging nicht".
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.161.4] — 2026-08-07
+
+### Fixed
+- **Im Sprachmodus liessen sich keine Bilder anzeigen** („Bild konnte nicht geladen
+  werden"). Die Ursache lag nicht beim Bildserver, sondern bei uns: unsere Abrufe gingen
+  **ohne User-Agent** raus. Wikimedia und viele andere antworten darauf mit einem
+  text/plain-Hinweis auf ihre Robot-Policy statt mit dem Bild — der Inhaltstyp passte
+  dann nicht, und der Agent meldete ein technisches Problem. Abrufe nennen jetzt Namen
+  und Kontaktadresse und fragen ausdrücklich nach Bildern. Die SSRF-Absicherung
+  (IP-Pinning, Host-Header, Byte-Grenze) bleibt unverändert.
+
+### Deployment
+- Orchestrator-Neustart.
+
+---
+
+## [1.161.3] — 2026-08-07
+
+### Fixed
+- **Jeder gelaufene Zeitplan stand zweimal im Tag**: als grünes Band rechts (die
+  Vorhersage aus dem Zeitplan) und als Balken in der Mitte (der tatsächliche Lauf). Bei 37
+  Vorhersagen und 31 Läufen an einem Tag war die rechte Spalte deshalb zugepflastert.
+  Bänder bleiben jetzt nur für das, was noch aussteht — sobald der Lauf existiert, zählt
+  der Balken.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.161.2] — 2026-08-07
+
+### Fixed
+- **Im Hellmodus stand im Kalender nichts.** Die neuen Plan-Blöcke und die Bänder der
+  geplanten Läufe hatten helle Schrift — auf dunklem Grund lesbar, auf hellem unsichtbar.
+  Beide Modi sind jetzt bedient.
+- **Blöcke waren zu kurz geplant.** Der Agent schätzte in Zehn-Minuten-Scheiben; im
+  Kalender wurden daraus unlesbare Striche, und der erste Überzug macht den Rest des Tages
+  wertlos. Jeder Block hat jetzt **mindestens 15 Minuten** — auch als Vorgabe, wenn der
+  Agent gar keine Dauer mitgibt. Dazu die Ansage im Prompt: lieber ein ehrlicher
+  45-Minuten-Block als drei optimistische Zehner.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
+## [1.161.1] — 2026-08-07
+
+### Fixed
+- **Geplante Läufe lagen exakt übereinander.** Ein voller Tag bringt bei einem aktiven
+  Agenten 35 Läufe, davon mehrere zur selben Minute (morgen dreimal um 04:00) — als Bänder
+  auf derselben Spur ergab das einen unlesbaren Klumpen. Was sich zeitlich beißt, steht
+  jetzt nebeneinander (bis zu drei Spalten, 20-Minuten-Fenster).
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.161.0] — 2026-08-07
+
+### Fixed
+- **Zukünftige Tage sahen im Kalender leer aus**, obwohl dort Läufe anstanden — für den
+  kommenden Montag rechnete der Server 38 geplante Läufe aus, die Ansicht zeigte sie aber
+  als 8-Pixel-Rauten am linken Rand, seit der Planspur zusätzlich verdeckt. Jetzt schmale,
+  beschriftete Bänder mit Uhrzeit auf einer eigenen Spur rechts. Der Tag hat damit drei
+  Spuren: Plan links, erledigte Aufgaben in der Mitte, geplante Läufe rechts.
+- **Die Tagesplanung war auf „nur werktags" vorbelegt** — am Wochenende plante der Agent
+  deshalb still gar nichts. Neue Voreinstellung: jeden Tag; „nur werktags" bleibt als
+  Häkchen für den, der es will.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
+## [1.160.5] — 2026-08-07
+
+### Fixed
+- **Beim Dazwischenreden stand die Reihenfolge im Sprach-Gespräch auf dem Kopf.** Der
+  laufende Zwischenstand wurde als kursive Blase unter der Liste gezeigt und nie
+  aufgelöst — sobald der Zug als richtige Nachricht einsortiert war, klebte die alte
+  Blase weiter unten fest, während neue Nachrichten darüber erschienen. Der Zwischenstand
+  verschwindet jetzt, sobald der Zug in der Liste steht, und wird nie doppelt gezeigt.
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.160.4] — 2026-08-07
+
+### Fixed
+- Die Überschrift der Tagesplan-Karte stand doppelt (oben in der Karte und nochmal als
+  allgemeine Bildunterschrift darunter).
+
+### Deployment
+- Frontend-Rebuild.
+
+---
+
+## [1.160.3] — 2026-08-07
+
+### Fixed
+- **„Kein Kalender."** Der Tagesplan wurde als Karte ins Gesprächsfenster geschickt, aber
+  nie gezeichnet — er landete in der Datei-Zeile, und der Nutzer sah nur „Datei". Jetzt
+  steht er als echte Liste da: Uhrzeit, Titel, Dauer, Zustand (geplant/läuft/erledigt/
+  gestrichen), hohe Priorität hervorgehoben.
+- **Der Plan wurde in UTC vorgelesen.** Der Agent sagte „15:20", im Kalender stand 17:20.
+  Maßgeblich ist jetzt die konfigurierte Zeitzone (Erreichbarkeit, sonst Dienstzeit).
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
+## [1.160.2] — 2026-08-07
+
+### Fixed
+- **Jeder Plan-Block stand dreifach im Kalender**: als Block links, als Aufgabenbalken
+  rechts und als Zeitplan-Marke — seit die Blöcke über echte Zeitpläne laufen. Der Block
+  ist die Wahrheit; alles mit `[Plan]` wird daneben ausgeblendet. Klick auf den Block
+  führt weiterhin zur Aufgabe.
+- **Verpasste Blöcke starteten alle gleichzeitig.** Wurden fünf Blöcke nachträglich scharf
+  gestellt und lagen ihre Zeiten in der Vergangenheit, feuerten sie im selben Takt — auf
+  dem Pi brachte das die Claude-CLI zum Absturz (`exit -6`). Nachgeholt wird jetzt
+  gestaffelt, drei Minuten Abstand je Block.
+
+### Deployment
+- Orchestrator-Neustart, Frontend-Rebuild.
+
+---
+
 ## [1.160.1] — 2026-08-07
 
 ### Fixed

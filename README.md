@@ -5,7 +5,7 @@
 **The self-hosted multi-agent AI platform for teams who need compliance, governance, and true isolation.**
 
 [![License: Source Available](https://img.shields.io/badge/license-Source%20Available-orange.svg)](LICENSE.md)
-[![Version](https://img.shields.io/badge/version-1.127.0-green.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.169.1-green.svg)](VERSION)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](docker-compose.community.yml)
 [![DSGVO](https://img.shields.io/badge/DSGVO-ready-yellow.svg)](#governance--compliance)
 [![Made in DACH](https://img.shields.io/badge/made%20in-DACH-red.svg)](#)
@@ -300,25 +300,33 @@ What we shipped recently, what's in progress, and what's planned next:
 <summary>Roadmap as text</summary>
 
 **Recently shipped** (was on the roadmap, now live)
-- **Visual workflow builder + engine** ([#392](https://github.com/greeves89/AI-Employee/issues/392) / [#394](https://github.com/greeves89/AI-Employee/issues/394)) — declarative multi-step agent workflows (task / condition / wait) that run on a safe state machine, edited in an n8n-style drag-and-drop canvas, with automatic cron triggers.
-- **DLP egress filter** ([#388](https://github.com/greeves89/AI-Employee/issues/388)) — outbound agent text scanned for PII/secrets before send; allow/log/mask/block per data class, audit without cleartext, admin UI.
-- **Decision-Trace / time-travel** ([#387](https://github.com/greeves89/AI-Employee/issues/387)) — replayable task timeline (thought → tool-call → result) with per-step duration, governance & cost strip, and JSON/PDF export.
-- **Second Brain — semantic auto-linking** ([#157](https://github.com/greeves89/AI-Employee/issues/157)) — agent memories and knowledge entries are now automatically cross-linked by embedding similarity, with a memory↔knowledge bridge and graph edge-type differentiation.
-- **Enterprise Volume Mounts** ([#134](https://github.com/greeves89/AI-Employee/issues/134)) — mount company file shares (NFS/SMB via host bind) into agent workspaces, with per-user mount access control.
-- **Inbound webhook triggers** ([#105](https://github.com/greeves89/AI-Employee/issues/105)) — trigger agent tasks from external events (GitHub PR, forms) via configurable routing rules.
-- **Skill ratings analytics** ([#154](https://github.com/greeves89/AI-Employee/issues/154)) — usage count, average rating, time-saved and ROI per skill in the analytics dashboard.
-- **Multi-tenant agent assignment** ([#122](https://github.com/greeves89/AI-Employee/issues/122)) — assign agents to specific users/teams via `agent_access` + teams + custom-role permission packages.
-- **OIDC SSO (Google / Microsoft)** ([#133](https://github.com/greeves89/AI-Employee/issues/133)) — enterprise single sign-on via OpenID Connect.
+- **SAML 2.0 + IdP group mapping** — SAML SSO alongside OIDC, with automatic mapping of identity-provider groups to AI-Employee roles. Signature verification runs through `python3-saml`/`xmlsec` — never hand-rolled.
+- **Mobile PWA + Web Push** — installable PWA for iOS/Android/desktop with encrypted web push for approvals and task completions, on the same fan-out point as the existing native iOS push.
+- **Multi-channel gateway** — Microsoft Teams, Slack and WhatsApp next to Telegram. Teams works in three directions: a human messages the agent, an agent messages another agent, and an agent joins a meeting as scribe or participant. No Azure Bot registration needed for the chat side — the existing per-user Graph integration already covers it.
+- **Agent with a voice in a Teams meeting** — joins, speaks, hears a reply and responds, turn by turn. Uses Graph Communications with *service-hosted media*, so no .NET media module and no open media ports. Admin card with a copyable callback URL plus a click-by-click Azure guide ([docs/TEAMS_CALLING_SETUP.md](docs/TEAMS_CALLING_SETUP.md)). `Calls.AccessMedia.All` is deliberately not requested.
+- **Second Brain: Weekly Synthesis & Capture** ([#384](https://github.com/greeves89/AI-Employee/issues/384) / [#385](https://github.com/greeves89/AI-Employee/issues/385)) — a weekly pass over the last seven days surfaces patterns, contradictions, knowledge gaps and ONE action; links and long messages are captured into the vault automatically.
+- **Autonomy level → container sudo** — the autonomy matrix now derives the container's sudo package set. An L1 "read-only" agent no longer receives a package-install grant it was never meant to have.
+- **Self-improvement dashboard** — what the platform learned: skills that emerged on their own, drafts awaiting review, revisions kept vs. reverted.
+- **Admin concierge widget** — "is everything fine?" in one answer, assembled from existing queries, deliberately without an LLM behind it.
+- **Ticket system connector** — Matrix42 plus a generic JSON/REST profile. Read, create and comment; closing a ticket stays with a human.
+- **Meeting templates** — Daily, Retrospective, Workshop, Decision.
+- **Browser automation across all runtimes** — Playwright was only reachable from Claude Code; Codex and Custom-LLM agents now have the same capability.
+- **MCP bridge: completion callbacks + `cancel_task`** — no more polling `get_task_status` in a loop, and a task that is no longer needed can be stopped.
+- **Rework rate** — how often a task had to be touched twice, derived from data already collected. Feeds the "is this agent getting better?" verdict.
+- **Visual workflow builder + engine** ([#392](https://github.com/greeves89/AI-Employee/issues/392) / [#394](https://github.com/greeves89/AI-Employee/issues/394)) — declarative multi-step agent workflows on a safe state machine, edited in an n8n-style canvas.
+- **DLP egress filter** ([#388](https://github.com/greeves89/AI-Employee/issues/388)) — outbound agent text scanned for PII/secrets before send.
+- **Decision-Trace / time-travel** ([#387](https://github.com/greeves89/AI-Employee/issues/387)) — replayable task timeline with per-step duration, governance & cost strip.
+- **Second Brain — semantic auto-linking** ([#157](https://github.com/greeves89/AI-Employee/issues/157)) — memories and knowledge cross-linked by embedding similarity.
+- **Enterprise Volume Mounts** ([#134](https://github.com/greeves89/AI-Employee/issues/134)), **inbound webhook triggers** ([#105](https://github.com/greeves89/AI-Employee/issues/105)), **skill ratings analytics** ([#154](https://github.com/greeves89/AI-Employee/issues/154)), **multi-tenant agent assignment** ([#122](https://github.com/greeves89/AI-Employee/issues/122)), **OIDC SSO** ([#133](https://github.com/greeves89/AI-Employee/issues/133)).
 
 **In progress**
-- **Second Brain: Weekly Synthesis & Capture** ([#384](https://github.com/greeves89/AI-Employee/issues/384) / [#385](https://github.com/greeves89/AI-Employee/issues/385)) — semantic auto-linking of memory & knowledge is live; weekly synthesis and the capture pipeline are next.
-- **Autonomy Level → container-sudo coupling** — an autonomy level already drives the prompt whitelist and approval rules; next it will also derive the container sudo package automatically.
-- **Agent-to-agent file handoff** — handoff messaging exists; files currently pass through the shared volume, first-class file handoff is in progress.
+- **Agent-to-agent file handoff** — handoff messaging exists; files currently pass through the shared volume, first-class file handoff is next.
+- **Deputy chain, verified live** — the team-lead fallback was repaired in 1.167.0 and is covered end-to-end against real SQL; a live drill on the production box is still outstanding.
 
 **Planned**
-- **SAML 2.0 + IdP group mapping** — SAML 2.0 SSO alongside the existing OIDC, with automatic mapping of identity-provider groups to AI-Employee roles.
-- **Mobile PWA + Web Push** — installable PWA for iOS/Android with web push for approvals and task completions (native iOS push already exists).
 - **DATEV / Lexware export** — export improvements for DACH tax workflows.
+- **Fewer swallowed import errors** — 160 places wrap an import in a broad `except Exception`, where an `ImportError` silently turns a function into a no-op. One of them had disabled the deputy chain for its entire lifetime.
+- **Schema changes through migrations only** — 41 `CREATE TABLE IF NOT EXISTS` statements still run at startup alongside the Alembic history.
 
 </details>
 

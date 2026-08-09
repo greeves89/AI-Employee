@@ -302,57 +302,16 @@ async def agent_write(
     agent_obj = await db.get(Agent, agent_id)
     owner_user_id = agent_obj.user_id if agent_obj else None
 
-    # Upsert-by-title MUST be scoped to the agent-owner's vault, otherwise a title
-    # collision silently overwrites another tenant's entry (cross-tenant write break).
-    existing = await db.execute(
-        select(KnowledgeEntry).where(
-            KnowledgeEntry.title == body.title,
-            KnowledgeEntry.user_id == owner_user_id,
-        )
-    )
-    entry = existing.scalar_one_or_none()
-
     all_tags = list(set(body.tags + _extract_tags(body.content)))
 
-    if entry:
-        entry.content = body.content
-        entry.tags = all_tags
-        entry.updated_by = agent_id
-    else:
-        entry = KnowledgeEntry(
-            title=body.title,
-            content=body.content,
-            tags=all_tags,
-            created_by=agent_id,
-            updated_by=agent_id,
-            user_id=owner_user_id,
-        )
-        db.add(entry)
-
-    await db.commit()
-    await db.refresh(entry)
-
-    # Auto-embed + Second Brain auto-link
-    try:
-        from app.services.embedding_service import get_embedding_service
-        from app.services.brain_linker import auto_link
-        from sqlalchemy import text as sa_text
-        svc = get_embedding_service()
-        if svc.enabled:
-            text_to_embed = f"{body.title}: {body.content}"
-            emb = await svc.embed(text_to_embed)
-            if emb is not None:
-                await db.execute(
-                    sa_text("UPDATE knowledge_entries SET embedding = CAST(:emb AS vector) WHERE id = :id"),
-                    {"emb": str(emb), "id": entry.id},
-                )
-                await db.commit()
-                if owner_user_id:
-                    await auto_link(entry.id, owner_user_id, db)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Failed to embed/link knowledge entry: {e}")
-
+    # Anlegen/Ergaenzen + Einbetten + Verknuepfen liegt in core.knowledge_write —
+    # derselbe Weg, den Nachtschicht, Wochensynthese und Auto-Capture nehmen.
+    # Die Tags kommen hier komplett aus dem Aufruf, deshalb kein Zusammenfuehren.
+    from app.core.knowledge_write import write_entry
+    entry, _created = await write_entry(
+        db, user_id=owner_user_id, title=body.title, content=body.content,
+        tags=all_tags, author=agent_id, merge_tags=False,
+    )
     return _to_response(entry)
 
 

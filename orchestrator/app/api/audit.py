@@ -92,8 +92,8 @@ async def create_audit_log(
     await db.refresh(entry)
 
     logger.info(
-        f"Audit: agent={scrub_log(agent_id)} event={body.event_type} outcome={scrub_log(body.outcome)} "
-        f"cmd={body.command!r:.80}"
+        f"Audit: agent={scrub_log(agent_id)} event={scrub_log(body.event_type)} outcome={scrub_log(body.outcome)} "
+        f"cmd={scrub_log(body.command)!r:.80}"
     )
 
     return {"id": entry.id, "status": "logged"}

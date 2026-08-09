@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,11 +108,13 @@ async def create_notification(
     if target_channel in ("telegram", "all") or body.priority in ("high", "urgent"):
         await _send_telegram(body, redis, notif_id=notif.id)
 
-    # APNs push to the owning user's iOS devices when requested.
-    if target_channel in ("ios", "all"):
+    # Push an die Geraete des Besitzers — iOS UND Browser, beides ueber denselben
+    # Verteilpunkt. "ios" bleibt als Kanalname zulaessig, weil bestehende Aufrufer
+    # ihn schicken; er heisst faktisch "an seine Geraete".
+    if target_channel in ("ios", "web", "push", "all"):
         try:
             from app.models.agent import Agent
-            from app.services.apns_service import push_to_user
+            from app.core.push import push_to_user
 
             agent = (await db.execute(
                 select(Agent).where(Agent.id == body.agent_id)
@@ -126,7 +128,7 @@ async def create_notification(
                     data=_push_payload(notif),
                 )
         except Exception:  # noqa: BLE001
-            logger.exception("APNs push failed for notification")
+            logger.exception("Geraete-Push fuer Meldung fehlgeschlagen")
 
     return _to_response(notif)
 
@@ -157,6 +159,89 @@ async def register_device(
         ))
     await db.commit()
     return {"status": "registered"}
+
+
+# --- Web Push: das Browser-Gegenstueck zur Geraete-Registrierung oben ------------
+# Gleiche Idee, andere Technik: statt eines APNs-Tokens meldet der Browser einen
+# Endpunkt plus zwei Schluessel. Verschickt wird beides ueber denselben Verteilpunkt
+# (core.push.push_to_user), damit keine Meldung nur eine Haelfte der Geraete erreicht.
+
+class WebPushSubscribe(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+
+
+@router.get("/push/public-key")
+async def webpush_public_key(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Der oeffentliche VAPID-Schluessel, den der Browser zum Anmelden braucht.
+
+    Beim ersten Abruf wird das Schluesselpaar einmalig erzeugt und bleibt danach
+    unveraendert — ein Wechsel wuerde alle bestehenden Anmeldungen entwerten.
+    """
+    from app.core.push_config import get_vapid_keys
+
+    keys = await get_vapid_keys(db)
+    return {"public_key": keys.public_b64 if keys else None}
+
+
+@router.post("/push/subscribe", status_code=201)
+async def webpush_subscribe(
+    body: WebPushSubscribe,
+    request: Request,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Browser-Anmeldung aufnehmen oder auffrischen.
+
+    Der Endpunkt ist eindeutig: meldet sich derselbe Browser erneut an, wird der
+    bestehende Eintrag uebernommen — sonst kaeme jede Meldung mehrfach an.
+    """
+    from app.models.push_subscription import PushSubscription
+
+    existing = (await db.execute(
+        select(PushSubscription).where(PushSubscription.endpoint == body.endpoint)
+    )).scalar_one_or_none()
+    if existing:
+        existing.user_id = str(user.id)
+        existing.p256dh = body.p256dh
+        existing.auth = body.auth
+    else:
+        db.add(PushSubscription(
+            user_id=str(user.id), endpoint=body.endpoint,
+            p256dh=body.p256dh, auth=body.auth,
+            user_agent=(request.headers.get("user-agent") or "")[:255] or None,
+        ))
+    await db.commit()
+    return {"status": "subscribed"}
+
+
+@router.post("/push/unsubscribe")
+async def webpush_unsubscribe(
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Abmelden. Nur die EIGENE Anmeldung — sonst koennte jeder Eingeloggte fremde
+    Geraete stummschalten, indem er deren Endpunkt raet."""
+    from app.models.push_subscription import PushSubscription
+
+    endpoint = (body or {}).get("endpoint") or ""
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="endpoint fehlt")
+    sub = (await db.execute(
+        select(PushSubscription).where(
+            PushSubscription.endpoint == endpoint,
+            PushSubscription.user_id == str(user.id),
+        )
+    )).scalar_one_or_none()
+    if sub:
+        await db.delete(sub)
+        await db.commit()
+    return {"status": "unsubscribed"}
 
 
 # --- UI-facing: list, count, mark read ---

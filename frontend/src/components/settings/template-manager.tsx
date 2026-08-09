@@ -12,7 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
-import type { AgentTemplate } from "@/lib/types";
+import type { AgentTemplate, Responsibility } from "@/lib/types";
+import { ResponsibilitiesEditor } from "@/components/agents/responsibilities-editor";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot, Code2, BarChart3, FileText, Server, Search, Presentation,
@@ -76,6 +77,7 @@ interface EditState {
   permissions: string[];
   integrations: string[];
   knowledge_template: string;
+  responsibilities: Responsibility[];
 }
 
 function templateToEditState(t: AgentTemplate): EditState {
@@ -88,6 +90,7 @@ function templateToEditState(t: AgentTemplate): EditState {
     permissions: [...t.permissions],
     integrations: [...t.integrations],
     knowledge_template: t.knowledge_template || "",
+    responsibilities: [...(t.responsibilities || [])],
   };
 }
 
@@ -110,6 +113,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
     permissions: [],
     integrations: [],
     knowledge_template: "",
+    responsibilities: [],
   });
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -214,6 +218,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
       setNewTemplate({
         name: "", display_name: "", description: "", icon: "Bot",
         category: "general", role: "", permissions: [], integrations: [], knowledge_template: "",
+        responsibilities: [],
       });
       await fetchTemplates();
     } catch (e) {
@@ -328,6 +333,14 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                       <div>
                         <span className="text-muted-foreground/60 text-xs">Integrationen</span>
                         <p className="text-foreground/80">{t.integrations.length > 0 ? t.integrations.join(", ") : "–"}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground/60 text-xs">Verantwortungsbereiche</span>
+                        <p className="text-foreground/80">
+                          {(t.responsibilities?.length ?? 0) > 0
+                            ? t.responsibilities!.map(r => r.title).filter(Boolean).join(" · ")
+                            : "– (Agenten aus dieser Vorlage starten ohne Auftrag)"}
+                        </p>
                       </div>
                     </div>
                     {t.knowledge_template && (
@@ -553,6 +566,18 @@ function TemplateEditForm({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Verantwortungsbereiche: der Auftrag zieht mit der Vorlage mit. Ohne das musste
+          JEDER neue Agent von Hand eingerichtet werden — und ein Agent ohne Bereiche
+          laeuft proaktiv ins Leere. */}
+      <div>
+        <ResponsibilitiesEditor
+          value={state.responsibilities}
+          onChange={next => onChange({ ...state, responsibilities: next })}
+          emptyHint="Noch keine Bereiche. Wer hier welche eintraegt, gibt jedem Agenten aus dieser Vorlage sofort einen Auftrag — er gilt damit als eingerichtet und faengt eigenstaendig an."
+          footnote="Werden beim Anlegen eines Agenten uebernommen. Aendert man sie hier, gilt das fuer NEUE Agenten — bestehende behalten ihre eigenen."
+        />
       </div>
 
       {/* Knowledge Template */}
