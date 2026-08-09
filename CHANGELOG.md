@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.169.0] — 2026-08-09
+
+### Added
+- **Gespräche verzweigen, zurückspulen und zusammenfassen** (#538). Alle drei
+  arbeiten auf „die Nachrichten bis hierher". Verzweigen **kopiert** — das Original
+  bleibt; Zurückspulen **löscht** und legt deshalb eine Sicherung an.
+- **Echte Gesprächstitel** statt der rohen letzten Nachricht. Aus dem ersten
+  Austausch abgeleitet, bewusst ohne Sprachmodell — ein Titel ist keine hundert
+  Modellaufrufe wert, und der erste Satz sagt fast immer schon, worum es geht.
+
+### Fixed
+- **WhatsApp hatte keine Absenderprüfung** — wer die Nummer kannte, schrieb dem
+  Agenten. Als einziger Kanal ohne natürlichen Rahmen (Telegram verlangt `/auth`,
+  Teams und Slack liegen im Firmen-Tenant). Jetzt fail-closed, einseitig verglichen
+  und mit mindestens zehn Stellen.
+- **Kopfbereich der Agentenseite war zu hoch** (#537). Beschreibung auf eine Zeile
+  gekürzt (voller Text im Tooltip), Umbenennen direkt am Namen statt am rechten
+  Rand, Budget einzeilig statt als vollbreite Karte.
+- **Protokoll-Injektion** in fünf weiteren Ausgabestellen (PR #545, #546) — damit
+  sind #542 und #543 erledigt.
+
+### Changed
+- Frontend-Basis auf `node:26-alpine` (PR #158).
+
+---
+
 ## [1.168.0] — 2026-08-08
 
 ### Added
