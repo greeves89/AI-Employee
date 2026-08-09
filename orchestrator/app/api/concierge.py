@@ -65,11 +65,38 @@ async def concierge_overview(
         key = str(getattr(agent.state, "value", agent.state))
         by_state[key] = by_state.get(key, 0) + 1
 
-    unhealthy = [
-        {"id": a.id, "name": a.name, "state": str(getattr(a.state, "value", a.state))}
+    def _state(a) -> str:  # noqa: ANN001
+        return str(getattr(a.state, "value", a.state))
+
+    # „Kaputt" und „aus" sind NICHT dasselbe, und sie in einen Topf zu werfen war
+    # der Grund, weshalb hier dauerhaft Handlungsbedarf stand.
+    #
+    # Angehalten ist ein **normaler** Zustand: der Nutzer hält einen Agenten an, der
+    # Idle-Stopp hält ihn an, und beim nächsten Auftrag weckt ``wake_agent`` ihn
+    # wieder. Eine Ampel, die bei jedem ruhenden Agenten rot zeigt, ist nach einer
+    # Woche eine Ampel, die niemand mehr ansieht.
+    broken = [
+        {"id": a.id, "name": a.name, "state": _state(a)}
         for a in agents
-        if str(getattr(a.state, "value", a.state)) in ("error", "stopped")
+        if _state(a) == "error"
     ]
+
+    # Ruhende Agenten sind eine Auskunft, kein Alarm. EINE Ausnahme: ein angehaltener
+    # Agent mit Verantwortungsbereichen bekommt keine proaktiven Läufe mehr (seit
+    # v1.154.1 werden gestoppte Agenten nicht mehr angesteuert). Der tut dann still
+    # nichts — das gehört gesagt, aber als Hinweis, nicht als Notfall.
+    resting = []
+    for a in agents:
+        if _state(a) != "stopped":
+            continue
+        proactive = (a.config or {}).get("proactive") or {}
+        skips_work = bool(proactive.get("enabled") and proactive.get("responsibilities"))
+        resting.append({
+            "id": a.id,
+            "name": a.name,
+            "state": "stopped",
+            "skips_proactive": skips_work,
+        })
 
     tasks_24h = (await db.execute(
         select(Task.status, func.count(Task.id)).where(Task.created_at >= day_ago)
@@ -109,16 +136,31 @@ async def concierge_overview(
         logger.debug("Haengende Aufgaben nicht zaehlbar", exc_info=True)
 
     # Eine Ampel statt einer Zahlenwueste: „laeuft alles?" ist die eigentliche Frage.
-    if unhealthy or stale:
+    #
+    # Rot ist nur, was WIRKLICH kaputt ist: ein Agent im Fehlerzustand oder eine
+    # Aufgabe, die seit Stunden haengt. Ein ruhender Agent, der bei Bedarf geweckt
+    # wird, ist kein Notfall — auch nicht zehn davon.
+    if broken or stale:
         verdict = "handlungsbedarf"
-    elif pending_approvals:
+    elif pending_approvals or any(r["skips_proactive"] for r in resting):
+        # Ein angehaltener Agent MIT Auftrag arbeitet still nicht weiter. Das wartet
+        # tatsaechlich auf eine Entscheidung — nur eben nicht dringend.
         verdict = "wartet auf dich"
     else:
         verdict = "alles ruhig"
 
     return {
         "verdict": verdict,
-        "agents": {"total": len(agents), "by_state": by_state, "unhealthy": unhealthy[:10]},
+        "agents": {
+            "total": len(agents),
+            "by_state": by_state,
+            "broken": broken[:10],
+            "resting": resting[:10],
+            # Alte Bezeichnung, damit eine Oberflaeche aus der Zeit davor nicht
+            # ploetzlich eine leere Liste sieht. Enthaelt jetzt NUR noch echte
+            # Fehler — das war ja der Punkt.
+            "unhealthy": broken[:10],
+        },
         "tasks_24h": {
             "total": sum(task_counts.values()),
             "failed": task_counts.get("failed", 0),

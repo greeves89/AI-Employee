@@ -107,3 +107,98 @@ class WiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VerdictTests(unittest.IsolatedAsyncioTestCase):
+    """Die Ampel — gegen echtes SQL, nicht gegen den Quelltext.
+
+    Der Anlass: „angehalten" lag in derselben Liste wie „Fehlerzustand", und die
+    Ampel sprang bei beidem auf rot. Ein Nutzer haelt einen Agenten von Hand an, der
+    Idle-Stopp haelt ihn an, und beim naechsten Auftrag weckt ``wake_agent`` ihn
+    wieder — der Concierge schlug also Alarm ueber das vorgesehene Verhalten der
+    Plattform. Eine Ampel, die staendig rot ist, sieht sich nach einer Woche niemand
+    mehr an.
+    """
+
+    async def asyncSetUp(self):
+        from sqlalchemy.dialects.postgresql import JSONB
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.ext.compiler import compiles
+
+        from app.models.agent import Agent
+        from app.models.command_approval import CommandApproval
+        from app.models.task import Task
+
+        try:
+            compiles(JSONB, "sqlite")(lambda *a, **kw: "JSON")
+        except Exception:  # noqa: BLE001 — schon registriert
+            pass
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            for model in (Agent, Task, CommandApproval):
+                await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def _overview(self, agents):
+        from types import SimpleNamespace
+
+        from app.models.agent import Agent
+
+        async with self.Session() as db:
+            for index, (state, config) in enumerate(agents):
+                db.add(Agent(id=f"a{index}", name=f"Agent {index}", state=state,
+                             user_id="u1", config=config or {}))
+            await db.commit()
+            return await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+
+    async def test_stopped_agents_are_not_an_emergency(self):
+        from app.models.agent import AgentState
+
+        out = await self._overview([(AgentState.STOPPED, {}), (AgentState.STOPPED, {})])
+        self.assertEqual(out["verdict"], "alles ruhig")
+        self.assertEqual(out["agents"]["broken"], [])
+        self.assertEqual(len(out["agents"]["resting"]), 2)
+
+    async def test_error_state_is_an_emergency(self):
+        from app.models.agent import AgentState
+
+        out = await self._overview([(AgentState.ERROR, {})])
+        self.assertEqual(out["verdict"], "handlungsbedarf")
+        self.assertEqual(len(out["agents"]["broken"]), 1)
+
+    async def test_stopped_with_responsibilities_waits_for_a_decision(self):
+        """Der tut still nichts — das gehoert gesagt, aber nicht als Notfall."""
+        from app.models.agent import AgentState
+
+        out = await self._overview([
+            (AgentState.STOPPED, {"proactive": {"enabled": True, "responsibilities": ["Buchhaltung"]}}),
+        ])
+        self.assertEqual(out["verdict"], "wartet auf dich")
+        self.assertTrue(out["agents"]["resting"][0]["skips_proactive"])
+
+    async def test_stopped_without_responsibilities_says_it_wakes_up(self):
+        from app.models.agent import AgentState
+
+        out = await self._overview([(AgentState.STOPPED, {})])
+        self.assertFalse(out["agents"]["resting"][0]["skips_proactive"])
+
+    async def test_running_agents_are_quiet(self):
+        from app.models.agent import AgentState
+
+        out = await self._overview([(AgentState.RUNNING, {}), (AgentState.IDLE, {})])
+        self.assertEqual(out["verdict"], "alles ruhig")
+
+    async def test_old_field_name_only_carries_real_failures(self):
+        """Eine Oberflaeche aus der Zeit davor darf keine ruhenden Agenten mehr als
+        Alarm anzeigen."""
+        from app.models.agent import AgentState
+
+        out = await self._overview([(AgentState.STOPPED, {}), (AgentState.ERROR, {})])
+        self.assertEqual(len(out["agents"]["unhealthy"]), 1)
+        self.assertEqual(out["agents"]["unhealthy"][0]["state"], "error")

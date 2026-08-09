@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.170.1] — 2026-08-09
+
+### Fixed
+- **Der Concierge zeigte dauerhaft „Handlungsbedarf", weil Agenten angehalten
+  waren.** „Kaputt" und „aus" lagen in derselben Liste, und die Ampel sprang bei
+  beidem auf rot. Angehalten ist aber ein **normaler** Zustand: ein Nutzer hält
+  einen Agenten von Hand an, der Idle-Stopp hält ihn an, und beim nächsten Auftrag
+  weckt `wake_agent` ihn wieder. Der Concierge schlug damit Alarm über das
+  vorgesehene Verhalten der Plattform — und eine Ampel, die ständig rot ist, sieht
+  sich nach einer Woche niemand mehr an.
+
+  Rot ist jetzt nur noch, was wirklich kaputt ist: ein Agent im **Fehlerzustand**
+  oder eine Aufgabe, die seit über 30 Minuten hängt. Ruhende Agenten stehen unter
+  **„Ruht"** mit einem Starten-Knopf.
+
+  **Eine Ausnahme bleibt:** ein angehaltener Agent **mit Verantwortungsbereichen**
+  bekommt seit v1.154.1 keine proaktiven Läufe mehr — der tut still nichts. Das
+  steht jetzt dran („proaktive Läufe fallen aus") und setzt die Ampel auf
+  *wartet auf dich*, nicht auf rot.
+
+  Das alte Feld `unhealthy` bleibt in der Antwort, enthält aber nur noch echte
+  Fehler — eine Oberfläche aus der Zeit davor zeigt damit keine ruhenden Agenten
+  mehr als Alarm.
+
+### Tests
+1812 grün. Sechs neue gegen echtes SQL nageln die Ampel fest: angehalten ist kein
+Notfall, Fehlerzustand schon, angehalten **mit** Auftrag wartet auf eine
+Entscheidung.
+
+---
+
 ## [1.170.0] — 2026-08-09
 
 Vier offene Roadmap-Punkte, die dieselbe Frage beantworten: **Wann darf ein Agent

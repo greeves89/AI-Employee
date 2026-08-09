@@ -3459,6 +3459,13 @@ export interface ConciergeOverview {
   agents: {
     total: number;
     by_state: Record<string, number>;
+    /** Wirklich kaputt (Fehlerzustand) — das Einzige, was rot rechtfertigt. */
+    broken?: { id: string; name: string; state: string }[];
+    /** Angehalten. Normalzustand: der Nutzer oder der Idle-Stopp war es, und beim
+     *  nächsten Auftrag wacht der Agent von allein auf. `skips_proactive` markiert
+     *  die Ausnahme: mit Verantwortungsbereichen fallen proaktive Läufe aus. */
+    resting?: { id: string; name: string; state: string; skips_proactive: boolean }[];
+    /** Alte Bezeichnung, inhaltlich = `broken`. */
     unhealthy: { id: string; name: string; state: string }[];
   };
   tasks_24h: { total: number; failed: number; running: number; stale: number };

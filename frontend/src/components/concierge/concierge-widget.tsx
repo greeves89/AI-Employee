@@ -203,20 +203,21 @@ export function ConciergeWidget() {
                   </p>
                 )}
 
-                {data.agents.unhealthy.length > 0 && (
+                {/* Kaputt: der einzige Fall, der wirklich Aufmerksamkeit braucht. */}
+                {(data.agents.broken ?? data.agents.unhealthy).length > 0 && (
                   <div>
                     <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
                       Braucht Aufmerksamkeit
                     </div>
                     <div className="space-y-1.5">
-                      {data.agents.unhealthy.map((a) => (
+                      {(data.agents.broken ?? data.agents.unhealthy).map((a) => (
                         <div
                           key={a.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-2"
+                          className="flex items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-2.5 py-2"
                         >
                           <div className="min-w-0">
                             <div className="truncate text-[12px] font-medium">{a.name}</div>
-                            <div className="text-[10px] text-muted-foreground/50">{a.state}</div>
+                            <div className="text-[10px] text-red-400/70">Fehlerzustand</div>
                           </div>
                           <button
                             onClick={() => act("restart_agent", a.id, "Agent neu starten")}
@@ -224,6 +225,46 @@ export function ConciergeWidget() {
                             className="shrink-0 rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] hover:bg-foreground/[0.06] disabled:opacity-40"
                           >
                             Neu starten
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Angehalten ist eine Auskunft, kein Alarm — jemand hat sie
+                    angehalten, oder der Idle-Stopp. Beim nächsten Auftrag wachen
+                    sie von allein auf. Nur wer einen Auftrag hat, tut still nichts. */}
+                {(data.agents.resting ?? []).length > 0 && (
+                  <div>
+                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                      Ruht
+                    </div>
+                    <div className="space-y-1.5">
+                      {(data.agents.resting ?? []).map((a) => (
+                        <div
+                          key={a.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[12px] font-medium">{a.name}</div>
+                            <div
+                              className={cn(
+                                "text-[10px]",
+                                a.skips_proactive ? "text-amber-400/80" : "text-muted-foreground/50",
+                              )}
+                            >
+                              {a.skips_proactive
+                                ? "angehalten — proaktive Läufe fallen aus"
+                                : "angehalten — wacht beim nächsten Auftrag auf"}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => act("start_agent", a.id, "Agent starten")}
+                            disabled={busy}
+                            className="shrink-0 rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] hover:bg-foreground/[0.06] disabled:opacity-40"
+                          >
+                            Starten
                           </button>
                         </div>
                       ))}
