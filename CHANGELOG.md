@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.169.1] — 2026-08-09
+
+### Fixed
+- **Der Gedächtnis-Preload war seit dem 2026-08-07 unbenutzbar.**
+  `core/memory_preload.py` importierte aus `app.models.agent_memory` — ein Modul,
+  das es nicht gibt (es heißt `app.models.memory`). Der Import steht auf Modulebene,
+  aber das Modul selbst wird erst spät geladen, deshalb fiel es nie beim Start auf,
+  sondern erst als 500 beim Aufruf. Aus V1 der Vision-Arbeit (`6e635f8`).
+- Denselben falschen Pfad hatte ich beim Self-Improvement-Endpunkt nachgebaut; der
+  Import war dort ohnehin überflüssig.
+
+### Added
+- **Ein Test importiert jetzt jedes Modul unter `app/` einmal.** Ein nicht
+  auflösbarer Import ist immer ein Fehler, nie ein Zustand — und diese Klasse
+  Fehler gehört in den Testlauf, nicht zum Nutzer.
+
+---
+
 ## [1.169.0] — 2026-08-09
 
 ### Added

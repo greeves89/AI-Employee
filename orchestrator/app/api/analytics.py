@@ -688,7 +688,6 @@ async def self_improvement(
     from datetime import timedelta
 
     from app.core.ownership import is_admin, visible_agent_ids
-    from app.models.agent_memory import AgentMemory as _Mem  # noqa: F401  (Fallback unten)
 
     since = _days_ago(days)
     vids = await visible_agent_ids(user, db)
