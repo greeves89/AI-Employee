@@ -43,6 +43,9 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
 # These are ALWAYS allowed regardless of whitelist
 ALWAYS_ALLOWED_TOOLS = frozenset({
     "request_approval",
+    # Nachfragen darf nie an einer Freigabe scheitern: ein Agent, der die
+    # Rueckfrage nicht stellen kann, raet stattdessen (#389).
+    "escalate_if_unsure",
     "rate_task",
     "memory_save", "memory_search", "memory_list", "memory_delete",
     "read_file", "list_files", "glob", "grep", "view_image",

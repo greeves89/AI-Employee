@@ -184,6 +184,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "escalate_if_unsure",
+      description:
+        "Report how confident you are (0-100) BEFORE acting on an uncertain decision. " +
+        "The SERVER decides whether that is enough: if your confidence is at or above " +
+        "the operator's threshold, this returns immediately and costs nothing — nobody " +
+        "is bothered. Only below the threshold does it hand the decision to a human and " +
+        "BLOCK until they answer. " +
+        "Use this whenever you would otherwise GUESS: ambiguous instructions, several " +
+        "plausible readings, missing information you cannot look up, or an irreversible " +
+        "step you are not sure about. A guessed result is worse than a question — it " +
+        "looks like work and is not. " +
+        "Do NOT use it for actions that are simply risky but clear: that is request_approval.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          confidence: {
+            type: "number",
+            description:
+              "How sure you are, 0-100 (0.0-1.0 is also accepted). Be honest — " +
+              "inflating this defeats the entire mechanism.",
+          },
+          question: {
+            type: "string",
+            description:
+              "What you would ask the human. State the actual decision, not 'is this ok?'.",
+          },
+          context: {
+            type: "string",
+            description:
+              "Why you are unsure and what the options are — everything the human " +
+              "needs to decide without asking you back.",
+          },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            description: "The concrete choices, if there are distinct ones.",
+          },
+          task_id: {
+            type: "string",
+            description: "The task this decision belongs to, if any.",
+          },
+        },
+        required: ["confidence", "question"],
+      },
+    },
+    {
       name: "present_file",
       description:
         "Show a generated or prepared file to the user as a downloadable chat attachment. " +
@@ -316,6 +362,65 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }],
         };
       }
+    }
+
+    case "escalate_if_unsure": {
+      // Die Schwelle liegt auf dem Server. Hier wird nur gemeldet und gewartet —
+      // ein Agent, der selbst entscheidet, ob seine 40 % reichen, entscheidet das
+      // genauso unsicher wie die Antwort selbst.
+      const gate = await apiCall("/approvals/confidence", {
+        method: "POST",
+        body: JSON.stringify({
+          confidence: args.confidence,
+          question: args.question,
+          context: args.context || "",
+          options: args.options || undefined,
+          task_id: args.task_id || undefined,
+        }),
+      });
+
+      if (!gate.escalated) {
+        return { content: [{ type: "text", text: gate.message }] };
+      }
+
+      const approvalId = gate.approval_id;
+      const startTime = Date.now();
+      const maxWait = 10 * 60 * 1000;
+      let decision = null;
+      while (Date.now() - startTime < maxWait) {
+        await new Promise((r) => setTimeout(r, 4000));
+        try {
+          const poll = await apiCall(`/approvals/check/${approvalId}`);
+          if (poll.status === "approved" || poll.status === "denied") {
+            decision = poll;
+            break;
+          }
+        } catch {
+          // weiter warten — ein Aussetzer der Leitung ist keine Entscheidung
+        }
+      }
+
+      if (!decision) {
+        return {
+          content: [{
+            type: "text",
+            text:
+              `No decision within 10 minutes (approval_id: ${approvalId}). Do NOT ` +
+              `proceed on your uncertain assumption. Stop and tell the user you are ` +
+              `waiting; they can still decide under Approvals.`,
+          }],
+        };
+      }
+      const choice = decision.user_response || "";
+      return {
+        content: [{
+          type: "text",
+          text:
+            decision.status === "approved"
+              ? `The human decided${choice ? `: ${choice}` : ""}. Proceed accordingly.`
+              : `The human declined${choice ? `: ${choice}` : ""}. Do NOT proceed.`,
+        }],
+      };
     }
 
     case "present_file": {

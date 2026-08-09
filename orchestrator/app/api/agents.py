@@ -1407,6 +1407,87 @@ async def update_agent_self_healing(
     return {"agent_id": agent_id, "policy": policy_for(cfg), "customized": bool(body)}
 
 
+@router.get("/{agent_id}/confidence")
+async def get_agent_confidence(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Ab welcher Unsicherheit dieser Agent einen Menschen holt (#389)."""
+    from app.core.confidence import DEFAULT_THRESHOLD, is_enabled, threshold_for
+
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return {
+        "agent_id": agent_id,
+        "enabled": is_enabled(agent.config),
+        "threshold": threshold_for(agent.config),
+        "default_threshold": DEFAULT_THRESHOLD,
+        "customized": bool((agent.config or {}).get("confidence")),
+    }
+
+
+@router.patch("/{agent_id}/confidence")
+async def update_agent_confidence(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Schwelle setzen. Leerer Rumpf stellt die Vorgabe wieder her.
+
+    Die 100 ist zugelassen und bedeutet „frag immer". Die 0 bedeutet „frag nie" —
+    das ist etwas anderes als Abschalten, denn abgeschaltet meldet der Agent gar
+    nichts mehr, bei 0 meldet er weiter und bekommt immer grünes Licht.
+    """
+    from app.core.confidence import DEFAULT_THRESHOLD, is_enabled, threshold_for
+
+    await _check_owner(agent_id, user, db)
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    unknown = set(body) - {"enabled", "threshold"}
+    if unknown:
+        raise HTTPException(
+            status_code=400, detail=f"Unbekannte Einstellung(en): {', '.join(sorted(unknown))}"
+        )
+
+    cfg = dict(agent.config or {})
+    if not body:
+        cfg.pop("confidence", None)
+    else:
+        current = dict(cfg.get("confidence") or {})
+        if "enabled" in body:
+            current["enabled"] = bool(body["enabled"])
+        if "threshold" in body:
+            try:
+                value = int(body["threshold"])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Schwelle muss eine Zahl sein")
+            if not 0 <= value <= 100:
+                raise HTTPException(status_code=400, detail="Schwelle liegt zwischen 0 und 100")
+            current["threshold"] = value
+        cfg["confidence"] = current
+    agent.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(agent, "config")
+    await db.commit()
+    return {
+        "agent_id": agent_id,
+        "enabled": is_enabled(cfg),
+        "threshold": threshold_for(cfg),
+        "default_threshold": DEFAULT_THRESHOLD,
+        "customized": bool(cfg.get("confidence")),
+    }
+
+
 # Realtime voice interaction engines the agent can front with (besides the classic
 # staged STT→LLM→TTS pipeline). Single source of truth is the realtime catalog, so
 # the selector, session backends and this allowlist never drift apart — previously

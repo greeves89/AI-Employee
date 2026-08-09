@@ -46,6 +46,24 @@ class ApprovalRequest(BaseModel):
     options: list[str] | None = None
     context: str | None = None
     target_channel: str = "all"
+    # Zu welchem Auftrag die Rueckfrage gehoert. Die Spalte gab es im Modell schon,
+    # nur hat sie nie jemand gefuellt — in der Ablage stand die Frage damit ohne
+    # den Auftrag, um den es ging.
+    task_id: str | None = None
+    # Wofuer die Freigabe steht: gewoehnliche Rueckfrage, Eskalation wegen
+    # Unsicherheit (#389), erschoepfte Selbstheilung (#390), Reflexionsvorschlag.
+    kind: str | None = None
+
+
+class ConfidenceCheck(BaseModel):
+    """Ein Agent meldet, wie sicher er sich ist — und fragt, ob das reicht."""
+
+    confidence: float | str
+    question: str
+    context: str | None = None
+    options: list[str] | None = None
+    task_id: str | None = None
+    target_channel: str = "all"
 
 
 class ApprovalDecision(BaseModel):
@@ -144,10 +162,15 @@ async def request_approval(
         "context": body.context,
         "target_channel": body.target_channel,
     }
+    if body.kind:
+        meta["kind"] = body.kind
+    if body.task_id:
+        meta["task_id"] = body.task_id
 
     # Persist to DB
     approval = CommandApproval(
         agent_id=agent_id,
+        task_id=body.task_id,
         command=approval_tool,
         description=reasoning,
         risk_level=body.risk_level,
@@ -279,6 +302,96 @@ async def request_approval(
         "approval_id": str(approval.id),
         "status": "pending",
         "message": "Approval request created. Waiting for user decision.",
+    }
+
+
+@router.post("/confidence")
+async def confidence_gate(
+    body: ConfidenceCheck,
+    agent_auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Konfidenz melden — der Server entscheidet, ob das reicht (#389).
+
+    Die Schwelle liegt bewusst **hier** und nicht im Agenten: würde er selbst
+    beurteilen, ob seine 40 % genügen, wäre diese Beurteilung genauso unsicher wie
+    die Antwort. Er meldet eine Zahl, die Regel gehört dem Betreiber.
+
+    Reicht die Sicherheit, kostet der Aufruf **nichts** — kein Mensch wird
+    behelligt, keine Freigabe entsteht. Genau deshalb kann der Agent ihn
+    grosszügig verwenden, ohne dass die Ablage volläuft.
+    """
+    from app.core.confidence import (
+        build_question,
+        is_enabled,
+        normalize_confidence,
+        should_escalate,
+        threshold_for,
+    )
+    from app.models.task import Task
+
+    agent_id = agent_auth["agent_id"]
+    try:
+        confidence = normalize_confidence(body.confidence)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"Konfidenz unlesbar: {e}")
+
+    agent = (await db.execute(
+        select(Agent).where(Agent.id == agent_id)
+    )).scalar_one_or_none()
+    agent_config = getattr(agent, "config", None)
+
+    task_meta = None
+    if body.task_id:
+        task = (await db.execute(
+            # Nur der eigene Auftrag: sonst koennte ein Agent die Schwelle eines
+            # fremden Auftrags erben.
+            select(Task).where(Task.id == body.task_id, Task.agent_id == agent_id)
+        )).scalar_one_or_none()
+        task_meta = getattr(task, "metadata_", None)
+
+    threshold = threshold_for(agent_config, task_meta)
+    escalate = is_enabled(agent_config) and should_escalate(confidence, threshold)
+
+    if not escalate:
+        return {
+            "escalated": False,
+            "proceed": True,
+            "confidence": confidence,
+            "threshold": threshold,
+            "message": (
+                f"Sicherheit {confidence}% ≥ Schwelle {threshold}% — mach weiter."
+            ),
+        }
+
+    created = await request_approval(
+        ApprovalRequest(
+            question=build_question(body.question, confidence, threshold),
+            options=body.options or ["Ich entscheide", "Mach weiter wie geplant"],
+            context=body.context,
+            reasoning=body.context or body.question,
+            risk_level="medium",
+            target_channel=body.target_channel,
+            task_id=body.task_id,
+            kind="low_confidence",
+        ),
+        agent_auth,
+        db,
+    )
+    logger.info(
+        "[Konfidenz] Agent %s eskaliert bei %s%% (Schwelle %s%%) → Freigabe %s",
+        scrub_log(agent_id), confidence, threshold, created.get("approval_id"),
+    )
+    return {
+        "escalated": True,
+        "proceed": False,
+        "confidence": confidence,
+        "threshold": threshold,
+        "approval_id": created.get("approval_id"),
+        "message": (
+            f"Sicherheit {confidence}% < Schwelle {threshold}% — an einen Menschen "
+            "weitergereicht. Führe NICHT aus, warte auf die Entscheidung."
+        ),
     }
 
 

@@ -66,6 +66,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 25. [Agent-Symbol, Farbe und Schlagwort anpassen](#25-agent-symbol-farbe-und-schlagwort-anpassen)
 25a. [Agenten suchen, filtern und sortieren](#25a-agenten-suchen-filtern-und-sortieren)
 25b. [Selbstheilung: gescheiterte Aufgaben wiederholen lassen](#25b-selbstheilung-gescheiterte-aufgaben-wiederholen-lassen)
+25c. [Bei Unsicherheit nachfragen lassen](#25c-bei-unsicherheit-nachfragen-lassen)
 26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
 27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
@@ -1380,6 +1381,40 @@ Fehler wie oft auftrat, und du kannst übernehmen oder verwerfen.
 > _[Screenshot folgt: Selbstheilungs-Karte in den Agent-Einstellungen]_
 >
 > _[Screenshot folgt: eskalierte Aufgabe mit Versuchsverlauf unter Freigaben]_
+
+---
+
+## 25c. Bei Unsicherheit nachfragen lassen
+
+Agenten raten manchmal, statt zu fragen — und ein geratenes Ergebnis ist schlimmer als
+eine Rückfrage: es **sieht aus wie Arbeit und ist keine**. Damit das nicht passiert,
+meldet der Agent vor unklaren Entscheidungen, **wie sicher** er sich ist. Ob das
+reicht, entscheidet **nicht der Agent**, sondern eine Schwelle, die du setzt.
+
+1. **Agents** → Agent öffnen → **Einstellungen** → Bereich **Selbstheilung** →
+   Unterpunkt **Bei Unsicherheit nachfragen**.
+2. **Schalter rechts** — ein oder aus.
+3. **Schieberegler** — die Schwelle in Prozent (Vorgabe **70 %**).
+   - **Höher** = vorsichtiger, mehr Rückfragen
+   - **Niedriger** = eigenständiger, weniger Rückfragen
+   - **0 %** heißt „nie fragen". Das ist etwas **anderes** als Ausschalten:
+     ausgeschaltet meldet der Agent gar nichts mehr.
+
+**Was passiert dann?** Liegt der Agent über der Schwelle, macht er einfach weiter —
+das kostet nichts und niemand wird gestört. Liegt er darunter, **hält er an** und die
+Frage landet unter **Freigaben → Eskalationen**, mit dem Prozentwert davor („Unsicher:
+40 % — Schwelle 70 %"). Erst deine Antwort lässt ihn weiterarbeiten.
+
+**Wo du Eskalationen findest:** **Freigaben** → Reiter **Eskalationen**. Dort stehen
+beide Fälle, in denen ein Mensch übernehmen muss:
+- **Unsicher** — der Agent hat nachgefragt (dieser Abschnitt)
+- **Gescheitert** — die Selbstheilung ist erschöpft (Abschnitt 25b)
+
+> Das gilt für **alle** Agenten gleich — Claude Code, Codex und eigene Modelle.
+>
+> _[Screenshot folgt: Schieberegler „Bei Unsicherheit nachfragen"]_
+>
+> _[Screenshot folgt: Reiter „Eskalationen" unter Freigaben]_
 
 ---
 

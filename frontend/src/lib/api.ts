@@ -499,6 +499,29 @@ export async function resetAgentSelfHealing(agentId: string): Promise<SelfHealin
   });
 }
 
+/** Konfidenz-Routing pro Agent (#389) — ab wann ein Mensch geholt wird. */
+export interface ConfidenceSettings {
+  agent_id: string;
+  enabled: boolean;
+  threshold: number;
+  default_threshold: number;
+  customized: boolean;
+}
+
+export async function getAgentConfidence(agentId: string): Promise<ConfidenceSettings> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/confidence`);
+}
+
+export async function updateAgentConfidence(
+  agentId: string,
+  patch: { enabled?: boolean; threshold?: number },
+): Promise<ConfidenceSettings> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/confidence`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 export interface RolePermissions {
   max_agents?: number | null;
   template_ids?: number[] | null;

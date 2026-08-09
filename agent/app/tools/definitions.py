@@ -1235,6 +1235,60 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "escalate_if_unsure",
+            "description": (
+                "Report how confident you are (0-100) BEFORE acting on an uncertain "
+                "decision. The SERVER decides whether that is enough: at or above the "
+                "operator's threshold this returns immediately and costs nothing — "
+                "nobody is bothered. Only below the threshold is the decision handed to "
+                "a human, and then this BLOCKS until they answer. "
+                "Use it whenever you would otherwise GUESS: ambiguous instructions, "
+                "several plausible readings, missing information you cannot look up, an "
+                "irreversible step you are unsure about. A guessed result is worse than a "
+                "question — it looks like work and is not. "
+                "For actions that are risky but CLEAR, use request_approval instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confidence": {
+                        "type": "number",
+                        "description": (
+                            "How sure you are, 0-100 (0.0-1.0 also accepted). Be honest — "
+                            "inflating this defeats the entire mechanism."
+                        ),
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": (
+                            "What you would ask the human. State the actual decision, "
+                            "not 'is this ok?'."
+                        ),
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": (
+                            "Why you are unsure and what the options are — everything "
+                            "the human needs to decide without asking you back."
+                        ),
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "The concrete choices, if there are distinct ones.",
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "The task this decision belongs to, if any.",
+                    },
+                },
+                "required": ["confidence", "question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "check_approval",
             "description": "Check the status of a previously requested approval. Returns PENDING, APPROVED, or DENIED with the user's reason.",
             "parameters": {

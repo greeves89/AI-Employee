@@ -749,6 +749,60 @@ class OrchestratorAPIClient:
             f"for their approval; they can still decide later under Approvals."
         )
 
+    async def escalate_if_unsure(self, params: dict) -> str:
+        """Konfidenz melden — der Server entscheidet, ob sie reicht (#389).
+
+        Reicht sie, kehrt der Aufruf sofort zurueck und kostet nichts. Erst
+        darunter wird ein Mensch geholt, und dann wird gewartet — genau wie bei
+        ``request_approval``, denn eine Rueckfrage, die nicht anhaelt, ist keine.
+        """
+        body = {
+            "confidence": params.get("confidence"),
+            "question": params.get("question", ""),
+            "context": params.get("context", ""),
+        }
+        if params.get("options"):
+            body["options"] = params["options"]
+        if params.get("task_id"):
+            body["task_id"] = params["task_id"]
+
+        gate = await self._request("POST", "/approvals/confidence", json=body)
+        if isinstance(gate, str):
+            return gate
+        if not gate.get("escalated"):
+            return str(gate.get("message") or "Confidence sufficient — proceed.")
+
+        approval_id = gate.get("approval_id", "")
+        if not approval_id:
+            return "Error: escalation did not return an approval id."
+
+        deadline = time.time() + 900
+        while time.time() < deadline:
+            await asyncio.sleep(3)
+            check = await self._request("GET", f"/approvals/check/{approval_id}")
+            if isinstance(check, str):
+                continue  # Aussetzer der Leitung ist keine Entscheidung
+            status = str(check.get("status", "")).lower()
+            choice = check.get("user_response") or ""
+            if status == "approved":
+                return (
+                    "The human decided."
+                    + (f" Their answer: {choice}." if choice else "")
+                    + " Proceed accordingly."
+                )
+            if status == "denied":
+                return (
+                    "The human declined."
+                    + (f" {choice}" if choice else "")
+                    + " Do NOT proceed with your uncertain assumption."
+                )
+
+        return (
+            f"NO DECISION YET (approval id {approval_id}). Do NOT proceed on your "
+            f"uncertain assumption. Stop and tell the user you are waiting; they can "
+            f"still decide under Approvals."
+        )
+
     async def check_approval(self, params: dict) -> str:
         """Check the status of a previously requested approval."""
         approval_id = params.get("approval_id", "")

@@ -18,6 +18,7 @@ import {
   Check,
   Info,
   Moon,
+  Siren,
   RefreshCw,
   ShieldCheck,
   Loader2,
@@ -111,8 +112,28 @@ function reflectionMeta(a: ApprovalRequest): ReflectionChangeMeta | null {
   return meta && meta.kind === "reflection" ? meta : null;
 }
 
+/**
+ * Eskalationen: Fälle, in denen ein Mensch übernehmen muss.
+ *
+ * Zwei Anlässe, ein Posteingang — der Agent war sich zu unsicher (#389), oder die
+ * Selbstheilung ist erschöpft (#390). Für den Menschen ist das dieselbe Frage
+ * („übernimmst du?"), also gehört es an dieselbe Stelle. Zwei getrennte Listen
+ * wären zwei Orte zum Nachsehen, und einer davon würde vergessen.
+ */
+const ESCALATION_KINDS = new Set(["escalation", "low_confidence"]);
+
+function isEscalation(a: ApprovalRequest): boolean {
+  const kind = (a.meta as { kind?: string } | null | undefined)?.kind;
+  return ESCALATION_KINDS.has(String(kind ?? ""));
+}
+
+function escalationLabel(a: ApprovalRequest): string {
+  const kind = (a.meta as { kind?: string } | null | undefined)?.kind;
+  return kind === "low_confidence" ? "Unsicher" : "Gescheitert";
+}
+
 export default function ApprovalsPage() {
-  const [activeTab, setActiveTab] = useState<"pending" | "reflection" | "rules" | "command-policies" | "presets">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "escalations" | "reflection" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<ApprovalRequest | null>(null);
@@ -283,13 +304,21 @@ export default function ApprovalsPage() {
   };
 
   const refreshCurrentTab = () => {
-    if (activeTab === "pending" || activeTab === "reflection") loadApprovals();
+    if (activeTab === "pending" || activeTab === "reflection" || activeTab === "escalations") {
+      loadApprovals();
+    }
     if (activeTab === "rules") loadRules();
     if (activeTab === "presets") loadPresets();
   };
 
   const reflectionApprovals = approvals.filter(isReflectionApproval);
-  const shownApprovals = activeTab === "reflection" ? reflectionApprovals : approvals;
+  const escalationApprovals = approvals.filter(isEscalation);
+  const shownApprovals =
+    activeTab === "reflection"
+      ? reflectionApprovals
+      : activeTab === "escalations"
+      ? escalationApprovals
+      : approvals;
 
   return (
     <div className="px-8 py-8 max-w-6xl mx-auto">
@@ -331,6 +360,19 @@ export default function ApprovalsPage() {
           )}
         >
           Ausstehend ({approvals.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("escalations")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-all inline-flex items-center gap-1.5",
+            activeTab === "escalations"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          title="Fälle, in denen ein Mensch übernehmen muss — zu unsicher oder endgültig gescheitert"
+        >
+          <Siren className="h-3.5 w-3.5" />
+          Eskalationen ({escalationApprovals.length})
         </button>
         <button
           onClick={() => setActiveTab("reflection")}
@@ -568,7 +610,7 @@ export default function ApprovalsPage() {
       )}
 
       {/* Pending Approvals Tab (+ Nachtschicht filter tab) */}
-      {(activeTab === "pending" || activeTab === "reflection") && (
+      {(activeTab === "pending" || activeTab === "reflection" || activeTab === "escalations") && (
       <>
       {isLoading && approvals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
@@ -652,6 +694,13 @@ export default function ApprovalsPage() {
                             <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">
                               <Moon className="h-2.5 w-2.5" />
                               Nachtschicht
+                            </span>
+                          ) : isEscalation(approval) ? (
+                            // Eskalation: der Mensch MUSS uebernehmen. Das als
+                            // gewoehnliche Freigabe zu zeigen, waere untertrieben.
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-400">
+                              <Siren className="h-2.5 w-2.5" />
+                              {escalationLabel(approval)}
                             </span>
                           ) : (
                             <span
