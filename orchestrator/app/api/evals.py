@@ -214,12 +214,29 @@ async def list_runs(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Der Verlauf — die Zahlenreihe, an der man einen Rückschritt überhaupt sieht."""
-    query = select(EvalRun).order_by(EvalRun.created_at.desc()).limit(limit)
+    """Der Verlauf — die Zahlenreihe, an der man einen Rückschritt überhaupt sieht.
+
+    Die Einschränkung auf eigene Agenten steht **im Query**, nicht in einem
+    ``if``-Zweig: die Filter sind optional, die Mandantentrennung ist es nicht. Ohne
+    ``agent_id`` gäbe ein bedingter Besitzcheck sonst die Läufe aller Nutzer aus —
+    samt Auftragstexten und Antwortauszügen.
+    """
+    query = (
+        select(EvalRun)
+        .join(Agent, Agent.id == EvalRun.agent_id)
+        .order_by(EvalRun.created_at.desc())
+        .limit(limit)
+    )
+    if user.role != "admin":
+        # Agenten ohne Besitzer sind Plattform-Agenten und fuer alle sichtbar —
+        # dieselbe Regel wie in der Agentenliste. Zwei verschiedene Auslegungen von
+        # „meins" waeren schlimmer als eine grosszuegige.
+        query = query.where((Agent.user_id == str(user.id)) | (Agent.user_id.is_(None)))
     if agent_id:
         await _owned_agent(db, agent_id, user)
         query = query.where(EvalRun.agent_id == agent_id)
     if set_id:
+        await _owned_set(db, set_id, user)
         query = query.where(EvalRun.set_id == set_id)
     rows = (await db.execute(query)).scalars().all()
     return {"runs": [_run_to_dict(r) for r in rows]}
