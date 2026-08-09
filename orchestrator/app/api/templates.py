@@ -223,7 +223,7 @@ async def publish_template(
     template.is_published = True
     template.published_at = datetime.now(timezone.utc)
     await db.commit()
-    logger.info(f"Template {template_id} published by {user.id}")
+    logger.info(f"Template {scrub_log(template_id)} published by {scrub_log(user.id)}")
     return _template_to_dict(template)
 
 
@@ -247,7 +247,7 @@ async def unpublish_template(
     template.is_published = False
     template.published_at = None
     await db.commit()
-    logger.info(f"Template {template_id} unpublished by {user.id}")
+    logger.info(f"Template {scrub_log(template_id)} unpublished by {scrub_log(user.id)}")
     return _template_to_dict(template)
 
 

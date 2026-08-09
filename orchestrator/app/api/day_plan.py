@@ -125,7 +125,7 @@ async def replace_day_plan(
     await db.commit()
     for row in created:
         await db.refresh(row)
-    logger.info("[DayPlan] agent=%s date=%s items=%d", scrub_log(agent_id), plan_date, len(created))
+    logger.info("[DayPlan] agent=%s date=%s items=%d", scrub_log(agent_id), scrub_log(plan_date), len(created))
     return {"agent_id": agent_id, "plan_date": plan_date.isoformat(),
             "items": [_to_response(r) for r in created]}
 
