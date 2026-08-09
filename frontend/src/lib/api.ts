@@ -3454,8 +3454,34 @@ export async function joinTeamsMeeting(joinUrl: string, agentId: string) {
 
 // Admin-Concierge (#11): setzt vorhandene Abfragen zusammen — bewusst ohne
 // Sprachmodell, ein Concierge der eine Zahl halluziniert ist schlimmer als keiner.
+/** Ein Punkt, der eine Entscheidung oder einen Handgriff braucht. */
+export interface ConciergeItem {
+  kind: string;
+  /** "broken" = kaputt (rot) · "waiting" = wartet auf eine Entscheidung (gelb). */
+  severity: "broken" | "waiting";
+  title: string;
+  detail: string;
+  agent_id: string | null;
+  /** Eine der wenigen sicheren Aktionen — direkt hier ausführbar. */
+  action: string | null;
+  action_label: string | null;
+  /** Seite, auf der es genauer angesehen/entschieden wird. */
+  link: string | null;
+  count: number;
+}
+
 export interface ConciergeOverview {
   verdict: string;
+  /** Die eigentliche Liste. Leer heißt: nichts wartet auf dich. */
+  items?: ConciergeItem[];
+  /** Kennzahlen als Fußnote — sie verlangen keine Handlung. */
+  stats?: {
+    agents: number;
+    resting: number;
+    tasks_24h: number;
+    failed_24h: number;
+    cost_24h_usd: number;
+  };
   agents: {
     total: number;
     by_state: Record<string, number>;

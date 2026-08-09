@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import attention
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_admin
@@ -44,6 +45,157 @@ SAFE_ACTIONS = {
 class ActionRequest(BaseModel):
     action: str
     agent_id: str | None = None
+
+
+async def _collect_attention(
+    db: AsyncSession,
+    agents: list,
+    now: datetime,
+    stale: int,
+    resting: list[dict],
+    broken_agents: list[dict],
+) -> list[dict]:
+    """Alles einsammeln, was jemanden braucht — jeder Erkenner für sich gekapselt.
+
+    Jeder Block fängt seine eigenen Fehler. Ein Concierge, der wegen einer fehlenden
+    Tabelle gar nichts mehr zeigt, ist schlechter als einer, der einen Punkt
+    weglässt — und die Punkte sind bewusst unabhängig voneinander.
+    """
+    items: list[dict] = []
+
+    # 1 · Eskalationen. Der einzige Fall, in dem ein Agent buchstäblich stillsteht
+    #     und auf einen Menschen wartet — der gehört ganz nach oben.
+    try:
+        from app.models.command_approval import ApprovalStatus, CommandApproval
+
+        pending = (await db.execute(
+            select(CommandApproval).where(CommandApproval.status == ApprovalStatus.PENDING)
+        )).scalars().all()
+        escalations = [
+            a for a in pending
+            if str((a.meta or {}).get("kind") or "") in ("escalation", "low_confidence")
+        ]
+        if escalations:
+            unsure = sum(1 for a in escalations if (a.meta or {}).get("kind") == "low_confidence")
+            items.append(attention.item(
+                "escalation", attention.WAITING,
+                f"{len(escalations)} Eskalation(en)",
+                (f"{unsure} × unsicher, {len(escalations) - unsure} × gescheitert — "
+                 "ein Agent wartet auf deine Entscheidung."),
+                link="/approvals", count=len(escalations),
+            ))
+        rest = len(pending) - len(escalations)
+        if rest:
+            items.append(attention.item(
+                "approval", attention.WAITING,
+                f"{rest} offene Freigabe(n)",
+                "Ein Agent hat gefragt und wartet.",
+                link="/approvals", count=rest,
+            ))
+    except Exception:  # noqa: BLE001
+        logger.debug("Freigaben nicht auswertbar", exc_info=True)
+
+    # 2 · Agenten im Fehlerzustand.
+    for entry in broken_agents:
+        items.append(attention.item(
+            "agent_error", attention.BROKEN,
+            entry["name"], "Fehlerzustand — der Agent arbeitet nicht.",
+            agent_id=entry["id"], action="restart_agent", action_label="Neu starten",
+            link=f"/agents/{entry['id']}",
+        ))
+
+    # 3 · Hängende Aufgaben.
+    if stale:
+        items.append(attention.item(
+            "stale_task", attention.BROKEN,
+            f"{stale} hängende Aufgabe(n)",
+            "Seit über 30 Minuten ohne Lebenszeichen.",
+            link="/tasks", count=stale,
+        ))
+
+    # 4 · Abgelaufene Zugänge. Der wertvollste Punkt, weil er STILL scheitert:
+    #     nichts wird rot, es hört einfach auf zu funktionieren.
+    try:
+        from app.models.oauth_integration import OAuthIntegration
+
+        for row in (await db.execute(select(OAuthIntegration))).scalars().all():
+            state = attention.token_state(row.expires_at, now)
+            if state is None:
+                continue
+            provider = str(getattr(row.provider, "value", row.provider))
+            items.append(attention.item(
+                "expired_access", state,
+                f"Zugang {provider}"
+                + (f" ({row.account_label})" if row.account_label else ""),
+                ("abgelaufen — Aufrufe darüber scheitern still"
+                 if state == attention.BROKEN
+                 else "läuft in den nächsten Tagen ab"),
+                link="/integrations",
+            ))
+    except Exception:  # noqa: BLE001
+        logger.debug("Zugaenge nicht pruefbar", exc_info=True)
+
+    # 5 · KI-Konten, deren letzte Pruefung fehlschlug.
+    try:
+        from app.models.ai_account import AIAccount
+
+        for row in (await db.execute(
+            select(AIAccount).where(AIAccount.is_active.is_(True))
+        )).scalars().all():
+            if not row.last_status or row.last_status == "ok":
+                continue
+            items.append(attention.item(
+                "account_unhealthy", attention.BROKEN,
+                f"KI-Konto „{row.name}“",
+                f"Letzte Prüfung: {row.last_status}"
+                + (f" — {row.last_error}" if row.last_error else ""),
+                link="/ai-accounts",
+            ))
+    except Exception:  # noqa: BLE001
+        logger.debug("KI-Konten nicht pruefbar", exc_info=True)
+
+    # 6 · Budgets. Aufgebraucht heisst je nach Einstellung: heruntergestuft oder
+    #     gestoppt — beides sollte man wissen, bevor jemand fragt.
+    try:
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        spent_rows = (await db.execute(
+            select(Task.agent_id, func.coalesce(func.sum(Task.cost_usd), 0))
+            .where(Task.created_at >= month_start, Task.agent_id.isnot(None))
+            .group_by(Task.agent_id)
+        )).all()
+        spent = {aid: float(total or 0) for aid, total in spent_rows}
+        for agent in agents:
+            state = attention.budget_state(spent.get(agent.id), agent.budget_usd)
+            if state is None:
+                continue
+            items.append(attention.item(
+                "budget", state, agent.name,
+                (f"Monatsbudget aufgebraucht ({spent.get(agent.id, 0):.2f} von "
+                 f"{agent.budget_usd:.2f} $) — Folge: {agent.budget_exceeded_action}"
+                 if state == attention.BROKEN
+                 else f"Monatsbudget zu über 90 % verbraucht "
+                      f"({spent.get(agent.id, 0):.2f} von {agent.budget_usd:.2f} $)"),
+                agent_id=agent.id, link=f"/agents/{agent.id}",
+            ))
+    except Exception:  # noqa: BLE001
+        logger.debug("Budgets nicht auswertbar", exc_info=True)
+
+    # 7 · Angehalten, aber mit Auftrag: tut still nichts.
+    for entry in resting:
+        if not entry["skips_proactive"]:
+            continue
+        items.append(attention.item(
+            "idle_with_duties", attention.WAITING,
+            entry["name"],
+            "angehalten, hat aber Verantwortungsbereiche — proaktive Läufe fallen aus.",
+            agent_id=entry["id"], action="start_agent", action_label="Starten",
+            link=f"/agents/{entry['id']}",
+        ))
+
+    # Kaputtes zuerst, danach in der Reihenfolge des Einsammelns — Eskalationen
+    # stehen dadurch vor den restlichen Wartepunkten.
+    items.sort(key=lambda i: 0 if i["severity"] == attention.BROKEN else 1)
+    return items[:20]
 
 
 @router.get("/overview")
@@ -135,22 +287,22 @@ async def concierge_overview(
     except Exception:  # noqa: BLE001
         logger.debug("Haengende Aufgaben nicht zaehlbar", exc_info=True)
 
-    # Eine Ampel statt einer Zahlenwueste: „laeuft alles?" ist die eigentliche Frage.
-    #
-    # Rot ist nur, was WIRKLICH kaputt ist: ein Agent im Fehlerzustand oder eine
-    # Aufgabe, die seit Stunden haengt. Ein ruhender Agent, der bei Bedarf geweckt
-    # wird, ist kein Notfall — auch nicht zehn davon.
-    if broken or stale:
-        verdict = "handlungsbedarf"
-    elif pending_approvals or any(r["skips_proactive"] for r in resting):
-        # Ein angehaltener Agent MIT Auftrag arbeitet still nicht weiter. Das wartet
-        # tatsaechlich auf eine Entscheidung — nur eben nicht dringend.
-        verdict = "wartet auf dich"
-    else:
-        verdict = "alles ruhig"
+    # ── Die Liste: nur, was eine Entscheidung oder einen Handgriff braucht ────
+    items = await _collect_attention(db, agents, now, stale, resting, broken)
+    verdict = attention.verdict_for(items)
 
     return {
         "verdict": verdict,
+        "items": items,
+        # Die Zahlen bleiben — aber als Fussnote, nicht als Hauptinhalt. Sie
+        # verlangen keine Handlung; dafuer gibt es das Dashboard.
+        "stats": {
+            "agents": len(agents),
+            "resting": len(resting),
+            "tasks_24h": sum(task_counts.values()),
+            "failed_24h": task_counts.get("failed", 0),
+            "cost_24h_usd": round(cost_24h, 2),
+        },
         "agents": {
             "total": len(agents),
             "by_state": by_state,

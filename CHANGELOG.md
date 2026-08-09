@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.171.0] — 2026-08-09
+
+### Changed
+- **Der Concierge zeigt jetzt Aufgaben statt Kennzahlen.** Er war eine Kachel mit
+  vier Zahlen und einer Ampel — und das ist der falsche Zuschnitt: „Aufgaben 24 h:
+  33" und „Kosten 24 h: 57 $" verlangen **keine Handlung**, dafür gibt es das
+  Dashboard. Sobald Zahlen den Platz füllen, muss die Ampel den Alarm allein
+  tragen, und dann wird sie großzügig ausgelöst. Genau so landete „angehalten" in
+  derselben Liste wie „abgestürzt" (siehe 1.170.1).
+
+  **Eine Regel:** hier steht nur, was eine Entscheidung oder einen Handgriff
+  braucht, und jeder Punkt trägt genau eine Sache, die man dagegen tun kann —
+  einen Knopf, der es sofort erledigt, und/oder einen Pfeil auf die Seite, wo es
+  entschieden wird. Ist nichts da, steht da „nichts, was auf dich wartet".
+
+  Die Ampel wird jetzt **aus der Liste** abgeleitet statt danebengerechnet. Vorher
+  standen beide für sich, und genau deshalb konnten sie auseinanderlaufen.
+
+### Added
+- **Der Concierge kennt fünf Dinge, die er vorher nicht sah:**
+  - **Eskalationen** (#389/#390) — ein Agent steht still und wartet auf eine
+    Entscheidung. Das gab es seit 1.170.0, und ausgerechnet dort tauchte es nicht auf.
+  - **Abgelaufene Zugänge** — der wertvollste Punkt, weil er **still** scheitert:
+    es wird nichts rot, es hört einfach auf zu funktionieren. Genau so war das
+    Dazwischenreden im laufenden Turn bei den Claude-Agenten wochenlang tot.
+    Ablauf in den nächsten 3 Tagen kommt als Vorwarnung.
+  - **KI-Konten**, deren letzte Verbindungsprüfung fehlschlug.
+  - **Budgets** — aufgebraucht (rot) oder über 90 % (gelb), mit der Folge dabei
+    („heruntergestuft" / „gestoppt").
+  - **Angehalten mit Auftrag** — bekommt seit v1.154.1 keine proaktiven Läufe mehr
+    und tut still nichts.
+- Die Erkenner liegen als reine Regeln in `core/attention.py`, ohne Datenbank —
+  damit jede für sich prüfbar ist.
+
+### Tests
+1835 grün. 18 für die Regeln, 5 weitere von Ende zu Ende gegen echtes SQL. Der
+Test „kein Sprachmodell beteiligt" gilt jetzt für beide Dateien.
+
+### Docs
+Handbuch: neuer Abschnitt 22a (Concierge, Admin-only).
+
+---
+
 ## [1.170.1] — 2026-08-09
 
 ### Fixed

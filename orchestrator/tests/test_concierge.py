@@ -55,23 +55,44 @@ class AccessTests(unittest.TestCase):
 class NoHallucinationTests(unittest.TestCase):
     SRC = ORCH / "app/api/concierge.py"
 
+    ATTENTION = ORCH / "app/core/attention.py"
+
     def test_no_language_model_is_involved(self):
-        """Bewusst: der Concierge setzt Abfragen zusammen, er formuliert nicht."""
-        src = self.SRC.read_text().lower()
-        for token in ("anthropic", "openai", "llm", "completion", "prompt"):
-            with self.subTest(token=token):
-                self.assertNotIn(token, src)
+        """Bewusst: der Concierge setzt Abfragen zusammen, er formuliert nicht.
+
+        Gilt fuer BEIDE Dateien — die Erkenner sind seit 1.171 ausgelagert, und ein
+        Sprachmodell haette sich dort genauso einschleichen koennen.
+        """
+        for path in (self.SRC, self.ATTENTION):
+            src = path.read_text().lower()
+            for token in ("anthropic", "openai", "llm", "completion", "prompt"):
+                with self.subTest(token=token, file=path.name):
+                    self.assertNotIn(token, src)
 
     def test_stale_threshold_is_shared_with_the_watchdog(self):
         """Sonst steht hier eine andere Zahl als in der Aufgabenliste."""
         src = self.SRC.read_text()
         self.assertIn("_STALE_TASK_THRESHOLD", src)
 
-    def test_verdict_is_derived_not_invented(self):
-        src = self.SRC.read_text()
-        for verdict in ("handlungsbedarf", "wartet auf dich", "alles ruhig"):
-            with self.subTest(verdict=verdict):
-                self.assertIn(verdict, src)
+    def test_verdict_is_derived_from_the_list(self):
+        """Die Ampel wird AUS den Punkten gebildet, nicht daneben.
+
+        Vorher stand die Ampel-Bedingung fuer sich und die Liste fuer sich — dann
+        koennen beide auseinanderlaufen, und genau das ist passiert: die Liste
+        zeigte einen angehaltenen Agenten, die Ampel machte daraus einen Notfall.
+        """
+        from app.core.attention import BROKEN, WAITING, verdict_for, item
+
+        self.assertEqual(verdict_for([]), "alles ruhig")
+        self.assertEqual(
+            verdict_for([item("x", WAITING, "t", "d")]), "wartet auf dich"
+        )
+        self.assertEqual(
+            verdict_for([item("x", WAITING, "t", "d"), item("y", BROKEN, "t", "d")]),
+            "handlungsbedarf",
+        )
+        # Und der Endpunkt bildet sie wirklich so — nicht mit einer zweiten Regel.
+        self.assertIn("attention.verdict_for(items)", self.SRC.read_text())
 
 
 class WiringTests(unittest.TestCase):
@@ -126,7 +147,9 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
         from sqlalchemy.ext.compiler import compiles
 
         from app.models.agent import Agent
+        from app.models.ai_account import AIAccount
         from app.models.command_approval import CommandApproval
+        from app.models.oauth_integration import OAuthIntegration
         from app.models.task import Task
 
         try:
@@ -136,7 +159,7 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
 
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, Task, CommandApproval):
+            for model in (Agent, Task, CommandApproval, OAuthIntegration, AIAccount):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 
@@ -202,3 +225,100 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
         out = await self._overview([(AgentState.STOPPED, {}), (AgentState.ERROR, {})])
         self.assertEqual(len(out["agents"]["unhealthy"]), 1)
         self.assertEqual(out["agents"]["unhealthy"][0]["state"], "error")
+
+    def _kinds(self, out):
+        return {i["kind"] for i in out["items"]}
+
+    async def test_expired_access_is_surfaced(self):
+        """Der wertvollste Punkt: ein abgelaufener Zugang scheitert STILL. Die
+        Claude-Agenten hatten das, und das Dazwischenreden im laufenden Turn war
+        wochenlang tot, ohne dass irgendwo etwas rot war."""
+        from datetime import datetime, timedelta, timezone
+        from types import SimpleNamespace
+
+        from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+
+        async with self.Session() as db:
+            db.add(OAuthIntegration(
+                provider=OAuthProvider.ANTHROPIC,
+                access_token_encrypted="x",
+                expires_at=datetime.now(timezone.utc) - timedelta(hours=2),
+                account_label="bot@example.test",
+            ))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertIn("expired_access", self._kinds(out))
+        self.assertEqual(out["verdict"], "handlungsbedarf")
+
+    async def test_unhealthy_ai_account_is_surfaced(self):
+        from types import SimpleNamespace
+
+        from app.models.ai_account import AIAccount
+
+        async with self.Session() as db:
+            # id ist eine Ganzzahl mit Autoincrement — nicht setzen.
+            db.add(AIAccount(name="Anthropic Prod", provider_type="anthropic",
+                             is_active=True, last_status="auth_failed",
+                             last_error="401", models=[], extra={}))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertIn("account_unhealthy", self._kinds(out))
+
+    async def test_exhausted_budget_is_surfaced(self):
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+
+        from app.models.agent import Agent, AgentState
+        from app.models.task import Task, TaskStatus
+
+        async with self.Session() as db:
+            db.add(Agent(id="ab", name="Teuer", state=AgentState.RUNNING, user_id="u1",
+                         config={}, budget_usd=10.0))
+            db.add(Task(id="t1", title="x", prompt="y", status=TaskStatus.COMPLETED,
+                        agent_id="ab", cost_usd=12.0,
+                        created_at=datetime.now(timezone.utc)))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertIn("budget", self._kinds(out))
+
+    async def test_quiet_platform_has_an_empty_list(self):
+        """Ist nichts zu tun, steht da nichts — und nicht vier Kacheln mit Zahlen."""
+        from types import SimpleNamespace
+
+        from app.models.agent import Agent, AgentState
+
+        async with self.Session() as db:
+            db.add(Agent(id="a9", name="Ruhig", state=AgentState.RUNNING,
+                         user_id="u1", config={}))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertEqual(out["items"], [])
+        self.assertEqual(out["verdict"], "alles ruhig")
+        # Die Zahlen sind weiterhin da — nur als Fussnote.
+        self.assertEqual(out["stats"]["agents"], 1)
+
+    async def test_broken_sorts_before_waiting(self):
+        from types import SimpleNamespace
+
+        from app.models.agent import Agent, AgentState
+        from app.models.command_approval import ApprovalStatus, CommandApproval
+
+        async with self.Session() as db:
+            db.add(Agent(id="ae", name="Kaputt", state=AgentState.ERROR,
+                         user_id="u1", config={}))
+            db.add(CommandApproval(agent_id="ae", command="user_decision",
+                                   description="?", status=ApprovalStatus.PENDING,
+                                   meta={"kind": "low_confidence"}))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertEqual(out["items"][0]["severity"], "broken")

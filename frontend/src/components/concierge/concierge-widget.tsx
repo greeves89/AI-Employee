@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   LifeBuoy,
+  ArrowRight,
   X,
   Loader2,
   RefreshCw,
@@ -82,6 +84,16 @@ export function ConciergeWidget() {
 
   const verdict = VERDICT[data?.verdict ?? ""] ?? VERDICT["alles ruhig"];
   const VerdictIcon = verdict.Icon;
+  const items = data?.items ?? [];
+  // Fallback auf die alten Felder: waere der Orchestrator noch aelter, staende hier
+  // sonst gar nichts statt wenigstens der Zahlen.
+  const stats = data?.stats ?? {
+    agents: data?.agents.total ?? 0,
+    resting: data?.agents.resting?.length ?? 0,
+    tasks_24h: data?.tasks_24h.total ?? 0,
+    failed_24h: data?.tasks_24h.failed ?? 0,
+    cost_24h_usd: data?.cost_24h_usd ?? 0,
+  };
 
   const act = async (action: string, agentId?: string, label?: string) => {
     const ok = await confirm({
@@ -154,123 +166,86 @@ export function ConciergeWidget() {
                   {verdict.label}
                 </div>
 
-                <dl className="grid grid-cols-2 gap-2 text-[12px]">
-                  <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                      Agenten
-                    </dt>
-                    <dd className="mt-0.5 font-medium">{data.agents.total}</dd>
-                  </div>
-                  <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                      Freigaben offen
-                    </dt>
-                    <dd
-                      className={cn(
-                        "mt-0.5 font-medium",
-                        data.pending_approvals > 0 && "text-amber-400"
-                      )}
-                    >
-                      {data.pending_approvals}
-                    </dd>
-                  </div>
-                  <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                      Aufgaben 24h
-                    </dt>
-                    <dd className="mt-0.5 font-medium">
-                      {data.tasks_24h.total}
-                      {data.tasks_24h.failed > 0 && (
-                        <span className="ml-1 text-[11px] text-red-400">
-                          ({data.tasks_24h.failed} rot)
-                        </span>
-                      )}
-                    </dd>
-                  </div>
-                  <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                      Kosten 24h
-                    </dt>
-                    <dd className="mt-0.5 font-medium">
-                      ${data.cost_24h_usd.toFixed(2)}
-                    </dd>
-                  </div>
-                </dl>
-
-                {data.tasks_24h.stale > 0 && (
-                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/[0.07] p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
-                    {data.tasks_24h.stale} Aufgabe(n) hängen seit über 30 Minuten.
+                {/* Die Liste. Nur was eine Entscheidung oder einen Handgriff
+                    braucht — jeder Punkt mit genau einer Sache, die man dagegen
+                    tun kann. Vorher standen hier vier Zahlenkacheln, und die
+                    Ampel musste den Alarm allein tragen. */}
+                {items.length === 0 ? (
+                  <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 text-[12px] text-muted-foreground">
+                    Nichts, was auf dich wartet. Zahlen und Verläufe stehen im
+                    Dashboard.
                   </p>
-                )}
-
-                {/* Kaputt: der einzige Fall, der wirklich Aufmerksamkeit braucht. */}
-                {(data.agents.broken ?? data.agents.unhealthy).length > 0 && (
-                  <div>
-                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                      Braucht Aufmerksamkeit
-                    </div>
-                    <div className="space-y-1.5">
-                      {(data.agents.broken ?? data.agents.unhealthy).map((a) => (
+                ) : (
+                  <div className="space-y-1.5">
+                    {items.map((it, i) => {
+                      const broken = it.severity === "broken";
+                      return (
                         <div
-                          key={a.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-2.5 py-2"
+                          key={`${it.kind}-${it.agent_id ?? i}`}
+                          className={cn(
+                            "rounded-lg border px-2.5 py-2",
+                            broken
+                              ? "border-red-500/20 bg-red-500/[0.05]"
+                              : "border-amber-500/20 bg-amber-500/[0.05]",
+                          )}
                         >
-                          <div className="min-w-0">
-                            <div className="truncate text-[12px] font-medium">{a.name}</div>
-                            <div className="text-[10px] text-red-400/70">Fehlerzustand</div>
-                          </div>
-                          <button
-                            onClick={() => act("restart_agent", a.id, "Agent neu starten")}
-                            disabled={busy}
-                            className="shrink-0 rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] hover:bg-foreground/[0.06] disabled:opacity-40"
-                          >
-                            Neu starten
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Angehalten ist eine Auskunft, kein Alarm — jemand hat sie
-                    angehalten, oder der Idle-Stopp. Beim nächsten Auftrag wachen
-                    sie von allein auf. Nur wer einen Auftrag hat, tut still nichts. */}
-                {(data.agents.resting ?? []).length > 0 && (
-                  <div>
-                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                      Ruht
-                    </div>
-                    <div className="space-y-1.5">
-                      {(data.agents.resting ?? []).map((a) => (
-                        <div
-                          key={a.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-[12px] font-medium">{a.name}</div>
-                            <div
-                              className={cn(
-                                "text-[10px]",
-                                a.skips_proactive ? "text-amber-400/80" : "text-muted-foreground/50",
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                {broken ? (
+                                  <CircleAlert className="h-3 w-3 shrink-0 text-red-400" />
+                                ) : (
+                                  <Clock className="h-3 w-3 shrink-0 text-amber-400" />
+                                )}
+                                <span className="truncate text-[12px] font-medium">
+                                  {it.title}
+                                </span>
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-muted-foreground/60">
+                                {it.detail}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              {it.action && (
+                                <button
+                                  onClick={() =>
+                                    act(it.action as string, it.agent_id ?? undefined,
+                                        it.action_label ?? it.action ?? "")
+                                  }
+                                  disabled={busy}
+                                  className="rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] hover:bg-foreground/[0.06] disabled:opacity-40"
+                                >
+                                  {it.action_label ?? "Ausführen"}
+                                </button>
                               )}
-                            >
-                              {a.skips_proactive
-                                ? "angehalten — proaktive Läufe fallen aus"
-                                : "angehalten — wacht beim nächsten Auftrag auf"}
+                              {it.link && (
+                                <Link
+                                  href={it.link}
+                                  onClick={() => setOpen(false)}
+                                  title="Ansehen"
+                                  className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                                >
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                </Link>
+                              )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => act("start_agent", a.id, "Agent starten")}
-                            disabled={busy}
-                            className="shrink-0 rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] hover:bg-foreground/[0.06] disabled:opacity-40"
-                          >
-                            Starten
-                          </button>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
                 )}
+
+                {/* Die Zahlen bleiben — aber als Fussnote. Sie verlangen keine
+                    Handlung, und als vier Kacheln haben sie die Liste verdraengt. */}
+                <p className="border-t border-foreground/[0.06] pt-2.5 text-[10px] text-muted-foreground/50">
+                  {stats.agents} Agent{stats.agents !== 1 ? "en" : ""}
+                  {stats.resting > 0 && ` · ${stats.resting} ruhen`}
+                  {" · "}
+                  {stats.tasks_24h} Aufgabe{stats.tasks_24h !== 1 ? "n" : ""} in 24 h
+                  {stats.failed_24h > 0 && ` (${stats.failed_24h} rot)`}
+                  {" · "}${stats.cost_24h_usd.toFixed(2)}
+                </p>
 
                 <div>
                   <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">

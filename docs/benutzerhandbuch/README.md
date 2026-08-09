@@ -61,6 +61,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 20. [Einstellungen](#20-einstellungen)
 21. [Benachrichtigungen](#21-benachrichtigungen)
 22. [Admin-Konsole](#22-admin-konsole)
+22a. [Concierge: was gerade auf dich wartet (nur Admins)](#22a-concierge-was-gerade-auf-dich-wartet-nur-admins)
 23. [Computer-Use Bridge (Desktop steuern)](#23-computer-use-bridge-desktop-steuern)
 24. [Skills herunterladen & installieren](#24-skills-herunterladen--installieren)
 25. [Agent-Symbol, Farbe und Schlagwort anpassen](#25-agent-symbol-farbe-und-schlagwort-anpassen)
@@ -1240,6 +1241,53 @@ Tab **Budget** — **Kostenkontrolle**.
 Tab **Key Management** — Verwaltung von **API-/Zugangs-Schlüsseln auf Plattformebene**
 (z. B. für Integrationen/Webhooks). Schlüssel anlegen, ansehen (sofern erlaubt) und
 widerrufen. Sensible Werte werden verschlüsselt gehalten.
+
+---
+
+## 22a. Concierge: was gerade auf dich wartet (nur Admins)
+
+Unten rechts auf jeder Seite sitzt ein **Rettungsring**. Ein Klick öffnet den
+Concierge — er beantwortet **eine** Frage: *Wartet gerade etwas auf mich, oder ist
+etwas kaputt?*
+
+> **Nur für Administratoren.** Andere Rollen sehen den Knopf gar nicht, und der
+> Server lehnt den Aufruf ab.
+
+**Die Ampel oben:**
+
+| | Bedeutung |
+|---|---|
+| **Alles ruhig** (grün) | Nichts zu tun |
+| **Wartet auf dich** (gelb) | Eine Entscheidung steht aus |
+| **Handlungsbedarf** (rot) | Etwas ist kaputt oder scheitert still |
+
+**Darunter die Liste.** Hier steht **ausschließlich**, was eine Entscheidung oder
+einen Handgriff braucht — jeder Punkt mit genau einer Sache, die man dagegen tun
+kann. Rechts an jedem Punkt: ein **Knopf** (erledigt es sofort) und/oder ein
+**Pfeil** (führt auf die Seite, wo es entschieden wird).
+
+| Punkt | Was dahintersteckt |
+|---|---|
+| **Eskalationen** | Ein Agent war zu unsicher oder ist endgültig gescheitert und wartet auf deine Entscheidung (Abschnitte 25b/25c) |
+| **Offene Freigaben** | Ein Agent hat gefragt |
+| **Agent im Fehlerzustand** | Der Agent arbeitet nicht → **Neu starten** |
+| **Hängende Aufgabe** | Seit über 30 Minuten kein Lebenszeichen |
+| **Abgelaufener Zugang** | Ein OAuth-Zugang (Microsoft, Anthropic, Codex …) ist abgelaufen. **Der wichtigste Punkt** — solche Aufrufe scheitern **still**: es wird nichts rot, es hört einfach auf zu funktionieren. Läuft einer in den nächsten 3 Tagen ab, steht das als Vorwarnung da. |
+| **KI-Konto meldet Fehler** | Die letzte Verbindungsprüfung schlug fehl (z. B. `auth_failed`) |
+| **Budget aufgebraucht** | Ein Agent hat sein Monatsbudget erreicht — je nach Einstellung wurde er heruntergestuft oder gestoppt. Ab 90 % kommt eine Vorwarnung. |
+| **Angehalten mit Auftrag** | Ein angehaltener Agent mit Verantwortungsbereichen bekommt **keine proaktiven Läufe** mehr → **Starten** |
+
+**Was hier bewusst NICHT steht:** Aufgabenzahlen, Kosten und Verläufe. Die verlangen
+keine Handlung — sie stehen als schmale Zeile ganz unten und ausführlich unter
+**Analytics**.
+
+**Angehaltene Agenten sind kein Alarm.** Ein Agent wird angehalten, weil du ihn
+angehalten hast oder weil der Idle-Stopp gegriffen hat; beim nächsten Auftrag wacht
+er von allein auf. Nur die Ausnahme oben (angehalten **mit** Auftrag) taucht auf.
+
+**Ganz unten: Selbsttest starten** — prüft die Plattform durch.
+
+> _[Screenshot folgt: geöffneter Concierge mit Eskalation und abgelaufenem Zugang]_
 
 ---
 
