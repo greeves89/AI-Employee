@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import verify_agent_token
 
@@ -88,7 +89,7 @@ async def create_ticket(
         )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Anlegen fehlgeschlagen: {e}")
-    logger.info("[Tickets] Agent %s hat ein Ticket angelegt", _auth.get("agent_id"))
+    logger.info("[Tickets] Agent %s hat ein Ticket angelegt", scrub_log(_auth.get("agent_id")))
     return created
 
 

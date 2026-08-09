@@ -149,10 +149,10 @@ async def _handle_notification(note: dict) -> None:
     call_id = str(data.get("id") or "").strip()
 
     if state == "established":
-        logger.info("[Teams-Anruf] Agent ist dem Termin beigetreten (%s)", call_id[:12])
+        logger.info("[Teams-Anruf] Agent ist dem Termin beigetreten (%s)", scrub_log(call_id[:12]))
     elif state == "terminated":
-        logger.info("[Teams-Anruf] Termin verlassen (%s)", call_id[:12])
+        logger.info("[Teams-Anruf] Termin verlassen (%s)", scrub_log(call_id[:12]))
     elif "recordResponse" in resource or data.get("recordingLocation"):
-        logger.info("[Teams-Anruf] Aufnahme liegt vor (%s)", call_id[:12])
+        logger.info("[Teams-Anruf] Aufnahme liegt vor (%s)", scrub_log(call_id[:12]))
     else:
-        logger.debug("[Teams-Anruf] Ereignis: %s / %s", resource[:60], state)
+        logger.debug("[Teams-Anruf] Ereignis: %s / %s", scrub_log(resource[:60]), scrub_log(state))
