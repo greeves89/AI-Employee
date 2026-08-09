@@ -630,12 +630,25 @@ async def main() -> None:
     chat_consumer = ChatConsumer(agent_id)
     message_consumer = MessageConsumer(agent_id)
 
-    # Periodic MCP credential refresh (#488 Phase 2) — codex_cli manages its
-    # own MCP config and doesn't use CUSTOM_MCP_* at all, so it's excluded.
+    # Periodic MCP credential refresh (#488 Phase 2).
+    #
+    # Codex war hier ausgenommen mit der Begruendung, es nutze CUSTOM_MCP_* gar
+    # nicht. Das stimmt nicht: `_ensure_codex_mcp_config` liest CUSTOM_MCP_SERVERS
+    # und CUSTOM_MCP_AUTH aus `os.environ.copy()` und schreibt die config.toml bei
+    # JEDEM Codex-Aufruf neu. Ohne die Schleife blieb die Umgebung auf dem Stand der
+    # Container-Erstellung stehen — und damit auch das Token in der config.toml.
+    # Auf einer Anlage, auf der sieben von acht Agenten Codex sind, war der Fix
+    # damit fuer fast niemanden wirksam.
+    #
+    # `register_via_cli` bleibt fuer Codex AUS: es verwaltet seine Server selbst
+    # ueber die config.toml; ein `claude mcp add` waere dort wirkungslos. Das
+    # Auffrischen der Umgebung genuegt, den Rest erledigt der naechste Aufruf.
     mcp_refresh_task = None
-    if mode != "codex_cli" and os.environ.get("CUSTOM_MCP_SERVERS"):
+    if os.environ.get("CUSTOM_MCP_SERVERS"):
         mcp_refresh_task = asyncio.create_task(
-            refresh_mcp_credentials_loop(agent_id, register_via_cli=(mode != "custom_llm"))
+            refresh_mcp_credentials_loop(
+                agent_id, register_via_cli=(mode not in ("custom_llm", "codex_cli"))
+            )
         )
 
     # Graceful shutdown on SIGTERM/SIGINT
