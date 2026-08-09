@@ -217,39 +217,10 @@ export default function AgentDetailPage() {
       <Header
         title={agent.name}
         subtitle={agent.role?.trim() ? agent.role : `Agent ${agent.id.slice(0, 8)}`}
-        actions={
-          <div className="flex items-center gap-3">
-            {/* Inline status metrics */}
-            {!simpleMode && (
-              <div className="hidden lg:flex items-center gap-3 mr-2">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Cpu className="h-3 w-3 text-cyan-400" />
-                  <span className="text-cyan-400 font-medium">{cpuPercent.toFixed(1)}%</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <MemoryStick className="h-3 w-3 text-emerald-400" />
-                  <span className="text-emerald-400 font-medium">{memMb.toFixed(0)} MB</span>
-                </div>
-                {diskLimitMb > 0 && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")} />
-                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")}>
-                      {diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`} / {diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  {agent.mode === "custom_llm" ? <Plug className="h-3 w-3 text-violet-400" /> : <Hash className="h-3 w-3 text-violet-400" />}
-                  <span className="text-violet-400 font-medium">
-                    {agent.mode === "custom_llm" && agent.ai_account_id
-                      ? `${agent.ai_account_name ?? "AI-Account"} / ${agent.model}`
-                      : agent.mode === "custom_llm" && agent.llm_config
-                        ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
-                        : agent.model.split("-").slice(0, 2).join("-")}
-                  </span>
-                </div>
-              </div>
-            )}
+        titleAdornment={
+          /* Direkt am Namen: am rechten Rand war der Bezug nicht erkennbar, und die
+             Kopfzeile wurde dadurch unnoetig breit (#537). */
+          <div className="flex shrink-0 items-center gap-1.5">
             {editingName ? (
               <div className="flex items-center gap-1.5">
                 <input
@@ -309,11 +280,45 @@ export default function AgentDetailPage() {
               <button
                 onClick={() => { setNameInput(agent.name); setEditingName(true); }}
                 title="Agent umbenennen"
-                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/[0.2] hover:bg-foreground/[0.04] transition-all"
+                className="inline-flex items-center rounded-full border border-foreground/[0.1] p-1.5 text-muted-foreground transition-all hover:border-foreground/[0.2] hover:bg-foreground/[0.04] hover:text-foreground"
               >
-                <Edit3 className="h-3 w-3" />
-                Umbenennen
+                <Edit3 className="h-3.5 w-3.5" />
               </button>
+            )}
+          </div>
+        }
+        actions={
+          <div className="flex items-center gap-3">
+            {/* Inline status metrics */}
+            {!simpleMode && (
+              <div className="hidden lg:flex items-center gap-3 mr-2">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Cpu className="h-3 w-3 text-cyan-400" />
+                  <span className="text-cyan-400 font-medium">{cpuPercent.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <MemoryStick className="h-3 w-3 text-emerald-400" />
+                  <span className="text-emerald-400 font-medium">{memMb.toFixed(0)} MB</span>
+                </div>
+                {diskLimitMb > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")} />
+                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")}>
+                      {diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`} / {diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {agent.mode === "custom_llm" ? <Plug className="h-3 w-3 text-violet-400" /> : <Hash className="h-3 w-3 text-violet-400" />}
+                  <span className="text-violet-400 font-medium">
+                    {agent.mode === "custom_llm" && agent.ai_account_id
+                      ? `${agent.ai_account_name ?? "AI-Account"} / ${agent.model}`
+                      : agent.mode === "custom_llm" && agent.llm_config
+                        ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
+                        : agent.model.split("-").slice(0, 2).join("-")}
+                  </span>
+                </div>
+              </div>
             )}
             <button
               onClick={async () => {
@@ -584,47 +589,31 @@ function InfoCard({
 
 function BudgetBar({ spent, budget, action }: { spent: number; budget: number; action: "haiku" | "stop" }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
-  const color =
-    pct >= 100
-      ? "from-red-500 to-red-400"
-      : pct >= 80
-        ? "from-amber-500 to-amber-400"
-        : "from-emerald-500 to-teal-400";
-  const labelColor =
+  const tone =
     pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-400" : "text-emerald-400";
+  const fill =
+    pct >= 100 ? "bg-red-400" : pct >= 80 ? "bg-amber-400" : "bg-emerald-400";
 
+  // Eine Zeile statt einer vollbreiten Karte mit Balken (#537): auf einem kleinen
+  // Laptop ass die Karte Hoehe, die dem Chat fehlte. Der duenne Streifen zeigt die
+  // Auslastung weiterhin auf einen Blick, die Zahl bleibt die eigentliche Aussage.
   return (
-    <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
-            <DollarSign className="h-3.5 w-3.5 text-amber-400" />
-          </div>
-          <span className="text-[11px] font-medium text-muted-foreground">Budget / Monat</span>
-        </div>
-        <span className={cn("text-sm font-bold tabular-nums", labelColor)}>
-          ${spent.toFixed(2)} / ${budget.toFixed(2)}
-        </span>
+    <div
+      title={`Bei Erreichen des Budgets: ${action === "stop" ? "Agent anhalten" : "auf Haiku wechseln"}`}
+      className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/60 px-3 py-1.5"
+    >
+      <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+      <span className="shrink-0 text-[11px] text-muted-foreground">Budget</span>
+      <div className="h-1 min-w-[3rem] flex-1 rounded-full bg-foreground/[0.08]">
+        <div className={cn("h-1 rounded-full transition-all duration-700", fill)} style={{ width: `${pct}%` }} />
       </div>
-      <div className="h-2 rounded-full bg-foreground/[0.06]">
-        <div
-          className={cn("h-2 rounded-full bg-gradient-to-r transition-all duration-700 ease-out", color)}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="text-[10px] text-muted-foreground/50 mt-1.5 flex items-center justify-between">
-        <span>
-          {pct >= 100
-            ? action === "stop"
-              ? "Budget aufgebraucht — Agent gestoppt"
-              : "Budget aufgebraucht — Sparmodus (Haiku)"
-            : `Bei Erschöpfung: ${action === "stop" ? "Agent stoppen" : "auf Haiku umschalten"}`}
-        </span>
-        <span>{pct.toFixed(0)}% genutzt</span>
-      </p>
+      <span className={cn("shrink-0 text-[12px] font-semibold tabular-nums", tone)}>
+        ${spent.toFixed(2)} / ${budget.toFixed(2)}
+      </span>
     </div>
   );
 }
+
 
 function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] }) {
   const retryTask = async (task: { title: string; prompt: string; agent_id: string | null; model: string | null }) => {
