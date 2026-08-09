@@ -3207,7 +3207,7 @@ async def send_telegram_message(
                 await _db.commit()
         except Exception as e:  # noqa: BLE001 — die Meldung darf nicht am Kanal scheitern
             logger.warning("[Telegram] Meldung von %s konnte nicht in den Chat: %s",
-                           agent_id, e)
+                           scrub_log(agent_id), scrub_log(str(e)))
             raise HTTPException(
                 status_code=503,
                 detail=(

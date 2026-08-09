@@ -226,6 +226,7 @@ services:
     container_name: ai-employee-caddy
     volumes:
     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    - ./conf.d:/etc/caddy/conf.d:ro
     depends_on:
     - orchestrator
     - frontend

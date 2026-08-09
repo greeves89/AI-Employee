@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import agent_duty as duty_core
+from app.core.log_redaction import scrub_log
 from app.models.agent import Agent
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.models.notification import Notification
@@ -50,7 +51,7 @@ async def team_lead_for(db: AsyncSession, agent_id: str) -> str:
             if lead and lead != agent_id:
                 return lead
     except Exception:  # noqa: BLE001 — ohne Team gibt es eben keinen Lead
-        logger.debug("Team-Lead-Suche fehlgeschlagen fuer %s", agent_id, exc_info=True)
+        logger.debug("Team-Lead-Suche fehlgeschlagen fuer %s", scrub_log(agent_id), exc_info=True)
     return ""
 
 

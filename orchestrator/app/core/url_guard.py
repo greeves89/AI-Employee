@@ -19,6 +19,8 @@ import logging
 import socket
 from urllib.parse import urlparse
 
+from app.core.log_redaction import scrub_log
+
 logger = logging.getLogger(__name__)
 
 # Der Metadatendienst von AWS/Azure/GCP. Steht zusaetzlich zu den privaten Netzen
@@ -38,7 +40,7 @@ def _is_internal(host: str) -> bool:
     try:
         infos = socket.getaddrinfo(host, None)
     except OSError:
-        logger.debug("Host %s nicht aufloesbar — als intern behandelt", host)
+        logger.debug("Host %s nicht aufloesbar — als intern behandelt", scrub_log(host))
         return True
 
     for info in infos:
@@ -102,7 +104,7 @@ async def is_allowed_callback(url: str, db=None, agent_id: str | None = None) ->
             if cleaned and (host == cleaned or host.endswith("." + cleaned)):
                 return True
         logger.info("Rueckruf-Host %s steht nicht auf der Freigabeliste von %s",
-                    host, agent_id)
+                    scrub_log(host), scrub_log(agent_id))
         return False
     except Exception:  # noqa: BLE001 — die harte Pruefung hat bereits bestanden
         logger.debug("Freigabeliste nicht auswertbar", exc_info=True)

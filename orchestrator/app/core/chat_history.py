@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 
@@ -162,7 +163,7 @@ async def fork(db: AsyncSession, agent_id: str, session_id: str,
     ))
     await db.flush()
     logger.info("[Chat] %s ab %s nach %s verzweigt (%d Nachrichten)",
-                session_id, message_id, target, len(keep))
+                scrub_log(session_id), scrub_log(message_id), scrub_log(target), len(keep))
     return {"ok": True, "session_id": target, "copied": len(keep)}
 
 
@@ -200,7 +201,7 @@ async def rewind(db: AsyncSession, agent_id: str, session_id: str,
     ))
     await db.flush()
     logger.info("[Chat] %s auf %s zurueckgespult (%d verworfen, Sicherung %s)",
-                session_id, message_id, len(drop), backup)
+                scrub_log(session_id), scrub_log(message_id), len(drop), scrub_log(backup))
     return {"ok": True, "removed": len(drop), "backup_session_id": backup}
 
 
@@ -257,5 +258,5 @@ async def summarize_to_new_session(db: AsyncSession, agent_id: str,
         title=f"Fortsetzung: {source_title}"[:TITLE_MAX] if source_title else "Fortsetzung",
     ))
     await db.flush()
-    logger.info("[Chat] %s als Stand nach %s uebernommen", session_id, target)
+    logger.info("[Chat] %s als Stand nach %s uebernommen", scrub_log(session_id), scrub_log(target))
     return {"ok": True, "session_id": target, "summarized": len(messages)}
