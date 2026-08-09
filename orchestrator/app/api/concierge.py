@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_admin
 from app.models.agent import Agent, AgentState
@@ -178,5 +179,6 @@ async def concierge_action(
     elif body.action == "start_agent":
         await manager.start_agent(body.agent_id)
 
-    logger.info("[Concierge] %s auf %s durch %s", body.action, body.agent_id, user.id)
+    logger.info("[Concierge] %s auf %s durch %s",
+                scrub_log(body.action), scrub_log(body.agent_id), scrub_log(user.id))
     return {"action": body.action, "agent_id": body.agent_id, "status": "ok"}
