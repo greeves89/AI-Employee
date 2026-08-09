@@ -15,6 +15,7 @@ diese Klasse Fehler beim Testlauf zu fangen statt beim Nutzer.
 
 import importlib
 import pkgutil
+import sys
 import unittest
 from pathlib import Path
 
@@ -69,6 +70,25 @@ def _internal_imports() -> list[tuple[str, int, str, str]]:
     return out
 
 
+def _module_file_exists(module: str) -> bool:
+    """Gibt es zu ``app.x.y`` eine Datei auf der Platte?
+
+    Bewusst ueber den Dateipfad statt ueber ``importlib.util.find_spec``: andere
+    Tests haengen Attrappen in ``sys.modules`` (etwa fuer den Einbettungsdienst, den
+    es lokal nicht gibt). ``find_spec`` stolpert darueber mit ``__spec__ is None``,
+    und der Test hing damit davon ab, welche Datei vorher lief. Ein Blick auf die
+    Platte kennt diese Reihenfolge nicht.
+    """
+    stem = ORCH / Path(*module.split("."))
+    return stem.with_suffix(".py").exists() or (stem / "__init__.py").exists()
+
+
+def _is_stub(module: str) -> bool:
+    """Attrappe eines anderen Tests? Dann sagt sie nichts ueber echte Namen aus."""
+    mod = sys.modules.get(module)
+    return mod is not None and getattr(mod, "__spec__", None) is None
+
+
 class StaticImportTests(unittest.TestCase):
     """Verweist jeder app.*-Import auf ein Modul, das es wirklich gibt?
 
@@ -78,11 +98,9 @@ class StaticImportTests(unittest.TestCase):
     """
 
     def test_every_internal_import_target_exists(self):
-        import importlib.util
-
         broken = []
         for rel, line, module, _name in _internal_imports():
-            if importlib.util.find_spec(module) is None:
+            if not _module_file_exists(module):
                 broken.append(f"{rel}:{line} → {module}")
         self.assertEqual(
             broken, [],
@@ -96,7 +114,7 @@ class StaticImportTests(unittest.TestCase):
 
         broken = []
         for rel, line, module, name in _internal_imports():
-            if not name or name == "*":
+            if not name or name == "*" or _is_stub(module):
                 continue
             try:
                 mod = importlib.import_module(module)
