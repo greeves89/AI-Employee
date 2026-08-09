@@ -63,7 +63,8 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 22. [Admin-Konsole](#22-admin-konsole)
 23. [Computer-Use Bridge (Desktop steuern)](#23-computer-use-bridge-desktop-steuern)
 24. [Skills herunterladen & installieren](#24-skills-herunterladen--installieren)
-25. [Agent-Symbol (Icon + Farbe) anpassen](#25-agent-symbol-icon--farbe-anpassen)
+25. [Agent-Symbol, Farbe und Schlagwort anpassen](#25-agent-symbol-farbe-und-schlagwort-anpassen)
+25a. [Agenten suchen, filtern und sortieren](#25a-agenten-suchen-filtern-und-sortieren)
 26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
 27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
@@ -1299,15 +1300,48 @@ Ein **Skill** ist eine wiederverwendbare Fähigkeit (z. B. „Präsentation erst
 
 ---
 
-## 25. Agent-Symbol (Icon + Farbe) anpassen
+## 25. Agent-Symbol, Farbe und Schlagwort anpassen
 
 1. **Agents** → gewünschten Agenten öffnen → **Einstellungen**.
-2. Bereich **Symbol** → ein **Icon** und eine **Farbe** wählen (wird sofort gespeichert).
-3. Das Symbol erscheint auf den Agent-Karten und in der Übersicht.
+2. Bereich **Symbol**:
+   - **Symbol wählen** — die Reihe zeigt die gängigen Symbole. Wer etwas anderes
+     sucht, tippt in das Suchfeld darüber: **jedes** lucide-Symbol ist wählbar
+     (rund tausend). Die Namen sind englisch — „truck", „heart", „chart".
+   - **Farbe wählen** — eine der neun Farbkugeln, **oder** die bunte Kugel ganz
+     rechts für eine freie Farbe. Daneben lässt sich ein Farbwert wie `#4f46e5`
+     auch direkt eintippen.
+   - **Schlagwort** — ein frei wählbares Wort, z. B. *Kunde Meier*, *Vertrieb*,
+     *Sandkasten*. Maximal 32 Zeichen.
+3. Alles wird **sofort gespeichert**; der Agent wird dabei **nicht** neu gestartet.
+4. Symbol und Schlagwort erscheinen auf den Agent-Karten und in der Übersicht.
 
-> Beim **Erstellen** eines Agenten lässt sich das Symbol ebenfalls direkt wählen.
+> Beim **Erstellen** eines Agenten lassen sich Symbol, Farbe und Schlagwort
+> ebenfalls direkt wählen.
 >
-> _[Screenshot folgt: Symbol-Auswahl im Agent-Einstellungen-Tab]_
+> _[Screenshot folgt: Symbol-Suche, freie Farbe und Schlagwort im Agent-Einstellungen-Tab]_
+
+---
+
+## 25a. Agenten suchen, filtern und sortieren
+
+Ab etwa einem halben Dutzend Agenten erscheint über der Übersicht eine **Leiste**:
+
+1. **Agents** öffnen (Kachel-Ansicht).
+2. **Suchfeld** — sucht gleichzeitig in **Name**, **Rolle** und **Schlagwort**.
+3. **Schlagwort-Chips** — ein Klick filtert auf dieses Schlagwort, ein zweiter Klick
+   auf dasselbe hebt den Filter wieder auf.
+4. **Team / Schlagwort** (rechts) — schaltet um, wonach die Kacheln **gruppiert**
+   werden.
+   - *Team* ist ein **Verhaltens**begriff: ein Team hat eine Leitung, ist Ziel von
+     Delegationen und nimmt an Besprechungen teil.
+   - *Schlagwort* ist rein zum **Ordnen** — es hat keinerlei Wirkung auf das
+     Verhalten des Agenten.
+5. **Sortieren** (rechts) — nach *Name*, *Zustand* (laufende zuerst) oder
+   *Schlagwort*.
+
+> Passt nichts zur Suche, erscheint **Filter zurücksetzen**.
+>
+> _[Screenshot folgt: Filterleiste über der Agentenübersicht mit aktivem Schlagwort-Chip]_
 
 ---
 

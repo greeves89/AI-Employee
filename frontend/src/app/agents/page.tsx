@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { AgentTeam } from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
+import { getAgentTag } from "@/components/agents/agent-avatar";
+import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
 type ViewMode = "grid" | "network" | "teams";
 
 const CreateAgentModal = dynamic(
@@ -74,22 +76,93 @@ export default function AgentsPage() {
     api.getTeams().then((d) => setTeams(d.teams || [])).catch(() => {});
   }, []);
 
-  // Group agents by team for the grid view (teams first, "Ohne Team" last)
-  const agentGroups = useMemo(() => {
-    const teamOf: Record<string, AgentTeam> = {};
-    for (const t of teams) for (const m of t.member_agent_ids) if (!teamOf[m]) teamOf[m] = t;
-    const byKey: Record<string, { key: string; name: string; isTeam: boolean; leadName: string | null; agents: typeof agents }> = {};
+  // Suchen, filtern, sortieren (#524) — die Liste kommt vollständig vom Server,
+  // also passiert das hier. Abfrageparameter auf /agents lohnen erst bei einer
+  // Menge, auf die diese Oberfläche nicht ausgelegt ist.
+  const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<GroupBy>("team");
+  const [sortBy, setSortBy] = useState<SortBy>("name");
+
+  const allTags = useMemo(() => {
+    const seen = new Set<string>();
     for (const a of agents) {
-      const t = teamOf[a.id];
-      const key = t ? t.id : "__none__";
-      if (!byKey[key]) {
-        const leadName = t?.lead_agent_id ? (agents.find((x) => x.id === t.lead_agent_id)?.name ?? null) : null;
-        byKey[key] = { key, name: t ? t.name : "Ohne Team", isTeam: !!t, leadName, agents: [] };
-      }
-      byKey[key].agents.push(a);
+      const t = getAgentTag(a.config as Record<string, unknown> | null);
+      if (t) seen.add(t);
     }
-    return Object.values(byKey).sort((a, b) => (a.isTeam === b.isTeam ? 0 : a.isTeam ? -1 : 1));
-  }, [agents, teams]);
+    return [...seen].sort((a, b) => a.localeCompare(b, "de"));
+  }, [agents]);
+
+  const visibleAgents = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return agents.filter((a) => {
+      const tag = getAgentTag(a.config as Record<string, unknown> | null);
+      if (tagFilter && tag !== tagFilter) return false;
+      if (!q) return true;
+      // Name, Rolle und Schlagwort — die drei Dinge, nach denen man einen Agenten
+      // im Kopf sucht.
+      return (
+        a.name.toLowerCase().includes(q) ||
+        (a.role || "").toLowerCase().includes(q) ||
+        tag.toLowerCase().includes(q)
+      );
+    });
+  }, [agents, query, tagFilter]);
+
+  // Gruppierung: nach Team (Verhalten) ODER nach Schlagwort (Organisation).
+  const agentGroups = useMemo(() => {
+    const byKey: Record<string, { key: string; name: string; isTeam: boolean; leadName: string | null; agents: typeof agents }> = {};
+
+    if (groupBy === "tag") {
+      for (const a of visibleAgents) {
+        const tag = getAgentTag(a.config as Record<string, unknown> | null);
+        const key = tag || "__none__";
+        if (!byKey[key]) {
+          byKey[key] = { key, name: tag || "Ohne Schlagwort", isTeam: false, leadName: null, agents: [] };
+        }
+        byKey[key].agents.push(a);
+      }
+    } else {
+      const teamOf: Record<string, AgentTeam> = {};
+      for (const t of teams) for (const m of t.member_agent_ids) if (!teamOf[m]) teamOf[m] = t;
+      for (const a of visibleAgents) {
+        const t = teamOf[a.id];
+        const key = t ? t.id : "__none__";
+        if (!byKey[key]) {
+          const leadName = t?.lead_agent_id ? (agents.find((x) => x.id === t.lead_agent_id)?.name ?? null) : null;
+          byKey[key] = { key, name: t ? t.name : "Ohne Team", isTeam: !!t, leadName, agents: [] };
+        }
+        byKey[key].agents.push(a);
+      }
+    }
+
+    const groups = Object.values(byKey);
+    for (const g of groups) {
+      g.agents = [...g.agents].sort((a, b) => {
+        if (sortBy === "state") {
+          const rank = (s: string) => (["running", "idle", "working"].includes(s) ? 0 : s === "error" ? 1 : 2);
+          const d = rank(a.state) - rank(b.state);
+          if (d) return d;
+        } else if (sortBy === "tag") {
+          const ta = getAgentTag(a.config as Record<string, unknown> | null);
+          const tb = getAgentTag(b.config as Record<string, unknown> | null);
+          // Ohne Schlagwort ans Ende — sonst stehen die Unsortierten vorn.
+          if (!!ta !== !!tb) return ta ? -1 : 1;
+          const d = ta.localeCompare(tb, "de");
+          if (d) return d;
+        }
+        return a.name.localeCompare(b.name, "de");
+      });
+    }
+    // Benannte Gruppen zuerst, „ohne …" ans Ende.
+    return groups.sort((a, b) => {
+      const na = a.key === "__none__" ? 1 : 0;
+      const nb = b.key === "__none__" ? 1 : 0;
+      if (na !== nb) return na - nb;
+      if (groupBy === "team" && a.isTeam !== b.isTeam) return a.isTeam ? -1 : 1;
+      return a.name.localeCompare(b.name, "de");
+    });
+  }, [agents, visibleAgents, teams, groupBy, sortBy]);
 
   const handleUpdateAll = async () => {
     const ok = await confirm({
@@ -352,6 +425,36 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="space-y-7">
+            {/* Erst ab einer Menge, die man nicht mehr überblickt — darunter ist die
+                Leiste nur Ballast über einer Handvoll Karten. */}
+            {(agents.length > 5 || allTags.length > 0) && (
+              <AgentFilterBar
+                query={query}
+                onQuery={setQuery}
+                tags={allTags}
+                tagFilter={tagFilter}
+                onTagFilter={setTagFilter}
+                groupBy={groupBy}
+                onGroupBy={setGroupBy}
+                sortBy={sortBy}
+                onSortBy={setSortBy}
+                shown={visibleAgents.length}
+                total={agents.length}
+              />
+            )}
+
+            {visibleAgents.length === 0 && (
+              <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center text-sm text-muted-foreground">
+                Kein Agent passt zu dieser Suche.
+                <button
+                  onClick={() => { setQuery(""); setTagFilter(null); }}
+                  className="ml-2 text-primary hover:underline"
+                >
+                  Filter zurücksetzen
+                </button>
+              </div>
+            )}
+
             {agentGroups.map((g) => (
             <section key={g.key}>
               {(agentGroups.length > 1 || g.isTeam) && (

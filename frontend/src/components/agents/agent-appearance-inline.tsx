@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { useEffect, useRef, useState } from "react";
+import { Tag } from "lucide-react";
 import * as api from "@/lib/api";
-import { AVATAR_ICONS, AVATAR_COLORS, getAgentAvatar, AgentAvatar } from "./agent-avatar";
+import { getAgentAvatar, getAgentTag } from "./agent-avatar";
+import { AppearancePicker } from "./appearance-picker";
 
-/** Inline icon + color picker (no popover → no stacking/z-index issues).
- *  Saves immediately on each pick via the appearance endpoint. */
+/**
+ * Aussehen und Einsortierung eines Agenten — direkt auf der Agentenseite.
+ *
+ * Kein Aufklapp-Fenster: die Auswahl steht offen da, damit sie sich nicht mit
+ * anderen Ebenen um die Vorderseite streitet. Gespeichert wird sofort bei jeder
+ * Wahl, über denselben Endpunkt, der auch das Schlagwort (#524) entgegennimmt —
+ * Symbol, Farbe und Schlagwort sind dieselbe Klasse Angabe.
+ */
 export function AgentAppearanceInline({
   agentId,
   config,
@@ -15,62 +22,64 @@ export function AgentAppearanceInline({
   config?: Record<string, unknown> | null;
 }) {
   const initial = getAgentAvatar(config);
-  const [icon, setIcon] = useState(initial.icon || "Cpu");
-  const [color, setColor] = useState(initial.color || "violet");
+  const [value, setValue] = useState({
+    icon: initial.icon || "Cpu",
+    color: initial.color || "violet",
+  });
+  const [tag, setTag] = useState(getAgentTag(config));
   const [saving, setSaving] = useState(false);
+  const tagTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const save = async (nextIcon: string, nextColor: string) => {
-    setIcon(nextIcon);
-    setColor(nextColor);
+  const save = async (patch: { icon?: string; color?: string; tag?: string }) => {
     setSaving(true);
     try {
-      await api.updateAgentAppearance(agentId, nextIcon, nextColor);
+      await api.updateAgentAppearance(agentId, patch);
     } catch (e) {
-      console.error("Avatar speichern fehlgeschlagen:", e);
+      console.error("Aussehen speichern fehlgeschlagen:", e);
     } finally {
       setSaving(false);
     }
   };
 
+  const pick = (next: { icon: string; color: string }) => {
+    setValue(next);
+    save(next);
+  };
+
+  // Beim Tippen nicht bei jedem Zeichen speichern — sonst schickt ein Schlagwort
+  // mit zehn Buchstaben zehn Anfragen los.
+  const onTag = (next: string) => {
+    setTag(next);
+    if (tagTimer.current) clearTimeout(tagTimer.current);
+    tagTimer.current = setTimeout(() => save({ tag: next }), 600);
+  };
+
+  useEffect(() => () => {
+    if (tagTimer.current) clearTimeout(tagTimer.current);
+  }, []);
+
   return (
-    <div className="flex items-start gap-4">
-      <AgentAvatar config={{ avatar: { icon, color } }} size="lg" />
-      <div className="flex-1 space-y-2">
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(AVATAR_ICONS).map(([n, Icon]) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => save(n, color)}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
-                icon === n
-                  ? "border-primary/50 bg-primary/10"
-                  : "border-transparent hover:bg-foreground/[0.06]",
-              )}
-              title={n}
-            >
-              <Icon className="h-4 w-4" />
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(AVATAR_COLORS).map(([n, c]) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => save(icon, n)}
-              className={cn(
-                "h-5 w-5 rounded-full transition-all",
-                c.dot,
-                color === n ? "ring-2 ring-offset-2 ring-offset-background ring-foreground/40" : "",
-              )}
-              title={n}
-            />
-          ))}
-        </div>
+    <div className="space-y-3">
+      <AppearancePicker value={value} onChange={pick} />
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <Tag className="h-3 w-3" />
+          Schlagwort
+        </label>
+        <input
+          value={tag}
+          onChange={(e) => onTag(e.target.value)}
+          placeholder="z. B. Kunde Meier, Vertrieb, Sandkasten"
+          maxLength={32}
+          className="w-full max-w-xs rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-1.5 text-xs outline-none transition-all focus:border-primary/50"
+        />
+        <p className="mt-1 text-[10px] text-muted-foreground/50">
+          Frei wählbar. In der Übersicht lässt sich danach filtern und sortieren.
+        </p>
       </div>
-      {saving && <span className="text-[10px] text-muted-foreground/60 mt-1">Speichern…</span>}
+
+      {saving && <span className="text-[10px] text-muted-foreground/60">Speichern…</span>}
     </div>
   );
 }

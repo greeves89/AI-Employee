@@ -45,7 +45,7 @@ import {
 import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { AgentAvatar, AVATAR_ICONS, AVATAR_COLORS } from "@/components/agents/agent-avatar";
+import { AppearancePicker } from "@/components/agents/appearance-picker";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
 
@@ -183,6 +183,7 @@ export function CreateAgentModal({
   const [role, setRole] = useState("");
   const [avatarIcon, setAvatarIcon] = useState("Cpu");
   const [avatarColor, setAvatarColor] = useState("violet");
+  const [avatarTag, setAvatarTag] = useState("");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   // "auto" = der Container bekommt die sudo-Pakete, die die Autonomiestufe hergibt.
   // Nur wer hier bewusst umschaltet, haengt die Rechte von der Stufe ab.
@@ -460,7 +461,11 @@ export function CreateAgentModal({
       }
       if (created?.id) {
         try {
-          await api.updateAgentAppearance(created.id, avatarIcon, avatarColor);
+          await api.updateAgentAppearance(created.id, {
+            icon: avatarIcon,
+            color: avatarColor,
+            tag: avatarTag,
+          });
         } catch { /* cosmetic — ignore */ }
       }
       setName("");
@@ -732,49 +737,29 @@ export function CreateAgentModal({
                         />
                       </div>
 
-                      {/* Symbol & Farbe */}
+                      {/* Symbol, Farbe & Schlagwort */}
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                           Symbol &amp; Farbe
                         </label>
-                        <div className="flex items-center gap-3">
-                          <AgentAvatar config={{ avatar: { icon: avatarIcon, color: avatarColor } }} />
-                          <div className="flex flex-wrap gap-1.5">
-                            {Object.entries(AVATAR_ICONS).map(([n, Icon]) => (
-                              <button
-                                key={n}
-                                type="button"
-                                onClick={() => setAvatarIcon(n)}
-                                className={cn(
-                                  "flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
-                                  avatarIcon === n
-                                    ? "border-primary/50 bg-primary/10"
-                                    : "border-transparent hover:bg-foreground/[0.06]",
-                                )}
-                                title={n}
-                              >
-                                <Icon className="h-3.5 w-3.5" />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {Object.entries(AVATAR_COLORS).map(([n, c]) => (
-                            <button
-                              key={n}
-                              type="button"
-                              onClick={() => setAvatarColor(n)}
-                              className={cn(
-                                "h-5 w-5 rounded-full transition-all",
-                                c.dot,
-                                avatarColor === n
-                                  ? "ring-2 ring-offset-2 ring-offset-background ring-foreground/40"
-                                  : "",
-                              )}
-                              title={n}
-                            />
-                          ))}
-                        </div>
+                        <AppearancePicker
+                          compact
+                          value={{ icon: avatarIcon, color: avatarColor }}
+                          onChange={(next) => {
+                            setAvatarIcon(next.icon);
+                            setAvatarColor(next.color);
+                          }}
+                        />
+                        <label className="mt-3 block text-xs font-medium text-muted-foreground mb-1.5">
+                          Schlagwort <span className="text-muted-foreground/50">(optional)</span>
+                        </label>
+                        <input
+                          value={avatarTag}
+                          onChange={(e) => setAvatarTag(e.target.value)}
+                          maxLength={32}
+                          placeholder="z. B. Kunde Meier, Vertrieb, Sandkasten"
+                          className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2 text-sm outline-none transition-all focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                        />
                       </div>
 
                       {/* ===== CUSTOM LLM FIELDS (admins only; users pick an AI-Account) ===== */}

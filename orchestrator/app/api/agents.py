@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
+from app.core.agent_appearance import apply_appearance
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
 from app.core.log_redaction import scrub_log
@@ -559,6 +560,12 @@ async def list_agents(
                 "permissions": eff_permissions,
                 "permissions_mode": config.get("permissions_mode") or "auto",
                 "proactive": config.get("proactive"),
+                # Aussehen und Schlagwort gehoeren in die Kurzfassung: die Uebersicht
+                # laedt genau diese Liste und zeichnet daraus Sinnbild, Farbe und
+                # Schlagwortfilter. Ohne sie faenden alle Agenten grau und ungefiltert
+                # statt so, wie sie eingerichtet wurden.
+                "avatar": config.get("avatar") or {},
+                "tag": config.get("tag") or "",
             }
             agent_responses.append(AgentResponse(
                 id=agent.id,
@@ -1025,18 +1032,10 @@ async def update_agent_model(
 class AgentAppearanceUpdate(BaseModel):
     icon: str | None = None
     color: str | None = None
-
-
-# Curated lucide icon set + color tokens the UI offers — block arbitrary values
-# (avatar is rendered client-side by mapping these names to lucide components).
-_AVATAR_ICONS = {
-    "Bot", "Cpu", "Brain", "Sparkles", "Rocket", "Briefcase", "Cog",
-    "MessageSquare", "Code", "Database", "Mail", "Calendar", "FileText",
-    "Headphones", "ShieldCheck", "Stethoscope", "FlaskConical", "Bug",
-}
-_AVATAR_COLORS = {
-    "violet", "blue", "emerald", "amber", "rose", "cyan", "fuchsia", "slate", "orange",
-}
+    # Das Schlagwort (#524) gehört hierher, nicht in einen eigenen Endpunkt: es ist
+    # dieselbe Klasse Angabe wie Symbol und Farbe — rein organisatorisch, in
+    # ``config``, ohne Neuerstellen des Containers.
+    tag: str | None = None
 
 
 @router.patch("/{agent_id}/appearance")
@@ -1047,26 +1046,34 @@ async def update_agent_appearance(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Set the agent's custom icon + color (cosmetic — stored in config, no restart)."""
+    """Symbol, Farbe und Schlagwort setzen (kosmetisch — kein Neustart).
+
+    Geprüft wird in ``core.agent_appearance``, damit dieselbe Regel gilt, egal wer
+    schreibt. Ein leerer Text entfernt den Wert; ``null`` lässt ihn unangetastet.
+    """
     await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
-        config = dict(agent.config or {})
-        avatar = dict(config.get("avatar") or {})
-        if body.icon is not None:
-            if body.icon and body.icon not in _AVATAR_ICONS:
-                raise HTTPException(status_code=400, detail="Unknown icon")
-            avatar["icon"] = body.icon
-        if body.color is not None:
-            if body.color and body.color not in _AVATAR_COLORS:
-                raise HTTPException(status_code=400, detail="Unknown color")
-            avatar["color"] = body.color
-        config["avatar"] = avatar
-        agent.config = config
-        await db.commit()
-        return {"agent_id": agent_id, "avatar": avatar, "status": "updated"}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        config = apply_appearance(
+            agent.config, icon=body.icon, color=body.color, tag=body.tag
+        )
+    except ValueError as e:
+        # Eine abgelehnte Farbe ist ein Eingabefehler, kein fehlender Agent — die
+        # alte Fassung fing beides mit demselben except und meldete 404.
+        raise HTTPException(status_code=400, detail=str(e))
+
+    agent.config = config
+    await db.commit()
+    return {
+        "agent_id": agent_id,
+        "avatar": config.get("avatar") or {},
+        "tag": config.get("tag") or "",
+        "status": "updated",
+    }
 
 
 class AgentRenameUpdate(BaseModel):

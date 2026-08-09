@@ -978,10 +978,15 @@ export async function updateAgentIntegrations(agentId: string, integrations: str
   });
 }
 
-export async function updateAgentAppearance(agentId: string, icon: string, color: string): Promise<void> {
+/** Symbol, Farbe und Schlagwort — kosmetisch, kein Neustart.
+ *  Weggelassene Felder bleiben unangetastet; ein leerer Text entfernt den Wert. */
+export async function updateAgentAppearance(
+  agentId: string,
+  patch: { icon?: string; color?: string; tag?: string },
+): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${agentId}/appearance`, {
     method: "PATCH",
-    body: JSON.stringify({ icon, color }),
+    body: JSON.stringify(patch),
   });
 }
 

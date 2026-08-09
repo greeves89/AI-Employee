@@ -13,7 +13,7 @@ function formatInterval(sec: number): string {
   return `${sec}s`;
 }
 import { useSimpleMode } from "@/hooks/use-simple-mode";
-import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AgentAvatar, getAgentTag } from "@/components/agents/agent-avatar";
 
 const statusConfig: Record<string, {
   online: boolean;
@@ -66,6 +66,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
   const memMb = agent.memory_usage_mb ?? 0;
   const config = statusConfig[agent.state] ?? statusConfig.stopped;
   const isActive = config.online;
+  const agentTag = getAgentTag(agent.config as Record<string, unknown> | null);
   const { simpleMode } = useSimpleMode();
 
   return (
@@ -83,7 +84,18 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
           <div className="flex items-center gap-3 min-w-0">
             <AgentAvatar config={agent.config} active={isActive} />
             <div className="min-w-0">
-              <h4 className="font-semibold text-sm tracking-tight truncate" title={agent.name}>{agent.name}</h4>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h4 className="font-semibold text-sm tracking-tight truncate" title={agent.name}>{agent.name}</h4>
+                {/* Ein Schlagwort, das man nicht sieht, ordnet nichts (#524). */}
+                {agentTag && (
+                  <span
+                    title={`Schlagwort: ${agentTag}`}
+                    className="shrink-0 rounded-full border border-foreground/[0.08] bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground max-w-[8rem] truncate"
+                  >
+                    {agentTag}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1.5">
                 {agent.role ? (
                   <span className="text-[11px] text-primary/70 font-medium truncate">{agent.role}</span>
