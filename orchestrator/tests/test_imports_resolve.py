@@ -39,6 +39,81 @@ def _module_names() -> list[str]:
     return sorted(names)
 
 
+def _internal_imports() -> list[tuple[str, int, str, str]]:
+    """Jeder ``app.*``-Import im Quelltext — auch die INNERHALB von Funktionen.
+
+    Der Modulimport-Test unten deckt nur Importe auf Modulebene ab. Genau die
+    gefaehrlichen stehen aber oft in einer Funktion, hinter einem breiten
+    ``except Exception`` (172 solche Bloecke gibt es hier) — dort faellt ein
+    falscher Pfad nie auf, weil er entweder verschluckt wird oder erst beim Aufruf
+    zuschlaegt. Deshalb wird hier STATISCH geprueft, nicht durch Ausfuehren.
+    """
+    import ast
+
+    out: list[tuple[str, int, str, str]] = []
+    for path in sorted((ORCH / "app").rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text())
+        except SyntaxError:
+            continue
+        rel = str(path.relative_to(ORCH))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                if node.module and node.module.startswith("app.") and node.level == 0:
+                    for alias in node.names:
+                        out.append((rel, node.lineno, node.module, alias.name))
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("app."):
+                        out.append((rel, node.lineno, alias.name, ""))
+    return out
+
+
+class StaticImportTests(unittest.TestCase):
+    """Verweist jeder app.*-Import auf ein Modul, das es wirklich gibt?
+
+    Der konkrete Anlass: ``from app.models.agent_memory import AgentMemory`` — das
+    Modul heisst ``app.models.memory``. Zwei Tage unbemerkt, weil der Import erst
+    beim Aufruf zuschlaegt.
+    """
+
+    def test_every_internal_import_target_exists(self):
+        import importlib.util
+
+        broken = []
+        for rel, line, module, _name in _internal_imports():
+            if importlib.util.find_spec(module) is None:
+                broken.append(f"{rel}:{line} → {module}")
+        self.assertEqual(
+            broken, [],
+            "Importe auf nicht existierende Module:\n" + "\n".join(broken),
+        )
+
+    def test_every_imported_name_exists(self):
+        """Auch der NAME muss stimmen — ein richtiges Modul mit falscher Klasse
+        scheitert genauso, nur noch spaeter."""
+        import importlib
+
+        broken = []
+        for rel, line, module, name in _internal_imports():
+            if not name or name == "*":
+                continue
+            try:
+                mod = importlib.import_module(module)
+            except Exception:  # noqa: BLE001 — Ladefehler prueft der andere Test
+                continue
+            if not hasattr(mod, name):
+                # Untermodul statt Attribut ist zulaessig (from app.api import ws).
+                try:
+                    importlib.import_module(f"{module}.{name}")
+                except Exception:  # noqa: BLE001
+                    broken.append(f"{rel}:{line} → {module}.{name}")
+        self.assertEqual(
+            broken, [],
+            "Importierte Namen, die es nicht gibt:\n" + "\n".join(broken),
+        )
+
+
 class ImportTests(unittest.TestCase):
     def test_every_module_imports(self):
         """Ein nicht aufloesbarer Import ist immer ein Fehler, nie ein Zustand."""

@@ -585,8 +585,12 @@ class SelfTestService:
                     return 0
                 token = env_token
             else:
-                from app.security.encryption import decrypt_value
-                token = decrypt_value(oauth.access_token)
+                # app.security.encryption gibt es nicht — die Funktion liegt in
+                # app.core.encryption und heisst decrypt_token. Beide Aufrufe standen
+                # in einem except Exception, der Selbsttest holte also nie ein Token
+                # ueber den OAuth-Weg und meldete stumm 0.
+                from app.core.encryption import decrypt_token
+                token = decrypt_token(oauth.access_token)
         except Exception as e:
             logger.warning(f"[SelfTest] Could not get GitHub token: {e}")
             return 0
@@ -692,8 +696,8 @@ class SelfTestService:
             oauth = result.scalar_one_or_none()
             if not oauth or not oauth.access_token:
                 return 0
-            from app.security.encryption import decrypt_value
-            token = decrypt_value(oauth.access_token)
+            from app.core.encryption import decrypt_token
+            token = decrypt_token(oauth.access_token)
         except Exception:
             return 0
 
