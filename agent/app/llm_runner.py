@@ -230,14 +230,14 @@ class LLMRunner:
             # preferences (how to address them, what they decided) live in memory, and a
             # quick reply that ignores them is exactly what feels like amnesia.
             system_prompt = (
-                base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx + get_memory_preload()
+                base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx + get_memory_preload(prompt[:500])
             )
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
             marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
             enhanced_prompt = CHAT_STARTUP_PREFIX + marketplace_suggestions + prompt
         else:
-            memory_preload = get_memory_preload()
+            memory_preload = get_memory_preload(prompt[:500])
             approval_rules = get_approval_rules_prefix()
             improvement_ctx = get_improvement_context()
             system_prompt = (

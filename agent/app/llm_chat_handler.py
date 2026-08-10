@@ -425,7 +425,7 @@ class LLMChatHandler:
             # CLI runtimes read both from disk, this runtime has to be handed them. Without
             # it the agent answers "ich habe keinen eigenen Namen" and forgets across
             # sessions what the user told it, although it saved it.
-            system_prompt = system_prompt + get_identity_context() + get_memory_preload()
+            system_prompt = system_prompt + get_identity_context() + get_memory_preload(text[:500])
             system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
             system_prompt = system_prompt + (
                 "\n\n## Werkzeuge bei Bedarf nachladen\n"
