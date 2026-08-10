@@ -17,6 +17,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.encryption import decrypt_token
+from app.core.githost.registry import get_git_host_provider
 from app.db.session import resilient_session
 from app.models.agent import Agent
 from app.models.notification import Notification
@@ -574,7 +576,7 @@ class SelfTestService:
                 select(OAuthIntegration).where(OAuthIntegration.provider == "github")
             )
             oauth = result.scalar_one_or_none()
-            if not oauth or not oauth.access_token:
+            if not oauth or not oauth.access_token_encrypted:
                 # Fallback for agent-only environments without a user OAuth
                 # connection: the orchestrator may carry a GITHUB_PAT env var.
                 env_token = os.environ.get("GITHUB_PAT")
@@ -585,56 +587,39 @@ class SelfTestService:
                     return 0
                 token = env_token
             else:
-                # app.security.encryption gibt es nicht — die Funktion liegt in
-                # app.core.encryption und heisst decrypt_token. Beide Aufrufe standen
-                # in einem except Exception, der Selbsttest holte also nie ein Token
-                # ueber den OAuth-Weg und meldete stumm 0.
-                from app.core.encryption import decrypt_token
-                token = decrypt_token(oauth.access_token)
+                token = decrypt_token(oauth.access_token_encrypted)
         except Exception as e:
             logger.warning(f"[SelfTest] Could not get GitHub token: {e}")
             return 0
 
         repo = "greeves89/AI-Employee"
         issues_created = 0
+        provider = get_git_host_provider("github")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             for test in failed:
                 try:
                     # Check if issue already exists (search by title)
                     search_title = f"[Self-Test] {test.name}"
-                    search_resp = await client.get(
-                        f"https://api.github.com/search/issues",
-                        params={
-                            "q": f'repo:{repo} is:issue is:open "{search_title}"',
-                        },
-                        headers={
-                            "Authorization": f"Bearer {token}",
-                            "Accept": "application/vnd.github+json",
-                        },
+                    existing_issue_num = await provider.search_open_issue(
+                        client, token, repo, search_title
                     )
 
-                    if search_resp.status_code == 200:
-                        existing = search_resp.json().get("total_count", 0)
-                        if existing > 0:
-                            # Issue already exists — add comment instead
-                            issue_num = search_resp.json()["items"][0]["number"]
-                            await client.post(
-                                f"https://api.github.com/repos/{repo}/issues/{issue_num}/comments",
-                                headers={
-                                    "Authorization": f"Bearer {token}",
-                                    "Accept": "application/vnd.github+json",
-                                },
-                                json={
-                                    "body": (
-                                        f"🔄 **Recurring failure** (Test Run #{test_run_id})\n\n"
-                                        f"```\n{test.error}\n```\n"
-                                        f"Category: `{test.category}`\n"
-                                        f"Duration: {test.duration_ms}ms"
-                                    ),
-                                },
-                            )
-                            continue
+                    if existing_issue_num is not None:
+                        # Issue already exists — add comment instead
+                        await provider.comment_issue(
+                            client,
+                            token,
+                            repo,
+                            existing_issue_num,
+                            (
+                                f"🔄 **Recurring failure** (Test Run #{test_run_id})\n\n"
+                                f"```\n{test.error}\n```\n"
+                                f"Category: `{test.category}`\n"
+                                f"Duration: {test.duration_ms}ms"
+                            ),
+                        )
+                        continue
 
                     # Create new issue
                     body = (
@@ -651,27 +636,15 @@ class SelfTestService:
 
                     labels = ["auto-test", f"test:{test.category}"]
 
-                    resp = await client.post(
-                        f"https://api.github.com/repos/{repo}/issues",
-                        headers={
-                            "Authorization": f"Bearer {token}",
-                            "Accept": "application/vnd.github+json",
-                            "X-GitHub-Api-Version": "2022-11-28",
-                        },
-                        json={
-                            "title": search_title,
-                            "body": body,
-                            "labels": labels,
-                        },
+                    html_url = await provider.create_issue(
+                        client, token, repo, search_title, body, labels
                     )
 
-                    if resp.status_code in (200, 201):
-                        test.github_issue_url = resp.json()["html_url"]
+                    if html_url:
+                        test.github_issue_url = html_url
                         issues_created += 1
                     else:
-                        logger.warning(
-                            f"[SelfTest] GitHub issue creation failed: {resp.status_code}"
-                        )
+                        logger.warning("[SelfTest] GitHub issue creation failed")
 
                 except Exception as e:
                     logger.warning(f"[SelfTest] Failed to create issue for {test.name}: {e}")
@@ -694,52 +667,35 @@ class SelfTestService:
                 select(OAuthIntegration).where(OAuthIntegration.provider == "github")
             )
             oauth = result.scalar_one_or_none()
-            if not oauth or not oauth.access_token:
+            if not oauth or not oauth.access_token_encrypted:
                 return 0
-            from app.core.encryption import decrypt_token
-            token = decrypt_token(oauth.access_token)
+            token = decrypt_token(oauth.access_token_encrypted)
         except Exception:
             return 0
 
         repo = "greeves89/AI-Employee"
         closed = 0
+        provider = get_git_host_provider("github")
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             # Search for open auto-test issues
-            resp = await client.get(
-                f"https://api.github.com/search/issues",
-                params={"q": f'repo:{repo} is:issue is:open label:auto-test'},
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                },
-            )
-            if resp.status_code != 200:
-                return 0
+            items = await provider.list_open_issues_with_label(client, token, repo, "auto-test")
 
-            for issue in resp.json().get("items", []):
+            for issue in items:
                 title = issue.get("title", "")
                 # Extract test name from "[Self-Test] test_name"
                 if title.startswith("[Self-Test] "):
                     test_name = title[len("[Self-Test] "):]
                     if test_name in passed_names:
                         # Test now passes — close the issue
-                        await client.post(
-                            f"https://api.github.com/repos/{repo}/issues/{issue['number']}/comments",
-                            headers={
-                                "Authorization": f"Bearer {token}",
-                                "Accept": "application/vnd.github+json",
-                            },
-                            json={"body": "✅ This test is now passing. Auto-closing."},
+                        await provider.comment_issue(
+                            client,
+                            token,
+                            repo,
+                            issue["number"],
+                            "✅ This test is now passing. Auto-closing.",
                         )
-                        await client.patch(
-                            f"https://api.github.com/repos/{repo}/issues/{issue['number']}",
-                            headers={
-                                "Authorization": f"Bearer {token}",
-                                "Accept": "application/vnd.github+json",
-                            },
-                            json={"state": "closed"},
-                        )
+                        await provider.close_issue(client, token, repo, issue["number"])
                         closed += 1
 
         return closed

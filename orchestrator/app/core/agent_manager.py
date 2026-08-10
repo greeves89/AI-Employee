@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
 from app.core.encryption import decrypt_token
+from app.core.githost.registry import get_git_host_provider
 from app.core.log_redaction import scrub_log
 from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
@@ -1091,8 +1092,7 @@ class AgentManager:
             integration = result.scalar_one_or_none()
             if integration:
                 token = decrypt_token(integration.access_token_encrypted)
-                env["GITHUB_TOKEN"] = token
-                env["GH_TOKEN"] = token
+                env.update(get_git_host_provider("github").get_agent_env(token))
         if "microsoft" in agent_integrations and user_id:
             from sqlalchemy import and_ as _sqland
             result = await self.db.execute(
