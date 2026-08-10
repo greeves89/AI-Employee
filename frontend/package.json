@@ -21,7 +21,7 @@
     "date-fns": "^4.4.0",
     "docx-preview": "^0.4.0",
     "exceljs": "^4.4.0",
-    "framer-motion": "^12.43.0",
+    "framer-motion": "^13.0.0",
     "geist": "^1.7.2",
     "lucide-react": "^1.29.0",
     "mermaid": "^11.16.1",
