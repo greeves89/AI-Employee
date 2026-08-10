@@ -720,14 +720,52 @@ class SchedulerService:
         else:
             prompt = schedule.prompt
 
-        task = await router.create_and_route_task(
-            title=f"[Scheduled] {schedule.name}",
-            prompt=prompt,
-            priority=schedule.priority,
-            agent_id=schedule.agent_id,
-            model=schedule.model,
-            metadata={"schedule_id": schedule.id},
-        )
+        # Final atomic busy-check immediately before dispatch (#548): the earlier
+        # check above (line ~614) only ever covered [Proactive] schedules and
+        # even then wasn't atomic — a second scheduler tick could read
+        # queue_depth=0 in the window between our read and our push and
+        # dispatch too. This one covers EVERY schedule type (incl. [Plan]
+        # blocks, which previously had no guard at all) and is race-free: the
+        # re-check and the push both happen while holding a per-agent lock, so
+        # no other dispatch can slip in between.
+        lock_token = None
+        if schedule.agent_id:
+            lock_token = await self.redis.acquire_dispatch_lock(schedule.agent_id)
+            if lock_token is None:
+                # Another dispatch for this agent is in flight right now.
+                schedule.next_run_at = _calc_next_run(schedule, now)
+                logger.info(
+                    "[Scheduler] %s skipped - dispatch lock held for agent %s",
+                    schedule.name, schedule.agent_id,
+                )
+                return
+            queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
+            status = await self.redis.get_agent_status(schedule.agent_id)
+            current_task = status.get("current_task", "")
+            is_busy_with_task = queue_depth > 0 or (
+                current_task and not current_task.startswith("chat:")
+            )
+            if is_busy_with_task:
+                await self.redis.release_dispatch_lock(schedule.agent_id, lock_token)
+                schedule.next_run_at = _calc_next_run(schedule, now)
+                logger.info(
+                    "[Scheduler] %s skipped - agent busy (queue=%s, task=%r)",
+                    schedule.name, queue_depth, current_task,
+                )
+                return
+
+        try:
+            task = await router.create_and_route_task(
+                title=f"[Scheduled] {schedule.name}",
+                prompt=prompt,
+                priority=schedule.priority,
+                agent_id=schedule.agent_id,
+                model=schedule.model,
+                metadata={"schedule_id": schedule.id},
+            )
+        finally:
+            if lock_token:
+                await self.redis.release_dispatch_lock(schedule.agent_id, lock_token)
 
         # Plan-Block: der Kalender soll zeigen, dass er LAEUFT — sonst steht dort ewig
         # "geplant", obwohl die Arbeit schon vorbei ist.

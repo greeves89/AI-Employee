@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 
 import redis.asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
@@ -99,6 +100,46 @@ class RedisService:
         if not self.client:
             return 0
         return await self.client.llen(f"agent:{agent_id}:tasks")
+
+    # Release only if we still hold the lock (compare-and-delete). Prevents a
+    # dispatcher whose TTL already expired from deleting a lock a *different*
+    # dispatcher has since acquired.
+    _RELEASE_LOCK_SCRIPT = (
+        'if redis.call("get", KEYS[1]) == ARGV[1] then '
+        'return redis.call("del", KEYS[1]) else return 0 end'
+    )
+
+    async def acquire_dispatch_lock(self, agent_id: str, ttl_seconds: int = 20) -> str | None:
+        """Atomically acquire a short-lived per-agent task-dispatch lock.
+
+        Guards the "is the agent busy" check immediately before a schedule
+        pushes a task, so two schedules due in the same tick (or overlapping
+        scheduler ticks) can't both see the agent as free and dispatch on top
+        of an already-running task (fixes #548). The short TTL means a crash
+        mid-dispatch self-heals within seconds instead of wedging the agent.
+
+        Returns a token to release the lock with, or None if another
+        dispatch for this agent is already in flight.
+        """
+        if not self.client:
+            return None
+        token = secrets.token_hex(8)
+        acquired = await self.client.set(
+            f"agent:{agent_id}:dispatch_lock", token, nx=True, ex=ttl_seconds
+        )
+        return token if acquired else None
+
+    async def release_dispatch_lock(self, agent_id: str, token: str) -> None:
+        if not self.client or not token:
+            return
+        try:
+            await self.client.eval(
+                self._RELEASE_LOCK_SCRIPT, 1, f"agent:{agent_id}:dispatch_lock", token
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to release dispatch lock for agent %s: %s", scrub_log(agent_id), e
+            )
 
     async def subscribe(self, channel: str):
         if not self.client:
