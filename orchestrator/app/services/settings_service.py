@@ -64,6 +64,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "registration_open",
     "sso_only_login",
     "require_user_approval",
+    "default_new_user_role",
     "revoke_msgraph_on_logout",
     # OAuth non-secret fields
     "oauth_microsoft_tenant_id",

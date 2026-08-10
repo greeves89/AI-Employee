@@ -23,6 +23,7 @@ from app.core.sso_providers import (
     get_sso_client_secret,
     get_sso_provider,
 )
+from app.core.permissions import role_for_new_user
 from app.models.user import User, UserRole
 from app.services.redis_service import RedisService
 
@@ -334,7 +335,7 @@ class SSOService:
             email=email,
             name=name,
             password_hash=None,  # SSO users don't have a password
-            role=UserRole.ADMIN if is_first else UserRole.MEMBER,
+            role=role_for_new_user(is_first),
             approved=approved,
             sso_provider=provider_name,
             sso_subject=subject,

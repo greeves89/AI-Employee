@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import re
 from types import SimpleNamespace
 
 from fastapi import Depends, HTTPException, Request
@@ -75,6 +76,26 @@ class _AnonymousUser:
         self.role = UserRole.ADMIN  # Grant admin during setup
 
 
+# Was ein Konto OHNE zugewiesene Rolle noch darf. Bewusst winzig: gerade so viel,
+# dass die Oberflaeche erfahren kann, warum sie leer bleibt, und dass man sich wieder
+# abmelden kann. Alles andere ist zu.
+_ALLOWED_WHILE_UNASSIGNED = re.compile(
+    r"^/api/v1/(auth/(me|logout|refresh|providers)|version|health)(/.*)?$"
+)
+
+
+def _is_unassigned(user) -> bool:
+    """Angemeldet, aber noch nichts zugeteilt.
+
+    Ueber den Textwert verglichen, nicht ueber das Enum: derselbe Nutzer kommt an
+    manchen Stellen als ORM-Objekt und an anderen als schlichtes Abbild vorbei, und
+    ein Vergleich, der davon abhaengt, waere genau die Art Sperre, die im falschen
+    Moment durchlaesst.
+    """
+    role = getattr(user, "role", None)
+    return str(getattr(role, "value", role) or "") == "unassigned"
+
+
 async def get_current_user(request: Request, db: AsyncSession) -> "User":
     """Extract and validate JWT from access_token cookie. Returns User or raises 401.
 
@@ -109,6 +130,27 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
     if not user or not user.is_active or not getattr(user, "approved", True):
         raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
+
+    # Ohne zugewiesene Rolle bleibt die Plattform zu (#560-Folge, Kundenmeldung).
+    #
+    # Hier und nur hier, weil hier JEDE Anfrage der Oberflaeche vorbeikommt. Die
+    # Menuepunkte zu verstecken waere keine Sperre — ``menu_paths`` liest nur die
+    # Seitenleiste, wer die Adresse tippt, waere drin.
+    #
+    # Der MCP-Weg fuehrt bewusst NICHT hier vorbei: ``/oauth/authorize`` liest das
+    # Cookie direkt, und die MCP-Aufrufe selbst tragen ein Bearer-Token. Genau das
+    # ist der Zweck — Postfach ja, Plattform nein.
+    if _is_unassigned(user) and not _ALLOWED_WHILE_UNASSIGNED.match(request.url.path):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "role_unassigned",
+                "message": (
+                    "Dein Konto ist angelegt, aber noch keiner Rolle zugeordnet. "
+                    "Bitte wende dich an einen Administrator."
+                ),
+            },
+        )
 
     # Row-Level Security: restrict this session to rows owned by this user.
     # Admins bypass RLS so they can manage all tenants.

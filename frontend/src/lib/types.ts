@@ -129,7 +129,9 @@ export interface Agent {
   config?: Record<string, unknown> | null;
 }
 
-export type UserRole = "admin" | "manager" | "member" | "viewer";
+/** "unassigned" = angemeldet, aber noch nichts zugeteilt. Sperrt die Oberflaeche,
+ *  NICHT angebundene Dienste wie den M365-MCP — genau das ist der Zweck. */
+export type UserRole = "admin" | "manager" | "member" | "viewer" | "unassigned";
 
 export interface AdminUser {
   id: string;

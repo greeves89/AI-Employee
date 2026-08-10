@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.permissions import role_for_new_user
 from app.core.auth import (
     create_access_token,
     create_refresh_token,
@@ -158,7 +159,7 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
         email=body.email,
         name=body.name,
         password_hash=hash_password(body.password),
-        role=UserRole.ADMIN if is_first else UserRole.MEMBER,
+        role=role_for_new_user(is_first),
         approved=approved,
     )
     db.add(user)

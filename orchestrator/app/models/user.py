@@ -12,6 +12,19 @@ class UserRole(str, enum.Enum):
     MANAGER = "manager"
     MEMBER = "member"
     VIEWER = "viewer"
+    # Angemeldet, aber noch nichts zugeteilt. Bewusst eine eigene Rolle und kein
+    # zweiter Wahrheitswert neben ``approved``: wer sich selbst registriert, ist
+    # eine echte Person mit einem echten Konto — er hat nur noch keine Aufgabe.
+    #
+    # Der Anlass: wer sich über Microsoft anmeldet, um dem M365-MCP zuzustimmen,
+    # bekam als Nebenwirkung die volle Oberfläche mit fünf Agenten — obwohl ihm
+    # niemand etwas zugewiesen hatte. Zustimmen und Mitarbeiten waren dieselbe
+    # Berechtigung.
+    #
+    # WICHTIG: Diese Rolle sperrt die Oberfläche, NICHT den MCP-Zugang. Der läuft
+    # über ``approved``/``is_active`` und bleibt absichtlich offen — genau darum
+    # geht es: Postfach ja, Plattform nein.
+    UNASSIGNED = "unassigned"
 
 
 class User(Base, TimestampMixin):

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Menu } from "lucide-react";
+import { Menu, ShieldAlert } from "lucide-react";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { VoiceSessionProvider } from "@/components/agents/voice-session-provider";
@@ -69,6 +69,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
     // Show login/register without sidebar
     return <>{children}</>;
+  }
+
+  // Angemeldet, aber ohne zugewiesene Rolle: eine Erklaerung und sonst nichts.
+  //
+  // Ohne Seitenleiste, ohne Inhalt, ohne Umleitung — jede Seite endet hier. Die
+  // Sperre selbst sitzt im Orchestrator (jede Anfrage bekaeme 403); das hier ist
+  // die Erklaerung dazu. Eine leere Oberflaeche ohne Begruendung waere schlimmer
+  // als eine Fehlermeldung.
+  if (user.role === "unassigned") {
+    return <NoRoleNotice email={user.email} />;
   }
 
   // Logged in but on public page - redirect to dashboard
@@ -150,6 +160,37 @@ function AppShell({ children }: { children: React.ReactNode }) {
       >
         {children}
       </main>
+    </div>
+  );
+}
+
+/** „Dein Konto ist da, aber du darfst noch nichts." */
+function NoRoleNotice({ email }: { email: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-2xl border border-amber-500/20 bg-card p-8 text-center shadow-2xl">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15">
+          <ShieldAlert className="h-8 w-8 text-amber-400" />
+        </div>
+        <h2 className="text-lg font-semibold text-foreground">Noch keine Rolle zugewiesen</h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Dein Konto <b className="text-foreground">{email}</b> ist angelegt, aber noch
+          keiner Rolle zugeordnet. Um diese Anwendung zu nutzen, brauchst du eine Rolle
+          — bitte <b className="text-foreground">wende dich an einen Administrator</b>.
+        </p>
+        <p className="mt-4 text-[12px] text-muted-foreground/60">
+          Angebundene Dienste, für die du dich hier angemeldet hast, funktionieren
+          davon unabhängig weiter.
+        </p>
+        <button
+          onClick={() => {
+            import("@/lib/auth").then((a) => a.logout());
+          }}
+          className="mt-6 w-full rounded-xl border border-foreground/[0.08] px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-foreground/[0.06] hover:text-foreground"
+        >
+          Abmelden
+        </button>
+      </div>
     </div>
   );
 }

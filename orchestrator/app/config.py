@@ -144,6 +144,13 @@ class Settings(BaseSettings):
     # (OpenWebUI-style "Warten auf Freischaltung"). Default off. Admin-created users are
     # always approved.
     require_user_approval: bool = False
+    # Welche Rolle jemand bekommt, der sich SELBST registriert (Passwort oder SSO).
+    # Vorgabe "unassigned": angelegt, aber ohne Zugriff, bis ein Administrator eine
+    # Rolle zuweist. Das ist der sichere Standard und der Grund, weshalb es die
+    # Einstellung gibt — vorher wurde jeder automatisch Mitglied mit fuenf Agenten,
+    # auch wer sich nur anmeldete, um dem M365-MCP zuzustimmen.
+    # Auf "member" gestellt gilt wieder das alte Verhalten.
+    default_new_user_role: str = "unassigned"
     setup_token: str = ""  # Required for first admin registration (if set)
     # SSO-only: disable password login entirely → only Microsoft SSO (MFA) can sign in.
     # Closes the "knows the password → impersonate" vector. Per-deployment toggle.

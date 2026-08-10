@@ -5,6 +5,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.173.0] — 2026-08-10
+
+Kundenmeldung: wer sich über Microsoft anmeldet, um dem M365-MCP zuzustimmen,
+bekam als Nebenwirkung die **volle Oberfläche** — obwohl ihm niemand etwas
+zugewiesen hatte.
+
+### Changed
+- **Wer sich selbst registriert, bekommt keine Rolle mehr.** Bisher wurde jeder
+  automatisch *Mitglied* mit fünf Agenten. Neu: Rolle `unassigned` — das Konto
+  ist angelegt, die Oberfläche bleibt zu, bis ein Administrator eine Rolle
+  zuweist. Der **erste** Nutzer wird weiterhin immer Administrator, sonst wäre
+  eine frische Anlage von der ersten Sekunde an ausgesperrt.
+
+  Umstellbar über `default_new_user_role=member` (altes Verhalten). Ein Vertipper
+  in der Einstellung vergibt **keine** Rechte, und `admin` ist als Vorgabe
+  ausgeschlossen — das wäre eine Selbstbedienung.
+
+### Added
+- **Erklärseite statt leerer Oberfläche.** Wer ohne Rolle anmeldet, sieht: „Noch
+  keine Rolle zugewiesen — bitte wende dich an einen Administrator", mit
+  Abmelden-Knopf. Kein Menü, kein Inhalt, nichts anklickbar.
+- **Serverseitige Sperre** in `get_current_user` — der eine Engpass, durch den
+  jede Anfrage der Oberfläche läuft. Menüpunkte zu verstecken wäre keine Sperre:
+  `menu_paths` liest nur die Seitenleiste, wer die Adresse tippt, wäre drin.
+  Offen bleibt eine winzige Ausnahmeliste (`/auth/me`, `/auth/logout`,
+  `/auth/refresh`, `/version`, `/health`) — gerade genug, damit die Oberfläche
+  erklären kann, warum sie leer ist.
+- Im Admin ist `unassigned` Teil des Rollen-Rundlaufs (als „Ohne Rolle"), damit
+  eine Rolle auch wieder **zurückgenommen** werden kann.
+
+### Wichtig
+**Der MCP-Zugang bleibt offen.** Genau darum geht es: Postfach ja, Plattform nein.
+`/oauth/authorize` liest das Cookie direkt, die MCP-Aufrufe tragen ein
+Bearer-Token — keiner der beiden Wege läuft durch `get_current_user`. Drei Tests
+nageln das fest, damit eine spätere „Vereinheitlichung" nicht den Kunden ohne
+Postfach zurücklässt.
+
+### Tests
+1867 grün, 19 neue.
+
+---
+
 ## [1.172.0] — 2026-08-10
 
 Kundenmeldung: **570 offene Freigaben** auf einer Anlage.

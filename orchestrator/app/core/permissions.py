@@ -75,6 +75,26 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "url_host_patterns": [],
         "menu_paths": ["/dashboard", "/agents", "/tasks"],  # read-only views
     },
+    # Ohne Zuweisung: nichts. Die Liste steht hier trotzdem vollstaendig da, statt
+    # sich auf einen Sonderfall im Code zu verlassen — wer spaeter ein Recht
+    # hinzufuegt, sieht sofort, dass es hier auf leer gehoert.
+    #
+    # Die eigentliche Sperre ist NICHT diese Liste (menu_paths werden nur von der
+    # Seitenleiste gelesen, das ist Kosmetik), sondern der Riegel in
+    # ``get_current_user``. Hier steht sie, damit beides dieselbe Aussage macht.
+    UserRole.UNASSIGNED: {
+        "max_agents": 0,
+        "template_ids": [],
+        "llm_providers": [],
+        "models": [],
+        "mount_labels": [],
+        "ai_account_ids": [],
+        "secret_ids": [],
+        "mcp_server_ids": [],
+        "integration_providers": [],
+        "url_host_patterns": [],
+        "menu_paths": [],
+    },
 }
 
 
@@ -174,3 +194,29 @@ def can_access_menu(permissions: dict, path: str) -> bool:
     if allowed is None:
         return True
     return any(path == p or path.startswith(p.rstrip("/") + "/") for p in allowed)
+
+
+def role_for_new_user(is_first: bool) -> UserRole:
+    """Welche Rolle jemand bekommt, der sich selbst registriert.
+
+    An EINER Stelle, weil es zwei Wege dorthin gibt (Passwort und SSO). Stuende die
+    Regel zweimal da, koennte einer der beiden Wege spaeter davon abweichen — und
+    zwar der, an den niemand denkt.
+
+    Der allererste Nutzer wird IMMER Administrator: sonst waere eine frische
+    Installation von der ersten Sekunde an ausgesperrt.
+    """
+    from app.config import settings as _settings
+
+    if is_first:
+        return UserRole.ADMIN
+    wanted = str(getattr(_settings, "default_new_user_role", "unassigned") or "").strip().lower()
+    try:
+        role = UserRole(wanted)
+    except ValueError:
+        # Ein Tippfehler in der Einstellung darf nicht versehentlich Rechte
+        # verteilen — im Zweifel nichts.
+        return UserRole.UNASSIGNED
+    # Administrator per Voreinstellung waere eine Selbstbedienungs-Falle.
+    return UserRole.UNASSIGNED if role == UserRole.ADMIN else role
+

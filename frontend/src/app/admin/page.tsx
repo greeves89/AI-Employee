@@ -163,7 +163,9 @@ export default function AdminPage() {
     }
   }, [tab, fetchFeedback, fetchAgents]);
 
-  const ROLE_CYCLE = ["viewer", "member", "manager", "admin"] as const;
+  // "unassigned" steht am Anfang, damit ein Rundlauf auch wieder DORTHIN kommt:
+  // eine Rolle zurueckzunehmen muss genauso gehen wie sie zu vergeben.
+  const ROLE_CYCLE = ["unassigned", "viewer", "member", "manager", "admin"] as const;
 
   const handleCycleRole = async (u: AdminUser) => {
     if (u.id === user?.id) return;
@@ -519,11 +521,14 @@ export default function AdminPage() {
                         u.role === "admin"   ? "bg-amber-500/10 text-amber-500" :
                         u.role === "manager" ? "bg-purple-500/10 text-purple-400" :
                         u.role === "viewer"  ? "bg-zinc-500/10 text-zinc-400" :
+                        u.role === "unassigned" ? "bg-amber-500/10 text-amber-400" :
                                                "bg-blue-500/10 text-blue-500"
                       )}
                     >
                       {u.role === "admin" ? <ShieldCheck className="h-3 w-3" /> : <UserCog className="h-3 w-3" />}
-                      {u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                      {u.role === "unassigned"
+                        ? "Ohne Rolle"
+                        : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
                     </span>
 
                     {/* Actions */}
