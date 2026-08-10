@@ -61,6 +61,19 @@ COLLAPSE_MIN_REPEATS = 3
 # kick in regularly on long agentic tasks.
 ABSOLUTE_COMPACTION_BUDGET = 150_000
 
+# How far BELOW the trigger a compaction run has to get before it may stop.
+# Without this gap compaction stopped the moment it was back under the trigger —
+# one more tool result and the next turn was over it again, so it compacted in
+# almost every turn. That is the "er komprimiert zu oft" report: not a threshold
+# that is too low, but a missing hysteresis.
+COMPACTION_TARGET_RATIO = 0.6
+
+# A run that could not reach the target did not fail — the fixed overhead
+# (system prompt + tool schemas) simply dominates and no amount of history
+# folding will help. Retrying every turn only burns a summarize call and shows a
+# banner for nothing, so we wait until the context has grown by this much.
+REATTEMPT_GROWTH_RATIO = 0.1
+
 # Sliding window: how many of the most recent messages are kept VERBATIM.
 # Tool-using agents need the exact recent tool I/O (file paths, IDs, values) to
 # act on it — these must never be summarized. ~24 msgs ≈ the last dozen tool
@@ -81,6 +94,20 @@ def effective_threshold_tokens(context_window: int) -> int:
     75% mark wins (leaves headroom before a hard overflow).
     """
     return min(int(context_window * 0.75), ABSOLUTE_COMPACTION_BUDGET)
+
+
+def compaction_target_tokens(context_window: int) -> int:
+    """Size a compaction run has to reach — clearly below the trigger.
+
+    Compacting back to exactly the trigger means the very next tool result
+    trips it again. The gap is the whole point.
+    """
+    return int(effective_threshold_tokens(context_window) * COMPACTION_TARGET_RATIO)
+
+
+def reattempt_growth_tokens(context_window: int) -> int:
+    """How much the context must grow before a fruitless run is repeated."""
+    return max(1, int(effective_threshold_tokens(context_window) * REATTEMPT_GROWTH_RATIO))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,17 +134,19 @@ def estimate_tokens(messages: list["ChatMessage"]) -> int:
 
 def compress_messages(
     messages: list["ChatMessage"],
-    context_window: int,
-    target_pct: float = 0.55,
+    target_tokens: int,
 ) -> tuple[list["ChatMessage"], list[str]]:
     """Run the 3 deterministic layers (Snip, Microcompact, Collapse).
 
     Returns (compressed_messages, list_of_layers_applied).
     The Summarize layer is async and handled separately by the caller.
 
-    target_pct: stop compressing once we're below this fraction of the window.
+    ``target_tokens`` is an ABSOLUTE budget for the message list, not a fraction
+    of the model window. It used to be a fraction (0.55) of the window, which on
+    a 1M-token model meant a 550k target — far above the 150k trigger, so the
+    pipeline always stopped after Layer 1 and Microcompact/Collapse never ran at
+    all. The caller knows the real budget; it passes it.
     """
-    target_tokens = int(context_window * target_pct)
     applied: list[str] = []
 
     # Layer 1 — Snip

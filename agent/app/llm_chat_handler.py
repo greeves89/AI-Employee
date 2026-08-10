@@ -165,6 +165,16 @@ class LLMChatHandler:
         # Context tracking
         self._last_input_tokens: int = 0
         self._context_window: int = 0  # Resolved on first call
+        # Measured gap between what the API bills as input and what we can see in
+        # the history: the tool schemas (~16k tokens for 60 tools) are sent with
+        # every call but live nowhere in _history, and chars/4 underestimates
+        # JSON. Without this the trigger and the "did it help" check ran on two
+        # different rulers — the trigger saw trouble the check could not find, so
+        # the banner appeared turn after turn while nothing was ever compressed.
+        self._overhead_tokens: int = 0
+        # Size at which a compaction run gave up (overhead dominates, history is
+        # already minimal). Retrying that every turn is pure noise.
+        self._compaction_floor: int = 0
         # Live steering: async callable returning list[str] of messages that
         # arrived mid-response, to fold into the running conversation.
         self.pending_drain = None
@@ -175,37 +185,39 @@ class LLMChatHandler:
             return self._context_window
         model = settings.llm_model_name or ""
         self._context_window = model_registry.get_context_window(model)
+        known = model_registry.is_known(model)
         logger.info(
-            f"[Context] Model '{model}' → context window {self._context_window:,} tokens"
+            f"[Context] Model '{model}' → window {self._context_window:,}"
+            f"{'' if known else ' (unknown model — default)'}, "
+            f"compact at {context_compressor.effective_threshold_tokens(self._context_window):,}, "
+            f"down to {context_compressor.compaction_target_tokens(self._context_window):,}"
         )
         return self._context_window
 
-    def _estimate_tokens(self) -> int:
-        """Estimate current context size in tokens.
+    def _note_real_input_tokens(self, reported: int) -> None:
+        """Calibrate the estimate against what the API actually billed.
 
-        Uses the last API-reported input_tokens if available (most accurate).
-        Falls back to character-based estimation (~4 chars per token).
+        The difference between the two is the part of the prompt we cannot see
+        in the history (tool schemas) plus the tokenizer bias. Keeping the
+        largest observed gap makes the estimate lean high — erring towards
+        compacting slightly early, never towards a hard context overflow.
         """
-        if self._last_input_tokens > 0:
-            return self._last_input_tokens
+        if reported <= 0:
+            return
+        self._last_input_tokens = reported
+        gap = reported - context_compressor.estimate_tokens(self._history)
+        if gap > self._overhead_tokens:
+            self._overhead_tokens = gap
 
-        # Rough estimate: sum all message content lengths / 4
-        total_chars = 0
-        image_tokens = 0
-        for msg in self._history:
-            if isinstance(msg.content, str) and msg.content:
-                total_chars += len(msg.content)
-            elif isinstance(msg.content, list):
-                for c in msg.content:
-                    # Don't count base64 image data as text — a vision image
-                    # costs ~1.5k tokens regardless of byte size.
-                    if isinstance(c, dict) and c.get("type") == "image":
-                        image_tokens += 1500
-                    else:
-                        total_chars += len(str(c))
-            if msg.tool_calls:
-                total_chars += len(json.dumps(msg.tool_calls))
-        return total_chars // 4 + image_tokens
+    def _estimate_tokens(self) -> int:
+        """Projected prompt size: what we can measure plus the measured overhead.
+
+        ONE ruler for the trigger and for the check afterwards. Reading the raw
+        API count for the trigger and a history-only estimate for the check is
+        what produced compaction runs that announced themselves and then had
+        nothing to do.
+        """
+        return context_compressor.estimate_tokens(self._history) + self._overhead_tokens
 
     def _needs_compaction(self) -> bool:
         """Check if the conversation needs compaction."""
@@ -214,55 +226,74 @@ class LLMChatHandler:
         estimated = self._estimate_tokens()
         window = self._get_context_window()
         threshold = context_compressor.effective_threshold_tokens(window)
-        if estimated >= threshold:
-            logger.info(
-                f"[Context] {estimated:,} tokens ≥ {threshold:,} threshold "
-                f"(window {window:,}) — compaction needed"
-            )
-            return True
-        return False
+        if estimated < threshold:
+            return False
+        # A previous run could not get below the target. Nothing changed enough
+        # since then for a second attempt to end differently.
+        if self._compaction_floor:
+            growth = context_compressor.reattempt_growth_tokens(window)
+            if estimated < self._compaction_floor + growth:
+                return False
+        logger.info(
+            f"[Context] {estimated:,} tokens ≥ {threshold:,} threshold "
+            f"(window {window:,}) — compaction needed"
+        )
+        return True
 
     async def _compact_history(self, message_id: str) -> None:
         """4-layer context compression pipeline.
 
         Layer 1–3 are deterministic and run first (fast, no LLM call).
-        Layer 4 (LLM summarization) is only invoked if still over threshold.
+        Layer 4 (LLM summarization) is only invoked if still above the target.
+
+        The user is told AFTERWARDS, and only if something actually shrank.
+        Announcing up front meant a run that turned out to be a no-op still put
+        "[Kontext wird komprimiert...]" in the chat — the visible half of the
+        "compacts too often" complaint was largely this: banners without work.
         """
         provider = self._get_provider()
         window = self._get_context_window()
-
-        await self.log_publisher.publish_chat(
-            message_id, "text",
-            {"text": "\n\n`[Kontext wird komprimiert...]`\n\n"},
-        )
+        target = context_compressor.compaction_target_tokens(window)
+        before = self._estimate_tokens()
+        # The layers only ever see the history; the overhead is not theirs to cut.
+        history_target = max(1, target - self._overhead_tokens)
 
         # Layers 1–3: Snip → Microcompact → Collapse (deterministic)
         compressed, applied = context_compressor.compress_messages(
-            self._history, window, target_pct=0.55
+            self._history, history_target
         )
         if applied:
             self._history = compressed
             logger.info(f"[Context] Deterministic layers {applied} applied")
 
-        # Check if still over threshold after deterministic layers
-        estimated = context_compressor.estimate_tokens(self._history)
-        still_over = estimated > context_compressor.effective_threshold_tokens(window)
-
-        if not still_over:
-            self._last_input_tokens = 0
-            return
-
         # Layer 4: LLM-based abstractive summarization (last resort)
-        old_count = len(self._history)
-        new_history = await context_compressor.summarize_messages(self._history, provider)
-        if new_history:
-            self._history = new_history
-            self._last_input_tokens = 0
-            logger.info(
-                f"[Context] Layer 4 summarized {old_count} → {len(self._history)} msgs"
+        if self._estimate_tokens() > target:
+            old_count = len(self._history)
+            new_history = await context_compressor.summarize_messages(self._history, provider)
+            if new_history:
+                self._history = new_history
+                logger.info(
+                    f"[Context] Layer 4 summarized {old_count} → {len(self._history)} msgs"
+                )
+            else:
+                logger.info(
+                    "[Context] nothing old enough to summarize — the fixed overhead "
+                    "dominates; not retrying until the context grows"
+                )
+
+        after = self._estimate_tokens()
+        self._last_input_tokens = 0
+        # Remember a run that could not reach the target, so the next turn does
+        # not repeat it for nothing.
+        self._compaction_floor = 0 if after <= target else after
+
+        if after < before:
+            await self.log_publisher.publish_chat(
+                message_id, "text",
+                {"text": f"\n\n`[Kontext verdichtet: {before // 1000}k → {after // 1000}k Token]`\n\n"},
             )
         else:
-            logger.warning("[Context] Layer 4 summarization failed; keeping current history")
+            logger.info(f"[Context] compaction had no effect at {after:,} tokens")
 
     async def _get_catalog(self) -> list[dict]:
         """Full tool catalog (built-in + orchestrator API + MCP), cached. This is the
@@ -473,9 +504,10 @@ class LLMChatHandler:
                         )
 
                     elif event.type == "done":
-                        # Track actual token usage from API for context monitoring
-                        if event.input_tokens:
-                            self._last_input_tokens = event.input_tokens
+                        # Track actual token usage from API for context monitoring.
+                        # Calibrates the estimate: the history we can measure vs
+                        # the prompt the API actually billed.
+                        self._note_real_input_tokens(event.input_tokens or 0)
                         # Each turn is a separately-billed API call — sum every
                         # turn's tokens for the message's total cost.
                         total_input_tokens += event.input_tokens or 0
@@ -658,6 +690,10 @@ class LLMChatHandler:
         self._history.clear()
         self._loop_detector.reset()
         self._last_input_tokens = 0
+        self._compaction_floor = 0
+        # The overhead survives on purpose: tool schemas and tokenizer bias do
+        # not change when the conversation does, and a calibration already paid
+        # for should not have to be re-learned.
         await self.log_publisher.publish_chat(
             "", "system", {"message": "Chat session reset"}
         )

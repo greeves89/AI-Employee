@@ -54,6 +54,20 @@ async def _visible_agents(user, db: AsyncSession) -> dict[str, Agent]:
     return {f"agent-{a.id[:8]}-": a for a in rows}
 
 
+async def _owner_names(agents, db: AsyncSession) -> dict[str, str]:
+    """``user_id -> Anzeigename`` für die Besitzer der übergebenen Agenten.
+
+    Eine Abfrage für alle. Bewusst nur der Name, nicht die Adresse: wem eine App
+    freigegeben wurde, der soll wissen, von wem sie stammt — die Mailadresse des
+    Besitzers geht ihn deshalb noch nicht an.
+    """
+    uids = {str(a.user_id) for a in agents if getattr(a, "user_id", None)}
+    if not uids:
+        return {}
+    rows = (await db.execute(select(User.id, User.name).where(User.id.in_(uids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
 async def _agent_for_project(project: str, db: AsyncSession) -> Agent:
     """Resolve the owning agent from a compose project name (``agent-{id8}-…``).
 
@@ -193,6 +207,22 @@ async def list_apps(
                 entry["url"] = f"/api/v1/agents/{agent.id}/apps/proxy/{c.name}/{port}/"
         elif entry["status"] == "not_started":
             entry["status"] = "stopped"  # has containers but none running
+
+    # Besitzer nachtragen. Für eigene Apps beantwortet das „wem gehört das
+    # eigentlich" (Admins sehen alle), für freigegebene das eigentlich wichtige:
+    # von wem stammt die App, die hier in meiner Liste auftaucht.
+    all_agents = list(owned.values()) + list(shared_agents.values())
+    names = await _owner_names(all_agents, db)
+    by_agent = {
+        a.id: (str(a.user_id or ""), names.get(str(a.user_id or ""), ""))
+        for a in all_agents
+    }
+    me = str(getattr(user, "id", "") or "")
+    for entry in apps.values():
+        owner_id, owner_name = by_agent.get(entry["agent_id"], ("", ""))
+        entry["owner_id"] = owner_id or None
+        entry["owner_name"] = owner_name or None
+        entry["owned_by_me"] = bool(owner_id) and owner_id == me
 
     return {"apps": sorted(apps.values(), key=lambda a: (a["agent_name"], a["name"]))}
 
@@ -582,11 +612,17 @@ async def app_detail(
                 names[r[0]] = r[1]
         shares = [_share_dict(s, names.get(s.user_id or "")) for s in rows]
 
+    owner_names = await _owner_names([agent], db)
+    owner_id = str(agent.user_id or "")
+
     running = sum(1 for c in out_containers if c["status"] == "running")
     return {
         "project": project,
         "agent_id": agent.id,
         "agent_name": agent.name,
+        "owner_id": owner_id or None,
+        "owner_name": owner_names.get(owner_id) or None,
+        "owned_by_me": bool(owner_id) and owner_id == str(getattr(user, "id", "") or ""),
         "status": "running" if running and running == len(out_containers)
                   else "partial" if running else ("stopped" if out_containers else "not_started"),
         "containers": out_containers,

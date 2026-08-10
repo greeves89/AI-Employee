@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag,
   CheckCircle2, Hammer, Share2, Users, Globe, UserPlus, Link2, Copy, Check,
-  AlertTriangle, ShieldCheck, Box,
+  AlertTriangle, ShieldCheck, Box, User,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -133,6 +133,14 @@ export default function AppsPage() {
                           <p className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
                             <Cpu className="h-3 w-3" /> {app.agent_name}
                           </p>
+                          {app.owner_name && (
+                            // Bei fremden Apps die eigentliche Frage: von wem ist das?
+                            // Bei eigenen erklaert es, wieso sie ueberhaupt hier steht.
+                            <p className="flex items-center gap-1 text-[11px] text-muted-foreground/70 truncate">
+                              <User className="h-3 w-3" />
+                              {app.owned_by_me ? app.owner_name : `von ${app.owner_name}`}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
@@ -349,6 +357,10 @@ function DetailModal({ app, onClose, onShowLogs }: {
               {/* Eckdaten */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <Field label="Agent" value={detail.agent_name} />
+                <Field
+                  label="Besitzer"
+                  value={detail.owner_name ? (detail.owned_by_me ? `${detail.owner_name} (du)` : detail.owner_name) : "—"}
+                />
                 <Field label="Status" value={
                   detail.status === "running" ? `läuft (${detail.running}/${detail.total})`
                     : detail.status === "partial" ? `teilweise (${detail.running}/${detail.total})`
@@ -530,7 +542,8 @@ function DetailModal({ app, onClose, onShowLogs }: {
               ) : (
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Share2 className="h-3.5 w-3.5" />
-                  Diese App wurde dir freigegeben. Du kannst sie öffnen — verwalten darf sie nur {detail.agent_name}s Besitzer.
+                  Diese App wurde dir freigegeben{detail.owner_name ? ` von ${detail.owner_name}` : ""}. Du kannst
+                  sie öffnen — verwalten darf sie nur {detail.owner_name || `${detail.agent_name}s Besitzer`}.
                 </p>
               )}
             </>

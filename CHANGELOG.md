@@ -5,6 +5,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.175.0] — 2026-08-10
+
+### Fixed
+- **„Er komprimiert mir etwas zu oft."** Stimmte — und dahinter steckten drei
+  Fehler, von denen jeder allein gereicht hätte. Betrifft nur die Custom-LLM-
+  Laufzeit; Claude Code und Codex verdichten in ihrer eigenen CLI.
+
+  **Zwei Maßstäbe.** Ausgelöst wurde am echten Token-Zähler der Schnittstelle —
+  System-Prompt, Werkzeug-Schemata und Verlauf zusammen. Geprüft, ob es etwas
+  gebracht hat, wurde danach an einer Zeichenschätzung, die nur den Verlauf
+  kennt. Allein die Werkzeug-Schemata sind rund 16k Token, die diese Prüfung nie
+  gesehen hat. Also meldete die Auslösung Not, wo die Prüfung keine fand: der
+  Hinweis „[Kontext wird komprimiert...]" erschien Zug um Zug, ohne dass je etwas
+  verdichtet wurde. Jetzt gilt für beides derselbe Maßstab — die eigene Schätzung
+  plus der gemessene Abstand zu dem, was die Schnittstelle tatsächlich berechnet.
+
+  **Keine Hysterese.** Verdichtet wurde nur bis knapp unter die Auslöseschwelle.
+  Eine Werkzeugausgabe später war man wieder darüber. Ein Lauf muss jetzt auf 60 %
+  der Schwelle herunter, nicht auf 99 %.
+
+  **Die Summe als Größe.** Im Aufgabenlauf wurde die *aufaddierte* Eingabe aller
+  Züge als aktuelle Kontextgröße gelesen. Die wächst zwangsläufig, auch wenn der
+  Verlauf gleich bleibt — eine lange Aufgabe verdichtete deshalb alle paar Züge
+  ohne Anlass. Schlimmer: der Zähler wurde danach zurückgesetzt, und weil derselbe
+  Zähler die Kosten trug, verlor die Aufgabe bei jeder Verdichtung ihre bis dahin
+  gezählten Eingabe-Token. Kosten und Kontext sind jetzt zwei Zahlen.
+
+- **Die späteren Verdichtungsschichten liefen auf großen Modellen nie.** Das Ziel
+  der Kette war ein Anteil am *Modellfenster* (55 %). Auf einem 1M-Modell waren
+  das 550.000 Token — weit über der Auslöseschwelle von 150.000. Die Kette brach
+  deshalb immer schon nach der ersten Schicht ab: Microcompact und Collapse liefen
+  ausgerechnet dort nicht, wo der Kontext groß wird.
+
+- **Ein aussichtsloser Lauf wird nicht mehr jeden Zug wiederholt.** Wenn der feste
+  Anteil (System-Prompt + Werkzeuge) die Schwelle allein sprengt, hilft kein
+  Falten des Verlaufs. Das wird gemerkt; der nächste Versuch kommt erst, wenn der
+  Kontext spürbar gewachsen ist.
+
+- **Gesagt wird jetzt, was passiert ist.** Der Hinweis kommt nach dem Lauf und nur
+  bei echter Wirkung, mit Zahlen: `[Kontext verdichtet: 152k → 78k Token]`.
+
+### Added
+- **Apps zeigen ihren Besitzer.** In der Übersicht und im Detail steht neben dem
+  Agenten jetzt der Mensch, dem er gehört. Bei freigegebenen Apps ist das die
+  eigentliche Frage — in der Liste stand bisher nur der Agentenname, und der sagt
+  nichts darüber, von wem die App stammt. Bewusst nur der Name: wem eine App
+  freigegeben wurde, den geht die Mailadresse des Besitzers noch nicht an.
+- Beim Start protokolliert die Custom-LLM-Laufzeit, welches Fenster sie für das
+  konfigurierte Modell auflöst und bei welchen Werten sie verdichtet — inklusive
+  Vermerk, wenn das Modell unbekannt ist und der Rückfallwert greift.
+
 ## [1.174.1] — 2026-08-10
 
 ### Fixed

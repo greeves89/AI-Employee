@@ -1701,7 +1701,12 @@ schaust dir Logs an und **gibst es für andere frei**.
 
 ### 32.1 Die App-Karte verstehen
 
-Jede Karte ist eine App. Oben rechts steht ihr Zustand:
+Jede Karte ist eine App. Links stehen **Name**, der **Agent**, der sie gebaut hat, und
+darunter der **Besitzer** — der Mensch, dem dieser Agent gehört. Bei fremden Apps steht
+dort „von *Name*"; das beantwortet die Frage, die bei einer freigegebenen App als Erstes
+kommt: von wem ist das eigentlich?
+
+Oben rechts steht ihr Zustand:
 
 | Zustand | Bedeutung |
 |---|---|
@@ -1717,8 +1722,9 @@ entfernen).
 ### 32.2 Details einer App ansehen
 
 **Klicke auf den oberen Bereich einer Karte** (Name/Agent). Es öffnet sich ein Fenster mit
-allen Eckdaten: zuständiger Agent, Status, Workspace-Pfad, Compose-Projektname sowie jeder
-einzelne Container mit Image, Port und Zustand.
+allen Eckdaten: zuständiger Agent, **Besitzer** (bei deinen eigenen Apps mit dem Zusatz
+„(du)"), Status, Workspace-Pfad, Compose-Projektname sowie jeder einzelne Container mit
+Image, Port und Zustand.
 
 ![App-Detailfenster](screenshots/f20-app-detail.png)
 
@@ -1752,7 +1758,8 @@ bauen, Logs lesen, Container löschen und Weiter-Freigeben bleiben ausschließli
 als Besitzer. Freigegebene sehen auch nicht, wem du die App sonst noch freigegeben hast.
 
 Bei **Einzelne Person** und **Alle eingeloggten Nutzer** taucht die App bei den anderen
-automatisch in deren **Apps**-Übersicht auf — markiert mit **„für mich freigegeben"**.
+automatisch in deren **Apps**-Übersicht auf — markiert mit **„für mich freigegeben"** und
+mit deinem Namen als Besitzer, damit klar ist, von wem sie stammt.
 Der öffentliche Link erscheint bewusst in **niemandes** Liste: er hängt am Link, nicht an
 einer Person.
 

@@ -3274,6 +3274,11 @@ export interface AppEntry {
   project: string;
   agent_id: string;
   agent_name: string;
+  /** Wem der Agent gehört, der die App gebaut hat. Bei freigegebenen Apps die
+   *  eigentliche Frage: von wem stammt das hier? */
+  owner_id?: string | null;
+  owner_name?: string | null;
+  owned_by_me?: boolean;
   name: string;
   path: string | null;              // set for workspace apps (start via docker-apps up)
   status: "running" | "stopped" | "not_started" | string;
@@ -3313,6 +3318,9 @@ export interface AppDetail {
   project: string;
   agent_id: string;
   agent_name: string;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  owned_by_me?: boolean;
   status: string;
   containers: AppDetailContainer[];
   running: number;

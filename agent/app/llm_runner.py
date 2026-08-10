@@ -87,10 +87,25 @@ class LLMRunner:
         self._context_window: int = 0
 
     def _get_context_window(self) -> int:
-        """Resolve the context window size for the current model."""
+        """Resolve the context window size for the current model.
+
+        Logged with the resulting thresholds, because "does compaction take my
+        model into account?" is a question an operator should be able to answer
+        from the log instead of from the source. Note what the numbers say: below
+        a 200k window the model decides, above it the absolute budget does — on
+        purpose, so a 1M-token model does not re-send a 750k prompt every turn.
+        """
         if self._context_window > 0:
             return self._context_window
-        self._context_window = model_registry.get_context_window(settings.llm_model_name or "")
+        model = settings.llm_model_name or ""
+        self._context_window = model_registry.get_context_window(model)
+        known = model_registry.is_known(model)
+        logger.info(
+            f"[Context] Model '{model}' → window {self._context_window:,}"
+            f"{'' if known else ' (unknown model — default)'}, "
+            f"compact at {context_compressor.effective_threshold_tokens(self._context_window):,}, "
+            f"down to {context_compressor.compaction_target_tokens(self._context_window):,}"
+        )
         return self._context_window
 
     @staticmethod
@@ -245,8 +260,17 @@ class LLMRunner:
         ]
 
         tools = await self._get_tools()
+        # Billing total across every turn of the task — must never be reset, it
+        # is what the task reports as its cost.
         total_input_tokens = 0
         total_output_tokens = 0
+        # Context measure — deliberately NOT the billing total. Using the running
+        # sum as "current context size" meant it grew with every turn even when
+        # the conversation did not, so a long task compacted every few turns for
+        # no reason; and resetting it to re-measure silently threw away the cost
+        # accumulated so far. Cost and context are two different numbers.
+        overhead_tokens = 0
+        compaction_floor = 0
         num_turns = 0
         full_text = ""
         accumulated_tool_calls: list[dict] = []
@@ -302,6 +326,9 @@ class LLMRunner:
                     elif event.type == "done":
                         total_input_tokens += event.input_tokens
                         total_output_tokens += event.output_tokens
+                        if event.input_tokens:
+                            gap = event.input_tokens - context_compressor.estimate_tokens(messages)
+                            overhead_tokens = max(overhead_tokens, gap)
 
                     elif event.type == "error":
                         await self.log_publisher.publish(
@@ -442,30 +469,35 @@ class LLMRunner:
                         multimodal.tool_message(result, tc["id"], tc["name"])
                     )
 
-                # Context compression: check after each tool round
+                # Context compression: check after each tool round.
+                # One ruler throughout: our own estimate plus the measured gap to
+                # what the API bills (tool schemas, tokenizer bias). The trigger
+                # and the check afterwards must agree, otherwise compaction keeps
+                # being asked for work it cannot see.
                 window = self._get_context_window()
                 threshold = context_compressor.effective_threshold_tokens(window)
-                if total_input_tokens > 0:
-                    current_tokens = total_input_tokens
-                else:
-                    current_tokens = context_compressor.estimate_tokens(messages)
+                target = context_compressor.compaction_target_tokens(window)
+                current_tokens = context_compressor.estimate_tokens(messages) + overhead_tokens
 
-                if current_tokens >= threshold:
-                    await self.log_publisher.publish(
-                        task_id, "system", {"message": "[Context compressing...]"}
-                    )
-                    # Layers 1–3: deterministic, fast
+                due = current_tokens >= threshold
+                if due and compaction_floor:
+                    # An earlier run could not reach the target; nothing has grown
+                    # enough since for this one to end differently.
+                    due = current_tokens >= compaction_floor + context_compressor.reattempt_growth_tokens(window)
+
+                if due:
+                    before = current_tokens
+                    # Layers 1–3: deterministic, fast. The overhead is not theirs
+                    # to cut, so they get the history's share of the target.
                     compressed, applied = context_compressor.compress_messages(
-                        messages, window, target_pct=0.55
+                        messages, max(1, target - overhead_tokens)
                     )
                     if applied:
                         messages = compressed
                         logger.info(f"[Context] Runner layers {applied} applied")
-                        total_input_tokens = 0  # Re-measure on next API call
 
-                    # Layer 4: rolling summary if still over threshold
-                    estimated = context_compressor.estimate_tokens(messages)
-                    if estimated > threshold:
+                    # Layer 4: rolling summary if still above the target
+                    if context_compressor.estimate_tokens(messages) + overhead_tokens > target:
                         new_msgs = await context_compressor.summarize_messages(
                             messages, provider, rescue_key=f"task:{task_id}"
                         )
@@ -475,7 +507,16 @@ class LLMRunner:
                                 f"{len(messages)} → {len(new_msgs)} msgs"
                             )
                             messages = new_msgs
-                            total_input_tokens = 0
+
+                    after = context_compressor.estimate_tokens(messages) + overhead_tokens
+                    compaction_floor = 0 if after <= target else after
+                    if after < before:
+                        await self.log_publisher.publish(
+                            task_id, "system",
+                            {"message": f"[Kontext verdichtet: {before // 1000}k → {after // 1000}k Token]"},
+                        )
+                    else:
+                        logger.info(f"[Context] Runner compaction had no effect at {after:,} tokens")
 
         except Exception as e:
             logger.exception(f"LLM Runner error: {e}")
