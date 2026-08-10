@@ -46,7 +46,7 @@ import { UserMenu } from "./user-menu";
 import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
-import { getMyPermissions, type RolePermissions } from "@/lib/api";
+import { getMyPermissions, getPendingApprovalCount, type RolePermissions } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -201,6 +201,21 @@ export function Sidebar() {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Offene Freigaben als Abzeichen am Menuepunkt. Eigener Zaehl-Endpunkt statt der
+  // vollen Liste: das hier fragt im Takt, und die Liste kann Hunderte Eintraege samt
+  // Begruendungstexten haben.
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      getPendingApprovalCount()
+        .then((n) => { if (alive) setPendingApprovals(n); })
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [pathname]);
+
   const canSeePath = (href: string) => {
     const allowed = permissions?.menu_paths;
     if (!allowed) return true;
@@ -282,7 +297,14 @@ export function Sidebar() {
                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                 )}
               >
-                <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "")} />
+                <span className="relative">
+                  <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "")} />
+                  {/* Eingeklappt ist kein Platz fuer eine Zahl — der Punkt sagt
+                      trotzdem, dass dort etwas wartet. */}
+                  {item.href === "/approvals" && pendingApprovals > 0 && (
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
+                  )}
+                </span>
               </Link>
             );
           })
@@ -335,9 +357,16 @@ export function Sidebar() {
                             )}
                           />
                           <span className="truncate">{item.label}</span>
-                          {isActive && (
+                          {item.href === "/approvals" && pendingApprovals > 0 ? (
+                            <span
+                              title={`${pendingApprovals} offene Freigabe(n)`}
+                              className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-400"
+                            >
+                              {pendingApprovals > 99 ? "99+" : pendingApprovals}
+                            </span>
+                          ) : isActive ? (
                             <div className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
-                          )}
+                          ) : null}
                         </Link>
                       );
                     })}

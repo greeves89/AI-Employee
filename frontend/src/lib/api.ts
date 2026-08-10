@@ -2514,6 +2514,18 @@ export async function removeLicense(): Promise<{ status: string; tier: string }>
 
 // --- Command Approvals ---
 
+/** Nur die Zahl der offenen Freigaben — fuer das Abzeichen im Menue. */
+export async function getPendingApprovalCount(): Promise<number> {
+  const res = await fetchJSON<{ count: number }>(`${getBase()}/approvals/pending/count`);
+  return res.count;
+}
+
+/** Alle offenen Freigaben verwerfen. Sie werden als abgelehnt vermerkt, nicht
+ *  geloescht — die Pruefspur muss erhalten bleiben. */
+export async function clearPendingApprovals(): Promise<{ cleared: number }> {
+  return fetchJSON(`${getBase()}/approvals/pending`, { method: "DELETE" });
+}
+
 export async function getPendingApprovals(): Promise<{ approvals: ApprovalRequest[]; count: number }> {
   return fetchJSON(`${getBase()}/approvals/pending`);
 }

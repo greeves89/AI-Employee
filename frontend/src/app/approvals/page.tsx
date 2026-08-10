@@ -7,7 +7,7 @@ import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import {
   getPendingApprovals, approveCommand, denyCommand,
   getApprovalRules, createApprovalRule, updateApprovalRule, deleteApprovalRule,
-  getLevelPresets, addPresetRule, deletePresetRule,
+  getLevelPresets, addPresetRule, deletePresetRule, clearPendingApprovals,
 } from "@/lib/api";
 import type { ApprovalRequest, ReflectionChangeMeta } from "@/lib/types";
 import type { ApprovalRule, LevelPreset, PresetRule } from "@/lib/api";
@@ -36,6 +36,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 
 const CATEGORY_CONFIG: Record<string, { icon: typeof DollarSign; color: string; label: string }> = {
   money: { icon: DollarSign, color: "text-emerald-400", label: "Geld" },
@@ -133,6 +134,8 @@ function escalationLabel(a: ApprovalRequest): string {
 }
 
 export default function ApprovalsPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"pending" | "escalations" | "reflection" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
@@ -157,6 +160,33 @@ export default function ApprovalsPage() {
     category: "custom",
     threshold: "",
   });
+
+  // Sammelverwerfung. Der Fall dahinter: ein Agent, dessen Einrichtung
+  // unvollstaendig ist, fragt bei jedem Lauf dasselbe — auf einer Anlage waren so
+  // 570 nahezu gleichlautende Anfragen aufgelaufen. Die einzeln wegzuklicken ist
+  // keine Arbeit, die ein Mensch tun sollte.
+  const [clearing, setClearing] = useState(false);
+  const clearAll = async () => {
+    const ok = await confirm({
+      title: `${approvals.length} offene Anfrage(n) verwerfen?`,
+      message:
+        "Sie werden als abgelehnt vermerkt — die Prüfspur bleibt erhalten. " +
+        "Wartende Agenten bekommen sofort ein Nein statt in ihre Zeitgrenze zu laufen.",
+      variant: "warning",
+      confirmLabel: "Alle verwerfen",
+    });
+    if (!ok) return;
+    setClearing(true);
+    try {
+      const res = await clearPendingApprovals();
+      toast.success(`${res.cleared} Anfrage(n) verworfen`);
+      await loadApprovals();
+    } catch (e) {
+      toast.error("Fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const loadApprovals = async () => {
     setIsLoading(true);
@@ -337,6 +367,17 @@ export default function ApprovalsPage() {
             </p>
           </div>
         </div>
+        {approvals.length > 0 && (
+          <button
+            onClick={clearAll}
+            disabled={clearing}
+            title="Alle offenen Anfragen verwerfen — sie werden als abgelehnt vermerkt, nicht gelöscht"
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+          >
+            {clearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Alle verwerfen ({approvals.length})
+          </button>
+        )}
         <button
           onClick={refreshCurrentTab}
           className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"

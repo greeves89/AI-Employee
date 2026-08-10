@@ -40,6 +40,12 @@ logger = logging.getLogger(__name__)
 # matching how every other sub-tick in run() reports its own failures.
 _TRANSIENT_DB_ERRORS = (OperationalError, DBAPIError, ConnectionError, TimeoutError)
 
+# Wie lange eine unbeantwortete Freigabe stehen bleibt, bevor sie verfaellt.
+# Deutlich laenger als die laengste Wartezeit eines Agenten (15 min): eine
+# Frage, die jemand abends sieht und morgens beantworten will, darf nicht ueber
+# Nacht verschwinden.
+_APPROVAL_TTL_HOURS = 24
+
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
 # "Dreaming": periodic adaptive user-profile refresh from accumulated memories
@@ -169,6 +175,7 @@ class SchedulerService:
                     self._gc_counter = 0
                     try:
                         await self._gc_expired_tasks()
+                        await self._expire_stale_approvals()
                     except _TRANSIENT_DB_ERRORS as e:
                         logger.warning(
                             "[Scheduler] GC DB unavailable (transient): %s", e,
@@ -420,6 +427,46 @@ class SchedulerService:
                     logger.warning("Dreaming: profile extract failed for user %s", uid, exc_info=True)
             await db.commit()
             return n
+
+    async def _expire_stale_approvals(self) -> int:
+        """Offene Freigaben verfallen lassen, auf die niemand mehr wartet.
+
+        ``ApprovalStatus.EXPIRED`` stand seit jeher im Modell und wurde **nie**
+        gesetzt: eine Anfrage blieb ewig offen, auch wenn der fragende Agent längst
+        in seine Zeitgrenze gelaufen und der Lauf vorbei war. Auf einer Anlage waren
+        so 570 Zeilen aufgelaufen — und in einer Liste mit 570 Einträgen findet
+        niemand mehr die eine, die wirklich zählt.
+
+        Die Frist ist bewusst deutlich länger als die längste Wartezeit eines
+        Agenten (15 Minuten): eine Frage, die jemand am Abend sieht und morgens
+        beantworten will, darf nicht über Nacht verfallen.
+        """
+        from datetime import datetime, timedelta, timezone
+        from sqlalchemy import select
+
+        from app.db.session import resilient_session
+        from app.models.command_approval import ApprovalStatus, CommandApproval
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=_APPROVAL_TTL_HOURS)
+        async with resilient_session() as db:
+            rows = (await db.execute(
+                select(CommandApproval).where(
+                    CommandApproval.status == ApprovalStatus.PENDING,
+                    CommandApproval.created_at < cutoff,
+                ).limit(500)
+            )).scalars().all()
+            if not rows:
+                return 0
+            now = datetime.now(timezone.utc)
+            for approval in rows:
+                approval.status = ApprovalStatus.EXPIRED
+                approval.resolved_at = now
+                approval.user_response = (
+                    f"Nicht beantwortet, nach {_APPROVAL_TTL_HOURS} h verfallen"
+                )
+            await db.commit()
+        logger.info("[Freigaben] %s unbeantwortete Anfrage(n) verfallen", len(rows))
+        return len(rows)
 
     async def _gc_expired_tasks(self) -> None:
         """Garbage-collect tasks whose evict_after timestamp has passed.

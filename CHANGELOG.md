@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.172.0] — 2026-08-10
+
+Kundenmeldung: **570 offene Freigaben** auf einer Anlage.
+
+### Fixed
+- **Freigaben liefen nie ab.** `ApprovalStatus.EXPIRED` stand seit jeher im Modell
+  und wurde **nie gesetzt** — eine Anfrage blieb ewig offen, auch wenn der fragende
+  Agent längst in seine Zeitgrenze gelaufen und der Lauf vorbei war. Der Zeitgeber
+  lässt unbeantwortete Anfragen jetzt nach 24 h verfallen. Die Frist ist bewusst
+  viel länger als die längste Wartezeit eines Agenten (15 min): eine Frage, die
+  jemand abends sieht und morgens beantworten will, darf nicht über Nacht
+  verschwinden.
+- **Dieselbe Frage lief beliebig oft auf.** Ein Agent mit unvollständiger
+  Einrichtung fragt bei jedem proaktiven Lauf, ob er seinen Laufstatus notieren
+  darf; niemand antwortet, eine Stunde später fragt er erneut. Aus Sicht des
+  Menschen ist das **eine** Entscheidung, nicht 570. Gleiche Frage desselben Agenten
+  → dieselbe Zeile, mit Zähler; der Agent bekommt dieselbe Kennung zurück und
+  wartet weiter darauf. Keine zweite Benachrichtigung — sonst klingelt das Telefon
+  570-mal für dieselbe Frage.
+
+  Verglichen wird Werkzeug **und** Begründung **und** die Frage selbst. Die erste
+  Fassung verglich nur die Begründung und hätte zwei verschiedene Fragen mit
+  gleicher Begründung verschluckt — der Test dazu hat es gefunden.
+
+### Added
+- **Abzeichen am Menüpunkt „Approvals"** mit der Zahl der offenen Freigaben
+  (eingeklappt ein Punkt am Symbol). Eigener Zähl-Endpunkt statt der vollen Liste:
+  das Menü fragt im Takt, und die Liste kann Hunderte Einträge samt
+  Begründungstexten haben.
+- **„Alle verwerfen"** auf der Freigaben-Seite. Verworfen wird als **abgelehnt**,
+  nicht gelöscht — die Prüfspur muss erhalten bleiben. Wartende Agenten bekommen
+  sofort ein Nein, statt in ihre Zeitgrenze zu laufen.
+
+### Tests
+1848 grün. 13 neue, darunter zwei gegen die FastAPI-Routenreihenfolge: stünde
+`/{approval_id}` vor `/pending`, liefe „alle verwerfen" in ein `int("pending")`.
+Dieselbe Falle hat in diesem Projekt schon zweimal zugeschlagen.
+
+---
+
 ## [1.171.0] — 2026-08-09
 
 ### Changed

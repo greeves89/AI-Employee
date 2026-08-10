@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_redaction import scrub_log
@@ -155,6 +155,49 @@ async def request_approval(
     is_question = bool(body.question and not body.tool)
     approval_tool = body.tool or "user_decision"
     reasoning = body.reasoning or body.context or body.question or ""
+
+    # Dieselbe Frage steht schon offen? Dann keine zweite Zeile.
+    #
+    # Der Anlass: ein Agent, dessen Einrichtung unvollständig ist, fragt bei jedem
+    # proaktiven Lauf, ob er seinen Laufstatus notieren darf. Niemand antwortet, die
+    # Frage läuft in ihre Zeitgrenze, eine Stunde später fragt er erneut — auf einer
+    # Anlage waren so 570 nahezu gleichlautende Anfragen aufgelaufen. Aus Sicht des
+    # Menschen ist das EINE Entscheidung, nicht 570.
+    # Verglichen wird Werkzeug UND Begründung UND die Frage selbst. Die Frage steht
+    # in ``meta`` und ist in SQL über die Datenbanken hinweg schlecht vergleichbar —
+    # deshalb die Vorauswahl im Query, der Rest hier. Die Vorauswahl ist klein: im
+    # Normalfall hat ein Agent keine, im Flutfall genau eine offene Frage.
+    candidates = (await db.execute(
+        select(CommandApproval).where(
+            CommandApproval.agent_id == agent_id,
+            CommandApproval.status == ApprovalStatus.PENDING,
+            CommandApproval.command == approval_tool,
+            CommandApproval.description == reasoning,
+        ).order_by(CommandApproval.created_at.desc()).limit(50)
+    )).scalars().all()
+    existing = next(
+        (c for c in candidates if (c.meta or {}).get("question") == body.question),
+        None,
+    )
+    if existing is not None:
+        meta = dict(existing.meta or {})
+        meta["repeats"] = int(meta.get("repeats") or 1) + 1
+        meta["last_asked_at"] = datetime.now(timezone.utc).isoformat()
+        existing.meta = meta
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(existing, "meta")
+        await db.commit()
+        logger.info(
+            "[Freigaben] Agent %s fragt dasselbe zum %s. Mal — Anfrage %s wiederverwendet",
+            scrub_log(agent_id), meta["repeats"], existing.id,
+        )
+        # Der Agent wartet auf DIESE Kennung — er poll't sie wie beim ersten Mal.
+        return {
+            "approval_id": str(existing.id),
+            "status": "pending",
+            "message": "Diese Frage steht bereits offen und wartet auf eine Entscheidung.",
+            "repeats": meta["repeats"],
+        }
     meta = {
         "input": body.input or {},
         "question": body.question,
@@ -440,6 +483,84 @@ async def list_pending_approvals(
     approvals = result.scalars().all()
 
     return {"approvals": [_approval_to_dict(a) for a in approvals], "count": len(approvals)}
+
+
+async def _visible_agent_ids(user, db: AsyncSession) -> list[str] | None:
+    """Agenten, deren Freigaben dieser Nutzer sehen darf. ``None`` = alle.
+
+    Dieselbe Regel wie in ``list_pending_approvals`` — an EINER Stelle, damit die
+    Zählung im Menü nicht eine andere Menge meint als die Liste darunter.
+    """
+    from app.models.user import UserRole
+
+    if user.role in (UserRole.ADMIN, UserRole.MANAGER):
+        return None
+    return list((await db.execute(
+        select(Agent.id).where(Agent.user_id == user.id)
+    )).scalars().all())
+
+
+@router.get("/pending/count")
+async def count_pending_approvals(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Nur die Zahl — für das Abzeichen im Menü.
+
+    Eigener Endpunkt statt ``/pending``: das Menü fragt im Takt, und die volle
+    Liste kann Hunderte Einträge samt Begründungstexten haben. Für eine Zahl über
+    einem Menüpunkt ist das die falsche Datenmenge.
+    """
+    query = select(func.count(CommandApproval.id)).where(
+        CommandApproval.status == ApprovalStatus.PENDING
+    )
+    allowed = await _visible_agent_ids(user, db)
+    if allowed is not None:
+        query = query.where(CommandApproval.agent_id.in_(allowed))
+    return {"count": int((await db.execute(query)).scalar() or 0)}
+
+
+@router.delete("/pending")
+async def clear_pending_approvals(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alle offenen Freigaben verwerfen.
+
+    Für den Fall, dass sich Hunderte gleichartiger Anfragen angesammelt haben —
+    ein wartender Agent hat seine Frage längst abgebrochen, die Zeile blieb aber
+    stehen. Sie einzeln wegzuklicken ist keine Arbeit, die ein Mensch tun sollte.
+
+    Verworfen wird als **abgelehnt**, nicht gelöscht: die Prüfspur muss erhalten
+    bleiben — es gab eine Anfrage, und sie wurde nicht genehmigt.
+    """
+    query = select(CommandApproval).where(CommandApproval.status == ApprovalStatus.PENDING)
+    allowed = await _visible_agent_ids(user, db)
+    if allowed is not None:
+        query = query.where(CommandApproval.agent_id.in_(allowed))
+
+    rows = (await db.execute(query)).scalars().all()
+    now = datetime.now(timezone.utc)
+    for approval in rows:
+        approval.status = ApprovalStatus.DENIED
+        approval.resolved_at = now
+        approval.user_response = f"Sammelverwerfung durch {user.email}"
+    await db.commit()
+
+    # Wartende Agenten aufwecken, statt sie in ihre Zeitgrenze laufen zu lassen.
+    redis = _get_redis()
+    if redis and redis.client:
+        for approval in rows:
+            try:
+                await redis.client.publish(
+                    f"approval:{approval.id}",
+                    json.dumps({"status": "denied", "approval_id": str(approval.id)}),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    logger.info("[Freigaben] %s offene Anfragen von %s verworfen", len(rows), scrub_log(user.email))
+    return {"cleared": len(rows)}
 
 
 @router.get("/all")
