@@ -2529,9 +2529,11 @@ export async function getAgentToolset(agentId: string): Promise<AgentToolset> {
 
 /** Wie voll das Kontextfenster ist — die Zahlen für /compact. */
 export interface ChatContextInfo {
-  window: number;
+  /** null = Fenstergröße dieses Modells unbekannt — dann zeigt die Oberfläche
+   *  das auch so, statt eine erfundene Zahl. */
+  window: number | null;
   used_estimate: number;
-  percent: number;
+  percent: number | null;
   messages: number;
   compacted: number;
   keeps_verbatim: number;

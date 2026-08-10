@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.174.1] — 2026-08-10
+
+### Fixed
+- **Die Kontextanzeige erfand eine Fenstergröße.** Beim Nachmessen an den echten
+  Agenten auf dem Pi fiel auf: `claude-sonnet-5` steht in keiner Modelltabelle,
+  und `/compact` behauptete daraufhin ein 128k-Fenster (den Rückfallwert). Eine
+  erfundene Zahl ist in einer Kontextanzeige schlimmer als ein ehrliches „?" —
+  sie verspricht Luft, die es vielleicht nicht gibt, oder sie drängt zum
+  Verdichten, wo gar kein Grund ist.
+
+  Unbekannt heißt jetzt unbekannt: die Anzeige sagt, dass die Fenstergröße dieses
+  Modells nicht hinterlegt ist. Verdichten geht trotzdem.
+
+  **Der Agent selbst behält seinen Rückfallwert** (128k). Dort ist er richtig: zu
+  früh zu verdichten kostet einen Zusammenfassungsaufruf, zu spät kostet den Lauf.
+
+  Kosten sind davon **nicht** betroffen — die melden Claude Code und Codex selbst
+  (auf dem Pi 837 Aufgaben, 551,23 $ korrekt erfasst).
+
+---
+
 ## [1.174.0] — 2026-08-10
 
 ### Added

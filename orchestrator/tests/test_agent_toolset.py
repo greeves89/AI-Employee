@@ -188,3 +188,42 @@ class ShapeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContextWindowTests(unittest.TestCase):
+    """Unbekannt heisst unbekannt.
+
+    Der Anlass steht im Betrieb: auf dem Pi laeuft ``claude-sonnet-5``, und das
+    stand in keiner Tabelle — die Kontextanzeige behauptete daraufhin ein
+    128k-Fenster. Eine erfundene Zahl ist hier schlimmer als ein ehrliches „?":
+    sie verspricht Luft, die es vielleicht nicht gibt, oder sie draengt zum
+    Verdichten, wo gar kein Grund ist.
+    """
+
+    def test_a_known_model_resolves(self):
+        from app.core.agent_toolset import context_window_for
+
+        self.assertEqual(context_window_for("gpt-4o-2024-08-06"), 128_000)
+
+    def test_the_longest_match_wins(self):
+        """Sonst landet gpt-4o bei gpt-4 und bekommt 8k statt 128k."""
+        from app.core.agent_toolset import context_window_for
+
+        self.assertEqual(context_window_for("gpt-4o"), 128_000)
+        self.assertEqual(context_window_for("gpt-4"), 8_192)
+
+    def test_an_unknown_model_is_none_not_a_guess(self):
+        from app.core.agent_toolset import context_window_for
+
+        for model in ("claude-sonnet-5", "irgendwas-neues", "", None):
+            with self.subTest(model=model):
+                self.assertIsNone(context_window_for(model))
+
+    def test_the_agent_side_still_falls_back(self):
+        """Dort ist ein Rueckfallwert richtig: zu frueh zu verdichten kostet einen
+        Zusammenfassungsaufruf, zu spaet kostet den Lauf."""
+        from pathlib import Path
+
+        src = (Path(__file__).resolve().parents[2]
+               / "agent/app/model_registry.py").read_text()
+        self.assertIn("DEFAULT_CONTEXT_WINDOW", src)

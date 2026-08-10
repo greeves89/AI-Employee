@@ -2252,9 +2252,11 @@ async def chat_session_context(
     window = context_window_for(agent.model)
 
     return {
+        # None = wir kennen die Fenstergroesse dieses Modells nicht. Die Oberflaeche
+        # sagt das dann auch, statt eine erfundene Zahl anzuzeigen.
         "window": window,
         "used_estimate": used,
-        "percent": round(min(100.0, used / window * 100), 1) if window else 0.0,
+        "percent": round(min(100.0, used / window * 100), 1) if window else None,
         "messages": len(live),
         "compacted": len(messages) - len(live),
         "keeps_verbatim": KEEP_VERBATIM,

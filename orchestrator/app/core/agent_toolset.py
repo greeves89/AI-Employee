@@ -244,19 +244,28 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "qwen": 128_000,
 }
 
-DEFAULT_CONTEXT_WINDOW = 128_000
+# Unbekannt heisst hier UNBEKANNT, nicht 128k.
+#
+# Der Anlass ist konkret: auf dem Pi laeuft claude-sonnet-5, und das steht in
+# keiner der Tabellen — die Anzeige behauptete daraufhin ein 128k-Fenster. Eine
+# erfundene Zahl ist in einer Kontextanzeige schlimmer als ein ehrliches "?": sie
+# verspricht Luft, die es vielleicht nicht gibt, oder sie draengt zum Verdichten,
+# wo gar kein Grund ist.
+#
+# Der Agent selbst faellt fuer SEINE Kompaktierungsschwelle weiterhin auf 128k
+# zurueck (agent/app/model_registry.py). Das ist dort richtig: zu frueh zu
+# verdichten kostet einen Zusammenfassungsaufruf, zu spaet kostet den Lauf.
 
 
-def context_window_for(model: str | None) -> int:
-    """Fenstergroesse eines Modells. Unbekannt → Vorgabe.
+def context_window_for(model: str | None) -> int | None:
+    """Fenstergroesse eines Modells, oder ``None`` wenn wir sie nicht kennen.
 
-    Eine unbekannte Groesse zu raten waere schlimmer als sie zu schaetzen: die
-    Anzeige im Chat wuerde dann Luft versprechen, die es nicht gibt.
+    Laengster Treffer gewinnt, damit "gpt-4o-2024-08-06" bei "gpt-4o" landet und
+    nicht bei "gpt-4".
     """
     name = (model or "").lower()
     best = ""
     for key in CONTEXT_WINDOWS:
         if key in name and len(key) > len(best):
             best = key
-    return CONTEXT_WINDOWS[best] if best else DEFAULT_CONTEXT_WINDOW
-
+    return CONTEXT_WINDOWS[best] if best else None

@@ -1699,27 +1699,39 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                   <p className="mt-3 text-xs text-muted-foreground">Wird ermittelt…</p>
                 ) : (
                   <>
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
-                        <div
-                          className={cn(
-                            "h-2 rounded-full transition-all",
-                            contextInfo.percent < 50 ? "bg-emerald-500"
-                              : contextInfo.percent < 80 ? "bg-amber-500" : "bg-red-500",
-                          )}
-                          style={{ width: `${Math.max(2, contextInfo.percent)}%` }}
-                        />
+                    {contextInfo.percent !== null && contextInfo.window !== null ? (
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
+                          <div
+                            className={cn(
+                              "h-2 rounded-full transition-all",
+                              contextInfo.percent < 50 ? "bg-emerald-500"
+                                : contextInfo.percent < 80 ? "bg-amber-500" : "bg-red-500",
+                            )}
+                            style={{ width: `${Math.max(2, contextInfo.percent)}%` }}
+                          />
+                        </div>
+                        <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums">
+                          {contextInfo.percent}%
+                        </span>
                       </div>
-                      <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums">
-                        {contextInfo.percent}%
-                      </span>
-                    </div>
+                    ) : (
+                      // Lieber ehrlich als falsch: eine erfundene Fenstergroesse
+                      // verspricht Luft, die es vielleicht nicht gibt.
+                      <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
+                        Die Fenstergröße von <b>{contextInfo.model || "diesem Modell"}</b> ist
+                        hier nicht hinterlegt — der Anteil lässt sich nicht ausrechnen.
+                        Verdichten geht trotzdem.
+                      </p>
+                    )}
                     <dl className="mt-3 space-y-1 text-[11px] text-muted-foreground">
                       <div className="flex justify-between">
                         <dt>Geschätzt belegt</dt>
                         <dd className="tabular-nums text-foreground/80">
-                          {contextInfo.used_estimate.toLocaleString()} von{" "}
-                          {contextInfo.window.toLocaleString()} Token
+                          {contextInfo.used_estimate.toLocaleString()}
+                          {contextInfo.window !== null
+                            ? ` von ${contextInfo.window.toLocaleString()} Token`
+                            : " Token (Grenze unbekannt)"}
                         </dd>
                       </div>
                       <div className="flex justify-between">
