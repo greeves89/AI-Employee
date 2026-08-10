@@ -2094,6 +2094,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                       Der Verlauf bleibt unangetastet — die Fortsetzung startet mit
                       einem kurzen Stand statt der vollen Last.
                     </p>
+                    {/* Erklaert die haeufigste Rueckfrage: hier stehen 7%, und der
+                        Agent verdichtet trotzdem. Beides stimmt — es sind zwei
+                        verschiedene Dinge. */}
+                    <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground/50">
+                      Gezählt wird das sichtbare Gespräch. Der Agent trägt zusätzlich
+                      seine Anweisungen und jede Werkzeugausgabe mit — deshalb kann er
+                      verdichten, während hier noch viel Platz steht.
+                    </p>
                   </div>
                 )}
               </div>
