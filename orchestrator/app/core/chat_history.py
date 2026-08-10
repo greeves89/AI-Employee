@@ -16,7 +16,7 @@ Vier Dinge, die im Chat fehlten, und alle vier greifen auf denselben Gedanken zu
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,15 @@ TITLE_MAX = 60
 # Ab so vielen Nachrichten lohnt eine Zusammenfassung; darunter ist der Verlauf
 # kuerzer als seine eigene Zusammenfassung.
 SUMMARY_MIN_MESSAGES = 6
+# Wie viele der juengsten Nachrichten beim Verdichten woertlich bleiben. Dieselbe
+# Ueberlegung wie im Kompaktierer des Agenten (RECENT_WINDOW_MESSAGES = 24, dort
+# fuer den Modellkontext): die juengste Werkzeug-Ein- und -Ausgabe — Pfade,
+# Kennungen, Werte — ist zusammengefasst wertlos. Hier kleiner, weil es um einen
+# Chat geht und nicht um einen werkzeuglastigen Auftragslauf.
+KEEP_VERBATIM = 8
+
+# Woran eine Verdichtung im Verlauf zu erkennen ist.
+COMPACT_MARKER = "[Verdichtet — der aeltere Verlauf steht zusammengefasst hier]"
 
 _FILLER = re.compile(
     r"^\s*(hallo|hi|hey|guten (morgen|tag|abend)|moin|bitte|danke|kannst du|"
@@ -227,6 +236,56 @@ def build_summary(messages: list[ChatMessage], limit: int = 2000) -> str:
         # Von hinten kuerzen: das Ende eines Gespraechs ist der aktuelle Stand.
         body = "… (Anfang gekürzt)\n" + body[-limit:]
     return body
+
+
+async def compact_session(db: AsyncSession, agent_id: str, session_id: str) -> dict:
+    """Den Verlauf **im selben Gespräch** verdichten (``/compact``).
+
+    Der Unterschied zu ``summarize_to_new_session`` ist der, den ein Nutzer meint,
+    wenn er „compact" sagt: er will **hier** weiterreden, nur mit weniger Ballast.
+    Ein frisches Gespräch wäre eine andere Antwort auf eine andere Frage.
+
+    Die alten Nachrichten werden **nicht gelöscht**, sondern markiert. Für den
+    Menschen bleibt der Verlauf lesbar; wer den Kontext für das Modell baut,
+    überspringt sie. Löschen wäre unumkehrbar, und niemand verdichtet in der
+    Absicht, etwas zu verlieren.
+
+    Die letzten ``KEEP_VERBATIM`` Nachrichten bleiben unangetastet — dieselbe
+    Überlegung wie im Kompaktierer des Agenten: die jüngste Werkzeug-Ein- und
+    -Ausgabe (Pfade, Kennungen, Werte) ist zusammengefasst wertlos.
+    """
+    messages = await messages_of(db, agent_id, session_id)
+    live = [m for m in messages if not (m.meta or {}).get("compacted")]
+    if len(live) < SUMMARY_MIN_MESSAGES:
+        return {"ok": False,
+                "reason": f"Zu kurz — erst ab {SUMMARY_MIN_MESSAGES} Nachrichten sinnvoll"}
+
+    fold, keep = live[:-KEEP_VERBATIM], live[-KEEP_VERBATIM:]
+    if not fold:
+        return {"ok": False, "reason": "Nichts zu verdichten — der Verlauf ist bereits kurz"}
+
+    summary = build_summary(fold)
+    now = datetime.now(timezone.utc)
+    for msg in fold:
+        msg.meta = {**(msg.meta or {}), "compacted": True, "compacted_at": now.isoformat()}
+
+    db.add(ChatMessage(
+        agent_id=agent_id,
+        session_id=session_id,
+        message_id=f"cp-{uuid.uuid4().hex[:12]}",
+        role="system",
+        content=f"{COMPACT_MARKER}\n\n{summary}",
+        meta={"compaction": True, "folded": len(fold)},
+        # Genau VOR die behaltenen Nachrichten, nicht ans Ende: sonst stuende die
+        # Zusammenfassung nach dem, was sie zusammenfasst. Eine Mikrosekunde davor
+        # und nicht gleichauf — bei gleichem Zeitstempel entscheidet die Kennung,
+        # und die neue ist immer die groessere.
+        timestamp=(keep[0].timestamp or now) - timedelta(microseconds=1),
+    ))
+    await db.flush()
+    logger.info("[Chat] %s verdichtet: %d Nachrichten gefaltet, %d bleiben",
+                session_id, len(fold), len(keep))
+    return {"ok": True, "folded": len(fold), "kept": len(keep)}
 
 
 async def summarize_to_new_session(db: AsyncSession, agent_id: str,

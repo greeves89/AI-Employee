@@ -2515,6 +2515,51 @@ export async function removeLicense(): Promise<{ status: string; tier: string }>
 // --- Command Approvals ---
 
 /** Nur die Zahl der offenen Freigaben — fuer das Abzeichen im Menue. */
+/** Werkzeuge und Befehle DIESES Agenten — je nach Laufzeit verschieden. */
+export interface AgentToolset {
+  mode: string;
+  commands: { name: string; hint: string; runtime_only?: boolean }[];
+  groups: { key: string; label: string; note: string; tools: string[] }[];
+  total: number;
+}
+
+export async function getAgentToolset(agentId: string): Promise<AgentToolset> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/toolset`);
+}
+
+/** Wie voll das Kontextfenster ist — die Zahlen für /compact. */
+export interface ChatContextInfo {
+  window: number;
+  used_estimate: number;
+  percent: number;
+  messages: number;
+  compacted: number;
+  keeps_verbatim: number;
+  can_compact: boolean;
+  model: string;
+}
+
+export async function getChatContext(
+  agentId: string,
+  sessionId: string,
+): Promise<ChatContextInfo> {
+  return fetchJSON(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/context`,
+  );
+}
+
+/** Verlauf im SELBEN Gespräch verdichten. Ältere Nachrichten werden markiert,
+ *  nicht gelöscht — verdichten heißt nicht verlieren. */
+export async function compactChatSession(
+  agentId: string,
+  sessionId: string,
+): Promise<{ ok: boolean; folded: number; kept: number }> {
+  return fetchJSON(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/compact`,
+    { method: "POST" },
+  );
+}
+
 export async function getPendingApprovalCount(): Promise<number> {
   const res = await fetchJSON<{ count: number }>(`${getBase()}/approvals/pending/count`);
   return res.count;

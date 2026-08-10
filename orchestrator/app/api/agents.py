@@ -2222,6 +2222,124 @@ async def summarize_chat_session(
     return result
 
 
+@router.get("/{agent_id}/chat/sessions/{session_id}/context")
+async def chat_session_context(
+    agent_id: str,
+    session_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wie voll ist das Kontextfenster — und lohnt sich Verdichten?
+
+    Die Schätzung ist ehrlich als Schätzung ausgewiesen: wir zählen Zeichen und
+    teilen durch vier, wie es der Kompaktierer im Agenten auch tut. Genau
+    abzurechnen ginge nur mit dem Tokenisierer des jeweiligen Modells, und der
+    unterscheidet sich je Anbieter — eine Zahl, die genauer aussieht als sie ist,
+    wäre schlechter als eine, der man ansieht, dass sie gerundet ist.
+    """
+    from app.core.agent_toolset import context_window_for
+    from app.core.chat_history import KEEP_VERBATIM, SUMMARY_MIN_MESSAGES, messages_of
+
+    await _check_owner(agent_id, user, db)
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    messages = await messages_of(db, agent_id, session_id)
+    live = [m for m in messages if not (m.meta or {}).get("compacted")]
+    chars = sum(len(m.content or "") for m in live)
+    used = chars // 4
+    window = context_window_for(agent.model)
+
+    return {
+        "window": window,
+        "used_estimate": used,
+        "percent": round(min(100.0, used / window * 100), 1) if window else 0.0,
+        "messages": len(live),
+        "compacted": len(messages) - len(live),
+        "keeps_verbatim": KEEP_VERBATIM,
+        # Verdichten lohnt erst, wenn ueberhaupt etwas zu falten ist.
+        "can_compact": len(live) >= SUMMARY_MIN_MESSAGES and len(live) > KEEP_VERBATIM,
+        "model": agent.model or "",
+    }
+
+
+@router.post("/{agent_id}/chat/sessions/{session_id}/compact")
+async def compact_chat_session(
+    agent_id: str,
+    session_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Den Verlauf im selben Gespräch verdichten (``/compact``).
+
+    Funktioniert in **allen drei Laufzeiten** gleich, weil es auf dem hier
+    gespeicherten Verlauf arbeitet und nicht im Agenten. Die Kompaktierung
+    *innerhalb* von Claude Code oder Codex bleibt davon unberührt — die machen
+    ihre CLIs selbst und lassen sich von aussen nicht anstossen.
+    """
+    from app.core.chat_history import compact_session
+
+    await _check_owner(agent_id, user, db)
+    result = await compact_session(db, agent_id, session_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
+@router.get("/{agent_id}/toolset")
+async def agent_toolset(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Was dieser Agent kann — je nach Laufzeit.
+
+    Bewusst NICHT eine einheitliche Liste: ein Claude-Code-Agent bekommt zu sehen,
+    was Claude Code hat, ein Codex-Agent das von Codex. Eine erfundene gemeinsame
+    Liste wäre bei jeder Laufzeit ein bisschen falsch.
+    """
+    from app.core.agent_toolset import toolset_for
+
+    await _check_owner(agent_id, user, db)
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    skills: list[str] = []
+    try:
+        from app.models.skill import AgentSkillAssignment, Skill
+
+        # Skills haengen ueber eine Zuordnungstabelle am Agenten, nicht direkt —
+        # ein Skill kann auf mehreren Agenten installiert sein.
+        skills = [
+            name for (name,) in (await db.execute(
+                select(Skill.name)
+                .join(AgentSkillAssignment, AgentSkillAssignment.skill_id == Skill.id)
+                .where(AgentSkillAssignment.agent_id == agent_id)
+            )).all()
+        ]
+    except Exception:  # noqa: BLE001 — ohne Skills ist die Liste kuerzer, nicht kaputt
+        logger.debug("Skills nicht ermittelbar", exc_info=True)
+
+    extra_mcp: list[str] = []
+    try:
+        from app.models.mcp_server import McpServer
+
+        wanted = (agent.config or {}).get("mcp_servers")
+        rows = (await db.execute(
+            select(McpServer).where(McpServer.enabled.is_(True))
+        )).scalars().all()
+        if wanted is not None:
+            rows = [r for r in rows if r.id in set(wanted)]
+        extra_mcp = [f"mcp_{r.name}" for r in rows]
+    except Exception:  # noqa: BLE001
+        logger.debug("MCP-Server nicht ermittelbar", exc_info=True)
+
+    return toolset_for(agent, skills=skills, extra_mcp=extra_mcp)
+
+
 @router.patch("/{agent_id}/chat/sessions/{session_id}")
 async def update_chat_session(
     agent_id: str,

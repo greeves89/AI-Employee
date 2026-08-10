@@ -290,7 +290,14 @@ function extractResultContent(content: unknown): string {
  * Funktionen, die auch die Knöpfe auslösen. Ein Hinweis auf Befehle, die nirgends
  * hinführen, wäre schlimmer als gar keiner.
  */
-const SLASH_COMMANDS: { name: string; hint: string }[] = [
+/** Notnagel, falls die Ausstattung des Agenten (noch) nicht geladen ist.
+ *
+ *  Nur die Befehle, die auf dem gespeicherten Verlauf arbeiten — die gelten in
+ *  jeder Laufzeit. Werkzeuge stehen hier bewusst NICHT: welche der Agent hat,
+ *  weiss nur der Server, und etwas anzubieten, das er nicht kann, wäre schlimmer
+ *  als eine kurze Liste. */
+const FALLBACK_COMMANDS: api.AgentToolset["commands"] = [
+  { name: "compact", hint: "Kontext anzeigen und den Verlauf verdichten" },
   { name: "planen", hint: "Nur den Weg beschreiben, nichts ausführen" },
   { name: "zusammenfassen", hint: "In frischem Gespräch weiterreden" },
   { name: "verzweigen", hint: "Ab der letzten Nachricht abzweigen" },
@@ -1132,7 +1139,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       if (slashOpen) {
         // Enter bei offener Befehlsliste fuehrt den Befehl aus, statt „/zusa" als
         // Nachricht abzuschicken.
-        const match = SLASH_COMMANDS.find((c) => c.name.startsWith(input.slice(1).toLowerCase()));
+        const match = slashCommands.find((c) => c.name.startsWith(input.slice(1).toLowerCase()));
         if (match) {
           runSlash(match.name);
           return;
@@ -1362,6 +1369,55 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   // Leerzeichen enthaelt — danach ist es Fliesstext, kein Befehl mehr.
   const slashOpen = /^\/[a-z]*$/i.test(input);
 
+  // Die Ausstattung DIESES Agenten — je nach Laufzeit verschieden. Einmal
+  // geholt: sie ändert sich nur, wenn jemand Skills oder MCP-Server umstellt.
+  const [toolset, setToolset] = useState<api.AgentToolset | null>(null);
+  useEffect(() => {
+    api.getAgentToolset(agentId).then(setToolset).catch(() => setToolset(null));
+  }, [agentId]);
+
+  const slashCommands = toolset?.commands ?? FALLBACK_COMMANDS;
+
+  // /tools und /compact öffnen eine Tafel statt einer Nachricht — beides sind
+  // Auskünfte, keine Aufträge an den Agenten.
+  const [panel, setPanel] = useState<"tools" | "compact" | null>(null);
+  const [contextInfo, setContextInfo] = useState<api.ChatContextInfo | null>(null);
+  const [compacting, setCompacting] = useState(false);
+
+  const openCompact = useCallback(async () => {
+    if (!activeSessionId) {
+      chatToast.info("Kein Gespräch", "Schreib zuerst eine Nachricht.");
+      return;
+    }
+    setPanel("compact");
+    setContextInfo(null);
+    try {
+      setContextInfo(await api.getChatContext(agentId, activeSessionId));
+    } catch (e) {
+      chatToast.error("Kontext nicht abrufbar", e instanceof Error ? e.message : undefined);
+      setPanel(null);
+    }
+  }, [agentId, activeSessionId, chatToast]);
+
+  const doCompact = useCallback(async () => {
+    if (!activeSessionId) return;
+    setCompacting(true);
+    try {
+      const res = await api.compactChatSession(agentId, activeSessionId);
+      chatToast.success(
+        "Verdichtet",
+        `${res.folded} Nachricht(en) zusammengefasst, ${res.kept} bleiben wörtlich.`,
+      );
+      setPanel(null);
+      // Den Verlauf neu holen — die gefalteten Nachrichten sind jetzt markiert.
+      setHistoryReloadKey((k) => k + 1);
+    } catch (e) {
+      chatToast.error("Verdichten fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    } finally {
+      setCompacting(false);
+    }
+  }, [agentId, activeSessionId, chatToast]);
+
   const runSlash = useCallback((name: string) => {
     setInput("");
     const lastId = [...messages].reverse().find((m) => m.role !== "system")?.id;
@@ -1372,11 +1428,26 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       chatToast.info("Planen", "Schreib den Auftrag und drück auf „Planen“.");
       return;
     }
+    if (name === "compact") { void openCompact(); return; }
+    if (name === "tools") { setPanel("tools"); return; }
     if (name === "zusammenfassen") { void summarizeToNew(); return; }
     if (name === "verzweigen" && lastId) { void forkFrom(lastId); return; }
     if (name === "zurueckspulen" && lastId) { void rewindTo(lastId); return; }
+    // Befehle, die IN der Laufzeit stecken (Claude Codes eigenes /compact): wir
+    // können sie von aussen nicht auslösen. Das zu verschweigen wäre schlimmer
+    // als es zu sagen.
+    const known = slashCommands.find((c) => c.name === name);
+    if (known?.runtime_only) {
+      chatToast.info(
+        `/${name} gehört der Laufzeit`,
+        "Der Befehl läuft in der CLI des Agenten und ist von hier nicht auslösbar. " +
+          "Nimm /compact — das verdichtet den hier gespeicherten Verlauf.",
+      );
+      return;
+    }
     chatToast.info("Geht gerade nicht", "Dafür braucht es mindestens eine Nachricht.");
-  }, [messages, summarizeToNew, forkFrom, rewindTo, chatToast]);
+  }, [messages, summarizeToNew, forkFrom, rewindTo, chatToast, openCompact,
+      slashCommands]);
 
   const [inputFocused, setInputFocused] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -1610,6 +1681,137 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       </div>
 
       {/* L3 Approval Request Banner */}
+      {/* Tafeln fuer /tools und /compact. Beides sind Auskuenfte, keine Auftraege
+          an den Agenten — deshalb ein Fenster und keine Nachricht im Verlauf. */}
+      {panel && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={() => setPanel(null)}
+        >
+          <div
+            className="max-h-[80dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {panel === "compact" ? (
+              <>
+                <h3 className="text-sm font-semibold">Kontext</h3>
+                {!contextInfo ? (
+                  <p className="mt-3 text-xs text-muted-foreground">Wird ermittelt…</p>
+                ) : (
+                  <>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
+                        <div
+                          className={cn(
+                            "h-2 rounded-full transition-all",
+                            contextInfo.percent < 50 ? "bg-emerald-500"
+                              : contextInfo.percent < 80 ? "bg-amber-500" : "bg-red-500",
+                          )}
+                          style={{ width: `${Math.max(2, contextInfo.percent)}%` }}
+                        />
+                      </div>
+                      <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums">
+                        {contextInfo.percent}%
+                      </span>
+                    </div>
+                    <dl className="mt-3 space-y-1 text-[11px] text-muted-foreground">
+                      <div className="flex justify-between">
+                        <dt>Geschätzt belegt</dt>
+                        <dd className="tabular-nums text-foreground/80">
+                          {contextInfo.used_estimate.toLocaleString()} von{" "}
+                          {contextInfo.window.toLocaleString()} Token
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt>Nachrichten</dt>
+                        <dd className="tabular-nums text-foreground/80">{contextInfo.messages}</dd>
+                      </div>
+                      {contextInfo.compacted > 0 && (
+                        <div className="flex justify-between">
+                          <dt>bereits verdichtet</dt>
+                          <dd className="tabular-nums text-foreground/80">{contextInfo.compacted}</dd>
+                        </div>
+                      )}
+                      {contextInfo.model && (
+                        <div className="flex justify-between">
+                          <dt>Modell</dt>
+                          <dd className="font-mono text-foreground/80">{contextInfo.model}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground/60">
+                      Die Belegung ist <b>geschätzt</b> (Zeichen ÷ 4). Genau ginge nur mit dem
+                      Tokenisierer des jeweiligen Modells — eine Zahl, die genauer aussieht
+                      als sie ist, wäre schlechter als eine gerundete.
+                    </p>
+                    <button
+                      onClick={doCompact}
+                      disabled={!contextInfo.can_compact || compacting}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-40"
+                    >
+                      {compacting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      Verlauf verdichten
+                    </button>
+                    <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/60">
+                      {contextInfo.can_compact
+                        ? `Die letzten ${contextInfo.keeps_verbatim} Nachrichten bleiben wörtlich — die jüngste Werkzeug-Ein- und -Ausgabe ist zusammengefasst wertlos. Ältere werden markiert, nicht gelöscht.`
+                        : "Noch zu kurz zum Verdichten."}
+                    </p>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="text-sm font-semibold">
+                  Werkzeuge dieses Agenten
+                  {toolset && (
+                    <span className="ml-2 font-normal text-[11px] text-muted-foreground">
+                      {toolset.mode === "claude_code" ? "Claude Code"
+                        : toolset.mode === "codex_cli" ? "Codex" : "Eigenes Modell"}
+                      {" · "}{toolset.total}
+                    </span>
+                  )}
+                </h3>
+                {!toolset ? (
+                  <p className="mt-3 text-xs text-muted-foreground">Wird ermittelt…</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {toolset.groups.map((g) => (
+                      <div key={g.key}>
+                        <div className="text-[11px] font-medium">
+                          {g.label}
+                          {g.note && (
+                            <span className="ml-1.5 font-normal text-muted-foreground/50">
+                              — {g.note}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {g.tools.map((t) => (
+                            <span
+                              key={t}
+                              className="rounded border border-foreground/[0.08] bg-foreground/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            <button
+              onClick={() => setPanel(null)}
+              className="mt-4 w-full rounded-xl border border-foreground/[0.08] px-4 py-2 text-sm text-muted-foreground hover:bg-foreground/[0.06]"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      )}
+
       {pendingApproval && (
         <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
@@ -1733,7 +1935,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                 <p className="px-3 pb-1.5 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
                   Befehle
                 </p>
-                {SLASH_COMMANDS.filter((c) =>
+                {slashCommands.filter((c) =>
                   c.name.startsWith(input.slice(1).toLowerCase()),
                 ).map((c) => (
                   <button
@@ -1745,7 +1947,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                     <span className="text-[11px] text-muted-foreground/70">{c.hint}</span>
                   </button>
                 ))}
-                {SLASH_COMMANDS.every((c) => !c.name.startsWith(input.slice(1).toLowerCase())) && (
+                {slashCommands.every((c) => !c.name.startsWith(input.slice(1).toLowerCase())) && (
                   <p className="px-3 pb-2.5 text-[11px] text-muted-foreground/50">
                     Kein Befehl mit diesem Namen — Enter schickt den Text normal ab.
                   </p>

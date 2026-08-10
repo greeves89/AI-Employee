@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.174.0] — 2026-08-10
+
+### Added
+- **`/` im Chat zeigt jetzt, was DIESER Agent kann** — je nach Laufzeit
+  verschieden. Ein Claude-Code-Agent sieht Claude Codes eigene Werkzeuge und die
+  MCP-Server, ein Codex- oder Custom-LLM-Agent den gemeinsamen Werkzeugsatz. Dazu
+  die installierten Skills und freigeschalteten MCP-Server dieses Agenten. Eine
+  erfundene gemeinsame Liste wäre bei jeder Laufzeit ein bisschen falsch gewesen.
+- **`/compact`** — zeigt das Kontextfenster (belegt / verfügbar, Modell,
+  Nachrichten) und verdichtet den Verlauf **im selben Gespräch**. Die letzten 8
+  Nachrichten bleiben wörtlich; ältere werden **markiert, nicht gelöscht** —
+  verdichten heißt nicht verlieren. Für den Menschen bleibt der Verlauf lesbar.
+- **`/tools`** — die vollständige Ausstattung als Tafel.
+
+### Wichtig zur Einordnung
+`/compact` arbeitet auf dem **hier gespeicherten** Verlauf und funktioniert
+deshalb in allen drei Laufzeiten gleich. Die Kompaktierung *innerhalb* von Claude
+Code und Codex bleibt davon unberührt — die machen ihre CLIs selbst und lassen
+sich von außen nicht anstoßen. Claude Codes eigene Befehle (`/compact`, `/clear`,
+`/cost`) stehen deshalb in der Liste, sind aber als **„gehört der Laufzeit"**
+markiert: sie zu zeigen ist ehrlich, sie als unsere auszugeben nicht.
+
+### Zum Stand der Kompaktierung
+Eine eigene Kontextverdichtung haben wir nur für **Custom-LLM**
+(`context_compressor.py`: Snip → Microcompact → Collapse → gleitende
+Zusammenfassung, ausgelöst bei `min(75 % des Fensters, 150 000 Token)`, die
+letzten 24 Nachrichten bleiben wörtlich). Claude Code und Codex verwalten ihren
+Kontext selbst — wir sehen es nicht und können es nicht steuern.
+
+### Tests
+1889 grün. 22 neue, darunter ein Katalog-Paritätstest: er liest die echten
+Werkzeugdefinitionen aus `agent/mcp/*.mjs` und `agent/app/tools/definitions.py`
+und hält sie gegen den Katalog im Orchestrator. Er hat beim ersten Lauf sofort
+zugeschlagen — die von Hand getippte Liste war an neun Stellen falsch.
+
+---
+
 ## [1.173.0] — 2026-08-10
 
 Kundenmeldung: wer sich über Microsoft anmeldet, um dem M365-MCP zuzustimmen,
