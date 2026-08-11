@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.175.1] — 2026-08-11
+
+### Fixed
+- **In einem langen Gespräch klebte man oben.** Die Ansicht sprang nur dann ans
+  Ende, wenn sie im Moment der neuen Nachricht schon fast unten stand. Beim
+  Öffnen einer langen Unterhaltung steht sie aber ganz oben — `scrollTop` ist 0,
+  „fast unten" also nie wahr. Folge: die Ansicht sprang kein einziges Mal ans
+  Ende, und der laufende Strom lief unsichtbar unter einem weiter. Je länger man
+  in einem Gespräch arbeitete, desto sicherer trat der Fehler auf.
+
+  Ob gefolgt wird, entscheidet jetzt das Scrollen selbst und nicht mehr die
+  Position beim Eintreffen einer Nachricht. Ein Gesprächswechsel beginnt beim
+  Neuesten; wer hochscrollt, hält die Ansicht weiterhin an — nur kommt er mit dem
+  neuen Knopf **Zum Neuesten** mit einem Klick zurück, statt sich von Hand bis
+  ans Ende arbeiten zu müssen.
+
 ## [1.175.0] — 2026-08-10
 
 ### Fixed

@@ -7,6 +7,7 @@ import {
   ChevronRight, CheckCircle2, XCircle, Clock, X, Play, Pause, Download,
   Trash2, Type, LayoutGrid, FileText, PanelLeft, PanelLeftClose, Brain, Check, Wrench,
   GitBranch,
+  ArrowDown,
   Undo2,
   Sparkles as SummarizeIcon,
 } from "lucide-react";
@@ -414,6 +415,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Folgt die Ansicht dem Strom? Wird ausschliesslich vom Scrollen gesetzt, nicht
+  // von der Position beim Eintreffen einer Nachricht — siehe Auto-Scroll unten.
+  const followRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Auto-grow the input with its content (capped via max-h on the element);
   // collapses back to one row when cleared (e.g. after sending).
@@ -1006,18 +1011,51 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   }, [connect]);
 
   // Auto-scroll — jump instantly (no "smooth", which made the view creep on every
-  // streamed token) and ONLY when the user is already near the bottom, so reading
-  // older messages isn't yanked away mid-stream.
+  // streamed token) and only while the view is FOLLOWING, so reading older
+  // messages isn't yanked away mid-stream.
+  //
+  // Ob gefolgt wird, entscheidet jetzt das Scrollen selbst (``followRef``) und
+  // nicht mehr die Position im Moment der neuen Nachricht. Der Unterschied
+  // zaehlt genau in einem langen Gespraech: dort steht die frisch geladene
+  // Ansicht ganz oben, ``scrollTop`` ist 0 — „fast unten" war also nie wahr, und
+  // damit sprang die Ansicht kein einziges Mal ans Ende. Man klebte oben, und
+  // der laufende Strom lief unsichtbar unter einem weiter.
   useEffect(() => {
+    if (!followRef.current) return;
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+    });
+  }, [messages]);
+
+  // Ein Gesprächswechsel beginnt beim Neuesten — es gibt noch keine Lesestelle,
+  // die zu schuetzen waere.
+  useEffect(() => {
+    followRef.current = true;
+    setShowJumpToLatest(false);
+  }, [activeSessionId]);
+
+  // Nach dem Laden der Vorgeschichte stehen die Nachrichten erst im DOM, wenn
+  // der Browser gelayoutet hat — deshalb hier und nicht im Ladepfad.
+  useEffect(() => {
+    if (!historyLoaded || !followRef.current) return;
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+    });
+  }, [historyLoaded, activeSessionId]);
+
+  const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) {
-      requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "auto" });
-      });
-    }
-  }, [messages]);
+    followRef.current = nearBottom;
+    setShowJumpToLatest(!nearBottom);
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    followRef.current = true;
+    setShowJumpToLatest(false);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   const sendMessage = useCallback(async (plan = false) => {
     const text = input.trim();
@@ -1516,7 +1554,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       )}
 
       {/* Right column: toolbar + messages + input */}
-      <div className="flex h-full min-w-0 flex-1 flex-col">
+      {/* relative: Anker fuer den „Zum Neuesten"-Knopf ueber dem Eingabefeld */}
+      <div className="relative flex h-full min-w-0 flex-1 flex-col">
       {/* Toolbar — hidden in embedded (modal) mode */}
       {!embedded && (
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
@@ -1600,6 +1639,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       {/* Messages area — font size via zoom; file drag&drop is handled on the chat root */}
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className={cn(
           "relative flex-1 overflow-y-auto [scrollbar-gutter:stable] px-5 py-4 space-y-4 bg-background dark:bg-[#0d1117]",
           viewMode === "overview" && "hidden"
@@ -1679,6 +1719,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Wer hochgescrollt hat, kommt mit einem Klick zurueck. Ohne das bleibt
+          man in einem langen Gespraech oben stehen und muesste sich per Hand bis
+          ans Ende arbeiten, um dem Strom wieder zu folgen. */}
+      {showJumpToLatest && viewMode !== "overview" && (
+        <button
+          onClick={jumpToLatest}
+          title="Zum Neuesten springen"
+          className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur transition-colors hover:bg-accent"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          Zum Neuesten
+        </button>
+      )}
 
       {/* L3 Approval Request Banner */}
       {/* Tafeln fuer /tools und /compact. Beides sind Auskuenfte, keine Auftraege
