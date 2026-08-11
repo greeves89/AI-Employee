@@ -5,6 +5,100 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.176.0] — 2026-08-11
+
+### Added
+- **Kosten in Euro, in deutscher Schreibweise.** Bisher stand überall `$138.4410` —
+  falsche Währung, kein Tausenderpunkt, vier Nachkommastellen auch bei dreistelligen
+  Beträgen. Jetzt `138,44 €`, an **allen 23 Stellen**, an denen Geld angezeigt wird
+  (Dashboard, Analytics, Aufgaben, Budgets, Chat-Fußzeile, Admin, Audit, Concierge,
+  Kiosk) — über **eine** gemeinsame Funktion, nicht 23 einzelne.
+
+  Umgerechnet wird ausschliesslich für die **Anzeige**. Gespeichert bleibt USD: sonst
+  hinge jeder Altbetrag an dem Tageskurs, zu dem er zufällig eingetragen wurde, und
+  liesse sich nie wieder geradeziehen. Der Originalbetrag samt Kurs steht als
+  Beschriftung an jeder umgerechneten Zahl.
+
+  Währung und Kurs stellt ein Administrator unter **Settings → Anzeigewährung** ein.
+  Ein Kurs ausserhalb von 0,01–100 wird abgewiesen statt zurechtgebogen — ein Kurs
+  von 0 macht lautlos jede Zahl der Oberfläche zu „0,00 €".
+
+  Nachkommastellen richten sich nach der Größe: unter einem Cent vier Stellen, damit
+  ein Aufruf für einen Drittel-Cent nicht als kostenlos erscheint; ab einem Euro zwei.
+
+- **Öffentliche App-Links können unbefristet gelten.** Bisher war ein Ablaufdatum
+  Pflicht (max. 90 Tage). Für Demos, die stehen bleiben sollen, gibt es jetzt den
+  Haken **„Unbefristet — läuft nie ab"**. Sieben Tage bleiben die Vorgabe und
+  unbefristet die bewusste Ausnahme: der Link bleibt offen, bis ihn jemand
+  zurückzieht, und daran erinnert niemand. Das steht so auch in der Oberfläche.
+
+- **Der Agent sagt, was er vorhat, bevor die Werkzeugkette losläuft.** Der Abschnitt
+  „Communication" der Agenten-Anleitung regelte nur das Danach („summarize what you
+  did"). Über das Davor stand nichts — also fing das Modell wortlos an, und man sah
+  minutenlang Werkzeugsymbole ohne zu wissen, worauf man wartet. Jetzt ein Satz
+  vorweg, in der Sprache des Nutzers. Ein oder zwei schnelle Aufrufe brauchen keine
+  Ansage; das wäre Lärm bei jeder Antwort. Die Anleitung geht als `/workspace/AGENT.md`
+  an alle drei Laufzeiten — Claude Code, Codex und Custom-LLM.
+
+- **Öffentliche App-Links stehen jetzt in der Liste — mit Kopieren und Papierkorb.**
+  Bisher gab es den Link genau einmal, in der Antwort auf das Anlegen. Das klang
+  sicherer, als es war: wer ihn verlor, legte einen neuen an und liess den alten
+  stehen. Am Ende lebten mehr Links, als jemand überblickte. Der Token wird jetzt
+  zusätzlich **verschlüsselt** aufbewahrt (Fernet, derselbe `ENCRYPTION_KEY` wie
+  bei allen anderen Zugangsdaten) und nur dem **Besitzer** ausgeliefert.
+
+  Geprüft wird weiterhin gegen den **Hash** — das ist der schnelle, konstantzeitige
+  Vergleich, der bei jedem Seitenaufruf läuft. Ändert sich der Schlüssel, funktioniert
+  der Link also weiter, nur anzeigen lässt er sich nicht mehr; dann steht dort nichts
+  statt etwas Falschem. Freigaben von vor dieser Version haben keinen Klartext mehr —
+  das ist keine Lücke, sondern die alte Ablage.
+
+### Fixed
+- **Stop meldete einen Fehler, den niemand gemacht hat.** Nach einem Klick auf Stop
+  stand `Unexpected error: ReadError('')` in Rot im Chat. Der Fehler war echt: das
+  Anhalten schliesst den laufenden HTTP-Strom, und das Lesen darauf wirft in httpx
+  einen `ReadError` — unser eigener Abbruch kam als Störung zurück. Jetzt wird der
+  Zug sauber als **abgebrochen** abgeschlossen, der Verlauf bleibt stehen, und der
+  nächste Zug setzt darauf auf. Echte Störungen bleiben Fehler.
+
+  Der Claude-CLI-Pfad kannte das längst (`_interrupted`, SIGINT/Code -2) — nur die
+  Custom-LLM-Laufzeit nicht. Harness-Parität, jetzt mit Test in beiden.
+- **Beim Senden folgte die Ansicht nicht.** Nachtrag zu 1.175.1: wer weiter oben
+  gelesen hatte und dann eine Nachricht abschickte, blieb dort stehen. Senden ist
+  aber eine ausdrückliche Handlung — jetzt springt die Ansicht dabei ans Ende.
+- **Fliesskomma-Einstellungen kamen als Zeichenkette aus der Ablage zurück.** Bools
+  und ganze Zahlen wurden umgewandelt, Fliesskommazahlen nicht. Bisher folgenlos, weil
+  keine der drei betroffenen Einstellungen über die Ablage lief — mit dem Umrechnungs-
+  kurs wäre es sofort aufgefallen, und zwar weit weg von der Ursache: beim Rechnen.
+  Ein unbrauchbarer Wert lässt jetzt den Vorgabewert stehen, statt ihn zu überschreiben.
+
+## [1.175.2] — 2026-08-11
+
+### Fixed
+- **Erledigte Aufgaben standen in der falschen Reihenfolge.** Der Server sortiert
+  die ganze Liste nach Priorität und Reihenfolge — richtig für Offenes, aber im
+  Abschnitt „Erledigt" stand dadurch ganz oben, was vor Wochen abgehakt wurde.
+  Wer dort nachsieht, will wissen, was gerade fertig geworden ist. Jetzt zuletzt
+  Erledigtes zuerst, mit Datum am Eintrag, damit die Reihenfolge nachvollziehbar
+  ist. Einträge ohne `completed_at` (abgehakt, bevor es das Feld gab) fallen auf
+  die letzte Änderung und dann auf die Anlage zurück, statt ans Ende zu rutschen.
+
+## [1.175.1] — 2026-08-11
+
+### Fixed
+- **In einem langen Gespräch klebte man oben.** Die Ansicht sprang nur dann ans
+  Ende, wenn sie im Moment der neuen Nachricht schon fast unten stand. Beim
+  Öffnen einer langen Unterhaltung steht sie aber ganz oben — `scrollTop` ist 0,
+  „fast unten" also nie wahr. Folge: die Ansicht sprang kein einziges Mal ans
+  Ende, und der laufende Strom lief unsichtbar unter einem weiter. Je länger man
+  in einem Gespräch arbeitete, desto sicherer trat der Fehler auf.
+
+  Ob gefolgt wird, entscheidet jetzt das Scrollen selbst und nicht mehr die
+  Position beim Eintreffen einer Nachricht. Ein Gesprächswechsel beginnt beim
+  Neuesten; wer hochscrollt, hält die Ansicht weiterhin an — nur kommt er mit dem
+  neuen Knopf **Zum Neuesten** mit einem Klick zurück, statt sich von Hand bis
+  ans Ende arbeiten zu müssen.
+
 ## [1.175.0] — 2026-08-10
 
 ### Fixed

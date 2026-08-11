@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Key, MessageSquare, Save, Loader2,
-  CheckCircle2, AlertCircle, Shield, Bot, Gauge,
+  CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
   Plug, Mic, AlertTriangle, Moon,
@@ -157,6 +157,10 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [defaultModel, setDefaultModel] = useState("claude-sonnet-4-6");
   const [maxTurns, setMaxTurns] = useState(100);
   const [maxAgents, setMaxAgents] = useState(10);
+  // Anzeigewaehrung. Gespeichert wird IMMER in USD — das hier betrifft nur die
+  // Darstellung, siehe lib/money.ts.
+  const [displayCurrency, setDisplayCurrency] = useState("EUR");
+  const [usdEurRate, setUsdEurRate] = useState(0.92);
   const [registrationOpen, setRegistrationOpen] = useState(true);
   // OAuth integration credentials
   const [googleClientId, setGoogleClientId] = useState("");
@@ -420,6 +424,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setDefaultModel(s.default_model);
       setMaxTurns(s.max_turns);
       setMaxAgents(s.max_agents);
+      setDisplayCurrency(s.display_currency || "EUR");
+      if (s.usd_eur_rate) setUsdEurRate(s.usd_eur_rate);
       setRegistrationOpen(s.registration_open);
       setAwsRegion(s.aws_region || "us-east-1");
       setVertexRegion(s.vertex_region || "us-east5");
@@ -492,6 +498,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         default_model: defaultModel,
         max_turns: maxTurns,
         max_agents: maxAgents,
+        display_currency: displayCurrency,
+        usd_eur_rate: usdEurRate,
         registration_open: registrationOpen,
       };
       // Provider-specific credentials
@@ -1079,6 +1087,46 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               <p className="text-[10px] text-muted-foreground/40 mt-1.5">
                 Maximum number of agents running simultaneously.
               </p>
+            </div>
+
+            {/* Waehrung. Die Anbieter rechnen in USD ab, und so werden Kosten
+                auch gespeichert — hier wird ausschliesslich die ANZEIGE
+                umgerechnet. Andersherum haenge jeder Altbetrag an dem Tageskurs,
+                zu dem er zufaellig eingetragen wurde. */}
+            <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.015] p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Coins className="h-3.5 w-3.5 text-muted-foreground/50" />
+                <label className="text-[11px] font-medium text-muted-foreground/70">Anzeigewährung</label>
+              </div>
+              <select
+                value={displayCurrency}
+                onChange={(e) => setDisplayCurrency(e.target.value)}
+                className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+              >
+                <option value="EUR">Euro (€)</option>
+                <option value="USD">US-Dollar ($) — keine Umrechnung</option>
+              </select>
+              {displayCurrency === "EUR" && (
+                <>
+                  <label className="mt-3 block text-[11px] font-medium text-muted-foreground/70">
+                    Kurs USD → EUR
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max="100"
+                    value={usdEurRate}
+                    onChange={(e) => setUsdEurRate(Number(e.target.value))}
+                    className="mt-1.5 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
+                  />
+                  <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+                    Fester Kurs — er wird nicht automatisch nachgeführt. Abgerechnet
+                    wird weiterhin in USD; der Originalbetrag steht an jeder Zahl als
+                    Beschriftung.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </section>

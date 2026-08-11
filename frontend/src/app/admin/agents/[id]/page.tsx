@@ -24,6 +24,7 @@ import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import * as api from "@/lib/api";
 import type { AdminAgentStats } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 
 const stateColors: Record<string, string> = {
   running: "text-emerald-500",
@@ -189,7 +190,7 @@ export default function AdminAgentDetailPage() {
               <StatCard
                 icon={DollarSign}
                 label="Total Cost"
-                value={`$${data.stats.total_cost_usd.toFixed(4)}`}
+                value={formatMoney(data.stats.total_cost_usd)}
                 color="text-amber-500"
                 bg="bg-amber-500/10"
               />
@@ -328,7 +329,7 @@ export default function AdminAgentDetailPage() {
                       </span>
                       {task.cost_usd !== null && (
                         <span className="shrink-0 text-[11px] text-muted-foreground">
-                          ${task.cost_usd.toFixed(4)}
+                          {formatMoney(task.cost_usd)}
                         </span>
                       )}
                       {task.duration_ms !== null && (

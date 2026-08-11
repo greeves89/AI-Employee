@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { getAnalyticsOverview, getAnalyticsSkills, getAnalyticsAgents, getAnalyticsAgentDetail } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -35,7 +36,7 @@ function fmtMs(ms: number | null | undefined): string {
 
 function fmtCost(usd: number | null | undefined): string {
   if (!usd) return "$0.00";
-  return `$${usd.toFixed(4)}`;
+  return formatMoney(usd);
 }
 
 function Stars({ value }: { value: number | null | undefined }) {

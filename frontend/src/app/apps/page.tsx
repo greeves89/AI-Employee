@@ -279,10 +279,14 @@ function DetailModal({ app, onClose, onShowLogs }: {
   const [scope, setScope] = useState<api.AppShareScope>("user");
   const [userId, setUserId] = useState("");
   const [days, setDays] = useState(7);
+  // 0 Tage = unbefristet. Eigener Zustand statt „days === 0", damit die
+  // eingestellte Dauer erhalten bleibt, wenn man den Haken wieder wegnimmt.
+  const [neverExpires, setNeverExpires] = useState(false);
   const [directory, setDirectory] = useState<{ id: string; name: string; email: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [shareErr, setShareErr] = useState("");
   const [freshLink, setFreshLink] = useState("");
+  const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
@@ -307,7 +311,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
       const created = await api.createAppShare(app.project, {
         scope,
         ...(scope === "user" ? { user_id: userId } : {}),
-        ...(scope === "public" ? { expires_in_days: days } : {}),
+        ...(scope === "public" ? { expires_in_days: neverExpires ? 0 : days } : {}),
       });
       if (created.token && detail?.proxy_container && detail?.proxy_port) {
         setFreshLink(
@@ -324,6 +328,23 @@ function DetailModal({ app, onClose, onShowLogs }: {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Aus Token + Proxy-Ziel den vollstaendigen Link bauen — dieselbe Formel wie
+  // beim Anlegen, damit es nur EINE Stelle gibt, die weiss, wie er aussieht.
+  const shareLink = (s: api.AppShare): string =>
+    s.token && detail?.proxy_container && detail?.proxy_port
+      ? `${window.location.origin}/api/v1/agents/${detail.agent_id}/apps/proxy/` +
+        `${detail.proxy_container}/${detail.proxy_port}/?__aie_share=${encodeURIComponent(s.token)}`
+      : "";
+
+  const copyShareLink = (s: api.AppShare) => {
+    const link = shareLink(s);
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedShareId(s.id);
+      setTimeout(() => setCopiedShareId(null), 1500);
+    });
   };
 
   const revoke = async (id: string) => {
@@ -441,10 +462,25 @@ function DetailModal({ app, onClose, onShowLogs }: {
                               </p>
                             </div>
                           </div>
-                          <button onClick={() => revoke(s.id)} title="Freigabe zurückziehen"
-                            className="text-red-400/80 hover:text-red-400 shrink-0">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Der Link gehoert in die Liste, nicht nur in den Moment
+                                seiner Entstehung. Wer ihn verlor, legte frueher einen
+                                neuen an und liess den alten stehen — am Ende lebten
+                                mehr Links, als jemand ueberblickte. */}
+                            {s.scope === "public" && shareLink(s) && (
+                              <button onClick={() => copyShareLink(s)}
+                                title="Link kopieren"
+                                className="text-muted-foreground/70 hover:text-foreground">
+                                {copiedShareId === s.id
+                                  ? <Check className="h-4 w-4 text-emerald-400" />
+                                  : <Copy className="h-4 w-4" />}
+                              </button>
+                            )}
+                            <button onClick={() => revoke(s.id)} title="Freigabe zurückziehen"
+                              className="text-red-400/80 hover:text-red-400">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -490,11 +526,26 @@ function DetailModal({ app, onClose, onShowLogs }: {
                         </div>
                         <label className="flex items-center gap-2 text-xs text-muted-foreground">
                           Gültig für
-                          <input type="number" min={1} max={90} value={days}
+                          <input type="number" min={1} max={90} value={days || ""}
+                            disabled={neverExpires}
                             onChange={(e) => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
-                            className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground" />
+                            className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground disabled:opacity-40" />
                           Tage (max. 90)
                         </label>
+                        {/* Unbefristet ist eine bewusste Ausnahme, keine Vorgabe — der
+                            Link bleibt offen, bis ihn jemand zurueckzieht. */}
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <input type="checkbox" checked={neverExpires}
+                            onChange={(e) => setNeverExpires(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-border accent-violet-500" />
+                          Unbefristet — läuft nie ab
+                        </label>
+                        {neverExpires && (
+                          <p className="text-[11px] text-amber-300/90">
+                            Dieser Link bleibt gültig, bis du ihn zurückziehst. Niemand
+                            erinnert dich daran.
+                          </p>
+                        )}
                       </div>
                     )}
 

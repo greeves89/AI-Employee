@@ -3305,7 +3305,9 @@ export interface AppShare {
   expired: boolean;
   has_token: boolean;
   created_at: string | null;
-  /** Only ever present in the CREATE response — never listed again. */
+  /** Klartext-Link-Token. Nur für den Besitzer, in der Antwort aufs Anlegen UND
+   *  in der Freigabe-Liste einer App — seit 1.176.0 wird er verschlüsselt
+   *  aufbewahrt. Fehlt bei Freigaben, die vor dieser Version entstanden sind. */
   token?: string;
 }
 

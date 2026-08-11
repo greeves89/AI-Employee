@@ -21,6 +21,7 @@ import { useAgents } from "@/hooks/use-agents";
 import type { AuditLog, AuditSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
+import { formatMoney } from "@/lib/money";
 
 const EVENT_ICONS: Record<string, React.ReactNode> = {
   COMMAND_EXECUTED: <Terminal className="h-3.5 w-3.5" />,
@@ -176,7 +177,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                       <p className="text-xs font-medium truncate mb-1">{agent.name}</p>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] text-muted-foreground">
-                          ${(agent.total_cost_usd ?? 0).toFixed(2)} / ${agent.budget_usd!.toFixed(2)}
+                          {formatMoney(agent.total_cost_usd ?? 0)} / {formatMoney(agent.budget_usd!)}
                         </span>
                         <span className={cn(
                           "text-[10px] font-bold",

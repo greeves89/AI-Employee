@@ -25,6 +25,7 @@ from app.core.app_sharing import (
     is_app_owner,
     shared_projects_for_user,
 )
+from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
@@ -409,13 +410,37 @@ class ShareCreate(BaseModel):
     scope: str = ACCESS_USER
     #: nur bei scope="user"
     user_id: str | None = None
-    #: Pflicht bei scope="public", sonst optional (Tage ab jetzt)
+    #: Tage ab jetzt. Bei scope="public": 0 = unbefristet, weggelassen = 7 Tage.
     expires_in_days: int | None = None
 
 
-def _share_dict(s: AppShare, name: str | None = None) -> dict:
-    """Token bewusst NICHT hier — der geht nur einmal beim Anlegen zurück."""
-    return {
+def _encrypted_or_none(token: str | None) -> str | None:
+    """Token verschlüsselt für die spätere Anzeige — oder gar nicht.
+
+    Ohne brauchbaren ``ENCRYPTION_KEY`` darf das Freigeben nicht scheitern: der
+    Link funktioniert auch so (geprüft wird gegen den Hash), er lässt sich dann
+    nur später nicht mehr anzeigen. Ein halb kaputter Schlüssel ist ein
+    Betriebsproblem, kein Grund, dem Nutzer die Funktion wegzunehmen.
+    """
+    if not token:
+        return None
+    try:
+        return encrypt_token(token)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Apps] Link-Token nicht verschluesselbar (%s) — Link wird "
+                       "nur einmalig angezeigt", type(exc).__name__)
+        return None
+
+
+def _share_dict(s: AppShare, name: str | None = None, *, with_token: bool = False) -> dict:
+    """Eine Freigabe als JSON.
+
+    ``with_token`` gibt den Klartext-Token mit — NUR an den Besitzer, und nur dort,
+    wo die Aufrufkette das bereits geprüft hat (Anlegen und die Freigabe-Liste
+    einer App, beide ``_require_app_owner``). Die Apps-Übersicht und alles, was
+    Freigegebene sehen, geht ohne.
+    """
+    out = {
         "id": s.id, "project": s.project, "scope": s.scope,
         "user_id": s.user_id, "user_name": name,
         "expires_at": s.expires_at.isoformat() if s.expires_at else None,
@@ -423,6 +448,15 @@ def _share_dict(s: AppShare, name: str | None = None) -> dict:
         "has_token": bool(s.token_hash),
         "created_at": s.created_at.isoformat() if s.created_at else None,
     }
+    if with_token and s.token_enc:
+        try:
+            out["token"] = decrypt_token(s.token_enc)
+        except Exception:  # noqa: BLE001
+            # Geänderter oder fehlender ENCRYPTION_KEY. Der Link funktioniert
+            # weiter — geprüft wird gegen den Hash —, nur anzeigen können wir ihn
+            # nicht. Dann lieber nichts als etwas Falsches zum Kopieren.
+            logger.warning("[Apps] share %s: Token nicht entschlüsselbar", s.id)
+    return out
 
 
 @router.get("/directory")
@@ -468,7 +502,8 @@ async def list_app_shares(
     if uids:
         for r in (await db.execute(select(User.id, User.name).where(User.id.in_(uids)))).all():
             names[r[0]] = r[1]
-    return {"shares": [_share_dict(s, names.get(s.user_id or "")) for s in rows]}
+    # Besitzer-geprueft (``_require_app_owner`` oben) — hier darf der Link mit.
+    return {"shares": [_share_dict(s, names.get(s.user_id or ""), with_token=True) for s in rows]}
 
 
 @router.post("/{project}/shares", status_code=201)
@@ -495,13 +530,19 @@ async def create_app_share(
 
     expires_at = None
     if scope == ACCESS_PUBLIC:
-        days = body.expires_in_days or 7
-        if days < 1 or days > MAX_PUBLIC_SHARE_DAYS:
+        # 0 = unbefristet. Ausdrücklich gewollt: es gibt Demo-Links, die stehen
+        # bleiben sollen. Der Preis steht in der Oberfläche — ein Link ohne Ablauf
+        # bleibt offen, bis ihn jemand zurückzieht, und daran denkt niemand von
+        # selbst. Deshalb ist 7 Tage weiterhin die Vorgabe und „unbefristet" die
+        # bewusste Ausnahme.
+        days = 7 if body.expires_in_days is None else body.expires_in_days
+        if days and (days < 1 or days > MAX_PUBLIC_SHARE_DAYS):
             raise HTTPException(
                 status_code=400,
-                detail=f"Öffentliche Links laufen nach 1–{MAX_PUBLIC_SHARE_DAYS} Tagen ab.",
+                detail=f"Öffentliche Links: 1–{MAX_PUBLIC_SHARE_DAYS} Tage oder 0 für unbefristet.",
             )
-        expires_at = datetime.now(timezone.utc) + timedelta(days=days)
+        if days:
+            expires_at = datetime.now(timezone.utc) + timedelta(days=days)
     elif body.expires_in_days:
         if body.expires_in_days < 1 or body.expires_in_days > 365:
             raise HTTPException(status_code=400, detail="Ablauf muss zwischen 1 und 365 Tagen liegen.")
@@ -540,6 +581,7 @@ async def create_app_share(
         scope=scope,
         user_id=(body.user_id or None) if scope == ACCESS_USER else None,
         token_hash=hash_share_token(token) if token else None,
+        token_enc=_encrypted_or_none(token),
         expires_at=expires_at,
         created_by=str(user.id),
     )
@@ -557,7 +599,10 @@ async def create_app_share(
 
     out = _share_dict(s)
     if token:
-        out["token"] = token  # einmalig!
+        # Aus der lokalen Variablen, NICHT aus der Entschluesselung: hier ist der
+        # Klartext ohnehin zur Hand, und wenn das Verschluesseln eben scheiterte,
+        # ist dies die einzige Gelegenheit, den Link ueberhaupt auszuliefern.
+        out["token"] = token
     return out
 
 
@@ -610,7 +655,9 @@ async def app_detail(
         if uids:
             for r in (await db.execute(select(User.id, User.name).where(User.id.in_(uids)))).all():
                 names[r[0]] = r[1]
-        shares = [_share_dict(s, names.get(s.user_id or "")) for s in rows]
+        # Nur im ``can_manage``-Zweig: wem die App bloss freigegeben wurde,
+        # sieht diese Liste gar nicht erst.
+        shares = [_share_dict(s, names.get(s.user_id or ""), with_token=True) for s in rows]
 
     owner_names = await _owner_names([agent], db)
     owner_id = str(agent.user_id or "")

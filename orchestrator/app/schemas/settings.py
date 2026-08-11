@@ -15,6 +15,9 @@ class SettingsUpdate(BaseModel):
     max_turns: int | None = None
     max_agents: int | None = None
     registration_open: bool | None = None
+    # Anzeigewaehrung: nur die Darstellung, nie die gespeicherten Betraege.
+    display_currency: str | None = None
+    usd_eur_rate: float | None = None
     sso_only_login: bool | None = None
     require_user_approval: bool | None = None
     revoke_msgraph_on_logout: bool | None = None
@@ -146,6 +149,8 @@ class SettingsResponse(BaseModel):
     max_turns: int
     max_agents: int
     registration_open: bool
+    display_currency: str = "EUR"
+    usd_eur_rate: float = 0.92
     sso_only_login: bool = False
     require_user_approval: bool = False
     revoke_msgraph_on_logout: bool = False

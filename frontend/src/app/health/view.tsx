@@ -14,6 +14,7 @@ import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { HealthDashboard, TestRun, ImprovementReport, AutoMetrics } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -296,9 +297,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <DollarSign className="w-4 h-4 text-amber-400" />
                   <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Kosten</span>
                 </div>
-                <p className="text-2xl font-bold">${autoMetrics.total_cost_usd.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatMoney(autoMetrics.total_cost_usd)}</p>
                 <p className="text-[10px] text-muted-foreground/60 mt-1">
-                  ${autoMetrics.total_tasks > 0 ? (autoMetrics.total_cost_usd / autoMetrics.total_tasks).toFixed(3) : "0"}/Task
+                  {formatMoney(autoMetrics.total_tasks > 0 ? autoMetrics.total_cost_usd / autoMetrics.total_tasks : 0)}/Task
                 </p>
               </div>
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
@@ -473,7 +474,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                           )}>
                             {a.success_rate}% Erfolg
                           </span>
-                          <span className="text-amber-400">${(a.total_cost_usd || 0).toFixed(2)}</span>
+                          <span className="text-amber-400">{formatMoney(a.total_cost_usd || 0)}</span>
                           {a.avg_duration_ms && (
                             <span className="text-blue-400">{Math.round(a.avg_duration_ms / 1000)}s</span>
                           )}
@@ -578,7 +579,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                         <DollarSign className="w-3 h-3 text-emerald-400" />
                         <span className="text-xs font-medium">
                           {report.cost_trend.filter(Boolean).length > 0
-                            ? `$${(report.cost_trend.filter((c): c is number => c !== null).slice(-1)[0] || 0).toFixed(3)}`
+                            ? formatMoney(report.cost_trend.filter((c): c is number => c !== null).slice(-1)[0] || 0)
                             : "-"
                           }
                         </span>

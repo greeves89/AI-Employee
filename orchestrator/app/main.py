@@ -1072,6 +1072,9 @@ async def lifespan(app: FastAPI):
             # Der Token-Hash muss eindeutig sein, sonst könnte eine Kollision auf die
             # falsche App zeigen. (In der Tabelle steht NUR der Hash, nie der Token.)
             await conn.execute(_txt_as("CREATE UNIQUE INDEX IF NOT EXISTS ux_app_shares_token ON app_shares (token_hash)"))
+            # Verschlüsselter Token, damit der Besitzer den Link später noch einmal
+            # sehen kann. Bestehende Zeilen bleiben leer — dort ist der Klartext weg.
+            await conn.execute(_txt_as("ALTER TABLE app_shares ADD COLUMN IF NOT EXISTS token_enc varchar"))
         logger.info("app_shares table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure app_shares table: {e}")

@@ -51,6 +51,7 @@ def _share(scope, **over):
         scope=scope,
         user_id=None,
         token_hash=None,
+        token_enc=None,
         expires_at=None,
         created_by=OWNER.id,
         created_at=datetime.now(timezone.utc),
@@ -566,8 +567,13 @@ class AuditTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(token, str(audits[0].meta))
         self.assertNotIn(token, str(audits[0].command))
 
-    async def test_listing_a_share_never_returns_the_token(self):
-        """Der Token wird genau einmal ausgeliefert — beim Anlegen."""
+    async def test_the_token_is_not_handed_out_by_default(self):
+        """Seit 1.176.0 kann der Besitzer seinen Link wiedersehen — aber nur er,
+        und nur da, wo die Aufrufkette das geprüft hat.
+
+        Die Vorgabe bleibt deshalb: ohne ``with_token`` kein Token. Alles, was
+        Freigegebene oder die Apps-Übersicht rendern, geht über diesen Weg.
+        """
         from app.api.apps_overview import _share_dict
 
         s = _share(ACCESS_PUBLIC, token_hash=hash_share_token("super-secret"),
@@ -576,6 +582,26 @@ class AuditTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("token", d)
         self.assertTrue(d["has_token"])
         self.assertNotIn("super-secret", str(d))
+
+    async def test_an_old_share_has_no_recoverable_link(self):
+        """Zeilen von vor 1.176.0 haben keinen verschlüsselten Token. Die Liste
+        darf dafür nichts erfinden — der Klartext ist dort wirklich weg."""
+        from app.api.apps_overview import _share_dict
+
+        s = _share(ACCESS_PUBLIC, token_hash=hash_share_token("alt"), token_enc=None)
+        d = _share_dict(s, with_token=True)
+        self.assertNotIn("token", d)
+        self.assertTrue(d["has_token"])
+
+    async def test_an_undecryptable_token_is_omitted_not_faked(self):
+        """Nach einem Schlüsselwechsel funktioniert der Link weiter (geprüft wird
+        gegen den Hash) — anzeigen lässt er sich nicht mehr. Dann lieber nichts
+        als etwas Falsches zum Kopieren."""
+        from app.api.apps_overview import _share_dict
+
+        s = _share(ACCESS_PUBLIC, token_hash=hash_share_token("x"), token_enc="kein-fernet")
+        d = _share_dict(s, with_token=True)
+        self.assertNotIn("token", d)
 
     async def test_public_share_rejects_an_expiry_beyond_the_cap(self):
         from app.api import apps_overview as ao

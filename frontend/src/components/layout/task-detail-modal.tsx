@@ -6,6 +6,7 @@ import { X, Loader2 } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/money";
 
 const statusStyle: Record<string, string> = {
   completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -101,7 +102,7 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string | null; on
                 <h4 className="mt-2 text-sm font-medium break-words">{task.title}</h4>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Stat label="Kosten" value={task.cost_usd != null ? `$${task.cost_usd.toFixed(4)}` : "—"} />
+                <Stat label="Kosten" value={task.cost_usd != null ? formatMoney(task.cost_usd) : "—"} />
                 <Stat label="Dauer" value={task.duration_ms != null ? `${(task.duration_ms / 1000).toFixed(1)}s` : "—"} />
                 <Stat label="Tokens (in/out)" value={`${task.input_tokens ?? 0} / ${task.output_tokens ?? 0}`} />
                 <Stat label="Schritte" value={String(task.num_turns ?? "—")} />

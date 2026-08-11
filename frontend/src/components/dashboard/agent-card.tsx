@@ -14,6 +14,7 @@ function formatInterval(sec: number): string {
 }
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { AgentAvatar, getAgentTag } from "@/components/agents/agent-avatar";
+import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, {
   online: boolean;
@@ -255,7 +256,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                     <Wallet className="h-3 w-3" /> Budget / Monat
                   </span>
                   <span className="font-mono font-medium tabular-nums">
-                    ${agent.monthly_cost_usd.toFixed(2)} / ${agent.budget_usd.toFixed(2)}
+                    {formatMoney(agent.monthly_cost_usd)} / {formatMoney(agent.budget_usd)}
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-foreground/[0.06]">

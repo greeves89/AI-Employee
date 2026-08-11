@@ -22,6 +22,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
+  // Waehrung und Kurs EINMAL laden, sobald jemand angemeldet ist. Muss vor der
+  // ersten Geldzahl stehen: sonst rendert eine Seite erst in Dollar und springt
+  // gleich darauf auf Euro. Faellt beim Fehlschlag auf USD zurueck — nie auf
+  // einen geratenen Kurs.
+  useEffect(() => {
+    if (!user) return;
+    import("@/lib/money").then((m) => m.loadMoneyConfig().catch(() => {}));
+  }, [user]);
+
   // Presence heartbeat — mark this user online while the app is open.
   useEffect(() => {
     if (!user) return;

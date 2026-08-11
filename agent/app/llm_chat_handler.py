@@ -178,6 +178,12 @@ class LLMChatHandler:
         # Live steering: async callable returning list[str] of messages that
         # arrived mid-response, to fold into the running conversation.
         self.pending_drain = None
+        # Der Nutzer hat Stop gedrueckt. Wir schliessen dabei den laufenden
+        # HTTP-Strom — und der schlaegt als httpx-ReadError im Lesen auf. Ohne
+        # dieses Merkmal landete unser eigener Abbruch als
+        # „Unexpected error: ReadError('')" im Chat: ein Fehler, den niemand
+        # gemacht hat.
+        self._stopping = False
 
     def _get_context_window(self) -> int:
         """Resolve the context window size for the current model."""
@@ -397,6 +403,7 @@ class LLMChatHandler:
         Multimodal models see them directly.
         """
         self.is_running = True
+        self._stopping = False
         start_time = time.time()
         provider = self._get_provider()
         # The provider is cached across turns, so a per-message choice has to be
@@ -514,6 +521,8 @@ class LLMChatHandler:
                         total_output_tokens += event.output_tokens or 0
 
                     elif event.type == "error":
+                        if self._stopping:
+                            return await self._finish_cancelled(message_id, start_time, num_turns)
                         await self.log_publisher.publish_chat(
                             message_id, "error", {"message": event.text}
                         )
@@ -650,6 +659,10 @@ class LLMChatHandler:
                         max_turns = num_turns + _max_turns()
 
         except Exception as e:
+            # Vom Nutzer abgebrochen: kein Fehler, sondern das gewuenschte Ergebnis.
+            if self._stopping:
+                logger.info("LLM Chat vom Nutzer angehalten (%s)", type(e).__name__)
+                return await self._finish_cancelled(message_id, start_time, num_turns)
             logger.exception(f"LLM Chat error: {e}")
             await self.log_publisher.publish_chat(
                 message_id, "error", {"message": str(e)}
@@ -678,8 +691,26 @@ class LLMChatHandler:
         await self.log_publisher.publish_chat(message_id, "done", result)
         return result
 
+    async def _finish_cancelled(self, message_id: str, start_time: float, num_turns: int) -> dict:
+        """Sauberer Abschluss nach einem Abbruch durch den Nutzer.
+
+        Der Verlauf bleibt stehen, wie er ist — abgebrochen heisst angehalten,
+        nicht verworfen. Der naechste Zug setzt darauf auf.
+        """
+        self.is_running = False
+        self._stopping = False
+        result = {
+            "status": "cancelled",
+            "duration_ms": int((time.time() - start_time) * 1000),
+            "num_turns": num_turns,
+        }
+        await self.log_publisher.publish_chat(message_id, "cancelled", result)
+        await self.log_publisher.publish_chat(message_id, "done", result)
+        return result
+
     async def stop_current(self) -> None:
         """Stop the currently running request."""
+        self._stopping = True
         self.is_running = False
         if self._provider:
             await self._provider.close()
