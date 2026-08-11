@@ -68,19 +68,35 @@ def _mcp_allow_private() -> bool:
     return os.getenv("MCP_ALLOW_PRIVATE_URLS", "").strip().lower() in ("1", "true", "yes")
 
 
-def _forbidden_ip_reason(ip) -> str | None:
+def _forbidden_ip_reason(ip, *, allow_private: bool = False) -> str | None:
     """Return a rejection reason if ``ip`` is an SSRF-forbidden address, else None.
 
-    Link-local (incl. the 169.254.169.254 cloud-metadata endpoint), multicast,
-    reserved and unspecified addresses are rejected unconditionally; private and
-    loopback ranges are rejected unless ``MCP_ALLOW_PRIVATE_URLS`` is set.
+    Drei Stufen, und der Unterschied ist wichtig:
+
+    * **Nie erlaubt** — link-local (darunter der Cloud-Metadatenpunkt
+      169.254.169.254), Multicast, reserviert, unbestimmt. Dort steht nie ein
+      MCP-Server, dort steht Infrastruktur.
+    * **Loopback** — bleibt gesperrt, auch mit ``allow_private``. Innerhalb des
+      Containers ist ``127.0.0.1`` der Orchestrator selbst; ein interner
+      MCP-Server steht dort nicht, die eigene API schon. Nur der globale
+      Schalter ``MCP_ALLOW_PRIVATE_URLS`` hebt das auf — er hatte diese
+      Bedeutung schon, und Bestehendes soll sich nicht ändern.
+    * **Privat** (10./172.16./192.168.) — genau der Fall „unser eigener Server
+      im Haus". Den darf ein Administrator pro Eintrag zulassen, statt den
+      globalen Schalter für die ganze Installation umzulegen.
     """
     if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         return f"MCP host resolves to a forbidden address ({ip})"
-    if (ip.is_private or ip.is_loopback) and not _mcp_allow_private():
+    if ip.is_loopback and not _mcp_allow_private():
+        return (
+            f"MCP host resolves to a loopback address ({ip}) — that is this "
+            "server itself, not an MCP server"
+        )
+    if ip.is_private and not (allow_private or _mcp_allow_private()):
         return (
             f"MCP host resolves to a private address ({ip}); "
-            "set MCP_ALLOW_PRIVATE_URLS=true to allow internal MCP servers"
+            'Haken \u201einterne Adresse zulassen\u201c setzen, wenn der Server '
+            "wirklich im eigenen Netz steht"
         )
     return None
 
@@ -92,7 +108,7 @@ async def _resolve_host_ips(hostname: str, port: int) -> list:
     return [ip_address(info[4][0]) for info in infos]
 
 
-async def _assert_mcp_url_allowed(url: str) -> None:
+async def _assert_mcp_url_allowed(url: str, *, allow_private: bool = False) -> None:
     """SSRF guard for a manual ``tools/call`` invocation. Raises HTTPException(400) if blocked.
 
     Resolves the hostname and checks every returned address (so a name that
@@ -119,12 +135,12 @@ async def _assert_mcp_url_allowed(url: str) -> None:
     if not ips:
         raise HTTPException(status_code=400, detail=f"Cannot resolve MCP host: {parsed.hostname}")
     for ip in ips:
-        reason = _forbidden_ip_reason(ip)
+        reason = _forbidden_ip_reason(ip, allow_private=allow_private)
         if reason:
             raise HTTPException(status_code=400, detail=reason)
 
 
-async def _assert_discovery_host_allowed(url: str) -> None:
+async def _assert_discovery_host_allowed(url: str, *, allow_private: bool = False) -> None:
     """DNS-resolving SSRF guard for the add/refresh/probe discovery path.
 
     Raises :class:`McpDiscoveryError` (so the failure is health-classified like every
@@ -144,7 +160,7 @@ async def _assert_discovery_host_allowed(url: str) -> None:
     except socket.gaierror:
         return
     for ip in ips:
-        reason = _forbidden_ip_reason(ip)
+        reason = _forbidden_ip_reason(ip, allow_private=allow_private)
         if reason:
             raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, reason)
 
@@ -152,6 +168,10 @@ async def _assert_discovery_host_allowed(url: str) -> None:
 class McpServerCreate(BaseModel):
     name: str
     url: str
+    #: Private Adresse fuer DIESEN Server zulassen. Nur Administratoren erreichen
+    #: diese Endpunkte ueberhaupt; der Haken haelt fest, dass die interne Adresse
+    #: Absicht war und kein Vertipper.
+    allow_private_host: bool = False
     bearer_token: str | None = None  # plaintext on input; stored Fernet-encrypted
     # Custom auth headers {name: value} for servers expecting a non-Bearer key.
     headers: dict[str, str] | None = None
@@ -248,6 +268,7 @@ def _serialize_mcp_server(server: McpServer) -> dict:
         "last_checked_at": server.last_checked_at.isoformat() if server.last_checked_at else None,
         "last_status": server.last_status,
         "last_error": server.last_error,
+        "allow_private_host": bool(getattr(server, "allow_private_host", False)),
         "oauth_enabled": bool(getattr(server, "oauth_enabled", False)),
         "oauth_client_id": getattr(server, "oauth_client_id", None),
         "oauth_connected": bool(getattr(server, "oauth_refresh_token_encrypted", None)),
@@ -267,7 +288,7 @@ def _mark_health(server: McpServer, status: str, error: str | None = None) -> No
     server.last_error = _short_error(error)
 
 
-def _validate_mcp_url(url: str) -> str:
+def _validate_mcp_url(url: str, *, allow_private: bool = False) -> str:
     raw = (url or "").strip()
     parsed = urlparse(raw)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -289,8 +310,9 @@ def _validate_mcp_url(url: str) -> str:
     except ValueError:
         pass
     else:
-        if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_private:
-            raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, "MCP server URL host is not allowed")
+        reason = _forbidden_ip_reason(ip, allow_private=allow_private)
+        if reason:
+            raise McpDiscoveryError(MCP_HEALTH_PROTOCOL_ERROR, reason)
 
     return urlunparse(parsed._replace(fragment=""))
 
@@ -390,6 +412,8 @@ async def _discover_tools(
     url: str,
     bearer_token: str | None = None,
     extra_headers: dict[str, str] | None = None,
+    *,
+    allow_private: bool = False,
 ) -> list[dict]:
     """Connect to an MCP server via Streamable HTTP and list its tools.
 
@@ -398,7 +422,7 @@ async def _discover_tools(
     sent as ``Authorization: Bearer <token>``; ``extra_headers`` (e.g. an
     ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
     """
-    safe_url = _validate_mcp_url(url)
+    safe_url = _validate_mcp_url(url, allow_private=allow_private)
     await _assert_discovery_host_allowed(safe_url)
     headers = _build_headers(bearer_token, extra_headers)
 
@@ -571,7 +595,8 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
 
     # Discover tools
     try:
-        tools = await _discover_tools(body.url, body.bearer_token, body.headers)
+        tools = await _discover_tools(body.url, body.bearer_token, body.headers,
+                                      allow_private=body.allow_private_host)
     except McpDiscoveryError as e:
         # A 401 that carries an OAuth challenge is not a failure: the server is
         # OAuth-protected and simply needs the Connect flow, which can only be
@@ -583,6 +608,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
             server = McpServer(
                 name=body.name, url=body.url, tools=[], enabled=True,
                 oauth_enabled=True,
+                allow_private_host=body.allow_private_host,
             )
             _mark_health(server, MCP_HEALTH_NEEDS_OAUTH,
                          "OAuth erforderlich — auf 'Verbinden' klicken, um die Autorisierung zu starten")
@@ -604,6 +630,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
     server = McpServer(
         name=body.name, url=body.url, tools=tools, enabled=True,
         oauth_enabled=False,
+        allow_private_host=body.allow_private_host,
         auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,
         headers_encrypted=encrypt_token(json_mod.dumps(body.headers)) if body.headers else None,
     )
@@ -627,7 +654,8 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
     token = decrypt_token(server.auth_token_encrypted) if server.auth_token_encrypted else None
     extra = json_mod.loads(decrypt_token(server.headers_encrypted)) if server.headers_encrypted else None
     try:
-        tools = await _discover_tools(server.url, token, extra)
+        tools = await _discover_tools(server.url, token, extra,
+                                      allow_private=bool(server.allow_private_host))
     except McpDiscoveryError as e:
         _mark_health(server, e.status, e.message)
         _audit_discovery_failure(db, f"refresh:{server.name}", str(user.id),
@@ -697,7 +725,8 @@ async def probe_mcp_server(body: McpServerCreate, user=Depends(require_admin), d
         # Pass the submitted bearer token AND custom headers so a probe against a
         # protected server actually authenticates (previously both were dropped →
         # a correctly-configured server always failed the connection test).
-        tools = await _discover_tools(body.url, body.bearer_token, body.headers)
+        tools = await _discover_tools(body.url, body.bearer_token, body.headers,
+                                      allow_private=body.allow_private_host)
     except McpDiscoveryError as e:
         _audit_discovery_failure(db, f"probe:{body.name}", str(user.id),
                                   {"url": body.url, "detail": e.message})

@@ -16,6 +16,13 @@ class McpServer(Base, TimestampMixin):
     url: Mapped[str] = mapped_column(Text, nullable=False)
     tools: Mapped[dict] = mapped_column(JSON, default=list)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Ein Administrator hat fuer DIESEN Server eine private Adresse zugelassen
+    #: (eigener Server im Haus). Bewusst pro Eintrag statt global: der Schalter
+    #: MCP_ALLOW_PRIVATE_URLS oeffnet die ganze Installation, dieser Haken genau
+    #: eine URL. Loopback und Metadaten-Adressen bleiben auch damit gesperrt.
+    allow_private_host: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     # Optional Bearer token (Fernet-encrypted) sent as `Authorization: Bearer <token>`
     # on discovery and on every agent tool call to this server.
     auth_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

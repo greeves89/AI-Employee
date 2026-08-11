@@ -41,14 +41,14 @@ class _FakeAddSession:
 
 def _body(**kw):
     defaults = dict(name="proxy-mcp", url="https://mcp.example.test/mcp",
-                    bearer_token=None, headers=None)
+                    bearer_token=None, headers=None, allow_private_host=False)
     defaults.update(kw)
     return SimpleNamespace(**defaults)
 
 
 @pytest.mark.asyncio
 async def test_add_oauth_protected_server_is_created_in_needs_oauth_state(monkeypatch):
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         raise mcp_servers.McpDiscoveryError("auth_failed", "401 Unauthorized on initialize")
 
     async def fake_advertises(_url):
@@ -77,7 +77,7 @@ async def test_add_oauth_protected_server_is_created_in_needs_oauth_state(monkey
 @pytest.mark.asyncio
 async def test_add_rejected_static_token_without_oauth_still_aborts(monkeypatch):
     """A 401 with NO OAuth challenge is a real auth failure and must not create a row."""
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         raise mcp_servers.McpDiscoveryError("auth_failed", "401 Unauthorized on initialize")
 
     async def fake_advertises(_url):
@@ -99,7 +99,7 @@ async def test_add_rejected_static_token_without_oauth_still_aborts(monkeypatch)
 @pytest.mark.asyncio
 async def test_add_unreachable_does_not_probe_oauth(monkeypatch):
     """Only a 401/auth_failed triggers the OAuth probe; other failures abort as before."""
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         raise mcp_servers.McpDiscoveryError("unreachable", "Connection failed during initialize")
 
     probed = {"called": False}
@@ -122,7 +122,7 @@ async def test_add_unreachable_does_not_probe_oauth(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_add_protocol_error_still_aborts(monkeypatch):
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         raise mcp_servers.McpDiscoveryError("protocol_error", "HTTP 500 during initialize")
 
     probed = {"called": False}
@@ -148,7 +148,7 @@ async def test_add_protocol_error_still_aborts(monkeypatch):
 async def test_add_successful_discovery_still_creates_enabled_server(monkeypatch):
     tools = [{"name": "search", "description": "Search docs"}]
 
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         return tools
 
     monkeypatch.setattr(mcp_servers, "_discover_tools", fake_discover)

@@ -123,7 +123,7 @@ async def test_refresh_persists_ok_health_state(monkeypatch):
     server = McpServer(id=1, name="ok", url="https://mcp.example.test", tools=[], enabled=True)
     db = _FakeSession(server)
 
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         return [{"name": "ping"}]
 
     monkeypatch.setattr(mcp_servers, "_discover_tools", fake_discover)
@@ -143,7 +143,7 @@ async def test_refresh_persists_auth_failed_health_state(monkeypatch):
     server = McpServer(id=1, name="bad-auth", url="https://mcp.example.test", tools=[], enabled=True)
     db = _FakeSession(server)
 
-    async def fake_discover(_url, _token, _headers):
+    async def fake_discover(_url, _token, _headers, **_kw):
         raise mcp_servers.McpDiscoveryError("auth_failed", "401 Unauthorized on initialize")
 
     monkeypatch.setattr(mcp_servers, "_discover_tools", fake_discover)

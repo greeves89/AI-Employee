@@ -594,6 +594,11 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [addBearer, setAddBearer] = useState("");
   const [addHeaders, setAddHeaders] = useState("");  // one "Name: value" per line
   const [removeToken, setRemoveToken] = useState(false);
+  // Der Server hat wegen einer PRIVATEN Adresse abgelehnt — erst dann ist der
+  // Haken sinnvoll. Bei Loopback oder Metadatenpunkt lehnt er auch mit Haken ab;
+  // ihn dort anzubieten waere ein leeres Versprechen.
+  const [privateBlocked, setPrivateBlocked] = useState(false);
+  const [allowPrivate, setAllowPrivate] = useState(false);
   const [removeHeaders, setRemoveHeaders] = useState(false);
   const [adding, setAdding] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -686,6 +691,8 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     setAddHeaders("");
     setRemoveToken(false);
     setRemoveHeaders(false);
+    setPrivateBlocked(false);
+    setAllowPrivate(false);
     setProbeResult(null);
   };
 
@@ -719,13 +726,18 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       const server = await api.addMcpServer(
         addName.trim(), addUrl.trim(), addBearer.trim() || undefined,
         Object.keys(headers).length ? headers : undefined,
+        allowPrivate,
       );
       setServers((prev) => [server, ...prev]);
       closeForm();
       setExpandedServer(server.id);
       onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefuegt (${server.tools.length} Tools)` });
     } catch (e) {
-      onToast({ type: "error", message: e instanceof Error ? e.message : "Verbindung fehlgeschlagen" });
+      const msg = e instanceof Error ? e.message : "Verbindung fehlgeschlagen";
+      // Nur bei einer PRIVATEN Adresse anbieten. Loopback und Metadatenpunkt
+      // lehnt der Server auch mit Haken ab — dort waere das Angebot eine Luege.
+      if (/private address/i.test(msg)) setPrivateBlocked(true);
+      onToast({ type: "error", message: msg });
     } finally {
       setAdding(false);
     }
@@ -770,13 +782,16 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         addName.trim() || "probe", addUrl.trim(),
         addBearer.trim() || undefined,
         Object.keys(headers).length ? headers : undefined,
+        allowPrivate,
       );
       setProbeResult({
         ok: true,
         message: `Verbindung OK — ${res.tool_count} Tool${res.tool_count !== 1 ? "s" : ""} gefunden`,
       });
     } catch (e) {
-      setProbeResult({ ok: false, message: e instanceof Error ? e.message : "Verbindung fehlgeschlagen" });
+      const msg = e instanceof Error ? e.message : "Verbindung fehlgeschlagen";
+      if (/private address/i.test(msg)) setPrivateBlocked(true);
+      setProbeResult({ ok: false, message: msg });
     } finally {
       setProbing(false);
     }
@@ -962,6 +977,29 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
               )}>
                 {probeResult.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
                 {probeResult.message}
+              </div>
+            )}
+            {privateBlocked && (
+              // Erscheint erst NACH einer Ablehnung wegen privater Adresse — also
+              // genau dann, wenn er hilft, und nicht als Dauerangebot.
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 space-y-1.5">
+                <label className="flex items-start gap-2 text-[11px] text-amber-200/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowPrivate}
+                    onChange={(e) => setAllowPrivate(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border accent-amber-500"
+                  />
+                  <span>
+                    <strong>Interne Adresse zulassen</strong> — der Server steht im
+                    eigenen Netz und ist von aussen nicht erreichbar.
+                  </span>
+                </label>
+                <p className="text-[10px] text-amber-200/60 pl-5">
+                  Gilt nur für diesen Eintrag. Adressen, hinter denen nie ein
+                  MCP-Server steht, bleiben gesperrt: dieser Server selbst
+                  (127.0.0.1) und der Metadatenpunkt der Cloud (169.254.169.254).
+                </p>
               </div>
             )}
             {editingServer?.has_auth && !addBearer.trim() && !removeToken && (

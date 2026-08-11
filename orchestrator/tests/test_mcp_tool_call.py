@@ -175,7 +175,10 @@ async def test_guard_rejects_loopback():
                return_value=_fake_loop_resolving_to("127.0.0.1")):
         with pytest.raises(HTTPException) as ei:
             await mcp_servers._assert_mcp_url_allowed("http://localhost/mcp")
-    assert "private" in ei.value.detail.lower()
+    # Seit dem Pro-Server-Haken unterscheidet die Meldung: „privat" darf ein
+    # Administrator bewusst zulassen, Loopback nicht — das ist dieser Server
+    # selbst. Der Test haelt die Unterscheidung fest, nicht bloss die Ablehnung.
+    assert "loopback" in ei.value.detail.lower()
 
 
 @pytest.mark.asyncio

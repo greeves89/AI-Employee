@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.0] — 2026-08-11
+
+### Added
+- **Interne MCP-Server lassen sich jetzt zulassen — pro Eintrag.** Wer seinen
+  eigenen MCP-Server einträgt, der im Haus steht, bekam eine Ablehnung mit dem
+  Hinweis auf eine Umgebungsvariable: *„set MCP_ALLOW_PRIVATE_URLS=true"*. Die
+  gibt es zwar, aber sie öffnet die **ganze Installation** und braucht einen
+  Neustart — für einen einzigen Eintrag das falsche Werkzeug.
+
+  Nach einer Ablehnung erscheint jetzt der Haken **„Interne Adresse zulassen"**.
+  Er gilt nur für diesen Server, wird mit ihm gespeichert (damit die nächste
+  Werkzeug-Aktualisierung nicht wieder scheitert) und ist ohnehin nur für
+  Administratoren erreichbar — alle betroffenen Endpunkte sind `require_admin`.
+
+  Der Haken ist bewusst eng. Er erlaubt **private** Adressen (10./172.16./192.168.)
+  und sonst nichts. Gesperrt bleibt, was nie ein MCP-Server ist:
+
+  | Adresse | warum sie gesperrt bleibt |
+  |---|---|
+  | `169.254.169.254` und link-local | Metadatenpunkt der Cloud — der Klassiker jeder SSRF-Kette |
+  | `127.0.0.1` / `::1` | im Container ist das **dieser Server selbst**; dort steht kein MCP-Server, aber die eigene API |
+  | Multicast, reserviert, unbestimmt | Infrastruktur, keine Dienste |
+
+  Der Haken erscheint auch nur nach einer Ablehnung wegen **privater** Adresse.
+  Bei Loopback oder Metadatenpunkt bliebe er wirkungslos — ihn dort anzubieten
+  wäre ein leeres Versprechen.
+
+  Der globale Schalter `MCP_ALLOW_PRIVATE_URLS` behält seine bisherige Bedeutung
+  unverändert, inklusive Loopback: bestehende Installationen ändern sich nicht.
+
 ## [1.176.1] — 2026-08-11
 
 ### Fixed

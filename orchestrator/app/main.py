@@ -1167,6 +1167,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_error varchar(255)"
             ))
+            await conn.execute(_txt_mh(
+                # Pro Server zugelassene private Adresse (statt global per Umgebung).
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS "
+                "allow_private_host boolean NOT NULL DEFAULT false"
+            ))
             # Client-side OAuth columns (#426).
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_enabled boolean DEFAULT false"

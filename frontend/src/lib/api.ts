@@ -1451,6 +1451,9 @@ export async function getMcpServers(): Promise<{ servers: McpServerInfo[] }> {
 
 export async function addMcpServer(
   name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
+  /** Private Adresse fuer DIESEN Server zulassen (Admin-Entscheidung, siehe
+   *  Integrationen-Seite). Loopback und Metadaten-Adressen bleiben gesperrt. */
+  allowPrivateHost?: boolean,
 ): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers`, {
     method: "POST",
@@ -1458,6 +1461,7 @@ export async function addMcpServer(
       name, url,
       ...(bearerToken ? { bearer_token: bearerToken } : {}),
       ...(headers && Object.keys(headers).length ? { headers } : {}),
+      ...(allowPrivateHost ? { allow_private_host: true } : {}),
     }),
   });
 }
@@ -1510,6 +1514,7 @@ export async function deleteMcpServer(id: number): Promise<void> {
 // custom headers) so a protected server can actually be reached during the test.
 export async function probeMcpServer(
   name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
+  allowPrivateHost?: boolean,
 ): Promise<{
   url: string;
   tools: McpTool[];
@@ -1524,6 +1529,7 @@ export async function probeMcpServer(
       name, url,
       ...(bearerToken ? { bearer_token: bearerToken } : {}),
       ...(headers && Object.keys(headers).length ? { headers } : {}),
+      ...(allowPrivateHost ? { allow_private_host: true } : {}),
     }),
   });
 }
