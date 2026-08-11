@@ -395,16 +395,14 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                 from sqlalchemy.exc import IntegrityError
 
                 async with async_session_factory() as db:
-                    # Check if assistant response already persisted (by WS handler)
-                    existing = await db.scalar(
-                        sel(ChatMessage).where(
-                            ChatMessage.agent_id == agent_id,
-                            ChatMessage.message_id == message_id,
-                            ChatMessage.role == "assistant",
-                        )
-                    )
-                    if existing:
-                        continue  # Already saved by WebSocket handler
+                    # Frueher stand hier "Zeile da? -> ueberspringen". Genau das war
+                    # der Fehler: beim Trennen der Verbindung schreibt der Browser
+                    # einen ZWISCHENSTAND weg — Werkzeugaufrufe schon da, der Text
+                    # noch nicht. Danach kam dieses ``done`` mit dem fertigen Text,
+                    # fand die Zeile und liess sie stehen. Zurueck blieb ein Chat
+                    # mit Werkzeugaufrufen und ohne Antwort. Jetzt wird ergaenzt
+                    # (``upsert_chat_message``), und nur eine WIRKLICH neue Zeile
+                    # loest eine Benachrichtigung aus.
 
                     # Look up session_id from the user message (normal chat flow).
                     user_msg = await db.scalar(
@@ -441,15 +439,19 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     }
                     meta = {k: v for k, v in meta.items() if v is not None}
 
-                    db.add(ChatMessage(
-                        agent_id=agent_id,
-                        session_id=session_id,
-                        message_id=message_id,
-                        role="assistant",
-                        content=content,
-                        tool_calls=tool_calls,
-                        meta=meta,
-                    ))
+                    from app.services.chat_persistence import upsert_chat_message
+                    is_new = await upsert_chat_message(
+                        agent_id, session_id, message_id, "assistant",
+                        content=content, tool_calls=tool_calls, meta=meta,
+                    )
+                    if not is_new:
+                        # Ergaenzt, und der Nutzer hatte den Text schon vor Augen
+                        # (der Browser hatte die Zeile vollstaendig geschrieben).
+                        # Nicht noch einmal benachrichtigen, nicht noch einmal
+                        # einbetten. War die Zeile dagegen leer und bekommt hier
+                        # ihren Text, meldet ``upsert_chat_message`` True — dann
+                        # war der Nutzer weg und soll es erfahren.
+                        continue
                     agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
                     title = agent.name if agent else "AI Employee"
                     body = _chat_notification_body(content, meta)

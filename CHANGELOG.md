@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.176.1] — 2026-08-11
+
+### Fixed
+- **Nur Werkzeugaufrufe, keine Antwort.** Wer parallel arbeitete, fand beim
+  Zurückkommen einen fertig aussehenden Chat ohne Antworttext. Ursache: beim
+  Trennen der Verbindung schreibt der Browser einen **Zwischenstand** weg —
+  die früh gekommenen Werkzeugaufrufe ja, den am Ende gekommenen Text nein.
+  Danach traf das serverseitige `done` mit dem fertigen Text ein, fand die Zeile
+  und **übersprang sie** (`if existing: continue`). Der Text kam nie an.
+
+  Bei Zügen von 176, 502 und 514 Sekunden — alles gemessene Werte — reicht der
+  120-Sekunden-Nachlauf der Verbindung nicht, und wer parallel arbeitet, schaut
+  per Definition woanders hin. Beide Schreiber gehen jetzt durch **eine**
+  Zusammenführung: wer zuerst kommt, legt die Zeile an, der andere ergänzt, was
+  fehlt. Ein leerer Zwischenstand kann eine fertige Antwort nicht mehr auslöschen.
+
+  Bekommt eine bis dahin leere Zeile ihren Text, gibt es die Benachrichtigung
+  **nachträglich** — der Nutzer war ja weg, als sie fertig wurde.
+
+- **Die Antwort landete in der falschen Unterhaltung.** Fehlte die Zuordnung
+  Nachricht→Sitzung, fiel das Speichern auf die Sitzung zurück, die in dieser
+  Verbindung *gerade offen* war. Nach einem Verbindungsabbruch ist die Zuordnung
+  leer — die Antwort auf eine Statusfrage landete dann in dem Chat, den man
+  zufällig offen hatte. Genau das Bild aus der Meldung: im Systemlandkarte-Chat
+  stand die Antwort zu einem ganz anderen Projekt.
+
+  Die Sitzung kommt jetzt aus der **Nutzerzeile**, die beim Absenden längst in
+  der Datenbank steht und die Wahrheit trägt. Ist sie nicht auffindbar, wird gar
+  nicht gespeichert — lieber eine fehlende Zeile als eine im falschen Gespräch.
+
+  Nicht betroffen: die Trennung **im Agenten**. Jeder Chat hat dort eine eigene
+  Sitzung mit eigener Historie und eigenem Resume — am Pi nachgezählt, 17
+  Schlüssel, jeder mit eigener CLI-Sitzung.
+
 ## [1.176.0] — 2026-08-11
 
 ### Added

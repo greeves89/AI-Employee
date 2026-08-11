@@ -254,9 +254,24 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         # parallel_sessions>1), and _session["id"] is a single mutable slot that the
         # LAST-sent message overwrites, so persisting by it alone can save an
         # assistant reply to the wrong conversation's history.
-        session_id = _mid_to_session.get(message_id) or _session["id"]
+        session_id = _mid_to_session.get(message_id)
         if not session_id:
-            return  # Don't save without a valid session
+            if role == "user":
+                # Die Nutzerzeile entsteht IM Moment des Absendens — da ist die
+                # Sitzung dieser Verbindung genau die richtige.
+                session_id = _session["id"]
+            else:
+                # Für alles andere NICHT auf die aktuelle Sitzung zurückfallen.
+                # ``_mid_to_session`` kennt nur, was DIESE Verbindung gesendet hat;
+                # nach einem Verbindungsabbruch ist die Zuordnung leer, und der
+                # Rückfall schrieb die Antwort in das Gespräch, das gerade offen
+                # war. Genau so landete die Antwort auf eine Statusfrage in einem
+                # fremden Chat. Die Nutzerzeile in der Datenbank weiss es besser:
+                # sie steht schon da und trägt die richtige Sitzung.
+                from app.services.chat_persistence import session_for_message
+                session_id = await session_for_message(msg_agent_id, message_id)
+        if not session_id:
+            return  # Lieber gar nicht speichern als in die falsche Unterhaltung
         try:
             async with async_session_factory() as db:
                 existing = await db.scalar(
