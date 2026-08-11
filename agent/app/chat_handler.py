@@ -31,6 +31,11 @@ class ChatHandler:
         self, message_id: str, text: str, model: str
     ) -> dict:
         """One Claude CLI turn (resumes via self.session_id) + session/auth retries."""
+        # Vor dem Lauf merken, WELCHER Token benutzt wurde — nur so laesst sich
+        # spaeter feststellen, ob die Plattform inzwischen einen neuen hinterlegt
+        # hat, statt blind eine Weile zu warten.
+        from app.config import get_oauth_token
+        token_before = get_oauth_token()
         result = await self._execute_cli(message_id, text, model)
 
         # If --resume failed, reset session and retry without it
@@ -47,21 +52,32 @@ class ChatHandler:
             )
             result = await self._execute_cli(message_id, text, model)
 
-        # If auth error, wait for token refresh and retry once
+        # Zugangsfehler: auf den ERNEUERTEN Token warten und wiederholen.
+        #
+        # Anthropic rotiert beim Erneuern — in der Sekunde, in der der neue Token
+        # ausgestellt wird, ist der alte tot. Faellt das in einen laufenden Zug,
+        # stirbt er mit „401 access token has been revoked", ohne dass jemand
+        # etwas falsch gemacht hat. Genau so ist es im Betrieb passiert.
+        #
+        # Frueher standen hier pauschal 10 Sekunden. Die Plattform schreibt den
+        # neuen Token aber erst im naechsten 30-Sekunden-Takt — der Versuch lief
+        # ins Leere, und der Nutzer bekam den Fehler rot in den Chat. Jetzt wird
+        # gewartet, bis sich der Token wirklich geaendert hat.
         error_text = result.get("error", "").lower()
         if result.get("status") == "error" and any(
             phrase in error_text
             for phrase in [
                 "does not have access", "invalid_grant", "unauthorized",
-                "401", "token", "oauth", "authentication",
+                "401", "token", "oauth", "authentication", "revoked",
             ]
         ):
             logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
             await self.log_publisher.publish_chat(
                 message_id, "system",
-                {"message": "Auth token issue detected, refreshing and retrying..."},
+                {"message": "Zugang wird erneuert — der Schritt wird gleich wiederholt."},
             )
-            await asyncio.sleep(10)  # Wait for token sync
+            from app.config import wait_for_new_oauth_token
+            await wait_for_new_oauth_token(token_before)
             result = await self._execute_cli(message_id, text, model)
         return result
 

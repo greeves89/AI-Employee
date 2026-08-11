@@ -28,7 +28,48 @@ class AgentRunner:
         self._process: asyncio.subprocess.Process | None = None
         self.is_running = False
 
+    #: Merkmale eines Zugangsfehlers im CLI-Ergebnis. Dieselbe Liste wie im
+    #: Chat-Pfad (``chat_handler``) — eine Faehigkeit gehoert in beide Wege.
+    _AUTH_ERROR_MARKERS = (
+        "does not have access", "invalid_grant", "unauthorized",
+        "401", "oauth", "authentication", "revoked",
+    )
+
     async def execute_task(
+        self, task_id: str, prompt: str, model: str | None = None,
+        lightweight: bool = False,
+    ) -> dict:
+        """Eine Aufgabe ausfuehren — mit Wiederholung nach einer Token-Erneuerung.
+
+        Anthropic rotiert beim Erneuern: sobald der neue Zugangstoken ausgestellt
+        ist, ist der alte tot. Faellt das in einen laufenden Lauf, stirbt er mit
+        „401 access token has been revoked", ohne dass jemand etwas falsch gemacht
+        hat.
+
+        Der Chat-Pfad faengt das laengst ab, der Aufgaben-Pfad bisher nicht — und
+        gerade hier waere es schlimmer: eine Aufgabe laeuft unbeaufsichtigt, es
+        sitzt niemand davor, der es noch einmal versucht.
+        """
+        from app.config import get_oauth_token, wait_for_new_oauth_token
+
+        token_before = get_oauth_token()
+        result = await self._execute_task_once(task_id, prompt, model, lightweight)
+
+        error_text = str(result.get("error", "")).lower()
+        if result.get("status") == "error" and any(
+            m in error_text for m in self._AUTH_ERROR_MARKERS
+        ):
+            logger.warning("[Auth] Aufgabe %s scheiterte am Zugang — warte auf neuen "
+                           "Token und wiederhole: %s", task_id, error_text[:120])
+            await self.log_publisher.publish(
+                task_id, "system",
+                {"message": "Zugang wird erneuert — die Aufgabe wird gleich wiederholt."},
+            )
+            await wait_for_new_oauth_token(token_before)
+            result = await self._execute_task_once(task_id, prompt, model, lightweight)
+        return result
+
+    async def _execute_task_once(
         self, task_id: str, prompt: str, model: str | None = None,
         lightweight: bool = False,
     ) -> dict:

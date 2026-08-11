@@ -59,6 +59,37 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+async def wait_for_new_oauth_token(previous: str, timeout: float = 180.0,
+                                   interval: float = 2.0) -> str | None:
+    """Warte, bis die Plattform einen ANDEREN Zugangstoken hinterlegt hat.
+
+    Der Anlass steht im Betrieb: Anthropic **rotiert** beim Erneuern — in der
+    Sekunde, in der der neue Token ausgestellt wird, ist der alte tot. Faellt das
+    in einen laufenden Zug, stirbt der mit „401 access token has been revoked",
+    obwohl niemand etwas falsch gemacht hat.
+
+    Bisher wartete der Wiederholversuch pauschal 10 Sekunden. Die Plattform
+    schreibt den neuen Token aber erst im naechsten 30-Sekunden-Takt, und wenn sie
+    dafuer erst bei Anthropic anfragen muss, dauert es laenger. Der Versuch lief
+    also regelmaessig ins Leere und der Nutzer bekam den Fehler rot in den Chat.
+
+    Jetzt wird auf das gewartet, worauf es ankommt: dass sich der Token wirklich
+    geaendert hat. Rueckgabe ``None``, wenn er das innerhalb der Frist nicht tut —
+    dann darf der Aufrufer es trotzdem versuchen, statt gar nichts zu tun.
+    """
+    import asyncio as _asyncio
+
+    deadline = _asyncio.get_running_loop().time() + timeout
+    while _asyncio.get_running_loop().time() < deadline:
+        current = get_oauth_token()
+        if current and current != previous:
+            logger.info("[Auth] Neuer Zugangstoken erkannt — Zug wird wiederholt")
+            return current
+        await _asyncio.sleep(interval)
+    logger.warning("[Auth] Innerhalb von %.0fs kam kein neuer Token", timeout)
+    return None
+
+
 def get_oauth_token() -> str:
     """Return the most current OAuth token.
 

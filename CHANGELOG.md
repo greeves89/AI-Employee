@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.2] — 2026-08-11
+
+### Fixed
+- **Eine Token-Erneuerung kostete einen Lauf.** Anthropic **rotiert**: sobald der
+  neue Zugangstoken ausgestellt ist, ist der alte tot. Fällt das in einen
+  laufenden Zug, stirbt er mit `401 access token has been revoked` — ohne dass
+  jemand etwas falsch gemacht hat. Im Betrieb auf die Minute nachvollziehbar:
+
+  ```
+  10:51  Zug läuft → 401 „access token has been revoked"
+  10:52  Plattform erneuert den Token
+  10:53  neuer Token liegt im gemeinsamen Verzeichnis
+  ```
+
+  Drei Stellen waren daran beteiligt, alle drei sind behoben:
+
+  **Der Chat wartete pauschal zehn Sekunden.** Die Plattform schreibt den neuen
+  Token erst im nächsten 30-Sekunden-Takt, und wenn sie dafür bei Anthropic
+  anfragen muss, dauert es länger — der Wiederholversuch lief verlässlich ins
+  Leere. Jetzt wird gewartet, bis sich der Token **wirklich geändert** hat.
+
+  **Der Aufgaben-Pfad hatte gar keine Wiederholung.** Ausgerechnet dort, wo
+  niemand davor sitzt und es noch einmal versucht. Er hat sie jetzt, mit derselben
+  Erkennung wie der Chat — genau einmal, damit ein dauerhaft kaputter Zugang
+  sichtbar wird statt im Kreis zu laufen.
+
+  **Das Wort `revoked` stand in keiner der beiden Erkennungslisten** — ausgerechnet
+  das, was im Betrieb kam.
+
+- **Ein Agenten-Update lief in die Erneuerung hinein.** Beim Neuerstellen wird der
+  Token jetzt **zuerst** aktualisiert und danach der Container gestartet. So liest
+  der frische Container einen frischen Token, und die nächste planmäßige
+  Erneuerung ist wieder Stunden entfernt. Vorher startete er auf einem Token, der
+  Sekunden später ungültig wurde — genau so beim Ausrollen von 1.177.0 geschehen.
+
 ## [1.177.1] — 2026-08-11
 
 ### Fixed

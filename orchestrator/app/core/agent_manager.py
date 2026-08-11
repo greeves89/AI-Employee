@@ -1634,6 +1634,22 @@ class AgentManager:
         agent = await self._get_agent(agent_id)
         config = agent.config or {}
 
+        # Zugangstoken VOR dem Neuerstellen auf Stand bringen.
+        #
+        # Anthropic rotiert beim Erneuern — sobald der neue Token da ist, ist der
+        # alte tot. Faellt die Erneuerung mit dem Neustart zusammen, startet der
+        # frische Container auf einem Token, der Sekunden spaeter ungueltig wird,
+        # und der erste Zug des Nutzers stirbt mit „401 access token has been
+        # revoked". Genau so ist es beim Ausrollen von 1.177.0 passiert.
+        #
+        # Hier einmal aktiv erneuern heisst: der neue Container liest den frischen
+        # Token, und die naechste planmaessige Erneuerung ist wieder Stunden weg.
+        try:
+            from app.services.claude_token_service import ClaudeTokenService
+            await ClaudeTokenService().refresh_access_token()
+        except Exception as exc:  # noqa: BLE001 — ein alter Token ist besser als kein Update
+            logger.warning("[Auth] Token vor dem Neuerstellen nicht erneuerbar: %s", exc)
+
         # Clear any open chat's "Thinking..." before we kill the in-flight response.
         await self._cancel_open_chats(agent_id, "Agent wird aktualisiert — laufende Antwort abgebrochen.")
 
