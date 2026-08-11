@@ -14,9 +14,12 @@ constructed LogPublisher inside _get_or_create_handler, this test catches it
 by identity, not by substring.
 """
 
+import asyncio
+
 import pytest
 
 from app.chat_consumer import ChatConsumer
+from app.log_publisher import LogPublisher
 
 
 class FakeRedis:
@@ -31,6 +34,15 @@ class FakeRedis:
 
     async def delete(self, key):
         self.store.pop(key, None)
+
+    async def publish(self, *_args, **_kwargs):
+        pass
+
+    async def rpush(self, *_args, **_kwargs):
+        pass
+
+    async def ltrim(self, *_args, **_kwargs):
+        pass
 
 
 @pytest.mark.asyncio
@@ -83,3 +95,28 @@ async def test_no_publisher_passed_falls_back_to_a_working_one():
 
     assert handler.log_publisher is not None
     assert hasattr(handler.log_publisher, "last_activity_at")
+
+
+@pytest.mark.asyncio
+async def test_handler_event_advances_the_watchdog_clock():
+    """Pins the actual invariant, not just object identity: a chat event the
+    handler publishes must be observable as forward motion on the exact clock
+    _process_one's idle check reads. Identity alone (the two tests above) would
+    still pass a future refactor that keeps a single publisher instance around
+    but stops writing last_activity_at on it from the handler's code path — this
+    test would catch that, the identity tests would not."""
+    consumer = ChatConsumer("agent-1")
+    consumer.redis = FakeRedis()
+
+    watchdog_publisher = LogPublisher(consumer.redis, "agent-1")
+    handler = await consumer._get_or_create_handler(
+        "webapp:s1", "claude-sonnet-5", watchdog_publisher
+    )
+
+    before = watchdog_publisher.last_activity_at
+    await asyncio.sleep(0.01)
+    await handler.log_publisher.publish_chat("m1", "text", {"text": "still working"})
+
+    assert watchdog_publisher.last_activity_at > before, (
+        "a chat event from the handler must advance the clock _process_one reads"
+    )
