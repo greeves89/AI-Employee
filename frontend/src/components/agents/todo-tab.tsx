@@ -44,6 +44,18 @@ const statusIcons: Record<TodoStatus, typeof Circle> = {
   completed: CheckCircle2,
 };
 
+/** Wann wurde das erledigt? Fällt auf die letzte Änderung und dann auf die
+ *  Anlage zurück — ein Eintrag ohne Zeitstempel soll nicht ans Ende rutschen,
+ *  sondern dort stehen, wo er ungefähr hingehört. */
+function doneAt(todo: AgentTodo): number {
+  for (const raw of [todo.completed_at, todo.updated_at, todo.created_at]) {
+    if (!raw) continue;
+    const t = new Date(raw).getTime();
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
+
 interface TodoTabProps {
   agentId: string;
 }
@@ -133,7 +145,17 @@ export function TodoTab({ agentId }: TodoTabProps) {
   };
 
   const activeTodos = todos.filter((t) => t.status !== "completed");
-  const completedTodos = todos.filter((t) => t.status === "completed");
+  // Erledigtes zuletzt Erledigtes zuerst. Der Server sortiert die ganze Liste
+  // nach Priorität und Reihenfolge — sinnvoll für Offenes, aber bei Erledigtem
+  // führt es dazu, dass ganz oben steht, was vor Wochen abgehakt wurde. Wer
+  // hier nachsieht, will wissen, was gerade fertig geworden ist.
+  //
+  // ``completed_at`` fehlt bei Einträgen, die abgehakt wurden, bevor es das Feld
+  // gab — deshalb die Kette bis zurück auf die Anlage, statt sie ans Ende zu
+  // sortieren.
+  const completedTodos = todos
+    .filter((t) => t.status === "completed")
+    .sort((a, b) => doneAt(b) - doneAt(a));
 
   // Group active todos by project (primary) then task_id (secondary)
   const projectGroups = new Map<string, AgentTodo[]>();
@@ -468,6 +490,15 @@ function TodoItem({
           {todo.project && (
             <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-medium text-violet-400 border border-violet-500/20">
               {todo.project}
+            </span>
+          )}
+          {/* Nur bei Erledigtem: macht die Sortierung nachvollziehbar. Bei
+              Offenem waere das Datum nur Rauschen — dort zaehlt die Reihenfolge. */}
+          {isCompleted && doneAt(todo) > 0 && (
+            <span className="text-[9px] text-muted-foreground/50 tabular-nums">
+              {new Date(doneAt(todo)).toLocaleDateString("de-DE", {
+                day: "2-digit", month: "2-digit", year: "2-digit",
+              })}
             </span>
           )}
         </div>

@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.175.2] — 2026-08-11
+
+### Fixed
+- **Erledigte Aufgaben standen in der falschen Reihenfolge.** Der Server sortiert
+  die ganze Liste nach Priorität und Reihenfolge — richtig für Offenes, aber im
+  Abschnitt „Erledigt" stand dadurch ganz oben, was vor Wochen abgehakt wurde.
+  Wer dort nachsieht, will wissen, was gerade fertig geworden ist. Jetzt zuletzt
+  Erledigtes zuerst, mit Datum am Eintrag, damit die Reihenfolge nachvollziehbar
+  ist. Einträge ohne `completed_at` (abgehakt, bevor es das Feld gab) fallen auf
+  die letzte Änderung und dann auf die Anlage zurück, statt ans Ende zu rutschen.
+
 ## [1.175.1] — 2026-08-11
 
 ### Fixed
