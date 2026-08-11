@@ -24,10 +24,19 @@ _MODELS: dict[str, tuple[int, float | None, float | None]] = {
     "o1-mini": (128_000, 3.00, 12.00),
     "o1": (200_000, 15.00, 60.00),
     "o3-mini": (200_000, 1.10, 4.40),
-    # Anthropic (pricing per Anthropic docs as of 2026-05-27)
+    # Anthropic — Fenster und Preise laut platform.claude.com/docs (geprueft 2026-08-11).
+    # Die 5er-Familie und alles ab Opus 4.6 hat 1M; Sonnet/Opus 4.5 und alle Haiku
+    # 200k. Sonnet 5 laeuft bis 2026-08-31 zu 2/10 als Einfuehrungspreis — hier
+    # steht bewusst der REGULAERE Preis: eine Kostenanzeige darf eher zu hoch als
+    # zu niedrig sein, sonst reisst ein Budget unbemerkt.
+    "claude-fable-5": (1_000_000, 10.00, 50.00),
+    "claude-mythos-5": (1_000_000, 10.00, 50.00),
+    "claude-opus-5": (1_000_000, 5.00, 25.00),
+    "claude-sonnet-5": (1_000_000, 3.00, 15.00),
     "claude-opus-4-8": (1_000_000, 5.00, 25.00),
     "claude-opus-4-7": (1_000_000, 5.00, 25.00),
-    "claude-opus-4-6": (200_000, 5.00, 25.00),
+    # 1M, nicht 200k — hier stand es falsch.
+    "claude-opus-4-6": (1_000_000, 5.00, 25.00),
     "claude-opus-4-5": (200_000, 5.00, 25.00),
     "claude-opus-4-1": (200_000, 15.00, 75.00),
     "claude-opus-4": (200_000, 15.00, 75.00),

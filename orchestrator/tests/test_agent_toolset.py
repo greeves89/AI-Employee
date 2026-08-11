@@ -215,9 +215,41 @@ class ContextWindowTests(unittest.TestCase):
     def test_an_unknown_model_is_none_not_a_guess(self):
         from app.core.agent_toolset import context_window_for
 
-        for model in ("claude-sonnet-5", "irgendwas-neues", "", None):
+        # ``claude-sonnet-5`` stand hier frueher als Beispiel — es WAR unbekannt,
+        # und genau deshalb behauptete die Anzeige ein 128k-Fenster. Seit die
+        # 5er-Familie eingetragen ist, taugt es nicht mehr als Beispiel; die
+        # Regel selbst gilt unveraendert.
+        # Bewusst ohne Teilstueck eines bekannten Namens: "gpt-42-turbo"
+        # taugt NICHT, dort steckt "gpt-4" drin und trifft zu Recht.
+        for model in ("irgendwas-neues", "unbekanntes-modell", "", None):
             with self.subTest(model=model):
                 self.assertIsNone(context_window_for(model))
+
+    def test_the_claude_5_family_is_known(self):
+        """Nachgetragen aus der Anthropic-Doku (geprueft 2026-08-11): Opus 5,
+        Sonnet 5, Fable 5 und Mythos 5 haben 1M."""
+        from app.core.agent_toolset import context_window_for
+
+        for model in ("claude-opus-5", "claude-sonnet-5",
+                      "claude-fable-5", "claude-mythos-5"):
+            with self.subTest(model=model):
+                self.assertEqual(context_window_for(model), 1_000_000)
+
+    def test_opus_4_6_has_a_million_not_two_hundred_thousand(self):
+        """Stand falsch in der Tabelle. Eine zu KLEIN angegebene Fenstergroesse
+        draengt zum Verdichten, wo reichlich Platz ist."""
+        from app.core.agent_toolset import context_window_for
+
+        self.assertEqual(context_window_for("claude-opus-4-6"), 1_000_000)
+
+    def test_the_five_family_does_not_shadow_the_four_five_models(self):
+        """Laengster Treffer gewinnt — sonst bekaeme claude-sonnet-4-5 das
+        1M-Fenster von claude-sonnet-5 untergeschoben."""
+        from app.core.agent_toolset import context_window_for
+
+        self.assertEqual(context_window_for("claude-sonnet-4-5"), 200_000)
+        self.assertEqual(context_window_for("claude-haiku-4-5"), 200_000)
+        self.assertEqual(context_window_for("claude-opus-4-5"), 200_000)
 
     def test_the_agent_side_still_falls_back(self):
         """Dort ist ein Rueckfallwert richtig: zu frueh zu verdichten kostet einen

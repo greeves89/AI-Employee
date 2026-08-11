@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.1] — 2026-08-11
+
+### Fixed
+- **Die Claude-5-Familie fehlte in den Modelltabellen**, und Opus 4.6 stand mit
+  der falschen Größe drin. Nachgetragen aus der Anthropic-Dokumentation
+  (geprüft 2026-08-11), nicht geraten:
+
+  | Modell | Fenster | Preis (ein/aus je Mio.) |
+  |---|---|---|
+  | `claude-opus-5` | 1M | $5 / $25 |
+  | `claude-sonnet-5` | 1M | $3 / $15 |
+  | `claude-fable-5`, `claude-mythos-5` | 1M | $10 / $50 |
+  | `claude-opus-4-6` | **1M** (stand fälschlich auf 200k) | $5 / $25 |
+
+  Sonnet 5 läuft bis 31.08.2026 zu $2/$10 als Einführungspreis. Eingetragen ist
+  der **reguläre** Preis: eine Kostenanzeige darf eher zu hoch als zu niedrig
+  liegen, sonst reisst ein Budget unbemerkt.
+
+  Das war der Grund, warum `/compact` bei `claude-sonnet-5` „Fenstergröße nicht
+  hinterlegt" meldete. Ein zu klein angegebenes Fenster ist dabei die
+  unangenehmere Sorte Fehler: es drängt zum Verdichten, wo reichlich Platz ist.
+
+- **Der Kontext-Ring im Chat rechnete jedes Modell gegen fest verdrahtete
+  200.000 Token.** Auf einem 1M-Modell zeigte er damit das Fünffache — und stand
+  im Widerspruch zur `/compact`-Tafel gleich daneben, die die richtige Zahl schon
+  holte. Jetzt nimmt er dieselbe Quelle.
+
 ## [1.177.0] — 2026-08-11
 
 ### Added

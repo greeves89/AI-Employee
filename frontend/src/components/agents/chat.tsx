@@ -1399,8 +1399,25 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     return () => clearInterval(poll);
   }, [isWaiting, agentId]);
 
+  // Fenstergroesse fuer den Ring im Composer. Einmal je Gespraech geholt — sie
+  // aendert sich nur, wenn jemand das Modell umstellt.
+  const [modelWindow, setModelWindow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!activeSessionId) { setModelWindow(null); return; }
+    let alive = true;
+    api.getChatContext(agentId, activeSessionId)
+      .then((c) => { if (alive) setModelWindow(c.window); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [agentId, activeSessionId]);
+
   const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
-  const contextLimit = 200000;
+  // Die ECHTE Fenstergroesse des Modells, nicht mehr fest verdrahtete 200k. Der
+  // Ring rechnete bisher jedes Modell gegen 200.000 — auf einem 1M-Modell zeigte
+  // er dadurch das Fuenffache und stand im Widerspruch zur /compact-Tafel, die
+  // die richtige Zahl schon holte. Ist das Fenster unbekannt, bleibt es beim
+  // Rueckfallwert; die Tafel sagt dann ausdruecklich, dass es unbekannt ist.
+  const contextLimit = modelWindow ?? 200000;
   const contextPercent = Math.min((estimatedTokens / contextLimit) * 100, 100);
 
   // Der Composer zeigt das Modell an. Einmal geholt, nicht bei jeder Nachricht:
