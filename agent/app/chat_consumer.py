@@ -367,7 +367,9 @@ class ChatConsumer:
     # Handler lifecycle                                                    #
     # ------------------------------------------------------------------ #
 
-    async def _get_or_create_handler(self, source_key: str, model: str | None = None) -> object:
+    async def _get_or_create_handler(
+        self, source_key: str, model: str | None = None, log_publisher: LogPublisher | None = None
+    ) -> object:
         """Return the handler for this channel, creating and restoring it if needed.
 
         ``model`` is the model this turn will actually run under. A persisted
@@ -375,11 +377,18 @@ class ChatConsumer:
         a CLI session while forcing a different model can hang the turn (no timeout
         short of the 600s watchdog catches it). We drop the stale pointer instead and
         start a fresh session under the new model.
+
+        ``log_publisher`` MUST be the caller's own publisher instance (the one the
+        idle watchdog reads `last_activity_at` off), not a fresh one — a handler
+        that heartbeats into a different instance is invisible to the watchdog and
+        gets killed at the hard 600s ceiling regardless of how active the turn is
+        (issue #569). Falling back to a throwaway instance only when the caller
+        doesn't pass one keeps this method usable from non-watchdog contexts.
         """
         if source_key in self._handlers:
             return self._handlers[source_key]
 
-        log_publisher = LogPublisher(self.redis, self.agent_id)
+        log_publisher = log_publisher or LogPublisher(self.redis, self.agent_id)
         if settings.agent_mode == "custom_llm":
             from app.llm_chat_handler import LLMChatHandler
             handler = LLMChatHandler(log_publisher)
@@ -682,7 +691,7 @@ class ChatConsumer:
 
         # Route to the correct per-channel handler
         source_key = self._source_key(source, chat_session_id, telegram_ctx)
-        handler = await self._get_or_create_handler(source_key, effective_model)
+        handler = await self._get_or_create_handler(source_key, effective_model, log_publisher)
 
         # Handle special commands
         if text.strip() == "/reset":
