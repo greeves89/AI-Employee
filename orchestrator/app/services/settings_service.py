@@ -56,6 +56,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "default_model",
     "max_turns",
     "max_agents",
+    # Anzeigewaehrung (1.176.0). Fehlte hier — die API kannte die Schluessel, der
+    # Dienst nicht, und ``set()`` warf „Unknown setting". Weil das Frontend beide
+    # bei JEDEM Speichern mitschickt, scheiterte damit das komplette Speichern der
+    # Einstellungen, nicht nur die Waehrung.
+    "display_currency",
+    "usd_eur_rate",
     "aws_region",
     "vertex_project_id",
     "vertex_region",

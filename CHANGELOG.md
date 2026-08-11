@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.4] — 2026-08-11
+
+### Fixed
+- **Das Speichern der Einstellungen schlug komplett fehl (500).** Nicht nur die
+  Währung — **jedes** Speichern auf der Einstellungs-Seite, seit 1.176.0.
+
+  Ursache: `display_currency` und `usd_eur_rate` standen in der Feldliste der API,
+  aber nicht in der Erlaubnisliste des Einstellungs-Dienstes. `set()` warf
+  `Unknown setting`, die API antwortete mit 500. Und weil das Frontend beide
+  Schlüssel bei **jedem** Speichern mitschickt, riss es alles mit — auch das
+  Eintragen der Microsoft-365-Zugangsdaten, bei dem es aufgefallen ist.
+
+  Gefunden hat es der Nutzer, nicht der Test: der Währungstest ersetzt den Dienst
+  durch eine Attrappe und kam deshalb nie an der echten Liste vorbei. Neu ist
+  daher ein Test, der die **beiden Listen direkt vergleicht** — er fängt jede
+  künftige Ergänzung, nicht nur diese eine.
+
 ## [1.177.3] — 2026-08-11
 
 ### Fixed

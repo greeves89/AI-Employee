@@ -65,6 +65,34 @@ class RateValidationTests(unittest.IsolatedAsyncioTestCase):
         await self._patch(max_turns=50)
 
 
+class FieldMapMatchesTheStoreTests(unittest.TestCase):
+    """Die API-Liste und die Erlaubnisliste des Dienstes muessen zusammenpassen.
+
+    Der Anlass ist ein Ausfall im Betrieb: ``display_currency`` und
+    ``usd_eur_rate`` standen in ``_FIELD_MAP`` der API, aber nicht in
+    ``ALLOWED_KEYS`` des Dienstes. ``SettingsService.set`` warf daraufhin
+    „Unknown setting", die API antwortete mit **500** — und weil das Frontend
+    beide Schluessel bei JEDEM Speichern mitschickt, war damit das komplette
+    Speichern der Einstellungen kaputt, nicht nur die Waehrung.
+
+    Gefunden hat es der Nutzer, nicht der Test: der bestehende Waehrungstest
+    ersetzt ``SettingsService`` durch eine Attrappe und kam deshalb nie an der
+    echten Liste vorbei. Dieser Test vergleicht die beiden Listen direkt — er
+    faengt jede kuenftige Ergaenzung, nicht nur diese eine.
+    """
+
+    def test_every_api_field_can_actually_be_stored(self):
+        from app.api.settings import _FIELD_MAP
+        from app.services.settings_service import ALLOWED_KEYS
+
+        missing = {attr for attr in _FIELD_MAP.values() if attr not in ALLOWED_KEYS}
+        self.assertEqual(
+            missing, set(),
+            "Diese Einstellungen nimmt die API entgegen, kann sie aber nicht "
+            "ablegen — jedes Speichern endet in 500: " + ", ".join(sorted(missing)),
+        )
+
+
 class FloatSettingRoundTripTests(unittest.IsolatedAsyncioTestCase):
     """Aus der Ablage kommt Text — eine Zahl muss wieder eine Zahl werden."""
 
