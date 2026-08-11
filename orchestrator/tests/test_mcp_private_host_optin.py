@@ -21,6 +21,7 @@ dass die interne Adresse Absicht war und kein Vertipper.
 
 import unittest
 from ipaddress import ip_address
+from unittest.mock import AsyncMock, patch
 
 from app.api.mcp_servers import _forbidden_ip_reason, _validate_mcp_url, McpDiscoveryError
 
@@ -109,6 +110,85 @@ class UrlLiteralTests(unittest.TestCase):
             with self.subTest(bad):
                 with self.assertRaises(McpDiscoveryError):
                     _validate_mcp_url(bad, allow_private=True)
+
+
+class DiscoveryPathTests(unittest.IsolatedAsyncioTestCase):
+    """Der Haken muss den ganzen Weg durchhalten — nicht nur den ersten Waechter.
+
+    Genau hier ist er beim ersten Anlauf steckengeblieben: ``_validate_mcp_url``
+    bekam ihn, der DNS-aufloesende ``_assert_discovery_host_allowed`` nicht. Damit
+    wirkte er nur bei IP-Adressen in der URL — und ausgerechnet nicht bei einem
+    NAMEN, der sich auf eine private Adresse aufloest. Das ist aber der gedachte
+    Fall: ``mcp.intern.example`` oder ein Docker-Containername.
+
+    Aufgefallen ist es erst beim Ausprobieren gegen einen echten Server. Diese
+    Tests gehen deshalb durch ``_discover_tools`` statt durch die Waechter direkt.
+    """
+
+    URL = "http://mcp-im-haus:8000/mcp"
+
+    def _resolving_to(self, ip):
+        from ipaddress import ip_address
+        return patch("app.api.mcp_servers._resolve_host_ips",
+                     new=AsyncMock(return_value=[ip_address(ip)]))
+
+    async def test_a_name_resolving_to_a_private_address_is_refused_by_default(self):
+        from app.api.mcp_servers import _discover_tools, McpDiscoveryError
+
+        with self._resolving_to("192.168.245.87"):
+            with self.assertRaises(McpDiscoveryError) as cm:
+                await _discover_tools(self.URL)
+        self.assertIn("private", str(cm.exception).lower())
+
+    async def test_the_flag_gets_it_past_the_resolving_guard(self):
+        """Es darf hier NICHT mehr am Waechter scheitern. Dass danach keine
+        Verbindung zustande kommt, ist in Ordnung — nur die Ablehnung wegen der
+        Adresse darf nicht mehr kommen."""
+        from app.api.mcp_servers import _discover_tools, McpDiscoveryError
+
+        with self._resolving_to("172.18.0.13"):
+            try:
+                await _discover_tools(self.URL, allow_private=True)
+            except McpDiscoveryError as e:
+                self.assertNotIn("private address", str(e).lower(),
+                                 "Der Haken kam beim aufloesenden Waechter nicht an")
+            except Exception:
+                pass  # Transportfehler ist erwartet — es gibt keinen Server
+
+    async def test_the_flag_does_not_open_loopback_on_this_path_either(self):
+        from app.api.mcp_servers import _discover_tools, McpDiscoveryError
+
+        with self._resolving_to("127.0.0.1"):
+            with self.assertRaises(McpDiscoveryError) as cm:
+                await _discover_tools(self.URL, allow_private=True)
+        self.assertIn("loopback", str(cm.exception).lower())
+
+    async def test_the_flag_does_not_open_the_metadata_endpoint_either(self):
+        from app.api.mcp_servers import _discover_tools, McpDiscoveryError
+
+        with self._resolving_to("169.254.169.254"):
+            with self.assertRaises(McpDiscoveryError):
+                await _discover_tools(self.URL, allow_private=True)
+
+
+class GuardWiringTests(unittest.TestCase):
+    """Kein Waechter darf den Haken unterwegs verlieren."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return (Path(__file__).resolve().parents[1] / "app/api/mcp_servers.py").read_text()
+
+    def test_discovery_passes_the_flag_to_both_guards(self):
+        block = self._src().split("async def _discover_tools")[1].split("\nasync def ")[0]
+        self.assertIn("_validate_mcp_url(url, allow_private=allow_private)", block)
+        self.assertIn("_assert_discovery_host_allowed(safe_url, allow_private=allow_private)", block)
+
+    def test_calling_a_tool_passes_it_too(self):
+        """Wer eingetragen werden durfte, muss auch aufrufbar sein — sonst laesst
+        sich ein interner Server hinzufuegen, aber nicht ausprobieren."""
+        block = self._src().split("async def _call_tool")[1].split("\nasync def ")[0]
+        self.assertIn("allow_private=allow_private", block)
 
 
 class PersistenceTests(unittest.TestCase):

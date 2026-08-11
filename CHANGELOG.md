@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.3] — 2026-08-11
+
+### Fixed
+- **Der Haken „interne Adresse zulassen" wirkte nur bei IP-Adressen, nicht bei
+  Namen** — also ausgerechnet nicht in dem Fall, für den er gebaut wurde. In
+  `_discover_tools` bekam der erste Wächter (`_validate_mcp_url`) das Kennzeichen,
+  der DNS-auflösende zweite (`_assert_discovery_host_allowed`) nicht. Ein Eintrag
+  wie `mcp.intern.example` oder ein Docker-Containername wurde damit weiterhin
+  abgelehnt, obwohl der Haken gesetzt war.
+
+  Aufgefallen ist es beim Ausprobieren gegen einen echten Server, nicht in den
+  Tests: die prüften die Wächter einzeln, nie den Weg durch die Erkennung.
+  Genau dafür gibt es jetzt Tests, die durch `_discover_tools` gehen.
+
+- **Ein intern eingetragener Server liess sich nicht ausprobieren.** Der
+  Werkzeugaufruf aus der Oberfläche (`tools/call`) hatte denselben Wächter ohne
+  Kennzeichen. Wer eingetragen werden durfte, muss auch aufrufbar sein.
+
+  Damit lässt sich eine **auf der Plattform deployte App direkt als MCP-Server
+  einbinden** — über ihren Containernamen im gemeinsamen Docker-Netz, ohne
+  öffentlichen Freigabe-Link. Live geprüft: `http://test-mcp-server:8000/mcp`
+  liefert vier Werkzeuge.
+
 ## [1.177.2] — 2026-08-11
 
 ### Fixed

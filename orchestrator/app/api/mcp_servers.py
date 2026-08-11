@@ -423,7 +423,11 @@ async def _discover_tools(
     ``x-api-key``) are merged on top so non-Bearer servers can authenticate.
     """
     safe_url = _validate_mcp_url(url, allow_private=allow_private)
-    await _assert_discovery_host_allowed(safe_url)
+    # ACHTUNG: hier stand der Aufruf OHNE ``allow_private`` — und damit wirkte der
+    # Haken nur bei IP-Adressen in der URL, nicht bei Namen, die sich auf eine
+    # private Adresse aufloesen. Also ausgerechnet nicht im gedachten Fall
+    # (ein Hausname wie ``mcp.intern.example`` oder ein Docker-Containername).
+    await _assert_discovery_host_allowed(safe_url, allow_private=allow_private)
     headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -509,6 +513,8 @@ async def _call_tool(
     arguments: dict,
     bearer_token: str | None = None,
     extra_headers: dict[str, str] | None = None,
+    *,
+    allow_private: bool = False,
 ) -> dict:
     """Invoke a single tool (``tools/call``) and return the raw JSON-RPC object.
 
@@ -517,7 +523,10 @@ async def _call_tool(
     itself failed — so the operator sees exactly what the server said. Transport
     failures raise ``HTTPException(400)`` with the real cause in ``detail``.
     """
-    await _assert_mcp_url_allowed(url)
+    # Derselbe Server, dieselbe Entscheidung: wer eingetragen werden durfte, muss
+    # auch aufrufbar sein. Sonst laesst sich ein interner Server hinzufuegen, aber
+    # seine Werkzeuge nicht ausprobieren.
+    await _assert_mcp_url_allowed(url, allow_private=allow_private)
     headers = _build_headers(bearer_token, extra_headers)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -823,7 +832,8 @@ async def call_mcp_tool(
     extra = json_mod.loads(decrypt_token(server.headers_encrypted)) if server.headers_encrypted else None
 
     try:
-        rpc = await _call_tool(server.url, body.name, body.arguments, token, extra)
+        rpc = await _call_tool(server.url, body.name, body.arguments, token, extra,
+                               allow_private=bool(server.allow_private_host))
     except HTTPException as e:
         # Transport / handshake failure — the call never ran on the server.
         await _write_audit(db, AuditEventType.MCP_TOOL_CALL_FAILED, f"{server.name}:{body.name}",
