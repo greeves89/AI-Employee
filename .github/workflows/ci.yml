@@ -85,7 +85,7 @@ jobs:
           pip install --no-cache-dir pytest pytest-asyncio
       - name: Run arg-parse regression tests
         working-directory: agent
-        run: pytest -q tests/test_openai_responses_tool_args.py tests/test_responses_stream_smoke.py
+        run: pytest -q tests/test_openai_responses_tool_args.py tests/test_responses_stream_smoke.py tests/test_chat_watchdog_publisher_identity.py
 
   # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
   compose-config:
