@@ -9,6 +9,7 @@ import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useToast } from "@/components/ui/dialog-provider";
+import { formatMoney } from "@/lib/money";
 
 const priorityOptions = [
   { value: 0, label: "Low", color: "text-zinc-400 border-zinc-500/20 bg-zinc-500/10" },
@@ -271,20 +272,20 @@ export default function NewTaskPage() {
               >
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Min</span>
-                  <span>${costEstimate.min_usd.toFixed(4)}</span>
+                  <span>{formatMoney(costEstimate.min_usd)}</span>
                 </div>
                 <div className="flex justify-between font-medium">
                   <span className="text-muted-foreground">Avg</span>
-                  <span>${costEstimate.avg_usd.toFixed(4)}</span>
+                  <span>{formatMoney(costEstimate.avg_usd)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Max</span>
-                  <span>${costEstimate.max_usd.toFixed(4)}</span>
+                  <span>{formatMoney(costEstimate.max_usd)}</span>
                 </div>
                 {costEstimate.agent_avg_usd !== null && (
                   <div className="flex justify-between border-t border-foreground/[0.06] pt-1 mt-1">
                     <span className="text-muted-foreground">Agent avg</span>
-                    <span>${costEstimate.agent_avg_usd.toFixed(4)}</span>
+                    <span>{formatMoney(costEstimate.agent_avg_usd)}</span>
                   </div>
                 )}
               </motion.div>

@@ -409,7 +409,7 @@ class ShareCreate(BaseModel):
     scope: str = ACCESS_USER
     #: nur bei scope="user"
     user_id: str | None = None
-    #: Pflicht bei scope="public", sonst optional (Tage ab jetzt)
+    #: Tage ab jetzt. Bei scope="public": 0 = unbefristet, weggelassen = 7 Tage.
     expires_in_days: int | None = None
 
 
@@ -495,13 +495,19 @@ async def create_app_share(
 
     expires_at = None
     if scope == ACCESS_PUBLIC:
-        days = body.expires_in_days or 7
-        if days < 1 or days > MAX_PUBLIC_SHARE_DAYS:
+        # 0 = unbefristet. Ausdrücklich gewollt: es gibt Demo-Links, die stehen
+        # bleiben sollen. Der Preis steht in der Oberfläche — ein Link ohne Ablauf
+        # bleibt offen, bis ihn jemand zurückzieht, und daran denkt niemand von
+        # selbst. Deshalb ist 7 Tage weiterhin die Vorgabe und „unbefristet" die
+        # bewusste Ausnahme.
+        days = 7 if body.expires_in_days is None else body.expires_in_days
+        if days and (days < 1 or days > MAX_PUBLIC_SHARE_DAYS):
             raise HTTPException(
                 status_code=400,
-                detail=f"Öffentliche Links laufen nach 1–{MAX_PUBLIC_SHARE_DAYS} Tagen ab.",
+                detail=f"Öffentliche Links: 1–{MAX_PUBLIC_SHARE_DAYS} Tage oder 0 für unbefristet.",
             )
-        expires_at = datetime.now(timezone.utc) + timedelta(days=days)
+        if days:
+            expires_at = datetime.now(timezone.utc) + timedelta(days=days)
     elif body.expires_in_days:
         if body.expires_in_days < 1 or body.expires_in_days > 365:
             raise HTTPException(status_code=400, detail="Ablauf muss zwischen 1 und 365 Tagen liegen.")

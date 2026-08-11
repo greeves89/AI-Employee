@@ -5,6 +5,7 @@ import { DollarSign, TrendingUp, Coins } from "lucide-react";
 import { getCostAttribution } from "@/lib/api";
 import type { CostAttribution as CostAttributionData } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/money";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -85,7 +86,7 @@ export function CostAttribution() {
                     {formatTokens(agent.total_input_tokens + agent.total_output_tokens)} tok
                   </span>
                   <span className={cn("font-semibold", i === 0 ? "text-violet-400" : "text-foreground/80")}>
-                    ${agent.total_cost_usd.toFixed(2)}
+                    {formatMoney(agent.total_cost_usd)}
                   </span>
                 </div>
               </div>
@@ -104,7 +105,7 @@ export function CostAttribution() {
         <span>Platform Total</span>
         <div className="flex items-center gap-3 tabular-nums">
           <span>{formatTokens(data.platform_total_input_tokens + data.platform_total_output_tokens)} tok</span>
-          <span className="font-semibold text-foreground/80">${data.platform_total_usd.toFixed(2)}</span>
+          <span className="font-semibold text-foreground/80">{formatMoney(data.platform_total_usd)}</span>
         </div>
       </div>
     </div>

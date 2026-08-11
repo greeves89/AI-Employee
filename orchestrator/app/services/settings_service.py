@@ -252,11 +252,25 @@ class SettingsService:
                 continue
             if hasattr(settings, key):
                 current = getattr(settings, key)
-                # Convert types
-                if isinstance(current, bool):
-                    value = value.lower() in ("true", "1", "yes")
-                elif isinstance(current, int):
-                    value = int(value)
+                # Convert types. Aus der Ablage kommt IMMER Text — ohne Umwandlung
+                # steht in einer Zahl-Einstellung hinterher eine Zeichenkette, und
+                # die faellt erst weit weg auf, beim Rechnen damit.
+                # Reihenfolge: bool zuerst, denn in Python IST ein bool ein int.
+                try:
+                    if isinstance(current, bool):
+                        value = value.lower() in ("true", "1", "yes")
+                    elif isinstance(current, int):
+                        value = int(value)
+                    elif isinstance(current, float):
+                        # Fehlte bisher. Fiel nicht auf, weil keine der drei
+                        # Fliesskomma-Einstellungen bisher ueber die Ablage lief.
+                        value = float(value)
+                except ValueError:
+                    logger.warning(
+                        "Einstellung %s ist unbrauchbar (%r) — Vorgabewert bleibt stehen",
+                        key, value,
+                    )
+                    continue
                 setattr(settings, key, value)
                 loaded += 1
 

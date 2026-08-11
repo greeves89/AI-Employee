@@ -183,6 +183,7 @@ function LiveActivity({ agentId }: { agentId: string }) {
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
 import { useVoiceSession } from "./voice-session-provider";
+import { formatMoney } from "@/lib/money";
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
@@ -1062,6 +1063,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     const imgs = pendingImages;
     const files = pendingFiles;
     if ((!text && imgs.length === 0 && files.length === 0) || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Wer selbst schreibt, will die Antwort sehen — auch wenn er vorher weiter
+    // oben gelesen hat. Senden hebt das Anhalten der Ansicht auf; nur Scrollen
+    // haelt sie an, nicht ein einmal weiter oben gesetzter Zustand.
+    followRef.current = true;
+    setShowJumpToLatest(false);
 
     // Upload attached files to the agent's workspace first — the message only
     // goes out if the upload succeeds (pending chips stay on failure).
@@ -2133,7 +2140,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                       {totalCost > 0 && (
                         <div className="flex justify-between">
                           <span>Kosten</span>
-                          <span className="tabular-nums text-foreground/80">${totalCost.toFixed(4)}</span>
+                          <span className="tabular-nums text-foreground/80">{formatMoney(totalCost)}</span>
                         </div>
                       )}
                     </div>
@@ -2801,7 +2808,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
 function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number } }) {
   const parts: string[] = [];
   if (meta.duration_ms) parts.push(`${(meta.duration_ms / 1000).toFixed(1)}s`);
-  if (meta.cost_usd) parts.push(`$${meta.cost_usd.toFixed(4)}`);
+  if (meta.cost_usd) parts.push(formatMoney(meta.cost_usd));
   if (meta.num_turns) parts.push(`${meta.num_turns} turns`);
   if (meta.input_tokens || meta.output_tokens)
     parts.push(`${meta.input_tokens ?? 0} ↑ / ${meta.output_tokens ?? 0} ↓ tok`);

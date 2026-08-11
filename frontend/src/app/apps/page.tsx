@@ -279,6 +279,9 @@ function DetailModal({ app, onClose, onShowLogs }: {
   const [scope, setScope] = useState<api.AppShareScope>("user");
   const [userId, setUserId] = useState("");
   const [days, setDays] = useState(7);
+  // 0 Tage = unbefristet. Eigener Zustand statt „days === 0", damit die
+  // eingestellte Dauer erhalten bleibt, wenn man den Haken wieder wegnimmt.
+  const [neverExpires, setNeverExpires] = useState(false);
   const [directory, setDirectory] = useState<{ id: string; name: string; email: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [shareErr, setShareErr] = useState("");
@@ -307,7 +310,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
       const created = await api.createAppShare(app.project, {
         scope,
         ...(scope === "user" ? { user_id: userId } : {}),
-        ...(scope === "public" ? { expires_in_days: days } : {}),
+        ...(scope === "public" ? { expires_in_days: neverExpires ? 0 : days } : {}),
       });
       if (created.token && detail?.proxy_container && detail?.proxy_port) {
         setFreshLink(
@@ -490,11 +493,26 @@ function DetailModal({ app, onClose, onShowLogs }: {
                         </div>
                         <label className="flex items-center gap-2 text-xs text-muted-foreground">
                           Gültig für
-                          <input type="number" min={1} max={90} value={days}
+                          <input type="number" min={1} max={90} value={days || ""}
+                            disabled={neverExpires}
                             onChange={(e) => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
-                            className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground" />
+                            className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground disabled:opacity-40" />
                           Tage (max. 90)
                         </label>
+                        {/* Unbefristet ist eine bewusste Ausnahme, keine Vorgabe — der
+                            Link bleibt offen, bis ihn jemand zurueckzieht. */}
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <input type="checkbox" checked={neverExpires}
+                            onChange={(e) => setNeverExpires(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-border accent-violet-500" />
+                          Unbefristet — läuft nie ab
+                        </label>
+                        {neverExpires && (
+                          <p className="text-[11px] text-amber-300/90">
+                            Dieser Link bleibt gültig, bis du ihn zurückziehst. Niemand
+                            erinnert dich daran.
+                          </p>
+                        )}
                       </div>
                     )}
 

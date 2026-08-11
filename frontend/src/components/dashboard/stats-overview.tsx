@@ -3,6 +3,7 @@
 import { Cpu, Zap, CheckCircle2, Clock, DollarSign } from "lucide-react";
 import type { Agent, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/money";
 
 interface StatsOverviewProps {
   agents: Agent[];
@@ -68,7 +69,7 @@ export function StatsOverview({ agents, tasks }: StatsOverviewProps) {
     working: workingAgents,
     running: runningTasks,
     completed: completedTasks,
-    cost: `$${totalCost.toFixed(2)}`,
+    cost: formatMoney(totalCost),
   };
 
   return (

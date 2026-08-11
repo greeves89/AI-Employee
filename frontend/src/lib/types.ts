@@ -249,6 +249,10 @@ export interface Settings {
   max_turns: number;
   max_agents: number;
   registration_open: boolean;
+  /** Anzeigewährung ("EUR" | "USD") und Kurs. Gespeichert wird IMMER in USD —
+   *  umgerechnet wird nur für die Darstellung, siehe lib/money.ts. */
+  display_currency?: string;
+  usd_eur_rate?: number;
   // Provider info
   model_provider: ModelProvider;
   has_bedrock: boolean;

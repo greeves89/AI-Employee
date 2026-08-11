@@ -49,6 +49,7 @@ import type { SecondBrain } from "@/lib/types";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
   pending: { icon: Clock, color: "text-amber-400", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
@@ -609,7 +610,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
         <div className={cn("h-1 rounded-full transition-all duration-700", fill)} style={{ width: `${pct}%` }} />
       </div>
       <span className={cn("shrink-0 text-[12px] font-semibold tabular-nums", tone)}>
-        ${spent.toFixed(2)} / ${budget.toFixed(2)}
+        {formatMoney(spent)} / {formatMoney(budget)}
       </span>
     </div>
   );

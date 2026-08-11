@@ -5,6 +5,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.176.0] — 2026-08-11
+
+### Added
+- **Kosten in Euro, in deutscher Schreibweise.** Bisher stand überall `$138.4410` —
+  falsche Währung, kein Tausenderpunkt, vier Nachkommastellen auch bei dreistelligen
+  Beträgen. Jetzt `138,44 €`, an **allen 23 Stellen**, an denen Geld angezeigt wird
+  (Dashboard, Analytics, Aufgaben, Budgets, Chat-Fußzeile, Admin, Audit, Concierge,
+  Kiosk) — über **eine** gemeinsame Funktion, nicht 23 einzelne.
+
+  Umgerechnet wird ausschliesslich für die **Anzeige**. Gespeichert bleibt USD: sonst
+  hinge jeder Altbetrag an dem Tageskurs, zu dem er zufällig eingetragen wurde, und
+  liesse sich nie wieder geradeziehen. Der Originalbetrag samt Kurs steht als
+  Beschriftung an jeder umgerechneten Zahl.
+
+  Währung und Kurs stellt ein Administrator unter **Settings → Anzeigewährung** ein.
+  Ein Kurs ausserhalb von 0,01–100 wird abgewiesen statt zurechtgebogen — ein Kurs
+  von 0 macht lautlos jede Zahl der Oberfläche zu „0,00 €".
+
+  Nachkommastellen richten sich nach der Größe: unter einem Cent vier Stellen, damit
+  ein Aufruf für einen Drittel-Cent nicht als kostenlos erscheint; ab einem Euro zwei.
+
+- **Öffentliche App-Links können unbefristet gelten.** Bisher war ein Ablaufdatum
+  Pflicht (max. 90 Tage). Für Demos, die stehen bleiben sollen, gibt es jetzt den
+  Haken **„Unbefristet — läuft nie ab"**. Sieben Tage bleiben die Vorgabe und
+  unbefristet die bewusste Ausnahme: der Link bleibt offen, bis ihn jemand
+  zurückzieht, und daran erinnert niemand. Das steht so auch in der Oberfläche.
+
+- **Der Agent sagt, was er vorhat, bevor die Werkzeugkette losläuft.** Der Abschnitt
+  „Communication" der Agenten-Anleitung regelte nur das Danach („summarize what you
+  did"). Über das Davor stand nichts — also fing das Modell wortlos an, und man sah
+  minutenlang Werkzeugsymbole ohne zu wissen, worauf man wartet. Jetzt ein Satz
+  vorweg, in der Sprache des Nutzers. Ein oder zwei schnelle Aufrufe brauchen keine
+  Ansage; das wäre Lärm bei jeder Antwort. Die Anleitung geht als `/workspace/AGENT.md`
+  an alle drei Laufzeiten — Claude Code, Codex und Custom-LLM.
+
+### Fixed
+- **Beim Senden folgte die Ansicht nicht.** Nachtrag zu 1.175.1: wer weiter oben
+  gelesen hatte und dann eine Nachricht abschickte, blieb dort stehen. Senden ist
+  aber eine ausdrückliche Handlung — jetzt springt die Ansicht dabei ans Ende.
+- **Fliesskomma-Einstellungen kamen als Zeichenkette aus der Ablage zurück.** Bools
+  und ganze Zahlen wurden umgewandelt, Fliesskommazahlen nicht. Bisher folgenlos, weil
+  keine der drei betroffenen Einstellungen über die Ablage lief — mit dem Umrechnungs-
+  kurs wäre es sofort aufgefallen, und zwar weit weg von der Ursache: beim Rechnen.
+  Ein unbrauchbarer Wert lässt jetzt den Vorgabewert stehen, statt ihn zu überschreiben.
+
 ## [1.175.2] — 2026-08-11
 
 ### Fixed

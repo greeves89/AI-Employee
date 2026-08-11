@@ -114,6 +114,13 @@ class Settings(BaseSettings):
 
     # Live electricity price for the power-cost estimate (env: ELECTRICITY_PRICE_EUR_KWH).
     electricity_price_eur_kwh: float = 0.35
+    # Anzeigewaehrung und Umrechnungskurs. Abgerechnet wird bei den Anbietern in
+    # USD, und so werden Kosten auch GESPEICHERT — umgerechnet wird ausschliesslich
+    # fuer die Anzeige. Andersherum waere der Bestand vom Tageskurs abhaengig, zu
+    # dem er zufaellig eingetragen wurde.
+    # 0 = keine Umrechnung, es bleibt bei USD.
+    display_currency: str = "EUR"
+    usd_eur_rate: float = 0.92
     # Host metrics JSON written by the host power collector (bind-mounted read-only).
     kiosk_metrics_path: str = "/kiosk-metrics/metrics.json"
     secondbrain_container_base: str = "/mnt/brains"

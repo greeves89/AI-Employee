@@ -1012,6 +1012,29 @@ fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
 Die aufgeklappte Vorlage zeigt die hinterlegten Bereiche in der Übersicht. Änderst du sie,
 gilt das für **neue** Agenten — bestehende behalten ihre eigenen.
 
+### 20.3 Anzeigewährung: Kosten in Euro *(seit 1.176.0)*
+
+Die Anbieter rechnen in **US-Dollar** ab, und genau so werden Kosten auch **gespeichert**.
+Für die Anzeige lässt sich das umrechnen — überall, wo Geld steht: Dashboard, Analytics,
+Aufgaben, Budgets, Chat-Fußzeile, Admin-Konsole.
+
+So stellst du es ein (nur Administratoren):
+1. Seitenleiste → **Settings**.
+2. Abschnitt **Grenzen** → Karte **Anzeigewährung**.
+3. **Euro (€)** wählen — oder **US-Dollar ($)**, wenn nicht umgerechnet werden soll.
+4. Bei Euro darunter den **Kurs USD → EUR** eintragen (z. B. `0,92`).
+5. **Speichern**.
+
+Beträge erscheinen danach in deutscher Schreibweise: **Punkt als Tausender-, Komma als
+Dezimaltrennung** — `1.234,56 €` statt `$1234.5600`. Sehr kleine Beträge bekommen
+automatisch mehr Nachkommastellen, damit ein Aufruf für einen Drittel-Cent nicht als
+„0,00 €" erscheint.
+
+> **Der Kurs ist fest und wird nicht automatisch nachgeführt.** Er ist eine Anzeigehilfe,
+> keine Buchhaltung. Damit das nachvollziehbar bleibt, steht der **Originalbetrag in
+> US-Dollar samt verwendetem Kurs** als Beschriftung an jeder umgerechneten Zahl — Maus
+> darüber halten.
+
 ---
 
 ## 21. Benachrichtigungen
@@ -1740,7 +1763,10 @@ Image, Port und Zustand.
      angemeldet sein. Danach die Person aus der Liste auswählen.
    - **Alle eingeloggten Nutzer** — jeder mit einem Konto auf dieser Plattform.
    - **Öffentlicher Link (ohne Login)** — ein Link, der **ohne Anmeldung** funktioniert.
-     Hier stellst du zusätzlich die **Gültigkeit in Tagen** ein (1–90).
+     Hier stellst du zusätzlich die **Gültigkeit in Tagen** ein (1–90). Für Demos, die
+     stehen bleiben sollen, gibt es darunter den Haken **„Unbefristet — läuft nie ab"**.
+     Dann bleibt der Link gültig, bis du ihn zurückziehst — **niemand erinnert dich
+     daran**. Nimm ihn nur, wenn du ihn wirklich brauchst.
 3. **Freigeben** klicken.
 
 ![Freigabe-Dialog](screenshots/f21-app-freigeben.png)

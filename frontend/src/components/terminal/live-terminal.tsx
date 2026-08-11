@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
+import { formatMoney } from "@/lib/money";
 
 interface LiveTerminalProps {
   agentId: string;
@@ -106,7 +107,7 @@ function LogLine({ event }: { event: LogEvent }) {
       return (
         <div className="text-emerald-400 border-t border-border mt-2 pt-2">
           <span className="text-muted-foreground text-xs mr-2">{time}</span>
-          Task completed - Cost: ${Number(data.cost_usd || 0).toFixed(4)} |
+          Task completed - Cost: {formatMoney(Number(data.cost_usd || 0))} |
           Duration: {Number(data.duration_ms || 0)}ms |
           Turns: {Number(data.num_turns || 0)}
         </div>

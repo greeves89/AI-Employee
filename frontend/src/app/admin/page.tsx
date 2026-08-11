@@ -55,6 +55,7 @@ import { MountPermissionsModal } from "@/components/admin/mount-permissions-moda
 import { RolesPanel } from "@/components/admin/roles-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
+import { formatMoney } from "@/lib/money";
 
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
@@ -1253,7 +1254,7 @@ function BudgetTab({
       <div className="grid grid-cols-4 gap-4">
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Gesamtkosten</p>
-          <p className="text-2xl font-bold text-foreground">${totalCost.toFixed(4)}</p>
+          <p className="text-2xl font-bold text-foreground">{formatMoney(totalCost)}</p>
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">alle Agenten</p>
         </div>
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">

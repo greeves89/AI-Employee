@@ -64,10 +64,18 @@ class BudgetTests(unittest.TestCase):
         self.assertIn("flex items-center", block)
 
     def test_the_number_survives(self):
-        """Kompakter heisst nicht: Information weg. Verbrauch und Grenze bleiben."""
+        """Kompakter heisst nicht: Information weg. Verbrauch und Grenze bleiben.
+
+        Geprueft wird, dass BEIDE Zahlen gerendert werden — nicht, mit welcher
+        Funktion. Vorher stand hier ``spent.toFixed(2)``; als die Anzeige auf die
+        gemeinsame Waehrungsformatierung umgestellt wurde, schlug der Test an,
+        obwohl die Aussage unveraendert war. Ein Test soll die Absicht halten,
+        nicht die Schreibweise.
+        """
         block = self.SRC.split("function BudgetBar")[1].split("\n}")[0]
-        self.assertIn("spent.toFixed(2)", block)
-        self.assertIn("budget.toFixed(2)", block)
+        rendered = block.split("return (")[1]
+        self.assertIn("{spent", rendered.replace("formatMoney(", "{"))
+        self.assertIn("{budget", rendered.replace("formatMoney(", "{"))
 
     def test_utilisation_stays_visible(self):
         block = self.SRC.split("function BudgetBar")[1].split("\n}")[0]

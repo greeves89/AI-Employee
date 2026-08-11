@@ -19,6 +19,7 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
+import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string; label: string }> = {
   pending:   { icon: Clock,        color: "text-amber-400",   badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",     label: "Pending" },
@@ -591,7 +592,7 @@ export default function TaskDetailPage() {
                     {trace && (trace.summary.cost_usd != null || trace.governance.length > 0) && (
                       <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
-                          {trace.summary.cost_usd != null && <span>Kosten <span className="text-foreground">${trace.summary.cost_usd.toFixed(4)}</span></span>}
+                          {trace.summary.cost_usd != null && <span>Kosten <span className="text-foreground">{formatMoney(trace.summary.cost_usd)}</span></span>}
                           {trace.summary.num_turns != null && <span>Turns <span className="text-foreground">{trace.summary.num_turns}</span></span>}
                           {trace.summary.duration_ms != null && <span>Dauer <span className="text-foreground">{formatDuration(trace.summary.duration_ms)}</span></span>}
                           {(trace.summary.input_tokens != null || trace.summary.output_tokens != null) && (
@@ -735,7 +736,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       return (
         <div className="text-emerald-400 border-t border-foreground/[0.08] mt-3 pt-3">
           <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
-          Task completed — Cost: ${Number(data.cost_usd || 0).toFixed(4)} | Duration: {formatDuration(Number(data.duration_ms || 0))} | Turns: {Number(data.num_turns || 0)}
+          Task completed — Cost: {formatMoney(Number(data.cost_usd || 0))} | Duration: {formatDuration(Number(data.duration_ms || 0))} | Turns: {Number(data.num_turns || 0)}
         </div>
       );
     default:

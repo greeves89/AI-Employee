@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { getConciergeOverview, runConciergeAction, type ConciergeOverview } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { formatMoney } from "@/lib/money";
 
 /**
  * Admin-Concierge (#11) — „läuft alles?" in einer Antwort.
@@ -244,7 +245,7 @@ export function ConciergeWidget() {
                   {" · "}
                   {stats.tasks_24h} Aufgabe{stats.tasks_24h !== 1 ? "n" : ""} in 24 h
                   {stats.failed_24h > 0 && ` (${stats.failed_24h} rot)`}
-                  {" · "}${stats.cost_24h_usd.toFixed(2)}
+                  {" · "}{formatMoney(stats.cost_24h_usd)}
                 </p>
 
                 <div>
