@@ -19,6 +19,8 @@ Gegen echtes SQL, weil beides an Abfragen hängt: „gibt es die Zeile schon" un
 „zu welcher Sitzung gehört diese Nachricht".
 """
 
+import os
+import tempfile
 import unittest
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -32,7 +34,18 @@ SESSION_B = "sess-kodierung"
 
 class ChatPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        # Echte Datei statt ":memory:": ":memory:" ist pro Verbindung eine
+        # EIGENE Datenbank (SQLite-Eigenheit) — zwei "gleichzeitige" Schreiber
+        # (test_a_true_write_race_does_not_drop_the_loser) braeuchten dafuer
+        # dieselbe physische Verbindung, und die teilt sich in SQLAlchemy nicht
+        # nebenlaeufig: eine zweite Transaktion auf derselben Verbindung stoert
+        # die erste (Rollback der einen reisst die andere mit). Eine Datei
+        # dagegen bekommt aus dem Pool ganz normal getrennte Verbindungen, so
+        # wie Postgres auch — genau das macht die Nebenlaeufigkeit im Race-Test
+        # erst echt.
+        fd, self._db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.engine = create_async_engine(f"sqlite+aiosqlite:///{self._db_path}")
         async with self.engine.begin() as conn:
             await conn.run_sync(ChatMessage.metadata.create_all,
                                 tables=[ChatMessage.__table__])
@@ -46,6 +59,7 @@ class ChatPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self._cp.async_session_factory = self._orig
         await self.engine.dispose()
+        os.unlink(self._db_path)
 
     async def _rows(self, **where):
         from sqlalchemy import select
@@ -107,6 +121,31 @@ class ChatPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0].meta.get("partial"), True)
         self.assertEqual(rows[0].meta.get("num_turns"), 3)
         self.assertAlmostEqual(rows[0].cost_usd, 0.42)
+
+    async def test_a_true_write_race_does_not_drop_the_loser(self):
+        """Zwei Schreiber legen dieselbe NEUE Zeile echt gleichzeitig an (nicht
+        nacheinander). Vor dem Fix verletzte der zweite Commit den Unique-Index,
+        das wurde nur geloggt — der komplette Inhalt dieses Aufrufs (Text ODER
+        Werkzeugaufrufe, je nachdem wer verlor) ging kommentarlos verloren."""
+        import asyncio
+
+        await asyncio.gather(
+            self._cp.upsert_chat_message(
+                AGENT, SESSION_A, "race", "assistant",
+                content="Die fertige Antwort.",
+            ),
+            self._cp.upsert_chat_message(
+                AGENT, SESSION_A, "race", "assistant",
+                content="", tool_calls=[{"tool": "read_file", "input": "{}"}],
+            ),
+        )
+        rows = await self._rows(message_id="race")
+        self.assertEqual(len(rows), 1, "Unique-Index erzwingt genau eine Zeile")
+        self.assertEqual(rows[0].content, "Die fertige Antwort.",
+                          "Der Text darf nicht verloren gehen")
+        self.assertEqual(rows[0].tool_calls, [{"tool": "read_file", "input": "{}"}],
+                          "Die Werkzeugaufrufe des zweiten Schreibers duerfen nicht "
+                          "stillschweigend verworfen werden")
 
     async def test_nothing_is_written_without_a_session(self):
         created = await self._cp.upsert_chat_message(AGENT, "", "m1", "assistant", content="x")
