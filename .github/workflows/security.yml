@@ -179,4 +179,10 @@ jobs:
       - name: TruffleHog secret scan
         uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --only-verified --results=verified
+          # Lob detector excluded: confirmed false positive (PR #563) — its regex
+          # matches any `test_`-prefixed identifier of sufficient length (e.g. a
+          # pytest function name like test_github_integration_env_via_provider),
+          # and Lob's sandbox-mode API verifies almost any such string as "valid".
+          # This repo has no relationship to Lob.com; excluding avoids recurring
+          # false failures without weakening real secret detection.
+          extra_args: --only-verified --results=verified --exclude-detectors=Lob
