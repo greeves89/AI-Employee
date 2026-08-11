@@ -24,10 +24,10 @@ async def test_github_integration_env_via_provider():
     db = _db_with_integration(integration)
     manager = AgentManager(db=db, docker=MagicMock(), redis=MagicMock())
 
-    with patch("app.core.agent_manager.decrypt_token", return_value="ghp_decrypted"):
+    with patch("app.core.agent_manager.decrypt_token", return_value="test_pat_decrypted"):
         env = await manager._get_integration_env(["github"])
 
-    assert env == {"GITHUB_TOKEN": "ghp_decrypted", "GH_TOKEN": "ghp_decrypted"}
+    assert env == {"GITHUB_TOKEN": "test_pat_decrypted", "GH_TOKEN": "test_pat_decrypted"}
 
 
 @pytest.mark.asyncio

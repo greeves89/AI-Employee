@@ -23,8 +23,8 @@ def test_registry_falls_back_to_github_for_unknown_host():
 
 
 def test_get_agent_env_sets_both_token_vars():
-    env = GitHubHostProvider().get_agent_env("ghp_abc123")
-    assert env == {"GITHUB_TOKEN": "ghp_abc123", "GH_TOKEN": "ghp_abc123"}
+    env = GitHubHostProvider().get_agent_env("test_pat_abc123")
+    assert env == {"GITHUB_TOKEN": "test_pat_abc123", "GH_TOKEN": "test_pat_abc123"}
 
 
 def _client(get_resp=None, post_resp=None, patch_resp=None):

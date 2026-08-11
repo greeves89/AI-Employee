@@ -70,7 +70,7 @@ async def test_create_issue_uses_decrypted_oauth_token():
     ctx, client = _http_client_ctx()
 
     with patch("app.services.self_test_service.httpx.AsyncClient", return_value=ctx), \
-         patch("app.services.self_test_service.decrypt_token", return_value="ghp_decrypted") as mock_decrypt:
+         patch("app.services.self_test_service.decrypt_token", return_value="test_pat_decrypted") as mock_decrypt:
         created = await SelfTestService()._create_github_issues(
             db, [_failed_result()], test_run_id=42
         )
@@ -78,7 +78,7 @@ async def test_create_issue_uses_decrypted_oauth_token():
     mock_decrypt.assert_called_once_with("encrypted-blob")
     assert created == 1
     _, kwargs = client.post.call_args
-    assert kwargs["headers"]["Authorization"] == "Bearer ghp_decrypted"
+    assert kwargs["headers"]["Authorization"] == "Bearer test_pat_decrypted"
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_auto_close_uses_decrypted_oauth_token():
     )
 
     with patch("app.services.self_test_service.httpx.AsyncClient", return_value=ctx), \
-         patch("app.services.self_test_service.decrypt_token", return_value="ghp_decrypted") as mock_decrypt:
+         patch("app.services.self_test_service.decrypt_token", return_value="test_pat_decrypted") as mock_decrypt:
         closed = await SelfTestService()._auto_close_fixed_issues(
             db, [_passed_result()]
         )
@@ -98,9 +98,9 @@ async def test_auto_close_uses_decrypted_oauth_token():
     assert closed == 1
     # comment then close — both bearer-authenticated with the decrypted token
     _, comment_kwargs = client.post.call_args
-    assert comment_kwargs["headers"]["Authorization"] == "Bearer ghp_decrypted"
+    assert comment_kwargs["headers"]["Authorization"] == "Bearer test_pat_decrypted"
     _, patch_kwargs = client.patch.call_args
-    assert patch_kwargs["headers"]["Authorization"] == "Bearer ghp_decrypted"
+    assert patch_kwargs["headers"]["Authorization"] == "Bearer test_pat_decrypted"
     assert patch_kwargs["json"] == {"state": "closed"}
 
 
