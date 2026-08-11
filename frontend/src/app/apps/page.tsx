@@ -286,6 +286,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
   const [saving, setSaving] = useState(false);
   const [shareErr, setShareErr] = useState("");
   const [freshLink, setFreshLink] = useState("");
+  const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
@@ -327,6 +328,23 @@ function DetailModal({ app, onClose, onShowLogs }: {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Aus Token + Proxy-Ziel den vollstaendigen Link bauen — dieselbe Formel wie
+  // beim Anlegen, damit es nur EINE Stelle gibt, die weiss, wie er aussieht.
+  const shareLink = (s: api.AppShare): string =>
+    s.token && detail?.proxy_container && detail?.proxy_port
+      ? `${window.location.origin}/api/v1/agents/${detail.agent_id}/apps/proxy/` +
+        `${detail.proxy_container}/${detail.proxy_port}/?__aie_share=${encodeURIComponent(s.token)}`
+      : "";
+
+  const copyShareLink = (s: api.AppShare) => {
+    const link = shareLink(s);
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedShareId(s.id);
+      setTimeout(() => setCopiedShareId(null), 1500);
+    });
   };
 
   const revoke = async (id: string) => {
@@ -444,10 +462,25 @@ function DetailModal({ app, onClose, onShowLogs }: {
                               </p>
                             </div>
                           </div>
-                          <button onClick={() => revoke(s.id)} title="Freigabe zurückziehen"
-                            className="text-red-400/80 hover:text-red-400 shrink-0">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Der Link gehoert in die Liste, nicht nur in den Moment
+                                seiner Entstehung. Wer ihn verlor, legte frueher einen
+                                neuen an und liess den alten stehen — am Ende lebten
+                                mehr Links, als jemand ueberblickte. */}
+                            {s.scope === "public" && shareLink(s) && (
+                              <button onClick={() => copyShareLink(s)}
+                                title="Link kopieren"
+                                className="text-muted-foreground/70 hover:text-foreground">
+                                {copiedShareId === s.id
+                                  ? <Check className="h-4 w-4 text-emerald-400" />
+                                  : <Copy className="h-4 w-4" />}
+                              </button>
+                            )}
+                            <button onClick={() => revoke(s.id)} title="Freigabe zurückziehen"
+                              className="text-red-400/80 hover:text-red-400">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>

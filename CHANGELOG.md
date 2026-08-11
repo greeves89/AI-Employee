@@ -40,7 +40,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Ansage; das wäre Lärm bei jeder Antwort. Die Anleitung geht als `/workspace/AGENT.md`
   an alle drei Laufzeiten — Claude Code, Codex und Custom-LLM.
 
+- **Öffentliche App-Links stehen jetzt in der Liste — mit Kopieren und Papierkorb.**
+  Bisher gab es den Link genau einmal, in der Antwort auf das Anlegen. Das klang
+  sicherer, als es war: wer ihn verlor, legte einen neuen an und liess den alten
+  stehen. Am Ende lebten mehr Links, als jemand überblickte. Der Token wird jetzt
+  zusätzlich **verschlüsselt** aufbewahrt (Fernet, derselbe `ENCRYPTION_KEY` wie
+  bei allen anderen Zugangsdaten) und nur dem **Besitzer** ausgeliefert.
+
+  Geprüft wird weiterhin gegen den **Hash** — das ist der schnelle, konstantzeitige
+  Vergleich, der bei jedem Seitenaufruf läuft. Ändert sich der Schlüssel, funktioniert
+  der Link also weiter, nur anzeigen lässt er sich nicht mehr; dann steht dort nichts
+  statt etwas Falschem. Freigaben von vor dieser Version haben keinen Klartext mehr —
+  das ist keine Lücke, sondern die alte Ablage.
+
 ### Fixed
+- **Stop meldete einen Fehler, den niemand gemacht hat.** Nach einem Klick auf Stop
+  stand `Unexpected error: ReadError('')` in Rot im Chat. Der Fehler war echt: das
+  Anhalten schliesst den laufenden HTTP-Strom, und das Lesen darauf wirft in httpx
+  einen `ReadError` — unser eigener Abbruch kam als Störung zurück. Jetzt wird der
+  Zug sauber als **abgebrochen** abgeschlossen, der Verlauf bleibt stehen, und der
+  nächste Zug setzt darauf auf. Echte Störungen bleiben Fehler.
+
+  Der Claude-CLI-Pfad kannte das längst (`_interrupted`, SIGINT/Code -2) — nur die
+  Custom-LLM-Laufzeit nicht. Harness-Parität, jetzt mit Test in beiden.
 - **Beim Senden folgte die Ansicht nicht.** Nachtrag zu 1.175.1: wer weiter oben
   gelesen hatte und dann eine Nachricht abschickte, blieb dort stehen. Senden ist
   aber eine ausdrückliche Handlung — jetzt springt die Ansicht dabei ans Ende.

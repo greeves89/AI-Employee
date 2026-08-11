@@ -1771,11 +1771,16 @@ Image, Port und Zustand.
 
 ![Freigabe-Dialog](screenshots/f21-app-freigeben.png)
 
-**Beim öffentlichen Link** erscheint danach einmalig der fertige Link mit Kopieren-Button.
+**Beim öffentlichen Link** erscheint danach der fertige Link mit Kopieren-Button.
 
-> **Diesen Link sofort kopieren — er wird nur ein einziges Mal angezeigt.** Danach lässt er
-> sich nicht mehr abrufen; wer ihn verliert, erzeugt einfach einen neuen (und zieht den
-> alten zurück).
+*(seit 1.176.0)* Du findest ihn **jederzeit wieder**: in der Liste **Freigaben** oben im
+selben Fenster steht bei jedem öffentlichen Link ein **Kopieren-Symbol**. Daneben das
+**Papierkorb-Symbol**, um ihn zurückzuziehen.
+
+> **Vorher erstellte Links lassen sich nicht nachträglich anzeigen.** Bis 1.176.0 wurde der
+> Link nur einmal ausgegeben und danach nirgends aufbewahrt — für diese Einträge steht in
+> der Liste kein Kopieren-Symbol. Sie funktionieren weiterhin; wer den Link nicht mehr hat,
+> zieht ihn zurück und legt einen neuen an.
 
 ### 32.4 Was Freigegebene dürfen — und was nicht
 

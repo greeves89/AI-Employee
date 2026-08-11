@@ -48,10 +48,23 @@ class AppShare(Base):
     scope: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
     #: Nur bei scope="user": der/die Beschenkte.
     user_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
-    #: Nur bei scope="public": SHA-256 des Link-Tokens, NIE der Token selbst.
-    #: Der Klartext existiert genau einmal — in der Antwort auf das Anlegen. Ein
-    #: Datenbank-Leak oder ein altes Backup gibt damit keine gültigen Links her.
+    #: Nur bei scope="public": SHA-256 des Link-Tokens. Das bleibt der Schlüssel,
+    #: an dem der Proxy prüft — bei jedem Seitenaufruf, also muss es schnell und
+    #: konstantzeitig vergleichbar sein.
     token_hash: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    #: Derselbe Token, Fernet-verschlüsselt — damit der Besitzer den Link SPÄTER
+    #: noch einmal sehen kann.
+    #:
+    #: Vorher gab es ihn genau einmal, in der Antwort auf das Anlegen. Das klang
+    #: sicherer, als es war: wer den Link verlor, legte einen neuen an und liess
+    #: den alten stehen. Am Ende lebten mehr Links, als jemand überblickte. Jetzt
+    #: ist die Liste vollständig — jeder Link sichtbar, jeder zurückziehbar.
+    #:
+    #: Der Preis: ein Datenbank-Leak gibt gültige Links her. Er ist derselbe wie
+    #: bei allen anderen Zugangsdaten der Plattform (OAuth-Token, MCP-Token) und
+    #: hängt am selben ``ENCRYPTION_KEY``. Zeilen von vor dieser Version bleiben
+    #: leer — dort ist der Klartext echt nicht mehr da.
+    token_enc: Mapped[str | None] = mapped_column(String, nullable=True)
     #: Bei scope="public" Pflicht, sonst optional.
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
