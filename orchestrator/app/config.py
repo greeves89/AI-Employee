@@ -121,6 +121,12 @@ class Settings(BaseSettings):
     # 0 = keine Umrechnung, es bleibt bei USD.
     display_currency: str = "EUR"
     usd_eur_rate: float = 0.92
+
+    # Darf die Teamlizenz (der Claude-/Codex-Zugang der Installation) benutzt
+    # werden? Vorgabe an — sonst staende jede bestehende Installation nach dem
+    # Update ohne Zugang da. Aus heisst: jeder bringt sein eigenes Abo mit, und
+    # ein Agent ohne eigenen Zugang sagt das auch, statt still zu scheitern.
+    allow_team_license: bool = True
     # Host metrics JSON written by the host power collector (bind-mounted read-only).
     kiosk_metrics_path: str = "/kiosk-metrics/metrics.json"
     secondbrain_container_base: str = "/mnt/brains"

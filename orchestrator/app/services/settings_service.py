@@ -60,6 +60,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Dienst nicht, und ``set()`` warf „Unknown setting". Weil das Frontend beide
     # bei JEDEM Speichern mitschickt, scheiterte damit das komplette Speichern der
     # Einstellungen, nicht nur die Waehrung.
+    "allow_team_license",
     "display_currency",
     "usd_eur_rate",
     "aws_region",

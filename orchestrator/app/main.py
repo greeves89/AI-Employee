@@ -1081,6 +1081,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure app_shares table: {e}")
 
+    # Eigener Claude-/Codex-Zugang je Nutzer. Getrennte Zugaenge = getrennte
+    # Token-Familien: die Rotation des einen kann die des anderen nicht mehr
+    # umbringen (der Grund, weshalb Codex-Recreates bis heute serialisiert werden).
+    try:
+        from app.db.session import engine as _eng_uc
+        from sqlalchemy import text as _txt_uc
+        async with _eng_uc.begin() as conn:
+            await conn.execute(_txt_uc(
+                "CREATE TABLE IF NOT EXISTS user_ai_credentials ("
+                "id serial PRIMARY KEY, user_id varchar NOT NULL,"
+                "harness varchar(20) NOT NULL, secret_encrypted text NOT NULL,"
+                "label varchar(120), last_status varchar(32),"
+                "last_used_at timestamptz,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_uc(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_ai_credential "
+                "ON user_ai_credentials (user_id, harness)"
+            ))
+            await conn.execute(_txt_uc(
+                "CREATE INDEX IF NOT EXISTS ix_user_ai_credentials_user "
+                "ON user_ai_credentials (user_id)"
+            ))
+        logger.info("user_ai_credentials table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure app_shares table: {e}")
+
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
     # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.
