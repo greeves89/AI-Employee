@@ -453,13 +453,42 @@ def setup_vertex_credentials() -> None:
 
 
 def setup_codex_auth() -> None:
-    """Materialize Codex auth from the shared volume into CODEX_HOME."""
+    """Materialize Codex auth into CODEX_HOME.
+
+    Zwei Quellen, in dieser Reihenfolge:
+
+    1. ``CODEX_AUTH_JSON`` aus der Umgebung — der **eigene** Zugang des
+       Agentenbesitzers. Nur dieser Weg kann pro Container etwas anderes liefern.
+    2. ``/shared/.codex/auth.json`` — der gemeinsame Zugang der Installation.
+
+    Die geteilte Datei ist der Grund für ein altes Problem: alle Codex-Agenten
+    hingen an **einem** rotierenden Refresh-Token. Erneuert ihn einer, sind die
+    anderen tot (``refresh_token_reused``), weshalb das Neuerstellen bis heute
+    serialisiert werden muss. Ein eigener Zugang je Nutzer ist eine eigene
+    Token-Familie — der Ausfall trifft dann genau einen Agenten.
+    """
     import shutil
 
     source = "/shared/.codex/auth.json"
     codex_home = os.environ.get("CODEX_HOME", "/home/agent/.codex")
     target = os.path.join(codex_home, "auth.json")
     os.environ["CODEX_HOME"] = codex_home
+
+    own = (os.environ.get("CODEX_AUTH_JSON") or "").strip()
+    if own:
+        try:
+            os.makedirs(codex_home, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(own)
+            os.chmod(target, 0o600)
+            # Aus der Umgebung entfernen, damit der Zugang nicht in jedem
+            # Prozessabbild und in `env`-Ausgaben mitläuft.
+            os.environ.pop("CODEX_AUTH_JSON", None)
+            print(f"[Agent] Codex auth configured from own credential at {target}")
+            return
+        except Exception as e:
+            print(f"[Agent] WARN: own Codex auth not usable ({e}) — falling back to shared")
+
     if settings.openai_api_key or os.environ.get("OPENAI_API_KEY"):
         os.makedirs(codex_home, exist_ok=True)
         print("[Agent] Codex API key auth configured from environment")

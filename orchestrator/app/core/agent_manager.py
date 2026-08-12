@@ -880,6 +880,47 @@ class AgentManager:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
         return env
 
+    async def _owner_credential_env(
+        self, owner_id: str | None, mode: str | None, model_provider: str | None
+    ) -> dict[str, str]:
+        """Der Zugang des **Besitzers** dieses Agenten — oder die Teamlizenz.
+
+        Wird NACH ``_build_provider_env`` gemischt und überschreibt dessen Werte.
+        Damit gilt die Reihenfolge aus :mod:`app.core.agent_credentials`: eigener
+        Zugang → Teamlizenz (falls der Administrator sie freigegeben hat) → nichts.
+
+        Massgeblich ist der Besitzer, nicht der gerade Eingeloggte: ein Agent
+        arbeitet auch nachts weiter, wenn niemand angemeldet ist.
+
+        Warum das mehr ist als Bequemlichkeit: bisher teilten sich **alle**
+        Codex-Agenten einen rotierenden Refresh-Token. Erneuert ihn einer, sind
+        die anderen tot — deshalb muss das Neuerstellen bis heute serialisiert
+        werden. Getrennte Zugänge sind getrennte Token-Familien; der Ausfall
+        eines Abos trifft dann genau einen Agenten.
+        """
+        from app.core import agent_credentials as creds
+
+        try:
+            source, harness, secret = await creds.resolve(
+                self.db, owner_id=owner_id, mode=mode, model_provider=model_provider
+            )
+        except Exception:  # noqa: BLE001
+            # Ein Fehler beim Aufloesen darf keinen Agenten am Start hindern —
+            # dann greift wie bisher die globale Einstellung.
+            logger.warning("[Zugang] Aufloesen fehlgeschlagen, globale Einstellung gilt",
+                           exc_info=True)
+            return {}
+
+        if not harness:
+            return {}
+        if not secret:
+            logger.info("[Zugang] %s: kein Zugang fuer Besitzer %s (%s)",
+                        harness, scrub_log(owner_id or "-"), source)
+            return {}
+        logger.info("[Zugang] %s laeuft mit %s Zugang",
+                    harness, "eigenem" if source == creds.SOURCE_PERSONAL else "Team-")
+        return creds.env_for(harness, secret)
+
     async def _effective_llm_config(
         self, ai_account_id: int | None, inline_llm_config: dict | None,
         agent_model: str | None = None,
@@ -1241,6 +1282,9 @@ class AgentManager:
             provider_env = {
                 **self._build_provider_env(model_provider),
                 **self._cli_account_env(mode, effective_llm),
+                # Zuletzt, damit der eigene Zugang des Besitzers die globale
+                # Einstellung ueberschreibt (#eigene-Abos).
+                **await self._owner_credential_env(user_id, mode, model_provider),
             }
             mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
             integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
@@ -1512,6 +1556,7 @@ class AgentManager:
             provider_env = {
                 **self._build_provider_env(agent_provider),
                 **self._cli_account_env(mode, effective_llm),
+                **await self._owner_credential_env(agent.user_id, mode, agent_provider),
             }
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
@@ -1756,6 +1801,7 @@ class AgentManager:
             provider_env = {
                 **self._build_provider_env(agent_provider),
                 **self._cli_account_env(mode, effective_llm),
+                **await self._owner_credential_env(agent.user_id, mode, agent_provider),
             }
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)

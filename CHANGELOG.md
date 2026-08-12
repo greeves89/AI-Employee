@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.185.0] - 2026-08-12
+
+### Neu
+- **Jeder Nutzer kann sein eigenes Claude- oder Codex-Abo hinterlegen.** Bisher kam
+  der Zugang aus **einer** Einstellung für die ganze Installation, und pflegen konnte
+  sie nur ein Administrator — wer die Plattform nutzte, arbeitete zwangsläufig auf
+  fremde Rechnung oder gar nicht.
+  Neue API `GET/PUT/DELETE /api/v1/me/ai-credentials`. Jeder sieht und ändert
+  **ausschliesslich seinen eigenen**; es gibt keinen Administrator-Weg auf fremde
+  Zugänge, auch nicht lesend. Das Geheimnis kommt nie wieder heraus — auch nicht an
+  den Besitzer.
+- **Reihenfolge:** eigener Zugang → Teamlizenz (nur wenn der Administrator sie über
+  `allow_team_license` freigegeben hat) → nichts. Massgeblich ist der **Besitzer des
+  Agenten**, nicht der gerade Eingeloggte: ein Agent arbeitet auch nachts weiter.
+- **Codex nimmt den eigenen Zugang entgegen** (`CODEX_AUTH_JSON`) und schreibt ihn in
+  seine `auth.json`, statt die geteilte Datei zu benutzen. Die Variable wird danach
+  aus der Umgebung entfernt, damit der Zugang nicht in jedem Prozessabbild mitläuft.
+
+### Behoben
+- **Die Grundlage von `d12ada5` war wirkungslos.** `agent_credentials.resolve()`
+  wurde von niemandem aufgerufen — Tabelle angelegt, Auflöser vorhanden, und dann
+  passierte nichts. Jetzt an **allen drei** Stellen verdrahtet, an denen ein
+  Container gebaut wird (Anlegen, Neustart, Aktualisieren). Fehlte eine, bekäme der
+  Agent beim nächsten Neustart wieder den fremden Zugang.
+
+### Warum das mehr ist als Bequemlichkeit
+Alle Codex-Agenten teilten sich **einen** rotierenden Refresh-Token. Erneuert ihn
+einer, sind die anderen tot (`refresh_token_reused`) — deshalb muss das Neuerstellen
+bis heute serialisiert werden. Getrennte Zugänge sind getrennte Token-Familien; der
+Ausfall eines Abos trifft dann genau einen Agenten.
+
+### Test
+- `orchestrator/tests/test_own_subscription_per_user.py` — prüft zuerst die
+  **Verdrahtung** (der Auflöser lag einen halben Tag ungenutzt im Baum), dann die
+  Reihenfolge, und dass das Geheimnis nie in einer Antwort auftaucht.
+
+---
+
 ## [1.184.1] - 2026-08-12
 
 ### Behoben
