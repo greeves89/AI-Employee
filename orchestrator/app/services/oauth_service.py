@@ -21,6 +21,7 @@ from app.core.oauth_providers import (
     get_provider,
     get_provider_client_id,
     get_provider_client_secret,
+    get_provider_extra_params,
     get_provider_scopes,
     is_provider_available,
 )
@@ -89,7 +90,7 @@ class OAuthService:
                 "response_type": "code",
                 "scope": " ".join(get_provider_scopes(provider)),
                 "state": state,
-                **provider.auth_extra_params,
+                **get_provider_extra_params(provider),
             }
 
         return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
