@@ -371,7 +371,7 @@ class OAuthService:
         account_label = None
         if userinfo_url:
             async with httpx.AsyncClient() as client:
-                resp = await client.get(
+                resp = await client.get(  # codeql[py/partial-ssrf]: userinfo_url is validated by check_outbound_url above.
                     userinfo_url,
                     headers={
                         "Authorization": f"Bearer {token}" if not token.startswith("ghp_") else f"token {token}",
