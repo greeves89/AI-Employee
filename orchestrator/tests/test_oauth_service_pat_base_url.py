@@ -37,8 +37,13 @@ def _client_ctx(resp):
     return ctx, client
 
 
+def _mock_encrypt(token):
+    return f"enc:{token}"
+
+
 @pytest.mark.asyncio
-async def test_store_pat_with_base_url_hits_ghes_userinfo_endpoint():
+@patch("app.services.oauth_service.encrypt_token", side_effect=_mock_encrypt)
+async def test_store_pat_with_base_url_hits_ghes_userinfo_endpoint(_enc):
     db = _db_with_integration(None)
     service = OAuthService(db=db, redis=MagicMock())
     resp = _userinfo_resp(login="enterprise-user")
@@ -58,7 +63,8 @@ async def test_store_pat_with_base_url_hits_ghes_userinfo_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_store_pat_without_base_url_hits_public_github_userinfo():
+@patch("app.services.oauth_service.encrypt_token", side_effect=_mock_encrypt)
+async def test_store_pat_without_base_url_hits_public_github_userinfo(_enc):
     db = _db_with_integration(None)
     service = OAuthService(db=db, redis=MagicMock())
     resp = _userinfo_resp(login="octocat")
@@ -74,7 +80,8 @@ async def test_store_pat_without_base_url_hits_public_github_userinfo():
 
 
 @pytest.mark.asyncio
-async def test_store_pat_updates_existing_integration_with_base_url():
+@patch("app.services.oauth_service.encrypt_token", side_effect=_mock_encrypt)
+async def test_store_pat_updates_existing_integration_with_base_url(_enc):
     existing = OAuthIntegration(
         provider="github",
         access_token_encrypted="old-blob",
