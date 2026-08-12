@@ -9,6 +9,7 @@ import json as _json
 import logging
 import os
 import urllib.parse
+import urllib.error
 import urllib.request
 
 from app.config import settings
@@ -444,14 +445,34 @@ def get_memory_preload(task_context: str | None = None) -> str:
     """
     try:
         url = f"{settings.orchestrator_url}/api/v1/memory/preload/{settings.agent_id}"
-        if task_context:
-            url += "?" + urllib.parse.urlencode({"task_context": task_context[:500]})
-        req = urllib.request.Request(url, headers={
+        headers = {
             "Authorization": f"Bearer {settings.agent_token}",
             "X-Agent-ID": settings.agent_id,
-        })
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = _json.loads(response.read())
+        }
+        if task_context:
+            # POST mit Rumpf, NICHT als Abfrageparameter: hier steht echter
+            # Nutzertext, und uvicorn schreibt jeden Pfad samt Abfrage ins
+            # Zugriffsprotokoll. Als Parameter landete die halbe Aufgabe des
+            # Nutzers in jedem Log, das jemand einsammelt.
+            req = urllib.request.Request(
+                url,
+                data=_json.dumps({"task_context": task_context[:500]}).encode("utf-8"),
+                headers={**headers, "Content-Type": "application/json"},
+                method="POST",
+            )
+        else:
+            req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = _json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            # Aelterer Orchestrator kennt POST hier noch nicht. Dann lieber die
+            # Grundauswahl ohne Aufgabenbezug als gar keine Erinnerungen.
+            if exc.code not in (404, 405) or not task_context:
+                raise
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = _json.loads(response.read())
 
         critical = data.get("critical", [])
         credentials = data.get("credentials", [])

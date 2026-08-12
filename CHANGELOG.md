@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.6] — 2026-08-12
+
+### Security
+- **Der Aufgabentext des Nutzers stand in einer URL.** Die aufgabenbezogene
+  Vorauswahl der Erinnerungen (#562) hängte bis zu 500 Zeichen echter
+  Nutzereingabe als Abfrageparameter an:
+
+  ```
+  GET /api/v1/memory/preload/{id}?task_context=Bitte+pruefe+die+Abrechnung+von+…
+  ```
+
+  uvicorn schreibt jeden Pfad **samt Abfrage** ins Zugriffsprotokoll. Damit landen
+  Bruchstücke echter Aufgaben in jedem Log, das jemand einsammelt, rotiert oder
+  weiterreicht — gegen die eigene Regel, niemals PII zu loggen. Dass der Endpunkt
+  intern ist, mindert das, hebt es nicht auf.
+
+  Der Text geht jetzt per **POST in den Rumpf**. `GET` bleibt für ältere Agenten
+  bestehen, kennt den Parameter aber **gar nicht mehr** — er kann auf diesem Weg
+  nicht wieder ins Log geraten. Beide Wege teilen dieselbe Besitzprüfung; ein
+  neuer Agent an einem älteren Orchestrator fällt bei `405` auf die Grundauswahl
+  zurück, statt ohne Erinnerungen dazustehen.
+
+### Fixed
+- **Das Linter-Gatter wäre in CI still übersprungen worden.** Der Test aus 1.177.5
+  überspringt sich selbst, wenn `ruff` fehlt — und CI installierte es nicht. Er
+  wäre grün gewesen, ohne je zu prüfen: genau die falsche Sicherheit, die den
+  `config`-Fehler fünf Tage hat überleben lassen. `ruff` ist jetzt installiert und
+  läuft als **eigener CI-Schritt**, damit ein Treffer im Protokoll steht statt in
+  einer Testmeldung zu verschwinden.
+
+- **Die Agenten-Tests liefen in CI fast gar nicht.** Der Lauf nannte **drei
+  Dateien** namentlich; alles andere lief nie. Jeder neue Agenten-Test war damit
+  ab dem Tag seiner Entstehung tot — auch die aus 1.175.0 bis 1.177.2 für
+  Kompression, Stop-Abbruch und Token-Rotation. Jetzt läuft die ganze Suite,
+  samt `trio` (ohne das Backend bricht anyio die Hälfte mit einem
+  `ModuleNotFoundError` ab, ohne dass am Code etwas falsch wäre).
+
 ## [1.177.5] — 2026-08-12
 
 ### Fixed
