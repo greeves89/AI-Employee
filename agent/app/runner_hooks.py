@@ -8,6 +8,7 @@ import asyncio
 import json as _json
 import logging
 import os
+import urllib.parse
 import urllib.request
 
 from app.config import settings
@@ -429,14 +430,22 @@ def get_onboarding_context() -> str:
     )
 
 
-def get_memory_preload() -> str:
+def get_memory_preload(task_context: str | None = None) -> str:
     """Fetch critical memories for prompt injection.
 
     Agents often forget API keys and user preferences after session reset. This ensures
     every task starts with the agent's most important long-term knowledge already loaded.
+
+    ``task_context`` (issue #547): the task title/prompt, truncated. When given, the
+    orchestrator adds a semantically-ranked "task_relevant" slice on top of the static
+    critical set — memories that were never important=5 but happen to match THIS task.
+    Best-effort: on any failure (including embeddings disabled) it's silently empty,
+    same as the rest of this function.
     """
     try:
         url = f"{settings.orchestrator_url}/api/v1/memory/preload/{settings.agent_id}"
+        if task_context:
+            url += "?" + urllib.parse.urlencode({"task_context": task_context[:500]})
         req = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {settings.agent_token}",
             "X-Agent-ID": settings.agent_id,
@@ -447,8 +456,9 @@ def get_memory_preload() -> str:
         critical = data.get("critical", [])
         credentials = data.get("credentials", [])
         learnings = data.get("recent_learnings", [])
+        task_relevant = data.get("task_relevant", [])
 
-        if not (critical or credentials or learnings):
+        if not (critical or credentials or learnings or task_relevant):
             return ""
 
         lines = [
@@ -467,6 +477,10 @@ def get_memory_preload() -> str:
                 if m["category"] in ("credentials", "api_key", "secret", "auth"):
                     continue  # already listed above
                 lines.append(f"  - [{m['category']}] {m['key']}: {m['content']}")
+        if task_relevant:
+            lines.append("\n## Relevant to this task (evidence-backed, semantic match):")
+            for m in task_relevant:
+                lines.append(f"  - [{m['category']}] {m['key']} ({m['source']}): {m['content']}")
         if learnings:
             lines.append("\n## Recent Learnings:")
             for m in learnings[:5]:
@@ -748,11 +762,12 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
     """
     mounts = get_mounts_context()
     marketplace = get_marketplace_skill_suggestions(prompt[:200])
+    task_context = prompt[:500]
     if lightweight:
         return (
             CHAT_STARTUP_PREFIX
             + get_onboarding_context()
-            + get_memory_preload()
+            + get_memory_preload(task_context)
             + get_skill_preload()
             + get_skills_context()
             + mounts
@@ -761,7 +776,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
     return (
         TASK_STARTUP_PREFIX
         + get_onboarding_context()
-        + get_memory_preload()
+        + get_memory_preload(task_context)
         + get_user_feedback()
         + get_skill_preload()
         + get_skills_context()

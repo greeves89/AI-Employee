@@ -623,6 +623,11 @@ async def search_memories(
 @router.get("/preload/{agent_id}")
 async def preload_critical_memories(
     agent_id: str,
+    task_context: str | None = Query(
+        None, max_length=500,
+        description="Task title/description — adds a semantically-ranked 'task_relevant' slice (issue #547)",
+    ),
+    room: str | None = Query(None, description="Restrict the task_relevant slice to this room / sub-rooms"),
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
@@ -632,6 +637,8 @@ async def preload_critical_memories(
     - importance >= 4 (user corrections, key decisions, credentials)
     - categories: credentials, preference, procedure
     - recent learnings (last 10)
+    - task_relevant: top-N memories semantically close to ``task_context``, if given
+      (empty list if omitted or embeddings are disabled — best-effort, never blocks)
 
     Requires user or agent auth. This response includes credential-category
     memories in clear text, so it must never be unauthenticated: an agent
@@ -650,7 +657,7 @@ async def preload_critical_memories(
     # Selection + grouping live in app.core.memory_preload so the voice front uses
     # exactly the same definition of "what this agent must always know".
     from app.core.memory_preload import collect_preload
-    return await collect_preload(db, agent_id)
+    return await collect_preload(db, agent_id, task_context=task_context, room=room)
 
 
 @router.get("/agents/{agent_id}")
