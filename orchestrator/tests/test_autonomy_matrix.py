@@ -61,16 +61,36 @@ class AutonomyMatrixTests(unittest.TestCase):
         cats = am.allowed_categories_from_matrix(am.matrix_for_level("l1"))
         self.assertEqual(cats, {"file_read", "web_search"})
 
-    def test_categories_l3_container_but_no_external(self):
+    def test_categories_l3_container_plus_talking_to_the_user(self):
+        """Ab v1.178.4 darf L3 dem eigenen Nutzer schreiben.
+
+        Vorher war ``messaging`` bis einschliesslich L3 freigabepflichtig — mit
+        der Folge, dass Agenten sich nicht trauten zu ANTWORTEN und delegierte
+        Auftraege stehenblieben. Handlungen mit echter Aussenwirkung (E-Mail/M365,
+        externe APIs, git push, Käufe) bleiben unveraendert gesperrt; ``messaging``
+        hat dafuer einen eigenen Topf bekommen und teilt sich ``custom`` nicht
+        mehr mit ihnen.
+        """
         cats = am.allowed_categories_from_matrix(am.matrix_for_level("l3"))
-        self.assertEqual(cats, {"file_read", "file_write", "shell_exec", "system_config", "web_search"})
-        self.assertNotIn("custom", cats)     # email/messaging/git stay gated
+        self.assertEqual(cats, {"file_read", "file_write", "shell_exec",
+                                "system_config", "web_search",
+                                "external_communication"})
+        self.assertNotIn("custom", cats)     # email/API/git stay gated
         self.assertNotIn("purchase", cats)
+
+    def test_freeing_chat_does_not_open_email_api_or_git(self):
+        """Der Sammeltopf war die Falle: EIN ``allow`` haette alles geoeffnet."""
+        for level in ("l2", "l3"):
+            with self.subTest(level):
+                cats = am.allowed_categories_from_matrix(am.matrix_for_level(level))
+                self.assertIn("external_communication", cats)
+                self.assertNotIn("custom", cats)
 
     def test_categories_l4_covers_all(self):
         cats = am.allowed_categories_from_matrix(am.matrix_for_level("l4"))
         self.assertEqual(cats, {"file_read", "file_write", "shell_exec",
-                                "system_config", "web_search", "custom", "purchase"})
+                                "system_config", "web_search", "custom",
+                                "external_communication", "purchase"})
 
     def test_ask_and_deny_are_excluded(self):
         # The exact CRITICAL repro: L3 with purchases hardened to deny.
@@ -83,9 +103,17 @@ class AutonomyMatrixTests(unittest.TestCase):
         m = {k: am.DENY for k in am.CAPABILITY_KEYS}
         self.assertEqual(am.allowed_categories_from_matrix(m), set())
 
-    def test_shared_custom_bucket(self):
-        # Only messaging allowed among the external "custom" group → bucket present.
+    def test_messaging_no_longer_shares_the_custom_bucket(self):
+        """Frueher oeffnete allein ``messaging: allow`` den Sammeltopf ``custom``
+        — und damit E-Mail/M365, externe APIs und git push gleich mit. Das war
+        keine bewusste Entscheidung, sondern ein Nebeneffekt der Zuordnung."""
         m = am.normalize_matrix({"messaging": "allow"}, "l1")
+        cats = am.allowed_categories_from_matrix(m)
+        self.assertIn("external_communication", cats)
+        self.assertNotIn("custom", cats)
+
+    def test_the_custom_bucket_still_exists_for_its_real_members(self):
+        m = am.normalize_matrix({"email_m365": "allow"}, "l1")
         self.assertIn("custom", am.allowed_categories_from_matrix(m))
 
 

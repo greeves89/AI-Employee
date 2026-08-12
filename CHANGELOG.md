@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.178.4] - 2026-08-12
+
+### Geändert
+- **Chat/Telegram an den eigenen Nutzer ist ab L2 frei.** Die Freigabepflicht
+  fürs Nachrichtenschicken gilt nur noch auf L1 (Nur lesen). Vorher war sie bis
+  einschließlich L3 aktiv — mit der Folge, dass ein Agent sich nicht einmal
+  traute zu antworten und delegierte Aufträge stehenblieben.
+  Handlungen mit echter Außenwirkung (E-Mail/M365, externe APIs, git push,
+  Käufe) bleiben unverändert bis L4 freigabepflichtig.
+
+### Behoben
+- **Der Sammeltopf `custom` hätte die Lockerung weit über das Gewollte
+  hinausgetragen.** `messaging` teilte sich die Alt-Kategorie mit `email_m365`,
+  `external_api` und `git_push`; ein einziges `allow` schaltet den ganzen Topf
+  frei. Chat freizugeben hätte damit auf jeder L2/L3-Anlage stillschweigend auch
+  E-Mail-Versand, ausgehende API-Aufrufe und `git push` ohne Freigabe erlaubt.
+  `messaging` bekommt die eigene Kategorie `external_communication` — die der
+  Executor für `send_telegram`/`notify_user` ohnehin schon führt und die bis
+  jetzt von keiner Fähigkeit erreichbar war, also nie freigegeben werden konnte.
+
+### Test
+- `test_autonomy_matrix.py` — der Sammeltopf bleibt zu, wenn nur Chat frei ist;
+  er öffnet weiterhin für seine echten Mitglieder.
+- `test_autonomy_reply_is_never_gated.py` — L1 fragt weiter nach, L2/L3 nicht;
+  Außenwirkung bleibt auf allen Stufen unter L4 gesperrt.
+
+---
+
 ## [1.178.3] - 2026-08-12
 
 ### Behoben

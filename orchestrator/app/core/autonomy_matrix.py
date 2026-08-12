@@ -40,8 +40,15 @@ CAPABILITIES: list[dict] = [
      "description": "E-Mails/Teams/Kalender/OneDrive/SharePoint schreiben & senden.", "legacy_category": "custom"},
     {"key": "external_api", "group": GROUP_EXTERNAL, "label": "Externe API / Webhooks",
      "description": "Ausgehende API-Calls/Webhooks an Dritt-Systeme.", "legacy_category": "custom"},
+    # Eigener Topf, NICHT der Sammeltopf "custom": sonst oeffnet die Freigabe
+    # fuer Chat gleichzeitig E-Mail/M365, externe APIs und git push mit — die
+    # teilen sich "custom", und ein einziges "allow" schaltet den ganzen Topf
+    # frei. "external_communication" ist der Name, den der Executor fuer genau
+    # diese Werkzeuge ohnehin schon fuehrt (send_telegram, notify_user); bis
+    # v1.178.3 konnte ihn keine Fähigkeit erreichen, er war also nie freizugeben.
     {"key": "messaging", "group": GROUP_EXTERNAL, "label": "Chat / Telegram senden",
-     "description": "Nachrichten nach außen an Nutzer/Kanäle senden.", "legacy_category": "custom"},
+     "description": "Nachrichten nach außen an Nutzer/Kanäle senden.",
+     "legacy_category": "external_communication"},
     {"key": "git_push", "group": GROUP_EXTERNAL, "label": "Git push / PR",
      "description": "Commits nach außen pushen, Pull Requests erstellen.", "legacy_category": "custom"},
     {"key": "purchases", "group": GROUP_EXTERNAL, "label": "Käufe / Zahlungen",
@@ -55,10 +62,17 @@ _CAP_BY_KEY = {c["key"]: c for c in CAPABILITIES}
 # is reserved for manual hardening (e.g. "purchases: never"), so no preset uses it.
 _ALLOW_BY_LEVEL: dict[str, set[str]] = {
     "l1": {"file_read", "web"},
-    "l2": {"file_read", "web", "file_write"},
-    "l3": {"file_read", "file_write", "shell_exec", "system_config", "web"},
+    "l2": {"file_read", "web", "file_write", "messaging"},
+    "l3": {"file_read", "file_write", "shell_exec", "system_config", "web",
+           "messaging"},
     "l4": set(CAPABILITY_KEYS),
 }
+# ``messaging`` (Chat/Telegram an Nutzer und Kanäle) ist ab L2 frei. Bis v1.178.3
+# war es bis einschliesslich L3 freigabepflichtig — mit der Folge, dass ein Agent
+# sich nicht einmal traute, seinem Auftraggeber zu ANTWORTEN, und Auftraege
+# stehenblieben. Eine Nachricht an den eigenen Nutzer ist keine Handlung mit
+# Aussenwirkung; die bleiben (E-Mail/M365, externe APIs, git push, Käufe) bis L4
+# freigabepflichtig.
 
 LEVEL_LABELS = {
     "l1": "L1 — Nur lesen",

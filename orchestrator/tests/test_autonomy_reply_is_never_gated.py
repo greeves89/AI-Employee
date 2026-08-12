@@ -56,11 +56,37 @@ class TheMatrixItselfIsUnchangedTests(unittest.TestCase):
             with self.subTest(cap):
                 self.assertEqual(matrix[cap], am.ALLOW)
 
-    def test_l3_still_asks_before_outbound_messaging(self):
+    def test_l3_still_asks_before_acting_on_the_outside_world(self):
         matrix = am.matrix_for_level("l3")
-        for cap in ("messaging", "email_m365", "git_push", "purchases"):
+        for cap in ("email_m365", "external_api", "git_push", "purchases"):
             with self.subTest(cap):
                 self.assertEqual(matrix[cap], am.ASK)
+
+
+class MessagingIsFreeFromL2Tests(unittest.TestCase):
+    """Dem eigenen Nutzer schreiben ist keine Handlung mit Aussenwirkung.
+
+    Bis v1.178.3 war ``messaging`` bis einschliesslich L3 freigabepflichtig. Das
+    hat Agenten davon abgehalten, ueberhaupt zu antworten — und damit ganze
+    Auftraege blockiert. E-Mail, externe APIs, git push und Käufe bleiben davon
+    unberuehrt: die brauchen weiterhin bis L4 eine Freigabe.
+    """
+
+    def test_l1_still_asks(self):
+        """Die Nur-Lesen-Stufe bleibt die Nur-Lesen-Stufe."""
+        self.assertEqual(am.matrix_for_level("l1")["messaging"], am.ASK)
+
+    def test_l2_and_l3_may_write_to_their_user(self):
+        for level in ("l2", "l3"):
+            with self.subTest(level):
+                self.assertEqual(am.matrix_for_level(level)["messaging"], am.ALLOW)
+
+    def test_the_outside_world_stays_gated_at_l2_and_l3(self):
+        """Die Lockerung gilt genau fuer EINE Fähigkeit, nicht fuer die Gruppe."""
+        for level in ("l2", "l3"):
+            for cap in ("email_m365", "external_api", "git_push", "purchases"):
+                with self.subTest(level=level, cap=cap):
+                    self.assertEqual(am.matrix_for_level(level)[cap], am.ASK)
 
     def test_full_autonomy_needs_no_carve_out(self):
         """Wo ohnehin alles erlaubt ist, gibt es nichts zu entschärfen."""
