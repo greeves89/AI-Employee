@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.183.0] - 2026-08-12
+
+### Neu
+- **Zwei Branchen-Pakete (#395):** *Steuerkanzlei* (Buchhaltung, Lohnbuchhaltung,
+  Legal Assistant) und *Handwerksbetrieb* (Angebot & Kalkulation, Disposition,
+  First-Level-Support). Beide mit Startwissen und erster Demo-Aufgabe.
+- **Vier neue Agenten-Vorlagen:** Buchhaltung, Lohnbuchhaltung, Angebot &
+  Kalkulation, Disposition.
+- Die Geld-Rollen tragen einen **Haftungshinweis**: jede Buchung ist ein Vorschlag
+  und braucht die Freigabe einer fachkundigen Person. Ein Agent, der eine Buchung
+  als geprüft ausgibt, richtet mehr Schaden an als einer, der gar nichts tut.
+- Die Kalkulationsrolle nimmt Preise **ausschliesslich** aus der hinterlegten
+  Preisliste; fehlt einer, geht die Position in die Rückfragenliste. Geschätzte
+  Preise kosten Marge, und zwar unbemerkt.
+- Die Steuerkanzlei ist bewusst **ohne DATEV** nutzbar (#393 ist pausiert):
+  Vorkontierung, Fristen und Belegprüfung stehen für sich.
+
+### Test
+- `test_vertical_packs_content.py` — prüft vor allem den stillen Fehler: ein Paket
+  verweist über Namen auf Vorlagen; stimmt ein Name nicht, wird ein Agent weniger
+  angelegt, ohne dass irgendetwas rot wird.
+
+---
+
 ## [1.182.0] - 2026-08-12
 
 ### Sicherheit
