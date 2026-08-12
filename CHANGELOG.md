@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.178.1] - 2026-08-12
+
+### Behoben
+- **Der Team-Lead fand sein eigenes Team nicht.** Beim Kunden stand ein aktives
+  Team mit acht Mitgliedern in der Datenbank, der CEO-Agent als Lead. Auf die
+  Bitte, seinen Agenten eine Nachricht zu schicken, rief er `list_my_team` auf
+  und antwortete trotzdem: "Mir ist derzeit kein Agententeam zugeordnet."
+  `GET /teams/mine` liefert die Mitglieder **je Team** (`{"teams": [{..., "members": [...]}]}`),
+  gesucht wurde `members` auf der obersten Ebene — immer leer. Ohne Team gab es
+  auch nichts zu delegieren.
+- **`list_team_tasks` genauso:** `GET /teams/` führt die Mitglieder als reine
+  ID-Liste in `member_agent_ids`; gesucht wurde eine Objektliste `members`. Der
+  Lead fand sein Team nie und meldete "Kein Team zugeordnet".
+
+### Test
+- `agent/tests/test_team_tools_read_the_real_response.py` füttert die **echte
+  Antwortform** der beiden Endpunkte ein. Die bisherigen Paritätstests waren
+  grün: Werkzeug definiert, im Kernsatz, vom Executor erlaubt, Methode vorhanden
+  — und trotzdem sagte der Agent "geht nicht". Geprüft wird jetzt, was der Agent
+  am Ende zu lesen bekommt.
+
+---
+
 ## [1.178.0] — 2026-08-12
 
 ### Fixed

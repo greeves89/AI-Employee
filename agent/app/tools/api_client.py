@@ -1035,13 +1035,29 @@ class OrchestratorAPIClient:
         result = await self._request("GET", "/teams/mine")
         if isinstance(result, str):
             return result
-        members = result.get("members") or result.get("agents") or []
-        if not members:
+        # /teams/mine antwortet {"teams": [{name, team_id, i_am_lead, members: [...]}]}.
+        # Die Mitglieder stehen JE TEAM, nicht oben — oben nachzusehen liefert
+        # immer eine leere Liste und damit ein falsches "kein Team".
+        teams = result.get("teams") or []
+        if not teams:
             return "Kein Team zugeordnet — Auftraege gehen ohne agent_id an die automatische Zuteilung."
-        lines = [f"Mein Team ({result.get('name', 'ohne Namen')}), {len(members)} Mitglieder:"]
-        for m in members:
-            lines.append(f"  - {m.get('name', '?')} (id: {m.get('id', '?')}) — {m.get('role') or 'ohne Rolle'}")
-        return "\n".join(lines)
+        blocks = []
+        for t in teams:
+            members = t.get("members") or []
+            head = f"Team \"{t.get('name', 'ohne Namen')}\" [{t.get('team_id', '?')}]"
+            if t.get("i_am_lead"):
+                head += " — du bist der LEAD"
+            lines = [head]
+            for m in members:
+                tags = ", ".join(filter(None, [
+                    "LEAD" if m.get("is_lead") else None,
+                    "du selbst" if m.get("is_me") else None,
+                ]))
+                lines.append(f"  - {m.get('name', '?')} (id: {m.get('id', '?')}"
+                             + (f", {tags}" if tags else "") + ") — "
+                             + (m.get("role") or "ohne Rolle"))
+            blocks.append("\n".join(lines))
+        return "\n\n".join(blocks)
 
     async def list_team_tasks(self, params: dict) -> str:
         """Woran arbeitet mein Team gerade — die ehrliche Antwort statt einer geratenen."""
@@ -1049,8 +1065,10 @@ class OrchestratorAPIClient:
         if isinstance(teams, str):
             return teams
         rows = teams if isinstance(teams, list) else teams.get("teams", [])
-        mine = next((t for t in rows if self.agent_id in
-                     [m.get("id") for m in (t.get("members") or [])]), None)
+        # /teams/ liefert die Mitglieder als reine ID-Liste in member_agent_ids —
+        # eine "members"-Liste mit Objekten gibt es hier nicht.
+        mine = next((t for t in rows
+                     if self.agent_id in (t.get("member_agent_ids") or [])), None)
         if not mine:
             return "Kein Team zugeordnet."
         result = await self._request("GET", f"/teams/{mine.get('id')}/tasks")
