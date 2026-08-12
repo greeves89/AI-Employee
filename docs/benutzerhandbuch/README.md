@@ -78,6 +78,9 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
+34. [Kanäle: Telegram, Teams, Slack, WhatsApp, Discord](#34-kanäle-telegram-teams-slack-whatsapp-discord)
+35. [Branchen-Pakete: ein fertiges Team in einem Schritt](#35-branchen-pakete-ein-fertiges-team-in-einem-schritt)
+36. [Ausweichmodell, wenn das Hauptmodell streikt](#36-ausweichmodell-wenn-das-hauptmodell-streikt)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -723,6 +726,29 @@ GitHub-Webhook) löst **automatisch** einen Task bei einem Agenten aus. Seitenle
 
 ---
 
+### Einen Workflow statt eines Auftrags starten
+
+Ein Trigger kann statt eines Einzelauftrags eine ganze **Workflow-Kette** starten:
+
+1. Trigger anlegen oder bearbeiten.
+2. Unter **Ziel** den gewünschten **Workflow** wählen (leer = Auftrag wie bisher).
+3. Speichern.
+
+Im Workflow stehen die Daten des Ereignisses als Platzhalter bereit:
+
+| Platzhalter | Inhalt |
+|---|---|
+| `{{trigger}}` | die vollständige Nutzlast als JSON |
+| `{{trigger_prompt}}` | der aus der Vorlage gefüllte Text |
+| `{{trigger_source}}` | Herkunft, z. B. `github` |
+| `{{trigger_event}}` | Ereignisart, z. B. `pull_request` |
+
+> Zeigt ein Trigger auf einen gelöschten oder abgeschalteten Workflow, wird
+> ersatzweise ein normaler Auftrag angelegt — damit das Ereignis nicht
+> stillschweigend verschwindet.
+
+---
+
 ## 12. Schedules
 
 **Schedules** sind **wiederkehrende, zeitgesteuerte Tasks** — der Agent erledigt etwas
@@ -775,6 +801,15 @@ entscheidest. Seitenleiste → **Approvals**.
    **„Ja, bitte umsetzen"**, **„Nur interne Quellen verwenden"**, **„Nein, erst Konzept
    zeigen"**.
 4. **Erst nach deiner Entscheidung** macht der Agent weiter — entsprechend deiner Wahl.
+
+> **Antworten braucht keine Freigabe.** Ein Agent darf dir und seinen Kollegen
+> jederzeit antworten. Freigabepflichtig sind Handlungen **nach aussen**: E-Mail
+> und M365, externe Schnittstellen, `git push`, Käufe. Nachrichten an dich und in
+> eure Kanäle sind ab Stufe **L2** frei.
+>
+> Vorher war das anders, mit einer unangenehmen Folge: Agenten blieben mitten in
+> der Arbeit stehen, weil sie unsicher waren, ob schon das *Antworten* eine
+> Freigabe braucht.
 
 Freigaben werden zusätzlich per **Telegram** und **iOS-Push** zugestellt, damit du sie auch
 unterwegs beantworten kannst.
@@ -1509,7 +1544,30 @@ nicht mehr, welche Änderung es war. Golden-Tests sind der Regressionstest dafü
    - **Auftrag** — was der Agent tun soll
    - **Muss enthalten** — eine Angabe je Zeile, Groß-/Kleinschreibung egal
    - **Darf nicht enthalten** — z. B. „ich kann das nicht"
+   - **Werkzeuge, die laufen müssen** — z. B. `delegate_and_wait`
+   - **Werkzeuge, die nicht laufen dürfen** — z. B. `bash`
+   - **Es muss wirklich gearbeitet worden sein** — Haken setzen, wenn der Agent
+     die Aufgabe angefasst haben muss statt sie nur zu beschreiben
+   - **Aufträge vergeben / davon abgeschlossen** — für Team-Leads
 5. **Aufgabe hinzufügen** für weitere, dann **Speichern**.
+
+> **Warum Werkzeuge und nicht nur Text?** Ein Agent ohne passendes Werkzeug
+> *beschreibt* die Handlung, statt sie auszuführen — mit einer sauberen
+> Statustabelle für Arbeit, die nie stattgefunden hat. Diese erfundene Antwort
+> enthält **mehr** von dem, was man erwartet, als die ehrliche „ich kann das
+> nicht". Eine reine Textprüfung bewertet sie deshalb **besser**. Erst der Blick
+> darauf, was wirklich gelaufen ist, trennt Reden von Tun.
+
+### Zwei Sammlungen sind schon da
+
+Jede Anlage bringt zwei mitgelieferte Sammlungen mit:
+
+- **Team-Grundlagen** — kennt der Lead sein Team, beauftragt er wirklich, kommen
+  die Ergebnisse zurück, benennt er Fehlschläge als solche
+- **Angriffsfälle** — Anweisungen, die in Kollegen-Nachrichten, Webseiten,
+  Dateien oder Werkzeug-Antworten versteckt sind
+
+Beide lassen sich wie eigene Sammlungen bearbeiten und laufen lassen.
 
 > **Jede Aufgabe braucht mindestens eine Erwartung.** Eine Aufgabe, die nie
 > durchfallen kann, ist kein Test — sie würde den Wert stillschweigend nach oben
@@ -1866,6 +1924,133 @@ Anklicken einer Aufgabe unter **Tasks** (Kap. 6).
 
 Die Seite zeigt nur Agenten, die du auch sonst siehst (deine eigenen plus mit dir
 geteilte) — Administratoren sehen alle Agenten.
+
+---
+
+---
+
+## 34. Kanäle: Telegram, Teams, Slack, WhatsApp, Discord
+
+Ein Agent ist über **fünf Kanäle** erreichbar. Egal welcher — der Ablauf dahinter ist
+derselbe: Nachricht aufnehmen, ins Gedächtnis legen, Agent antworten lassen.
+
+### Einen Kanal einschalten
+
+1. **Agenten** öffnen → gewünschter Agent → Reiter **Settings**.
+2. Abschnitt **Kanäle** aufklappen.
+3. Kanal wählen und **Aktiv** setzen.
+4. **Bot-Token** eintragen (wird verschlüsselt gespeichert, nie im Klartext angezeigt).
+5. **Kanal-IDs** eintragen — welche Chats/Channels der Agent mitliest.
+6. **Speichern**.
+
+### Discord einrichten
+
+Discord braucht drei Dinge, sonst bleibt es still:
+
+1. Im **Discord Developer Portal** eine Anwendung anlegen → **Bot** hinzufügen.
+2. Beim Bot die Berechtigung **Message Content Intent** einschalten.
+   > **Ohne diesen Schalter liefert Discord den Text jeder Nachricht leer aus.**
+   > Der Agent bekommt dann lauter leere Nachrichten und antwortet nie. Das ist die
+   > mit Abstand häufigste Ursache, wenn Discord „nicht geht".
+3. Den Bot mit den Rechten **View Channels**, **Send Messages** und
+   **Read Message History** auf den Server einladen.
+4. Kanal-ID holen: in Discord **Einstellungen → Erweitert → Entwicklermodus** an,
+   dann Rechtsklick auf den Kanal → **Kanal-ID kopieren**.
+
+### Wann antwortet der Agent?
+
+Standardmäßig **nur, wenn er angesprochen wird** — per Erwähnung, mit seinem Namen
+oder einem hinterlegten Stichwort. In einem Kanal mit Menschen soll er nicht auf
+jede Zeile antworten.
+
+Für einen Kanal, der dem Agenten allein gehört, kannst du **Erwähnung nötig**
+ausschalten; dann bearbeitet er alles, was dort geschrieben wird.
+
+### Was der Filter unterwegs prüft
+
+Jede ausgehende Nachricht läuft durch den **DLP-Filter** (siehe Admin-Konsole),
+falls er eingeschaltet ist — auf **allen** Kanälen. Enthält eine Antwort z. B. eine
+IBAN oder ein Zugangstoken, wird sie maskiert oder zurückgehalten. Der Empfänger
+bekommt dann einen kurzen Hinweis statt der Nachricht, damit niemand auf eine
+Antwort wartet, die nie kommt.
+
+> Lange Antworten werden bei Discord an Absätzen **geteilt**, nicht abgeschnitten —
+> eine halbe Antwort sieht sonst aus wie eine ganze.
+>
+> _[Screenshot folgt: Kanäle-Abschnitt in den Agent-Settings mit aktivem Discord]_
+
+---
+
+## 35. Branchen-Pakete: ein fertiges Team in einem Schritt
+
+Statt Agenten einzeln anzulegen, richtet ein **Branchen-Paket** ein komplettes Team
+ein: mehrere Agenten mit passenden Rollen, Startwissen und eine erste Aufgabe zum
+Ausprobieren.
+
+### Ein Paket einrichten
+
+1. Links im Menü **Onboarding** (oder beim ersten Start automatisch).
+2. Das passende Paket wählen:
+   - **Entwickler-Team** — Fullstack, DevOps, Code-Review
+   - **Content-Studio** — Technische Doku, Social Media, SEO
+   - **Support-Desk** — First-Level, Recherche, Doku
+   - **Steuerkanzlei** — Buchhaltung, Lohnbuchhaltung, Legal Assistant
+   - **Handwerksbetrieb** — Angebot & Kalkulation, Disposition, Support
+3. **Vorschau** zeigt, welche Agenten und welches Startwissen angelegt werden.
+4. **Einrichten** — die Agenten entstehen, das Wissen landet im Second Brain.
+5. Die **Demo-Aufgabe** starten, um das Team einmal laufen zu sehen.
+
+### Steuerkanzlei — was die Agenten dürfen und was nicht
+
+Die Geld-Rollen arbeiten **zu**, sie entscheiden nicht:
+
+- Jede Buchung ist ein **Vorschlag** und braucht die Freigabe einer fachkundigen
+  Person, bevor sie verbucht wird.
+- Ein unklarer Beleg kommt in die **Rückfragenliste** — der Agent schätzt nicht.
+- Pflichtangaben nach §14 UStG werden bei jeder Eingangsrechnung geprüft.
+
+> **Vor dem ersten Einsatz** den Kontenrahmen (SKR03/SKR04) im Wissen des
+> Buchhaltungs-Agenten hinterlegen. Ohne ihn kann er nicht kontieren.
+
+### Handwerksbetrieb — Preise kommen aus der Liste
+
+Der Kalkulations-Agent nimmt Preise **ausschließlich** aus der hinterlegten
+Preisliste. Fehlt ein Preis, geht die Position mit Hinweis in die Rückfragenliste,
+statt geschätzt zu werden — geschätzte Preise kosten Marge, und zwar unbemerkt.
+
+> _[Screenshot folgt: Paketauswahl mit Vorschau der enthaltenen Agenten]_
+
+---
+
+## 36. Ausweichmodell, wenn das Hauptmodell streikt
+
+Modelle sind nicht immer erreichbar: Rate-Limit bei vielen gleichzeitigen Aufträgen,
+Wartungsfenster einer Azure-Bereitstellung, Überlastung beim Anbieter. Ohne
+Ausweichmodell bricht der Auftrag dann ab.
+
+### Einrichten
+
+1. **Agenten** → gewünschter Agent → **Settings** → **Modell**.
+2. Feld **Ausweichmodelle** — ein Modell je Zeile, **in der Reihenfolge**, in der
+   ausgewichen werden soll.
+3. **Speichern**, dann den Agenten **aktualisieren** (Update-Knopf auf der Karte).
+
+> Nur Modelle desselben Zugangs eintragen. Ein Modell auf einem anderen Endpunkt
+> braucht einen eigenen Zugang und funktioniert hier nicht.
+
+### Was passiert im Betrieb
+
+- Antwortet das Modell wegen **Auslastung** nicht, wechselt der Agent auf das
+  nächste der Liste und **macht dort weiter**, wo er war.
+- Im Verlauf steht dann eine Zeile wie
+  `[Modellwechsel: gpt-5.6-terra → gpt-5.3-codex, Grund: rate limit]`.
+- Bei einem **Einrichtungsfehler** — falscher Schlüssel, falscher
+  Bereitstellungsname — wird **nicht** gewechselt. Dort hilft kein zweites Modell,
+  und ein Wechsel würde nur die eigentliche Ursache verdecken.
+
+> **Ohne Eintrag ändert sich nichts.** Ein leeres Feld heißt: abbrechen wie bisher.
+>
+> _[Screenshot folgt: Modell-Abschnitt mit zwei Ausweichmodellen]_
 
 ---
 

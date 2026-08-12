@@ -379,9 +379,10 @@ class OpenAIProvider(BaseLLMProvider):
         body: dict = {
             "model": self.model_name,
             "input": input_items,
-            "max_output_tokens": self.max_tokens,
             "stream": True,
         }
+        if self.max_tokens:
+            body["max_output_tokens"] = self.max_tokens
 
         if instructions:
             body["instructions"] = instructions
@@ -639,10 +640,15 @@ class OpenAIProvider(BaseLLMProvider):
         }
         # GPT-5 / o-series / codex reasoning models require
         # `max_completion_tokens` and reject a custom `temperature`.
+        # Ohne eigene Grenze wird der Schluessel gar nicht gesendet — dann gilt
+        # das Maximum des Modells. Eine Zahl hineinzuschreiben, nur um eine zu
+        # haben, kappt lange Antworten mitten im Satz.
         if self._is_responses_model():
-            body["max_completion_tokens"] = self.max_tokens
+            if self.max_tokens:
+                body["max_completion_tokens"] = self.max_tokens
         else:
-            body["max_tokens"] = self.max_tokens
+            if self.max_tokens:
+                body["max_tokens"] = self.max_tokens
             if self._supports_custom_temperature():
                 body["temperature"] = self.temperature
 
@@ -735,13 +741,15 @@ class OpenAIProvider(BaseLLMProvider):
 
     def _build_legacy_body(self, messages: list[ChatMessage]) -> dict:
         """Build request body for /completions (legacy) format."""
-        return {
+        body: dict = {
             "model": self.model_name,
             "prompt": self._messages_to_prompt(messages),
-            "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "stream": True,
         }
+        if self.max_tokens:
+            body["max_tokens"] = self.max_tokens
+        return body
 
     def _messages_to_prompt(self, messages: list[ChatMessage]) -> str:
         """Convert a messages list to a single prompt string for legacy completions."""

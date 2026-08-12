@@ -64,6 +64,43 @@ def _to_anthropic_tools(tools: list[dict]) -> list[dict]:
 class AnthropicProvider(BaseLLMProvider):
     """Provider for the Anthropic Messages API (claude models via direct API)."""
 
+    #: Antwortlänge je Modellfamilie, wenn keine eigene Grenze gesetzt ist.
+    #: Anders als bei OpenAI und Google ist ``max_tokens`` bei Anthropic ein
+    #: **Pflichtfeld** — weglassen geht nicht, es muss eine Zahl hinein.
+    #:
+    #: Zu hoch ist keine sichere Wahl: die API weist einen Wert oberhalb des
+    #: Modellmaximums mit 400 ab, und dann antwortet der Agent gar nicht mehr.
+    #: Deshalb je Familie der dort erlaubte Wert, und im Zweifel der niedrigste.
+    _FAMILY_MAX_TOKENS: tuple[tuple[str, int], ...] = (
+        ("claude-opus-4", 32_000),
+        ("claude-sonnet-4", 64_000),
+        ("claude-haiku-4", 64_000),
+        ("claude-opus-5", 64_000),
+        ("claude-sonnet-5", 64_000),
+        ("claude-fable-5", 64_000),
+        ("claude-3-7", 64_000),
+        ("claude-3-5-haiku", 8_192),
+        ("claude-3-5", 8_192),
+        ("claude-3", 4_096),
+    )
+    _SAFE_DEFAULT_MAX_TOKENS = 8_192
+
+    def _max_tokens_for_request(self) -> int:
+        """Was in ``max_tokens`` geschrieben wird.
+
+        Eine gesetzte Grenze gilt unverändert. Ohne Grenze (0) wird nicht gekappt,
+        sondern der für diese Modellfamilie erlaubte Höchstwert genommen — ein
+        unbekanntes Modell bekommt den überall gültigen Wert, damit ein Tippfehler
+        im Modellnamen nicht in ein 400 läuft.
+        """
+        if self.max_tokens:
+            return self.max_tokens
+        name = (self.model_name or "").lower()
+        for prefix, value in self._FAMILY_MAX_TOKENS:
+            if prefix in name:
+                return value
+        return self._SAFE_DEFAULT_MAX_TOKENS
+
     async def _stream_completion_impl(
         self,
         messages: list[ChatMessage],
@@ -134,7 +171,7 @@ class AnthropicProvider(BaseLLMProvider):
         body: dict = {
             "model": self.model_name,
             "messages": conv_messages,
-            "max_tokens": self.max_tokens,
+            "max_tokens": self._max_tokens_for_request(),
             "stream": True,
         }
         # Prompt caching: the system prompt + tool definitions are large and

@@ -945,7 +945,11 @@ class AgentManager:
             "LLM_API_ENDPOINT": cfg.get("api_endpoint", "") or "",
             "LLM_API_KEY": cfg.get("api_key", "") or "",
             "LLM_MODEL_NAME": cfg.get("model_name", ""),
-            "LLM_MAX_TOKENS": str(cfg.get("max_tokens", 4096)),
+            # 0 = keine eigene Grenze, dann entscheidet das Modell. Die frueheren
+            # 4096 stammten aus einer Zeit, in der Modelle nicht mehr konnten —
+            # fuer ein Review oder eine Datei brach die Antwort damit mitten im
+            # Satz ab, und das sah aus wie ein fertiges Ergebnis.
+            "LLM_MAX_TOKENS": str(cfg.get("max_tokens") or 0),
             "LLM_TEMPERATURE": str(cfg.get("temperature", 0.7)),
             "LLM_SYSTEM_PROMPT": cfg.get("system_prompt", "") or "",
             "LLM_TOOLS_ENABLED": str(cfg.get("tools_enabled", True)).lower(),

@@ -36,7 +36,14 @@ class Settings(BaseSettings):
     llm_api_endpoint: str = ""
     llm_api_key: str = ""
     llm_model_name: str = ""
-    llm_max_tokens: int = 4096
+    # Obergrenze der Antwortlänge. **0 = keine eigene Grenze** (Vorgabe): dann
+    # entscheidet das Modell, und das ist fast immer das Richtige.
+    #
+    # Bis v1.183.0 standen hier 4096 — eine Zahl aus der Zeit, als Modelle nicht
+    # mehr konnten. Für einen Agenten, der ein Review, eine Spezifikation oder eine
+    # Datei liefern soll, ist das zu wenig: die Antwort bricht mitten im Satz ab,
+    # und das sieht aus wie ein fertiges Ergebnis.
+    llm_max_tokens: int = 0
     llm_temperature: float = 0.7
     llm_system_prompt: str = ""
     llm_tools_enabled: bool = True

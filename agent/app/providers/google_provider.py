@@ -63,13 +63,11 @@ class GoogleProvider(BaseLLMProvider):
                         ],
                     })
 
-        body: dict = {
-            "contents": contents,
-            "generationConfig": {
-                "maxOutputTokens": self.max_tokens,
-                "temperature": self.temperature,
-            },
-        }
+        generation: dict = {"temperature": self.temperature}
+        # Ohne eigene Grenze entscheidet das Modell (siehe openai_provider).
+        if self.max_tokens:
+            generation["maxOutputTokens"] = self.max_tokens
+        body: dict = {"contents": contents, "generationConfig": generation}
         if system_instruction:
             body["systemInstruction"] = system_instruction
 

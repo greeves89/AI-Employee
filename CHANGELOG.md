@@ -5,6 +5,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.184.0] - 2026-08-12
+
+### Geändert
+- **Die Obergrenze für die Antwortlänge ist raus.** `LLM_MAX_TOKENS` stand auf
+  4096 — eine Zahl aus der Zeit, als Modelle nicht mehr konnten. Für ein Review,
+  eine Spezifikation oder eine fertige Datei ist das zu wenig, und das Tückische
+  daran: die Antwort bricht **mitten im Satz** ab und sieht trotzdem aus wie ein
+  fertiges Ergebnis. Vorgabe ist jetzt 0 = keine eigene Grenze.
+  - **OpenAI/Azure und Google:** der Schlüssel wird schlicht nicht gesendet, dann
+    gilt das Maximum des Modells.
+  - **Anthropic:** dort ist `max_tokens` ein Pflichtfeld. Ohne eigene Grenze wird
+    der für die Modellfamilie erlaubte Höchstwert genommen — nicht einfach ein
+    hoher Wert, denn oberhalb des Modellmaximums antwortet die API mit 400.
+  - Eine ausdrücklich gesetzte Grenze gilt unverändert weiter.
+
+### Dokumentation
+- **Benutzerhandbuch nachgezogen** (PDF neu erzeugt), für alles, was heute
+  nutzersichtbar dazugekommen ist:
+  - neuer Abschnitt **34. Kanäle** inkl. Discord-Einrichtung — mit dem Hinweis auf
+    *Message Content Intent*, ohne den Discord jede Nachricht leer ausliefert
+  - neuer Abschnitt **35. Branchen-Pakete** (Steuerkanzlei, Handwerksbetrieb) samt
+    der Grenzen: Buchungen sind Vorschläge, Preise kommen aus der Liste
+  - neuer Abschnitt **36. Ausweichmodell**, inklusive der Fälle, in denen bewusst
+    NICHT gewechselt wird
+  - **25d Golden-Tests** um die Faktenprüfung erweitert, mit der Begründung, warum
+    eine erfundene Statustabelle eine reine Textprüfung besser besteht als die
+    ehrliche Antwort
+  - **11 Triggers**: Workflow als Ziel samt Platzhaltertabelle
+  - **13 Approvals**: Antworten ist nie freigabepflichtig
+
+### Behoben
+- Beim Umbau der Antwortlänge wäre in `_build_legacy_body` das `return` verloren
+  gegangen — die Route hätte still `None` statt eines Rumpfes geliefert. Test dafür.
+
+### Test
+- `agent/tests/test_no_output_cap_by_default.py`
+
+---
+
 ## [1.183.0] - 2026-08-12
 
 ### Neu
