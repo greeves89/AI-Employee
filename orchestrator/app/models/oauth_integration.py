@@ -49,3 +49,9 @@ class OAuthIntegration(Base, TimestampMixin):
     account_label: Mapped[str | None] = mapped_column(String, nullable=True)
     # For Apple: stores extra data (id_token, user info) - encrypted
     extra_data_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Self-hosted Git-host support (#532 phase 2). NULL = the provider's public
+    # host (e.g. github.com). Set on GITHUB rows to point at a GitHub Enterprise
+    # Server instance instead; host_type distinguishes the API dialect
+    # ("github" today, "forgejo"/"gitea" in a later phase) once base_url is set.
+    host_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    base_url: Mapped[str | None] = mapped_column(String, nullable=True)

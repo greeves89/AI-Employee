@@ -21,6 +21,8 @@ def _db_with_integration(integration):
 async def test_github_integration_env_via_provider():
     integration = MagicMock()
     integration.access_token_encrypted = "encrypted-blob"
+    integration.host_type = None
+    integration.base_url = None
     db = _db_with_integration(integration)
     manager = AgentManager(db=db, docker=MagicMock(), redis=MagicMock())
 
@@ -38,3 +40,24 @@ async def test_no_github_integration_row_yields_empty_env():
     env = await manager._get_integration_env(["github"])
 
     assert env == {}
+
+
+@pytest.mark.asyncio
+async def test_ghes_integration_env_routes_via_base_url():
+    """#532 phase 2: an integration row with host_type/base_url set (GitHub
+    Enterprise Server) must inject GH_HOST so `gh` targets that instance."""
+    integration = MagicMock()
+    integration.access_token_encrypted = "encrypted-blob"
+    integration.host_type = "github"
+    integration.base_url = "https://ghe.example.com"
+    db = _db_with_integration(integration)
+    manager = AgentManager(db=db, docker=MagicMock(), redis=MagicMock())
+
+    with patch("app.core.agent_manager.decrypt_token", return_value="test_pat_decrypted"):
+        env = await manager._get_integration_env(["github"])
+
+    assert env == {
+        "GITHUB_TOKEN": "test_pat_decrypted",
+        "GH_TOKEN": "test_pat_decrypted",
+        "GH_HOST": "ghe.example.com",
+    }

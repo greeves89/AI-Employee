@@ -1198,11 +1198,12 @@ export async function exchangeOAuthCode(
   });
 }
 
-// PAT-based integrations (GitHub)
-export async function savePatToken(provider: string, token: string): Promise<{ status: string; provider: string; account_label?: string }> {
+// PAT-based integrations (GitHub). base_url points at a self-hosted instance
+// (GitHub Enterprise Server) instead of github.com — #532 phase 2.
+export async function savePatToken(provider: string, token: string, baseUrl?: string): Promise<{ status: string; provider: string; account_label?: string }> {
   return fetchJSON(`${getBase()}/integrations/${provider}/pat`, {
     method: "POST",
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ token, base_url: baseUrl || undefined }),
   });
 }
 

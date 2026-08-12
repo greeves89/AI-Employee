@@ -190,6 +190,9 @@ async def exchange_code_manual(
 
 class PatRequest(BaseModel):
     token: str
+    # Self-hosted instance, e.g. "https://ghe.example.com" (#532 phase 2).
+    # Only meaningful for provider="github" (GitHub Enterprise Server) today.
+    base_url: str | None = None
 
 
 @router.post("/{provider}/pat")
@@ -201,7 +204,7 @@ async def store_pat(
 ):
     """Store a Personal Access Token for a provider (e.g., GitHub PAT)."""
     try:
-        integration = await service.store_pat(provider, body.token)
+        integration = await service.store_pat(provider, body.token, base_url=body.base_url)
         return {
             "status": "connected",
             "provider": provider,
