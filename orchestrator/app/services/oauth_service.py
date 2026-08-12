@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
+from app.core.url_guard import check_outbound_url
 from app.core.oauth_providers import (
     PROVIDERS,
     apply_tenant,
@@ -361,6 +362,12 @@ class OAuthService:
         userinfo_url = provider.userinfo_url
         if host_type == "github" and base_url:
             userinfo_url = f"{base_url.rstrip('/')}/api/v3/user"
+            # base_url is user-supplied (self-hosted GHES) — without this check a
+            # caller could point it at an internal service or the cloud metadata
+            # endpoint and use this server to probe it (SSRF).
+            allowed, reason = check_outbound_url(userinfo_url)
+            if not allowed:
+                raise ValueError(f"Invalid base_url: {reason}")
         account_label = None
         if userinfo_url:
             async with httpx.AsyncClient() as client:
