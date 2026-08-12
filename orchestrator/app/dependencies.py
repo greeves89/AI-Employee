@@ -4,6 +4,11 @@ import logging
 import re
 from types import SimpleNamespace
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # nur fuer Typpruefer — zur Laufzeit gaebe es einen Importzyklus
+    from app.models.user import User
+
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession

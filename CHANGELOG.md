@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.177.5] — 2026-08-12
+
+### Fixed
+- **Das Anlegen eines Agenten schlug fehl (500).** Seit dem Zeitzonen-Commit vom
+  7. August — fünf Tage lang, in jeder Installation.
+
+  ```
+  cannot access local variable 'config' where it is not associated with a value
+  ```
+
+  In `create_agent` stand `agent_timezone(config)`, aber `config` wird in dieser
+  Funktion erst viel weiter unten gesetzt. Beim Anlegen gibt es noch keine
+  Agenten-Konfiguration, also gilt die Vorgabe: `agent_timezone(None)`. In
+  `restart_agent` und `update_agent` bleibt es bei `config` — dort existiert der
+  Agent und hat seine eigene Zeitzone.
+
+  **Ein Test hat den Fehler festgeschrieben statt ihn zu finden.** Er zählte
+  `count('"TZ": agent_timezone(config)') == 3` und war deshalb grün, während jedes
+  Anlegen in 500 lief. Er prüft jetzt je Funktion, woher die Zeitzone kommt.
+
+- **Neun weitere undefinierte Namen im Projekt** — dieselbe Fehlerklasse, jeder
+  ein Ausfall, der auf seinen ersten Nutzer wartete:
+
+  | Stelle | Wirkung |
+  |---|---|
+  | `_TELEGRAM_MAX_FILE_BYTES` (3×, nirgends definiert) | jeder Bild-, Video- und Animationsversand über Telegram wäre in einen `NameError` gelaufen statt in die 413-Meldung daneben |
+  | `logger` in `webhooks.py` (4×) | eine abgelehnte WhatsApp-Verifizierung hätte 500 statt 403 ergeben |
+  | `logger` in `mcp_agent.py` | Absturz statt Warnung, wenn ein Task-Abbruch nicht signalisiert werden kann |
+  | `sa_text` in `analytics.py` | in einer Funktion nicht importiert, in den Nachbarfunktionen schon |
+
+### Added
+- **Ein Gatter gegen diese ganze Fehlerklasse.** Ein Test lässt `ruff --select F821`
+  über `orchestrator/app` und `agent/app` laufen und schlägt bei jedem undefinierten
+  Namen an. Python merkt so etwas nicht beim Import, sondern erst, wenn die Zeile
+  läuft — ein Linter findet es in Sekunden. Namen, die nur in Typangaben stehen,
+  gehören dafür unter `if TYPE_CHECKING:`; drei solche Stellen sind entsprechend
+  aufgelöst.
+
 ## [1.177.4] — 2026-08-11
 
 ### Fixed

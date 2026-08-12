@@ -1,5 +1,6 @@
 """Meeting Room API — create, manage, and run group chats between agents."""
 
+import os
 import asyncio
 import logging
 import uuid

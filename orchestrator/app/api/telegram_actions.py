@@ -25,6 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.agent import Agent
 
+#: Telegram nimmt von Bots hoechstens 50 MB je Datei an. Die Konstante wurde
+#: an drei Stellen benutzt, aber nie definiert — jeder Bild-, Video- oder
+#: Animationsversand lief damit in einen NameError statt in die 413-Meldung,
+#: die direkt daneben steht.
+_TELEGRAM_MAX_FILE_BYTES = 50 * 1024 * 1024
+
 router = APIRouter(prefix="/telegram", tags=["telegram-actions"])
 
 TG_API = "https://api.telegram.org/bot{token}"

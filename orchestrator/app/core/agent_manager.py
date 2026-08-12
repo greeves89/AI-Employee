@@ -1195,7 +1195,14 @@ class AgentManager:
             # Der Container tickt in SEINER Zeitzone. Ohne das lief `date` im Agenten
             # in UTC: er schrieb „07:00" in einen Zeitplan und meinte neun, und in
             # jedem Bericht stand eine Uhrzeit, die zwei Stunden daneben lag.
-            "TZ": agent_timezone(config),
+            #
+            # ``None``, nicht ``config``: hier wird der Agent gerade erst angelegt,
+            # eine eigene Zeitzone hat er noch nicht — es gilt die Vorgabe. Die
+            # Variable ``config`` existiert an dieser Stelle NICHT (sie wird erst
+            # weiter unten fuer den proaktiven Zeitplan gesetzt), und der Zugriff
+            # darauf liess jedes Anlegen eines Agenten mit 500 scheitern:
+            # „cannot access local variable 'config'".
+            "TZ": agent_timezone(None),
         }
 
         if mode == "custom_llm" and effective_llm:

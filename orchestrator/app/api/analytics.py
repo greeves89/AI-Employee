@@ -725,6 +725,7 @@ async def self_improvement(
                    if str(getattr(s.status, "value", s.status)) == "rolled_back"]
 
     # --- Erinnerungen, die aus der Reflexion stammen ---------------------------
+    from sqlalchemy import text as sa_text   # wie in den uebrigen Funktionen dieser Datei
     memories = 0
     try:
         rows = await db.execute(sa_text(

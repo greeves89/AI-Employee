@@ -14,6 +14,7 @@ Supported MCP methods:
   tools/call       → execute a tool (send_task, get_status, list_tasks)
 """
 
+import logging
 import json
 import uuid
 from datetime import datetime, timezone
@@ -30,6 +31,8 @@ from app.models.agent import Agent
 from app.models.task import Task, TaskStatus
 from app.models.team import Team
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mcp", tags=["mcp-agent"])
 

@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import uuid
 
@@ -25,6 +26,8 @@ from app.security.agent_guard import (
     webhook_rate_limiter,
 )
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 

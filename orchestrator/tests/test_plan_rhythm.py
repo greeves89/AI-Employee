@@ -283,7 +283,27 @@ class ContainerTimezoneTests(unittest.TestCase):
         self.assertIn("TZ: ${TZ:-Europe/Berlin}", compose)
 
     def test_every_agent_container_ticks_in_its_own_zone(self):
+        """Alle drei Stellen setzen TZ — aber nicht alle drei aus derselben Quelle.
+
+        Hier stand ``count('"TZ": agent_timezone(config)') == 3``, und das war
+        genau der Fehler: in ``create_agent`` GIBT ES ``config`` an der Stelle
+        nicht — der Agent wird gerade erst angelegt. Der Test hat den Absturz
+        nicht gefunden, sondern festgeschrieben. Jedes Anlegen eines Agenten
+        endete fuenf Tage lang in 500, waehrend dieser Test gruen war.
+
+        Er zaehlt jetzt nicht mehr Zeichenketten, sondern prueft je Funktion,
+        woher die Zeitzone kommt.
+        """
         mgr = (ORCH / "app/core/agent_manager.py").read_text()
         self.assertIn("def agent_timezone(", mgr)
-        # Alle drei Stellen, an denen ein Agent-Container gebaut wird.
-        self.assertEqual(mgr.count('"TZ": agent_timezone(config)'), 3)
+
+        def block(fn):
+            return mgr.split(f"async def {fn}")[1].split("\n    async def ")[0]
+
+        # Neu angelegt: noch keine eigene Zeitzone, also die Vorgabe.
+        self.assertIn('"TZ": agent_timezone(None)', block("create_agent"))
+        # Bestehend: seine eigene. Die Vorgabe waere hier falsch — ein auf Berlin
+        # eingestellter Agent liefe nach einem Neustart ploetzlich in UTC.
+        for fn in ("restart_agent", "update_agent"):
+            with self.subTest(fn):
+                self.assertIn('"TZ": agent_timezone(config)', block(fn))
