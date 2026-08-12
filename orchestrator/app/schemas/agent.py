@@ -28,7 +28,10 @@ class LLMConfig(BaseModel):
     api_endpoint: str
     api_key: str  # plaintext on input, encrypted in DB, never in response
     model_name: str
-    max_tokens: int = 4096
+    # 0 = keine eigene Grenze; dann entscheidet das Modell (siehe
+    # agent/app/config.py). Die frueheren 4096 haben lange Antworten
+    # mitten im Satz gekappt, und das sah aus wie ein fertiges Ergebnis.
+    max_tokens: int = 0
     temperature: float = 0.7
     system_prompt: str = ""
     tools_enabled: bool = True

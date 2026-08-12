@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.184.1] - 2026-08-12
+
+### Behoben
+- **Die entfernte Obergrenze wirkte noch nicht.** 1.184.0 hat nur die Vorgabe
+  geändert — die 4096 standen aber zusätzlich **gespeichert in der Konfiguration
+  jedes Agenten** und haben die neue Vorgabe überschrieben. Im laufenden Container
+  stand weiterhin `LLM_MAX_TOKENS=4096`.
+  Jetzt: die vier Stellen, die den Wert weitertrugen, sind bereinigt, und beim
+  Start wird der Altwert einmalig aus den bestehenden Agenten entfernt.
+  Bewusst **nur exakt 4096** — wer eine andere Zahl eingetragen hat, hat sich etwas
+  dabei gedacht, und die bleibt unangetastet.
+
+---
+
 ## [1.184.0] - 2026-08-12
 
 ### Geändert

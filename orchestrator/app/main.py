@@ -1325,6 +1325,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed URL allowlist templates: {e}")
 
+    # Einmalige Bereinigung: die alte Vorgabe 4096 aus den Agenten-Konfigurationen
+    # entfernen. Sie stand dort nicht, weil jemand sie gewollt hat, sondern weil sie
+    # die Vorgabe war — und sie kappt lange Antworten mitten im Satz.
+    # Bewusst NUR exakt 4096: wer eine andere Zahl eingetragen hat, hat sich etwas
+    # dabei gedacht, und die bleibt unangetastet.
+    try:
+        from sqlalchemy import select as _sel_mt
+        from sqlalchemy.orm.attributes import flag_modified as _flag_mt
+
+        from app.db.session import async_session_factory as _sf_mt
+        from app.models.agent import Agent as _AgentMT
+
+        async with _sf_mt() as db:
+            cleared = 0
+            for agent in (await db.execute(_sel_mt(_AgentMT))).scalars().all():
+                cfg = agent.llm_config or {}
+                if cfg.get("max_tokens") == 4096:
+                    cfg = dict(cfg)
+                    cfg["max_tokens"] = 0
+                    agent.llm_config = cfg
+                    _flag_mt(agent, "llm_config")
+                    cleared += 1
+            if cleared:
+                await db.commit()
+                logger.info(
+                    "Antwortlaengen-Grenze bei %d Agenten entfernt (alte Vorgabe 4096)",
+                    cleared,
+                )
+    except Exception as e:
+        logger.warning(f"Failed to clear legacy max_tokens: {e}")
+
     # Seed builtin eval sets (#193): Team-Grundlagen + Angriffsfaelle.
     # Nur anlegen, nie ueberschreiben — wer eine Sammlung angepasst hat, soll sie
     # beim naechsten Start nicht zurueckgesetzt bekommen.
