@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.178.2] - 2026-08-12
+
+### Behoben
+- **Nachrichten an schlafende Agenten kamen nie an.** Der Team-Lead schickte
+  sieben Agenten je ein "Hallo Welt" — alle sieben stehen in der Datenbank, die
+  Zustellung meldete "sent", keine einzige Antwort. Die Empfänger waren Minuten
+  vorher idle ausgestiegen; `agent:{id}:messages` wird aber nur gelesen, solange
+  der Container läuft. Von außen sah es aus, als könnten die Agenten
+  grundsätzlich nicht miteinander reden.
+  Die Zustellung weckt den Empfänger jetzt **vor** dem Einreihen.
+
+### Geändert
+- Das Aufwecken gab es für Besprechungen längst und für Nachrichten gar nicht.
+  Statt einer zweiten Kopie liegt es jetzt einmal in
+  `orchestrator/app/core/agent_wakeup.py`; `meeting_rooms` ruft dieselbe Stelle.
+
+### Test
+- `orchestrator/tests/test_message_wakes_sleeping_agent.py` — prüft, dass ein
+  gestoppter Agent geweckt wird, ein laufender in Ruhe bleibt, ein misslungener
+  Start die Zustellung nicht abbricht, und dass die Reihenfolge stimmt:
+  erst wecken, dann einreihen.
+
+---
+
 ## [1.178.1] - 2026-08-12
 
 ### Behoben

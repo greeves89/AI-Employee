@@ -1864,6 +1864,13 @@ async def send_message_to_agent(
             "message_type": body.message_type or "message",
             "reply_to": body.reply_to,
         })
+        # Erst wecken, dann zustellen. Die Warteschlange wird nur gelesen, solange
+        # der Container laeuft — einem idle ausgestiegenen Agenten etwas
+        # hineinzulegen sieht nach Erfolg aus und bleibt ohne Antwort. Genau so
+        # blieben am 2026-08-12 sieben „Hallo Welt" des Team-Leads unbeantwortet.
+        from app.core.agent_wakeup import ensure_agent_running
+
+        await ensure_agent_running(agent_id, manager.docker, redis)
         await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
 
         # Persist in DB for history/visualization

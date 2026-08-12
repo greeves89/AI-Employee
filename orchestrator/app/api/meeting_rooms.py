@@ -1062,22 +1062,13 @@ async def _ensure_agent_running(agent_id: str, docker, redis) -> None:
     Meeting turns are pushed straight to the agent's redis queue, which is ONLY consumed
     while the container runs. Agents idle-exit between turns (the gap to their next turn
     can exceed the idle timeout), so the message would sit in a queue nobody reads →
-    '[Agent hat nicht geantwortet]'. Restart on demand (cheap if already running)."""
-    if not docker or not agent_id:
-        return
-    try:
-        from app.db.session import async_session_factory
-        from app.core.agent_manager import AgentManager
-        from app.models.agent import Agent as _Agent
-        async with async_session_factory() as db:
-            agent = await db.scalar(select(_Agent).where(_Agent.id == agent_id))
-            if not agent:
-                return
-            running = bool(agent.container_id) and docker.get_container_status(agent.container_id) == "running"
-            if not running:
-                await AgentManager(db, docker, redis).start_agent(agent_id)
-    except Exception:
-        logger.warning(f"[Meeting] ensure_agent_running failed for {agent_id}", exc_info=True)
+    '[Agent hat nicht geantwortet]'.
+
+    Same problem, same cure as for inter-agent messages — so it lives in one place
+    now: :func:`app.core.agent_wakeup.ensure_agent_running`."""
+    from app.core.agent_wakeup import ensure_agent_running
+
+    await ensure_agent_running(agent_id, docker, redis)
 
 
 async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, docker=None) -> None:
