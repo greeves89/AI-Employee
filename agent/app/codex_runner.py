@@ -441,6 +441,12 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
         "orchestrator": "/opt/mcp/orchestrator-server.mjs",
         "desktop": "/opt/mcp/computer-use-server.mjs",
         "read_logs": "/opt/mcp/read-logs-server.mjs",
+        # Fehlten bis 2026-08-12: ein Codex-Agent hatte KEIN Microsoft 365, keine
+        # Mail und kein Video — Claude Code schon. Zwei Listen, die niemand
+        # gegeneinander geprueft hat. Der Paritaetstest tut das jetzt.
+        "msgraph": "/opt/mcp/msgraph-server.mjs",
+        "email": "/opt/mcp/email-server.mjs",
+        "hyperframes": "/opt/mcp/hyperframes-server.mjs",
     }
 
     lines: list[str] = [

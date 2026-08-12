@@ -41,13 +41,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   **„läuft noch"** ausgewiesen statt weggelassen — das Weglassen war der Kern der
   erfundenen Statustabelle.
 
+- **Codex-Agenten hatten kein Microsoft 365, keine Mail und kein Video.** Beim
+  vollständigen Abgleich aller drei Laufzeiten aufgefallen: Claude Code startet
+  elf stdio-MCP-Server, Codex nur sieben. Es fehlten `msgraph`, `email` und
+  `hyperframes` — zwei Listen an zwei Stellen (`main.py` und `codex_runner.py`),
+  die niemand gegeneinander geprüft hat. Nachgetragen.
+
 ### Added
-- **Ein Paritätstest, der Fähigkeiten vergleicht statt Anzeigen.** Es gab schon
+- **Ein Paritätstest über alle drei Laufzeiten.** Es gab schon
   einen „Paritätstest" — der prüft aber den Katalog für das `/`-Menü im Chat. Er
   war grün, während sechs Team-Werkzeuge fehlten. Der neue vergleicht
   `orchestrator-server.mjs` gegen `definitions.py` und verlangt für jede Lücke
   einen **begründeten** Eintrag in `DELIBERATE_GAPS`. Er hat die fünf verbleibenden
   Werkzeuge selbst gefunden, nachdem `delegate_and_wait` gebaut war.
+
+  Der zweite Test hält die **volle Matrix** fest: welche MCP-Server jede Laufzeit
+  bekommt und auf welchem Weg. Der Kern des Problems ist, dass es **drei
+  verschiedene Bezugswege** gibt — Claude Code und Codex je eine eigene stdio-Liste,
+  Custom-LLM `definitions.py` plus MCP über **HTTP**, das stdio-Server nie erreicht.
+  Jede Abweichung braucht jetzt eine Begründung im Test; eine Lücke ohne Grund ist
+  keine Entscheidung, sondern ein Versehen. Er fand die drei fehlenden
+  Codex-Server, sobald er geschrieben war.
 
 ## [1.177.6] — 2026-08-12
 
