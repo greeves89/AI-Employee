@@ -1320,6 +1320,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed URL allowlist templates: {e}")
 
+    # Seed builtin eval sets (#193): Team-Grundlagen + Angriffsfaelle.
+    # Nur anlegen, nie ueberschreiben — wer eine Sammlung angepasst hat, soll sie
+    # beim naechsten Start nicht zurueckgesetzt bekommen.
+    try:
+        from sqlalchemy import select as _select
+
+        from app.core.eval_seeds import BUILTIN_EVAL_SETS
+        from app.db.session import async_session_factory as _sf_evals
+        from app.models.eval_set import EvalSet as _EvalSet
+
+        async with _sf_evals() as db:
+            created = 0
+            for spec in BUILTIN_EVAL_SETS:
+                exists = (await db.execute(
+                    _select(_EvalSet).where(_EvalSet.id == spec["id"])
+                )).scalar_one_or_none()
+                if exists is not None:
+                    continue
+                db.add(_EvalSet(
+                    id=spec["id"], name=spec["name"], role=spec.get("role", ""),
+                    description=spec.get("description", ""), items=spec["items"],
+                ))
+                created += 1
+            if created:
+                await db.commit()
+        logger.info("Builtin eval sets seeded (%d new)", created)
+    except Exception as e:
+        logger.warning(f"Failed to seed builtin eval sets: {e}")
+
     # Seed builtin agent templates
     try:
         from app.core.agent_templates import BUILTIN_TEMPLATES

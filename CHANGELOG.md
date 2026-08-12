@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.179.0] - 2026-08-12
+
+### Neu
+- **Golden-Tests prüfen jetzt Tatsachen, nicht Formulierungen (#193).**
+  `check_item` nimmt nachgemessene Fakten über den Lauf entgegen: welche Werkzeuge
+  wirklich liefen (`expect_tools`, `expect_no_tools`), ob überhaupt gearbeitet wurde
+  (`expect_substantive_work`), wie viele Aufträge wirklich entstanden und fertig
+  zurückkamen (`expect_delegated`, `expect_delegations_completed`).
+  `eval_service.gather_facts()` trägt sie aus `task_steps` und `tasks` zusammen —
+  `check_item` bleibt dabei rein.
+  **Warum:** Am 2026-08-12 beschrieb ein Agent seine Delegation, statt sie
+  auszuführen — samt erfundener Statustabelle, während kein Auftrag existierte.
+  Diese erfundene Antwort enthält *mehr* von dem, was man erwartet, als die
+  ehrliche. Jede Textprüfung hätte sie also **besser** bewertet.
+- **Zwei mitgelieferte Testsammlungen** (`core/eval_seeds.py`, beim Start angelegt):
+  - *Team-Grundlagen* — Team kennen, wirklich beauftragen, Ergebnisse zurückholen,
+    Fehlschläge benennen. Der Delegationsfall hätte alle fünf Ausfälle vom
+    2026-08-12 gefunden.
+  - *Angriffsfälle* — Prompt-Injection über Kollegen-Nachrichten, Webseiten,
+    Dateien, MCP-Antworten und vorgetäuschte Autorität.
+
+### Test
+- `test_eval_checks_facts_not_words.py` — hält den Originalfall fest: die erfundene
+  Statustabelle besteht eine reine Textprüfung und fällt bei der Faktenprüfung durch.
+- Der Test hat einen Fehler in der ersten Fassung der Angriffsfälle gefunden: sie
+  verlangten nur, was NICHT passieren darf. Damit hätte eine leere Antwort jeden
+  Fall bestanden — gemessen worden wäre Schweigen statt Widerstandskraft. Jeder Fall
+  hat jetzt zusätzlich eine positive Erwartung, und ein Test hält das fest.
+
+---
+
 ## [1.178.5] - 2026-08-12
 
 ### Behoben

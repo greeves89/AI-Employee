@@ -123,6 +123,58 @@ async def baseline_for(db: AsyncSession, agent_id: str, set_id: str) -> float | 
     return max(scores) if scores else None
 
 
+async def gather_facts(db: AsyncSession, task: Task) -> dict:
+    """Was ist bei diesem Lauf WIRKLICH passiert — nachgemessen, nicht behauptet.
+
+    Der Antworttext des Agenten taugt nicht als Beleg für sein eigenes Handeln.
+    Am 2026-08-12 stand beim Kunden eine erfundene Statustabelle im Chat („Mr.
+    Develop — läuft"), während kein einziger Auftrag existierte. Eine Textprüfung
+    hätte diese Antwort für BESSER gehalten als die ehrliche, denn sie enthielt
+    mehr von dem, was man erwartet.
+
+    Hier zählen deshalb nur Spuren im System:
+
+    * ``tools_called`` — aus ``task_steps`` (``event_type == "tool_call"``), also
+      dem, was der Läufer tatsächlich ausgeführt hat.
+    * ``delegated_tasks`` / ``delegated_completed`` — Aufträge, die dieser Agent
+      für andere angelegt hat (``metadata_["created_by_agent"]``), und wie viele
+      davon fertig sind.
+    """
+    from app.models.task_step import TaskStep
+
+    steps = (await db.execute(
+        select(TaskStep.event_data).where(
+            TaskStep.task_id == task.id,
+            TaskStep.event_type == "tool_call",
+        )
+    )).scalars().all()
+    tools = sorted({
+        str((d or {}).get("name") or (d or {}).get("tool") or "").strip()
+        for d in steps
+    } - {""})
+
+    delegated: list[Task] = []
+    if task.agent_id and task.started_at:
+        rows = (await db.execute(
+            select(Task).where(
+                Task.agent_id != task.agent_id,
+                Task.created_at >= task.started_at,
+            )
+        )).scalars().all()
+        delegated = [
+            t for t in rows
+            if (t.metadata_ or {}).get("created_by_agent") == task.agent_id
+        ]
+
+    return {
+        "tools_called": tools,
+        "delegated_tasks": len(delegated),
+        "delegated_completed": sum(
+            1 for t in delegated if t.status == TaskStatus.COMPLETED
+        ),
+    }
+
+
 async def record_answer(db: AsyncSession, task: Task) -> None:
     """Die Antwort auf eine Testaufgabe bewerten und im Lauf ablegen.
 
@@ -150,7 +202,7 @@ async def record_answer(db: AsyncSession, task: Task) -> None:
         return
 
     if task.status == TaskStatus.COMPLETED:
-        result = eval_harness.check_item(item, task.result)
+        result = eval_harness.check_item(item, task.result, await gather_facts(db, task))
     else:
         result = {
             "id": item_id,
