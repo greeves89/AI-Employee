@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.178.0] — 2026-08-12
+
+### Fixed
+- **Custom-LLM-Agenten konnten nicht delegieren — und erfanden es stattdessen.**
+  Der CEO-Agent eines Kunden meldete „Alle drei beauftragten Sub-Agents sind
+  aktuell aktiv" mit einer Statustabelle, während die Übersicht alle Agenten als
+  **Idle, 0 % CPU, ohne Warteschlange** zeigte. Erkennbar auch an der Fußzeile:
+  `12,5s · 2 turns` — in zwölf Sekunden wird nichts beauftragt.
+
+  Es war keine Halluzination ohne Anlass, sondern eine **fehlende Fähigkeit**:
+  `delegate_and_wait` gab es nur in `agent/mcp/orchestrator-server.mjs`, einem
+  **stdio**-MCP-Server, den ausschliesslich Claude Code startet. Der Custom-LLM-Lauf
+  holt MCP-Werkzeuge über **HTTP** und erreicht stdio-Server nie. Ein Modell ohne
+  passendes Werkzeug tut, was es kann: es **beschreibt** die Handlung.
+
+  Nachgebaut sind jetzt alle sechs Team-Werkzeuge des Orchestrator-MCP:
+
+  | Werkzeug | wofür |
+  |---|---|
+  | `delegate_and_wait` | beauftragen **und auf das Ergebnis warten** |
+  | `list_my_team` | wen habe ich überhaupt |
+  | `list_team_tasks` | woran arbeitet das Team wirklich |
+  | `get_tasks_status` | läuft mein Auftrag noch |
+  | `schedule_meeting` | Abstimmung ansetzen |
+  | `skill_update` | Skill nachziehen |
+
+  Alle vier zentralen liegen im **Kernsatz**, nicht nur im Katalog: was ein Agent
+  erst über `search_tools` finden muss, findet er in der Praxis nicht — und redet
+  dann darüber, statt es zu tun.
+
+  Zwei Details, die den Rückfall verhindern sollen: die Beschreibung von
+  `delegate_and_wait` sagt ausdrücklich, dass eine Ankündigung **ohne** Aufruf eine
+  Falschaussage ist. Und ein Auftrag, der bei Fristende noch läuft, wird als
+  **„läuft noch"** ausgewiesen statt weggelassen — das Weglassen war der Kern der
+  erfundenen Statustabelle.
+
+### Added
+- **Ein Paritätstest, der Fähigkeiten vergleicht statt Anzeigen.** Es gab schon
+  einen „Paritätstest" — der prüft aber den Katalog für das `/`-Menü im Chat. Er
+  war grün, während sechs Team-Werkzeuge fehlten. Der neue vergleicht
+  `orchestrator-server.mjs` gegen `definitions.py` und verlangt für jede Lücke
+  einen **begründeten** Eintrag in `DELIBERATE_GAPS`. Er hat die fünf verbleibenden
+  Werkzeuge selbst gefunden, nachdem `delegate_and_wait` gebaut war.
+
 ## [1.177.6] — 2026-08-12
 
 ### Security

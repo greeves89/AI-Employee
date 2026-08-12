@@ -1457,6 +1457,147 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
+    # ── Team-Werkzeuge (Paritaet mit orchestrator-server.mjs) ──
+    # Fehlten bis 2026-08-12 im Custom-LLM. Ohne sie kann ein Agent weder
+    # sehen, wer zu ihm gehoert, noch was die anderen tun — und erfindet es.
+    {
+        "type": "function",
+        "function": {
+            "name": "list_my_team",
+            "description": "Who is on my team — the agents I can delegate to. Call this BEFORE claiming what other agents are doing.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_team_tasks",
+            "description": "What my team is actually working on right now. Use this instead of guessing or describing a status you have not checked.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_tasks_status",
+            "description": "Check whether tasks I delegated are still running or finished.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Task ids to check."
+                    }
+                },
+                "required": [
+                    "task_ids"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_meeting",
+            "description": "Set up a meeting between several agents to align on a topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "What the meeting is about."
+                    },
+                    "agent_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Participating agents."
+                    }
+                },
+                "required": [
+                    "topic"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_update",
+            "description": "Update one of my installed skills.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {
+                        "type": "string",
+                        "description": "The skill to update."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "New skill content."
+                    }
+                },
+                "required": [
+                    "skill_id"
+                ]
+            }
+        }
+    },
+    # ── Delegieren und auf das Ergebnis warten ──
+    # Gab es bis 2026-08-12 NUR im MCP-Satz, also nur fuer Claude Code. Ohne dieses
+    # Werkzeug beschreibt ein Modell die Delegation, statt sie auszufuehren — beim
+    # Kunden stand eine erfundene Statustabelle im Chat, waehrend alle Agenten
+    # nachweislich im Leerlauf waren.
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_and_wait",
+            "description": (
+                "Give concrete work to OTHER agents and WAIT for their results. Use this "
+                "whenever you say you will 'beauftragen', 'delegieren', 'aufteilen' or "
+                "report on what other agents are doing — announcing it without calling "
+                "this tool is a false statement. Creates real tasks on their boards and "
+                "returns each result (or says plainly that one is still running). "
+                "Max 20 tasks, wait up to 600s. For fire-and-forget use create_task_batch."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tasks": {
+                        "type": "array",
+                        "description": "The pieces of work, one per agent.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string", "description": "Short title."},
+                                "prompt": {"type": "string", "description": "Full instruction."},
+                                "agent_id": {"type": "string", "description": "Target agent id (omit = auto-assign)."},
+                                "priority": {"type": "integer", "description": "1 (high) to 10 (low), default 5."},
+                            },
+                            "required": ["title", "prompt"],
+                        },
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "How long to wait for results (10-600, default 300).",
+                    },
+                },
+                "required": ["tasks"],
+            },
+        },
+    },
     # ── Batch Tasks (orchestrator-server.mjs parity) ──
     {
         "type": "function",

@@ -55,7 +55,8 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
     "list_team", "list_tasks", "list_todos", "list_schedules", "trigger_list",
     "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
-    "send_message", "create_task",
+    "send_message", "create_task", "delegate_and_wait",
+    "list_my_team", "list_team_tasks", "get_tasks_status",
 })
 
 

@@ -36,6 +36,10 @@ def _max_turns() -> int:
 # CORE set + a `search_tools` meta-tool, and ACTIVATE specific tools on demand when
 # the model searches for them. So the catalog can grow without limit.
 CORE_TOOL_NAMES = {
+    # Delegieren gehoert in den KERN, nicht in den Katalog: was der Agent erst
+    # ueber search_tools finden muss, findet er in der Praxis nicht — und redet
+    # dann darueber, statt es zu tun.
+    "delegate_and_wait", "list_my_team", "list_team_tasks", "get_tasks_status",
     "bash", "read_file", "write_file", "edit_file", "multi_edit",
     "list_files", "grep", "glob", "git_status", "git_diff",
     "web_search", "web_fetch",

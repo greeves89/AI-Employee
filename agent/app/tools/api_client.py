@@ -966,6 +966,141 @@ class OrchestratorAPIClient:
             lines.append(f"  - #{t.get('id')}: \"{t.get('title')}\" → {t.get('agent_id', 'auto')} [{t.get('status')}]")
         return "\n".join(lines)
 
+    async def delegate_and_wait(self, params: dict) -> str:
+        """Auftraege an andere Agenten geben UND auf die Ergebnisse warten.
+
+        Bis hierher gab es das nur im MCP-Satz, also nur fuer Claude Code. Ein
+        Custom-LLM-Agent konnte Nachrichten schicken und Aufgaben anlegen, aber
+        nicht beauftragen und auf das Ergebnis warten — und tat deshalb, was ein
+        Modell ohne passendes Werkzeug tut: er BESCHRIEB die Delegation. Beim
+        Kunden stand daraufhin eine erfundene Statustabelle („Mr. Develop —
+        laeuft") im Chat, waehrend alle Agenten nachweislich im Leerlauf waren.
+
+        Gleiche Mechanik wie im MCP-Server: Stapel anlegen, dann die Aufgaben
+        abfragen, bis alle fertig sind oder die Frist reisst.
+        """
+        import asyncio as _asyncio
+
+        tasks = params.get("tasks") or []
+        if not tasks:
+            return "Error: tasks list is required"
+        timeout = max(10, min(int(params.get("timeout_seconds") or 300), 600))
+
+        body = {
+            "tasks": [
+                {
+                    "title": t.get("title", "Task"),
+                    "prompt": t.get("prompt", ""),
+                    "priority": t.get("priority", 5),
+                    "agent_id": t.get("agent_id"),
+                }
+                for t in tasks[:20]
+            ],
+            "created_by_agent": self.agent_id,
+        }
+        batch = await self._request("POST", "/tasks/batch", json=body)
+        if isinstance(batch, str):
+            return batch
+        task_ids = [t.get("id") for t in batch.get("tasks", []) if t.get("id")]
+        if not task_ids:
+            return "Error: no tasks were created"
+
+        results: dict = {}
+        loop = _asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline and len(results) < len(task_ids):
+            await _asyncio.sleep(4)
+            for tid in task_ids:
+                if tid in results:
+                    continue
+                t = await self._request("GET", f"/tasks/{tid}")
+                if isinstance(t, str) or not isinstance(t, dict):
+                    continue
+                if t.get("status") in ("completed", "failed"):
+                    results[tid] = t
+
+        lines = [f"{len(results)}/{len(task_ids)} Auftraege abgeschlossen:"]
+        for tid in task_ids:
+            t = results.get(tid)
+            if not t:
+                # Ehrlich benennen statt als Erfolg zaehlen — genau das war der Fehler.
+                lines.append(f"  - #{tid}: laeuft noch (Frist von {timeout}s erreicht)")
+                continue
+            lines.append(f"  - #{tid} \"{t.get('title', '')}\" [{t.get('status')}]: "
+                         f"{str(t.get('result') or '(keine Ausgabe)')[:1500]}")
+        return "\n".join(lines)
+
+    async def list_my_team(self, params: dict) -> str:
+        """Wer gehoert zu meinem Team — Voraussetzung fuer jedes Delegieren."""
+        result = await self._request("GET", "/teams/mine")
+        if isinstance(result, str):
+            return result
+        members = result.get("members") or result.get("agents") or []
+        if not members:
+            return "Kein Team zugeordnet — Auftraege gehen ohne agent_id an die automatische Zuteilung."
+        lines = [f"Mein Team ({result.get('name', 'ohne Namen')}), {len(members)} Mitglieder:"]
+        for m in members:
+            lines.append(f"  - {m.get('name', '?')} (id: {m.get('id', '?')}) — {m.get('role') or 'ohne Rolle'}")
+        return "\n".join(lines)
+
+    async def list_team_tasks(self, params: dict) -> str:
+        """Woran arbeitet mein Team gerade — die ehrliche Antwort statt einer geratenen."""
+        teams = await self._request("GET", "/teams/")
+        if isinstance(teams, str):
+            return teams
+        rows = teams if isinstance(teams, list) else teams.get("teams", [])
+        mine = next((t for t in rows if self.agent_id in
+                     [m.get("id") for m in (t.get("members") or [])]), None)
+        if not mine:
+            return "Kein Team zugeordnet."
+        result = await self._request("GET", f"/teams/{mine.get('id')}/tasks")
+        if isinstance(result, str):
+            return result
+        tasks = result if isinstance(result, list) else result.get("tasks", [])
+        if not tasks:
+            return "Das Team hat gerade keine laufenden Aufgaben."
+        lines = [f"{len(tasks)} Aufgaben im Team:"]
+        for t in tasks[:40]:
+            lines.append(f"  - #{t.get('id')} \"{t.get('title', '')}\" [{t.get('status')}] "
+                         f"→ {t.get('agent_name') or t.get('agent_id') or 'unzugeteilt'}")
+        return "\n".join(lines)
+
+    async def get_tasks_status(self, params: dict) -> str:
+        """Laufen meine Auftraege noch? Ohne das bleibt nur Raten."""
+        ids = params.get("task_ids") or []
+        if not ids:
+            return "Error: task_ids is required"
+        lines = []
+        for tid in ids[:40]:
+            t = await self._request("GET", f"/tasks/{tid}")
+            if isinstance(t, str) or not isinstance(t, dict):
+                lines.append(f"  - #{tid}: nicht abrufbar")
+                continue
+            lines.append(f"  - #{tid} \"{t.get('title', '')}\" [{t.get('status')}]"
+                         + (f": {str(t.get('result'))[:400]}" if t.get("result") else ""))
+        return "\n".join(lines) or "Keine Angaben."
+
+    async def schedule_meeting(self, params: dict) -> str:
+        """Eine Abstimmung mehrerer Agenten ansetzen."""
+        body = {k: v for k, v in params.items() if v is not None}
+        body.setdefault("created_by_agent", self.agent_id)
+        result = await self._request("POST", "/meeting-rooms/schedule", json=body)
+        if isinstance(result, str):
+            return result
+        return (f"Termin angesetzt: \"{result.get('topic') or result.get('title', '')}\" "
+                f"(Raum {result.get('room_id') or result.get('id')})")
+
+    async def skill_update(self, params: dict) -> str:
+        """Einen eigenen Skill nachziehen."""
+        skill_id = params.get("skill_id")
+        if not skill_id:
+            return "Error: skill_id is required"
+        body = {k: v for k, v in params.items() if k != "skill_id" and v is not None}
+        result = await self._request("PATCH", f"/skills/agent/{skill_id}", json=body)
+        if isinstance(result, str):
+            return result
+        return f"Skill {skill_id} aktualisiert."
+
     # ── Synchronous messaging ──
 
     async def send_message_and_wait(self, params: dict) -> str:
