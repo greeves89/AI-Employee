@@ -139,7 +139,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               type: "object",
               properties: {
                 title: { type: "string", description: "Short task title." },
-                prompt: { type: "string", description: "Detailed instructions for this sub-task." },
+                prompt: {
+                  type: "string",
+                  description:
+                    "Detailed instructions for this sub-task. Must stand on its own: the receiver " +
+                    "has its OWN /workspace and cannot see yours. Never point at a /workspace/... " +
+                    "path of yours — copy what they need to /shared/ and name that path, or put " +
+                    "the content into this prompt.",
+                },
                 agent_id: { type: "string", description: "Agent to assign to. Leave empty for auto-assign." },
               },
               required: ["title", "prompt"],

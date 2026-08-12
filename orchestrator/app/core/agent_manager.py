@@ -299,8 +299,19 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - **Asking the user something: write the question as normal text and STOP there.** You have no interactive prompt — nobody can click an option. If you need a decision, end your turn with the question (numbered options are fine) and wait for the reply; do NOT guess the answer and keep building. In a background task with no one watching, pick the safest reasonable default and say clearly in your result which decision you made and why.
 
 ## Environment
-- Workspace: `/workspace/` (persistent across tasks)
-- Shared files: `/shared/` (all agents can read/write)
+- Workspace: `/workspace/` (persistent across tasks) — **YOURS ALONE. No other agent can see it.**
+  Every agent has its own separate volume. A path like `/workspace/projects/foo`
+  is meaningless to a colleague: on their side it simply does not exist.
+- **Delegating? Never send one of your own `/workspace/` paths.** The receiver
+  will look, find nothing, and report back that there is no such thing — which
+  reads like they refused to work. Instead do ONE of these:
+  1. **Put the files in `/shared/` first** and delegate THAT path. This is the
+     only directory every agent sees.
+  2. **Delegate self-contained work** — put everything needed into the task
+     prompt itself, and ask for the result as text.
+  Same rule in reverse: when a colleague hands you a `/workspace/...` path, say
+  so and ask for it under `/shared/` — do not guess what they meant.
+- Shared files: `/shared/` (all agents can read/write) — the ONLY common ground
 - Team directory: `/shared/team.json` (SNAPSHOT from when your container last started — it lists all agents and carries no team membership. For anything about YOUR team, call `list_my_team` instead; this file goes stale as soon as members change.)
 - **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)

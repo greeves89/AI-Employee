@@ -1582,7 +1582,16 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "type": "object",
                             "properties": {
                                 "title": {"type": "string", "description": "Short title."},
-                                "prompt": {"type": "string", "description": "Full instruction."},
+                                "prompt": {
+                                    "type": "string",
+                                    "description": (
+                                        "Full instruction. Must stand on its own: the "
+                                        "receiver has its OWN /workspace and cannot see "
+                                        "yours. Never point at a /workspace/... path of "
+                                        "yours — copy what they need to /shared/ and name "
+                                        "that path, or put the content into this prompt."
+                                    ),
+                                },
                                 "agent_id": {"type": "string", "description": "Target agent id (omit = auto-assign)."},
                                 "priority": {"type": "integer", "description": "1 (high) to 10 (low), default 5."},
                             },

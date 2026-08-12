@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.178.5] - 2026-08-12
+
+### Behoben
+- **Wer delegiert, konnte die Ergebnisse nicht abrufen.** Der Team-Lead meldete
+  beim Kunden: "Der anschließende Statusabruf liefert für alle vier Aufträge
+  derzeit 'nicht abrufbar'. Das ist kein belastbarer Abschluss." In der Datenbank
+  standen zur selben Zeit alle vier auf COMPLETED, mit 4-10 Zügen echter Arbeit.
+  Der Abruf lief auf **403**: ein Agent darf nur seine EIGENEN Aufgaben lesen,
+  ein Lead legt aber Aufgaben für ANDERE an. `delegate_and_wait` und
+  `get_tasks_status` fragen genau diesen Endpunkt ab — beide liefen ins Leere.
+  Jetzt darf lesen, wer die Aufgabe **erzeugt** hat. Die Mandantentrennung bleibt:
+  kein Agent sieht fremde Aufgaben, nur eigene und selbst vergebene.
+
+### Geändert
+- **`/workspace` ist privat — das stand nirgends.** Jeder Agent hat sein eigenes
+  Volume (so gewollt), aber die Anleitung listete nur "Workspace: /workspace/
+  (persistent across tasks)". Der Lead verschickte deshalb seine eigenen Pfade,
+  die Empfänger fanden nichts und meldeten "keine Artefakte ermittelbar" — was
+  wie Arbeitsverweigerung aussah. Die Anleitung sagt es jetzt ausdrücklich und
+  nennt die zwei Auswege: Dateien nach `/shared/` legen und **den** Pfad
+  delegieren, oder die Aufgabe selbsttragend formulieren.
+  Der Hinweis steht zusätzlich direkt am `prompt`-Feld von `delegate_and_wait`,
+  in **beiden** Laufzeiten (Custom-LLM und stdio-MCP für Claude/Codex) — also in
+  jedem Zug vor dem Modell, nicht nur einmal beim Start.
+
+### Test
+- `test_delegator_may_read_results.py` — am echten Endpunkt: der Auftraggeber
+  bekommt das Ergebnis, ein Fremder weiterhin 403.
+- `test_workspace_is_private.py` — beide Laufzeiten tragen den Hinweis; geprüft
+  wird die Aussage, nicht die Schreibweise.
+
+---
+
 ## [1.178.4] - 2026-08-12
 
 ### Geändert
